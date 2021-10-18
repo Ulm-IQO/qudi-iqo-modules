@@ -2,17 +2,20 @@
 
 import os
 import sys
-from setuptools import setup
+from setuptools import setup, find_namespace_packages
 from setuptools.command.develop import develop
 from setuptools.command.install import install
 
 with open('README.md', 'r') as file:
     long_description = file.read()
 
-with open(os.path.join('.', 'qudi', 'core', 'VERSION.txt'), 'r') as file:
-    version = file.read().strip()
+# with open(os.path.join('.', 'qudi', 'core', 'VERSION.txt'), 'r') as file:
+#     version = file.read().strip()
+# ToDo: Fix version import
+version = '0.1.0'
 
-unix_dep = ['cycler',
+unix_dep = ['wheel',
+            'cycler',
             'entrypoints',
             'fysom',
             'GitPython',
@@ -31,7 +34,8 @@ unix_dep = ['cycler',
             'scipy',
             ]
 
-windows_dep = ['cycler',
+windows_dep = ['wheel',
+               'cycler',
                'entrypoints',
                'fysom',
                'GitPython',
@@ -59,11 +63,6 @@ class PrePostDevelopCommands(develop):
         # PUT YOUR PRE-INSTALL SCRIPT HERE or CALL A FUNCTION
         develop.run(self)
         # PUT YOUR POST-INSTALL SCRIPT HERE or CALL A FUNCTION
-        try:
-            from qudi.core.qudikernel import install_kernel
-            install_kernel()
-        except:
-            pass
 
 
 class PrePostInstallCommands(install):
@@ -74,47 +73,18 @@ class PrePostInstallCommands(install):
         # PUT YOUR PRE-INSTALL SCRIPT HERE or CALL A FUNCTION
         install.run(self)
         # PUT YOUR POST-INSTALL SCRIPT HERE or CALL A FUNCTION
-        try:
-            from qudi.core.qudikernel import install_kernel
-            install_kernel()
-        except:
-            pass
 
 
-setup(name='qudi',
+setup(name='qudi-iqo-modules',
       version=version,
-      packages=['qudi',
-                'qudi.core',
-                'qudi.core.gui',
-                'qudi.core.gui.main_gui',
-                'qudi.core.logger',
-                'qudi.core.scripting',
-                'qudi.util',
-                'qudi.util.fit_models',
-                'qudi.util.widgets',
-                'qudi.tools',
-                'qudi.tools.config_editor'
-                ],
-      package_data={'': ['LICENSE.txt', 'COPYRIGHT.txt', 'docs/*'],
-                    'qudi': ['artwork/logo/*',
-                             'artwork/icons/oxygen/*',
-                             'artwork/icons/oxygen/**/*.png',
-                             'artwork/icons/qudiTheme/*',
-                             'artwork/icons/qudiTheme/**/*.png',
-                             'artwork/logo/*.png',
-                             'artwork/logo/*.ico',
-                             'artwork/logo/*.txt',
-                             'artwork/styles/*.qss',
-                             'artwork/styles/*.txt',
-                             'artwork/styles/**/*.png',
-                             'artwork/styles/**/*.txt',
-                             ],
-                    'qudi.core': ['VERSION.txt', 'default.cfg']
+      packages=find_namespace_packages(),
+      package_data={'': ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md'],
+                    'qudi.gui': ['*.ui', '*/*.ui'],
                     },
-      description='A modular laboratory experiment management suite',
+      description='IQO measurement modules collection for qudi',
       long_description=long_description,
       long_description_content_type='text/markdown',
-      url='https://github.com/Ulm-IQO/qudi',
+      url='https://github.com/Ulm-IQO/qudi-iqo-modules',
       keywords=['diamond',
                 'quantum',
                 'confocal',
@@ -125,16 +95,9 @@ setup(name='qudi',
                 'instrument',
                 'modular'
                 ],
-      license='GPLv3',
+      license='LGPLv3',
       install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
       python_requires='~=3.8',
       cmdclass={'develop': PrePostDevelopCommands, 'install': PrePostInstallCommands},
-      entry_points={
-          'console_scripts': ['qudi=qudi.runnable:main',
-                              'qudi-config-editor=qudi.tools.config_editor.config_editor:main',
-                              'qudi-uninstall-kernel=qudi.core.qudikernel:uninstall_kernel',
-                              'qudi-install-kernel=qudi.core.qudikernel:install_kernel'
-                              ]
-      },
       zip_safe=False
       )
