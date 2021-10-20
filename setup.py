@@ -15,6 +15,7 @@ with open('README.md', 'r') as file:
 version = '0.1.0'
 
 unix_dep = ['wheel',
+            'qudi',
             'cycler',
             'entrypoints',
             'fysom',
@@ -35,6 +36,7 @@ unix_dep = ['wheel',
             ]
 
 windows_dep = ['wheel',
+               'qudi',
                'cycler',
                'entrypoints',
                'fysom',
