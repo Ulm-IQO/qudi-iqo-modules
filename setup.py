@@ -6,56 +6,6 @@ from setuptools import setup, find_namespace_packages
 from setuptools.command.develop import develop
 from setuptools.command.install import install
 
-with open('README.md', 'r') as file:
-    long_description = file.read()
-
-# with open(os.path.join('.', 'qudi', 'core', 'VERSION.txt'), 'r') as file:
-#     version = file.read().strip()
-# ToDo: Fix version import
-version = '0.1.0'
-
-unix_dep = ['wheel',
-            'qudi-core',
-            'cycler',
-            'entrypoints',
-            'fysom',
-            'GitPython',
-            'jupyter',
-            'jupytext',
-            'lmfit',
-            'lxml',
-            'matplotlib',
-            'nidaqmx',
-            'numpy',
-            'pyqtgraph',
-            'PySide2',
-            'PyVisa',
-            'rpyc',
-            'ruamel.yaml',
-            'scipy',
-            ]
-
-windows_dep = ['wheel',
-               'qudi-core',
-               'cycler',
-               'entrypoints',
-               'fysom',
-               'GitPython',
-               'jupyter',
-               'jupytext',
-               'lmfit',
-               'lxml',
-               'matplotlib',
-               'nidaqmx',
-               'numpy',
-               'pyqtgraph',
-               'PySide2',
-               'PyVisa',
-               'rpyc',
-               'ruamel.yaml',
-               'scipy',
-               ]
-
 
 class PrePostDevelopCommands(develop):
     """ Pre- and Post-installation script for development mode.
@@ -77,29 +27,79 @@ class PrePostInstallCommands(install):
         # PUT YOUR POST-INSTALL SCRIPT HERE or CALL A FUNCTION
 
 
-setup(name='qudi-iqo-modules',
-      version=version,
-      packages=find_namespace_packages(),
-      package_data={'': ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md'],
-                    'qudi.gui': ['*.ui', '*/*.ui'],
-                    },
-      description='IQO measurement modules collection for qudi',
-      long_description=long_description,
-      long_description_content_type='text/markdown',
-      url='https://github.com/Ulm-IQO/qudi-iqo-modules',
-      keywords=['diamond',
-                'quantum',
-                'confocal',
-                'experiment',
-                'lab',
-                'laboratory',
-                'instrumentation',
-                'instrument',
-                'modular'
-                ],
-      license='LGPLv3',
-      install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
-      python_requires='~=3.8',
-      cmdclass={'develop': PrePostDevelopCommands, 'install': PrePostInstallCommands},
-      zip_safe=False
-      )
+unix_dep = [
+    'qudi-core',
+    'cycler',
+    'entrypoints',
+    'fysom',
+    'jupyter',
+    'jupytext',
+    'lmfit',
+    'lxml',
+    'matplotlib',
+    'nidaqmx',
+    'numpy',
+    'pyqtgraph',
+    'PySide2',
+    'PyVisa',
+    'rpyc',
+    'ruamel.yaml',
+    'scipy',
+]
+
+windows_dep = [
+    'qudi-core',
+    'cycler',
+    'entrypoints',
+    'fysom',
+    'jupyter',
+    'jupytext',
+    'lmfit',
+    'lxml',
+    'matplotlib',
+    'nidaqmx',
+    'numpy',
+    'pyqtgraph',
+    'PySide2',
+    'PyVisa',
+    'rpyc',
+    'ruamel.yaml',
+    'scipy',
+]
+
+with open('VERSION', 'r') as file:
+    version = file.read().strip()
+
+with open('README.md', 'r') as file:
+    long_description = file.read()
+
+setup(
+    name='qudi-iqo-modules',
+    version=version,
+    packages=find_namespace_packages(where='src', exclude=['qudi.artwork']),
+    package_dir={'': 'src'},
+    package_data={''        : ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md', 'VERSION'],
+                  'qudi'    : ['artwork/icons/*', 'artwork/icons/**/*', 'artwork/icons/**/**/*'],
+                  'qudi.gui': ['*.ui', '*/*.ui'],
+                  },
+    description='IQO measurement modules collection for qudi',
+    long_description=long_description,
+    long_description_content_type='text/markdown',
+    url='https://github.com/Ulm-IQO/qudi-iqo-modules',
+    keywords=['diamond',
+              'quantum',
+              'confocal',
+              'experiment',
+              'lab',
+              'laboratory',
+              'instrumentation',
+              'instrument',
+              'modular',
+              'measurement',
+              ],
+    license='LGPLv3',
+    install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
+    python_requires='~=3.8',
+    cmdclass={'develop': PrePostDevelopCommands, 'install': PrePostInstallCommands},
+    zip_safe=False
+)
