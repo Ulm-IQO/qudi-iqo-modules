@@ -15,7 +15,7 @@ with open('README.md', 'r') as file:
 version = '0.1.0'
 
 unix_dep = ['wheel',
-            'qudi',
+            'qudi-core',
             'cycler',
             'entrypoints',
             'fysom',
@@ -36,7 +36,7 @@ unix_dep = ['wheel',
             ]
 
 windows_dep = ['wheel',
-               'qudi',
+               'qudi-core',
                'cycler',
                'entrypoints',
                'fysom',
@@ -80,7 +80,7 @@ class PrePostInstallCommands(install):
 setup(name='qudi-iqo-modules',
       version=version,
       packages=find_namespace_packages(),
-      package_data={'': ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md'],
+      package_data={'': ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md'],
                     'qudi.gui': ['*.ui', '*/*.ui'],
                     },
       description='IQO measurement modules collection for qudi',
