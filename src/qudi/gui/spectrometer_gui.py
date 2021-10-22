@@ -77,7 +77,7 @@ class CustomAxis(pg.AxisItem):
 
 
 class SpectrometerMainWindow(QtWidgets.QMainWindow):
-    """ Main Window for the SwitchGui module """
+    """ Main Window for the SpectrometerGui module """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -181,21 +181,6 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
     def restore_alignment(self):
         pass
-
-
-class SpectrometerWindow(QtWidgets.QMainWindow):
-
-    def __init__(self):
-        """ Create the laser scanner window.
-        """
-        # Get the path to the *.ui file
-        this_dir = os.path.dirname(__file__)
-        ui_file = os.path.join(this_dir, 'ui_spectrometer.ui')
-
-        # Load it
-        super().__init__()
-        loadUi(ui_file, self)
-        self.show()
 
 
 class SpectrometerGui(GuiBase):

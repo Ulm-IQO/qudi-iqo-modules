@@ -39,10 +39,14 @@ class SpectrometerDummy(SpectrometerInterface):
 
     """
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._exposure = 0.1
+
     def on_activate(self):
         """ Activate module.
         """
-        self.exposure = 0.1
+        pass
 
     def on_deactivate(self):
         """ Deactivate module.
@@ -96,10 +100,10 @@ class SpectrometerDummy(SpectrometerInterface):
     def exposure(self):
         """ Get exposure time.
         """
-        return self.exposure
+        return self._exposure
 
     @exposure.setter
     def exposure(self, value):
         """ Set exposure time.
         """
-        self.exposure = float(value)
+        self._exposure = float(value)
