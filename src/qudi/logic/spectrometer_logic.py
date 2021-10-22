@@ -62,8 +62,8 @@ class SpectrometerLogic(LogicBase):
     sig_data_updated = QtCore.Signal()
 
     # External signals eg for GUI module
-    spectrum_fit_updated_Signal = QtCore.Signal(np.ndarray, dict, str)
-    fit_domain_updated_Signal = QtCore.Signal(np.ndarray)
+    sig_spectrum_fit_updated = QtCore.Signal(np.ndarray, dict, str)
+    sig_fit_domain_updated = QtCore.Signal(np.ndarray)
 
     def __init__(self, **kwargs):
         """ Create SpectrometerLogic object with connectors.
@@ -316,58 +316,8 @@ class SpectrometerLogic(LogicBase):
     def fit_container(self):
         return self._fit_container
 
-    def get_fit_functions(self):
-        """ Return the hardware constraints/limits
-        @return list(str): list of fit function names
-        """
-        return []
-
-    def do_fit(self, fit_function=None, x_data=None, y_data=None):
-        """
-        Execute the currently configured fit on the measurement data. Optionally on passed data
-
-        @param string fit_function: The name of one of the defined fit functions.
-
-        @param array x_data: wavelength data for spectrum.
-
-        @param array y_data: intensity data for spectrum.
-        """
-        self.log.warning('fitting not yet supported')
-        return None
-
-        if (x_data is None) or (y_data is None):
-            x_data = self.spectrum_data[0]
-            y_data = self.spectrum_data[1]
-            if self.fit_domain.any():
-                start_idx = self._find_nearest_idx(x_data, self.fit_domain[0])
-                stop_idx = self._find_nearest_idx(x_data, self.fit_domain[1])
-
-                x_data = x_data[start_idx:stop_idx]
-                y_data = y_data[start_idx:stop_idx]
-
-        if fit_function is not None and isinstance(fit_function, str):
-            if fit_function in self.get_fit_functions():
-                self.fc.set_current_fit(fit_function)
-            else:
-                self.fc.set_current_fit('No Fit')
-                if fit_function != 'No Fit':
-                    self.log.warning('Fit function "{0}" not available in Spectrum logic '
-                                     'fit container.'.format(fit_function)
-                                     )
-
-        spectrum_fit_x, spectrum_fit_y, result = self.fc.do_fit(x_data, y_data)
-
-        self.spectrum_fit = np.array([spectrum_fit_x, spectrum_fit_y])
-
-        if result is None:
-            result_str_dict = {}
-        else:
-            result_str_dict = result.result_str_dict
-        self.spectrum_fit_updated_Signal.emit(self.spectrum_fit,
-                                              result_str_dict,
-                                              self.fc.current_fit
-                                              )
-        return
+    def do_fit(self, value):
+        print('do_fit called:', value)
 
     def _find_nearest_idx(self, array, value):
         """ Find array index of element nearest to given value
@@ -393,4 +343,4 @@ class SpectrometerLogic(LogicBase):
         else:
             self.fit_domain = np.array([self.spectrum_data[0, 0], self.spectrum_data[0, -1]])
 
-        self.fit_domain_updated_Signal.emit(self.fit_domain)
+        self.sig_fit_domain_updated.emit(self.fit_domain)

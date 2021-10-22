@@ -34,8 +34,8 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from PySide2 import QtCore
 from PySide2 import QtWidgets
 from PySide2 import QtGui
-from qudi.util.uic import loadUi
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
+from qudi.util.widgets.toggle_switch import ToggleSwitch
 
 
 class CustomAxis(pg.AxisItem):
@@ -83,6 +83,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         super().__init__(*args, **kwargs)
         self.setWindowTitle('Spectrometer')
         self.setDockNestingEnabled(True)
+        icon_path = os.path.join(get_artwork_dir(), 'icons', 'oxygen', '22x22')
         # self.setStyleSheet('border: 1px solid #f00;')  # debugging help for the gui
 
         self.setTabPosition(QtCore.Qt.TopDockWidgetArea, QtWidgets.QTabWidget.North)
@@ -95,13 +96,46 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
         # Create layout and content for the Controls DockWidget
         self.control_layout = QtWidgets.QGridLayout()
-        self.control_layout.setColumnStretch(3, 1)
+        self.control_layout.setColumnStretch(0, 1)
+        self.control_layout.setColumnStretch(2, 1)
+        self.control_layout.setColumnStretch(4, 1)
         self.control_layout.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         self.control_layout.setContentsMargins(1, 1, 1, 1)
         self.control_layout.setSpacing(5)
         control_widget = QtWidgets.QWidget()
         control_widget.setLayout(self.control_layout)
         self.controls_DockWidget.setWidget(control_widget)
+
+        constant_acquisition_label = QtWidgets.QLabel('Constant Acquisition:')
+        self.constant_acquisition_switch = ToggleSwitch(parent=self,
+                                                        state_names=('Off', 'On'))
+        self.control_layout.addWidget(constant_acquisition_label, 1, 0, QtCore.Qt.AlignRight)
+        self.control_layout.addWidget(self.constant_acquisition_switch, 1, 1)
+
+        background_correction_label = QtWidgets.QLabel('Background Correction:')
+        self.background_correction_switch = ToggleSwitch(parent=self,
+                                                         state_names=('Off', 'On'))
+        self.control_layout.addWidget(background_correction_label, 1, 2, QtCore.Qt.AlignRight)
+        self.control_layout.addWidget(self.background_correction_switch, 1, 3)
+
+        differential_spectrum_label = QtWidgets.QLabel('Differential Spectrum:')
+        self.differential_spectrum_switch = ToggleSwitch(parent=self,
+                                                         state_names=('Off', 'On'))
+        self.control_layout.addWidget(differential_spectrum_label, 1, 4, QtCore.Qt.AlignRight)
+        self.control_layout.addWidget(self.differential_spectrum_switch, 1, 5)
+
+        self.spectrum_button = QtWidgets.QPushButton('Acquire Spectrum')
+        self.spectrum_button.setCheckable(False)
+        self.control_layout.addWidget(self.spectrum_button, 0, 0, QtCore.Qt.AlignCenter)
+
+        self.background_button = QtWidgets.QPushButton('Acquire Background')
+        self.control_layout.addWidget(self.background_button, 0, 1, QtCore.Qt.AlignCenter)
+
+        self.save_spectrum_button = QtWidgets.QPushButton('Save Spectrum')
+        self.control_layout.addWidget(self.save_spectrum_button, 0, 2, QtCore.Qt.AlignCenter)
+
+        self.save_background_button = QtWidgets.QPushButton('Save Background')
+        self.control_layout.addWidget(self.save_background_button, 0, 3, QtCore.Qt.AlignCenter)
 
         # Create layout and content for the Plot DockWidget
         self.plot_top_layout = QtWidgets.QVBoxLayout()
@@ -144,10 +178,9 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.plot_widget.setLabel('right', 'Number of Points', units='#')
         self.plot_widget.setLabel('bottom', 'Wavelength', units='m')
         self.plot_widget.setLabel('top', 'Relative Frequency', units='Hz')
+        self.plot_widget.setMinimumHeight(300)
 
         # Create QActions
-        icon_path = os.path.join(get_artwork_dir(), 'icons', 'oxygen', '22x22')
-
         self.action_close = QtWidgets.QAction('Close Window')
         self.action_close.setCheckable(False)
         self.action_close.setIcon(QtGui.QIcon(os.path.join(icon_path, 'application-exit.png')))
@@ -177,10 +210,34 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         # connecting up the internal signals
         self.action_close.triggered.connect(self.close)
         self.action_restore_view.triggered.connect(self.restore_alignment)
+
+        self.restore_alignment()
         return
 
     def restore_alignment(self):
-        pass
+        resize_docks = {'widget': list(), 'width': list(), 'height': list()}
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.controls_DockWidget)
+        self.controls_DockWidget.setFeatures(self.controls_DockWidget.DockWidgetFloatable |
+                                             self.controls_DockWidget.DockWidgetMovable |
+                                             self.controls_DockWidget.DockWidgetClosable)
+        self.controls_DockWidget.setFloating(False)
+        self.controls_DockWidget.show()
+        resize_docks['widget'].append(self.controls_DockWidget)
+        resize_docks['width'].append(1)
+        resize_docks['height'].append(1)
+
+        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.plot_DockWidget)
+        self.plot_DockWidget.setFeatures(self.plot_DockWidget.DockWidgetFloatable |
+                                         self.plot_DockWidget.DockWidgetMovable |
+                                         self.plot_DockWidget.DockWidgetClosable)
+        self.plot_DockWidget.setFloating(False)
+        self.plot_DockWidget.show()
+        resize_docks['widget'].append(self.plot_DockWidget)
+        resize_docks['width'].append(1)
+        resize_docks['height'].append(1000)
+
+        self.resizeDocks(resize_docks['widget'], resize_docks['height'], QtCore.Qt.Vertical)
+        self.resizeDocks(resize_docks['widget'], resize_docks['width'], QtCore.Qt.Horizontal)
 
 
 class SpectrometerGui(GuiBase):
@@ -192,7 +249,7 @@ class SpectrometerGui(GuiBase):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._mw=None
+        self._mw = None
         self._fsd = None
         self._fit_widget = None
 
@@ -210,49 +267,18 @@ class SpectrometerGui(GuiBase):
 
         self._fit_widget = FitWidget(fit_container=self.spectrumlogic().fit_container)
 
-        self._mw.pulsed_data_layout.addWidget(self._fit_widget)
-        self._fit_widget.sigDoFit.connect(self.do_fit)
+        self._mw.plot_top_layout.addWidget(self._fit_widget)
+        self._fit_widget.sigDoFit.connect(self.spectrumlogic().do_fit)
 
         self._mw.plot_top_layout.addWidget(self._mw.plot_widget)
 
-        self._mw.stop_diff_spec_Action.setEnabled(False)
-        self._mw.resume_diff_spec_Action.setEnabled(False)
-        self._mw.correct_background_Action.setChecked(self.spectrumlogic().background_correction)
-
-        self.update_data()
-
-        # Connect singals
-        self._mw.rec_single_spectrum_Action.triggered.connect(self.record_single_spectrum)
-        self._mw.start_diff_spec_Action.triggered.connect(self.start_differential_measurement)
-        self._mw.stop_diff_spec_Action.triggered.connect(self.stop_differential_measurement)
-        self._mw.resume_diff_spec_Action.triggered.connect(self.resume_differential_measurement)
-
-        self._mw.save_spectrum_Action.triggered.connect(self.save_spectrum_data)
-        self._mw.correct_background_Action.triggered.connect(self.correct_background)
-        self._mw.acquire_background_Action.triggered.connect(self.acquire_background)
-        self._mw.save_background_Action.triggered.connect(self.save_background_data)
-
-        self._mw.restore_default_view_Action.triggered.connect(self.restore_default_view)
-
-        self.spectrumlogic().sig_specdata_updated.connect(self.update_data)
-        self.spectrumlogic().spectrum_fit_updated_Signal.connect(self.update_fit)
-        self.spectrumlogic().fit_domain_updated_Signal.connect(self.update_fit_domain)
+        # Connect signals
+        self.spectrumlogic().sig_data_updated.connect(self.update_data)
+        self.spectrumlogic().sig_spectrum_fit_updated.connect(self.update_fit)
+        self.spectrumlogic().sig_fit_domain_updated.connect(self.update_fit_domain)
 
         self._mw.show()
-
-        # Internal user input changed signals
-        self._mw.fit_domain_min_doubleSpinBox.valueChanged.connect(self.set_fit_domain)
-        self._mw.fit_domain_max_doubleSpinBox.valueChanged.connect(self.set_fit_domain)
-
-        # Internal trigger signals
-        self._mw.do_fit_PushButton.clicked.connect(self.do_fit)
-        self._mw.fit_domain_all_data_pushButton.clicked.connect(self.reset_fit_domain_all_data)
-
-        # # fit settings
-        # self._fsd = FitSettingsDialog(self.spectrumlogic().fc)
-        # self._fsd.sigFitsUpdated.connect(self._mw.fit_methods_ComboBox.setFitFunctions)
-        # self._fsd.applySettings()
-        # self._mw.action_FitSettings.triggered.connect(self._fsd.show)
+        self.update_data()
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
@@ -263,12 +289,16 @@ class SpectrometerGui(GuiBase):
         self._fsd = None
         self._fit_widget.sigDoFit.disconnect()
 
+        self.spectrumlogic().sig_data_updated.disconnect(self.update_data)
+        self.spectrumlogic().sig_spectrum_fit_updated.disconnect(self.update_fit)
+        self.spectrumlogic().sig_fit_domain_updated.disconnect(self.update_fit_domain)
+
         self._mw.close()
 
     def show(self):
         """Make window visible and put it above all other windows.
         """
-        QtWidgets.QMainWindow.show(self._mw)
+        self._mw.show()
         self._mw.activateWindow()
         self._mw.raise_()
 
@@ -342,12 +372,6 @@ class SpectrometerGui(GuiBase):
     def save_background_data(self):
         self.spectrumlogic().save_spectrum_data(background=True)
 
-    def do_fit(self):
-        """ Command spectrum logic to do the fit with the chosen fit function.
-        """
-        fit_function = self._mw.fit_methods_ComboBox.getCurrentFit()[0]
-        self.spectrumlogic().do_fit(fit_function)
-
     def set_fit_domain(self):
         """ Set the fit domain in the spectrum logic to values given by the GUI spinboxes.
         """
@@ -368,26 +392,3 @@ class SpectrometerGui(GuiBase):
         """
         self._mw.fit_domain_min_doubleSpinBox.setValue(domain[0])
         self._mw.fit_domain_max_doubleSpinBox.setValue(domain[1])
-
-    def restore_default_view(self):
-        """ Restore the arrangement of DockWidgets to the default
-        """
-        # Show any hidden dock widgets
-        self._mw.spectrum_fit_dockWidget.show()
-
-        # re-dock any floating dock widgets
-        self._mw.spectrum_fit_dockWidget.setFloating(False)
-
-        # Arrange docks widgets
-        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea(QtCore.Qt.TopDockWidgetArea),
-                               self._mw.spectrum_fit_dockWidget
-                               )
-
-        # Set the toolbar to its initial top area
-        self._mw.addToolBar(QtCore.Qt.TopToolBarArea,
-                            self._mw.measure_ToolBar)
-        self._mw.addToolBar(QtCore.Qt.TopToolBarArea,
-                            self._mw.background_ToolBar)
-        self._mw.addToolBar(QtCore.Qt.TopToolBarArea,
-                            self._mw.differential_ToolBar)
-        return 0
