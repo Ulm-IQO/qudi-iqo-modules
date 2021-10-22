@@ -23,7 +23,6 @@ from abc import abstractmethod
 from qudi.core.module import Base
 
 
-
 class SpectrometerInterface(Base):
     """ This is the interface class to define the controls for the simple optical spectrometer.
 
@@ -34,7 +33,7 @@ class SpectrometerInterface(Base):
 
     """
     @abstractmethod
-    def recordSpectrum(self):
+    def record_spectrum(self):
         """ Launch an acquisition a wait for a response
 
         @return (2, N) float array: The acquired array with the wavelength in meter in the first row and measured value
@@ -42,18 +41,28 @@ class SpectrometerInterface(Base):
         """
         pass
 
-    @abstractmethod
-    def setExposure(self, exposureTime):
-        """ Set the acquisition exposure time
+    def save_spectrum(self, path, postfix=''):
+        """ Dummy save function.
 
-        @param (float) exposureTime: Exposure time to set in second
+            @param str path: path of saved spectrum
+            @param str postfix: postfix of saved spectrum file
         """
         pass
 
+    @property
     @abstractmethod
-    def getExposure(self):
+    def exposure(self):
         """ Get the acquisition exposure time
 
         @return (float): Exposure time in second
+        """
+        pass
+
+    @exposure.setter
+    @abstractmethod
+    def exposure(self, value):
+        """ Set the acquisition exposure time
+
+        @param (float) value: Exposure time to set in second
         """
         pass
