@@ -96,9 +96,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
         # Create layout and content for the Controls DockWidget
         self.control_layout = QtWidgets.QGridLayout()
-        self.control_layout.setColumnStretch(0, 1)
-        self.control_layout.setColumnStretch(2, 1)
-        self.control_layout.setColumnStretch(4, 1)
+        # self.control_layout.setColumnStretch(0, 1)
         self.control_layout.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
         self.control_layout.setContentsMargins(1, 1, 1, 1)
         self.control_layout.setSpacing(5)
@@ -106,36 +104,41 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         control_widget.setLayout(self.control_layout)
         self.controls_DockWidget.setWidget(control_widget)
 
-        constant_acquisition_label = QtWidgets.QLabel('Constant Acquisition:')
-        self.constant_acquisition_switch = ToggleSwitch(parent=self,
-                                                        state_names=('Off', 'On'))
-        self.control_layout.addWidget(constant_acquisition_label, 1, 0, QtCore.Qt.AlignRight)
-        self.control_layout.addWidget(self.constant_acquisition_switch, 1, 1)
-
-        background_correction_label = QtWidgets.QLabel('Background Correction:')
-        self.background_correction_switch = ToggleSwitch(parent=self,
-                                                         state_names=('Off', 'On'))
-        self.control_layout.addWidget(background_correction_label, 1, 2, QtCore.Qt.AlignRight)
-        self.control_layout.addWidget(self.background_correction_switch, 1, 3)
-
-        differential_spectrum_label = QtWidgets.QLabel('Differential Spectrum:')
-        self.differential_spectrum_switch = ToggleSwitch(parent=self,
-                                                         state_names=('Off', 'On'))
-        self.control_layout.addWidget(differential_spectrum_label, 1, 4, QtCore.Qt.AlignRight)
-        self.control_layout.addWidget(self.differential_spectrum_switch, 1, 5)
-
         self.spectrum_button = QtWidgets.QPushButton('Acquire Spectrum')
         self.spectrum_button.setCheckable(False)
+        self.spectrum_button.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
         self.control_layout.addWidget(self.spectrum_button, 0, 0, QtCore.Qt.AlignCenter)
 
-        self.background_button = QtWidgets.QPushButton('Acquire Background')
-        self.control_layout.addWidget(self.background_button, 0, 1, QtCore.Qt.AlignCenter)
+        self.spectrum_continue_button = QtWidgets.QPushButton('Continue Spectrum')
+        self.spectrum_continue_button.setCheckable(False)
+        self.control_layout.addWidget(self.spectrum_continue_button, 0, 1, QtCore.Qt.AlignCenter)
 
         self.save_spectrum_button = QtWidgets.QPushButton('Save Spectrum')
         self.control_layout.addWidget(self.save_spectrum_button, 0, 2, QtCore.Qt.AlignCenter)
 
+        self.background_button = QtWidgets.QPushButton('Acquire Background')
+        self.control_layout.addWidget(self.background_button, 1, 0, QtCore.Qt.AlignCenter)
+
         self.save_background_button = QtWidgets.QPushButton('Save Background')
-        self.control_layout.addWidget(self.save_background_button, 0, 3, QtCore.Qt.AlignCenter)
+        self.control_layout.addWidget(self.save_background_button, 1, 2, QtCore.Qt.AlignCenter)
+
+        constant_acquisition_label = QtWidgets.QLabel('Constant Acquisition:')
+        self.constant_acquisition_switch = ToggleSwitch(parent=self,
+                                                        state_names=('Off', 'On'))
+        self.control_layout.addWidget(constant_acquisition_label, 2, 0, QtCore.Qt.AlignRight)
+        self.control_layout.addWidget(self.constant_acquisition_switch, 2, 1)
+
+        background_correction_label = QtWidgets.QLabel('Background Correction:')
+        self.background_correction_switch = ToggleSwitch(parent=self,
+                                                         state_names=('Off', 'On'))
+        self.control_layout.addWidget(background_correction_label, 3, 0, QtCore.Qt.AlignRight)
+        self.control_layout.addWidget(self.background_correction_switch, 3, 1)
+
+        differential_spectrum_label = QtWidgets.QLabel('Differential Spectrum:')
+        self.differential_spectrum_switch = ToggleSwitch(parent=self,
+                                                         state_names=('Off', 'On'))
+        self.control_layout.addWidget(differential_spectrum_label, 4, 0, QtCore.Qt.AlignRight)
+        self.control_layout.addWidget(self.differential_spectrum_switch, 4, 1)
 
         # Create layout and content for the Plot DockWidget
         self.plot_top_layout = QtWidgets.QVBoxLayout()
@@ -274,10 +277,21 @@ class SpectrometerGui(GuiBase):
 
         # Connect signals
         self.spectrumlogic().sig_data_updated.connect(self.update_data)
+        self.spectrumlogic().sig_state_updated.connect(self.update_state)
         self.spectrumlogic().sig_spectrum_fit_updated.connect(self.update_fit)
         self.spectrumlogic().sig_fit_domain_updated.connect(self.update_fit_domain)
 
+        self._mw.spectrum_button.clicked.connect(self.acquire_spectrum)
+        self._mw.spectrum_continue_button.clicked.connect(self.continue_spectrum)
+        self._mw.background_button.clicked.connect(self.acquire_background)
+        self._mw.save_spectrum_button.clicked.connect(self.save_spectrum)
+        self._mw.save_background_button.clicked.connect(self.save_background)
+        self._mw.background_correction_switch.sigStateChanged.connect(self.background_correction_changed)
+        self._mw.constant_acquisition_switch.sigStateChanged.connect(self.constant_acquisition_changed)
+        self._mw.differential_spectrum_switch.sigStateChanged.connect(self.differential_spectrum_changed)
+
         self._mw.show()
+        self.update_state()
         self.update_data()
 
     def on_deactivate(self):
@@ -290,8 +304,18 @@ class SpectrometerGui(GuiBase):
         self._fit_widget.sigDoFit.disconnect()
 
         self.spectrumlogic().sig_data_updated.disconnect(self.update_data)
+        self.spectrumlogic().sig_state_updated.disconnect(self.update_state)
         self.spectrumlogic().sig_spectrum_fit_updated.disconnect(self.update_fit)
         self.spectrumlogic().sig_fit_domain_updated.disconnect(self.update_fit_domain)
+
+        self._mw.spectrum_button.clicked.disconnect()
+        self._mw.spectrum_continue_button.clicked.disconnect()
+        self._mw.background_button.clicked.disconnect()
+        self._mw.save_spectrum_button.clicked.disconnect()
+        self._mw.save_background_button.clicked.disconnect()
+        self._mw.background_correction_switch.sigStateChanged.disconnect()
+        self._mw.constant_acquisition_switch.sigStateChanged.disconnect()
+        self._mw.differential_spectrum_switch.sigStateChanged.disconnect()
 
         self._mw.close()
 
@@ -301,6 +325,17 @@ class SpectrometerGui(GuiBase):
         self._mw.show()
         self._mw.activateWindow()
         self._mw.raise_()
+
+    def update_state(self):
+        if self.spectrumlogic().acquisition_running:
+            self._mw.spectrum_button.setText('Stop Spectrum')
+            self._mw.background_button.setText('Stop Background')
+        else:
+            self._mw.spectrum_button.setText('Acquire Spectrum')
+            self._mw.background_button.setText('Acquire Background')
+        self._mw.background_correction_switch.setChecked(self.spectrumlogic().background_correction)
+        self._mw.constant_acquisition_switch.setChecked(self.spectrumlogic().constant_acquisition)
+        self._mw.differential_spectrum_switch.setChecked(self.spectrumlogic().differential_spectrum)
 
     def update_data(self):
         """ The function that grabs the data and sends it to the plot.
@@ -327,50 +362,50 @@ class SpectrometerGui(GuiBase):
             # redraw the fit curve in the GUI plot.
             self._curve2.setData(x=fit_data[0, :], y=fit_data[1, :])
 
-    def record_single_spectrum(self):
-        """ Handle resume of the scanning without resetting the data.
-        """
-        self.spectrumlogic().get_single_spectrum()
+    def acquire_spectrum(self):
+        if not self.spectrumlogic().acquisition_running:
+            self.spectrumlogic().background_correction = self._mw.background_correction_switch.isChecked()
+            self.spectrumlogic().constant_acquisition = self._mw.constant_acquisition_switch.isChecked()
+            self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
+            self.spectrumlogic().run_get_spectrum(background=False)
+            self._mw.spectrum_button.setText('Stop Spectrum')
+        else:
+            self.spectrumlogic().stop()
+            self._mw.spectrum_button.setText('Acquire Spectrum')
 
-    def start_differential_measurement(self):
-
-        # Change enabling of GUI actions
-        self._mw.stop_diff_spec_Action.setEnabled(True)
-        self._mw.start_diff_spec_Action.setEnabled(False)
-        self._mw.rec_single_spectrum_Action.setEnabled(False)
-        self._mw.resume_diff_spec_Action.setEnabled(False)
-
-        self.spectrumlogic().start_differential_spectrum()
-
-    def stop_differential_measurement(self):
-        self.spectrumlogic().stop_differential_spectrum()
-
-        # Change enabling of GUI actions
-        self._mw.stop_diff_spec_Action.setEnabled(False)
-        self._mw.start_diff_spec_Action.setEnabled(True)
-        self._mw.rec_single_spectrum_Action.setEnabled(True)
-        self._mw.resume_diff_spec_Action.setEnabled(True)
-
-    def resume_differential_measurement(self):
-        self.spectrumlogic().resume_differential_spectrum()
-
-        # Change enabling of GUI actions
-        self._mw.stop_diff_spec_Action.setEnabled(True)
-        self._mw.start_diff_spec_Action.setEnabled(False)
-        self._mw.rec_single_spectrum_Action.setEnabled(False)
-        self._mw.resume_diff_spec_Action.setEnabled(False)
-
-    def save_spectrum_data(self):
-        self.spectrumlogic().save_spectrum_data()
-
-    def correct_background(self):
-        self.spectrumlogic().background_correction = self._mw.correct_background_Action.isChecked()
+    def continue_spectrum(self):
+        if not self.spectrumlogic().acquisition_running:
+            self.spectrumlogic().background_correction = self._mw.background_correction_switch.isChecked()
+            self.spectrumlogic().constant_acquisition = self._mw.constant_acquisition_switch.isChecked()
+            self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
+            self.spectrumlogic().run_get_spectrum(background=False, reset=False)
+            self._mw.spectrum_button.setText('Stop Spectrum')
 
     def acquire_background(self):
-        self.spectrumlogic().get_single_spectrum(background=True)
+        if not self.spectrumlogic().acquisition_running:
+            self.spectrumlogic().background_correction = self._mw.background_correction_switch.isChecked()
+            self.spectrumlogic().constant_acquisition = self._mw.constant_acquisition_switch.isChecked()
+            self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
+            self.spectrumlogic().run_get_spectrum(background=True)
+            self._mw.spectrum_button.setText('Stop Background')
+        else:
+            self.spectrumlogic().stop()
+            self._mw.spectrum_button.setText('Acquire Background')
 
-    def save_background_data(self):
+    def save_spectrum(self):
+        self.spectrumlogic().save_spectrum_data(background=False)
+
+    def save_background(self):
         self.spectrumlogic().save_spectrum_data(background=True)
+
+    def background_correction_changed(self):
+        self.spectrumlogic().background_correction = self._mw.background_correction_switch.isChecked()
+
+    def constant_acquisition_changed(self):
+        self.spectrumlogic().constant_acquisition = self._mw.constant_acquisition_switch.isChecked()
+
+    def differential_spectrum_changed(self):
+        self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
 
     def set_fit_domain(self):
         """ Set the fit domain in the spectrum logic to values given by the GUI spinboxes.

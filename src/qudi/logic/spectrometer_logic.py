@@ -59,9 +59,11 @@ class SpectrometerLogic(LogicBase):
     _fit_config = StatusVar(name='fit_config', default=None)
 
     # Internal signals
-    sig_data_updated = QtCore.Signal()
+    _sig_get_spectrum = QtCore.Signal(bool, bool, bool, bool)
 
     # External signals eg for GUI module
+    sig_data_updated = QtCore.Signal()
+    sig_state_updated = QtCore.Signal()
     sig_spectrum_fit_updated = QtCore.Signal(np.ndarray, dict, str)
     sig_fit_domain_updated = QtCore.Signal(np.ndarray)
 
@@ -82,6 +84,7 @@ class SpectrometerLogic(LogicBase):
         self._background = None
         self._repetitions = 0
         self._stop_acquisition = False
+        self._acquisition_running = False
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -89,14 +92,22 @@ class SpectrometerLogic(LogicBase):
         self._fit_config_model = FitConfigurationsModel(parent=self)
         self._fit_config_model.load_configs(self._fit_config)
         self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
+        self._sig_get_spectrum.connect(self.get_spectrum)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
-        pass
+        self._sig_get_spectrum.disconnect()
 
     def stop(self):
         self._stop_acquisition = True
+
+    def run_get_spectrum(self, background=False, constant_acquisition=None, differential_spectrum=None, reset=True):
+        if constant_acquisition is not None:
+            self._constant_acquisition = bool(constant_acquisition)
+        if differential_spectrum is not None:
+            self._differential_spectrum = bool(differential_spectrum)
+        self._sig_get_spectrum.emit(background, self._constant_acquisition, self._differential_spectrum, reset)
 
     def get_spectrum(self, background=False, constant_acquisition=None, differential_spectrum=None, reset=True):
         if constant_acquisition is not None:
@@ -109,12 +120,15 @@ class SpectrometerLogic(LogicBase):
         self._stop_acquisition = False
 
         if background:
-            self._background = np.array(netobtain(self.spectrometer().record_spectrum()))
+            self._background = np.array(netobtain(self.spectrometer().record_spectrum()))[1, :]
 
         if reset:
             self._spectrum = [None, None]
             self._wavelength = None
             self._repetitions = 0
+
+        self._acquisition_running = True
+        self.sig_state_updated.emit()
 
         if self._differential_spectrum:
             self.modulation_device().modulation_on()
@@ -147,7 +161,13 @@ class SpectrometerLogic(LogicBase):
                                      constant_acquisition=self._constant_acquisition,
                                      differential_spectrum=self._differential_spectrum,
                                      reset=False)
+        self._acquisition_running = False
+        self.sig_state_updated.emit()
         return self.spectrum
+
+    @property
+    def acquisition_running(self):
+        return self._acquisition_running
 
     @property
     def spectrum(self):
@@ -157,14 +177,17 @@ class SpectrometerLogic(LogicBase):
         if self._differential_spectrum and self._spectrum[1] is not None:
             data = data - self._spectrum[1]
         if self._background_correction:
-            if len(data[1, :]) == len(self._background):
+            if self._background is not None and len(data) == len(self._background):
                 data = data - self._background
             else:
-                self.log.warning(f'Length of spectrum ({len(data[1, :])}) does not match '
-                                 f'background ({len(self._background[1, :])}, returning pure spectrum.')
-
-        self.sig_data_updated.emit()
+                self.log.warning(f'Length of spectrum ({len(data)}) does not match '
+                                 f'background ({len(self._background) if self._background is not None else 0}), '
+                                 f'returning pure spectrum.')
         return data
+
+    @property
+    def background(self):
+        return self._background
 
     @property
     def wavelength(self):
