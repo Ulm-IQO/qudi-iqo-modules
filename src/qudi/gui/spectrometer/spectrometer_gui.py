@@ -23,7 +23,6 @@ import numpy as np
 
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
-from qudi.util import units
 from qudi.util.widgets.fitting import FitConfigurationDialog, FitWidget
 
 from .spectrometer_window import SpectrometerMainWindow
@@ -64,7 +63,7 @@ class SpectrometerGui(GuiBase):
         # Connect signals
         self.spectrumlogic().sig_data_updated.connect(self.update_data)
         self.spectrumlogic().sig_state_updated.connect(self.update_state)
-        self.spectrumlogic().sig_spectrum_fit_updated.connect(self.update_fit)
+        self.spectrumlogic().sig_fit_updated.connect(self.update_fit)
         self.spectrumlogic().sig_fit_domain_updated.connect(self.update_fit_domain)
 
         self._mw.spectrum_button.clicked.connect(self.acquire_spectrum)
@@ -76,6 +75,7 @@ class SpectrometerGui(GuiBase):
         self._mw.constant_acquisition_switch.sigStateChanged.connect(self.constant_acquisition_changed)
         self._mw.differential_spectrum_switch.sigStateChanged.connect(self.differential_spectrum_changed)
 
+        # show the gui and update the data
         self._mw.show()
         self.update_state()
         self.update_data()
@@ -83,15 +83,16 @@ class SpectrometerGui(GuiBase):
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
-        # disconnect signals
+        # clean up the fit
         self._mw.action_show_fit_settings.triggered.disconnect()
         self._fsd.close()
         self._fsd = None
         self._fit_widget.sigDoFit.disconnect()
 
+        # disconnect signals
         self.spectrumlogic().sig_data_updated.disconnect(self.update_data)
         self.spectrumlogic().sig_state_updated.disconnect(self.update_state)
-        self.spectrumlogic().sig_spectrum_fit_updated.disconnect(self.update_fit)
+        self.spectrumlogic().sig_fit_updated.disconnect(self.update_fit)
         self.spectrumlogic().sig_fit_domain_updated.disconnect(self.update_fit_domain)
 
         self._mw.spectrum_button.clicked.disconnect()
@@ -113,12 +114,15 @@ class SpectrometerGui(GuiBase):
         self._mw.raise_()
 
     def update_state(self):
+        # Update the text of the buttons according to logic state
         if self.spectrumlogic().acquisition_running:
             self._mw.spectrum_button.setText('Stop Spectrum')
             self._mw.background_button.setText('Stop Background')
         else:
             self._mw.spectrum_button.setText('Acquire Spectrum')
             self._mw.background_button.setText('Acquire Background')
+
+        # update settings shown by the gui
         self._mw.background_correction_switch.setChecked(self.spectrumlogic().background_correction)
         self._mw.constant_acquisition_switch.setChecked(self.spectrumlogic().constant_acquisition)
         self._mw.differential_spectrum_switch.setChecked(self.spectrumlogic().differential_spectrum)
@@ -128,25 +132,21 @@ class SpectrometerGui(GuiBase):
         """
         # erase previous fit line
         self._mw.fit_curve.setData(x=[], y=[])
+        self._mw.fit_curve.setDownsampling(ds=True, auto=True, method='mean')
 
         # draw new data
         self._mw.data_curve.setData(x=self.spectrumlogic().wavelength,
                                     y=self.spectrumlogic().spectrum)
+        self._mw.data_curve.setDownsampling(ds=True, auto=True, method='mean')
 
-    def update_fit(self, fit_data, result_str_dict, current_fit):
-        """ Update the drawn fit curve and displayed fit results.
+    def update_fit(self, fit_method, fit_results):
+        """ Update the drawn fit curve.
         """
-        if current_fit != 'No Fit':
-            # display results as formatted text
-            self._mw.spectrum_fit_results_DisplayWidget.clear()
-            try:
-                formated_results = units.create_formatted_output(result_str_dict)
-            except:
-                formated_results = 'this fit does not return formatted results'
-            self._mw.spectrum_fit_results_DisplayWidget.setPlainText(formated_results)
-
+        if fit_method != 'No Fit' and fit_results is not None:
             # redraw the fit curve in the GUI plot.
-            self._curve2.setData(x=fit_data[0, :], y=fit_data[1, :])
+            self._mw.fit_curve.setData(x=fit_results.high_res_best_fit[0],
+                                       y=fit_results.high_res_best_fit[1])
+            self._mw.fit_curve.setDownsampling(ds=True, auto=True, method='mean')
 
     def acquire_spectrum(self):
         if not self.spectrumlogic().acquisition_running:

@@ -23,6 +23,7 @@ from PySide2 import QtCore
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
+import traceback
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -50,8 +51,9 @@ class SpectrometerLogic(LogicBase):
     modulation_device = Connector(interface='ModulationInterface', optional=True)
 
     # declare status variables
-    _spectrum_data = StatusVar(name='spectrum_data', default=np.empty((2, 0)))
-    _spectrum_background = StatusVar(name='spectrum_background', default=np.empty((2, 0)))
+    _spectrum = StatusVar(name='spectrum', default=[None, None])
+    _background = StatusVar(name='background', default=None)
+    _wavelength = StatusVar(name='wavelength', default=None)
     _background_correction = StatusVar(name='background_correction', default=False)
     _constant_acquisition = StatusVar(name='constant_acquisition', default=False)
     _differential_spectrum = StatusVar(name='differential_spectrum', default=False)
@@ -65,7 +67,7 @@ class SpectrometerLogic(LogicBase):
     # External signals eg for GUI module
     sig_data_updated = QtCore.Signal()
     sig_state_updated = QtCore.Signal()
-    sig_spectrum_fit_updated = QtCore.Signal(np.ndarray, dict, str)
+    sig_fit_updated = QtCore.Signal(str, object)
     sig_fit_domain_updated = QtCore.Signal(np.ndarray)
 
     def __init__(self, **kwargs):
@@ -102,6 +104,7 @@ class SpectrometerLogic(LogicBase):
         """
         self._sig_get_spectrum.disconnect()
         self._sig_get_background.disconnect()
+        self._fit_config = self._fit_config_model.dump_configs()
 
     def stop(self):
         self._stop_acquisition = True
@@ -205,7 +208,7 @@ class SpectrometerLogic(LogicBase):
     def spectrum(self):
         if self._spectrum[0] is None:
             return None
-        data = self._spectrum[0]
+        data = np.copy(self._spectrum[0])
         if self._differential_spectrum and self._spectrum[1] is not None:
             data = data - self._spectrum[1]
         if self._repetitions_spectrum != 0:
@@ -367,19 +370,6 @@ class SpectrometerLogic(LogicBase):
     ################
     # Fitting things
 
-    @_fit_config.representer
-    def __repr_fit_config(self, value):
-        config = self.fit_config_model.dump_configs()
-        if not config or len(config) < 1:
-            config = None
-        return config
-
-    @_fit_config.constructor
-    def __constr_fit_config(self, value):
-        if not value:
-            return dict()
-        return value
-
     @property
     def fit_config_model(self):
         return self._fit_config_model
@@ -388,8 +378,18 @@ class SpectrometerLogic(LogicBase):
     def fit_container(self):
         return self._fit_container
 
-    def do_fit(self, value):
-        print('do_fit called:', value)
+    def do_fit(self, fit_method):
+        x_data = self.wavelength
+        y_data = self.spectrum
+
+        try:
+            fit_method, fit_result = self._fit_container.fit_data(fit_method, x_data, y_data)
+        except:
+            self.log.exception(f'Data fitting failed:\n{traceback.format_exc()}')
+            return
+
+        self.sig_fit_updated.emit(fit_method, fit_result)
+        return fit_method, fit_result
 
     def _find_nearest_idx(self, array, value):
         """ Find array index of element nearest to given value

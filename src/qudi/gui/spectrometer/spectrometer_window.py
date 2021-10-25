@@ -100,20 +100,24 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
         self.spectrum_button = QtWidgets.QPushButton('Acquire Spectrum')
         self.spectrum_button.setCheckable(False)
-        self.spectrum_button.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.MinimumExpanding)
+        self.spectrum_button.setMinimumWidth(130)
         self.control_layout.addWidget(self.spectrum_button, 0, 0, QtCore.Qt.AlignCenter)
 
         self.spectrum_continue_button = QtWidgets.QPushButton('Continue Spectrum')
         self.spectrum_continue_button.setCheckable(False)
+        self.spectrum_continue_button.setMinimumWidth(130)
         self.control_layout.addWidget(self.spectrum_continue_button, 0, 1, QtCore.Qt.AlignCenter)
 
         self.save_spectrum_button = QtWidgets.QPushButton('Save Spectrum')
+        self.save_spectrum_button.setMinimumWidth(130)
         self.control_layout.addWidget(self.save_spectrum_button, 0, 2, QtCore.Qt.AlignCenter)
 
         self.background_button = QtWidgets.QPushButton('Acquire Background')
+        self.background_button.setMinimumWidth(130)
         self.control_layout.addWidget(self.background_button, 1, 0, QtCore.Qt.AlignCenter)
 
         self.save_background_button = QtWidgets.QPushButton('Save Background')
+        self.save_background_button.setMinimumWidth(130)
         self.control_layout.addWidget(self.save_background_button, 1, 2, QtCore.Qt.AlignCenter)
 
         constant_acquisition_label = QtWidgets.QLabel('Constant Acquisition:')
