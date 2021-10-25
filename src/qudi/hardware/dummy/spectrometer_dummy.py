@@ -41,7 +41,7 @@ class SpectrometerDummy(SpectrometerInterface):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._exposure = 0.1
+        self._exposure = 0.5
 
     def on_activate(self):
         """ Activate module.

@@ -59,7 +59,8 @@ class SpectrometerLogic(LogicBase):
     _fit_config = StatusVar(name='fit_config', default=None)
 
     # Internal signals
-    _sig_get_spectrum = QtCore.Signal(bool, bool, bool, bool)
+    _sig_get_spectrum = QtCore.Signal(bool, bool, bool)
+    _sig_get_background = QtCore.Signal(bool, bool, bool)
 
     # External signals eg for GUI module
     sig_data_updated = QtCore.Signal()
@@ -82,7 +83,8 @@ class SpectrometerLogic(LogicBase):
         self._spectrum = [None, None]
         self._wavelength = None
         self._background = None
-        self._repetitions = 0
+        self._repetitions_spectrum = 0
+        self._repetitions_background = 0
         self._stop_acquisition = False
         self._acquisition_running = False
 
@@ -93,77 +95,107 @@ class SpectrometerLogic(LogicBase):
         self._fit_config_model.load_configs(self._fit_config)
         self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
         self._sig_get_spectrum.connect(self.get_spectrum)
+        self._sig_get_background.connect(self.get_background)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
         self._sig_get_spectrum.disconnect()
+        self._sig_get_background.disconnect()
 
     def stop(self):
         self._stop_acquisition = True
 
-    def run_get_spectrum(self, background=False, constant_acquisition=None, differential_spectrum=None, reset=True):
+    def run_get_spectrum(self, constant_acquisition=None, differential_spectrum=None, reset=True):
         if constant_acquisition is not None:
-            self._constant_acquisition = bool(constant_acquisition)
+            self.constant_acquisition = bool(constant_acquisition)
         if differential_spectrum is not None:
-            self._differential_spectrum = bool(differential_spectrum)
-        self._sig_get_spectrum.emit(background, self._constant_acquisition, self._differential_spectrum, reset)
+            self.differential_spectrum = bool(differential_spectrum)
+        self._sig_get_spectrum.emit(self._constant_acquisition, self._differential_spectrum, reset)
 
-    def get_spectrum(self, background=False, constant_acquisition=None, differential_spectrum=None, reset=True):
+    def get_spectrum(self, constant_acquisition=None, differential_spectrum=None, reset=True):
         if constant_acquisition is not None:
-            self._constant_acquisition = bool(constant_acquisition)
+            self.constant_acquisition = bool(constant_acquisition)
         if differential_spectrum is not None:
-            self._differential_spectrum = bool(differential_spectrum)
-            if self._differential_spectrum and not self.modulation_device.is_connected:
-                self.log.warning(f'differential_spectrum was requested, but no modulation device was connected.')
-                self._differential_spectrum = False
+            self.differential_spectrum = bool(differential_spectrum)
         self._stop_acquisition = False
-
-        if background:
-            self._background = np.array(netobtain(self.spectrometer().record_spectrum()))[1, :]
 
         if reset:
             self._spectrum = [None, None]
             self._wavelength = None
-            self._repetitions = 0
+            self._repetitions_spectrum = 0
 
         self._acquisition_running = True
         self.sig_state_updated.emit()
 
         if self._differential_spectrum:
             self.modulation_device().modulation_on()
-            data = np.array(netobtain(self.spectrometer().record_spectrum()))
+
+        # get data from the spectrometer
+        data = np.array(netobtain(self.spectrometer().record_spectrum()))
+        with self._lock:
             if self._spectrum[0] is None:
                 self._spectrum[0] = data[1, :]
             else:
                 self._spectrum[0] += data[1, :]
 
+            self._wavelength = data[0, :]
+            self._repetitions_spectrum += 1
+
+        if self._differential_spectrum:
             self.modulation_device().modulation_off()
             data = np.array(netobtain(self.spectrometer().record_spectrum()))
-            if self._spectrum[1] is None:
-                self._spectrum[1] = data[1, :]
-            else:
-                self._spectrum[1] += data[1, :]
+            with self._lock:
+                if self._spectrum[1] is None:
+                    self._spectrum[1] = data[1, :]
+                else:
+                    self._spectrum[1] += data[1, :]
         else:
-            data = np.array(netobtain(self.spectrometer().record_spectrum()))
-            if self._spectrum[0] is None:
-                self._spectrum[0] = data[1, :]
-            else:
-                self._spectrum[0] += data[1, :]
-            self._spectrum[1] = None
-
-        self._wavelength = data[0, :]
-        self._repetitions += 1
+            with self._lock:
+                self._spectrum[1] = None
         self.sig_data_updated.emit()
 
         if self._constant_acquisition and not self._stop_acquisition:
-            return self.get_spectrum(background=background,
-                                     constant_acquisition=self._constant_acquisition,
-                                     differential_spectrum=self._differential_spectrum,
-                                     reset=False)
+            return self.get_spectrum(reset=False)
         self._acquisition_running = False
         self.sig_state_updated.emit()
         return self.spectrum
+
+    def run_get_background(self, constant_acquisition=None, reset=True):
+        if constant_acquisition is not None:
+            self.constant_acquisition = bool(constant_acquisition)
+        self._sig_get_background.emit(self._constant_acquisition, self._differential_spectrum, reset)
+
+    def get_background(self, constant_acquisition=None, reset=True):
+        if constant_acquisition is not None:
+            self.constant_acquisition = bool(constant_acquisition)
+        self._stop_acquisition = False
+
+        if reset:
+            self._background = None
+            self._wavelength = None
+            self._repetitions_background = 0
+
+        self._acquisition_running = True
+        self.sig_state_updated.emit()
+
+        # get data from the spectrometer
+        data = np.array(netobtain(self.spectrometer().record_spectrum()))
+        with self._lock:
+            if self._background is None:
+                self._background = data[1, :]
+            else:
+                self._background += data[1, :]
+
+            self._wavelength = data[0, :]
+            self._repetitions_background += 1
+        self.sig_data_updated.emit()
+
+        if self._constant_acquisition and not self._stop_acquisition:
+            return self.get_background(reset=False)
+        self._acquisition_running = False
+        self.sig_state_updated.emit()
+        return self.background
 
     @property
     def acquisition_running(self):
@@ -176,9 +208,11 @@ class SpectrometerLogic(LogicBase):
         data = self._spectrum[0]
         if self._differential_spectrum and self._spectrum[1] is not None:
             data = data - self._spectrum[1]
+        if self._repetitions_spectrum != 0:
+            data /= self._repetitions_spectrum
         if self._background_correction:
             if self._background is not None and len(data) == len(self._background):
-                data = data - self._background
+                data = data - self.background
             else:
                 self.log.warning(f'Length of spectrum ({len(data)}) does not match '
                                  f'background ({len(self._background) if self._background is not None else 0}), '
@@ -187,7 +221,10 @@ class SpectrometerLogic(LogicBase):
 
     @property
     def background(self):
-        return self._background
+        if self._repetitions_background != 0:
+            return self._background / self._repetitions_background
+        else:
+            return self._background
 
     @property
     def wavelength(self):
@@ -195,7 +232,7 @@ class SpectrometerLogic(LogicBase):
 
     @property
     def repetitions(self):
-        return self._repetitions
+        return self._repetitions_spectrum
 
     @property
     def background_correction(self):
@@ -204,6 +241,7 @@ class SpectrometerLogic(LogicBase):
     @background_correction.setter
     def background_correction(self, value):
         self._background_correction = bool(value)
+        self.sig_state_updated.emit()
         self.sig_data_updated.emit()
 
     @property
@@ -213,6 +251,7 @@ class SpectrometerLogic(LogicBase):
     @constant_acquisition.setter
     def constant_acquisition(self, value):
         self._constant_acquisition = bool(value)
+        self.sig_state_updated.emit()
 
     @property
     def differential_spectrum(self):
@@ -221,6 +260,10 @@ class SpectrometerLogic(LogicBase):
     @differential_spectrum.setter
     def differential_spectrum(self, value):
         self._differential_spectrum = bool(value)
+        if self._differential_spectrum and not self.modulation_device.is_connected:
+            self.log.warning(f'differential_spectrum was requested, but no modulation device was connected.')
+            self._differential_spectrum = False
+        self.sig_state_updated.emit()
 
     def save_spectrum_data(self, background=False, name_tag='', root_dir=None, parameter=None):
         """ Saves the current spectrum data to a file.
@@ -243,9 +286,15 @@ class SpectrometerLogic(LogicBase):
 
         # prepare the data
         if not background:
+            if self.wavelength is None or self.spectrum is None:
+                self.log.error('No spectrum to save.')
+                return 
             data = [self.wavelength * 1e9, self.spectrum]
             file_label = 'spectrum' + name_tag
         else:
+            if self.background is None or self.spectrum is None:
+                self.log.error('No background to save.')
+                return 
             data = [self.wavelength * 1e9, self.background]
             file_label = 'background' + name_tag
 

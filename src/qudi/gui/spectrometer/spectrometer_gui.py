@@ -153,7 +153,7 @@ class SpectrometerGui(GuiBase):
             self.spectrumlogic().background_correction = self._mw.background_correction_switch.isChecked()
             self.spectrumlogic().constant_acquisition = self._mw.constant_acquisition_switch.isChecked()
             self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
-            self.spectrumlogic().run_get_spectrum(background=False)
+            self.spectrumlogic().run_get_spectrum()
             self._mw.spectrum_button.setText('Stop Spectrum')
         else:
             self.spectrumlogic().stop()
@@ -164,7 +164,7 @@ class SpectrometerGui(GuiBase):
             self.spectrumlogic().background_correction = self._mw.background_correction_switch.isChecked()
             self.spectrumlogic().constant_acquisition = self._mw.constant_acquisition_switch.isChecked()
             self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
-            self.spectrumlogic().run_get_spectrum(background=False, reset=False)
+            self.spectrumlogic().run_get_spectrum(reset=False)
             self._mw.spectrum_button.setText('Stop Spectrum')
 
     def acquire_background(self):
@@ -172,7 +172,7 @@ class SpectrometerGui(GuiBase):
             self.spectrumlogic().background_correction = self._mw.background_correction_switch.isChecked()
             self.spectrumlogic().constant_acquisition = self._mw.constant_acquisition_switch.isChecked()
             self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
-            self.spectrumlogic().run_get_spectrum(background=True)
+            self.spectrumlogic().run_get_background()
             self._mw.spectrum_button.setText('Stop Background')
         else:
             self.spectrumlogic().stop()
