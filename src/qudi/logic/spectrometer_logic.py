@@ -58,6 +58,7 @@ class SpectrometerLogic(LogicBase):
     _constant_acquisition = StatusVar(name='constant_acquisition', default=False)
     _differential_spectrum = StatusVar(name='differential_spectrum', default=False)
     _fit_region = StatusVar(name='fit_region', default=[0, 1])
+    _axis_type_frequency = StatusVar(name='axis_type_frequency', default=False)
 
     _fit_config = StatusVar(name='fit_config', default=dict())
 
@@ -89,6 +90,8 @@ class SpectrometerLogic(LogicBase):
         self._repetitions_background = 0
         self._stop_acquisition = False
         self._acquisition_running = False
+        self._fit_results = None
+        self._fit_method = ''
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -233,8 +236,12 @@ class SpectrometerLogic(LogicBase):
             return self._background
 
     @property
-    def wavelength(self):
-        return self._wavelength
+    def x_data(self):
+        if self._axis_type_frequency:
+            if self._wavelength is not None:
+                return 3e8 / self._wavelength
+        else:
+            return self._wavelength
 
     @property
     def repetitions(self):
@@ -287,24 +294,38 @@ class SpectrometerLogic(LogicBase):
                       'differential_spectrum': self.differential_spectrum,
                       'background_correction': self.background_correction,
                       'constant_acquisition': self.constant_acquisition}
+        if self.fit_method != 'No Fit' and self.fit_results is not None:
+            parameters['fit_method'] = self.fit_method
+            parameters['fit_results'] = self.fit_results.params
         if parameter:
             parameters.update(parameter)
 
+        if self.x_data is None:
+            self.log.error('No data to save.')
+            return
+
+        if self._axis_type_frequency:
+            data = [self.x_data * 1e-12, ]
+            header = ['Frequency (THz)', ]
+        else:
+            data = [self.x_data * 1e9, ]
+            header = ['Wavelength (nm)', ]
+
         # prepare the data
         if not background:
-            if self.wavelength is None or self.spectrum is None:
+            if self.spectrum is None:
                 self.log.error('No spectrum to save.')
                 return
-            data = [self.wavelength * 1e9, self.spectrum]
+            data.append(self.spectrum)
             file_label = 'spectrum' + name_tag
         else:
             if self.background is None or self.spectrum is None:
                 self.log.error('No background to save.')
                 return
-            data = [self.wavelength * 1e9, self.background]
+            data.append(self.background)
             file_label = 'background' + name_tag
 
-        header = ['Wavelength (nm)', 'Signal']
+        header.append('Signal')
 
         if not background:
             # if background correction was on, also save the data without correction
@@ -341,7 +362,19 @@ class SpectrometerLogic(LogicBase):
                  linewidth=0.5
                  )
 
-        ax1.set_xlabel('Wavelength (nm)')
+        if self.fit_method != 'No Fit' and self.fit_results is not None:
+            if self._axis_type_frequency:
+                x_data = self.fit_results.high_res_best_fit[0] * 1e-12
+            else:
+                x_data = self.fit_results.high_res_best_fit[0] * 1e9
+
+            ax1.plot(x_data,
+                     self.fit_results.high_res_best_fit[1] / rescale_factor,
+                     linestyle=':',
+                     linewidth=0.5
+                     )
+
+        ax1.set_xlabel(header[0])
         ax1.set_ylabel('Intensity ({}count)'.format(prefix))
         figure.tight_layout()
 
@@ -383,23 +416,31 @@ class SpectrometerLogic(LogicBase):
 
     def do_fit(self, fit_method):
         self.check_fit_region(self._fit_region)
-        if self.wavelength is None or self.spectrum is None:
+        if self.x_data is None or self.spectrum is None:
             self.log.error('No data to fit.')
             return 'No Fit', None
 
-        start = np.searchsorted(self.wavelength, self._fit_region[0], 'left')
-        end = np.searchsorted(self.wavelength, self._fit_region[1], 'right')
-        x_data = self.wavelength[start:end]
+        start = np.searchsorted(self.x_data, self._fit_region[0], 'left')
+        end = np.searchsorted(self.x_data, self._fit_region[1], 'right')
+        x_data = self.x_data[start:end]
         y_data = self.spectrum[start:end]
 
         try:
-            fit_method, fit_result = self._fit_container.fit_data(fit_method, x_data, y_data)
+            self._fit_method, self._fit_results = self._fit_container.fit_data(fit_method, x_data, y_data)
         except:
             self.log.exception(f'Data fitting failed:\n{traceback.format_exc()}')
             return 'No Fit', None
 
-        self.sig_fit_updated.emit(fit_method, fit_result)
-        return fit_method, fit_result
+        self.sig_fit_updated.emit(self._fit_method, self._fit_results)
+        return self._fit_method, self._fit_results
+
+    @property
+    def fit_results(self):
+        return self._fit_results
+
+    @property
+    def fit_method(self):
+        return self._fit_method
 
     @property
     def fit_region(self):
@@ -413,10 +454,22 @@ class SpectrometerLogic(LogicBase):
     def check_fit_region(self, fit_region):
         assert len(fit_region) == 2, f'fit_region has to be of length 2 but was {type(fit_region)}'
 
-        if self.wavelength is None:
+        if self.x_data is None:
             return fit_region
         fit_region = fit_region if fit_region[0] <= fit_region[1] else (fit_region[1], fit_region[0])
-        new_region = (max(min(self.wavelength), fit_region[0]), min(max(self.wavelength), fit_region[1]))
+        new_region = (max(min(self.x_data), fit_region[0]), min(max(self.x_data), fit_region[1]))
         self._fit_region = new_region
         self.sig_state_updated.emit()
         return self._fit_region
+
+    @property
+    def axis_type_frequency(self):
+        return self._axis_type_frequency
+
+    @axis_type_frequency.setter
+    def axis_type_frequency(self, value):
+        self._axis_type_frequency = bool(value)
+        self._fit_method = 'No Fit'
+        self._fit_results = None
+        self.check_fit_region((0, 1e20))
+        self.sig_data_updated.emit()

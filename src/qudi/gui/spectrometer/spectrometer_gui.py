@@ -19,8 +19,6 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-import numpy as np
-
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
 from qudi.util.widgets.fitting import FitConfigurationDialog, FitWidget
@@ -29,8 +27,6 @@ from .spectrometer_window import SpectrometerMainWindow
 
 
 class SpectrometerGui(GuiBase):
-    """
-    """
 
     # declare connectors
     spectrumlogic = Connector(interface='SpectrometerLogic')
@@ -54,7 +50,7 @@ class SpectrometerGui(GuiBase):
         self._mw.action_show_fit_settings.triggered.connect(self._fsd.show)
 
         self._fit_widget = FitWidget(fit_container=self.spectrumlogic().fit_container)
-        self._mw.fit_layout.addWidget(self._fit_widget)
+        self._mw.fit_layout.addWidget(self._fit_widget, 0, 2, 2, 1)
 
         self._fit_widget.sigDoFit.connect(self.spectrumlogic().do_fit)
 
@@ -73,11 +69,13 @@ class SpectrometerGui(GuiBase):
         self._mw.differential_spectrum_switch.sigStateChanged.connect(self.differential_spectrum_changed)
         self._mw.fit_region_from.editingFinished.connect(self.fit_region_value_changed)
         self._mw.fit_region_to.editingFinished.connect(self.fit_region_value_changed)
+        self._mw.axis_type.sigStateChanged.connect(self.axis_type_changed)
 
         self._mw.fit_region.sigRegionChangeFinished.connect(self.fit_region_changed)
 
         # show the gui and update the data
         self._mw.show()
+        self._mw.axis_type.setChecked(self.spectrumlogic().axis_type_frequency)
         self.update_state()
         self.update_data()
 
@@ -135,24 +133,25 @@ class SpectrometerGui(GuiBase):
         self._mw.fit_region_from.setValue(self.spectrumlogic().fit_region[0])
         self._mw.fit_region_to.setValue(self.spectrumlogic().fit_region[1])
 
+        if self.spectrumlogic().axis_type_frequency:
+            self._mw.plot_widget.setLabel('bottom', 'Frequency', units='Hz')
+        else:
+            self._mw.plot_widget.setLabel('bottom', 'Wavelength', units='m')
+
     def update_data(self):
         """ The function that grabs the data and sends it to the plot.
         """
         # erase previous fit line
         self._mw.fit_curve.setData(x=[], y=[])
-        self._mw.fit_curve.setDownsampling(ds=True, auto=True, method='mean')
-        self._mw.fit_curve.setClipToView(True)
 
         # draw new data
-        wavelength = self.spectrumlogic().wavelength
+        x_data = self.spectrumlogic().x_data
         spectrum = self.spectrumlogic().spectrum
-        if wavelength is None or spectrum is None:
+        if x_data is None or spectrum is None:
             return
 
-        self._mw.data_curve.setData(x=wavelength,
+        self._mw.data_curve.setData(x=x_data,
                                     y=spectrum)
-        self._mw.data_curve.setDownsampling(ds=True, auto=True, method='mean')
-        self._mw.data_curve.setClipToView(True)
 
     def update_fit(self, fit_method, fit_results):
         """ Update the drawn fit curve.
@@ -161,8 +160,6 @@ class SpectrometerGui(GuiBase):
             # redraw the fit curve in the GUI plot.
             self._mw.fit_curve.setData(x=fit_results.high_res_best_fit[0],
                                        y=fit_results.high_res_best_fit[1])
-            self._mw.fit_curve.setDownsampling(ds=True, auto=True, method='mean')
-            self._mw.fit_curve.setClipToView(True)
 
     def acquire_spectrum(self):
         if not self.spectrumlogic().acquisition_running:
@@ -214,3 +211,6 @@ class SpectrometerGui(GuiBase):
 
     def fit_region_value_changed(self):
         self.spectrumlogic().fit_region = (self._mw.fit_region_from.value(), self._mw.fit_region_to.value())
+
+    def axis_type_changed(self):
+        self.spectrumlogic().axis_type_frequency = self._mw.axis_type.isChecked()

@@ -146,7 +146,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         plot_top_widget.setLayout(self.plot_top_layout)
         self.plot_DockWidget.setWidget(plot_top_widget)
 
-        self.fit_layout = QtWidgets.QHBoxLayout()
+        self.fit_layout = QtWidgets.QGridLayout()
         self.fit_layout.setContentsMargins(1, 1, 1, 1)
         self.fit_layout.setSpacing(2)
         fit_layout_widget = QtWidgets.QWidget()
@@ -154,7 +154,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.plot_top_layout.addWidget(fit_layout_widget)
 
         fit_region_group_box = QtWidgets.QGroupBox('Fit Region')
-        self.fit_layout.addWidget(fit_region_group_box)
+        self.fit_layout.addWidget(fit_region_group_box, 0, 0, 1, 2)
         fit_region_layout = QtWidgets.QGridLayout()
         fit_region_layout.setContentsMargins(1, 7, 1, 1)
         fit_region_layout.setSpacing(2)
@@ -170,27 +170,16 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.fit_region_to.setMinimumWidth(150)
         fit_region_layout.addWidget(self.fit_region_to, 1, 1)
 
+        axis_type_label = QtWidgets.QLabel('Axis Type:')
+        self.axis_type = ToggleSwitch(state_names=('Wavelength', 'Frequency'))
+        self.fit_layout.addWidget(axis_type_label, 1, 0, QtCore.Qt.AlignTop)
+        self.fit_layout.addWidget(self.axis_type, 1, 1, QtCore.Qt.AlignTop)
+
         self.plot_widget = pg.PlotWidget(axisItems={'bottom': CustomAxis(orientation='bottom'),
                                                     'left': CustomAxis(orientation='left')})
         self.plot_widget.getAxis('bottom').nudge = 0
         self.plot_widget.getAxis('left').nudge = 0
         self.plot_widget.showGrid(x=True, y=True, alpha=0.5)
-        self.plot_item = self.plot_widget.plotItem
-
-        # create a new ViewBox, link the right axis to its coordinate system
-        right_axis = pg.ViewBox()
-        self.plot_item.showAxis('right')
-        self.plot_item.scene().addItem(right_axis)
-        self.plot_item.getAxis('right').linkToView(right_axis)
-        right_axis.setXLink(self.plot_item)
-
-        # create a new ViewBox, link the top axis to its coordinate system
-        top_axis = pg.ViewBox()
-        self.plot_item.showAxis('top')
-        self.plot_item.scene().addItem(top_axis)
-        self.plot_item.getAxis('top').linkToView(top_axis)
-        top_axis.setYLink(self.plot_item)
-        top_axis.invertX(b=True)
 
         # Create an empty plot curve to be filled later, set its pen
         self.data_curve = self.plot_widget.plot()
@@ -205,9 +194,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.plot_widget.addItem(self.fit_region)
 
         self.plot_widget.setLabel('left', 'Fluorescence', units='counts/s')
-        self.plot_widget.setLabel('right', 'Number of Points', units='#')
         self.plot_widget.setLabel('bottom', 'Wavelength', units='m')
-        self.plot_widget.setLabel('top', 'Relative Frequency', units='Hz')
         self.plot_widget.setMinimumHeight(300)
         self.plot_top_layout.addWidget(self.plot_widget)
 
@@ -223,7 +210,16 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.action_restore_view.setToolTip('Restore the view to the default.')
         self.action_restore_view.setCheckable(False)
 
+        self.action_spectrometer_settings = QtWidgets.QAction()
+        self.action_spectrometer_settings.setIcon(
+            QtGui.QIcon(os.path.join(icon_path, 'utilities-terminal.png')))
+        self.action_spectrometer_settings.setText('Show Spectrometer Settings')
+        self.action_spectrometer_settings.setToolTip('Show the Spectrometer Settings.')
+        self.action_spectrometer_settings.setCheckable(False)
+
         self.action_show_fit_settings = QtWidgets.QAction()
+        self.action_show_fit_settings.setIcon(
+            QtGui.QIcon(os.path.join(icon_path, 'configure.png')))
         self.action_show_fit_settings.setText('Show Fit Settings')
         self.action_show_fit_settings.setToolTip('Show the Fit Settings.')
         self.action_show_fit_settings.setCheckable(False)
@@ -234,6 +230,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
         menu = menu_bar.addMenu('Menu')
         menu.addAction(self.action_restore_view)
+        menu.addAction(self.action_spectrometer_settings)
         menu.addAction(self.action_show_fit_settings)
         menu.addSeparator()
         menu.addAction(self.action_close)
@@ -269,3 +266,87 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
         self.resizeDocks(resize_docks['widget'], resize_docks['height'], QtCore.Qt.Vertical)
         self.resizeDocks(resize_docks['widget'], resize_docks['width'], QtCore.Qt.Horizontal)
+
+
+class AdvancedParamsWindow(QtWidgets.QDialog):
+    """Dialog Window to show advanced parameters"""
+
+    sig_window_closed = QtCore.Signal()
+
+    def __init__(self, *args, widget_name='', **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.grid = [0, 0]
+        self._parameters = dict()
+        self.setWindowTitle('{}'.format(widget_name))
+
+        self.close_button = QtWidgets.QPushButton('close')
+        self.close_button.setMinimumHeight(35)
+        self.close_button.clicked.connect(self.close_clicked)
+
+        self.main_layout = QtWidgets.QGridLayout()
+        self.main_layout.setAlignment(QtCore.Qt.AlignLeft)
+        self.main_layout.setContentsMargins(2, 7, 2, 2)
+        self.setLayout(self.main_layout)
+        self.show()
+
+    def add_parameters(self, parameter):
+        groupbox = QtWidgets.QGroupBox('')
+        groupbox.setStyleSheet('QGroupBox::title {subcontrol-position: top left; '
+                               'padding-left: 5px; padding-right: 5px;}')
+        groupbox.setAlignment(QtCore.Qt.AlignLeft)
+
+        layout = QtWidgets.QGridLayout()
+        layout.setAlignment(QtCore.Qt.AlignLeft)
+        layout.setContentsMargins(2, 7, 2, 2)
+
+        for name, default in method_parameter.items():
+            if name.startswith('_'):
+                self._parameters[name] = create_widget(name[1:], default, num_pad)
+                widget = self._parameters[name]['widget']
+                label = self._parameters[name]['label']
+
+                if label is not None:
+                    layout.addWidget(label,
+                                     self.grid[0],
+                                     self.grid[1] * 2 + 1,
+                                     QtCore.Qt.AlignVCenter)
+                if widget is not None:
+                    layout.addWidget(widget,
+                                     self.grid[0],
+                                     self.grid[1] * 2 + 2,
+                                     QtCore.Qt.AlignVCenter)
+
+                self.grid[1] += 1
+                if self.grid[1] > 1:
+                    self.grid[1] -= 2
+                    self.grid[0] += 1
+
+        groupbox.setLayout(layout)
+        self.main_layout.addWidget(groupbox)
+
+        self.main_layout.addWidget(self.close_button)
+        return self._parameters
+
+    def close_clicked(self):
+        self.close()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        self.close()
+        return
+
+    def closeEvent(self, event):
+        self.disconnect_signals()
+        super().closeEvent(event)
+        self.sig_window_closed.emit()
+        return
+
+    def disconnect_signals(self):
+        self.close_button.clicked.disconnect()
+        for parameter, content in self._parameters.items():
+            disconnect_widget(content)
+
+    @property
+    def parameters(self):
+        return self._parameters
