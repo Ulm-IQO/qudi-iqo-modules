@@ -25,7 +25,6 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 
 """
 
-
 from qudi.interface.spectrometer_interface import SpectrometerInterface
 import numpy as np
 import comtypes.client as ctc
@@ -35,11 +34,11 @@ import time
 
 import datetime
 
-ctc.GetModule( ('{1A762221-D8BA-11CF-AFC2-508201C10000}', 3, 11) )
+ctc.GetModule(('{1A762221-D8BA-11CF-AFC2-508201C10000}', 3, 11))
 import comtypes.gen.WINX32Lib as WinSpecLib
 
 
-class WinSpec32(Base, SpectrometerInterface):
+class WinSpec32(SpectrometerInterface):
     """ Hardware module for reading spectra from the WinSpec32 spectrometer software.
 
     Example config for copy-paste:
@@ -54,8 +53,6 @@ class WinSpec32(Base, SpectrometerInterface):
         """
         w32c.pythoncom.CoInitialize()
         self.expt_is_running = WinSpecLib.EXP_RUNNING
-        self.path = 'asdf'
-        self.prefix = 'test'
         self.querytime = 0.001
 
     def on_deactivate(self):
@@ -63,7 +60,7 @@ class WinSpec32(Base, SpectrometerInterface):
         """
         pass
 
-    def recordSpectrum(self):
+    def record_spectrum(self):
         """ Record spectrum from WinSpec32 software.
 
             @return []: spectrum data
@@ -94,7 +91,7 @@ class WinSpec32(Base, SpectrometerInterface):
                 Pass a pointer to Winspec so it can put the spectrum in a place in
                 memory where python will be able to find it.
             """
-            
+
             datapointer = c_float()
             raw_spectrum = self.WinspecDoc.GetFrame(1, datapointer)
             # winspec uses 16 bit unsigned int. Make sure to consider that while converting to numpy arrays
@@ -111,34 +108,35 @@ class WinSpec32(Base, SpectrometerInterface):
                 stored with the spectrum.
             """
             p = np.array([
-                    calibration.PolyCoeffs(2),
-                    calibration.PolyCoeffs(1),
-                    calibration.PolyCoeffs(0)
-                ])
-            specdata[0] = np.polyval(p, range(1, 1+len(spectrum))) * 1e-9  # Send to logic in SI units (m)
+                calibration.PolyCoeffs(2),
+                calibration.PolyCoeffs(1),
+                calibration.PolyCoeffs(0)
+            ])
+            specdata[0] = np.polyval(p, range(1, 1 + len(spectrum))) * 1e-9  # Send to logic in SI units (m)
             return specdata
 
         else:
-            print("Could not initiate acquisition.")
+            self.log.error("Could not initiate acquisition.")
             return {'wavelength': [0], 'intensity': [0]}
 
-    def saveSpectrum(self, path, postfix = ''):
+    def save_spectrum(self, path, postfix=''):
         """ Save spectrum from WinSpec32 software.
 
             @param str path: path to save origial spectrum
             @param str postfix: file posfix
         """
-        savetime=datetime.datetime.now()
+        savetime = datetime.datetime.now()
         w32c.pythoncom.CoInitialize()
         timestr = savetime.strftime("%Y%m%d-%H%M-%S-%f_")
         self.WinspecDoc.SetParam(
             WinSpecLib.DM_FILENAME,
             str(path) + timestr + str(postfix) + ".spe"
         )
-        print(self.WinspecDoc.GetParam(WinSpecLib.DM_FILENAME))
+        self.log.debug(self.WinspecDoc.GetParam(WinSpecLib.DM_FILENAME))
         self.WinspecDoc.Save()
 
-    def getExposure(self):
+    @property
+    def exposure_time(self):
         """ Get exposure.
 
             @return float: exposure
@@ -147,11 +145,12 @@ class WinSpec32(Base, SpectrometerInterface):
         """
         return -1
 
-    def setExposure(self, exposureTime):
+    @exposure_time.setter
+    def exposure_time(self, exposure_time):
         """ Set exposure.
 
-            @param float exposureTime: exposure
+            @param float exposure_time: exposure
 
             Not implemented.
         """
-        pass
+        self.log.warning('exposure_time is not implemented for the WinSpec.')

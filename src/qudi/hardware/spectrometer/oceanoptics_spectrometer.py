@@ -19,7 +19,6 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 
 """
 
-
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.interface.spectrometer_interface import SpectrometerInterface
@@ -39,47 +38,45 @@ class OceanOptics(SpectrometerInterface):
 
     """
     _serial = ConfigOption('spectrometer_serial', missing='warn')
-    _integration_time = StatusVar('integration_time', default=10000)
+    _integration_time = StatusVar('integration_time', default=0.1)
 
     def on_activate(self):
         """ Activate module.
         """
-
         self.spec = sb.Spectrometer.from_serial_number(self._serial)
         self.log.info(''.format(self.spec.model, self.spec.serial_number))
-        self.spec.integration_time_micros(self._integration_time)
-        self.log.info('Exposure set to {} microseconds'.format(self._integration_time))
+        self.exposure_time = self._integration_time
+        self.log.info(f'Exposure set to {self._integration_time} seconds')
 
     def on_deactivate(self):
         """ Deactivate module.
         """
         self.spec.close()
 
-    def recordSpectrum(self):
+    def record_spectrum(self):
         """ Record spectrum from Ocean Optics spectrometer.
 
             @return []: spectrum data
         """
         wavelengths = self.spec.wavelengths()
         specdata = np.empty((2, len(wavelengths)), dtype=np.double)
-        specdata[0] = wavelengths/1e9
+        specdata[0] = wavelengths / 1e9
         specdata[1] = self.spec.intensities()
         return specdata
 
-    def getExposure(self):
+    @property
+    def exposure_time(self):
         """ Get exposure.
-
-            @return float: exposure
-
+            @return float: exposure time
             Not implemented.
         """
         return self._integration_time
 
-    def setExposure(self, exposureTime):
+    @exposure_time.setter
+    def exposure_time(self, value):
         """ Set exposure.
-
-            @param float exposureTime: exposure time in microseconds
-
+            @param float value: exposure time in seconds
         """
-        self._integration_time = exposureTime
-        self.spec.integration_time_micros(self._integration_time)
+        assert isinstance(value, (float, int)), f'exposure_time needs to be a float in seconds, but was {value}'
+        self._integration_time = float(value)
+        self.spec.integration_time_micros(int(self._integration_time * 1e6))
