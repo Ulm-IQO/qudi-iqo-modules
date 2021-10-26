@@ -57,8 +57,9 @@ class SpectrometerLogic(LogicBase):
     _background_correction = StatusVar(name='background_correction', default=False)
     _constant_acquisition = StatusVar(name='constant_acquisition', default=False)
     _differential_spectrum = StatusVar(name='differential_spectrum', default=False)
+    _fit_region = StatusVar(name='fit_region', default=[0, 1])
 
-    _fit_config = StatusVar(name='fit_config', default=None)
+    _fit_config = StatusVar(name='fit_config', default=dict())
 
     # Internal signals
     _sig_get_spectrum = QtCore.Signal(bool, bool, bool)
@@ -68,7 +69,6 @@ class SpectrometerLogic(LogicBase):
     sig_data_updated = QtCore.Signal()
     sig_state_updated = QtCore.Signal()
     sig_fit_updated = QtCore.Signal(str, object)
-    sig_fit_domain_updated = QtCore.Signal(np.ndarray)
 
     def __init__(self, **kwargs):
         """ Create SpectrometerLogic object with connectors.
@@ -96,6 +96,8 @@ class SpectrometerLogic(LogicBase):
         self._fit_config_model = FitConfigurationsModel(parent=self)
         self._fit_config_model.load_configs(self._fit_config)
         self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
+        self.check_fit_region(self._fit_region)
+
         self._sig_get_spectrum.connect(self.get_spectrum)
         self._sig_get_background.connect(self.get_background)
 
@@ -161,6 +163,7 @@ class SpectrometerLogic(LogicBase):
         if self._constant_acquisition and not self._stop_acquisition:
             return self.get_spectrum(reset=False)
         self._acquisition_running = False
+        self.check_fit_region(self._fit_region)
         self.sig_state_updated.emit()
         return self.spectrum
 
@@ -291,13 +294,13 @@ class SpectrometerLogic(LogicBase):
         if not background:
             if self.wavelength is None or self.spectrum is None:
                 self.log.error('No spectrum to save.')
-                return 
+                return
             data = [self.wavelength * 1e9, self.spectrum]
             file_label = 'spectrum' + name_tag
         else:
             if self.background is None or self.spectrum is None:
                 self.log.error('No background to save.')
-                return 
+                return
             data = [self.wavelength * 1e9, self.background]
             file_label = 'background' + name_tag
 
@@ -379,40 +382,41 @@ class SpectrometerLogic(LogicBase):
         return self._fit_container
 
     def do_fit(self, fit_method):
-        x_data = self.wavelength
-        y_data = self.spectrum
+        self.check_fit_region(self._fit_region)
+        if self.wavelength is None or self.spectrum is None:
+            self.log.error('No data to fit.')
+            return 'No Fit', None
+
+        start = np.searchsorted(self.wavelength, self._fit_region[0], 'left')
+        end = np.searchsorted(self.wavelength, self._fit_region[1], 'right')
+        x_data = self.wavelength[start:end]
+        y_data = self.spectrum[start:end]
 
         try:
             fit_method, fit_result = self._fit_container.fit_data(fit_method, x_data, y_data)
         except:
             self.log.exception(f'Data fitting failed:\n{traceback.format_exc()}')
-            return
+            return 'No Fit', None
 
         self.sig_fit_updated.emit(fit_method, fit_result)
         return fit_method, fit_result
 
-    def _find_nearest_idx(self, array, value):
-        """ Find array index of element nearest to given value
+    @property
+    def fit_region(self):
+        return self._fit_region
 
-        @param list array: array to be searched.
-        @param float value: desired value.
+    @fit_region.setter
+    def fit_region(self, value):
+        assert len(value) == 2, f'fit_region has to be of length 2 but was {type(value)}'
+        self.check_fit_region(value)
 
-        @return index of nearest element.
-        """
+    def check_fit_region(self, fit_region):
+        assert len(fit_region) == 2, f'fit_region has to be of length 2 but was {type(fit_region)}'
 
-        idx = (np.abs(array - value)).argmin()
-        return idx
-
-    def set_fit_domain(self, domain=None):
-        """ Set the fit domain to a user specified portion of the data.
-
-        If no domain is given, then this method sets the fit domain to match the full data domain.
-
-        @param np.array domain: two-element array containing min and max of domain.
-        """
-        if domain is not None:
-            self.fit_domain = domain
-        else:
-            self.fit_domain = np.array([self.spectrum_data[0, 0], self.spectrum_data[0, -1]])
-
-        self.sig_fit_domain_updated.emit(self.fit_domain)
+        if self.wavelength is None:
+            return fit_region
+        fit_region = fit_region if fit_region[0] <= fit_region[1] else (fit_region[1], fit_region[0])
+        new_region = (max(min(self.wavelength), fit_region[0]), min(max(self.wavelength), fit_region[1]))
+        self._fit_region = new_region
+        self.sig_state_updated.emit()
+        return self._fit_region

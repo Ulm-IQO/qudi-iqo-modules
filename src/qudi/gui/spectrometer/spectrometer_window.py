@@ -19,17 +19,16 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-import os
 import pyqtgraph as pg
 from qudi.util.colordefs import QudiPalettePale as palette
 import os
 from qudi.util.paths import get_artwork_dir
-from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from PySide2 import QtCore
 from PySide2 import QtWidgets
 from PySide2 import QtGui
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
 from qudi.util.widgets.toggle_switch import ToggleSwitch
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
 class CustomAxis(pg.AxisItem):
@@ -75,6 +74,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # self.setStyleSheet('border: 1px solid #f00;')  # debugging help for the gui
         self.setWindowTitle('Spectrometer')
         self.setDockNestingEnabled(True)
         icon_path = os.path.join(get_artwork_dir(), 'icons', 'oxygen', '22x22')
@@ -141,10 +141,34 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         # Create layout and content for the Plot DockWidget
         self.plot_top_layout = QtWidgets.QVBoxLayout()
         self.plot_top_layout.setContentsMargins(1, 1, 1, 1)
-        self.plot_top_layout.setSpacing(0)
+        self.plot_top_layout.setSpacing(2)
         plot_top_widget = QtWidgets.QWidget()
         plot_top_widget.setLayout(self.plot_top_layout)
         self.plot_DockWidget.setWidget(plot_top_widget)
+
+        self.fit_layout = QtWidgets.QHBoxLayout()
+        self.fit_layout.setContentsMargins(1, 1, 1, 1)
+        self.fit_layout.setSpacing(2)
+        fit_layout_widget = QtWidgets.QWidget()
+        fit_layout_widget.setLayout(self.fit_layout)
+        self.plot_top_layout.addWidget(fit_layout_widget)
+
+        fit_region_group_box = QtWidgets.QGroupBox('Fit Region')
+        self.fit_layout.addWidget(fit_region_group_box)
+        fit_region_layout = QtWidgets.QGridLayout()
+        fit_region_layout.setContentsMargins(1, 7, 1, 1)
+        fit_region_layout.setSpacing(2)
+        fit_region_group_box.setLayout(fit_region_layout)
+        from_label = QtWidgets.QLabel('From:')
+        fit_region_layout.addWidget(from_label, 0, 0)
+        to_label = QtWidgets.QLabel('To:')
+        fit_region_layout.addWidget(to_label, 1, 0)
+        self.fit_region_from = ScienDSpinBox()
+        self.fit_region_from.setMinimumWidth(150)
+        fit_region_layout.addWidget(self.fit_region_from, 0, 1)
+        self.fit_region_to = ScienDSpinBox()
+        self.fit_region_to.setMinimumWidth(150)
+        fit_region_layout.addWidget(self.fit_region_to, 1, 1)
 
         self.plot_widget = pg.PlotWidget(axisItems={'bottom': CustomAxis(orientation='bottom'),
                                                     'left': CustomAxis(orientation='left')})
@@ -175,11 +199,17 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.fit_curve = self.plot_widget.plot()
         self.fit_curve.setPen(palette.c2, width=2)
 
+        self.fit_region = pg.LinearRegionItem(values=(0, 1),
+                                              brush=pg.mkBrush(122, 122, 122, 30),
+                                              hoverBrush=pg.mkBrush(196, 196, 196, 30))
+        self.plot_widget.addItem(self.fit_region)
+
         self.plot_widget.setLabel('left', 'Fluorescence', units='counts/s')
         self.plot_widget.setLabel('right', 'Number of Points', units='#')
         self.plot_widget.setLabel('bottom', 'Wavelength', units='m')
         self.plot_widget.setLabel('top', 'Relative Frequency', units='Hz')
         self.plot_widget.setMinimumHeight(300)
+        self.plot_top_layout.addWidget(self.plot_widget)
 
         # Create QActions
         self.action_close = QtWidgets.QAction('Close Window')

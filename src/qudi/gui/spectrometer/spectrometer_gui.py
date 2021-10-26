@@ -54,17 +54,14 @@ class SpectrometerGui(GuiBase):
         self._mw.action_show_fit_settings.triggered.connect(self._fsd.show)
 
         self._fit_widget = FitWidget(fit_container=self.spectrumlogic().fit_container)
+        self._mw.fit_layout.addWidget(self._fit_widget)
 
-        self._mw.plot_top_layout.addWidget(self._fit_widget)
         self._fit_widget.sigDoFit.connect(self.spectrumlogic().do_fit)
-
-        self._mw.plot_top_layout.addWidget(self._mw.plot_widget)
 
         # Connect signals
         self.spectrumlogic().sig_data_updated.connect(self.update_data)
         self.spectrumlogic().sig_state_updated.connect(self.update_state)
         self.spectrumlogic().sig_fit_updated.connect(self.update_fit)
-        self.spectrumlogic().sig_fit_domain_updated.connect(self.update_fit_domain)
 
         self._mw.spectrum_button.clicked.connect(self.acquire_spectrum)
         self._mw.spectrum_continue_button.clicked.connect(self.continue_spectrum)
@@ -74,6 +71,10 @@ class SpectrometerGui(GuiBase):
         self._mw.background_correction_switch.sigStateChanged.connect(self.background_correction_changed)
         self._mw.constant_acquisition_switch.sigStateChanged.connect(self.constant_acquisition_changed)
         self._mw.differential_spectrum_switch.sigStateChanged.connect(self.differential_spectrum_changed)
+        self._mw.fit_region_from.editingFinished.connect(self.fit_region_value_changed)
+        self._mw.fit_region_to.editingFinished.connect(self.fit_region_value_changed)
+
+        self._mw.fit_region.sigRegionChangeFinished.connect(self.fit_region_changed)
 
         # show the gui and update the data
         self._mw.show()
@@ -93,7 +94,6 @@ class SpectrometerGui(GuiBase):
         self.spectrumlogic().sig_data_updated.disconnect(self.update_data)
         self.spectrumlogic().sig_state_updated.disconnect(self.update_state)
         self.spectrumlogic().sig_fit_updated.disconnect(self.update_fit)
-        self.spectrumlogic().sig_fit_domain_updated.disconnect(self.update_fit_domain)
 
         self._mw.spectrum_button.clicked.disconnect()
         self._mw.spectrum_continue_button.clicked.disconnect()
@@ -103,6 +103,10 @@ class SpectrometerGui(GuiBase):
         self._mw.background_correction_switch.sigStateChanged.disconnect()
         self._mw.constant_acquisition_switch.sigStateChanged.disconnect()
         self._mw.differential_spectrum_switch.sigStateChanged.disconnect()
+        self._mw.fit_region_from.editingFinished.disconnect()
+        self._mw.fit_region_to.editingFinished.disconnect()
+
+        self._mw.fit_region.sigRegionChangeFinished.disconnect()
 
         self._mw.close()
 
@@ -127,17 +131,28 @@ class SpectrometerGui(GuiBase):
         self._mw.constant_acquisition_switch.setChecked(self.spectrumlogic().constant_acquisition)
         self._mw.differential_spectrum_switch.setChecked(self.spectrumlogic().differential_spectrum)
 
+        self._mw.fit_region.setRegion(self.spectrumlogic().fit_region)
+        self._mw.fit_region_from.setValue(self.spectrumlogic().fit_region[0])
+        self._mw.fit_region_to.setValue(self.spectrumlogic().fit_region[1])
+
     def update_data(self):
         """ The function that grabs the data and sends it to the plot.
         """
         # erase previous fit line
         self._mw.fit_curve.setData(x=[], y=[])
         self._mw.fit_curve.setDownsampling(ds=True, auto=True, method='mean')
+        self._mw.fit_curve.setClipToView(True)
 
         # draw new data
-        self._mw.data_curve.setData(x=self.spectrumlogic().wavelength,
-                                    y=self.spectrumlogic().spectrum)
+        wavelength = self.spectrumlogic().wavelength
+        spectrum = self.spectrumlogic().spectrum
+        if wavelength is None or spectrum is None:
+            return
+
+        self._mw.data_curve.setData(x=wavelength,
+                                    y=spectrum)
         self._mw.data_curve.setDownsampling(ds=True, auto=True, method='mean')
+        self._mw.data_curve.setClipToView(True)
 
     def update_fit(self, fit_method, fit_results):
         """ Update the drawn fit curve.
@@ -147,6 +162,7 @@ class SpectrometerGui(GuiBase):
             self._mw.fit_curve.setData(x=fit_results.high_res_best_fit[0],
                                        y=fit_results.high_res_best_fit[1])
             self._mw.fit_curve.setDownsampling(ds=True, auto=True, method='mean')
+            self._mw.fit_curve.setClipToView(True)
 
     def acquire_spectrum(self):
         if not self.spectrumlogic().acquisition_running:
@@ -193,23 +209,8 @@ class SpectrometerGui(GuiBase):
     def differential_spectrum_changed(self):
         self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
 
-    def set_fit_domain(self):
-        """ Set the fit domain in the spectrum logic to values given by the GUI spinboxes.
-        """
-        lambda_min = self._mw.fit_domain_min_doubleSpinBox.value()
-        lambda_max = self._mw.fit_domain_max_doubleSpinBox.value()
+    def fit_region_changed(self):
+        self.spectrumlogic().fit_region = self._mw.fit_region.getRegion()
 
-        new_fit_domain = np.array([lambda_min, lambda_max])
-
-        self.spectrumlogic().set_fit_domain(new_fit_domain)
-
-    def reset_fit_domain_all_data(self):
-        """ Reset the fit domain to match the full data set.
-        """
-        self.spectrumlogic().set_fit_domain()
-
-    def update_fit_domain(self, domain):
-        """ Update the displayed fit domain to new values (set elsewhere).
-        """
-        self._mw.fit_domain_min_doubleSpinBox.setValue(domain[0])
-        self._mw.fit_domain_max_doubleSpinBox.setValue(domain[1])
+    def fit_region_value_changed(self):
+        self.spectrumlogic().fit_region = (self._mw.fit_region_from.value(), self._mw.fit_region_to.value())
