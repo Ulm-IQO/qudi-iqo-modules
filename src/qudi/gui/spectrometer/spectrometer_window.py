@@ -29,6 +29,7 @@ from PySide2 import QtGui
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
 from qudi.util.widgets.toggle_switch import ToggleSwitch
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
+from .settingsdialog import SettingsDialog
 
 
 class CustomAxis(pg.AxisItem):
@@ -164,10 +165,10 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         to_label = QtWidgets.QLabel('To:')
         fit_region_layout.addWidget(to_label, 1, 0)
         self.fit_region_from = ScienDSpinBox()
-        self.fit_region_from.setMinimumWidth(150)
+        self.fit_region_from.setMinimumWidth(100)
         fit_region_layout.addWidget(self.fit_region_from, 0, 1)
         self.fit_region_to = ScienDSpinBox()
-        self.fit_region_to.setMinimumWidth(150)
+        self.fit_region_to.setMinimumWidth(100)
         fit_region_layout.addWidget(self.fit_region_to, 1, 1)
 
         axis_type_label = QtWidgets.QLabel('Axis Type:')
@@ -238,6 +239,9 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         # connecting up the internal signals
         self.action_close.triggered.connect(self.close)
         self.action_restore_view.triggered.connect(self.restore_alignment)
+
+        self.settings_dialog = SettingsDialog()
+        self.action_spectrometer_settings.triggered.connect(self.settings_dialog.exec_)
 
         self.restore_alignment()
         return

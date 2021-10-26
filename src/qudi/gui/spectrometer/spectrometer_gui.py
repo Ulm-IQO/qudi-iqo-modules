@@ -71,11 +71,18 @@ class SpectrometerGui(GuiBase):
         self._mw.fit_region_to.editingFinished.connect(self.fit_region_value_changed)
         self._mw.axis_type.sigStateChanged.connect(self.axis_type_changed)
 
+        # Settings dialog
+        self._mw.settings_dialog.accepted.connect(self.apply_settings)
+        self._mw.settings_dialog.rejected.connect(self.keep_settings)
+
         self._mw.fit_region.sigRegionChangeFinished.connect(self.fit_region_changed)
+
+        # fill initial settings
+        self._mw.axis_type.setChecked(self.spectrumlogic().axis_type_frequency)
+        self._mw.settings_dialog.exposure_time_spinbox.setValue(self.spectrumlogic().exposure_time)
 
         # show the gui and update the data
         self._mw.show()
-        self._mw.axis_type.setChecked(self.spectrumlogic().axis_type_frequency)
         self.update_state()
         self.update_data()
 
@@ -105,6 +112,8 @@ class SpectrometerGui(GuiBase):
         self._mw.fit_region_to.editingFinished.disconnect()
 
         self._mw.fit_region.sigRegionChangeFinished.disconnect()
+        self._mw.settings_dialog.accepted.disconnect()
+        self._mw.settings_dialog.rejected.disconnect()
 
         self._mw.close()
 
@@ -186,10 +195,10 @@ class SpectrometerGui(GuiBase):
             self.spectrumlogic().constant_acquisition = self._mw.constant_acquisition_switch.isChecked()
             self.spectrumlogic().differential_spectrum = self._mw.differential_spectrum_switch.isChecked()
             self.spectrumlogic().run_get_background()
-            self._mw.spectrum_button.setText('Stop Background')
+            self._mw.background_button.setText('Stop Background')
         else:
             self.spectrumlogic().stop()
-            self._mw.spectrum_button.setText('Acquire Background')
+            self._mw.background_button.setText('Acquire Background')
 
     def save_spectrum(self):
         self.spectrumlogic().save_spectrum_data(background=False)
@@ -214,3 +223,9 @@ class SpectrometerGui(GuiBase):
 
     def axis_type_changed(self):
         self.spectrumlogic().axis_type_frequency = self._mw.axis_type.isChecked()
+
+    def apply_settings(self):
+        self.spectrumlogic().exposure_time = self._mw.settings_dialog.exposure_time_spinbox.value()
+
+    def keep_settings(self):
+        self._mw.settings_dialog.exposure_time_spinbox.setValue(self.spectrumlogic().exposure_time)

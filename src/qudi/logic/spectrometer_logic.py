@@ -473,3 +473,11 @@ class SpectrometerLogic(LogicBase):
         self._fit_results = None
         self.check_fit_region((0, 1e20))
         self.sig_data_updated.emit()
+
+    @property
+    def exposure_time(self):
+        return self.spectrometer().exposure_time
+
+    @exposure_time.setter
+    def exposure_time(self, value):
+        self.spectrometer().exposure_time = float(value)

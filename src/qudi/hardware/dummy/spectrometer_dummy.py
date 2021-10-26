@@ -84,26 +84,17 @@ class SpectrometerDummy(SpectrometerInterface):
 
         data[0] = data[0] * 1e-9  # return to logic in SI units (m)
 
-        time.sleep(self.exposure)
+        time.sleep(self.exposure_time)
         return data
 
-    def save_spectrum(self, path, postfix=''):
-        """ Dummy save function.
-
-            @param str path: path of saved spectrum
-            @param str postfix: postfix of saved spectrum file
-        """
-        timestr = strftime("%Y%m%d-%H%M-%S_", localtime())
-        print('Dummy would save to: ' + str(path) + timestr + str(postfix) + ".spe")
-
     @property
-    def exposure(self):
+    def exposure_time(self):
         """ Get exposure time.
         """
         return self._exposure
 
-    @exposure.setter
-    def exposure(self, value):
+    @exposure_time.setter
+    def exposure_time(self, value):
         """ Set exposure time.
         """
         self._exposure = float(value)

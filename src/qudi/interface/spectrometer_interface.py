@@ -41,26 +41,18 @@ class SpectrometerInterface(Base):
         """
         pass
 
-    def save_spectrum(self, path, postfix=''):
-        """ Dummy save function.
-
-            @param str path: path of saved spectrum
-            @param str postfix: postfix of saved spectrum file
-        """
-        pass
-
     @property
     @abstractmethod
-    def exposure(self):
+    def exposure_time(self):
         """ Get the acquisition exposure time
 
         @return (float): Exposure time in second
         """
         pass
 
-    @exposure.setter
+    @exposure_time.setter
     @abstractmethod
-    def exposure(self, value):
+    def exposure_time(self, value):
         """ Set the acquisition exposure time
 
         @param (float) value: Exposure time to set in second
