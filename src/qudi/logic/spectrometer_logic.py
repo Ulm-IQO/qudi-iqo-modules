@@ -99,7 +99,7 @@ class SpectrometerLogic(LogicBase):
         self._fit_config_model = FitConfigurationsModel(parent=self)
         self._fit_config_model.load_configs(self._fit_config)
         self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
-        self.check_fit_region(self._fit_region)
+        self.fit_region = self._fit_region
 
         self._sig_get_spectrum.connect(self.get_spectrum)
         self._sig_get_background.connect(self.get_background)
@@ -166,7 +166,7 @@ class SpectrometerLogic(LogicBase):
         if self._constant_acquisition and not self._stop_acquisition:
             return self.get_spectrum(reset=False)
         self._acquisition_running = False
-        self.check_fit_region(self._fit_region)
+        self.fit_region = self._fit_region
         self.sig_state_updated.emit()
         return self.spectrum
 
@@ -416,7 +416,7 @@ class SpectrometerLogic(LogicBase):
         return self._fit_container
 
     def do_fit(self, fit_method):
-        self.check_fit_region(self._fit_region)
+        self.fit_region = self._fit_region
         if self.x_data is None or self.spectrum is None:
             self.log.error('No data to fit.')
             return 'No Fit', None
@@ -457,11 +457,7 @@ class SpectrometerLogic(LogicBase):
         return self._fit_region
 
     @fit_region.setter
-    def fit_region(self, value):
-        assert len(value) == 2, f'fit_region has to be of length 2 but was {type(value)}'
-        self.check_fit_region(value)
-
-    def check_fit_region(self, fit_region):
+    def fit_region(self, fit_region):
         assert len(fit_region) == 2, f'fit_region has to be of length 2 but was {type(fit_region)}'
 
         if self.x_data is None:
@@ -481,7 +477,7 @@ class SpectrometerLogic(LogicBase):
         self._axis_type_frequency = bool(value)
         self._fit_method = 'No Fit'
         self._fit_results = None
-        self.check_fit_region((0, 1e20))
+        self.fit_region =(0, 1e20)
         self.sig_data_updated.emit()
 
     @property
