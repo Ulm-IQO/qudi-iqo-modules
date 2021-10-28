@@ -297,6 +297,7 @@ class SpectrometerLogic(LogicBase):
         if self.fit_method != 'No Fit' and self.fit_results is not None:
             parameters['fit_method'] = self.fit_method
             parameters['fit_results'] = self.fit_results.params
+            parameters['fit_region'] = self.fit_region
         if parameter:
             parameters.update(parameter)
 
@@ -420,8 +421,17 @@ class SpectrometerLogic(LogicBase):
             self.log.error('No data to fit.')
             return 'No Fit', None
 
-        start = np.searchsorted(self.x_data, self._fit_region[0], 'left')
-        end = np.searchsorted(self.x_data, self._fit_region[1], 'right')
+        if self._axis_type_frequency:
+            start = len(self.x_data) - np.searchsorted(self.x_data[::-1], self._fit_region[1], 'left')
+            end = len(self.x_data) - np.searchsorted(self.x_data[::-1], self._fit_region[0], 'right')
+        else:
+            start = np.searchsorted(self.x_data, self._fit_region[0], 'left')
+            end = np.searchsorted(self.x_data, self._fit_region[1], 'right')
+
+        if end - start < 2:
+            self.log.error('Fit region limited the data to less than two points. Fit not possible.')
+            return 'No Fit', None
+
         x_data = self.x_data[start:end]
         y_data = self.spectrum[start:end]
 
