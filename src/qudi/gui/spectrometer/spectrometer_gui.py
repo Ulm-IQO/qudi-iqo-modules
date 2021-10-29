@@ -134,6 +134,13 @@ class SpectrometerGui(GuiBase):
             self._mw.background_button.setText('Acquire Background')
 
         # update settings shown by the gui
+        self._mw.background_correction_switch.blockSignals(True)
+        self._mw.constant_acquisition_switch.blockSignals(True)
+        self._mw.differential_spectrum_switch.blockSignals(True)
+        self._mw.fit_region.blockSignals(True)
+        self._mw.fit_region_from.blockSignals(True)
+        self._mw.fit_region_to.blockSignals(True)
+
         self._mw.background_correction_switch.setChecked(self.spectrumlogic().background_correction)
         self._mw.constant_acquisition_switch.setChecked(self.spectrumlogic().constant_acquisition)
         self._mw.differential_spectrum_switch.setChecked(self.spectrumlogic().differential_spectrum)
@@ -141,6 +148,13 @@ class SpectrometerGui(GuiBase):
         self._mw.fit_region.setRegion(self.spectrumlogic().fit_region)
         self._mw.fit_region_from.setValue(self.spectrumlogic().fit_region[0])
         self._mw.fit_region_to.setValue(self.spectrumlogic().fit_region[1])
+
+        self._mw.background_correction_switch.blockSignals(False)
+        self._mw.constant_acquisition_switch.blockSignals(False)
+        self._mw.differential_spectrum_switch.blockSignals(False)
+        self._mw.fit_region.blockSignals(False)
+        self._mw.fit_region_from.blockSignals(False)
+        self._mw.fit_region_to.blockSignals(False)
 
         if self.spectrumlogic().axis_type_frequency:
             self._mw.plot_widget.setLabel('bottom', 'Frequency', units='Hz')
@@ -150,15 +164,15 @@ class SpectrometerGui(GuiBase):
     def update_data(self):
         """ The function that grabs the data and sends it to the plot.
         """
-        # erase previous fit line
-        self._mw.fit_curve.setData(x=[], y=[])
-
-        # draw new data
         x_data = self.spectrumlogic().x_data
         spectrum = self.spectrumlogic().spectrum
         if x_data is None or spectrum is None:
             return
 
+        # erase previous fit line
+        self._mw.fit_curve.setData(x=[], y=[])
+
+        # draw new data
         self._mw.data_curve.setData(x=x_data,
                                     y=spectrum)
 

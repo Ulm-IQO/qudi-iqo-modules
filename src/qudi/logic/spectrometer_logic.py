@@ -77,6 +77,8 @@ class SpectrometerLogic(LogicBase):
           @param dict kwargs: optional parameters
         """
         super().__init__(**kwargs)
+        self.refractive_index_air = 1.00028823
+        self.speed_of_light = 2.99792458e8 / self.refractive_index_air
         self._fit_config_model = None
         self._fit_container = None
 
@@ -101,8 +103,8 @@ class SpectrometerLogic(LogicBase):
         self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
         self.fit_region = self._fit_region
 
-        self._sig_get_spectrum.connect(self.get_spectrum)
-        self._sig_get_background.connect(self.get_background)
+        self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.QueuedConnection)
+        self._sig_get_background.connect(self.get_background, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
@@ -164,7 +166,7 @@ class SpectrometerLogic(LogicBase):
         self.sig_data_updated.emit()
 
         if self._constant_acquisition and not self._stop_acquisition:
-            return self.get_spectrum(reset=False)
+            return self.run_get_spectrum(reset=False)
         self._acquisition_running = False
         self.fit_region = self._fit_region
         self.sig_state_updated.emit()
@@ -201,7 +203,7 @@ class SpectrometerLogic(LogicBase):
         self.sig_data_updated.emit()
 
         if self._constant_acquisition and not self._stop_acquisition:
-            return self.get_background(reset=False)
+            return self.run_get_background(reset=False)
         self._acquisition_running = False
         self.sig_state_updated.emit()
         return self.background
@@ -239,7 +241,7 @@ class SpectrometerLogic(LogicBase):
     def x_data(self):
         if self._axis_type_frequency:
             if self._wavelength is not None:
-                return 3e8 / self._wavelength
+                return self.speed_of_light / self._wavelength
         else:
             return self._wavelength
 
@@ -398,11 +400,25 @@ class SpectrometerLogic(LogicBase):
         intensity_prefix = prefix[prefix_index]
         return rescale_factor, intensity_prefix
 
-    def save_raw_spectrometer_file(self, path='', postfix=''):
-        """Ask the hardware device to save its own raw file.
-        """
-        # TODO: sanity check the passed parameters.
-        self.spectrometer().save_spectrum(path, postfix=postfix)
+    @property
+    def axis_type_frequency(self):
+        return self._axis_type_frequency
+
+    @axis_type_frequency.setter
+    def axis_type_frequency(self, value):
+        self._axis_type_frequency = bool(value)
+        self._fit_method = 'No Fit'
+        self._fit_results = None
+        self.fit_region = (0, 1e20)
+        self.sig_data_updated.emit()
+
+    @property
+    def exposure_time(self):
+        return self.spectrometer().exposure_time
+
+    @exposure_time.setter
+    def exposure_time(self, value):
+        self.spectrometer().exposure_time = float(value)
 
     ################
     # Fitting things
@@ -466,24 +482,3 @@ class SpectrometerLogic(LogicBase):
         new_region = (max(min(self.x_data), fit_region[0]), min(max(self.x_data), fit_region[1]))
         self._fit_region = new_region
         self.sig_state_updated.emit()
-        return self._fit_region
-
-    @property
-    def axis_type_frequency(self):
-        return self._axis_type_frequency
-
-    @axis_type_frequency.setter
-    def axis_type_frequency(self, value):
-        self._axis_type_frequency = bool(value)
-        self._fit_method = 'No Fit'
-        self._fit_results = None
-        self.fit_region =(0, 1e20)
-        self.sig_data_updated.emit()
-
-    @property
-    def exposure_time(self):
-        return self.spectrometer().exposure_time
-
-    @exposure_time.setter
-    def exposure_time(self, value):
-        self.spectrometer().exposure_time = float(value)

@@ -40,7 +40,7 @@ class SettingsDialog(QtWidgets.QDialog):
         # Create widgets and add them to the layout
         self.exposure_time_spinbox = ScienDSpinBox()
         self.exposure_time_spinbox.setMinimumWidth(150)
-        exposure_time_label = QtWidgets.QLabel('Console font size:')
+        exposure_time_label = QtWidgets.QLabel('Exposure Time:')
         exposure_time_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         layout.addWidget(exposure_time_label, 0, 0)
         layout.addWidget(self.exposure_time_spinbox, 0, 1)
