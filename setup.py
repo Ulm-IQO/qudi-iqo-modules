@@ -1,30 +1,7 @@
 # -*- coding: utf-8 -*-
 
-import os
 import sys
 from setuptools import setup, find_namespace_packages
-from setuptools.command.develop import develop
-from setuptools.command.install import install
-
-
-class PrePostDevelopCommands(develop):
-    """ Pre- and Post-installation script for development mode.
-    """
-
-    def run(self):
-        # PUT YOUR PRE-INSTALL SCRIPT HERE or CALL A FUNCTION
-        develop.run(self)
-        # PUT YOUR POST-INSTALL SCRIPT HERE or CALL A FUNCTION
-
-
-class PrePostInstallCommands(install):
-    """ Pre- and Post-installation for installation mode.
-    """
-
-    def run(self):
-        # PUT YOUR PRE-INSTALL SCRIPT HERE or CALL A FUNCTION
-        install.run(self)
-        # PUT YOUR POST-INSTALL SCRIPT HERE or CALL A FUNCTION
 
 
 unix_dep = [
@@ -90,6 +67,5 @@ setup(
     license='LGPLv3',
     install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
     python_requires='~=3.8',
-    cmdclass={'develop': PrePostDevelopCommands, 'install': PrePostInstallCommands},
     zip_safe=False
 )
