@@ -29,11 +29,8 @@ class PrePostInstallCommands(install):
 
 unix_dep = [
     'qudi-core',
-    'cycler',
     'entrypoints',
     'fysom',
-    'jupyter',
-    'jupytext',
     'lmfit',
     'lxml',
     'matplotlib',
@@ -42,29 +39,22 @@ unix_dep = [
     'pyqtgraph',
     'PySide2',
     'PyVisa',
-    'rpyc',
-    'ruamel.yaml',
     'scipy',
 ]
 
 windows_dep = [
-    'qudi-core',
-    'cycler',
-    'entrypoints',
-    'fysom',
-    'jupyter',
-    'jupytext',
-    'lmfit',
-    'lxml',
-    'matplotlib',
-    'nidaqmx',
-    'numpy',
-    'pyqtgraph',
-    'PySide2',
-    'PyVisa',
-    'rpyc',
-    'ruamel.yaml',
-    'scipy',
+    'qudi-core>=1.0',
+    'entrypoints>=0.3',
+    'fysom>=2.1.6',
+    'lmfit>=1.0.3',
+    'lxml>=4.6.3',
+    'matplotlib>=3.4.3',
+    'nidaqmx>=0.5.7',
+    'numpy>=1.21.3',
+    'pyqtgraph>=0.12.3',
+    'PySide2>=5.15.2',
+    'PyVisa>=1.11.3',
+    'scipy>=1.7.1',
 ]
 
 with open('VERSION', 'r') as file:
