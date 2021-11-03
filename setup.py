@@ -20,7 +20,7 @@ unix_dep = [
 ]
 
 windows_dep = [
-    'qudi-core>=1.0',
+    'qudi-core',
     'entrypoints>=0.3',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
