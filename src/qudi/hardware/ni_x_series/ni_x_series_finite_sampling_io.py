@@ -557,7 +557,6 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         if self.is_running:
             with self._thread_lock:
                 self.__unread_samples_buffer = self.get_buffered_samples()
-                self.__number_of_unread_samples = 0
 
             self.terminate_all_tasks()
             self.module_state.unlock()
@@ -588,8 +587,11 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         if number_of_samples is not None:
             assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'#
-        
-        samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
+
+        if self.is_running:
+            samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
+        else:
+            samples_to_read = number_of_samples if number_of_samples is not None else self.__number_of_unread_samples
 
         assert samples_to_read <= self.__number_of_unread_samples,\
             f'Requested samples are more than the pending in frame'
@@ -606,14 +608,14 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         data = dict()
 
         if samples_to_read == 0:
-            return dict.fromkeys(self.__frame_buffer)
+            return dict.fromkeys(self.active_channels[0])
 
         with self._thread_lock:
             if not self.is_running:
                 # When the IO was stopped with samples in buffer, return the ones in
                 if number_of_samples is None:
                     data = self.__unread_samples_buffer.copy()
-                    self.__unread_samples_buffer = dict.fromkeys(self.__frame_buffer)
+                    self.__unread_samples_buffer = dict.fromkeys(self.active_channels[0])
                     return data
                 else:
                     for key in self.__unread_samples_buffer:
@@ -714,7 +716,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                     idle_state=ni.constants.Level.LOW)
                 task.timing.cfg_implicit_timing(
                     sample_mode=ni.constants.AcquisitionType.FINITE,
-                    samps_per_chan=self.frame_size)
+                    samps_per_chan=self.frame_size+1)
             except ni.DaqError:
                 self.log.exception('Error while configuring sample clock task.')
                 try:
