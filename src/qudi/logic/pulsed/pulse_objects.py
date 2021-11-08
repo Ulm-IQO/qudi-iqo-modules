@@ -28,8 +28,7 @@ import importlib
 import numpy as np
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
-from qudi.util.paths import get_main_dir
-from qudi.util.helpers import natural_sort
+from qudi.util.helpers import natural_sort, iter_modules_recursive
 
 
 class PulseBlockElement(object):
@@ -1516,9 +1515,35 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         # dictionary containing all keyword arguments as keys with their default value
         self._generate_method_parameters = dict()
 
+        # Import predefined generator modules
+        # Import default namespace "qudi.logic.pulsed.predefined_generate_methods"
+        try:
+            _default_generator_ns = importlib.reload(_default_generator_ns)
+        except NameError:
+            import qudi.logic.pulsed.predefined_generate_methods as _default_generator_ns
+
         # Import predefined generator modules and get a list of generator classes
-        generator_classes = self.__import_external_generators(
-            paths=sequencegeneratorlogic.predefined_methods_import_path)
+        generator_classes = list()
+        for mod_finder in iter_modules_recursive(_default_generator_ns.__path__,
+                                                 _default_generator_ns.__name__ + '.'):
+            try:
+                generator_classes.extend(
+                    [cls for _, cls in inspect.getmembers(importlib.import_module(mod_finder.name),
+                                                          self.is_generator_class)]
+                )
+            except:
+                self.log.exception(
+                    f'Exception while importing qudi.logic.pulsed.predefined_generate_methods '
+                    f'sub-module "{mod_finder.name}":'
+                )
+
+        # Get predefined generator modules from non-default directory if a path has been given
+        if isinstance(sequencegeneratorlogic.predefined_methods_import_path, (tuple, list, set)):
+            for path in sequencegeneratorlogic.predefined_methods_import_path:
+                try:
+                    generator_classes.extend(self.__import_external_generators(path=path))
+                except:
+                    self.log.exception(f'Unable to import predefined generator from "{path}":')
 
         # create an instance of each class and put them in a temporary list
         generator_instances = [cls(sequencegeneratorlogic) for cls in generator_classes]
@@ -1537,40 +1562,34 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
     def predefined_method_parameters(self):
         return self._generate_method_parameters.copy()
 
-    def __import_external_generators(self, paths):
-        """
-        Helper method to import all modules from directories contained in paths.
+    def __import_external_generators(self, path):
+        """ Helper method to import all modules from given directory path.
         Find all classes in those modules that inherit exclusively from PredefinedGeneratorBase
         class and return a list of them.
 
-        @param iterable paths: iterable containing paths to import modules from
+        @param str path: Path to import modules from
         @return list: A list of imported valid generator classes
         """
         class_list = list()
-        for path in paths:
-            if not os.path.exists(path):
-                self.log.error('Unable to import generate methods from "{0}".\n'
-                               'Path does not exist.'.format(path))
-                continue
-            # Get all python modules to import from.
-            # The assumption is that in the path, there are *.py files,
-            # which contain only generator classes!
-            module_list = [name[:-3] for name in os.listdir(path) if
-                           os.path.isfile(os.path.join(path, name)) and name.endswith('.py')]
+        # Get all python modules to import from.
+        # The assumption is that in the path, there are *.py files,
+        # which contain only generator classes!
+        module_list = [name[:-3] for name in os.listdir(path) if
+                       os.path.isfile(os.path.join(path, name)) and name.endswith('.py')]
 
-            # append import path to sys.path
-            if path not in sys.path:
-                sys.path.append(path)
+        # append import path to sys.path
+        if path not in sys.path:
+            sys.path.append(path)
 
-            # Go through all modules and create instances of each class found.
-            for module_name in module_list:
-                # import module
-                mod = importlib.import_module('{0}'.format(module_name))
-                importlib.reload(mod)
-                # get all generator class references defined in the module
-                tmp_list = [m[1] for m in inspect.getmembers(mod, self.is_generator_class)]
-                # append to class_list
-                class_list.extend(tmp_list)
+        # Go through all modules and create instances of each class found.
+        for module_name in module_list:
+            # import module
+            mod = importlib.import_module('{0}'.format(module_name))
+            importlib.reload(mod)
+            # get all generator class references defined in the module
+            tmp_list = [m[1] for m in inspect.getmembers(mod, self.is_generator_class)]
+            # append to class_list
+            class_list.extend(tmp_list)
         return class_list
 
     def __populate_method_dict(self, instance_list):

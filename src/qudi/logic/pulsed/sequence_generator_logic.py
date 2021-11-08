@@ -159,10 +159,8 @@ class SequenceGeneratorLogic(LogicBase):
         if not os.path.exists(self._assets_storage_dir):
             os.makedirs(self._assets_storage_dir)
 
-        # directory for additional generate methods to import
-        # import path for generator modules from default dir (logic.predefined_generate_methods)
-        self._predefined_path_list = [os.path.join(get_main_dir(), 'logic', 'pulsed', 'predefined_generate_methods')]
-
+        # additional import paths for generator modules
+        self._predefined_path_list = list()
         if self._additional_methods_import_path:
             if isinstance(self._additional_methods_import_path, str):
                 self._additional_methods_import_path = [self._additional_methods_import_path]
