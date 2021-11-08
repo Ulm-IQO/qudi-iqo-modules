@@ -32,7 +32,7 @@ from PySide2 import QtCore
 from qudi.core.statusvariable import StatusVar
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
-from qudi.util.paths import get_main_dir, get_home_dir
+from qudi.util.paths import get_home_dir
 from qudi.util.helpers import natural_sort
 from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
@@ -176,9 +176,9 @@ class SequenceGeneratorLogic(LogicBase):
                 self.log.error('ConfigOption additional_predefined_methods_path needs to either be a string or '
                                'a list of strings.')
 
-        # Initialize SamplingFunctions class by handing over a list of paths to import
+        # Initialize SamplingFunctions class by handing over a list of paths to import additional
         # sampling functions from.
-        sf_path_list = [os.path.join(get_main_dir(), 'logic', 'pulsed', 'sampling_function_defs')]
+        sf_path_list = list()
         if self._sampling_functions_import_path:
             if isinstance(self._sampling_functions_import_path, str):
                 self._sampling_functions_import_path = [self._sampling_functions_import_path]
