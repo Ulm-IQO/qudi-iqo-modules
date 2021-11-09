@@ -1569,7 +1569,20 @@ class PulsedMeasurementLogic(LogicBase):
             else:
                 return fit.success and np.sum(np.abs(fit.high_res_best_fit[1])) > 0
 
+        def _subscript_html_2_tex(text_str):
+            if "$" in text_str:
+                self.log.warning("Latex character '$' in string; expect wrong text rendering."
+                                 " Please use rich text html instead.")
+            else:
+                # transform to math expression, use non-italic font
+                text_str = r"$\mathrm{" + text_str + "}$"
 
+            # handle subscript
+            text_str = text_str.replace("<sub>","_{").replace("</sub>","}")
+            # handle white space
+            text_str = text_str.replace(" ", "\ ")
+
+            return text_str
 
         # Prepare the figure to save as a "data thumbnail"
         plt.style.use(QudiMatplotlibStyle.style)
@@ -1652,28 +1665,34 @@ class PulsedMeasurementLogic(LogicBase):
 
                 ft_label = '{0} of data traces'.format(self._alternative_data_type)
 
-            ax2.plot(x_axis_ft_scaled, self.signal_alt_data[1], '-o',
+            ax2.plot(x_axis_ft_scaled, self.signal_alt_data[1],
                      linestyle=':', linewidth=0.5, color=colors[0],
                      label=ft_label)
             if self._alternating and len(self.signal_alt_data) > 2:
-                ax2.plot(x_axis_ft_scaled, self.signal_alt_data[2], '-D',
+                ax2.plot(x_axis_ft_scaled, self.signal_alt_data[2],
                          linestyle=':', linewidth=0.5, color=colors[3],
                          label=ft_label.replace('1', '2'))
 
-            ax2.set_xlabel(x_axis_ft_label)
-            ax2.set_ylabel(y_axis_ft_label)
+            data_ft_label_tex = [_subscript_html_2_tex(x_axis_ft_label),
+                                 _subscript_html_2_tex(y_axis_ft_label)]
+
+            ax2.set_xlabel(data_ft_label_tex[0])
+            ax2.set_ylabel(data_ft_label_tex[1])
             ax2.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2,
                        mode="expand", borderaxespad=0.)
 
             if _is_fit_available(use_alternative_data=True):
                 _plot_fit(axis=ax2, use_alternative_data=True)
 
+        data_label_tex = [_subscript_html_2_tex(self._data_labels[0]),
+                          _subscript_html_2_tex(self._data_labels[1])]
+
         ax1.set_xlabel(
-            '{0} ({1}{2})'.format(self._data_labels[0], counts_prefix, self._data_units[0]))
+            '{0} ({1}{2})'.format(data_label_tex[0], counts_prefix, self._data_units[0]))
         if self._data_units[1]:
-            ax1.set_ylabel('{0} ({1})'.format(self._data_labels[1], self._data_units[1]))
+            ax1.set_ylabel('{0} ({1})'.format(data_label_tex[1], self._data_units[1]))
         else:
-            ax1.set_ylabel('{0}'.format(self._data_labels[1]))
+            ax1.set_ylabel('{0}'.format(data_label_tex[1]))
 
         fig.tight_layout()
         ax1.legend(bbox_to_anchor=(0., 1.02, 1., .102), loc=3, ncol=2,
