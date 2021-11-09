@@ -54,11 +54,10 @@ class FastCounterDummy(FastCounterInterface):
             self.log.info('{0}: {1}'.format(key,config[key]))
 
         if self.trace_path is None:
-            print(__file__)
             self.trace_path = os.path.abspath(os.path.join(__file__,
                                                            '..',
                                                            'FastComTec_demo_timetrace.asc'))
-            print(self.trace_path)
+            self.log.debug(f"Loading dummy fastcounter trace: {self.trace_path}")
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
