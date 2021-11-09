@@ -230,6 +230,12 @@ class SpectrometerLogic(LogicBase):
                                  f'returning pure spectrum.')
         return data
 
+    def get_spectrum_at_x(self, x):
+        if self.axis_type_frequency:
+            return np.interp(x, self.x_data[::-1], self.spectrum[::-1])
+        else:
+            return np.interp(x, self.x_data, self.spectrum)
+
     @property
     def background(self):
         if self._repetitions_background != 0:
@@ -477,7 +483,7 @@ class SpectrometerLogic(LogicBase):
         assert len(fit_region) == 2, f'fit_region has to be of length 2 but was {type(fit_region)}'
 
         if self.x_data is None:
-            return fit_region
+            return
         fit_region = fit_region if fit_region[0] <= fit_region[1] else (fit_region[1], fit_region[0])
         new_region = (max(min(self.x_data), fit_region[0]), min(max(self.x_data), fit_region[1]))
         self._fit_region = new_region

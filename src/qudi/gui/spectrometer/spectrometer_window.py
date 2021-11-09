@@ -155,7 +155,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.plot_top_layout.addWidget(fit_layout_widget)
 
         fit_region_group_box = QtWidgets.QGroupBox('Fit Region')
-        self.fit_layout.addWidget(fit_region_group_box, 0, 0, 1, 2)
+        self.fit_layout.addWidget(fit_region_group_box, 0, 0, 1, 1)
         fit_region_layout = QtWidgets.QGridLayout()
         fit_region_layout.setContentsMargins(1, 7, 1, 1)
         fit_region_layout.setSpacing(2)
@@ -170,6 +170,26 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.fit_region_to = ScienDSpinBox()
         self.fit_region_to.setMinimumWidth(100)
         fit_region_layout.addWidget(self.fit_region_to, 1, 1)
+
+        target_group_box = QtWidgets.QGroupBox('Target')
+        self.fit_layout.addWidget(target_group_box, 0, 1, 1, 1)
+        target_layout = QtWidgets.QGridLayout()
+        target_layout.setContentsMargins(1, 7, 1, 1)
+        target_layout.setSpacing(2)
+        target_group_box.setLayout(target_layout)
+        x_label = QtWidgets.QLabel('X:')
+        target_layout.addWidget(x_label, 0, 0)
+        y_label = QtWidgets.QLabel('Y:')
+        target_layout.addWidget(y_label, 1, 0)
+        self.target_x = ScienDSpinBox()
+        self.target_x.setDecimals(6, dynamic_precision=False)
+        self.target_x.setMinimumWidth(100)
+        target_layout.addWidget(self.target_x, 0, 1)
+        self.target_y = ScienDSpinBox()
+        self.target_y.setDecimals(6, dynamic_precision=False)
+        self.target_y.setEnabled(False)
+        self.target_y.setMinimumWidth(100)
+        target_layout.addWidget(self.target_y, 1, 1)
 
         axis_type_label = QtWidgets.QLabel('Axis Type:')
         self.axis_type = ToggleSwitch(state_names=('Wavelength', 'Frequency'))
@@ -193,6 +213,9 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
                                               brush=pg.mkBrush(122, 122, 122, 30),
                                               hoverBrush=pg.mkBrush(196, 196, 196, 30))
         self.plot_widget.addItem(self.fit_region)
+
+        self.target_point = pg.TargetItem(pos=(0, 0), size=20)
+        self.plot_widget.addItem(self.target_point)
 
         self.plot_widget.setLabel('left', 'Fluorescence', units='counts/s')
         self.plot_widget.setLabel('bottom', 'Wavelength', units='m')
@@ -270,87 +293,3 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
         self.resizeDocks(resize_docks['widget'], resize_docks['height'], QtCore.Qt.Vertical)
         self.resizeDocks(resize_docks['widget'], resize_docks['width'], QtCore.Qt.Horizontal)
-
-
-class AdvancedParamsWindow(QtWidgets.QDialog):
-    """Dialog Window to show advanced parameters"""
-
-    sig_window_closed = QtCore.Signal()
-
-    def __init__(self, *args, widget_name='', **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.grid = [0, 0]
-        self._parameters = dict()
-        self.setWindowTitle('{}'.format(widget_name))
-
-        self.close_button = QtWidgets.QPushButton('close')
-        self.close_button.setMinimumHeight(35)
-        self.close_button.clicked.connect(self.close_clicked)
-
-        self.main_layout = QtWidgets.QGridLayout()
-        self.main_layout.setAlignment(QtCore.Qt.AlignLeft)
-        self.main_layout.setContentsMargins(2, 7, 2, 2)
-        self.setLayout(self.main_layout)
-        self.show()
-
-    def add_parameters(self, parameter):
-        groupbox = QtWidgets.QGroupBox('')
-        groupbox.setStyleSheet('QGroupBox::title {subcontrol-position: top left; '
-                               'padding-left: 5px; padding-right: 5px;}')
-        groupbox.setAlignment(QtCore.Qt.AlignLeft)
-
-        layout = QtWidgets.QGridLayout()
-        layout.setAlignment(QtCore.Qt.AlignLeft)
-        layout.setContentsMargins(2, 7, 2, 2)
-
-        for name, default in method_parameter.items():
-            if name.startswith('_'):
-                self._parameters[name] = create_widget(name[1:], default, num_pad)
-                widget = self._parameters[name]['widget']
-                label = self._parameters[name]['label']
-
-                if label is not None:
-                    layout.addWidget(label,
-                                     self.grid[0],
-                                     self.grid[1] * 2 + 1,
-                                     QtCore.Qt.AlignVCenter)
-                if widget is not None:
-                    layout.addWidget(widget,
-                                     self.grid[0],
-                                     self.grid[1] * 2 + 2,
-                                     QtCore.Qt.AlignVCenter)
-
-                self.grid[1] += 1
-                if self.grid[1] > 1:
-                    self.grid[1] -= 2
-                    self.grid[0] += 1
-
-        groupbox.setLayout(layout)
-        self.main_layout.addWidget(groupbox)
-
-        self.main_layout.addWidget(self.close_button)
-        return self._parameters
-
-    def close_clicked(self):
-        self.close()
-
-    def hideEvent(self, event):
-        super().hideEvent(event)
-        self.close()
-        return
-
-    def closeEvent(self, event):
-        self.disconnect_signals()
-        super().closeEvent(event)
-        self.sig_window_closed.emit()
-        return
-
-    def disconnect_signals(self):
-        self.close_button.clicked.disconnect()
-        for parameter, content in self._parameters.items():
-            disconnect_widget(content)
-
-    @property
-    def parameters(self):
-        return self._parameters

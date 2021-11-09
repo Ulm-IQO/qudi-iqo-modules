@@ -21,15 +21,18 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
+from qudi.core.statusvariable import StatusVar
 from qudi.util.widgets.fitting import FitConfigurationDialog, FitWidget
 
 from .spectrometer_window import SpectrometerMainWindow
 
 
 class SpectrometerGui(GuiBase):
-
     # declare connectors
     spectrumlogic = Connector(interface='SpectrometerLogic')
+
+    # StatusVars
+    _delete_fit = StatusVar(name='delete_fit', default=True)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -70,16 +73,18 @@ class SpectrometerGui(GuiBase):
         self._mw.fit_region_from.editingFinished.connect(self.fit_region_value_changed)
         self._mw.fit_region_to.editingFinished.connect(self.fit_region_value_changed)
         self._mw.axis_type.sigStateChanged.connect(self.axis_type_changed)
+        self._mw.target_x.editingFinished.connect(self.target_updated)
 
         # Settings dialog
         self._mw.settings_dialog.accepted.connect(self.apply_settings)
         self._mw.settings_dialog.rejected.connect(self.keep_settings)
 
         self._mw.fit_region.sigRegionChangeFinished.connect(self.fit_region_changed)
+        self._mw.target_point.sigPositionChangeFinished.connect(self.target_changed)
 
         # fill initial settings
         self._mw.axis_type.setChecked(self.spectrumlogic().axis_type_frequency)
-        self._mw.settings_dialog.exposure_time_spinbox.setValue(self.spectrumlogic().exposure_time)
+        self.keep_settings()
 
         # show the gui and update the data
         self._mw.show()
@@ -110,8 +115,11 @@ class SpectrometerGui(GuiBase):
         self._mw.differential_spectrum_switch.sigStateChanged.disconnect()
         self._mw.fit_region_from.editingFinished.disconnect()
         self._mw.fit_region_to.editingFinished.disconnect()
+        self._mw.target_x.editingFinished.disconnect()
+        self._mw.axis_type.sigStateChanged.disconnect()
 
         self._mw.fit_region.sigRegionChangeFinished.disconnect()
+        self._mw.target_point.sigPositionChangeFinished.disconnect()
         self._mw.settings_dialog.accepted.disconnect()
         self._mw.settings_dialog.rejected.disconnect()
 
@@ -158,8 +166,14 @@ class SpectrometerGui(GuiBase):
 
         if self.spectrumlogic().axis_type_frequency:
             self._mw.plot_widget.setLabel('bottom', 'Frequency', units='Hz')
+            self._mw.target_x.setSuffix('Hz')
+            self._mw.fit_region_from.setSuffix('Hz')
+            self._mw.fit_region_to.setSuffix('Hz')
         else:
             self._mw.plot_widget.setLabel('bottom', 'Wavelength', units='m')
+            self._mw.target_x.setSuffix('m')
+            self._mw.fit_region_from.setSuffix('m')
+            self._mw.fit_region_to.setSuffix('m')
 
     def update_data(self):
         """ The function that grabs the data and sends it to the plot.
@@ -170,7 +184,10 @@ class SpectrometerGui(GuiBase):
             return
 
         # erase previous fit line
-        self._mw.fit_curve.setData(x=[], y=[])
+        if self._delete_fit:
+            self._mw.fit_curve.setData(x=[], y=[])
+
+        self.target_changed()
 
         # draw new data
         self._mw.data_curve.setData(x=x_data,
@@ -240,6 +257,32 @@ class SpectrometerGui(GuiBase):
 
     def apply_settings(self):
         self.spectrumlogic().exposure_time = self._mw.settings_dialog.exposure_time_spinbox.value()
+        self._delete_fit = self._mw.settings_dialog.delete_fit.isChecked()
 
     def keep_settings(self):
         self._mw.settings_dialog.exposure_time_spinbox.setValue(self.spectrumlogic().exposure_time)
+        self._mw.settings_dialog.delete_fit.setChecked(self._delete_fit)
+
+    def target_changed(self):
+        x_data = self.spectrumlogic().x_data
+        start_index = -1 if self.spectrumlogic().axis_type_frequency else 0
+        end_index = 0 if self.spectrumlogic().axis_type_frequency else -1
+        position = self._mw.target_point.pos()
+        new_x = position[0]
+
+        if new_x < min(x_data):
+            new_x = x_data[start_index]
+        elif new_x > max(x_data):
+            new_x = x_data[end_index]
+
+        new_y = self.spectrumlogic().get_spectrum_at_x(new_x)
+        self._mw.target_x.setValue(new_x)
+        self._mw.target_y.setValue(new_y)
+
+        self._mw.target_point.setPos((new_x, new_y))
+
+    def target_updated(self):
+        new_x = self._mw.target_x.value()
+        new_y = self.spectrumlogic().get_spectrum_at_x(new_x)
+        self._mw.target_point.setPos((new_x, new_y))
+        self.target_changed()

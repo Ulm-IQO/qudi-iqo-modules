@@ -21,12 +21,14 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from PySide2 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
+from qudi.util.widgets.toggle_switch import ToggleSwitch
 
 
 class SettingsDialog(QtWidgets.QDialog):
     """
     Custom QDialog widget for configuration of the spectrometer
     """
+
     def __init__(self, parent=None, **kwargs):
         super().__init__(parent, **kwargs)
         self.setWindowTitle('Spectrometer settings')
@@ -38,12 +40,19 @@ class SettingsDialog(QtWidgets.QDialog):
         self.setLayout(layout)
 
         # Create widgets and add them to the layout
+        self.delete_fit = ToggleSwitch(state_names=('False', 'True'))
+        self.delete_fit.setMinimumWidth(150)
+        delete_fit_label = QtWidgets.QLabel('Delete Fit:')
+        delete_fit_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        layout.addWidget(delete_fit_label, 0, 0)
+        layout.addWidget(self.delete_fit, 0, 1)
+
         self.exposure_time_spinbox = ScienDSpinBox()
         self.exposure_time_spinbox.setMinimumWidth(150)
         exposure_time_label = QtWidgets.QLabel('Exposure Time:')
         exposure_time_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        layout.addWidget(exposure_time_label, 0, 0)
-        layout.addWidget(self.exposure_time_spinbox, 0, 1)
+        layout.addWidget(exposure_time_label, 1, 0)
+        layout.addWidget(self.exposure_time_spinbox, 1, 1)
 
         buttonbox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok
                                                | QtWidgets.QDialogButtonBox.Cancel
