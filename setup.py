@@ -43,10 +43,9 @@ with open('README.md', 'r') as file:
 setup(
     name='qudi-iqo-modules',
     version=version,
-    packages=find_namespace_packages(where='src', exclude=['qudi.artwork']),
+    packages=find_namespace_packages(where='src'),
     package_dir={'': 'src'},
     package_data={''        : ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md', 'VERSION'],
-                  'qudi'    : ['artwork/icons/*', 'artwork/icons/**/*', 'artwork/icons/**/**/*'],
                   'qudi.gui': ['*.ui', '*/*.ui'],
                   },
     description='IQO measurement modules collection for qudi',
