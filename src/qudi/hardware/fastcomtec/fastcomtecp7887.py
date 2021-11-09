@@ -29,7 +29,6 @@ import time
 import ctypes
 import numpy as np
 
-from qudi.util.paths import get_main_dir
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
 
@@ -419,7 +418,9 @@ class FastComtec(FastCounterInterface):
 
     def get_data_testfile(self):
         """ Load data test file """
-        data = np.loadtxt(os.path.join(get_main_dir(), 'tools', 'FastComTec_demo_timetrace.asc'))
+        data = np.loadtxt(
+            os.path.abspath(os.path.join(__file__, '..', 'dummy', 'FastComTec_demo_timetrace.asc'))
+        )
         time.sleep(0.5)
         return data
 

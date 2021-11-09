@@ -1,39 +1,13 @@
 # -*- coding: utf-8 -*-
 
-import os
 import sys
 from setuptools import setup, find_namespace_packages
-from setuptools.command.develop import develop
-from setuptools.command.install import install
-
-
-class PrePostDevelopCommands(develop):
-    """ Pre- and Post-installation script for development mode.
-    """
-
-    def run(self):
-        # PUT YOUR PRE-INSTALL SCRIPT HERE or CALL A FUNCTION
-        develop.run(self)
-        # PUT YOUR POST-INSTALL SCRIPT HERE or CALL A FUNCTION
-
-
-class PrePostInstallCommands(install):
-    """ Pre- and Post-installation for installation mode.
-    """
-
-    def run(self):
-        # PUT YOUR PRE-INSTALL SCRIPT HERE or CALL A FUNCTION
-        install.run(self)
-        # PUT YOUR POST-INSTALL SCRIPT HERE or CALL A FUNCTION
 
 
 unix_dep = [
     'qudi-core',
-    'cycler',
     'entrypoints',
     'fysom',
-    'jupyter',
-    'jupytext',
     'lmfit',
     'lxml',
     'matplotlib',
@@ -42,29 +16,22 @@ unix_dep = [
     'pyqtgraph',
     'PySide2',
     'PyVisa',
-    'rpyc',
-    'ruamel.yaml',
     'scipy',
 ]
 
 windows_dep = [
     'qudi-core',
-    'cycler',
-    'entrypoints',
-    'fysom',
-    'jupyter',
-    'jupytext',
-    'lmfit',
-    'lxml',
-    'matplotlib',
-    'nidaqmx',
-    'numpy',
-    'pyqtgraph',
-    'PySide2',
-    'PyVisa',
-    'rpyc',
-    'ruamel.yaml',
-    'scipy',
+    'entrypoints>=0.3',
+    'fysom>=2.1.6',
+    'lmfit>=1.0.3',
+    'lxml>=4.6.3',
+    'matplotlib>=3.4.3',
+    'nidaqmx>=0.5.7',
+    'numpy>=1.21.3',
+    'pyqtgraph>=0.12.3',
+    'PySide2>=5.15.2',
+    'PyVisa>=1.11.3',
+    'scipy>=1.7.1',
 ]
 
 with open('VERSION', 'r') as file:
@@ -100,6 +67,5 @@ setup(
     license='LGPLv3',
     install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
     python_requires='~=3.8',
-    cmdclass={'develop': PrePostDevelopCommands, 'install': PrePostInstallCommands},
     zip_safe=False
 )

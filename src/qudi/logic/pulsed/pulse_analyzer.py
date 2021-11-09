@@ -24,8 +24,7 @@ import sys
 import inspect
 import importlib
 
-from qudi.util.paths import get_main_dir
-from qudi.util.helpers import natural_sort
+from qudi.util.helpers import natural_sort, iter_modules_recursive
 
 
 class PulseAnalyzerBase:
@@ -92,17 +91,44 @@ class PulseAnalyzer(PulseAnalyzerBase):
         # Currently selected analysis method
         self._current_analysis_method = None
 
-        # import path for analysis modules from default directory (logic.pulse_analysis_methods)
-        path_list = [os.path.join(get_main_dir(), 'logic', 'pulsed', 'pulsed_analysis_methods')]
-        # import path for analysis modules from non-default directory if a path has been given
-        if isinstance(pulsedmeasurementlogic.analysis_import_path, str):
-            path_list.append(pulsedmeasurementlogic.analysis_import_path)
+        # import analysis modules from default namespace package
+        # "qudi.logic.pulsed.pulsed_analysis_methods"
+        try:
+            _default_analysis_ns = importlib.reload(_default_analysis_ns)
+        except NameError:
+            import qudi.logic.pulsed.pulsed_analysis_methods as _default_analysis_ns
 
-        # Import analysis modules and get a list of analyzer classes
-        analyzer_classes = self.__import_external_analyzers(paths=path_list)
+        # Import analysis modules and get a dict of analysis classes
+        analysis_classes = list()
+        for mod_finder in iter_modules_recursive(_default_analysis_ns.__path__,
+                                                 _default_analysis_ns.__name__ + '.'):
+            try:
+                analysis_classes.extend(
+                    [cls for _, cls in inspect.getmembers(importlib.import_module(mod_finder.name),
+                                                          self.is_analyzer_class)]
+                )
+            except:
+                self.log.exception(
+                    f'Exception while importing qudi.logic.pulsed.pulsed_analysis_methods '
+                    f'sub-module "{mod_finder.name}":'
+                )
+
+        # Get analysis modules from non-default directory if a path has been given
+        if isinstance(pulsedmeasurementlogic.analysis_import_path, str):
+            try:
+                analysis_classes.extend(
+                    self.__import_external_analyzers(
+                        path=pulsedmeasurementlogic.analysis_import_path
+                    )
+                )
+            except:
+                self.log.exception(
+                    f'Unable to import analysis methods from '
+                    f'"{pulsedmeasurementlogic.analysis_import_path}":'
+                )
 
         # create an instance of each class and put them in a temporary list
-        analyzer_instances = [cls(pulsedmeasurementlogic) for cls in analyzer_classes]
+        analyzer_instances = [cls(pulsedmeasurementlogic) for cls in analysis_classes]
 
         # add references to all analysis methods in each instance to a dict
         self.__populate_method_dict(instance_list=analyzer_instances)
@@ -233,40 +259,34 @@ class PulseAnalyzer(PulseAnalyzerBase):
                 kwargs_dict[name] = default
         return kwargs_dict
 
-    def __import_external_analyzers(self, paths):
-        """
-        Helper method to import all modules from directories contained in paths.
+    def __import_external_analyzers(self, path):
+        """ Helper method to import all modules from given directory path.
         Find all classes in those modules that inherit exclusively from PulseAnalyzerBase class
         and return a list of them.
 
-        @param iterable paths: iterable containing paths to import modules from
+        @param str path: Paths to import modules from
         @return list: A list of imported valid analyzer classes
         """
         class_list = list()
-        for path in paths:
-            if not os.path.exists(path):
-                self.log.error('Unable to import analysis methods from "{0}".\n'
-                               'Path does not exist.'.format(path))
-                continue
-            # Get all python modules to import from.
-            # The assumption is that in the directory pulse_analysis_methods, there are
-            # *.py files, which contain only analyzer classes!
-            module_list = [name[:-3] for name in os.listdir(path) if
-                           os.path.isfile(os.path.join(path, name)) and name.endswith('.py')]
+        # Get all python modules to import from.
+        # The assumption is that in the directory pulse_analysis_methods, there are
+        # *.py files, which contain only analyzer classes!
+        module_list = [name[:-3] for name in os.listdir(path) if
+                       os.path.isfile(os.path.join(path, name)) and name.endswith('.py')]
 
-            # append import path to sys.path
-            if path not in sys.path:
-                sys.path.append(path)
+        # append import path to sys.path
+        if path not in sys.path:
+            sys.path.append(path)
 
-            # Go through all modules and create instances of each class found.
-            for module_name in module_list:
-                # import module
-                mod = importlib.import_module('{0}'.format(module_name))
-                importlib.reload(mod)
-                # get all analyzer class references defined in the module
-                tmp_list = [m[1] for m in inspect.getmembers(mod, self.__is_analyzer_class)]
-                # append to class_list
-                class_list.extend(tmp_list)
+        # Go through all modules and create instances of each class found.
+        for module_name in module_list:
+            # import module
+            mod = importlib.import_module(str(module_name))
+            importlib.reload(mod)
+            # get all analyzer class references defined in the module
+            tmp_list = [m[1] for m in inspect.getmembers(mod, self.is_analyzer_class)]
+            # append to class_list
+            class_list.extend(tmp_list)
         return class_list
 
     def __populate_method_dict(self, instance_list):
@@ -294,7 +314,7 @@ class PulseAnalyzer(PulseAnalyzerBase):
         return
 
     @staticmethod
-    def __is_analyzer_class(obj):
+    def is_analyzer_class(obj):
         """
         Helper method to check if an object is a valid analyzer class.
 

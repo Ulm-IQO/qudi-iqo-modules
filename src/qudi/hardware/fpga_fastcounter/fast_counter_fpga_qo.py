@@ -20,14 +20,12 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-import os
 import time
 import numpy as np
 import okfrontpanel as ok
 
 from qudi.interface.fast_counter_interface import FastCounterInterface
 from qudi.core.configoption import ConfigOption
-from qudi.util.paths import get_main_dir
 from qudi.util.mutex import Mutex
 
 
@@ -58,16 +56,9 @@ class FastCounterFPGAQO(FastCounterInterface):
         #threshV_ch8: 0.5   # optional, threshold voltage for detection
     """
 
-    _serial = ConfigOption('fpgacounter_serial', missing='error')
-    # 'No parameter "fpgacounter_serial" specified in the config! Set the '
-    # 'serial number for the currently used fpga counter!\n'
-    # 'Open the Opal Kelly Frontpanel to obtain the serial number of the '
-    # 'connected FPGA.\nDo not forget to close the Frontpanel before starting '
-    # 'the Qudi program.')
-    _fpga_type = ConfigOption('fpga_type', 'XEM6310_LX150', missing='warn')
-    # 'No parameter "fpga_type" specified in the config!\n'
-    # 'Possible types are "XEM6310_LX150" or "XEM6310_LX45".\n'
-    # 'Taking the type "{0}" as default.'.format(self._fpga_type))
+    _serial = ConfigOption('fpga_serial', missing='error')
+    _path_to_bitfile = ConfigOption('path_to_bitfile', missing='error')
+
     _threshold_ch1 = ConfigOption('threshV_ch1', default=0.5, missing='nothing')
     _threshold_ch2 = ConfigOption('threshV_ch2', default=0.5, missing='nothing')
     _threshold_ch3 = ConfigOption('threshV_ch3', default=0.5, missing='nothing')
@@ -216,10 +207,7 @@ class FastCounterFPGAQO(FastCounterInterface):
         self._fpga.OpenBySerial(self._serial)
 
         # upload the proper fast counter configuration bitfile to the FPGA
-        bitfile_name = 'fastcounter_{0}.bit'.format(self._fpga_type)
-        # Load on the FPGA a configuration file (bit file).
-        self._fpga.ConfigureFPGA(
-            os.path.join(get_main_dir(), 'thirdparty', 'qo_fpga', bitfile_name))
+        self._fpga.ConfigureFPGA(self._path_to_bitfile)
 
         # Check if the upload was successful and the Opal Kelly FrontPanel is
         # enabled on the FPGA

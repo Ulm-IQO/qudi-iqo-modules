@@ -21,11 +21,9 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-import os
 import okfrontpanel as ok
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.util.paths import get_main_dir
 from qudi.util.mutex import RecursiveMutex
 from qudi.interface.switch_interface import SwitchInterface
 
@@ -64,10 +62,8 @@ class HardwareSwitchFpga(SwitchInterface):
     # config options
     # serial number of the FPGA
     _serial = ConfigOption('fpga_serial', missing='error')
-    # Type of the FGPA, possible type options: XEM6310_LX150, XEM6310_LX45
-    _fpga_type = ConfigOption('fpga_type', default='XEM6310_LX45', missing='warn')
-    # specify the path to the bitfile, if it is not in qudi_main_dir/thirdparty/qo_fpga
-    _path_to_bitfile = ConfigOption('path_to_bitfile', default=None, missing='nothing')
+    # specify the path to the bitfile
+    _path_to_bitfile = ConfigOption('path_to_bitfile', missing='error')
     # customize available switches in config. Each switch needs a tuple of 2 state names.
     _switches = ConfigOption(
         name='switches',
@@ -132,19 +128,6 @@ class HardwareSwitchFpga(SwitchInterface):
 
         # open a connection to the FPGA with the specified serial number
         self._fpga.OpenBySerial(self._serial)
-
-        if not self._path_to_bitfile:
-            # upload the proper hardware switch configuration bitfile to the FPGA
-            if self._fpga_type == 'XEM6310_LX45':
-                bitfile_name = 'switch_8chnl_withcopy_LX45.bit'
-            elif self._fpga_type == 'XEM6310_LX150':
-                bitfile_name = 'switch_8chnl_withcopy_LX150.bit'
-            else:
-                self.log.error('Unsupported FPGA type "{0}" specified in config. Valid options are '
-                               '"XEM6310_LX45" and "XEM6310_LX150".\nConnection to FPGA module failed.'
-                               ''.format(self._fpga_type))
-                return -1
-            self._path_to_bitfile = os.path.join(get_main_dir(), 'thirdparty', 'qo_fpga', bitfile_name)
 
         # Load on the FPGA a configuration file (bit file).
         self.log.debug(f'Using bitfile: {self._path_to_bitfile}')
