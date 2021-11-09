@@ -438,9 +438,14 @@ class SpectrometerLogic(LogicBase):
         return self._fit_container
 
     def do_fit(self, fit_method):
+        if fit_method == 'No Fit':
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
+
         self.fit_region = self._fit_region
         if self.x_data is None or self.spectrum is None:
             self.log.error('No data to fit.')
+            self.sig_fit_updated.emit('No Fit', None)
             return 'No Fit', None
 
         if self._axis_type_frequency:
@@ -452,6 +457,7 @@ class SpectrometerLogic(LogicBase):
 
         if end - start < 2:
             self.log.error('Fit region limited the data to less than two points. Fit not possible.')
+            self.sig_fit_updated.emit('No Fit', None)
             return 'No Fit', None
 
         x_data = self.x_data[start:end]
@@ -461,6 +467,7 @@ class SpectrometerLogic(LogicBase):
             self._fit_method, self._fit_results = self._fit_container.fit_data(fit_method, x_data, y_data)
         except:
             self.log.exception(f'Data fitting failed:\n{traceback.format_exc()}')
+            self.sig_fit_updated.emit('No Fit', None)
             return 'No Fit', None
 
         self.sig_fit_updated.emit(self._fit_method, self._fit_results)

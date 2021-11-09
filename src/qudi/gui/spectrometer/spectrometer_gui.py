@@ -203,6 +203,8 @@ class SpectrometerGui(GuiBase):
             # redraw the fit curve in the GUI plot.
             self._mw.fit_curve.setData(x=fit_results.high_res_best_fit[0],
                                        y=fit_results.high_res_best_fit[1])
+        else:
+            self._mw.fit_curve.setData(x=[], y=[])
 
     def acquire_spectrum(self):
         if not self.spectrumlogic().acquisition_running:
