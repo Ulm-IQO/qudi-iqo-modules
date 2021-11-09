@@ -1608,7 +1608,7 @@ class PulsedMeasurementLogic(LogicBase):
 
         if with_error:
             ax1.errorbar(x=x_axis_scaled, y=self.signal_data[1],
-                         yerr=self.measurement_error[1], fmt='-o',
+                         yerr=self.measurement_error[1],
                          linestyle=':', linewidth=0.5, color=colors[0],
                          ecolor=colors[1], capsize=3, capthick=0.9,
                          elinewidth=1.2, label='data trace 1')
@@ -1620,7 +1620,7 @@ class PulsedMeasurementLogic(LogicBase):
                              ecolor=colors[4],  capsize=3, capthick=0.7,
                              elinewidth=1.2, label='data trace 2')
         else:
-            ax1.plot(x_axis_scaled, self.signal_data[1], '-o', color=colors[0],
+            ax1.plot(x_axis_scaled, self.signal_data[1], color=colors[0],
                      linestyle=':', linewidth=0.5, label='data trace 1')
 
             if self._alternating:
