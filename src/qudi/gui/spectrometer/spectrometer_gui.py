@@ -33,6 +33,7 @@ class SpectrometerGui(GuiBase):
 
     # StatusVars
     _delete_fit = StatusVar(name='delete_fit', default=True)
+    _target_x = StatusVar(name='target_x', default=0)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -84,6 +85,8 @@ class SpectrometerGui(GuiBase):
 
         # fill initial settings
         self._mw.axis_type.setChecked(self.spectrumlogic().axis_type_frequency)
+        self._mw.target_x.setValue(self._target_x)
+        self.target_updated()
         self.keep_settings()
 
         # show the gui and update the data
@@ -268,21 +271,20 @@ class SpectrometerGui(GuiBase):
         start_index = -1 if self.spectrumlogic().axis_type_frequency else 0
         end_index = 0 if self.spectrumlogic().axis_type_frequency else -1
         position = self._mw.target_point.pos()
-        new_x = position[0]
+        self._target_x = position[0]
 
-        if new_x < min(x_data):
+        if self._target_x < min(x_data):
             new_x = x_data[start_index]
-        elif new_x > max(x_data):
+        elif self._target_x > max(x_data):
             new_x = x_data[end_index]
 
-        new_y = self.spectrumlogic().get_spectrum_at_x(new_x)
-        self._mw.target_x.setValue(new_x)
+        new_y = self.spectrumlogic().get_spectrum_at_x(self._target_x)
+        self._mw.target_x.setValue(self._target_x)
         self._mw.target_y.setValue(new_y)
 
-        self._mw.target_point.setPos((new_x, new_y))
+        self._mw.target_point.setPos(self._target_x)
 
     def target_updated(self):
-        new_x = self._mw.target_x.value()
-        new_y = self.spectrumlogic().get_spectrum_at_x(new_x)
-        self._mw.target_point.setPos((new_x, new_y))
+        self._target_x = self._mw.target_x.value()
+        self._mw.target_point.setPos(self._target_x)
         self.target_changed()

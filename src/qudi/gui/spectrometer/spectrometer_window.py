@@ -214,7 +214,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
                                               hoverBrush=pg.mkBrush(196, 196, 196, 30))
         self.plot_widget.addItem(self.fit_region)
 
-        self.target_point = pg.TargetItem(pos=(0, 0), size=20)
+        self.target_point = pg.InfiniteLine(pos=0, angle=90, movable=True, pen=pg.mkPen(color='green', width=2))
         self.plot_widget.addItem(self.target_point)
 
         self.plot_widget.setLabel('left', 'Fluorescence', units='counts/s')
