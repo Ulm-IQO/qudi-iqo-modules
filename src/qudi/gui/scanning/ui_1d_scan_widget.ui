@@ -27,8 +27,8 @@
      </property>
      <property name="icon">
       <iconset>
-       <normaloff>../../artwork/icons/qudiTheme/22x22/scan-depth-start.png</normaloff>
-       <normalon>../../artwork/icons/qudiTheme/22x22/stop-scan.png</normalon>../../artwork/icons/qudiTheme/22x22/scan-depth-start.png</iconset>
+       <normaloff>../../artwork/icons/scan-depth-start.svg</normaloff>
+       <normalon>../../artwork/icons/scan-stop.svg</normalon>../../artwork/icons/scan-depth-start.svg</iconset>
      </property>
      <property name="iconSize">
       <size>

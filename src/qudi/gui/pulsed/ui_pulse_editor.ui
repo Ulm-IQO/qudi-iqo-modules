@@ -287,7 +287,7 @@
           </property>
           <property name="icon">
            <iconset>
-            <normaloff>../../artwork/icons/oxygen/22x22/dialog-warning.png</normaloff>../../artwork/icons/oxygen/22x22/dialog-warning.png</iconset>
+            <normaloff>../../artwork/icons/dialog-warning.svgz</normaloff>../../artwork/icons/dialog-warning.svgz</iconset>
           </property>
          </widget>
         </item>
@@ -643,7 +643,7 @@ sel.</string>
           </property>
           <property name="icon">
            <iconset>
-            <normaloff>../../artwork/icons/oxygen/22x22/dialog-warning.png</normaloff>../../artwork/icons/oxygen/22x22/dialog-warning.png</iconset>
+            <normaloff>../../artwork/icons/dialog-warning.svgz</normaloff>../../artwork/icons/dialog-warning.svgz</iconset>
           </property>
          </widget>
         </item>

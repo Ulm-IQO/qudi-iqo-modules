@@ -805,7 +805,7 @@
   <action name="actionClose">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/application-exit.png</normaloff>../../artwork/icons/oxygen/22x22/application-exit.png</iconset>
+     <normaloff>../../artwork/icons/application-exit.svg</normaloff>../../artwork/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
     <string>Close</string>

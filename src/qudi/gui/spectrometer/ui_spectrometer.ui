@@ -259,7 +259,7 @@
   <action name="actionClose">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/application-exit.png</normaloff>../../artwork/icons/oxygen/22x22/application-exit.png</iconset>
+     <normaloff>../../artwork/icons/application-exit.svg</normaloff>../../artwork/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
     <string>&amp;Close</string>
@@ -268,7 +268,7 @@
   <action name="rec_single_spectrum_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/record-counter.png</normaloff>../../artwork/icons/qudiTheme/22x22/record-counter.png</iconset>
+     <normaloff>../../artwork/icons/record-counter.svgz</normaloff>../../artwork/icons/record-counter.svgz</iconset>
    </property>
    <property name="text">
     <string>Record spectrum</string>
@@ -307,7 +307,7 @@
   <action name="save_spectrum_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/document-save.png</normaloff>../../artwork/icons/oxygen/22x22/document-save.png</iconset>
+     <normaloff>../../artwork/icons/document-save.svg</normaloff>../../artwork/icons/document-save.svg</iconset>
    </property>
    <property name="text">
     <string>&amp;Save spectrum</string>

@@ -59,7 +59,7 @@ class SwitchMainWindow(QtWidgets.QMainWindow):
         menu = menu_bar.addMenu('Menu')
         self.action_close = QtWidgets.QAction('Close Window')
         self.action_close.setCheckable(False)
-        self.action_close.setIcon(QtGui.QIcon('artwork/icons/oxygen/22x22/application-exit.png'))
+        self.action_close.setIcon(QtGui.QIcon('artwork/icons/application-exit.svg'))
         self.addAction(self.action_close)
         menu.addAction(self.action_close)
 

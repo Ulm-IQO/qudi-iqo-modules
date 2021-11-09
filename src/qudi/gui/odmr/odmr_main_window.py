@@ -47,20 +47,20 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         # Create QActions
         icon_path = os.path.join(get_artwork_dir(), 'icons')
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'qudiTheme', '22x22', 'start-counter.png'))
-        icon.addFile(os.path.join(icon_path, 'qudiTheme', '22x22', 'stop-counter.png'),
+        icon = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
+        icon.addFile(os.path.join(icon_path, 'stop-counter'),
                      state=QtGui.QIcon.On)
         self.action_toggle_measurement = QtWidgets.QAction('Toggle Measurement')
         self.action_toggle_measurement.setCheckable(True)
         self.action_toggle_measurement.setIcon(icon)
         self.action_toggle_measurement.setToolTip('Start/Stop ODMR scan measurement')
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'qudiTheme', '22x22', 'restart-counter.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'restart-counter'))
         self.action_resume_measurement = QtWidgets.QAction('Resume Measurement')
         self.action_resume_measurement.setIcon(icon)
         self.action_resume_measurement.setToolTip('Resume ODMR scan measurement')
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'document-save.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'document-save'))
         self.action_save_measurement = QtWidgets.QAction('Save Measurement')
         self.action_save_measurement.setIcon(icon)
         self.action_save_measurement.setToolTip(
@@ -68,14 +68,14 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
             'Use text field in the toolbar to specify a nametag for the file.'
         )
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'dialog-warning.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'dialog-warning'))
         self.action_toggle_cw = QtWidgets.QAction('Toggle CW')
         self.action_toggle_cw.setCheckable(True)
         self.action_toggle_cw.setIcon(icon)
         self.action_toggle_cw.setToolTip('Toggle continuous microwave output.\n'
                                          'WARNING: Ensure RF network can handle CW power.')
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'application-exit.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
         self.action_close = QtWidgets.QAction('Close')
         self.action_close.setIcon(icon)
 
@@ -86,7 +86,7 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
 
         self.action_restore_default_view = QtWidgets.QAction('Restore Default')
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'configure.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
         self.action_show_odmr_settings = QtWidgets.QAction('ODMR Settings')
         self.action_show_odmr_settings.setToolTip(
             'Open a dialog to edit ODMR settings that are not very frequently used.'
