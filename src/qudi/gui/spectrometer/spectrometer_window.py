@@ -76,9 +76,9 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # self.setStyleSheet('border: 1px solid #f00;')  # debugging help for the gui
-        self.setWindowTitle('Spectrometer')
+        self.setWindowTitle('qudi: Spectrometer')
         self.setDockNestingEnabled(True)
-        icon_path = os.path.join(get_artwork_dir(), 'icons', 'oxygen', '22x22')
+        icon_path = os.path.join(get_artwork_dir(), 'icons')
         # self.setStyleSheet('border: 1px solid #f00;')  # debugging help for the gui
 
         self.setTabPosition(QtCore.Qt.TopDockWidgetArea, QtWidgets.QTabWidget.North)
@@ -187,7 +187,8 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         target_layout.addWidget(self.target_x, 0, 1)
         self.target_y = ScienDSpinBox()
         self.target_y.setDecimals(6, dynamic_precision=False)
-        self.target_y.setEnabled(False)
+        self.target_y.setReadOnly(True)
+        self.target_y.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
         self.target_y.setMinimumWidth(100)
         target_layout.addWidget(self.target_y, 1, 1)
 
@@ -225,25 +226,25 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         # Create QActions
         self.action_close = QtWidgets.QAction('Close Window')
         self.action_close.setCheckable(False)
-        self.action_close.setIcon(QtGui.QIcon(os.path.join(icon_path, 'application-exit.png')))
+        self.action_close.setIcon(QtGui.QIcon(os.path.join(icon_path, 'application-exit')))
 
         self.action_restore_view = QtWidgets.QAction()
         self.action_restore_view.setIcon(
-            QtGui.QIcon(os.path.join(icon_path, 'view-refresh.png')))
+            QtGui.QIcon(os.path.join(icon_path, 'view-refresh')))
         self.action_restore_view.setText('Restore')
         self.action_restore_view.setToolTip('Restore the view to the default.')
         self.action_restore_view.setCheckable(False)
 
         self.action_spectrometer_settings = QtWidgets.QAction()
         self.action_spectrometer_settings.setIcon(
-            QtGui.QIcon(os.path.join(icon_path, 'utilities-terminal.png')))
+            QtGui.QIcon(os.path.join(icon_path, 'utilities-terminal')))
         self.action_spectrometer_settings.setText('Show Spectrometer Settings')
         self.action_spectrometer_settings.setToolTip('Show the Spectrometer Settings.')
         self.action_spectrometer_settings.setCheckable(False)
 
         self.action_show_fit_settings = QtWidgets.QAction()
         self.action_show_fit_settings.setIcon(
-            QtGui.QIcon(os.path.join(icon_path, 'configure.png')))
+            QtGui.QIcon(os.path.join(icon_path, 'configure')))
         self.action_show_fit_settings.setText('Show Fit Settings')
         self.action_show_fit_settings.setToolTip('Show the Fit Settings.')
         self.action_show_fit_settings.setCheckable(False)
