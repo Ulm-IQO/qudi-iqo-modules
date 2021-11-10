@@ -75,18 +75,16 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # self.setStyleSheet('border: 1px solid #f00;')  # debugging help for the gui
+        self.setStyleSheet('border: 1px solid #f00;')  # debugging help for the gui
         self.setWindowTitle('qudi: Spectrometer')
         self.setDockNestingEnabled(True)
         icon_path = os.path.join(get_artwork_dir(), 'icons')
-        # self.setStyleSheet('border: 1px solid #f00;')  # debugging help for the gui
 
         self.setTabPosition(QtCore.Qt.TopDockWidgetArea, QtWidgets.QTabWidget.North)
         self.setTabPosition(QtCore.Qt.BottomDockWidgetArea, QtWidgets.QTabWidget.North)
         self.setTabPosition(QtCore.Qt.LeftDockWidgetArea, QtWidgets.QTabWidget.North)
         self.setTabPosition(QtCore.Qt.RightDockWidgetArea, QtWidgets.QTabWidget.North)
 
-        self.controls_DockWidget = AdvancedDockWidget('Controls', parent=self)
         self.plot_DockWidget = AdvancedDockWidget('Plots', parent=self)
 
         # Create layout and content for the Controls DockWidget
@@ -97,7 +95,8 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.control_layout.setSpacing(5)
         control_widget = QtWidgets.QWidget()
         control_widget.setLayout(self.control_layout)
-        self.controls_DockWidget.setWidget(control_widget)
+        control_widget.setSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
+        self.setCentralWidget(control_widget)
 
         self.spectrum_button = QtWidgets.QPushButton('Acquire Spectrum')
         self.spectrum_button.setToolTip('Acquire a new spectrum.')
@@ -275,17 +274,8 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
     def restore_alignment(self):
         resize_docks = {'widget': list(), 'width': list(), 'height': list()}
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.controls_DockWidget)
-        self.controls_DockWidget.setFeatures(self.controls_DockWidget.DockWidgetFloatable |
-                                             self.controls_DockWidget.DockWidgetMovable |
-                                             self.controls_DockWidget.DockWidgetClosable)
-        self.controls_DockWidget.setFloating(False)
-        self.controls_DockWidget.show()
-        resize_docks['widget'].append(self.controls_DockWidget)
-        resize_docks['width'].append(1)
-        resize_docks['height'].append(1)
 
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.plot_DockWidget)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.plot_DockWidget)
         self.plot_DockWidget.setFeatures(self.plot_DockWidget.DockWidgetFloatable |
                                          self.plot_DockWidget.DockWidgetMovable |
                                          self.plot_DockWidget.DockWidgetClosable)
