@@ -46,26 +46,26 @@ class QDPlotMainWindow(QtWidgets.QMainWindow):
         # Create QActions
         icon_path = os.path.join(get_artwork_dir(), 'icons')
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'application-exit.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
         self.action_close = QtWidgets.QAction('Close')
         self.action_close.setIcon(icon)
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'document-save.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'document-save'))
         self.action_save_all = QtWidgets.QAction('Save All')
         self.action_save_all.setToolTip('Save all available plots, each in their own file.')
         self.action_save_all.setIcon(icon)
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'configure.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
         self.action_show_fit_configuration = QtWidgets.QAction('Fit Configuration')
         self.action_show_fit_configuration.setToolTip('Open a dialog to edit data fitting configurations.')
         self.action_show_fit_configuration.setIcon(icon)
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'document-new.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'document-new'))
         self.action_new_plot = QtWidgets.QAction('New Plot')
         self.action_new_plot.setToolTip('Adds another DockWidget for a new Plot.')
         self.action_new_plot.setIcon(icon)
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'oxygen', '22x22', 'zoom-fit-best.png'))
+        icon = QtGui.QIcon(os.path.join(icon_path, 'zoom-fit-best'))
         self.action_restore_tabbed_view = QtWidgets.QAction('Restore tabbed view')
         self.action_restore_tabbed_view.setToolTip('Restore the tabbed view of the DockWidgets for the plots.')
         self.action_restore_tabbed_view.setIcon(icon)

@@ -60,7 +60,7 @@ class LaserMainWindow(QtWidgets.QMainWindow):
 
         menu = menu_bar.addMenu('File')
         self.action_close = QtWidgets.QAction('Close')
-        path = os.path.join(get_artwork_dir(), 'icons', 'oxygen', '22x22', 'application-exit.png')
+        path = os.path.join(get_artwork_dir(), 'icons', 'application-exit')
         self.action_close.setIcon(QtGui.QIcon(path))
         self.action_close.triggered.connect(self.close)
         menu.addAction(self.action_close)

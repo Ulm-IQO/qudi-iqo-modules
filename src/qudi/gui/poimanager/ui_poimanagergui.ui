@@ -844,7 +844,7 @@
   <action name="new_roi_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/document-new.png</normaloff>../../artwork/icons/oxygen/22x22/document-new.png</iconset>
+     <normaloff>../../artwork/icons/document-new.svg</normaloff>../../artwork/icons/document-new.svg</iconset>
    </property>
    <property name="text">
     <string>New ROI</string>
@@ -856,7 +856,7 @@
   <action name="save_roi_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/document-save.png</normaloff>../../artwork/icons/oxygen/22x22/document-save.png</iconset>
+     <normaloff>../../artwork/icons/document-save.svg</normaloff>../../artwork/icons/document-save.svg</iconset>
    </property>
    <property name="text">
     <string>Save ROI</string>
@@ -868,7 +868,7 @@
   <action name="load_roi_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/document-open.png</normaloff>../../artwork/icons/oxygen/22x22/document-open.png</iconset>
+     <normaloff>../../artwork/icons/document-open.svgz</normaloff>../../artwork/icons/document-open.svgz</iconset>
    </property>
    <property name="text">
     <string>Load ROI</string>
@@ -948,7 +948,7 @@
   <action name="refind_poi_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/optimize-position-poi.png</normaloff>../../artwork/icons/qudiTheme/22x22/optimize-position-poi.png</iconset>
+     <normaloff>../../artwork/icons/optimize-position-poi.svgz</normaloff>../../artwork/icons/optimize-position-poi.svgz</iconset>
    </property>
    <property name="text">
     <string>Refind POI</string>
@@ -963,7 +963,7 @@
    </property>
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/periodic-refind-poi.png</normaloff>../../artwork/icons/qudiTheme/22x22/periodic-refind-poi.png</iconset>
+     <normaloff>../../artwork/icons/periodic-refind-poi.svgz</normaloff>../../artwork/icons/periodic-refind-poi.svgz</iconset>
    </property>
    <property name="text">
     <string>Track POI</string>
@@ -975,7 +975,7 @@
   <action name="new_poi_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/new_poi_crosshair.png</normaloff>../../artwork/icons/qudiTheme/22x22/new_poi_crosshair.png</iconset>
+     <normaloff>../../artwork/icons/new_poi_crosshair.svg</normaloff>../../artwork/icons/new_poi_crosshair.svg</iconset>
    </property>
    <property name="text">
     <string>New POI</string>
@@ -995,7 +995,7 @@
   <action name="goto_poi_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/goto-poi.png</normaloff>../../artwork/icons/qudiTheme/22x22/goto-poi.png</iconset>
+     <normaloff>../../artwork/icons/goto-poi.svgz</normaloff>../../artwork/icons/goto-poi.svgz</iconset>
    </property>
    <property name="text">
     <string>Go to POI</string>
@@ -1007,7 +1007,7 @@
   <action name="actionClose">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/application-exit.png</normaloff>../../artwork/icons/oxygen/22x22/application-exit.png</iconset>
+     <normaloff>../../artwork/icons/application-exit.svg</normaloff>../../artwork/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
     <string>Close</string>
@@ -1027,7 +1027,7 @@
    </property>
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/new_poi_mouse.png</normaloff>../../artwork/icons/qudiTheme/22x22/new_poi_mouse.png</iconset>
+     <normaloff>../../artwork/icons/new_poi_mouse.svg</normaloff>../../artwork/icons/new_poi_mouse.svg</iconset>
    </property>
    <property name="text">
     <string>Add POIs</string>
@@ -1067,7 +1067,7 @@
   <action name="auto_find_POIs_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/auto_pois.png</normaloff>../../artwork/icons/qudiTheme/22x22/auto_pois.png</iconset>
+     <normaloff>../../artwork/icons/auto_pois.svg</normaloff>../../artwork/icons/auto_pois.svg</iconset>
    </property>
    <property name="text">
     <string>Auto find POIs</string>
@@ -1079,7 +1079,7 @@
   <action name="del_all_pois_Action">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/dialog-warning.png</normaloff>../../artwork/icons/oxygen/22x22/dialog-warning.png</iconset>
+     <normaloff>../../artwork/icons/dialog-warning.svgz</normaloff>../../artwork/icons/dialog-warning.svgz</iconset>
    </property>
    <property name="text">
     <string>Delete all POIs</string>
