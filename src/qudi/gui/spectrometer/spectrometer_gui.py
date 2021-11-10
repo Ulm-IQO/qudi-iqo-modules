@@ -270,6 +270,8 @@ class SpectrometerGui(GuiBase):
 
     def target_changed(self):
         x_data = self.spectrumlogic().x_data
+        if x_data in None:
+            return
         start_index = -1 if self.spectrumlogic().axis_type_frequency else 0
         end_index = 0 if self.spectrumlogic().axis_type_frequency else -1
         position = self._mw.target_point.pos()

@@ -231,6 +231,8 @@ class SpectrometerLogic(LogicBase):
         return data
 
     def get_spectrum_at_x(self, x):
+        if self.x_data is None or self.spectrum is None:
+            return -1
         if self.axis_type_frequency:
             return np.interp(x, self.x_data[::-1], self.spectrum[::-1])
         else:
