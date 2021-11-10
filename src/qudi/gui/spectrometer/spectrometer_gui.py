@@ -85,8 +85,8 @@ class SpectrometerGui(GuiBase):
 
         # fill initial settings
         self._mw.axis_type.setChecked(self.spectrumlogic().axis_type_frequency)
-        self._mw.target_x.setValue(self._target_x)
-        self.target_updated()
+        self._mw.target_point.setPos(self._target_x)
+        # self.target_updated()
         self.keep_settings()
 
         # show the gui and update the data
@@ -147,14 +147,13 @@ class SpectrometerGui(GuiBase):
         # update settings shown by the gui
         self._mw.background_correction_switch.blockSignals(True)
         self._mw.constant_acquisition_switch.blockSignals(True)
-        self._mw.differential_spectrum_switch.blockSignals(True)
         self._mw.fit_region.blockSignals(True)
         self._mw.fit_region_from.blockSignals(True)
         self._mw.fit_region_to.blockSignals(True)
 
         self._mw.background_correction_switch.setChecked(self.spectrumlogic().background_correction)
         self._mw.constant_acquisition_switch.setChecked(self.spectrumlogic().constant_acquisition)
-        self._mw.differential_spectrum_switch.setChecked(self.spectrumlogic().differential_spectrum)
+        self._mw.spectrum_continue_button.setEnabled(self.spectrumlogic().constant_acquisition)
 
         self._mw.fit_region.setRegion(self.spectrumlogic().fit_region)
         self._mw.fit_region_from.setValue(self.spectrumlogic().fit_region[0])
@@ -162,10 +161,14 @@ class SpectrometerGui(GuiBase):
 
         self._mw.background_correction_switch.blockSignals(False)
         self._mw.constant_acquisition_switch.blockSignals(False)
-        self._mw.differential_spectrum_switch.blockSignals(False)
         self._mw.fit_region.blockSignals(False)
         self._mw.fit_region_from.blockSignals(False)
         self._mw.fit_region_to.blockSignals(False)
+
+        self._mw.differential_spectrum_switch.blockSignals(True)
+        self._mw.differential_spectrum_switch.setEnabled(self.spectrumlogic().differential_spectrum_available)
+        self._mw.differential_spectrum_switch.setChecked(self.spectrumlogic().differential_spectrum)
+        self._mw.differential_spectrum_switch.blockSignals(False)
 
         if self.spectrumlogic().axis_type_frequency:
             self._mw.plot_widget.setLabel('bottom', 'Frequency', units='Hz')
@@ -271,16 +274,16 @@ class SpectrometerGui(GuiBase):
     def target_changed(self):
         x_data = self.spectrumlogic().x_data
         if x_data is None:
+            print('out')
             return
         start_index = -1 if self.spectrumlogic().axis_type_frequency else 0
         end_index = 0 if self.spectrumlogic().axis_type_frequency else -1
-        position = self._mw.target_point.pos()
-        self._target_x = position[0]
+        self._target_x = self._mw.target_point.pos()[0]
 
         if self._target_x < min(x_data):
-            new_x = x_data[start_index]
+            self._target_x = x_data[start_index]
         elif self._target_x > max(x_data):
-            new_x = x_data[end_index]
+            self._target_x = x_data[end_index]
 
         new_y = self.spectrumlogic().get_spectrum_at_x(self._target_x)
         self._mw.target_x.setValue(self._target_x)

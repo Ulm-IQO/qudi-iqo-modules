@@ -100,11 +100,13 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.controls_DockWidget.setWidget(control_widget)
 
         self.spectrum_button = QtWidgets.QPushButton('Acquire Spectrum')
+        self.spectrum_button.setToolTip('Acquire a new spectrum.')
         self.spectrum_button.setCheckable(False)
         self.spectrum_button.setMinimumWidth(130)
         self.control_layout.addWidget(self.spectrum_button, 0, 0, QtCore.Qt.AlignCenter)
 
         self.spectrum_continue_button = QtWidgets.QPushButton('Continue Spectrum')
+        self.spectrum_continue_button.setToolTip('If continuous spectrum is activated, continue averaging.')
         self.spectrum_continue_button.setCheckable(False)
         self.spectrum_continue_button.setMinimumWidth(130)
         self.control_layout.addWidget(self.spectrum_continue_button, 0, 1, QtCore.Qt.AlignCenter)
@@ -114,6 +116,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.control_layout.addWidget(self.save_spectrum_button, 0, 2, QtCore.Qt.AlignCenter)
 
         self.background_button = QtWidgets.QPushButton('Acquire Background')
+        self.background_button.setToolTip('Acquire a new background spectrum.')
         self.background_button.setMinimumWidth(130)
         self.control_layout.addWidget(self.background_button, 1, 0, QtCore.Qt.AlignCenter)
 
@@ -218,7 +221,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         self.target_point = pg.InfiniteLine(pos=0, angle=90, movable=True, pen=pg.mkPen(color='green', width=2))
         self.plot_widget.addItem(self.target_point)
 
-        self.plot_widget.setLabel('left', 'Fluorescence', units='counts/s')
+        self.plot_widget.setLabel('left', 'Intensity', units='(arb.u.)')
         self.plot_widget.setLabel('bottom', 'Wavelength', units='m')
         self.plot_widget.setMinimumHeight(300)
         self.plot_top_layout.addWidget(self.plot_widget)

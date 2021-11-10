@@ -138,7 +138,7 @@ class SpectrometerLogic(LogicBase):
         self._acquisition_running = True
         self.sig_state_updated.emit()
 
-        if self._differential_spectrum:
+        if self.differential_spectrum_available and self._differential_spectrum:
             self.modulation_device().modulation_on()
 
         # get data from the spectrometer
@@ -152,7 +152,7 @@ class SpectrometerLogic(LogicBase):
             self._wavelength = data[0, :]
             self._repetitions_spectrum += 1
 
-        if self._differential_spectrum:
+        if self.differential_spectrum_available and self._differential_spectrum:
             self.modulation_device().modulation_off()
             data = np.array(netobtain(self.spectrometer().record_spectrum()))
             with self._lock:
@@ -277,13 +277,17 @@ class SpectrometerLogic(LogicBase):
         self.sig_state_updated.emit()
 
     @property
+    def differential_spectrum_available(self):
+        return self.modulation_device.is_connected
+
+    @property
     def differential_spectrum(self):
         return self._differential_spectrum
 
     @differential_spectrum.setter
     def differential_spectrum(self, value):
         self._differential_spectrum = bool(value)
-        if self._differential_spectrum and not self.modulation_device.is_connected:
+        if self._differential_spectrum and not self.differential_spectrum_available:
             self.log.warning(f'differential_spectrum was requested, but no modulation device was connected.')
             self._differential_spectrum = False
         self.sig_state_updated.emit()
@@ -386,7 +390,7 @@ class SpectrometerLogic(LogicBase):
                      )
 
         ax1.set_xlabel(header[0])
-        ax1.set_ylabel('Intensity ({}count)'.format(prefix))
+        ax1.set_ylabel('Intensity ({} arb. u.)'.format(prefix))
         figure.tight_layout()
 
         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
