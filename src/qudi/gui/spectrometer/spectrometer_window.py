@@ -19,20 +19,29 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-import pyqtgraph as pg
-from qudi.util.colordefs import QudiPalettePale as palette
+__all__ = ['SpectrometerMainWindow']
+
 import os
-from qudi.util.paths import get_artwork_dir
+import importlib
 from PySide2 import QtCore
 from PySide2 import QtWidgets
 from PySide2 import QtGui
-from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
-from qudi.util.widgets.toggle_switch import ToggleSwitch
-from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
-from .settingsdialog import SettingsDialog
-from .control_widget import SpectrometerControlWidget
-from .data_widget import SpectrometerDataWidget
+from qudi.util.paths import get_artwork_dir
+from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
+# Ensure specialized QMainWindow widget is reloaded as well when reloading this module
+try:
+    importlib.reload(settingsdialog)
+except NameError:
+    import qudi.gui.spectrometer.settingsdialog as settingsdialog
+try:
+    importlib.reload(control_widget)
+except NameError:
+    import qudi.gui.spectrometer.control_widget as control_widget
+try:
+    importlib.reload(data_widget)
+except NameError:
+    import qudi.gui.spectrometer.data_widget as data_widget
 
 
 class SpectrometerMainWindow(QtWidgets.QMainWindow):
@@ -47,16 +56,16 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         icon_path = os.path.join(get_artwork_dir(), 'icons')
 
         # Create control central widget
-        self.control_widget = SpectrometerControlWidget()
+        self.control_widget = control_widget.SpectrometerControlWidget()
         self.setCentralWidget(self.control_widget)
 
         # Create data dockwidget
-        self.data_widget = SpectrometerDataWidget()
+        self.data_widget = data_widget.SpectrometerDataWidget()
         self.data_dockwidget = AdvancedDockWidget('Spectrometer Data', parent=self)
         self.data_dockwidget.setWidget(self.data_widget)
 
         # Create spectrometer settings dialog
-        self.settings_dialog = SettingsDialog()
+        self.settings_dialog = settingsdialog.SettingsDialog()
 
         # Create QActions
         close_icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))

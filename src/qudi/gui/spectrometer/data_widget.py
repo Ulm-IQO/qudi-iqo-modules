@@ -19,10 +19,13 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
+__all__ = ['SpectrometerDataWidget']
+
 import pyqtgraph as pg
-from qudi.util.colordefs import QudiPalettePale as palette
 from PySide2 import QtCore
 from PySide2 import QtWidgets
+
+from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.widgets.toggle_switch import ToggleSwitch
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.widgets.fitting import FitWidget

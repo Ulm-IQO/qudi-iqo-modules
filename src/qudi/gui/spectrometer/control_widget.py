@@ -19,11 +19,11 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-import os
-from qudi.util.paths import get_artwork_dir
+__all__ = ['SpectrometerControlWidget']
+
 from PySide2 import QtCore
 from PySide2 import QtWidgets
-from PySide2 import QtGui
+
 from qudi.util.widgets.toggle_switch import ToggleSwitch
 
 

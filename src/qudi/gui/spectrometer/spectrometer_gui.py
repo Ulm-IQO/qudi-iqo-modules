@@ -19,12 +19,19 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
+__all__ = ['SpectrometerGui']
+
+import importlib
+
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util.widgets.fitting import FitConfigurationDialog, FitWidget
-
-from .spectrometer_window import SpectrometerMainWindow
+# Ensure specialized QMainWindow widget is reloaded as well when reloading this module
+try:
+    importlib.reload(spectrometer_window)
+except NameError:
+    import qudi.gui.spectrometer.spectrometer_window as spectrometer_window
 
 
 class SpectrometerGui(GuiBase):
@@ -44,7 +51,7 @@ class SpectrometerGui(GuiBase):
         """ Definition and initialisation of the GUI.
         """
         # setting up the window
-        self._mw = SpectrometerMainWindow()
+        self._mw = spectrometer_window.SpectrometerMainWindow()
 
         # Fit settings dialog
         self._fsd = FitConfigurationDialog(
