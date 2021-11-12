@@ -65,8 +65,6 @@ class PulsedRefocusTask(ModuleTask):
         #self._measurement.start_pulsed_measurement()
         self._measurement.pulse_generator_on()
 
-
-
     def _run(self):
         """ Stop pulsed with backup , start laser_on, do refocus """
         self.log.info("Task would now optimize, if there was and optimiserlogic yet.")
