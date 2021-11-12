@@ -32,13 +32,13 @@ class PulsedRefocusTask(ModuleTask):
     It uses poi manager refocus duration as input.
 
     Example:
-        tasks:
-            pulsed_refocus:
-                module: 'pulsed_refocus'
-                needsmodules:
-                    poi_manager: 'poimanagerlogic'
-                    optimizer_logic: 'optimizerlogic'
-                    pulsed_master: 'pulsedmasterlogic'
+    taskrunnerlogic:
+        module.Class: taskrunner.TaskRunnerLogic
+        module_tasks:
+            pulsed_refocus_task:
+                module.Class: qudi.tasks.pulsed_refocus.PulsedRefocusTask
+                connect:
+                    pulsedmasterlogic: pulsed_master_logic
     """
 
     pulsedmasterlogic = Connector(name='pulsedmasterlogic', interface='PulsedMasterLogic')
