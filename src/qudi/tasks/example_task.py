@@ -46,7 +46,6 @@ class ExampleTask(ModuleTask):
     #_poi_manager = Connector(interface='PoiManager')
 
     def _setup(self):
-        self.init()
         generator = self.pulsedmasterlogic().sequencegeneratorlogic()
         generator.sample_pulse_block_ensemble('laser_on')
         generator.load_ensemble('laser_on')
