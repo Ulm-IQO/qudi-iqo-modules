@@ -59,5 +59,4 @@ class ExampleTask(ModuleTask):
 
     def _cleanup(self):
         """ go back to pulsed acquisition from backup """
-        self._measurement.pulse_generator_off()
 
