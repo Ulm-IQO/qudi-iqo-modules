@@ -1,5 +1,5 @@
 from collections import deque
-import scipy
+import scipy.stats
 import numpy as np
 import copy
 
