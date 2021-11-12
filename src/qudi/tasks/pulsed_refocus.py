@@ -45,17 +45,9 @@ class PulsedRefocusTask(ModuleTask):
     # poimanager not available yet
     #_poi_manager = Connector(interface='PoiManager')
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-
-        self._generator = self.pulsedmasterlogic().sequencegeneratorlogic()
-        self._measurement = self.pulsedmasterlogic().pulsedmeasurementlogic()
-        self._was_invoke_settings = None
-        self._was_running = None
-        self._was_loaded = None
-
-
     def _setup(self):
+        self.init()
+
         self._was_running = self._measurement.module_state() == 'locked'
         if self._was_running:
             self._measurement.stop_pulsed_measurement('refocus')
@@ -63,7 +55,8 @@ class PulsedRefocusTask(ModuleTask):
         # self._was_power = self._laser.get_power_setpoint()
         self._was_invoke_settings = self._measurement.measurement_settings['invoke_settings']
 
-        # self._laser.set_power(self._power)
+
+    # self._laser.set_power(self._power)
         self.wait_for_idle()
         self._generator.generate_predefined_sequence(predefined_sequence_name='laser_on', kwargs_dict={})
         self._generator.sample_pulse_block_ensemble('laser_on')
@@ -71,6 +64,7 @@ class PulsedRefocusTask(ModuleTask):
         self._measurement.set_measurement_settings(invoke_settings=False)
         #self._measurement.start_pulsed_measurement()
         self._measurement.pulse_generator_on()
+
 
 
     def _run(self):
@@ -82,7 +76,7 @@ class PulsedRefocusTask(ModuleTask):
     def _cleanup(self):
         """ go back to pulsed acquisition from backup """
         self._measurement.pulse_generator_off()
-        self._measurement.stop_pulsed_measurement()
+        ##self._measurement.stop_pulsed_measurement()
         self.wait_for_idle()
         # todo what about sequences
         if self._was_loaded[1] == 'PulseBlockEnsemble' and self._was_loaded[0] != "":
@@ -106,3 +100,15 @@ class PulsedRefocusTask(ModuleTask):
             counter += 0.1
         if counter >= timeout:
             self.log.warning('Measurement is too long to stop, continuing anyway')
+
+    def init(self):
+        """
+        Setup class variables. Not using a constructor as connector would be no ready yet.
+        """
+        self._was_invoke_settings = None
+        self._was_running = None
+        self._was_loaded = None
+
+        self._generator = self.pulsedmasterlogic().sequencegeneratorlogic()
+        self._measurement = self.pulsedmasterlogic().pulsedmeasurementlogic()
+
