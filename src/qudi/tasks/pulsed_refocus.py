@@ -55,19 +55,17 @@ class PulsedRefocusTask(ModuleTask):
         # self._was_power = self._laser.get_power_setpoint()
         self._was_invoke_settings = self._measurement.measurement_settings['invoke_settings']
 
-
-    # self._laser.set_power(self._power)
         self.wait_for_idle()
         self._generator.generate_predefined_sequence(predefined_sequence_name='laser_on', kwargs_dict={})
         self._generator.sample_pulse_block_ensemble('laser_on')
         self._generator.load_ensemble('laser_on')
-        self._measurement.set_measurement_settings(invoke_settings=False)
+        #self._measurement.set_measurement_settings(invoke_settings=False)
         #self._measurement.start_pulsed_measurement()
         self._measurement.pulse_generator_on()
 
     def _run(self):
         """ Stop pulsed with backup , start laser_on, do refocus """
-        self.log.info("Task would now optimize, if there was and optimiserlogic yet.")
+        self.log.info("Task would now optimize, if there was an optimiserlogic yet.")
         # self._poi_manager.optimise_poi_position()
 
 
