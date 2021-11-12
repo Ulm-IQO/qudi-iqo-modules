@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Exemplary task to demonstrate interaction with other iqo-modules.
+Exemplary tasks to demonstrate interaction with other iqo-modules.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -19,19 +19,15 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from typing import Iterable, Optional, Tuple
 
 from qudi.core.scripting.moduletask import ModuleTask
 from qudi.core.connector import Connector
 
-import time
-
-
 class ExampleTask(ModuleTask):
-    """ This task pauses pulsed measurement, run laser_on, does a poi refocus then goes back to the pulsed acquisition.
+    """
+    Example config:
 
-    It uses poi manager refocus duration as input.
-
-    Example:
     taskrunnerlogic:
         module.Class: taskrunner.TaskRunnerLogic
         module_tasks:
@@ -42,21 +38,43 @@ class ExampleTask(ModuleTask):
     """
 
     pulsedmasterlogic = Connector(name='pulsedmasterlogic', interface='PulsedMasterLogic')
-    # poimanager not available yet
-    #_poi_manager = Connector(interface='PoiManager')
 
-    def _setup(self):
+    def _setup(self) -> None:
         generator = self.pulsedmasterlogic().sequencegeneratorlogic()
+
+        generator.generate_predefined_sequence(predefined_sequence_name='laser_on', kwargs_dict={})
         generator.sample_pulse_block_ensemble('laser_on')
         generator.load_ensemble('laser_on')
 
 
-    def _run(self):
-        """ Stop pulsed with backup , start laser_on, do refocus """
-        self.log.info("Task would now optimize, if there was and optimiserlogic yet.")
-        # self._poi_manager.optimise_poi_position()
+    def _run(self, run_arg=0) -> None:
+        self.log.info(f"Laser_on loaded, now ready for task. Received param run_arg= {run_arg}")
 
 
-    def _cleanup(self):
-        """ go back to pulsed acquisition from backup """
+    def _cleanup(self) -> None:
+        self.log.info("Task finshed.")
 
+
+class ExampleTask2(ModuleTask):
+    """
+    Example config:
+
+    taskrunnerlogic:
+       module.Class: taskrunner.TaskRunnerLogic
+       module_tasks:
+           test_task:
+               module.Class: qudi.tasks.example_task.ExampleTask2
+    """
+
+    def _setup(self) -> None:
+        pass
+
+    def _cleanup(self) -> None:
+        pass
+
+    def _run(self, iter_arg: Iterable[str], opt_arg: Optional[int] = 42
+             ) -> Tuple[Iterable[str], int]:
+
+        self.log.info(f"Received iter_arg= {iter_arg}, opt_arg= {opt_arg}")
+
+        return iter_arg, opt_arg
