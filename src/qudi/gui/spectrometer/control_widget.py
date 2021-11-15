@@ -70,6 +70,17 @@ class SpectrometerControlWidget(QtWidgets.QWidget):
                                                   QtWidgets.QSizePolicy.Fixed)
         main_layout.addWidget(self.save_background_button, 1, 2)
 
+        self.progress_bar = QtWidgets.QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        main_layout.addWidget(self.progress_bar, 2, 0, 1, 3)
+
+        # Add separator
+        separator = QtWidgets.QFrame()
+        separator.setFrameShape(QtWidgets.QFrame.VLine)
+        separator.setFrameShadow(QtWidgets.QFrame.Sunken)
+        main_layout.addWidget(separator, 0, 3, 3, 1)
+
         # Control switches
         switch_layout = QtWidgets.QGridLayout()
 
@@ -82,6 +93,9 @@ class SpectrometerControlWidget(QtWidgets.QWidget):
         background_correction_label = QtWidgets.QLabel('Background Correction:')
         background_correction_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.background_correction_switch = ToggleSwitch(state_names=('Off', 'On'))
+        self.background_correction_switch.setMinimumWidth(
+            background_correction_label.sizeHint().width()
+        )
         switch_layout.addWidget(background_correction_label, 1, 0)
         switch_layout.addWidget(self.background_correction_switch, 1, 1)
 
@@ -93,7 +107,7 @@ class SpectrometerControlWidget(QtWidgets.QWidget):
 
         switch_layout.setColumnStretch(2, 1)
 
-        main_layout.addLayout(switch_layout, 2, 0, 1, 3)
+        main_layout.addLayout(switch_layout, 0, 4, 3, 1)
 
         main_layout.setRowStretch(3, 1)
-        main_layout.setColumnStretch(3, 1)
+        main_layout.setColumnStretch(4, 1)

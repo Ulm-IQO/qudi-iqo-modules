@@ -22,10 +22,13 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 __all__ = ['SpectrometerGui']
 
 import importlib
+from time import perf_counter
+from PySide2 import QtCore
 
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
+from qudi.core.configoption import ConfigOption
 from qudi.util.widgets.fitting import FitConfigurationDialog, FitWidget
 # Ensure specialized QMainWindow widget is reloaded as well when reloading this module
 try:
@@ -42,14 +45,28 @@ class SpectrometerGui(GuiBase):
     _delete_fit = StatusVar(name='delete_fit', default=True)
     _target_x = StatusVar(name='target_x', default=0)
 
+    # ConfigOptions
+    _progress_poll_interval = ConfigOption(name='progress_poll_interval',
+                                           default=1,
+                                           missing='nothing')
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._mw = None
         self._fsd = None
+        self._start_acquisition_timestamp = 0
+        self._progress_timer = None
 
     def on_activate(self):
         """ Definition and initialisation of the GUI.
         """
+        # process value for progress bar and poll timer
+        self._start_acquisition_timestamp = 0
+        self._progress_timer = QtCore.QTimer(parent=self)
+        self._progress_timer.setSingleShot(True)
+        self._progress_timer.setInterval(round(1000 * self._progress_poll_interval))
+        self._progress_timer.timeout.connect(self._update_progress_bar)
+
         # setting up the window
         self._mw = spectrometer_window.SpectrometerMainWindow()
 
@@ -108,6 +125,11 @@ class SpectrometerGui(GuiBase):
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
+        # Delete and disconnect timer
+        self._progress_timer.timeout.disconnect()
+        self._progress_timer.stop()
+        self._progress_timer = None
+
         # clean up the fit
         self._mw.action_show_fit_settings.triggered.disconnect()
         self._fsd.close()
@@ -149,9 +171,16 @@ class SpectrometerGui(GuiBase):
     def update_state(self):
         # Update the text of the buttons according to logic state
         if self._spectrometer_logic().acquisition_running:
+            self._start_acquisition_timestamp = perf_counter()
+            self._mw.control_widget.progress_bar.setValue(0)
+            self._progress_timer.start()
             self._mw.control_widget.acquire_button.setText('Stop Spectrum')
             self._mw.control_widget.background_button.setText('Stop Background')
         else:
+            self._mw.control_widget.progress_bar.setValue(
+                self._mw.control_widget.progress_bar.maximum()
+            )
+            self._progress_timer.stop()
             self._mw.control_widget.acquire_button.setText('Acquire Spectrum')
             self._mw.control_widget.background_button.setText('Acquire Background')
 
@@ -285,17 +314,21 @@ class SpectrometerGui(GuiBase):
         self._spectrometer_logic().axis_type_frequency = self._mw.data_widget.axis_type.isChecked()
 
     def apply_settings(self):
-        self._spectrometer_logic().exposure_time = self._mw.settings_dialog.exposure_time_spinbox.value()
+        exposure_time = self._mw.settings_dialog.exposure_time_spinbox.value()
+        self._spectrometer_logic().exposure_time = exposure_time
+        self._mw.control_widget.progress_bar.setValue(0)
+        self._mw.control_widget.progress_bar.setRange(0, round(100 * exposure_time))
         self._delete_fit = self._mw.settings_dialog.delete_fit.isChecked()
 
     def keep_settings(self):
-        self._mw.settings_dialog.exposure_time_spinbox.setValue(self._spectrometer_logic().exposure_time)
+        exposure_time = float(self._spectrometer_logic().exposure_time)
+        self._mw.settings_dialog.exposure_time_spinbox.setValue(round(exposure_time))
+        self._mw.control_widget.progress_bar.setRange(0, round(100 * exposure_time))
         self._mw.settings_dialog.delete_fit.setChecked(self._delete_fit)
 
     def target_changed(self):
         x_data = self._spectrometer_logic().x_data
         if x_data is None:
-            print('out')
             return
         start_index = -1 if self._spectrometer_logic().axis_type_frequency else 0
         end_index = 0 if self._spectrometer_logic().axis_type_frequency else -1
@@ -316,3 +349,12 @@ class SpectrometerGui(GuiBase):
         self._target_x = self._mw.data_widget.target_x.value()
         self._mw.data_widget.target_point.setPos(self._target_x)
         self.target_changed()
+
+    @QtCore.Slot()
+    def _update_progress_bar(self) -> None:
+        progress_bar = self._mw.control_widget.progress_bar
+        max_ticks = progress_bar.maximum()
+        if progress_bar.value() < max_ticks:
+            elapsed_time_ticks = round(100 * (perf_counter() - self._start_acquisition_timestamp))
+            progress_bar.setValue(elapsed_time_ticks)
+            self._progress_timer.start()
