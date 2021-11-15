@@ -77,10 +77,10 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
 
         # Generate constraints
         self._constraints = MicrowaveConstraints(
-            power_limits=(-60, 20),
-            frequency_limits=(53e6, 14e9),
+            power_limits=(-50, 18),
+            frequency_limits=(54e6, 14e9),
             scan_size_limits=(2, 100),
-            sample_rate_limits=(0.1, 100),  # FIXME: Look up the proper specs for sample rate
+            sample_rate_limits=(0.1, 1e3/4),
             scan_modes=(SamplingOutputMode.EQUIDISTANT_SWEEP,)
         )
 

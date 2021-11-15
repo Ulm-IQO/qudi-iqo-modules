@@ -190,6 +190,14 @@ class Lightfield(SpectrometerInterface):
         """ Set the camera/spectrometer shutter state """
         pass
 
-    def recordSpectrum(self):
-        """ One-stop function to ecord a spectrum """
-        pass
+    def record_spectrum(self):
+        """ One-stop function to record a spectrum """
+        raise AssertionError('record_spectrum not yet implemented.')
+
+    @property
+    def exposure_time(self):
+        raise AssertionError('exposure_time not yet implemented.')
+
+    @exposure_time.setter
+    def exposure_time(self, value):
+        raise AssertionError('exposure_time not yet implemented.')
