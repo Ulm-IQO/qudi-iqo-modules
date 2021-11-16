@@ -518,7 +518,7 @@ class SequenceGeneratorLogic(LogicBase):
                 self.log.info("Estimated finish of loading for long waveform:"
                               " {0:%Y-%m-%d %H:%M:%S} ({1:d} s)".format(
                     finish, int(t_est_upload)))
-            self._last_busy_asset = {'name': ensemble.name, 'type': 'PulseBlockEnsemble',
+            self._last_busy_asset = {'name': ensemble.name, 'type': type(ensemble),
                                 't_finish': finish, 't_estimate': t_est_upload,
                                 'busy_with': 'loading'}
 
@@ -1823,9 +1823,9 @@ class SequenceGeneratorLogic(LogicBase):
                           " {0:%Y-%m-%d %H:%M:%S} ({1:d} s)".format(
                               finish, int(t_est_upload)))
 
-        self._last_busy_asset = {'name': ensemble.name, 'type': 'PulseBlockEnsemble',
+        self._last_busy_asset = {'name': ensemble.name, 'type': type(ensemble),
                             't_finish': finish, 't_estimate': t_est_upload,
-                            'busy_with': 'loading'}
+                            'busy_with': 'sampling'}
 
         ensemble.sampling_information.update(ensemble_info)
 
