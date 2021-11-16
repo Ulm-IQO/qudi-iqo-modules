@@ -16,8 +16,8 @@ body:
       label: Version
       description: What version of our software are you running?
       options:
-        - label: current main
-        - label: 1.0.0
+        - current main
+        - v0.1.0
     validations:
       required: true
   - type: textarea
