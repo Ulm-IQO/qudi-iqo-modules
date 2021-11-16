@@ -111,3 +111,6 @@ class SpectrometerControlWidget(QtWidgets.QWidget):
 
         main_layout.setRowStretch(3, 1)
         main_layout.setColumnStretch(4, 1)
+
+        self.acquire_button.setFixedWidth(self.background_button.sizeHint().width())
+        self.background_button.setFixedWidth(self.background_button.sizeHint().width())
