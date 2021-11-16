@@ -667,6 +667,13 @@ class PulsedMasterLogic(LogicBase):
         return self.sequencegeneratorlogic().sampled_sequences
 
     @property
+    def busy_asset(self):
+        if self.status_dict['sampload_busy']:
+            return self.sequencegeneratorlogic().last_busy_asset
+        else:
+            return {}
+
+    @property
     def loaded_asset(self):
         return self.sequencegeneratorlogic().loaded_asset
 

@@ -273,6 +273,10 @@ class PulsedMeasurementGui(GuiBase):
         self.sigPulseGeneratorSettingsUpdated.disconnect()
         self.sigPulseGeneratorRunBenchmark.disconnect()
 
+        self._loading_progress_timer.timeout.disconnect()
+        self._loading_progress_timer.stop()
+        self._loading_progress_timer = None
+
         self._mw.close()
         return
 
@@ -648,6 +652,12 @@ class PulsedMeasurementGui(GuiBase):
             self._mw.loading_indicator
         )  # adding as toolbar's last item
         self._mw.loading_indicator_action.setVisible(False)
+
+        self._loading_progress_timer = QtCore.QTimer(parent=self)
+        self._loading_progress_timer.setSingleShot(True)
+        self._loading_progress_timer.setInterval(round(1000 * 0.5)) # ms
+        self._loading_start_timestamp = None
+        self._loading_progress_timer.timeout.connect(self._update_loading_progress)
 
         self._mw.save_tag_LineEdit = QtWidgets.QLineEdit()
         # self._mw.save_tag_LineEdit.setMaximumWidth(200)
@@ -1980,6 +1990,9 @@ class PulsedMeasurementGui(GuiBase):
             label = self._mw.current_loaded_asset_Label
             label.setText('  loading...')
             self._mw.loading_indicator_action.setVisible(True)
+            self._loading_progress_timer.start()
+            self._loading_start_timestamp = datetime.datetime.now()
+            self._mw.loading_indicator.setTextValue(0)
 
     @QtCore.Slot()
     def benchmark_busy(self):
@@ -1995,6 +2008,30 @@ class PulsedMeasurementGui(GuiBase):
         if not self.pulsedmasterlogic().status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(True)
             self._mw.loading_indicator_action.setVisible(False)
+            self._loading_progress_timer.stop()
+
+    @QtCore.Slot()
+    def _update_loading_progress(self):
+        progress_text = self._mw.loading_indicator
+        if self.pulsedmasterlogic().busy_asset:
+            try:
+                t_est = self.pulsedmasterlogic().busy_asset['t_estimate']
+                t_finish = self._loading_start_timestamp + datetime.timedelta(0, t_est)
+                now = datetime.datetime.now()
+                t_remain = (t_finish - now).total_seconds()
+                t_total =  (t_finish - self._loading_start_timestamp).total_seconds()
+                #self.log.debug(f"Updating progress, busy asset: {self.pulsedmasterlogic().busy_asset}, "
+                #               f"start: {self._loading_start_timestamp} now: {now}, remain: {t_remain}")
+
+                progress_percent = int(100*(1-t_remain/t_total))
+            except KeyError:
+                progress_percent = "er"
+
+            if progress_percent >= 0 and progress_percent <= 100:
+                progress_text.setTextValue(progress_percent)
+            else:
+                progress_text.setTextValue(None)
+            self._loading_progress_timer.start()  # single shot timer needs to be restarted
 
     def generate_predefined_clicked(self, method_name, sample_and_load=False):
         """

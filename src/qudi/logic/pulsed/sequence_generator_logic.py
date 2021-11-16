@@ -151,6 +151,8 @@ class SequenceGeneratorLogic(LogicBase):
         self._saved_pulse_blocks = dict()
         self._saved_pulse_block_ensembles = dict()
         self._saved_pulse_sequences = dict()
+
+        self._last_busy_asset = dict()
         return
 
     def on_activate(self):
@@ -510,11 +512,15 @@ class SequenceGeneratorLogic(LogicBase):
                 return -1
 
             t_est_upload = self._benchmark_load.estimate_time(ensemble.sampling_information['number_of_samples'])
+            now = datetime.datetime.now()
+            finish = now + datetime.timedelta(0, t_est_upload)
             if t_est_upload > self._info_on_estimated_upload_time:
-                now = datetime.datetime.now()
                 self.log.info("Estimated finish of loading for long waveform:"
                               " {0:%Y-%m-%d %H:%M:%S} ({1:d} s)".format(
-                    (now + datetime.timedelta(0, t_est_upload)), int(t_est_upload)))
+                    finish, int(t_est_upload)))
+            self._last_busy_asset = {'name': ensemble.name, 'type': 'PulseBlockEnsemble',
+                                't_finish': finish, 't_estimate': t_est_upload,
+                                'busy_with': 'loading'}
 
             # Actually load the waveforms to the generic channels
             start_time = time.perf_counter()
@@ -660,6 +666,11 @@ class SequenceGeneratorLogic(LogicBase):
     @property
     def saved_pulse_sequences(self):
         return self._saved_pulse_sequences
+
+    @property
+    def last_busy_asset(self):
+        # access via pulsed_master_logic.busy_asset is recomended
+        return self._last_busy_asset
 
     @QtCore.Slot(dict)
     def set_generation_parameters(self, settings_dict=None, **kwargs):
@@ -1805,11 +1816,18 @@ class SequenceGeneratorLogic(LogicBase):
             return -1, list(), dict()
 
         t_est_upload = self._benchmark_write.estimate_time(ensemble_info['number_of_samples'])
+        now = datetime.datetime.now()
+        finish = now + datetime.timedelta(0, t_est_upload)
         if t_est_upload > self._info_on_estimated_upload_time:
-            now = datetime.datetime.now()
             self.log.info("Estimated finish of writing for long waveform:"
                           " {0:%Y-%m-%d %H:%M:%S} ({1:d} s)".format(
-                (now + datetime.timedelta(0, t_est_upload)), int(t_est_upload)))
+                              finish, int(t_est_upload)))
+
+        self._last_busy_asset = {'name': ensemble.name, 'type': 'PulseBlockEnsemble',
+                            't_finish': finish, 't_estimate': t_est_upload,
+                            'busy_with': 'loading'}
+
+        ensemble.sampling_information.update(ensemble_info)
 
         # integer to keep track of the sampls already processed
         processed_samples = 0
@@ -1935,6 +1953,8 @@ class SequenceGeneratorLogic(LogicBase):
         if ensemble_info['number_of_samples'] == 0:
             self.log.warning('Empty waveform (0 samples) created from PulseBlockEnsemble "{0}".'
                              ''.format(ensemble.name))
+
+
         if not self.__sequence_generation_in_progress:
             self.module_state.unlock()
         self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
