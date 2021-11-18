@@ -20,18 +20,21 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 """
 
 from PySide2 import QtCore
-from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
+from datetime import datetime
+import traceback
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
-from qudi.util.mutex import RecursiveMutex
+from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
+from qudi.util.datastorage import TextDataStorage
+from qudi.util.datafitting import FitContainer, FitConfigurationsModel
+
 
 class SpectrometerLogic(LogicBase):
-
     """This logic module gathers data from the spectrometer.
 
     Demo config:
@@ -40,30 +43,33 @@ class SpectrometerLogic(LogicBase):
         module.Class: 'spectrometer_logic.SpectrometerLogic'
         connect:
             spectrometer: 'myspectrometer'
-            # savelogic: 'savelogic'
-            odmrlogic: 'odmr_logic' # optional
-            # fitlogic: 'fitlogic'
+            modulation_device: 'my_odmr'
     """
 
     # declare connectors
     spectrometer = Connector(interface='SpectrometerInterface')
-    odmrlogic = Connector(interface='OdmrLogic', optional=True)
-    # savelogic = Connector(interface='SaveLogic')
-    # fitlogic = Connector(interface='FitLogic')
+    modulation_device = Connector(interface='ModulationInterface', optional=True)
 
     # declare status variables
-    _spectrum_data = StatusVar('spectrum_data', np.empty((2, 0)))
-    _spectrum_background = StatusVar('spectrum_background', np.empty((2, 0)))
-    _background_correction = StatusVar('background_correction', False)
-    fc = StatusVar('fits', None)
+    _spectrum = StatusVar(name='spectrum', default=[None, None])
+    _background = StatusVar(name='background', default=None)
+    _wavelength = StatusVar(name='wavelength', default=None)
+    _background_correction = StatusVar(name='background_correction', default=False)
+    _constant_acquisition = StatusVar(name='constant_acquisition', default=False)
+    _differential_spectrum = StatusVar(name='differential_spectrum', default=False)
+    _fit_region = StatusVar(name='fit_region', default=[0, 1])
+    _axis_type_frequency = StatusVar(name='axis_type_frequency', default=False)
+
+    _fit_config = StatusVar(name='fit_config', default=dict())
 
     # Internal signals
-    sig_specdata_updated = QtCore.Signal()
-    sig_next_diff_loop = QtCore.Signal()
+    _sig_get_spectrum = QtCore.Signal(bool, bool, bool)
+    _sig_get_background = QtCore.Signal(bool, bool, bool)
 
     # External signals eg for GUI module
-    spectrum_fit_updated_Signal = QtCore.Signal(np.ndarray, dict, str)
-    fit_domain_updated_Signal = QtCore.Signal(np.ndarray)
+    sig_data_updated = QtCore.Signal()
+    sig_state_updated = QtCore.Signal()
+    sig_fit_updated = QtCore.Signal(str, object)
 
     def __init__(self, **kwargs):
         """ Create SpectrometerLogic object with connectors.
@@ -71,382 +77,427 @@ class SpectrometerLogic(LogicBase):
           @param dict kwargs: optional parameters
         """
         super().__init__(**kwargs)
+        self.refractive_index_air = 1.00028823
+        self.speed_of_light = 2.99792458e8 / self.refractive_index_air
+        self._fit_config_model = None
+        self._fit_container = None
 
         # locking for thread safety
-        self.threadlock = RecursiveMutex()
+        self._lock = Mutex()
+
+        self._spectrum = [None, None]
+        self._wavelength = None
+        self._background = None
+        self._repetitions_spectrum = 0
+        self._repetitions_background = 0
+        self._stop_acquisition = False
+        self._acquisition_running = False
+        self._fit_results = None
+        self._fit_method = ''
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self._spectrum_data_corrected = np.array([])
-        self._calculate_corrected_spectrum()
+        self._fit_config_model = FitConfigurationsModel(parent=self)
+        self._fit_config_model.load_configs(self._fit_config)
+        self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
+        self.fit_region = self._fit_region
 
-        self.spectrum_fit = np.array([])
-        self.fit_domain = np.array([])
-
-        self.diff_spec_data_mod_on = np.array([])
-        self.diff_spec_data_mod_off = np.array([])
-        self.repetition_count = 0    # count loops for differential spectrum
-
-        self._spectrometer_device = self.spectrometer()
-        self._odmr_logic = self.odmrlogic()
-        self._save_logic = self.savelogic()
-
-        self.sig_next_diff_loop.connect(self._loop_differential_spectrum)
-        self.sig_specdata_updated.emit()
+        self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.QueuedConnection)
+        self._sig_get_background.connect(self.get_background, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
-        if self.module_state() != 'idle' and self.module_state() != 'deactivated':
-            pass
+        self._sig_get_spectrum.disconnect()
+        self._sig_get_background.disconnect()
+        self._fit_config = self._fit_config_model.dump_configs()
 
-    @fc.constructor
-    def sv_set_fits(self, val):
-        """ Set up fit container """
-        fc = self.fitlogic().make_fit_container('ODMR sum', '1d')
-        fc.set_units(['m', 'c/s'])
-        if isinstance(val, dict) and len(val) > 0:
-            fc.load_from_dict(val)
+    def stop(self):
+        self._stop_acquisition = True
+
+    def run_get_spectrum(self, constant_acquisition=None, differential_spectrum=None, reset=True):
+        if constant_acquisition is not None:
+            self.constant_acquisition = bool(constant_acquisition)
+        if differential_spectrum is not None:
+            self.differential_spectrum = bool(differential_spectrum)
+        self._sig_get_spectrum.emit(self._constant_acquisition, self._differential_spectrum, reset)
+
+    def get_spectrum(self, constant_acquisition=None, differential_spectrum=None, reset=True):
+        if constant_acquisition is not None:
+            self.constant_acquisition = bool(constant_acquisition)
+        if differential_spectrum is not None:
+            self.differential_spectrum = bool(differential_spectrum)
+        self._stop_acquisition = False
+
+        if reset:
+            self._spectrum = [None, None]
+            self._wavelength = None
+            self._repetitions_spectrum = 0
+
+        self._acquisition_running = True
+        self.sig_state_updated.emit()
+
+        if self.differential_spectrum_available and self._differential_spectrum:
+            self.modulation_device().modulation_on()
+
+        # get data from the spectrometer
+        data = np.array(netobtain(self.spectrometer().record_spectrum()))
+        with self._lock:
+            if self._spectrum[0] is None:
+                self._spectrum[0] = data[1, :]
+            else:
+                self._spectrum[0] += data[1, :]
+
+            self._wavelength = data[0, :]
+            self._repetitions_spectrum += 1
+
+        if self.differential_spectrum_available and self._differential_spectrum:
+            self.modulation_device().modulation_off()
+            data = np.array(netobtain(self.spectrometer().record_spectrum()))
+            with self._lock:
+                if self._spectrum[1] is None:
+                    self._spectrum[1] = data[1, :]
+                else:
+                    self._spectrum[1] += data[1, :]
         else:
-            d1 = OrderedDict()
-            d1['Gaussian peak'] = {
-                'fit_function': 'gaussian',
-                'estimator': 'peak'
-                }
-            default_fits = OrderedDict()
-            default_fits['1d'] = d1
-            fc.load_from_dict(default_fits)
-        return fc
+            with self._lock:
+                self._spectrum[1] = None
+        self.sig_data_updated.emit()
 
-    @fc.representer
-    def sv_get_fits(self, val):
-        """ save configured fits """
-        if len(val.fit_list) > 0:
-            return val.save_to_dict()
-        else:
-            return None
+        if self._constant_acquisition and not self._stop_acquisition:
+            return self.run_get_spectrum(reset=False)
+        self._acquisition_running = False
+        self.fit_region = self._fit_region
+        self.sig_state_updated.emit()
+        return self.spectrum
 
-    def get_single_spectrum(self, background=False):
-        """ Record a single spectrum from the spectrometer.
-        """
-        # Clear any previous fit
-        self.fc.clear_result()
+    def run_get_background(self, constant_acquisition=None, reset=True):
+        if constant_acquisition is not None:
+            self.constant_acquisition = bool(constant_acquisition)
+        self._sig_get_background.emit(self._constant_acquisition, self._differential_spectrum, reset)
 
-        if background:
-            self._spectrum_background = netobtain(self._spectrometer_device.recordSpectrum())
-        else:
-            self._spectrum_data = netobtain(self._spectrometer_device.recordSpectrum())
+    def get_background(self, constant_acquisition=None, reset=True):
+        if constant_acquisition is not None:
+            self.constant_acquisition = bool(constant_acquisition)
+        self._stop_acquisition = False
 
-        self._calculate_corrected_spectrum()
+        if reset:
+            self._background = None
+            self._wavelength = None
+            self._repetitions_background = 0
 
-        # Clearing the differential spectra data arrays so that they do not get
-        # saved with this single spectrum.
-        self.diff_spec_data_mod_on = np.array([])
-        self.diff_spec_data_mod_off = np.array([])
+        self._acquisition_running = True
+        self.sig_state_updated.emit()
 
-        self.sig_specdata_updated.emit()
+        # get data from the spectrometer
+        data = np.array(netobtain(self.spectrometer().record_spectrum()))
+        with self._lock:
+            if self._background is None:
+                self._background = data[1, :]
+            else:
+                self._background += data[1, :]
 
-    def _calculate_corrected_spectrum(self):
-        self._spectrum_data_corrected = np.copy(self._spectrum_data)
-        if len(self._spectrum_background) == 2 \
-                and len(self._spectrum_background[1, :]) == len(self._spectrum_data[1, :]):
-            self._spectrum_data_corrected[1, :] -= self._spectrum_background[1, :]
-        else:
-            self.log.warning('Background spectrum has a different dimension then the acquired spectrum. '
-                             'Returning raw spectrum. '
-                             'Try acquiring a new background spectrum.')
+            self._wavelength = data[0, :]
+            self._repetitions_background += 1
+        self.sig_data_updated.emit()
+
+        if self._constant_acquisition and not self._stop_acquisition:
+            return self.run_get_background(reset=False)
+        self._acquisition_running = False
+        self.sig_state_updated.emit()
+        return self.background
 
     @property
-    def spectrum_data(self):
+    def acquisition_running(self):
+        return self._acquisition_running
+
+    @property
+    def spectrum(self):
+        if self._spectrum[0] is None:
+            return None
+        data = np.copy(self._spectrum[0])
+        if self._differential_spectrum and self._spectrum[1] is not None:
+            data = data - self._spectrum[1]
+        if self._repetitions_spectrum != 0:
+            data /= self._repetitions_spectrum
         if self._background_correction:
-            self._calculate_corrected_spectrum()
-            return self._spectrum_data_corrected
+            if self._background is not None and len(data) == len(self._background):
+                data = data - self.background
+            else:
+                self.log.warning(f'Length of spectrum ({len(data)}) does not match '
+                                 f'background ({len(self._background) if self._background is not None else 0}), '
+                                 f'returning pure spectrum.')
+        return data
+
+    def get_spectrum_at_x(self, x):
+        if self.x_data is None or self.spectrum is None:
+            return -1
+        if self.axis_type_frequency:
+            return np.interp(x, self.x_data[::-1], self.spectrum[::-1])
         else:
-            return self._spectrum_data
+            return np.interp(x, self.x_data, self.spectrum)
+
+    @property
+    def background(self):
+        if self._repetitions_background != 0:
+            return self._background / self._repetitions_background
+        else:
+            return self._background
+
+    @property
+    def x_data(self):
+        if self._axis_type_frequency:
+            if self._wavelength is not None:
+                return self.speed_of_light / self._wavelength
+        else:
+            return self._wavelength
+
+    @property
+    def repetitions(self):
+        return self._repetitions_spectrum
 
     @property
     def background_correction(self):
         return self._background_correction
 
     @background_correction.setter
-    def background_correction(self, correction=None):
-        if correction is None or correction:
-            self._background_correction = True
-        else:
-            self._background_correction = False
-        self.sig_specdata_updated.emit()
+    def background_correction(self, value):
+        self._background_correction = bool(value)
+        self.sig_state_updated.emit()
+        self.sig_data_updated.emit()
 
-    def save_raw_spectrometer_file(self, path='', postfix=''):
-        """Ask the hardware device to save its own raw file.
-        """
-        # TODO: sanity check the passed parameters.
+    @property
+    def constant_acquisition(self):
+        return self._constant_acquisition
 
-        self._spectrometer_device.saveSpectrum(path, postfix=postfix)
+    @constant_acquisition.setter
+    def constant_acquisition(self, value):
+        self._constant_acquisition = bool(value)
+        self.sig_state_updated.emit()
 
-    def start_differential_spectrum(self):
-        """Start a differential spectrum acquisition.  An initial spectrum is recorded to initialise the data arrays to the right size.
-        """
+    @property
+    def differential_spectrum_available(self):
+        return self.modulation_device.is_connected
 
-        self._continue_differential = True
+    @property
+    def differential_spectrum(self):
+        return self._differential_spectrum
 
-        # Taking a demo spectrum gives us the wavelength values and the length of the spectrum data.
-        demo_data = netobtain(self._spectrometer_device.recordSpectrum())
+    @differential_spectrum.setter
+    def differential_spectrum(self, value):
+        self._differential_spectrum = bool(value)
+        if self._differential_spectrum and not self.differential_spectrum_available:
+            self.log.warning(f'differential_spectrum was requested, but no modulation device was connected.')
+            self._differential_spectrum = False
+        self.sig_state_updated.emit()
 
-        wavelengths = demo_data[0, :]
-        empty_signal = np.zeros(len(wavelengths))
-
-        # Using this information to initialise the differential spectrum data arrays.
-        self._spectrum_data = np.array([wavelengths, empty_signal])
-        self.diff_spec_data_mod_on = np.array([wavelengths, empty_signal])
-        self.diff_spec_data_mod_off = np.array([wavelengths, empty_signal])
-        self.repetition_count = 0
-
-        # Starting the measurement loop
-        self._loop_differential_spectrum()
-
-    def resume_differential_spectrum(self):
-        """Resume a differential spectrum acquisition.
-        """
-
-        self._continue_differential = True
-
-        # Starting the measurement loop
-        self._loop_differential_spectrum()
-
-    def _loop_differential_spectrum(self):
-        """ This loop toggles the modulation and iteratively records a differential spectrum.
-        """
-
-        # If the loop should not continue, then return immediately without
-        # emitting any signal to repeat.
-        if not self._continue_differential:
-            return
-
-        # Otherwise, we make a measurement and then emit a signal to repeat this loop.
-
-        # Toggle on, take spectrum and add data to the mod_on data
-        self.toggle_modulation(on=True)
-        these_data = netobtain(self._spectrometer_device.recordSpectrum())
-        self.diff_spec_data_mod_on[1, :] += these_data[1, :]
-
-        # Toggle off, take spectrum and add data to the mod_off data
-        self.toggle_modulation(on=False)
-        these_data = netobtain(self._spectrometer_device.recordSpectrum())
-        self.diff_spec_data_mod_off[1, :] += these_data[1, :]
-
-        self.repetition_count += 1    # increment the loop count
-
-        # Calculate the differential spectrum
-        self._spectrum_data[1, :] = self.diff_spec_data_mod_on[
-            1, :] - self.diff_spec_data_mod_off[1, :]
-
-        self.sig_specdata_updated.emit()
-
-        self.sig_next_diff_loop.emit()
-
-    def stop_differential_spectrum(self):
-        """Stop an ongoing differential spectrum acquisition
-        """
-
-        self._continue_differential = False
-
-    def toggle_modulation(self, on):
-        """ Toggle the modulation.
-        """
-        if self._odmr_logic is None:
-            return
-        if on:
-            self._odmr_logic.mw_cw_on()
-        elif not on:
-            self._odmr_logic.mw_off()
-        else:
-            print("Parameter 'on' needs to be boolean")
-
-    def save_spectrum_data(self, background=False, name_tag='', custom_header = None):
+    def save_spectrum_data(self, background=False, name_tag='', root_dir=None, parameter=None):
         """ Saves the current spectrum data to a file.
 
         @param bool background: Whether this is a background spectrum (dark field) or not.
-
         @param string name_tag: postfix name tag for saved filename.
-
-        @param OrderedDict custom_header:
-            This ordered dictionary is added to the default data file header. It allows arbitrary
-            additional experimental information to be included in the saved data file header.
+        @param string root_dir: overwrite the file position in necessary
+        @param dict parameter: additional parameters to add to the saved file
         """
-        filepath = self._save_logic.get_path_for_module(module_name='spectra')
-        if background:
-            filelabel = 'background'
-            spectrum_data = self._spectrum_background
-        else:
-            filelabel = 'spectrum'
-            spectrum_data = self._spectrum_data
 
-        # Add name_tag as postfix to filename
-        if name_tag != '':
-            filelabel = filelabel + '_' + name_tag
+        timestamp = datetime.now()
 
         # write experimental parameters
-        parameters = OrderedDict()
-        parameters['Spectrometer acquisition repetitions'] = self.repetition_count
+        parameters = {'acquisition repetitions': self.repetitions,
+                      'differential_spectrum': self.differential_spectrum,
+                      'background_correction': self.background_correction,
+                      'constant_acquisition': self.constant_acquisition}
+        if self.fit_method != 'No Fit' and self.fit_results is not None:
+            parameters['fit_method'] = self.fit_method
+            parameters['fit_results'] = self.fit_results.params
+            parameters['fit_region'] = self.fit_region
+        if parameter:
+            parameters.update(parameter)
 
-        # add all fit parameter to the saved data:
-        if self.fc.current_fit_result is not None:
-            parameters['Fit function'] = self.fc.current_fit
+        if self.x_data is None:
+            self.log.error('No data to save.')
+            return
 
-            for name, param in self.fc.current_fit_param.items():
-                parameters[name] = str(param)
-        
-        # add any custom header params
-        if custom_header is not None:
-            for key in custom_header:
-                parameters[key] = custom_header[key]
-
-        # prepare the data in an OrderedDict:
-        data = OrderedDict()
-
-        data['wavelength'] = spectrum_data[0, :]
-
-        # If the differential spectra arrays are not empty, save them as raw data
-        if len(self.diff_spec_data_mod_on) != 0 and len(self.diff_spec_data_mod_off) != 0:
-            data['signal_mod_on'] = self.diff_spec_data_mod_on[1, :]
-            data['signal_mod_off'] = self.diff_spec_data_mod_off[1, :]
-            data['differential'] = spectrum_data[1, :]
+        if self._axis_type_frequency:
+            data = [self.x_data * 1e-12, ]
+            header = ['Frequency (THz)', ]
         else:
-            data['signal'] = spectrum_data[1, :]
+            data = [self.x_data * 1e9, ]
+            header = ['Wavelength (nm)', ]
 
-        if not background and len(self._spectrum_data_corrected) != 0:
-            data['corrected'] = self._spectrum_data_corrected[1, :]
+        # prepare the data
+        if not background:
+            if self.spectrum is None:
+                self.log.error('No spectrum to save.')
+                return
+            data.append(self.spectrum)
+            file_label = 'spectrum' + name_tag
+        else:
+            if self.background is None or self.spectrum is None:
+                self.log.error('No background to save.')
+                return
+            data.append(self.background)
+            file_label = 'background' + name_tag
 
-        fig = self.draw_figure()
+        header.append('Signal')
 
-        # Save to file
-        self._save_logic.save_data(data,
-                                   filepath=filepath,
-                                   parameters=parameters,
-                                   filelabel=filelabel,
-                                   plotfig=fig)
-        self.log.debug('Spectrum saved to:\n{0}'.format(filepath))
+        if not background:
+            # if background correction was on, also save the data without correction
+            if self._background_correction:
+                self._background_correction = False
+                data.append(self.spectrum)
+                self._background_correction = True
+                header.append('Signal raw')
 
-    def draw_figure(self):
-        """ Draw the summary plot to save with the data.
+            # If the differential spectra arrays are not empty, save them as raw data
+            if self._differential_spectrum and self._spectrum[1] is not None:
+                data.append(self._spectrum[0])
+                header.append('Signal ON')
+                data.append(self._spectrum[1])
+                header.append('Signal OFF')
 
-        @return fig fig: a matplotlib figure object to be saved to file.
-        """
-        wavelength = self.spectrum_data[0, :] * 1e9 # convert m to nm for plot
-        spec_data = self.spectrum_data[1, :]
+        # save the date to file
+        ds = TextDataStorage(root_dir=self.module_default_data_dir if root_dir is None else root_dir)
 
-        prefix = ['', 'k', 'M', 'G', 'T']
+        file_path, _, _ = ds.save_data(np.array(data).T,
+                                       column_headers=header,
+                                       metadata=parameters,
+                                       nametag=file_label,
+                                       timestamp=timestamp,
+                                       column_dtypes=[float] * len(header))
+
+        # save the figure into a file
+        figure, ax1 = plt.subplots()
+        rescale_factor, prefix = self._get_si_scaling(np.max(data[1]))
+
+        ax1.plot(data[0],
+                 data[1] / rescale_factor,
+                 linestyle=':',
+                 linewidth=0.5
+                 )
+
+        if self.fit_method != 'No Fit' and self.fit_results is not None:
+            if self._axis_type_frequency:
+                x_data = self.fit_results.high_res_best_fit[0] * 1e-12
+            else:
+                x_data = self.fit_results.high_res_best_fit[0] * 1e9
+
+            ax1.plot(x_data,
+                     self.fit_results.high_res_best_fit[1] / rescale_factor,
+                     linestyle=':',
+                     linewidth=0.5
+                     )
+
+        ax1.set_xlabel(header[0])
+        ax1.set_ylabel('Intensity ({} arb. u.)'.format(prefix))
+        figure.tight_layout()
+
+        ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
+
+        self.log.debug(f'Spectrum saved to:{file_path}')
+
+    @staticmethod
+    def _get_si_scaling(number):
+
+        prefix = ['', 'k', 'M', 'G', 'T', 'P']
         prefix_index = 0
         rescale_factor = 1
-        
+
         # Rescale spectrum data with SI prefix
-        while np.max(spec_data) / rescale_factor > 1000:
+        while number / rescale_factor > 1000:
             rescale_factor = rescale_factor * 1000
             prefix_index = prefix_index + 1
 
         intensity_prefix = prefix[prefix_index]
+        return rescale_factor, intensity_prefix
 
-        # Prepare the figure to save as a "data thumbnail"
-        plt.style.use(self._save_logic.mpl_qd_style)
+    @property
+    def axis_type_frequency(self):
+        return self._axis_type_frequency
 
-        fig, ax1 = plt.subplots()
+    @axis_type_frequency.setter
+    def axis_type_frequency(self, value):
+        self._axis_type_frequency = bool(value)
+        self._fit_method = 'No Fit'
+        self._fit_results = None
+        self.fit_region = (0, 1e20)
+        self.sig_data_updated.emit()
 
-        ax1.plot(wavelength,
-                 spec_data / rescale_factor,
-                 linestyle=':',
-                 linewidth=0.5
-                )
-        
-        # If there is a fit, plot it also
-        if self.fc.current_fit_result is not None:
-            ax1.plot(self.spectrum_fit[0] * 1e9,  # convert m to nm for plot
-                     self.spectrum_fit[1] / rescale_factor,
-                     marker='None'
-                    )
+    @property
+    def exposure_time(self):
+        return self.spectrometer().exposure_time
 
-        ax1.set_xlabel('Wavelength (nm)')
-        ax1.set_ylabel('Intensity ({}count)'.format(intensity_prefix))
-
-        fig.tight_layout()
-
-        return fig
+    @exposure_time.setter
+    def exposure_time(self, value):
+        self.spectrometer().exposure_time = float(value)
 
     ################
     # Fitting things
 
-    def get_fit_functions(self):
-        """ Return the hardware constraints/limits
-        @return list(str): list of fit function names
-        """
-        return list(self.fc.fit_list)
+    @property
+    def fit_config_model(self):
+        return self._fit_config_model
 
-    def do_fit(self, fit_function=None, x_data=None, y_data=None):
-        """
-        Execute the currently configured fit on the measurement data. Optionally on passed data
+    @property
+    def fit_container(self):
+        return self._fit_container
 
-        @param string fit_function: The name of one of the defined fit functions.
+    def do_fit(self, fit_method):
+        if fit_method == 'No Fit':
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
 
-        @param array x_data: wavelength data for spectrum.
+        self.fit_region = self._fit_region
+        if self.x_data is None or self.spectrum is None:
+            self.log.error('No data to fit.')
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
 
-        @param array y_data: intensity data for spectrum.
-        """
-        if (x_data is None) or (y_data is None):
-            x_data = self.spectrum_data[0]
-            y_data = self.spectrum_data[1]
-            if self.fit_domain.any():
-                start_idx = self._find_nearest_idx(x_data, self.fit_domain[0])
-                stop_idx = self._find_nearest_idx(x_data, self.fit_domain[1])
-
-                x_data = x_data[start_idx:stop_idx]
-                y_data = y_data[start_idx:stop_idx]
-
-        if fit_function is not None and isinstance(fit_function, str):
-            if fit_function in self.get_fit_functions():
-                self.fc.set_current_fit(fit_function)
-            else:
-                self.fc.set_current_fit('No Fit')
-                if fit_function != 'No Fit':
-                    self.log.warning('Fit function "{0}" not available in Spectrum logic '
-                                     'fit container.'.format(fit_function)
-                                     )
-
-        spectrum_fit_x, spectrum_fit_y, result = self.fc.do_fit(x_data, y_data)
-
-        self.spectrum_fit = np.array([spectrum_fit_x, spectrum_fit_y])
-
-        if result is None:
-            result_str_dict = {}
+        if self._axis_type_frequency:
+            start = len(self.x_data) - np.searchsorted(self.x_data[::-1], self._fit_region[1], 'left')
+            end = len(self.x_data) - np.searchsorted(self.x_data[::-1], self._fit_region[0], 'right')
         else:
-            result_str_dict = result.result_str_dict
-        self.spectrum_fit_updated_Signal.emit(self.spectrum_fit,
-                                              result_str_dict,
-                                              self.fc.current_fit
-                                              )
-        return
+            start = np.searchsorted(self.x_data, self._fit_region[0], 'left')
+            end = np.searchsorted(self.x_data, self._fit_region[1], 'right')
 
-    def _find_nearest_idx(self, array, value):
-        """ Find array index of element nearest to given value
+        if end - start < 2:
+            self.log.error('Fit region limited the data to less than two points. Fit not possible.')
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
 
-        @param list array: array to be searched.
-        @param float value: desired value.
+        x_data = self.x_data[start:end]
+        y_data = self.spectrum[start:end]
 
-        @return index of nearest element.
-        """
+        try:
+            self._fit_method, self._fit_results = self._fit_container.fit_data(fit_method, x_data, y_data)
+        except:
+            self.log.exception(f'Data fitting failed:\n{traceback.format_exc()}')
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
 
-        idx = (np.abs(array-value)).argmin()
-        return idx
+        self.sig_fit_updated.emit(self._fit_method, self._fit_results)
+        return self._fit_method, self._fit_results
 
-    def set_fit_domain(self, domain=None):
-        """ Set the fit domain to a user specified portion of the data.
+    @property
+    def fit_results(self):
+        return self._fit_results
 
-        If no domain is given, then this method sets the fit domain to match the full data domain.
+    @property
+    def fit_method(self):
+        return self._fit_method
 
-        @param np.array domain: two-element array containing min and max of domain.
-        """
-        if domain is not None:
-            self.fit_domain = domain
-        else:
-            self.fit_domain = np.array([self.spectrum_data[0, 0], self.spectrum_data[0, -1]])
+    @property
+    def fit_region(self):
+        return self._fit_region
 
-        self.fit_domain_updated_Signal.emit(self.fit_domain)
+    @fit_region.setter
+    def fit_region(self, fit_region):
+        assert len(fit_region) == 2, f'fit_region has to be of length 2 but was {type(fit_region)}'
+
+        if self.x_data is None:
+            return
+        fit_region = fit_region if fit_region[0] <= fit_region[1] else (fit_region[1], fit_region[0])
+        new_region = (max(min(self.x_data), fit_region[0]), min(max(self.x_data), fit_region[1]))
+        self._fit_region = new_region
+        self.sig_state_updated.emit()
