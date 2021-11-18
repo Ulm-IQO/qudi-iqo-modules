@@ -28,7 +28,7 @@ from qudi.interface.grating_spectrometer_interface import GratingSpectrometerInt
 from qudi.interface.grating_spectrometer_interface import Grating, PortType, Port, Constraints
 
 
-class Main(Base, GratingSpectrometerInterface):
+class GratingSpectrometerDummy(Base, GratingSpectrometerInterface):
     """ Hardware module that interface a dummy grating spectrometer
 
         Example config for copy-paste:

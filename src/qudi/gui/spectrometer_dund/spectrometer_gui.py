@@ -92,7 +92,7 @@ class SpectrumTab(QtWidgets.QWidget):
         self.show()
 
 
-class Main(GuiBase):
+class SpectrometerGui(GuiBase):
     """ GUI module to interface a spectrometer """
 
     spectrumlogic = Connector(interface='SpectrumLogic')

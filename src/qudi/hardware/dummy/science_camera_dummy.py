@@ -31,7 +31,7 @@ from qudi.interface.science_camera_interface import ReadMode, Constraints, Image
 import time
 
 
-class Main(Base, ScienceCameraInterface):
+class ScienceCamDummy(Base, ScienceCameraInterface):
     """ This module is the dummy module for the ScienceCameraInterface interface
 
     Example config for copy-paste:
