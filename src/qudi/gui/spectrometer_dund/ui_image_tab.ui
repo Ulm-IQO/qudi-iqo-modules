@@ -20,13 +20,7 @@
    <string>Form</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="0" column="0">
-    <widget class="PlotWidget" name="graph"/>
-   </item>
-   <item row="0" column="1">
-    <layout class="QVBoxLayout" name="colorbar"/>
-   </item>
-   <item row="0" column="2" rowspan="2">
+   <item row="0" column="1" rowspan="2">
     <layout class="QVBoxLayout" name="verticalLayout_6">
      <item>
       <widget class="QGroupBox" name="image_settings">
@@ -255,6 +249,9 @@
      </item>
     </layout>
    </item>
+   <item row="0" column="0">
+    <layout class="QVBoxLayout" name="verticalLayout"/>
+   </item>
    <item row="1" column="0">
     <layout class="QHBoxLayout" name="horizontalLayout_3">
      <item>
@@ -319,13 +316,6 @@
    </item>
   </layout>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>PlotWidget</class>
-   <extends>QGraphicsView</extends>
-   <header location="global">pyqtgraph</header>
-  </customwidget>
- </customwidgets>
  <resources/>
  <connections/>
 </ui>

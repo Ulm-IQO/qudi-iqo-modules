@@ -365,12 +365,17 @@ class Main(GuiBase):
         self.my_colors = ColorScaleInferno()
         #self._image = pg.ImageItem(image=self._image_data, axisOrder='row-major')
         self._image_widget = ImageWidget()
-        self._image_widget._image_item.setLookupTable(self.my_colors.lut)
 
+        self._image_data = np.zeros((1,1))
+
+        self._image_widget._image_item.setOpts(False, axisOrder='row-major', lut=self.my_colors.lut)
+        self._image = self._image_widget._image_item
+        self._image_tab.verticalLayout.addWidget(self._image_widget)
+        #self._image_tab.horizontalLayout_3.addWidget(self._image_widget)
+        #self._image_tab.graph.addItem(self._image_widget)
         # self._image_widget.setAspectLocked(lock=True, ratio=1.0)
 
-        self._image_tab.colorbar.addWidget(self._image_widget)
-        # todo: colorbar still broken, old core gui.gui_components.colorbar not functional
+
 
 
         self.track_colors = np.array([palette.c5, palette.c2, palette.c6, palette.c4])
@@ -393,8 +398,11 @@ class Main(GuiBase):
             track.setBounds([0, height])
             track.hide()
             self._track_selector.append(track)
-            self._image_tab.graph.addItem(track)
+            # todo: tracking in graph currently broken
+            #self._image_widget._image_item.addItem(track)
+            #self._image_tab.graph.addItem(track)
 
+        # todo: advanced image / cropping currently broken
         self._image_tab.image_advanced.setCheckable(True)
         self._image_tab.image_advanced.clicked.connect(self._manage_image_advanced_button)
         self._image_advanced_widget = pg.ROI([0,0], [camera_width, camera_height],
@@ -614,11 +622,11 @@ class Main(GuiBase):
         self.spectrumlogic().sigUpdateData.connect(partial(self._update_dark, index))
 
         if index == 0:
-            self.spectrumlogic().read_modes = self._image_tab.read_modes.currentData()
+            self.spectrumlogic().read_mode = self._image_tab.read_modes.currentData()
             self.spectrumlogic().exposure_time = self.image_exposure_time_widget.value()
             self.spectrumlogic().readout_speed = self._image_tab.readout_speed.currentData()
         elif index == 1:
-            self.spectrumlogic().read_modes = self._spectrum_tab.read_modes.currentData()
+            self.spectrumlogic().read_mode = self._spectrum_tab.read_modes.currentData()
             self.spectrumlogic().exposure_time = self.spectrum_exposure_time_widget.value()
             self.spectrumlogic().readout_speed = self._spectrum_tab.readout_speed.currentData()
 
@@ -725,6 +733,7 @@ class Main(GuiBase):
             self.spectrumlogic().image_advanced_binning = image_binning
 
         # todo: crashes in dummy
+        return
         roi_size = self._image_advanced_widget.getArrayRegion(self._image_data, self._image).shape
         roi_origin = self._image_advanced_widget.pos()
         vertical_range = [int(roi_origin[0]), int(roi_origin[0])+roi_size[0]]
@@ -814,16 +823,16 @@ class Main(GuiBase):
             self._image_data = data
             image = data[1]
 
-            self._image.setImage(image)
-            self._colorbar.refresh_image()
+            self._image_widget.set_image(image)
+            #self._colorbar.refresh_image()
 
             if self.spectrumlogic().read_mode == "IMAGE_ADVANCED":
                 rectf = self._image_advanced_widget.parentBounds()
-                self._image.setRect(rectf)
+                #self._image.setRect(rectf)
             else:
                 width = self.spectrumlogic().camera_constraints.width
                 height = self.spectrumlogic().camera_constraints.height
-                self._image.setRect(QtCore.QRect(0,0,width,height))
+                #self._image.setRect(QtCore.QRect(0,0,width,height))
 
         elif index == 1:
 
@@ -903,21 +912,3 @@ class Main(GuiBase):
             self._spectrum_dark = np.zeros(1000)
             self._spectrum_tab.dark_acquired_msg.setText("No Dark Acquired")
 
-    @QtCore.Slot(object)
-    def _colorbar_mode_changed(self, mode):
-        if mode is ColorBarMode.PERCENTILE:
-            self._colorbar_percentiles_changed(self._colorbar.percentiles)
-        else:
-            self._colorbar_limits_changed(self._colorbar.limits)
-
-    @QtCore.Slot(tuple)
-    def _colorbar_limits_changed(self, limits):
-        self._image_widget.percentiles = None
-        self._image_widget.setLevels(limits)
-
-    @QtCore.Slot(tuple)
-    def _colorbar_percentiles_changed(self, percentiles):
-        self._image_widget.percentiles = percentiles
-        levels = self._image.levels
-        if levels is not None:
-            self._colorbar.set_limits(*levels)
