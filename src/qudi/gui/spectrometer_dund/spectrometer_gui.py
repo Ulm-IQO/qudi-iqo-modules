@@ -729,13 +729,12 @@ class SpectrometerGui(GuiBase):
             self._image_tab.dark_acquired_msg.setText("No Dark Acquired")
             self.spectrumlogic().image_advanced_binning = image_binning
 
-        # todo: crashes in dummy
-        #return
         roi_size = self._image_advanced_widget.getArrayRegion(self._image_data, self._image).shape
         roi_origin = self._image_advanced_widget.pos()
         vertical_range = [int(roi_origin[0]), int(roi_origin[0])+roi_size[0]]
         horizontal_range = [int(roi_origin[1]), int(roi_origin[1])+roi_size[1]]
         image_advanced = horizontal_range + vertical_range
+
         if list(self.spectrumlogic().image_advanced_area.values()) != image_advanced:
             self._image_tab.dark_acquired_msg.setText("No Dark Acquired")
             self.spectrumlogic().image_advanced_area = image_advanced
@@ -817,7 +816,7 @@ class SpectrometerGui(GuiBase):
                 data[1] = data[1] - self._image_dark
             else:
                 self._image_tab.dark_acquired_msg.setText("No Dark Acquired")
-            self._image_data = data
+            self._image_data = data[1]
             image = data[1]
 
             self._image_widget.set_image(image)
