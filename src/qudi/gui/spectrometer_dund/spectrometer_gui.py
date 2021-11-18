@@ -365,7 +365,6 @@ class SpectrometerGui(GuiBase):
         self.my_colors = ColorScaleInferno()
         #self._image = pg.ImageItem(image=self._image_data, axisOrder='row-major')
         self._image_widget = ImageWidget()
-
         self._image_data = np.zeros((1,1))
 
         self._image_widget._image_item.setOpts(False, axisOrder='row-major', lut=self.my_colors.lut)
@@ -398,11 +397,8 @@ class SpectrometerGui(GuiBase):
             track.setBounds([0, height])
             track.hide()
             self._track_selector.append(track)
-            # todo: tracking in graph currently broken
-            #self._image_widget._image_item.addItem(track)
-            #self._image_tab.graph.addItem(track)
+            self._image_widget._plot_widget.addItem(track)
 
-        # todo: advanced image / cropping currently broken
         self._image_tab.image_advanced.setCheckable(True)
         self._image_tab.image_advanced.clicked.connect(self._manage_image_advanced_button)
         self._image_advanced_widget = pg.ROI([0,0], [camera_width, camera_height],
@@ -410,7 +406,8 @@ class SpectrometerGui(GuiBase):
         self._image_advanced_widget.addScaleHandle((1,0), (0,1))
         self._image_advanced_widget.addScaleHandle((0,1), (1,0))
         self._image_advanced_widget.hide()
-        #self._image_tab.graph.addItem(self._image_advanced_widget)
+        self._image_widget._plot_widget.addItem(self._image_advanced_widget)
+
 
         self._image_tab.horizontal_binning.setRange(1, camera_width-1)
         self._image_tab.vertical_binning.setRange(1, camera_height-1)
@@ -733,7 +730,7 @@ class SpectrometerGui(GuiBase):
             self.spectrumlogic().image_advanced_binning = image_binning
 
         # todo: crashes in dummy
-        return
+        #return
         roi_size = self._image_advanced_widget.getArrayRegion(self._image_data, self._image).shape
         roi_origin = self._image_advanced_widget.pos()
         vertical_range = [int(roi_origin[0]), int(roi_origin[0])+roi_size[0]]
