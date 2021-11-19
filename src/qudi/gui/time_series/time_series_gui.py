@@ -115,7 +115,7 @@ class TimeSeriesGui(GuiBase):
         self._mw = TimeSeriesMainWindow()
 
         # Setup dock widgets
-        self._mw.centralwidget.hide()
+        # self._mw.centralwidget.hide()
         self._mw.setDockNestingEnabled(True)
 
         # Get hardware constraints and extract channel names
@@ -205,6 +205,18 @@ class TimeSeriesGui(GuiBase):
 
         # Connect the default view action
         self._mw.restore_default_view_Action.triggered.connect(self.restore_default_view)
+        self._mw.trace_toolbar_view_Action.triggered[bool].connect(
+            self._mw.trace_control_ToolBar.setVisible
+        )
+        self._mw.trace_settings_view_Action.triggered[bool].connect(
+            self._mw.trace_settings_DockWidget.setVisible
+        )
+        self._mw.trace_settings_DockWidget.visibilityChanged.connect(
+            self._mw.trace_settings_view_Action.setChecked
+        )
+        self._mw.trace_control_ToolBar.visibilityChanged.connect(
+            self._mw.trace_toolbar_view_Action.setChecked
+        )
 
         self._mw.trace_view_selection_Action.triggered.connect(self._vsd.show)
         self._mw.channel_settings_Action.triggered.connect(self._csd.show)
@@ -272,6 +284,10 @@ class TimeSeriesGui(GuiBase):
         self._mw.oversampling_SpinBox.editingFinished.disconnect()
         self._mw.moving_average_spinBox.editingFinished.disconnect()
         self._mw.restore_default_view_Action.triggered.disconnect()
+        self._mw.trace_toolbar_view_Action.triggered[bool].disconnect()
+        self._mw.trace_settings_view_Action.triggered[bool].disconnect()
+        self._mw.trace_settings_DockWidget.visibilityChanged.disconnect()
+        self._mw.trace_control_ToolBar.visibilityChanged.disconnect()
         self.sigStartCounter.disconnect()
         self.sigStopCounter.disconnect()
         self.sigStartRecording.disconnect()
@@ -282,7 +298,6 @@ class TimeSeriesGui(GuiBase):
         self._time_series_logic.sigStatusChanged.disconnect()
 
         self._mw.close()
-        return
 
     def _init_trace_view_selection_dialog(self):
         all_channels = tuple(ch.name for ch in self._time_series_logic.available_channels)
@@ -436,8 +451,6 @@ class TimeSeriesGui(GuiBase):
             widgets['checkbox2'].setChecked(chnl in curr_av_channels)
         return
 
-    @QtCore.Slot()
-    @QtCore.Slot(object, object)
     @QtCore.Slot(object, object, object, object)
     def update_data(self, data_time=None, data=None, smooth_time=None, smooth_data=None):
         """ The function that grabs the data and sends it to the plot.
@@ -506,7 +519,6 @@ class TimeSeriesGui(GuiBase):
             self.sigStopRecording.emit()
         return
 
-    @QtCore.Slot()
     @QtCore.Slot(bool, bool)
     def update_status(self, running=None, recording=None):
         """
@@ -578,22 +590,15 @@ class TimeSeriesGui(GuiBase):
     def restore_default_view(self):
         """ Restore the arrangement of DockWidgets to the default
         """
-        # Show any hidden dock widgets
-        self._mw.data_trace_DockWidget.show()
-        # self._mw.slow_counter_control_DockWidget.show()
+        # Show hidden dock widget
         self._mw.trace_settings_DockWidget.show()
 
-        # re-dock any floating dock widgets
-        self._mw.data_trace_DockWidget.setFloating(False)
+        # re-dock floating dock widget
         self._mw.trace_settings_DockWidget.setFloating(False)
 
-        # Arrange docks widgets
-        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea(1),
-                               self._mw.data_trace_DockWidget
-                               )
-        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea(8),
-                               self._mw.trace_settings_DockWidget
-                               )
+        # Arrange docks widget
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea,
+                               self._mw.trace_settings_DockWidget)
 
         # Set the toolbar to its initial top area
         self._mw.addToolBar(QtCore.Qt.TopToolBarArea,
@@ -601,9 +606,7 @@ class TimeSeriesGui(GuiBase):
 
         # Restore status if something went wrong
         self.update_status()
-        return 0
 
-    @QtCore.Slot()
     @QtCore.Slot(dict)
     def update_settings(self, settings_dict=None):
         if settings_dict is None:
@@ -638,7 +641,6 @@ class TimeSeriesGui(GuiBase):
             self._mw.moving_average_spinBox.blockSignals(False)
 
         self.apply_channel_settings(update_logic=False)
-        return
 
     def _toggle_channel_data_plot(self, channel, show_data, show_average):
         """
@@ -669,4 +671,3 @@ class TimeSeriesGui(GuiBase):
                 self._pw.addItem(self.averaged_curves[channel])
             else:
                 self._vb.addItem(self.averaged_curves[channel])
-        return
