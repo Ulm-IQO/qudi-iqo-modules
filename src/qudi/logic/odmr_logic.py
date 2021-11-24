@@ -577,7 +577,7 @@ class OdmrLogic(LogicBase):
 
             try:
                 scanner = self._data_scanner()
-                new_counts = scanner.acquire_frame(scanner.frame_size)
+                new_counts = scanner.acquire_frame()
                 if self._oversampling_factor > 1:
                     for ch in new_counts:
                         new_counts[ch] = np.mean(
@@ -593,6 +593,7 @@ class OdmrLogic(LogicBase):
             # Add new count data to raw_data array and append if array is too small
             current_line_buffer_size = next(iter(self._raw_data.values()))[0].shape[1]
             if self._elapsed_sweeps == current_line_buffer_size:
+                self.log.debug(f'extending data grid for sweep number {self._elapsed_sweeps}')
                 expand_arrays = tuple(np.full((r[-1], self.__estimated_lines), np.nan) for r in
                                       self._scan_frequency_ranges)
                 self._raw_data = {
