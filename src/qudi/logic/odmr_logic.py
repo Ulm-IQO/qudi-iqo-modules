@@ -75,24 +75,24 @@ class OdmrLogic(LogicBase):
     sigFitUpdated = QtCore.Signal(object, str, int)
 
     __default_fit_configs = (
-        {'name'             : 'Gaussian Dip',
-         'model'            : 'Gaussian',
-         'estimator'        : 'Dip',
+        {'name': 'Gaussian Dip',
+         'model': 'Gaussian',
+         'estimator': 'Dip',
          'custom_parameters': None},
 
-        {'name'             : 'Two Gaussian Dips',
-         'model'            : 'DoubleGaussian',
-         'estimator'        : 'Dips',
+        {'name': 'Two Gaussian Dips',
+         'model': 'DoubleGaussian',
+         'estimator': 'Dips',
          'custom_parameters': None},
 
-        {'name'             : 'Lorentzian Dip',
-         'model'            : 'Lorentzian',
-         'estimator'        : 'Dip',
+        {'name': 'Lorentzian Dip',
+         'model': 'Lorentzian',
+         'estimator': 'Dip',
          'custom_parameters': None},
 
-        {'name'             : 'Two Lorentzian Dips',
-         'model'            : 'DoubleLorentzian',
-         'estimator'        : 'Dips',
+        {'name': 'Two Lorentzian Dips',
+         'model': 'DoubleLorentzian',
+         'estimator': 'Dips',
          'custom_parameters': None},
     )
 
@@ -589,8 +589,6 @@ class OdmrLogic(LogicBase):
                 self.log.exception('Error while trying to read ODMR scan data from hardware:')
                 self.stop_odmr_scan()
                 return
-            print('new_counts', new_counts)
-            print([f'{ch}:{len(data)}' for ch, data in new_counts.items()])
 
             # Add new count data to raw_data array and append if array is too small
             current_line_buffer_size = next(iter(self._raw_data.values()))[0].shape[1]
@@ -612,21 +610,12 @@ class OdmrLogic(LogicBase):
             # shift data in the array "up" and add new data at the "bottom"
             for ch, range_list in self._raw_data.items():
                 start = 0
-                print(ch, np.shape(range_list))
                 for range_index, range_params in enumerate(self._scan_frequency_ranges):
-                    print(range_index, range_params)
-                    print('np.roll done')
                     range_list[range_index] = np.roll(range_list[range_index], 1, axis=1)
-                    print(f'calc range = {start}:{range_params[-1]}')
                     tmp = new_counts[ch][start:start + range_params[-1]]
-                    print('overwrite')
-                    range_list[range_index][:, 0] = tmp
-                    print('new start')
+                    range_list[range_index][0:len(tmp), 0] = tmp
                     start += range_params[-1]
-                    print('start =', start)
-                print('done with channel', ch)
 
-            print(self._raw_data)
             # Calculate averaged signal
             self._calculate_signal_data()
 

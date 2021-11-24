@@ -116,8 +116,11 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         """
         Starts up the NI-card and performs sanity checks.
         """
+        self._digital_channel_units = dict() if not self._digital_channel_units else self._digital_channel_units
         self._digital_channel_units = {self._extract_terminal(key): value
                                        for key, value in self._digital_channel_units.items()}
+
+        self._analog_channel_units = dict() if not self._analog_channel_units else self._analog_channel_units
         self._analog_channel_units = {self._extract_terminal(key): value
                                       for key, value in self._analog_channel_units.items()}
 
@@ -326,10 +329,6 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             self.module_state.unlock()
             raise NiInitError('Analog in task initialization failed; all tasks terminated')
 
-        self.log.debug(f'di_tasks: {self._di_task_handles}, '
-                       f'ai_task: {self._ai_task_handle}, '
-                       f'clk_task: {self._clk_task_handle}')
-
         # start tasks
         if len(self._di_task_handles) > 0:
             try:
@@ -439,13 +438,11 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 if read_samples != number_of_samples:
                     return data
                 for num, ai_channel in enumerate(self.__active_channels['ai_channels']):
-                    data[ai_channel] = data_buffer[num * number_of_samples:(num + 1) * number_of_samples - 1]
+                    data[ai_channel] = data_buffer[num * number_of_samples:(num + 1) * number_of_samples]
 
         except ni.DaqError:
             self.log.exception('Getting samples from streamer failed.')
             return data
-
-        self.log.debug(f'data read in channels: {data.keys()}')
         return data
 
     def acquire_frame(self, frame_size=None):
@@ -469,7 +466,6 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 buffered_frame_size = self._frame_size
                 self.set_frame_size(frame_size)
 
-            self.log.debug(f'acquire_frame with {self._frame_size}')
             self.start_buffered_acquisition()
             data = self.get_buffered_samples(self._frame_size)
             self.stop_buffered_acquisition()
