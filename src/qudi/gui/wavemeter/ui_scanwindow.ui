@@ -286,7 +286,7 @@ High bin number gives noisy but detailed data.</string>
   <action name="actionClose">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/application-exit.png</normaloff>../../artwork/icons/oxygen/22x22/application-exit.png</iconset>
+     <normaloff>../../artwork/icons/application-exit.svg</normaloff>../../artwork/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
     <string>&amp;Close</string>
@@ -295,7 +295,7 @@ High bin number gives noisy but detailed data.</string>
   <action name="actionStart_scan">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/start-counter.png</normaloff>../../artwork/icons/qudiTheme/22x22/start-counter.png</iconset>
+     <normaloff>../../artwork/icons/start-counter.svg</normaloff>../../artwork/icons/start-counter.svg</iconset>
    </property>
    <property name="text">
     <string>Start scan</string>
@@ -307,7 +307,7 @@ High bin number gives noisy but detailed data.</string>
    </property>
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/qudiTheme/22x22/stop-counter.png</normaloff>../../artwork/icons/qudiTheme/22x22/stop-counter.png</iconset>
+     <normaloff>../../artwork/icons/stop-counter.svg</normaloff>../../artwork/icons/stop-counter.svg</iconset>
    </property>
    <property name="text">
     <string>Stop scan</string>
@@ -316,7 +316,7 @@ High bin number gives noisy but detailed data.</string>
   <action name="actionSave_histogram">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/document-save.png</normaloff>../../artwork/icons/oxygen/22x22/document-save.png</iconset>
+     <normaloff>../../artwork/icons/document-save.svg</normaloff>../../artwork/icons/document-save.svg</iconset>
    </property>
    <property name="text">
     <string>&amp;Save histogram</string>
@@ -325,7 +325,7 @@ High bin number gives noisy but detailed data.</string>
   <action name="actionAuto_range">
    <property name="icon">
     <iconset>
-     <normaloff>../../artwork/icons/oxygen/22x22/zoom-fit-best.png</normaloff>../../artwork/icons/oxygen/22x22/zoom-fit-best.png</iconset>
+     <normaloff>../../artwork/icons/zoom-fit-best.svg</normaloff>../../artwork/icons/zoom-fit-best.svg</iconset>
    </property>
    <property name="text">
     <string>Auto range</string>

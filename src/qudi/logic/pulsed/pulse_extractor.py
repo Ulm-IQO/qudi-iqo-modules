@@ -24,8 +24,7 @@ import sys
 import inspect
 import importlib
 
-from qudi.util.paths import get_main_dir
-from qudi.util.helpers import natural_sort
+from qudi.util.helpers import natural_sort, iter_modules_recursive
 
 
 class PulseExtractorBase:
@@ -93,14 +92,41 @@ class PulseExtractor(PulseExtractorBase):
         # Currently selected extraction method
         self._current_extraction_method = None
 
-        # import path for extraction modules from default directory (logic.pulse_extraction_methods)
-        path_list = [os.path.join(get_main_dir(), 'logic', 'pulsed', 'pulse_extraction_methods')]
-        # import path for extraction modules from non-default directory if a path has been given
-        if isinstance(pulsedmeasurementlogic.extraction_import_path, str):
-            path_list.append(pulsedmeasurementlogic.extraction_import_path)
+        # import extraction modules from default namespace package
+        # "qudi.logic.pulse_extraction_methods"
+        try:
+            _default_extraction_ns = importlib.reload(_default_extraction_ns)
+        except NameError:
+            import qudi.logic.pulsed.pulse_extraction_methods as _default_extraction_ns
 
-        # Import extraction modules and get a list of extractor classes
-        extractor_classes = self.__import_external_extractors(paths=path_list)
+        # Import extraction modules and get a dict of extractor classes
+        extractor_classes = list()
+        for mod_finder in iter_modules_recursive(_default_extraction_ns.__path__,
+                                                 _default_extraction_ns.__name__ + '.'):
+            try:
+                extractor_classes.extend(
+                    [cls for _, cls in inspect.getmembers(importlib.import_module(mod_finder.name),
+                                                          self.is_extractor_class)]
+                )
+            except:
+                self.log.exception(
+                    f'Exception while importing qudi.logic.pulse_extraction_methods sub-module '
+                    f'"{mod_finder.name}":'
+                )
+
+        # Get extraction modules from non-default directory if a path has been given
+        if isinstance(pulsedmeasurementlogic.extraction_import_path, str):
+            try:
+                extractor_classes.extend(
+                    self.__import_external_extractors(
+                        path=pulsedmeasurementlogic.extraction_import_path
+                    )
+                )
+            except:
+                self.log.exception(
+                    f'Unable to import extraction methods from '
+                    f'"{pulsedmeasurementlogic.extraction_import_path}":'
+                )
 
         # create an instance of each class and put them in a temporary list
         extractor_instances = [cls(pulsedmeasurementlogic) for cls in extractor_classes]
@@ -250,40 +276,34 @@ class PulseExtractor(PulseExtractorBase):
                 kwargs_dict[name] = default
         return kwargs_dict
 
-    def __import_external_extractors(self, paths):
-        """
-        Helper method to import all modules from directories contained in paths.
-        Find all classes in those modules that inherit exclusively from PulseExtractorBase class
-        and return a list of them.
+    def __import_external_extractors(self, path):
+        """ Helper method to import all modules from a given directory.
+        Find all classes in those modules that inherit exclusively from PulseExtractorBase and
+        return a list of them.
 
-        @param iterable paths: iterable containing paths to import modules from
+        @param str path: Path to import modules from
         @return list: A list of imported valid extractor classes
         """
         class_list = list()
-        for path in paths:
-            if not os.path.exists(path):
-                self.log.error('Unable to import extraction methods from "{0}".\n'
-                               'Path does not exist.'.format(path))
-                continue
-            # Get all python modules to import from.
-            # The assumption is that in the directory pulse_extraction_methods, there are
-            # *.py files, which contain only extractor classes!
-            module_list = [name[:-3] for name in os.listdir(path) if
-                           os.path.isfile(os.path.join(path, name)) and name.endswith('.py')]
+        # Get all python modules to import from.
+        # The assumption is that in the directory pulse_extraction_methods, there are
+        # *.py files, which contain only extractor classes!
+        module_list = [name[:-3] for name in os.listdir(path) if
+                       os.path.isfile(os.path.join(path, name)) and name.endswith('.py')]
 
-            # append import path to sys.path
-            if path not in sys.path:
-                sys.path.append(path)
+        # append import path to sys.path
+        if path not in sys.path:
+            sys.path.append(path)
 
-            # Go through all modules and create instances of each class found.
-            for module_name in module_list:
-                # import module
-                mod = importlib.import_module('{0}'.format(module_name))
-                importlib.reload(mod)
-                # get all extractor class references defined in the module
-                tmp_list = [m[1] for m in inspect.getmembers(mod, self.is_extractor_class)]
-                # append to class_list
-                class_list.extend(tmp_list)
+        # Go through all modules and create instances of each class found.
+        for module_name in module_list:
+            # import module
+            mod = importlib.import_module(str(module_name))
+            importlib.reload(mod)
+            # get all extractor class references defined in the module
+            tmp_list = [m[1] for m in inspect.getmembers(mod, self.is_extractor_class)]
+            # append to class_list
+            class_list.extend(tmp_list)
         return class_list
 
     def __populate_method_dicts(self, instance_list):

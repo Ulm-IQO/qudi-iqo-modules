@@ -116,8 +116,11 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         """
         Starts up the NI-card and performs sanity checks.
         """
+        self._digital_channel_units = dict() if not self._digital_channel_units else self._digital_channel_units
         self._digital_channel_units = {self._extract_terminal(key): value
                                        for key, value in self._digital_channel_units.items()}
+
+        self._analog_channel_units = dict() if not self._analog_channel_units else self._analog_channel_units
         self._analog_channel_units = {self._extract_terminal(key): value
                                       for key, value in self._analog_channel_units.items()}
 
@@ -262,6 +265,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             assert self.module_state() == 'idle', \
                 'Unable to set sample rate. Data acquisition in progress.'
             self._sample_rate = sample_rate
+            self.log.debug(f'set sample_rate to {self._sample_rate}')
         return
 
     def set_active_channels(self, channels):
@@ -299,6 +303,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             assert self.module_state() == 'idle', \
                 'Unable to set frame size. Data acquisition in progress.'
             self._frame_size = samples
+            self.log.debug(f'set frame_size to {self._frame_size}')
 
     def start_buffered_acquisition(self):
         """ Will start the acquisition of a data frame in a non-blocking way.
@@ -406,7 +411,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                     self.module_state.unlock()
                     raise TimeoutError(f'Acquiring {number_of_samples} samples took longer than the whole frame.')
         try:
-            #TODO: What if counter stops while waiting for samples?
+            # TODO: What if counter stops while waiting for samples?
 
             # Read digital channels
             for i, reader in enumerate(self._di_readers):
@@ -419,16 +424,19 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 if read_samples != number_of_samples:
                     return data
                 data[reader._task.name.split('_')[-1]] = data_buffer
+
             # Read analog channels
             if self._ai_reader is not None:
-                data_buffer = np.zeros(number_of_samples)
+                data_buffer = np.zeros(number_of_samples * len(self.__active_channels['ai_channels']))
                 read_samples = self._ai_reader.read_many_sample(
                     data_buffer,
                     number_of_samples_per_channel=number_of_samples,
                     timeout=self._rw_timeout)
                 if read_samples != number_of_samples:
                     return data
-                data[self._ai_reader._task.channel_names[0]] = data_buffer
+                for num, ai_channel in enumerate(self.__active_channels['ai_channels']):
+                    data[ai_channel] = data_buffer[num * number_of_samples:(num + 1) * number_of_samples]
+
         except ni.DaqError:
             self.log.exception('Getting samples from streamer failed.')
             return data
@@ -463,7 +471,6 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 self._frame_size = buffered_frame_size
             return data
 
-
     # =============================================================================================
     def _init_sample_clock(self):
         """
@@ -484,7 +491,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             try:
                 task = ni.Task(task_name)
             except ni.DaqError:
-                self.log.exception('Could not create task with name "{0}".'.format(task_name))
+                self.log.exception(f'Could not create task with name "{task_name}".')
                 return -1
 
             # Try to configure the task
@@ -570,7 +577,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 try:
                     task = ni.Task(task_name)
                 except ni.DaqError:
-                    self.log.error('Could not create task with name "{0}"'.format(task_name))
+                    self.log.exception(f'Could not create task with name "{task_name}"')
                     self.terminate_all_tasks()
                     return -1
 
@@ -801,7 +808,6 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         self._clk_task_handle = None
         return err
 
-
     @staticmethod
     def _extract_terminal(term_str):
         """
@@ -833,6 +839,4 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
 
 class NiInitError(Exception):
-    def __init__(self, message):
-        self.message = message
-        super().__init__(self.message)
+    pass

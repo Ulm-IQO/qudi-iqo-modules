@@ -25,7 +25,6 @@ import os
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
-from qudi.util.paths import get_main_dir
 from qudi.interface.fast_counter_interface import FastCounterInterface
 
 
@@ -55,10 +54,10 @@ class FastCounterDummy(FastCounterInterface):
             self.log.info('{0}: {1}'.format(key,config[key]))
 
         if self.trace_path is None:
-            self.trace_path = os.path.join(
-                get_main_dir(),
-                'tools',
-                'FastComTec_demo_timetrace.asc')
+            self.trace_path = os.path.abspath(os.path.join(__file__,
+                                                           '..',
+                                                           'FastComTec_demo_timetrace.asc'))
+            self.log.debug(f"Loading dummy fastcounter trace: {self.trace_path}")
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.

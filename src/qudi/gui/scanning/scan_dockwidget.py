@@ -52,9 +52,9 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
         self.setWindowTitle('{0}-{1} Scan'.format(x_axis.name.title(), y_axis.name.title()))
         self.setObjectName('{0}_{1}_scan_dockWidget'.format(x_axis.name, y_axis.name))
 
-        icon_path = os.path.join(get_artwork_dir(), 'icons', 'qudiTheme', '22x22')
-        start_icon_path = os.path.join(icon_path, 'scan-xy-start.png')
-        stop_icon_path = os.path.join(icon_path, 'stop-scan.png')
+        icon_path = os.path.join(get_artwork_dir(), 'icons')
+        start_icon_path = os.path.join(icon_path, 'scan-xy-start')
+        stop_icon_path = os.path.join(icon_path, 'stop-scan')
         icon = QtGui.QIcon(start_icon_path)
         icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
         self.scan_widget = Scan2DWidget(channel_units={ch.name: ch.unit for ch in channels},
@@ -111,9 +111,9 @@ class Scan1DDockWidget(QtWidgets.QDockWidget):
         self.setWindowTitle('{0} Scan'.format(scan_axis.name.title()))
         self.setObjectName('{0}_scan_dockWidget'.format(scan_axis.name))
 
-        icon_path = os.path.join(get_artwork_dir(), 'icons', 'qudiTheme', '22x22')
-        start_icon_path = os.path.join(icon_path, 'scan-xy-start.png')
-        stop_icon_path = os.path.join(icon_path, 'stop-scan.png')
+        icon_path = os.path.join(get_artwork_dir(), 'icons')
+        start_icon_path = os.path.join(icon_path, 'scan-xy-start')
+        stop_icon_path = os.path.join(icon_path, 'stop-scan')
         icon = QtGui.QIcon(start_icon_path)
         icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
         self.scan_widget = Scan1DWidget(channel_units={ch.name: ch.unit for ch in channels},

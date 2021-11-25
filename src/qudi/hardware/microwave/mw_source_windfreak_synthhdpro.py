@@ -77,10 +77,10 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
 
         # Generate constraints
         self._constraints = MicrowaveConstraints(
-            power_limits=(-60, 20),
-            frequency_limits=(53e6, 14e9),
+            power_limits=(-50, 18),
+            frequency_limits=(54e6, 14e9),
             scan_size_limits=(2, 100),
-            sample_rate_limits=(0.1, 100),  # FIXME: Look up the proper specs for sample rate
+            sample_rate_limits=(0.1, 1e3/4),
             scan_modes=(SamplingOutputMode.EQUIDISTANT_SWEEP,)
         )
 
@@ -212,6 +212,11 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
             self._device.write(f't{1000 * 0.75 / sample_rate:f}')
             self._scan_sample_rate = float(self._device.query('t?')) / 1000
 
+            self.log.debug(f'Configured scan with: '
+                           f'scan_power = {self._scan_power}, '
+                           f'len(scan_frequencies) = {len(self._scan_frequencies)}, '
+                           f'scan_sample_rate = {self._scan_sample_rate}')
+
     def off(self):
         """Switches off any microwave output (both scan and CW).
         Must return AFTER the device has actually stopped.
@@ -259,7 +264,7 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
                 'No scan_frequencies set. Unable to start scan.'
 
             self._in_cw_mode = False
-            self._on()
+            self.log.debug(f'start_scan: {self._on()}')
             # enable sweep mode and set to start frequency
             self._device.write('g1')
             self.module_state.lock()

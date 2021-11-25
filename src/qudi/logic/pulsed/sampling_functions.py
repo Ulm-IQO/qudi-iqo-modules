@@ -29,6 +29,8 @@ import logging
 import numpy as np
 from enum import Enum
 
+from qudi.util.helpers import iter_modules_recursive
+
 ##############################################################
 # Helper class for everything that need dynamical decoupling #
 ##############################################################
@@ -152,7 +154,20 @@ class SamplingFunctions:
 
     @classmethod
     def import_sampling_functions(cls, path_list):
-        param_dict = dict()
+        module_names = list()
+
+        # Import from default namespace "qudi.logic.pulsed.sampling_function_defs"
+        try:
+            _default_sf_ns = importlib.reload(_default_sf_ns)
+        except NameError:
+            import qudi.logic.pulsed.sampling_function_defs as _default_sf_ns
+
+        for mod_finder in iter_modules_recursive(_default_sf_ns.__path__,
+                                                 _default_sf_ns.__name__ + '.'):
+
+            module_names.append(mod_finder.name)
+
+        # Import from additional directories
         for path in path_list:
             if not os.path.exists(path):
                 continue
@@ -164,20 +179,23 @@ class SamplingFunctions:
             if path not in sys.path:
                 sys.path.append(path)
 
-            # Go through all modules and get all sampling function classes.
-            for module_name in module_list:
-                # import module
-                mod = importlib.import_module('{0}'.format(module_name))
-                # Delete all remaining references to sampling functions.
-                # This is neccessary if you have removed a sampling function class.
-                for attr in cls.parameters:
-                    if hasattr(mod, attr):
-                        delattr(mod, attr)
-                importlib.reload(mod)
-                # get all sampling function class references defined in the module
-                for name, ref in inspect.getmembers(mod, cls.is_sampling_function_class):
-                    setattr(cls, name, cls.__get_sf_method(ref))
-                    param_dict[name] = copy.deepcopy(ref.params)
+            module_names.extend(str(name) for name in module_list)
+
+        # Go through all modules and get all sampling function classes.
+        param_dict = dict()
+        for module_name in module_names:
+            # import module
+            mod = importlib.import_module(module_name)
+            # Delete all remaining references to sampling functions.
+            # This is neccessary if you have removed a sampling function class.
+            for attr in cls.parameters:
+                if hasattr(mod, attr):
+                    delattr(mod, attr)
+            importlib.reload(mod)
+            # get all sampling function class references defined in the module
+            for name, ref in inspect.getmembers(mod, cls.is_sampling_function_class):
+                setattr(cls, name, cls.__get_sf_method(ref))
+                param_dict[name] = copy.deepcopy(ref.params)
 
         # Remove old sampling functions
         for func in cls.parameters:
@@ -185,7 +203,6 @@ class SamplingFunctions:
                 delattr(cls, func)
 
         cls.parameters = param_dict
-        return
 
     @staticmethod
     def __get_sf_method(sf_ref):
