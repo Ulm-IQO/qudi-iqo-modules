@@ -335,7 +335,6 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 for task in self._di_task_handles:
                     task.start()
             except ni.DaqError:
-                self.log.error(f'found ni.DaqError when starting di_tasks')
                 self.terminate_all_tasks()
                 self.module_state.unlock()
                 raise
@@ -344,7 +343,6 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             try:
                 self._ai_task_handle.start()
             except ni.DaqError:
-                self.log.error(f'found ni.DaqError when starting ai_tasks')
                 self.terminate_all_tasks()
                 self.module_state.unlock()
                 raise
@@ -352,7 +350,6 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         try:
             self._clk_task_handle.start()
         except ni.DaqError:
-            self.log.error(f'found ni.DaqError when starting clk_tasks')
             self.terminate_all_tasks()
             self.module_state.unlock()
             raise
@@ -494,7 +491,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             try:
                 task = ni.Task(task_name)
             except ni.DaqError:
-                self.log.exception('Could not create task with name "{0}".'.format(task_name))
+                self.log.exception(f'Could not create task with name "{task_name}".')
                 return -1
 
             # Try to configure the task
@@ -580,7 +577,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 try:
                     task = ni.Task(task_name)
                 except ni.DaqError:
-                    self.log.error('Could not create task with name "{0}"'.format(task_name))
+                    self.log.exception(f'Could not create task with name "{task_name}"')
                     self.terminate_all_tasks()
                     return -1
 
@@ -842,6 +839,4 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
 
 class NiInitError(Exception):
-    def __init__(self, message):
-        self.message = message
-        super().__init__(self.message)
+    pass
