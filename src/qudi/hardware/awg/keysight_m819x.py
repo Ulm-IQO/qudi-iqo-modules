@@ -1183,7 +1183,7 @@ class AWGM819X(PulserInterface):
     ################################################################################
 
     @abstractmethod
-    def _upload_wave_ivi(self, ch_num, comb_samples_bin):
+    def _upload_wave_ivi(self, ch_num, comb_samples_bin, n_samples):
         pass
 
     def set_seq_mode(self, mode):
@@ -1657,11 +1657,7 @@ class AWGM819X(PulserInterface):
                     # clear the segment
                     self.write(':TRAC:DEL {0}'.format(segment_id))
 
-                # upload, probably to next free segment
-                # todo debug only
-                # comb_samples = comb_samples = np.asarray(analog_samples[ch_str], dtype=float)
-
-                issued_seg_id = self._upload_wave_ivi(ch_num, comb_samples)
+                issued_seg_id = self._upload_wave_ivi(ch_num, comb_samples, len(analog_samples[ch_str]))
                 if int(segment_id) != int(issued_seg_id):
                     self.log.error(f"Unexpectedly the upload issued a new segment id "
                                        f"{issued_seg_id}(!={segment_id})")
@@ -2248,7 +2244,7 @@ class AWGM8195A(AWGM819X):
 
         return cfg
 
-    def _upload_wave_ivi(self, ch_num, comb_samples_bin):
+    def _upload_wave_ivi(self, ch_num, comb_samples_bin, n_samples):
         """
         Upload a waveform to the next free segment through a call to the (fast) IVI driver.
         :param ch_num:
@@ -2259,7 +2255,7 @@ class AWGM8195A(AWGM819X):
         # method is the only one supporting binary data
         issued_seg_id = self.awg_ivi.Arbitrary.Waveform.CreateChannelWaveformChunk(str(ch_num), 0,
                                                                                    0,
-                                                                                   len(comb_samples_bin),
+                                                                                   n_samples,
                                                                                    comb_samples_bin)
         return issued_seg_id
 
@@ -2638,7 +2634,7 @@ class AWGM8190A(AWGM819X):
 
         return cfg
 
-    def _upload_wave_ivi(self, ch_num, comb_samples_bin):
+    def _upload_wave_ivi(self, ch_num, comb_samples_bin, n_samples):
         """
         Upload a waveform to the next free segment through a call to the (fast) IVI driver.
         :param ch_num:
