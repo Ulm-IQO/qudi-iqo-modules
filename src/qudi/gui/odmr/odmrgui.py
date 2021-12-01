@@ -175,6 +175,9 @@ class OdmrGui(GuiBase):
         self._scan_control_dockwidget.sigRuntimeChanged.connect(
             logic.set_runtime, QtCore.Qt.QueuedConnection
         )
+        self._scan_control_dockwidget.sigPowerChanged.connect(
+            logic.set_scan_power, QtCore.Qt.QueuedConnection
+        )
         self._scan_control_dockwidget.sigAveragedScansChanged.connect(
             logic.set_scans_to_average, QtCore.Qt.QueuedConnection
         )
