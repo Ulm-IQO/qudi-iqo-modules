@@ -290,6 +290,27 @@ class OdmrLogic(LogicBase):
             self.sigScanParametersUpdated.emit({'run_time': self._run_time})
 
     @property
+    def scan_power(self):
+        return self._scan_power
+
+    @scan_power.setter
+    def scan_power(self, value):
+        self.set_scan_power(value)
+
+    @QtCore.Slot(object)
+    def set_scan_power(self, scan_power):
+        """ Sets the runtime for ODMR measurement
+
+        @param float scan_power: desired power for scans in dBm
+        """
+        with self._threadlock:
+            try:
+                self._scan_power = float(scan_power)
+            except (TypeError, ValueError):
+                self.log.exception('scan_power failed:')
+            self.sigScanParametersUpdated.emit({'scan_power': self._scan_power})
+
+    @property
     def frequency_ranges(self):
         return self._scan_frequency_ranges.copy()
 
