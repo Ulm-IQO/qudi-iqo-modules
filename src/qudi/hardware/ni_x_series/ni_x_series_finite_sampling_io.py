@@ -49,7 +49,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     ni_finite_sampling_io:
         module.Class: 'ni_x_series.ni_x_series_finite_sampling_io.NIXSeriesFiniteSamplingIO'
         device_name: 'Dev1'
-        input_channel_units:  # optional
+        input_channel_units:
             'PFI8': 'c/s'
             'ai0': 'V'
             'ai1': 'V'
@@ -62,9 +62,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         output_voltage_ranges:
             ao0: [-5, 5]
             ao1: [-10, 10]
-        #TODO output range, also limits need to be included in constraints
         frame_size_limits: [1, 1e9]  # optional #TODO actual HW constraint?
-        output_mode: 'JUMP_LIST' # optional, must be name of SamplingOutputMode
+        default_output_mode: 'JUMP_LIST' # optional, must be member of SamplingOutputMode Enum # TODO Maybe not set on startup?
         read_write_timeout: 10  # optional
         sample_clock_output: '/Dev1/PFI15' # optional
 
@@ -72,22 +71,33 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
     # config options
     _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
-    _max_channel_samples_buffer = ConfigOption(
-        'max_channel_samples_buffer', default=25e6, missing='info')
     _rw_timeout = ConfigOption('read_write_timeout', default=10, missing='nothing')
 
     # Finite Sampling #TODO Frame size hardware limits?
     _frame_size_limits = ConfigOption(name='frame_size_limits', default=(1, 1e9))
     _input_channel_units = ConfigOption(name='input_channel_units',
                                         missing='error')
+
     _output_channel_units = ConfigOption(name='output_channel_units',
                                          default={'ao{}'.format(channel_index): 'V' for channel_index in range(0, 4)},
                                          missing='error')
-    _default_output_mode = ConfigOption(name='output_mode', default='JUMP_LIST',
-                                        constructor=lambda x: SamplingOutputMode[x.upper()], missing='nothing')
+
+    _default_output_mode = ConfigOption(name='default_output_mode', default='JUMP_LIST',
+                                        constructor=lambda x: SamplingOutputMode[x.upper()],
+                                        missing='nothing')
 
     _physical_sample_clock_output = ConfigOption(name='sample_clock_output',
                                                  default=None)
+
+    _adc_voltage_ranges = ConfigOption(name='adc_voltage_ranges',
+                                       default={'ai{}'.format(channel_index): [-10, 10]
+                                                for channel_index in range(0, 10)},  # TODO max 10 some what arbitrary
+                                       missing='nothing')
+
+    _output_voltage_ranges = ConfigOption(name='output_voltage_ranges',
+                                          default={'ao{}'.format(channel_index): [-10, 10]
+                                                   for channel_index in range(0, 4)},
+                                          missing='warn')
 
     # Hardcoded data type
     __data_type = np.float64
@@ -183,6 +193,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         # Get analog input channels from _input_channel_units
         if analog_sources:
+            self.log.warning("Analog In not tested extensively for NIFiniteSamplingIO. Might have some issues")
             source_set = set(analog_sources)
             invalid_sources = source_set.difference(set(self.__all_analog_in_terminals))
             if invalid_sources:
@@ -250,13 +261,26 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 min(self._device_handle.ao_max_rate, self._device_handle.ci_max_timebase)
             )
 
+        output_voltage_ranges = {self._extract_terminal(key): value
+                                 for key, value in self._output_voltage_ranges.items()}
+
+        input_limits = {self._extract_terminal(key): [0, int(1e8)]
+                        for key in digital_sources}  # TODO Real HW constraint?
+
+        adc_voltage_ranges = {self._extract_terminal(key): value
+                              for key, value in self._adc_voltage_ranges.items()}
+
+        input_limits.update(adc_voltage_ranges)
+
         # Create constraints
         self._constraints = FiniteSamplingIOConstraints(
             supported_output_modes=(SamplingOutputMode.JUMP_LIST, SamplingOutputMode.EQUIDISTANT_SWEEP),
             input_channel_units=self._input_channel_units,
             output_channel_units=self._output_channel_units,
             frame_size_limits=self._frame_size_limits,
-            sample_rate_limits=sample_rate_limits
+            sample_rate_limits=sample_rate_limits,
+            output_channel_limits=output_voltage_ranges,
+            input_channel_limits=input_limits
         )
 
         assert self._constraints.output_mode_supported(self._default_output_mode), \
@@ -439,11 +463,23 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 assert all(isinstance(d, np.ndarray) and len(d.shape) == 1 for d in data.values()), \
                     f'Data values are no 1D numpy.ndarrays'
                 assert all(len(d) == frame_size for d in data.values()), f'Length of data values not the same'
+
+                assert all([not np.any(
+                    (data[output_channel] < min(self.constraints.output_channel_limits[output_channel])) |
+                    (data[output_channel] > max(self.constraints.output_channel_limits[output_channel])))
+                    for output_channel in data]), f'Output channel value out of constraints range'
+
             elif self.output_mode == SamplingOutputMode.EQUIDISTANT_SWEEP:
                 assert all(len(tup) == 3 and isinstance(tup, tuple) for tup in data.values()), \
                     f'EQUIDISTANT_SWEEP output mode requires value tuples of length 3 for each output channel'
                 assert all(isinstance(tup[-1], int) for tup in data.values()), \
                     f'Linspace number of points not integer'
+
+                assert len(set(tup[-1] for tup in data.values())) == 1, 'Linspace lengths are different'
+                assert all([not np.any(
+                    (min(data[output_channel][:-1]) < min(self.constraints.output_channel_limits[output_channel])) |
+                    (max(data[output_channel][:-1]) > max(self.constraints.output_channel_limits[output_channel])))
+                    for output_channel in data]), f'Output channel value out of constraints range'
                 frame_size = next(iter(data.values()))[-1]
             else:
                 frame_size = 0
@@ -466,7 +502,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         Must raise exception if frame output can not be started.
         """
 
-        assert self._constraints.sample_rate_in_range(self.sample_rate)[0],\
+        assert self._constraints.sample_rate_in_range(self.sample_rate)[0], \
             f'Cannot start frame as sample rate {self.sample_rate:.2g}Hz not valid'
         assert self.frame_size != 0, f'No frame data set, can not start buffered frame'
         assert not self.is_running, f'Frame IO already running. Can not start'
@@ -558,7 +594,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             with self._thread_lock:
                 self.__unread_samples_buffer = self.get_buffered_samples()
 
-            self.terminate_all_tasks()
+            self.terminate_all_tasks()  # TODO: Maybe try catching warning of ni when not done? import warnings?
             self.module_state.unlock()
 
     def get_buffered_samples(self, number_of_samples=None):
@@ -586,21 +622,20 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         """
 
         if number_of_samples is not None:
-            assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'#
+            assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'  #
 
         if self.is_running:
             samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
         else:
             samples_to_read = number_of_samples if number_of_samples is not None else self.__number_of_unread_samples
 
-        assert samples_to_read <= self.__number_of_unread_samples,\
+        assert samples_to_read <= self.__number_of_unread_samples, \
             f'Requested samples are more than the pending in frame'
 
         if number_of_samples is not None and self.is_running:
             request_time = time.time()
-            while number_of_samples > self.samples_in_buffer:  # TODO: Check whether this works with a real HW
-                # TODO could one use the ni timeout of the reader class here?
-                if time.time() - request_time < 1.1*self.frame_size*self.sample_rate:  # TODO Is this timeout ok?
+            while number_of_samples > self.samples_in_buffer:
+                if time.time() - request_time < 1.1 * self.frame_size * self.sample_rate:  # TODO Is this timeout ok?
                     time.sleep(0.05)
                 else:
                     raise TimeoutError(f'Acquiring {number_of_samples} samples took longer then the whole frame')
@@ -641,8 +676,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 if self._ai_reader is not None:
                     ai_data = np.zeros((len(self.__active_channels['ai_channels']), samples_to_read))
                     self._ai_reader.read_many_sample(
-                            ai_data,
-                            number_of_samples_per_channel=samples_to_read)
+                        ai_data,
+                        number_of_samples_per_channel=samples_to_read)
                     for num, ai_channel in enumerate(self.__active_channels['ai_channels']):
                         data[ai_channel] = ai_data[num]
 
@@ -716,7 +751,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                     idle_state=ni.constants.Level.LOW)
                 task.timing.cfg_implicit_timing(
                     sample_mode=ni.constants.AcquisitionType.FINITE,
-                    samps_per_chan=self.frame_size+1)
+                    samps_per_chan=self.frame_size + 1)
             except ni.DaqError:
                 self.log.exception('Error while configuring sample clock task.')
                 try:
@@ -798,8 +833,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 try:
                     task.ci_channels.add_ci_period_chan(
                         ctr_name,
-                        min_val=0,
-                        max_val=100000000,
+                        min_val=min(self.constraints.input_channel_limits[chnl]),
+                        max_val=max(self.constraints.input_channel_limits[chnl]),
                         units=ni.constants.TimeUnits.TICKS,
                         edge=ni.constants.Edge.RISING)
                     # NOTE: The following two direct calls to C-function wrappers are a
