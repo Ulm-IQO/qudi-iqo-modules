@@ -50,7 +50,7 @@ class ScanningProbeInterface(Base):
     def configure_scan(self, settings):
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
 
-        @param ScanSettings settings: ScanSettings instance holding all parameters
+        @param ScanSettings settings: ScanSettings instance holding all parameters # TODO update me!
 
         @return (bool, ScanSettings): Failure indicator (fail=True),
                                       altered ScanSettings instance (same as "settings")
