@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
+
 """
 Acquire a spectrum using Winspec through the COM interface.
 This program gets the data from WinSpec, saves them and
 gets the data for plotting.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
-distribution and on <https://github.com/Ulm-IQO/qudi-core/>
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi-iqo-modules.
 
