@@ -228,9 +228,9 @@ class FiniteSamplingIOConstraints:
         self._frame_size_limits = (int(round(min(frame_size_limits))),
                                    int(round(max(frame_size_limits))))
         self._output_channel_units = output_channel_units.copy()
-        self._output_channel_limits = output_channel_limits.copy()
+        self._output_channel_limits = {key: tuple(val) for key, val in output_channel_limits.items()}
         self._input_channel_units = input_channel_units.copy()
-        self._input_channel_limits = input_channel_limits.copy()
+        self._input_channel_limits = {key: tuple(val) for key, val in input_channel_limits.items()}
 
     @property
     def supported_output_modes(self):
