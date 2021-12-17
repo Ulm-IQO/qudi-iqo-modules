@@ -42,7 +42,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             ni_finite_sampling_io: 'ni_finite_sampling_io'
             ni_ao: 'ni_ao'
         ni_channel_mapping: #TODO: Allow "DevX/..." notation? Actually functions in nfsio check Try none the less once!
-            x: 'ao0'
+            x: 'ao0'  #TODO: Actually DevX needs to be referenced somehow here ...
             y: 'ao1'
             z: 'ao2'
             APD1: 'PFI8'
@@ -168,7 +168,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def configure_scan(self, scan_settings):
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
 
-        @param dict scan_settings: scan_settings dictionary holding all the paramters 'axes', 'resolution', 'ranges'  # TODO update in interface
+        @param dict scan_settings: scan_settings dictionary holding all the parameters 'axes', 'resolution', 'ranges'  # TODO update in interface
 
         @return (bool, ScanSettings): Failure indicator (fail=True),
                                       altered ScanSettings instance (same as "settings")
