@@ -58,6 +58,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
     """
 
     sigFrequencyChanged = QtCore.Signal(str, float, float)
+    # TODO sigRangeChanged does not exist
 
     def __init__(self, *args, scanner_axes, **kwargs):
         super().__init__(*args, **kwargs)

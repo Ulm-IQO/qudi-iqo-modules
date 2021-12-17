@@ -349,6 +349,8 @@ class ScanningProbeLogic(LogicBase):
             if self._scanner().module_state() == 'idle':
                 self.stop_scan()
                 return
+            # TODO Added the following line as a quick test; Maybe look at it with more caution if correct
+            self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
 
             # Queue next call to this slot
             self.__scan_poll_timer.start()
