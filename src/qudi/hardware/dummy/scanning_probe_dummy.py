@@ -240,17 +240,17 @@ class ScanningProbeDummy(ScanningProbeInterface):
                         break
                 if ranges[i][0] < axis_constr.min_value or ranges[i][1] > axis_constr.max_value:
                     self.log.error('Scan range out of bounds for axis "{0}". Maximum possible range'
-                                   ' is: {1}'.format(ax, axis_constr.value_bounds))
+                                   ' is: {1}'.format(ax, axis_constr.value_range))
                     return True, self.scan_settings
                 if resolution[i] < axis_constr.min_resolution or resolution[i] > axis_constr.max_resolution:
                     self.log.error('Scan resolution out of bounds for axis "{0}". Maximum possible '
-                                   'range is: {1}'.format(ax, axis_constr.resolution_bounds))
+                                   'range is: {1}'.format(ax, axis_constr.resolution_range))
                     return True, self.scan_settings
                 if i == 0:
                     if frequency < axis_constr.min_frequency or frequency > axis_constr.max_frequency:
                         self.log.error('Scan frequency out of bounds for fast axis "{0}". Maximum '
                                        'possible range is: {1}'
-                                       ''.format(ax, axis_constr.frequency_bounds))
+                                       ''.format(ax, axis_constr.frequency_range))
                         return True, self.scan_settings
 
             self._current_scan_resolution = tuple(resolution)
