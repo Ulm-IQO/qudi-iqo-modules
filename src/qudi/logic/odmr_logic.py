@@ -3,21 +3,21 @@
 """
 This file contains the Qudi Logic module base class.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
@@ -288,6 +288,27 @@ class OdmrLogic(LogicBase):
             except (TypeError, ValueError):
                 self.log.exception('set_runtime failed:')
             self.sigScanParametersUpdated.emit({'run_time': self._run_time})
+
+    @property
+    def scan_power(self):
+        return self._scan_power
+
+    @scan_power.setter
+    def scan_power(self, value):
+        self.set_scan_power(value)
+
+    @QtCore.Slot(object)
+    def set_scan_power(self, scan_power):
+        """ Sets the runtime for ODMR measurement
+
+        @param float scan_power: desired power for scans in dBm
+        """
+        with self._threadlock:
+            try:
+                self._scan_power = float(scan_power)
+            except (TypeError, ValueError):
+                self.log.exception('scan_power failed:')
+            self.sigScanParametersUpdated.emit({'scan_power': self._scan_power})
 
     @property
     def frequency_ranges(self):

@@ -95,6 +95,6 @@ setup(
                  ],
     license='LGPLv3',
     install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
-    python_requires='>=3.8, <=3.9',
+    python_requires='>=3.8, <3.10',
     zip_safe=False
 )
