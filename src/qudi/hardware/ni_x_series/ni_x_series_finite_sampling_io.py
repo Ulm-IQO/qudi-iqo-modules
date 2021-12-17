@@ -464,10 +464,11 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                     f'Data values are no 1D numpy.ndarrays'
                 assert all(len(d) == frame_size for d in data.values()), f'Length of data values not the same'
 
-                assert all([not np.any(
-                    (data[output_channel] < min(self.constraints.output_channel_limits[output_channel])) |
-                    (data[output_channel] > max(self.constraints.output_channel_limits[output_channel])))
-                    for output_channel in data]), f'Output channel value out of constraints range'
+                for output_channel in data:
+                    assert not np.any(
+                        (min(data[output_channel][:-1]) < min(self.constraints.output_channel_limits[output_channel])) |
+                        (max(data[output_channel][:-1]) > max(self.constraints.output_channel_limits[output_channel]))
+                    ), f'Output channel {output_channel} value out of constraints range'
 
             elif self.output_mode == SamplingOutputMode.EQUIDISTANT_SWEEP:
                 assert all(len(tup) == 3 and isinstance(tup, tuple) for tup in data.values()), \
@@ -476,10 +477,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                     f'Linspace number of points not integer'
 
                 assert len(set(tup[-1] for tup in data.values())) == 1, 'Linspace lengths are different'
-                assert all([not np.any(
-                    (min(data[output_channel][:-1]) < min(self.constraints.output_channel_limits[output_channel])) |
-                    (max(data[output_channel][:-1]) > max(self.constraints.output_channel_limits[output_channel])))
-                    for output_channel in data]), f'Output channel value out of constraints range'
+
+                for output_channel in data:
+                    assert not np.any(
+                        (min(data[output_channel][:-1]) < min(self.constraints.output_channel_limits[output_channel])) |
+                        (max(data[output_channel][:-1]) > max(self.constraints.output_channel_limits[output_channel]))
+                    ), f'Output channel {output_channel} value out of constraints range'
                 frame_size = next(iter(data.values()))[-1]
             else:
                 frame_size = 0
@@ -622,7 +625,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         """
 
         if number_of_samples is not None:
-            assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'  #
+            assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'
 
         if self.is_running:
             samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
@@ -951,10 +954,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             return -1
 
         try:
-            ai_ch_str = ','.join(['/{0}/{1}'.format(self._device_name, c) for c in analog_channels])
-            ai_task.ai_channels.add_ai_voltage_chan(ai_ch_str,  # TODO constraints for ADC range
-                                                    max_val=10,  # max(self._adc_voltage_range),
-                                                    min_val=0)  # min(self._adc_voltage_range))
+            for ai_channel in analog_channels:
+                ai_ch_str = '/{0}/{1}'.format(self._device_name, ai_channel)
+                ai_task.ai_channels.add_ai_voltage_chan(ai_ch_str,
+                                                        min_val=min(self.constraints.input_channel_limits[ai_channel]),
+                                                        max_val=max(self.constraints.input_channel_limits[ai_channel])
+                                                        )
             ai_task.timing.cfg_samp_clk_timing(sample_freq,
                                                source=clock_channel,
                                                active_edge=ni.constants.Edge.RISING,
@@ -1025,10 +1030,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             return -1
 
         try:
-            ao_ch_str = ','.join(['/{0}/{1}'.format(self._device_name, c) for c in analog_channels])
-            ao_task.ao_channels.add_ao_voltage_chan(ao_ch_str,  # TODO constraints for range
-                                                    max_val=10,  # max(self._adc_voltage_range),
-                                                    min_val=0)  # min(self._adc_voltage_range))
+            for ao_channel in analog_channels:
+                ao_ch_str = '/{0}/{1}'.format(self._device_name, ao_channel)
+                ao_task.ao_channels.add_ao_voltage_chan(ao_ch_str,
+                                                        min_val=min(self.constraints.output_channel_limits[ao_channel]),
+                                                        max_val=max(self.constraints.output_channel_limits[ao_channel])
+                                                        )
             ao_task.timing.cfg_samp_clk_timing(sample_freq,
                                                source=clock_channel,
                                                active_edge=ni.constants.Edge.RISING,
