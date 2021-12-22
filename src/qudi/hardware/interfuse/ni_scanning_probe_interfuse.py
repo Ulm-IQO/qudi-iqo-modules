@@ -299,6 +299,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return (bool): Failure indicator (fail=True)
         """
+        if self._scan_data is None:
+            self.log.error('Scan Data is None. Scan settings need to be configured before starting')
+            return True
 
         if self.is_running:
             self.log.error('Cannot start a scan while scanning probe is already running')
@@ -324,7 +327,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 self.ni_finite_sampling_io().set_frame_data(ni_scan_dict)
                 self.ni_finite_sampling_io().start_buffered_frame()
-
                 return False
 
             except AssertionError as e:
@@ -337,8 +339,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return bool: Failure indicator (fail=True)
         """
-        self.module_state.unlock()
-        return True  # TODO
+        try:
+            self.ni_finite_sampling_io().stop_buffered_frame()
+            self.module_state.unlock()
+            return False  # TODO
+        except Exception as e:
+            self.log.error(f'Error occurred while stopping the finite IO frame:\n{e}')
+            return True
 
     def get_scan_data(self):
         """
@@ -454,12 +461,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
         @return dict: Where keys coincide with the ni_channel for the current scan axes and values are the
                       corresponding voltage 1D numpy arrays for each axis
-
-                      --------------------
-                      |                     Scan pattern for 2D scan "back & forth"
-                      --------------------
-                                         |
-                      --------------------
         """
 
         if self._scan_data.scan_dimension == 1:
@@ -471,15 +472,37 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             return self._position_to_voltage(positions_dict)
 
         elif self._scan_data.scan_dimension == 2:
-            fast_axis = np.linspace(*self._current_scan_ranges[0], self._current_scan_resolution[0])
-            slow_axis = np.linspace(*self._current_scan_ranges[1], self._current_scan_resolution[1])
+            backwards_line_resolution = 50  # TODO adjust toolchain to incorporate this
 
-            horizontal = np.tile(fast_axis, (len(slow_axis), 1))
-            horizontal[1::2] = np.flip(horizontal[1::2])
+            horizontal_resolution = self._current_scan_resolution[0]
+            vertical_resolution = self._current_scan_resolution[1]
 
-            vertical = np.repeat(slow_axis, len(fast_axis))
+            # horizontal scan array / "fast axis"
+            horizontal = np.linspace(*self._current_scan_ranges[0], horizontal_resolution)
 
-            positions_dict = dict(zip(self._current_scan_axes, (horizontal.flatten(), vertical)))
+            horizontal_return_line = np.linspace(self._current_scan_ranges[0][1],
+                                                 self._current_scan_ranges[0][0],
+                                                 backwards_line_resolution)
+
+            horizontal_single_line = np.concatenate((horizontal, horizontal_return_line))
+
+            horizontal_scan_array = np.tile(horizontal_single_line, vertical_resolution)
+
+            # vertical scan array / "slow axis"
+            vertical = np.linspace(*self._current_scan_ranges[1], vertical_resolution)
+            self.vert = vertical
+
+            vertical_return_lines = np.linspace(vertical[:-1], vertical[1:], backwards_line_resolution).T
+            vertical_return_lines = np.concatenate((vertical_return_lines,
+                                                    np.ones((1, backwards_line_resolution))*vertical[-1]
+                                                    ))
+
+            vertical_lines = np.repeat(vertical.reshape(vertical_resolution, 1), horizontal_resolution, axis=1)
+
+            vertical_scan_array = np.concatenate((vertical_lines, vertical_return_lines), axis=1).ravel()
+
+            positions_dict = dict(zip(self._current_scan_axes,
+                                      (horizontal_scan_array, vertical_scan_array)))
 
             return self._position_to_voltage(positions_dict)
         else:
