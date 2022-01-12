@@ -30,6 +30,8 @@ from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
 from qudi.core.configoption import ConfigOption
+from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage
+
 
 from qudi.interface.grating_spectrometer_interface import PortType
 from qudi.interface.science_camera_interface import ReadMode, ShutterState
@@ -38,6 +40,7 @@ from qudi.hardware.camera.andor.andor_newton import TriggerMode
 from scipy import optimize
 
 import time
+from datetime import datetime
 
 
 class AcquisitionMode(Enum):
@@ -51,12 +54,25 @@ class AcquisitionMode(Enum):
     MULTI_SCAN = 1
     LIVE_SCAN = 2
 
+def _data_storage_from_cfg_option(cfg_str):
+    cfg_str = cfg_str.lower()
+    if cfg_str == 'text':
+        return TextDataStorage
+    if cfg_str == 'csv':
+        return CsvDataStorage
+    if cfg_str == 'npy':
+        return NpyDataStorage
+    raise ValueError('Invalid ConfigOption value to specify data storage type.')
 
 class SpectrumLogic(LogicBase):
     """ This logic module handle the spectrometer gratings and camera """
 
     spectrometer = Connector(interface='GratingSpectrometerInterface')
     camera = Connector(interface='ScienceCameraInterface')
+
+    _default_data_storage_cls = ConfigOption(name='default_data_storage_type',
+                                             default='text',
+                                             converter=_data_storage_from_cfg_option)
 
     # declare status variables (logic attribute) :
     _reverse_data_with_side_output = ConfigOption('reverse_data_with_side_output', False)
@@ -317,17 +333,25 @@ class SpectrumLogic(LogicBase):
 
     def save_acquired_data(self):
         """ Getter method returning the last acquisition parameters. """
+        # Use default data storage
+        storage_cls = self._default_data_storage_cls
 
-        filepath = self.savelogic().get_path_for_module(module_name='spectrum')
+        #Use default  data dir
+        data_dir = self.module_default_data_dir
+
+        # get and initialize data storage object. Daily sub-directory behaviour is already
+        # included in self.module_default_data_dir.
+        data_storage = storage_cls(root_dir=data_dir)
+
+        timestamp = datetime.now()
         data = np.array(self._acquired_data)
 
-        if self.acquisition_params['read_mode'] == 'IMAGE_ADVANCED':
-            acquisition = {'data': data.flatten()}
-        else:
-            spectrum = np.array(self._acquired_spectrum)
-            acquisition = {'wavelength (m)' : spectrum.flatten(), 'data': data.flatten()}
 
-        self.savelogic().save_data(acquisition, filepath=filepath, parameters=self.acquisition_params)
+        # Save data to file
+        data_storage.save_data(data.flatten(), timestamp=timestamp,
+                               metadata=self.acquisition_params,
+                               nametag='spectrum.dat')
+
 
     ##############################################################################
     #                            Spectrometer functions
