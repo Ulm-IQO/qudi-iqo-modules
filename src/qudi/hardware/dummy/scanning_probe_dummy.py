@@ -55,6 +55,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
             y: 10e-9
             z: 50e-9
     """
+    # TODO Bool indicators deprecated; Change in scanning probe toolchain
+
     _threaded = True
 
     # config options
@@ -332,7 +334,6 @@ class ScanningProbeDummy(ScanningProbeInterface):
 
     def start_scan(self):
         """
-
         @return:
         """
         with self._thread_lock:

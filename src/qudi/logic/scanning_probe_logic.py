@@ -316,7 +316,7 @@ class ScanningProbeLogic(LogicBase):
                                             line_points / self._scan_frequency[scan_axes[0]])
             self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
 
-            if self._scanner().start_scan() < 0:
+            if self._scanner().start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 return -1
