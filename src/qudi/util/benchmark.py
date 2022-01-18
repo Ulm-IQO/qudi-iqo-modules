@@ -17,7 +17,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-import sys
+
 from collections import deque
 import scipy
 import numpy as np
@@ -138,7 +138,7 @@ class BenchmarkTool(object):
         try:
             a, t0, _, _, da = scipy.stats.linregress(weighted_data[:, 1], weighted_data[:, 0])
         except Exception:
-            print('Linear fit failed: ', file=sys.stderr)
+            self.log.exception('Linear fit failed: ')
             return np.nan, np.nan, np.nan
 
         return a, t0, da
