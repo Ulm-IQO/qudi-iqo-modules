@@ -22,6 +22,9 @@ from collections import deque
 import scipy
 import numpy as np
 import copy
+from logging import getLogger
+
+_logger = getLogger(__name__)
 
 
 class BenchmarkTool(object):
@@ -138,7 +141,7 @@ class BenchmarkTool(object):
         try:
             a, t0, _, _, da = scipy.stats.linregress(weighted_data[:, 1], weighted_data[:, 0])
         except Exception:
-            self.log.exception('Linear fit failed: ')
+            _logger.exception('Linear fit failed: ')
             return np.nan, np.nan, np.nan
 
         return a, t0, da
