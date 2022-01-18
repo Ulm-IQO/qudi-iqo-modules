@@ -389,7 +389,7 @@ class QDPlotterGui(GuiBase):
                 symbol='d',
                 symbolSize=6,
                 symbolBrush=mkColor(pen_color)))
-            self._plot_curves[plot_index][-1].setData(x=xd, y=yd)
+            self._plot_curves[plot_index][-1].setData(x=list(xd), y=yd)
             self._fit_curves[plot_index].append(dockwidget.plot_widget.plot())
             self._fit_curves[plot_index][-1].setPen('r')
 
