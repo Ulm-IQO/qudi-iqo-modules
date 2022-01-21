@@ -181,6 +181,7 @@ class SpectrometerGui(GuiBase):
         self._spectrum_read_mode = self._spectrum_tab.read_modes.currentData()
         self._spectrum_exposure_time = self.spectrum_exposure_time_widget.value()
         self._spectrum_readout_speed = self._spectrum_tab.readout_speed.currentData()
+        self._update_temperature_timer.stop()
         self._mw.close()
 
     def show(self):
