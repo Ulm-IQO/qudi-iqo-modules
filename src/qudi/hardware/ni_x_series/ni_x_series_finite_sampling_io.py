@@ -677,12 +677,15 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                         data[di_channel] = di_data[num]
 
                 if self._ai_reader is not None:
-                    ai_data = np.zeros((len(self.__active_channels['ai_channels']), samples_to_read))
-                    self._ai_reader.read_many_sample(
-                        ai_data,
-                        number_of_samples_per_channel=samples_to_read)
+                    data_buffer = np.zeros(number_of_samples * len(self.__active_channels['ai_channels']))
+                    read_samples = self._ai_reader.read_many_sample(
+                        data_buffer,
+                        number_of_samples_per_channel=number_of_samples,
+                        timeout=self._rw_timeout)
+                    if read_samples != number_of_samples:
+                        return data
                     for num, ai_channel in enumerate(self.__active_channels['ai_channels']):
-                        data[ai_channel] = ai_data[num]
+                        data[ai_channel] = data_buffer[num * number_of_samples:(num + 1) * number_of_samples]
 
                 self.__number_of_unread_samples -= samples_to_read
                 return data
