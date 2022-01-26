@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import ctypes
+from ctypes.util import find_library
 import platform
 import numpy as np
 
@@ -225,7 +226,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
 
         # check at first the config option, whether a correct library was found
-        lib_path = ctypes.util.find_library(self._library_path)
+        lib_path = find_library(self._library_path)
 
         if lib_path is None:
             # Check the platform architecture:
@@ -244,7 +245,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             # (= *.so) file muss be within the same directory, where the file
             # is situated.
 
-            lib_path = ctypes.util.find_library(libname)
+            lib_path = find_library(libname)
 
         if lib_path is None:
             self.log.error('No library could be loaded for the PulseBlaster '
@@ -2003,3 +2004,38 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return: bool, True for yes, False for no.
         """
         return False
+
+    @property
+    def name(self):
+        """ Name of the hardware as string.
+
+        @return str: The name of the hardware
+        """
+        raise NotImplemented
+
+    @property
+    def available_states(self):
+        """ Names of the states as a dict of tuples.
+
+        The keys contain the names for each of the switches. The values are tuples of strings
+        representing the ordered names of available states for each switch.
+
+        @return dict: Available states per switch in the form {"switch": ("state1", "state2")}
+        """
+        raise NotImplemented
+
+    def get_state(self, switch):
+        """ Query state of single switch by name
+
+        @param str switch: name of the switch to query the state for
+        @return str: The current switch state
+        """
+        raise NotImplemented
+
+    def set_state(self, switch, state):
+        """ Query state of single switch by name
+
+        @param str switch: name of the switch to change
+        @param str state: name of the state to set
+        """
+        raise NotImplemented
