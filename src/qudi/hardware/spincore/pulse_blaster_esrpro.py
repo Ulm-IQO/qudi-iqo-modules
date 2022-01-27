@@ -32,7 +32,7 @@ from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 
 
-class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
+class PulseBlasterESRPRO(PulserInterface):
     """ Hardware class to control the PulseBlasterESR-PRO card from SpinCore.
 
     This file is compatible with the PCI version SP18A of the PulseBlasterESR.
@@ -2004,38 +2004,3 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return: bool, True for yes, False for no.
         """
         return False
-
-    @property
-    def name(self):
-        """ Name of the hardware as string.
-
-        @return str: The name of the hardware
-        """
-        raise NotImplemented
-
-    @property
-    def available_states(self):
-        """ Names of the states as a dict of tuples.
-
-        The keys contain the names for each of the switches. The values are tuples of strings
-        representing the ordered names of available states for each switch.
-
-        @return dict: Available states per switch in the form {"switch": ("state1", "state2")}
-        """
-        raise NotImplemented
-
-    def get_state(self, switch):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to query the state for
-        @return str: The current switch state
-        """
-        raise NotImplemented
-
-    def set_state(self, switch, state):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to change
-        @param str state: name of the state to set
-        """
-        raise NotImplemented
