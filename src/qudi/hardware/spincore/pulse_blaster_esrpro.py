@@ -1096,7 +1096,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         """
         return len(self._switch_states)
 
-    def _get_witch_state(self, switch_num):
+    def _get_switch_state(self, switch_num):
         """ Gives state of switch.
 
         @param int switch_num: number of switch, numbering starts with 0
@@ -2037,7 +2037,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return str: The current switch state
         """
 
-        return self._get_witch_state(self._switch_name_to_num(switch))
+        return self._get_switch_state(self._switch_name_to_num(switch))
 
     def set_state(self, switch, state):
         """ Query state of single switch by name
