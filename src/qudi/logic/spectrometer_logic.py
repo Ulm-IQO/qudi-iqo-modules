@@ -64,7 +64,7 @@ class SpectrometerLogic(LogicBase):
 
     # Internal signals
     _sig_get_spectrum = QtCore.Signal(bool, bool, bool)
-    _sig_get_background = QtCore.Signal(bool, bool, bool)
+    _sig_get_background = QtCore.Signal(bool, bool)
 
     # External signals eg for GUI module
     sig_data_updated = QtCore.Signal()
@@ -175,7 +175,7 @@ class SpectrometerLogic(LogicBase):
     def run_get_background(self, constant_acquisition=None, reset=True):
         if constant_acquisition is not None:
             self.constant_acquisition = bool(constant_acquisition)
-        self._sig_get_background.emit(self._constant_acquisition, self._differential_spectrum, reset)
+        self._sig_get_background.emit(self._constant_acquisition, reset)
 
     def get_background(self, constant_acquisition=None, reset=True):
         if constant_acquisition is not None:
