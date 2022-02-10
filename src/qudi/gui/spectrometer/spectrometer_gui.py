@@ -316,6 +316,8 @@ class SpectrometerGui(GuiBase):
     def apply_settings(self):
         exposure_time = self._mw.settings_dialog.exposure_time_spinbox.value()
         self._spectrometer_logic().exposure_time = exposure_time
+        max_repetitions = self._mw.settings_dialog.max_repetitions_spinbox.value()
+        self._spectrometer_logic().max_repetitions = max_repetitions
         self._mw.control_widget.progress_bar.setValue(0)
         self._mw.control_widget.progress_bar.setRange(0, round(100 * exposure_time))
         self._delete_fit = self._mw.settings_dialog.delete_fit.isChecked()
@@ -323,6 +325,7 @@ class SpectrometerGui(GuiBase):
     def keep_settings(self):
         exposure_time = float(self._spectrometer_logic().exposure_time)
         self._mw.settings_dialog.exposure_time_spinbox.setValue(round(exposure_time))
+        self._mw.settings_dialog.max_repetitions_spinbox.setValue(self._spectrometer_logic().max_repetitions)
         self._mw.control_widget.progress_bar.setRange(0, round(100 * exposure_time))
         self._mw.settings_dialog.delete_fit.setChecked(self._delete_fit)
 
