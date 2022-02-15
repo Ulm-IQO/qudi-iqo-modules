@@ -208,11 +208,7 @@ class OBISLaser(SimpleLaserInterface):
 
         @return dict: dict of temperature names and value
         """
-        return {
-            'Diode': self.command.get_diode_temperature(),
-            'Internal': self.command.get_internal_temperature(),
-            'Base Plate': self.command.get_baseplate_temperature()
-        }
+        return self.command.get_temperatures()
 
     def get_laser_state(self):
         """ Get laser operation state
@@ -220,23 +216,24 @@ class OBISLaser(SimpleLaserInterface):
         @return LaserState: laser state
         """
         state = self.command.get_laser_state()
-        if 'ON' in state:
+        self.laser_state = state
+        if state == 'ON':
             return LaserState.ON
-        elif 'OFF' in state:
+        elif state == 'OFF':
             return LaserState.OFF
-        return LaserState.UNKNOWN
+        else:
+            return LaserState.UNKNOWN
 
-    def set_laser_state(self, status):
+    def set_laser_state(self, state):
         """ Set desited laser state.
 
         @param LaserState status: desired laser state
         @return LaserState: actual laser state
         """
-        if self.get_laser_state() != status:
-            if status == LaserState.ON:
-                self.command.set_laser_state_on()
-            elif status == LaserState.OFF:
-                self.command.set_laser_state_off()
+        current_state = self.get_laser_state()
+        if  current_state != state:
+            on_off = 'ON' if state == LaserState.ON else 'OFF'
+            self.command.set_laser_state(on_off)
 
     def get_extra_info(self):
         """ Extra information from laser.
@@ -247,15 +244,15 @@ class OBISLaser(SimpleLaserInterface):
 
 class Visa:
 
-    def open(self, interface):
+    def open(self, interface, baud_rate, write_termination, read_termination, send_end, timeout):
 
         self.rm = visa.ResourceManager()
         self.inst = self.rm.open_resource(interface,
-                                         baud_rate = 115200,
-                                         write_termination = '\r\n',
-                                         read_termination = '\r\n',
-                                         send_end = True)
-        self.inst.timeout = 1000
+                                         baud_rate = baud_rate,
+                                         write_termination = write_termination,
+                                         read_termination = read_termination,
+                                         send_end = send_end)
+        self.inst.timeout = timeout
 
     def close(self):
         self.inst.close()
@@ -288,7 +285,12 @@ class Obis_command(Visa):
     visa = Visa()
 
     def open_visa(self, com_port):
-        self.open(com_port)
+        baud_rate = 115200
+        write_termination = '\r\n'
+        read_termination = '\r\n'
+        send_end = True
+        timeout = 1000
+        self.open(com_port, baud_rate, write_termination, read_termination, send_end, timeout)
         self.turn_off_handshaking()
 
     def close_visa(self):
@@ -350,38 +352,17 @@ class Obis_command(Visa):
     def get_current_A(self):
         return float(self.query('SOUR:POW:CURR?'))
 
-    def get_diode_temperature(self):
-        """ Get laser diode temperature
-
-        @return float: laser diode temperature
-        """
-
-        return float(self.query('SOUR:TEMP:DIOD?').replace('C', ''))
-
-    def get_internal_temperature(self):
-        """ Get internal laser temperature
-
-        @return float: internal laser temperature
-        """
-
-        return str(self.query('SOUR:TEMP:INT?').replace('C', ''))
-
-    def get_baseplate_temperature(self):
-        """ Get laser base plate temperature
-
-        @return float: laser base plate temperature
-        """
-
-        return str(self.query('SOUR:TEMP:BAS?').replace('C', ''))
+    def get_temperatures(self):
+        return {'Diode': str(self.query('SOUR:TEMP:DIOD?').replace('C', '')),
+                'Internal': str(self.query('SOUR:TEMP:INT?').replace('C', '')),
+                'Base Plate': str(self.query('SOUR:TEMP:BAS?').replace('C', ''))
+                }
 
     def get_laser_state(self):
         return self.query('SOUR:AM:STAT?')
 
-    def set_laser_state_on(self):
-        self.write('SOUR:AM:STAT ON')
-
-    def set_laser_state_off(self):
-        self.write('SOUR:AM:STAT OFF')
+    def set_laser_state(self, state):
+        self.write('SOUR:AM:STAT {}'.format(state))
 
     def get_interlock_status(self):
         """ Get the status of the system interlock
