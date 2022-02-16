@@ -177,15 +177,6 @@ class ZaberStage(MotorInterface):
         for axis_label in config.keys():
 
             this_axis = self._axis_dict[axis_label].get_constrains()
-
-            # todo: needed?
-            """
-            this_axis['ramp'] = ['Trapez']  # a possible list of ramps
-        
-            this_axis['pos_step'] = 0.01  # in °
-            this_axis['vel_step'] = 0.1  # in °/s (a rather arbitrary number)
-            this_axis['acc_step'] = 0.01  # in °/s^2 (a rather arbitrary number)
-            """
             constraints[axis_label] = this_axis
 
         return constraints
