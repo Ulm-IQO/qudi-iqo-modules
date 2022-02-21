@@ -27,6 +27,7 @@ import time
 import copy
 import traceback
 import datetime
+import re
 
 from PySide2 import QtCore
 from qudi.core.statusvariable import StatusVar
@@ -325,15 +326,15 @@ class SequenceGeneratorLogic(LogicBase):
         name_list = list(asset_names.values())
         if asset_type == 'waveform' and len(name_list) > 0:
             return_type = 'PulseBlockEnsemble'
-            return_name = name_list[0].rsplit('_', 1)[0]
+            return_name = self._strip_ch_extension(name_list[0])
             for name in name_list:
-                if name.rsplit('_', 1)[0] != return_name:
+                if self._strip_ch_extension(name) != return_name:
                     return '', ''
         elif asset_type == 'sequence' and len(name_list) > 0:
             return_type = 'PulseSequence'
-            return_name = name_list[0].rsplit('_', 1)[0]
+            return_name = self._strip_ch_extension(name_list[0])
             for name in name_list:
-                if name.rsplit('_', 1)[0] != return_name:
+                if self._strip_ch_extension(name) != return_name:
                     return '', ''
         else:
             return '', ''
@@ -2119,6 +2120,23 @@ class SequenceGeneratorLogic(LogicBase):
                 self.pulsegenerator().delete_sequence(seq)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         return
+    
+    @staticmethod
+    def _strip_ch_extension(wave_name):
+        """
+        :param wave_name: with (rabi_ch1) or without (rabi) channel extension.
+        :return: stripped name (rabi)
+        """
+        pattern = ".*_ch[0-9]+?"
+        has_ch_ext = True if re.match(pattern, wave_name) is not None else False
+
+        if has_ch_ext:
+            pattern_split = '_ch[0-9]+?'
+            return re.split(pattern_split, wave_name)[0]
+        else:
+            # unsafer, because name including '_' will break
+            return wave_name.rsplit('_', 1)[0]
+
 
     @QtCore.Slot()
     def run_pg_benchmark(self, t_goal=10):
