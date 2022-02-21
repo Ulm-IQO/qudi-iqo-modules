@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import ctypes
+from ctypes.util import find_library
 import platform
 import numpy as np
 
@@ -173,7 +174,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                    16: 'Scanning'}
 
     # For switch interface:
-    switch_states = {'d_ch1': False, 'd_ch2': False, 'd_ch3': False,
+    _switch_states = {'d_ch1': False, 'd_ch2': False, 'd_ch3': False,
                      'd_ch4': False, 'd_ch5': False, 'd_ch6': False,
                      'd_ch7': False, 'd_ch8': False, 'd_ch9': False,
                      'd_ch10': False, 'd_ch11': False, 'd_ch12': False,
@@ -182,7 +183,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                      'd_ch19': False, 'd_ch20': False, 'd_ch21': False}
 
     # Make a channel state dict, which indicates the current channel activation
-    channel_states = switch_states.copy()
+    _channel_states = _switch_states.copy()
 
 
     #FIXME: implement a way to store already create waveforms
@@ -201,7 +202,6 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     # def _recover_current_waveform(self, waveform_nparray):
     #     """ Specify how to construct the waveform from saved file. """
     #     return bytearray(waveform_nparray.tobytes())
-
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -225,7 +225,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
 
         # check at first the config option, whether a correct library was found
-        lib_path = ctypes.util.find_library(self._library_path)
+        lib_path = find_library(self._library_path)
 
         if lib_path is None:
             # Check the platform architecture:
@@ -244,7 +244,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             # (= *.so) file muss be within the same directory, where the file
             # is situated.
 
-            lib_path = ctypes.util.find_library(libname)
+            lib_path = find_library(libname)
 
         if lib_path is None:
             self.log.error('No library could be loaded for the PulseBlaster '
@@ -1094,9 +1094,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         @return int: number of swiches on this hardware
         """
-        return len(self.switch_states)
+        return len(self._switch_states)
 
-    def getSwitchState(self, switch_num):
+    def _get_switch_state(self, switch_num):
         """ Gives state of switch.
 
         @param int switch_num: number of switch, numbering starts with 0
@@ -1104,7 +1104,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return bool: True if on, False if off, None on error
         """
 
-        return self.switch_states['d_ch{0}'.format(switch_num+1)]
+        return self._switch_states['d_ch{0}'.format(switch_num+1)]
 
     def getCalibration(self, switch_num, switch_state):
         """ Get calibration parameter for switch.
@@ -1137,7 +1137,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                          'PulseBlaster Devices. Command ignored.')
         return True
 
-    def switchOn(self, switch_num):
+    def _set_switch_on(self, switch_num):
         """ Switch on.
 
         @param int switch_num: number of switch to be switched, number starts
@@ -1146,15 +1146,15 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return bool: True if succeeds, False otherwise
         """
 
-        self.switch_states['d_ch{0}'.format(switch_num+1)] = True
+        self._switch_states['d_ch{0}'.format(switch_num+1)] = True
 
-        ch_list = [int(entry.replace('d_ch', ''))-1 for entry in self.switch_states if self.switch_states[entry]]
+        ch_list = [int(entry.replace('d_ch', ''))-1 for entry in self._switch_states if self._switch_states[entry]]
 
         self.activate_channels(ch_list=ch_list, length=100, immediate_start=True)
 
-        return self.switch_states['d_ch{0}'.format(switch_num+1)]
+        return self._switch_states['d_ch{0}'.format(switch_num+1)]
 
-    def switchOff(self, switch_num):
+    def _set_switch_off(self, switch_num):
         """ Switch off.
 
         @param int switch_num: number of switch to be switched
@@ -1162,13 +1162,13 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return bool: True if suceeds, False otherwise
         """
 
-        self.switch_states['d_ch{0}'.format(switch_num+1)] = False
+        self._switch_states['d_ch{0}'.format(switch_num+1)] = False
 
-        ch_list = [int(entry.replace('d_ch', ''))-1 for entry in self.switch_states if self.switch_states[entry]]
+        ch_list = [int(entry.replace('d_ch', ''))-1 for entry in self._switch_states if self._switch_states[entry]]
 
         self.activate_channels(ch_list=ch_list, length=100, immediate_start=True)
 
-        return self.switch_states['d_ch{0}'.format(switch_num+1)]
+        return self._switch_states['d_ch{0}'.format(switch_num+1)]
 
     def getSwitchTime(self, switch_num):
         """ Give switching time for switch.
@@ -1666,7 +1666,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         """
 
         if ch is None:
-            ch = list(self.channel_states.keys())
+            ch = list(self._channel_states.keys())
 
         active_ch = {}
         for channel in ch:
@@ -1706,17 +1706,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
             ch = {}
 
         # save activation in case it cannot be set correctly
-        old_activation = self.channel_states.copy()
+        old_activation = self._channel_states.copy()
 
         for channel in ch:
-            self.channel_states[channel] = ch[channel]
+            self._channel_states[channel] = ch[channel]
 
-        active_channel_set = {chnl for chnl, is_active in self.channel_states.items() if is_active}
+        active_channel_set = {chnl for chnl, is_active in self._channel_states.items() if is_active}
 
         if active_channel_set not in self.get_constraints().activation_config.values():
             self.log.error('Channel activation to be set not found in constraints.\n'
                            'Channel activation unchanged.')
-            self.channel_states = old_activation
+            self._channel_states = old_activation
         else:
             self._current_activation_config = active_channel_set
 
@@ -2003,3 +2003,50 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         @return: bool, True for yes, False for no.
         """
         return False
+
+    @property
+    def name(self):
+        """ Name of the hardware as string.
+
+        @return str: The name of the hardware
+        """
+        return self._meta['name']
+
+    @property
+    def available_states(self):
+        """ Names of the states as a dict of tuples.
+
+        The keys contain the names for each of the switches. The values are tuples of strings
+        representing the ordered names of available states for each switch.
+
+        @return dict: Available states per switch in the form {"switch": ("state1", "state2")}
+        """
+        return {ch: (False, True) for ch in self._switch_states.keys()}
+
+    def _switch_name_to_num(self, switch):
+        if switch not in self._switch_states.keys():
+            self.log.error(f"Unknown channel name: {switch}")
+            return
+
+        return int(switch.replace('d_ch', ''))
+
+    def get_state(self, switch):
+        """ Query state of single switch by name
+
+        @param str switch: name of the switch to query the state for
+        @return str: The current switch state
+        """
+
+        return self._get_switch_state(self._switch_name_to_num(switch))
+
+    def set_state(self, switch, state):
+        """ Query state of single switch by name
+
+        @param str switch: name of the switch to change
+        @param str state: name of the state to set
+        """
+
+        if state:
+            self._set_switch_on(self._switch_name_to_num(switch))
+        else:
+            self._set_switch_off(self._switch_name_to_num(switch))
