@@ -2120,7 +2120,8 @@ class SequenceGeneratorLogic(LogicBase):
                 self.pulsegenerator().delete_sequence(seq)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         return
-
+    
+    @staticmethod
     def _strip_ch_extension(self, wave_name):
         """
         :param wave_name: with (rabi_ch1) or without (rabi) channel extension.
