@@ -2122,7 +2122,7 @@ class SequenceGeneratorLogic(LogicBase):
         return
     
     @staticmethod
-    def _strip_ch_extension(self, wave_name):
+    def _strip_ch_extension(wave_name):
         """
         :param wave_name: with (rabi_ch1) or without (rabi) channel extension.
         :return: stripped name (rabi)
