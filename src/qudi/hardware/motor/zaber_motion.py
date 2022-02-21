@@ -442,6 +442,9 @@ class ZaberStage(MotorInterface):
             self.log.debug(f"Unparking on startup from recovered position: {self.get_pos()}")
 
     def _check_in_range(self, value, axis_label, constr_range=['pos_min', 'pos_max']):
+        """
+        Raises on out-of-constraint range values. Else return True.
+        """
         constraints = self.get_constraints()[axis_label]
         c_min = constr_range[0]
         c_max = constr_range[1]
@@ -450,11 +453,11 @@ class ZaberStage(MotorInterface):
         constraints[c_max] = float("inf")  if constraints[c_max] is None else constraints[c_max]
 
         if value < constraints[c_min] or value > constraints[c_max]:
-            self.log.warning(f"Value check failed on axis {axis_label}. {value} is outside of "
+            raise ValueError(f"Value check failed on axis {axis_label}. {value} is outside of "
                              f"range {c_min}/{c_max}= {constraints[c_min]}, {constraints[c_max]}")
-            return False
 
         return True
+
 
 class ZaberAxis():
 
