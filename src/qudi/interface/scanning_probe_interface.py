@@ -190,7 +190,7 @@ class ScanData:
         self._timestamp = None
         self._data = None
         self._position_data = None
-        # TODO: Automatic interpolation onto rectangular grid needs to be implemented
+        # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
         return
 
     def __copy__(self):
@@ -542,13 +542,13 @@ class ScanConstraints:
         return self._channels.copy()
 
     @property
-    def backscan_configurable(self):
+    def backscan_configurable(self):  # TODO Incorporate in gui/logic toolchain?
         return self._backscan_configurable
 
     @property
-    def has_position_feedback(self):
+    def has_position_feedback(self):  # TODO Incorporate in gui/logic toolchain?
         return self._has_position_feedback
 
     @property
-    def square_px_only(self):
+    def square_px_only(self):  # TODO Incorporate in gui/logic toolchain?
         return self._square_px_only
