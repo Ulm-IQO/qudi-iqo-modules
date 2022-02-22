@@ -40,22 +40,6 @@ from qudi.interface.process_control_interface import ProcessControlConstraints
 from qudi.interface.process_control_interface import ProcessSetpointInterface
 
 
-class c_bool32(ctypes.c_uint):
-    """
-    Specifies a custom ctypes data type to represent 32-bit booleans.
-    """
-
-    def _getter(self):
-        return bool(ctypes.c_uint.value.__get__(self))
-
-    def _setter(self, val):
-        ctypes.c_uint.value.__set__(self, int(val))
-
-    value = property(_getter, _setter)
-
-    del _getter, _setter
-
-
 class NIXSeriesAnalogOutput(ProcessSetpointInterface):
     """ A dummy class to emulate a process control device (setpoints and process values)
 
@@ -69,32 +53,33 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
             ao0:
                 unit: 'V'
                 limits: [-10.0, 10.0]
-                dtype: float
+                keep_value: True
             ao1:
                 unit: 'V'
                 limits: [-10.0, 10.0]
-                dtype: float
+                keep_value: True
             ao2:
                 unit: 'V'
                 limits: [-10.0, 10.0]
-                dtype: float
+                keep_value: True
             ao3:
                 unit: 'V'
-                limits: [-10.0, 10.0]
-                dtype: float
+                limits: [-10.0, 10.0]   
+                keep_value: True         
     """
     _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
 
     _setpoint_channels = ConfigOption(
         name='setpoint_channels',
         default={
-                'ao0': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float, 'keep_on': False},
-                'ao1': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float, 'keep_on': False},
-                'ao2': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float, 'keep_on': False},
-                'ao3': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float, 'keep_on': False}
+                'ao0': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float, 'keep_value': False},
+                'ao1': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float, 'keep_value': False},
+                'ao2': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float, 'keep_value': False},
+                'ao3': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float, 'keep_value': False}
                 },
         missing='info'
     )
+    _test = ConfigOption(name='test')
 
     _setpoints = StatusVar(name='current_setpoints', default=dict())
     
@@ -107,7 +92,7 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         self._ao_ch_names = list()
         self._ao_task_handles = dict()
         self._ao_writer_handles = dict()
-        self._keep_on = None
+        self._keep_values = None
         
         self._is_active = False
         self.__constraints = None
@@ -152,8 +137,8 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         units = {ch: d['unit'] for ch, d in self._setpoint_channels.items() if 'unit' in d}
         limits = {ch: d['limits'] for ch, d in self._setpoint_channels.items() if 'limits' in d}
         dtypes = {ch: d['dtype'] for ch, d in self._setpoint_channels.items() if 'dtype' in d}
-        self._keep_on = {ch: d['keep_on'] for ch, d in self._setpoint_channels.items() if 'keep_on' in d}
-        
+        self._keep_values = {ch: d['keep_value'] for ch, d in self._setpoint_channels.items() if 'keep_value' in d}
+
         self.__constraints = ProcessControlConstraints(
             setpoint_channels=tuple(self._setpoint_channels),
             units=units,
@@ -167,8 +152,9 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
                             ch in self._setpoint_channels}
 
     def on_deactivate(self):
-        for ao_ch_name in self._ao_ch_names:
-            self.terminate_ao_task(ao_ch_name)
+        if self._is_active:
+            for ao_ch_name in self._ao_ch_names:
+                self.terminate_ao_task(ao_ch_name)
 
     @property
     def constraints(self):
@@ -232,9 +218,7 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         assert isinstance(active, bool), '<is_active> flag must be bool type'
         with self._thread_lock:
             if active != self._is_active:
-                self._is_active = active
                 if active and self.module_state() != 'locked':
-
                     for ao_ch_name in self._ao_ch_names:
                         ao_task = ni.Task(ao_ch_name)
                         ao_phys_ch = f"/{self._device_name}/{ao_ch_name}"
@@ -250,6 +234,7 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
                     for ao_ch_name in self._ao_ch_names:
                         self.terminate_ao_task(ao_ch_name)
                     self.module_state.unlock()
+                self._is_active = active
 
     def set_setpoint(self, channel, value):
         """ Set new setpoint for a single channel.
@@ -266,8 +251,8 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         assert self.__constraints.channel_value_in_range(value, channel)[0], \
             'Setpoint out of allowed value bounds'
         with self._thread_lock:
-            self._setpoints[channel] = self.__constraints.channel_dtypes[channel](value)
             self._ao_task_handles[channel].write(self._setpoints[channel])
+            self._setpoints[channel] = self.__constraints.channel_dtypes[channel](value)
 
     def get_setpoint(self, channel):
         """ Get current setpoint for a single channel.
@@ -282,10 +267,10 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
 
     def terminate_ao_task(self, ao_ch_name):
         """
-            Reset analog output to 0 if keep_on flag is False
+            Reset analog output to 0 if keep_value flag is False
         """
-        if not self._keep_on[ao_ch_name]:
-            self.set_setpoint(0, ao_ch_name)    
+        if not self._keep_values[ao_ch_name]:
+            self.set_setpoint(ao_ch_name, 0)    
 
         try:
             if not self._ao_task_handles[ao_ch_name].is_task_done():
@@ -297,61 +282,6 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         finally:
             del self._ao_task_handles[ao_ch_name]
     
-    def is_task_done(self):
-        """
-        Queries the status of the task and indicates if it completed
-        execution. Use this function to ensure that the specified
-        operation is complete before you stop the task.
-
-        Returns:
-            bool:
-
-            Indicates if the measurement or generation completed.
-        """
-        is_task_done = c_bool32()
-
-        cfunc = lib_importer.windll.DAQmxIsTaskDone
-        if cfunc.argtypes is None:
-            with cfunc.arglock:
-                if cfunc.argtypes is None:
-                    cfunc.argtypes = [
-                        lib_importer.task_handle, ctypes.POINTER(c_bool32)]
-
-        error_code = cfunc(
-            self._handle, ctypes.byref(is_task_done))
-        self.check_for_error(error_code)
-
-        return is_task_done.value
-    
-    def check_for_error(error_code):
-        from nidaqmx._lib import lib_importer
-
-        if error_code < 0:
-            error_buffer = ctypes.create_string_buffer(2048)
-
-            cfunc = lib_importer.windll.DAQmxGetExtendedErrorInfo
-            if cfunc.argtypes is None:
-                with cfunc.arglock:
-                    if cfunc.argtypes is None:
-                        cfunc.argtypes = [ctypes.c_char_p, ctypes.c_uint]
-            cfunc(error_buffer, 2048)
-
-            raise ni.DaqError(error_buffer.value.decode("utf-8"), error_code)
-
-        elif error_code > 0:
-            error_buffer = ctypes.create_string_buffer(2048)
-
-            cfunc = lib_importer.windll.DAQmxGetErrorString
-            if cfunc.argtypes is None:
-                with cfunc.arglock:
-                    if cfunc.argtypes is None:
-                        cfunc.argtypes = [ctypes.c_int, ctypes.c_char_p,
-                                        ctypes.c_uint]
-            cfunc(error_code, error_buffer, 2048)
-
-            warnings.warn(ni.DaqWarning(
-                error_buffer.value.decode("utf-8"), error_code))
-
     @staticmethod
     def _extract_ch_name(ch_str):
         """
