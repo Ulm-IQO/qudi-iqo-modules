@@ -51,7 +51,7 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
         self.setObjectName('{0}_{1}_scan_dockWidget'.format(x_axis.name, y_axis.name))
 
         icon = QtGui.QIcon(':/icons/scan-xy-start')
-        icon.addFile(':/icons/stop-scan', mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
+        icon.addFile(':/icons/scan-stop', mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
         self.scan_widget = Scan2DWidget(channel_units={ch.name: ch.unit for ch in channels},
                                         scan_icon=icon)
         self.scan_widget.set_axis_label('bottom', label=x_axis.name.title(), unit=x_axis.unit)
@@ -107,7 +107,7 @@ class Scan1DDockWidget(QtWidgets.QDockWidget):
         self.setObjectName('{0}_scan_dockWidget'.format(scan_axis.name))
 
         icon = QtGui.QIcon(':/icons/scan-xy-start')
-        icon.addFile(':/icons/stop-scan', mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
+        icon.addFile(':/icons/scan-stop', mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
         self.scan_widget = Scan1DWidget(channel_units={ch.name: ch.unit for ch in channels},
                                         scan_icon=icon)
         self.scan_widget.set_axis_label(scan_axis.name.title(), scan_axis.unit)
