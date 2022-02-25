@@ -19,23 +19,17 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import datetime
-import numpy as np
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide2 import QtCore, QtWidgets
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
-from qudi.util import units
 from qudi.core.module import GuiBase
 from qudi.util.widgets.fitting import FitConfigurationDialog
-from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
-from qudi.util.paths import get_artwork_dir
 
-from .odmr_control_dockwidget import OdmrScanControlDockWidget, OdmrCwControlDockWidget
-from .odmr_fit_dockwidget import OdmrFitDockWidget
-from .odmr_main_window import OdmrMainWindow
-from .odmr_settings_dialog import OdmrSettingsDialog
+from qudi.gui.odmr.odmr_control_dockwidget import OdmrScanControlDockWidget, OdmrCwControlDockWidget
+from qudi.gui.odmr.odmr_fit_dockwidget import OdmrFitDockWidget
+from qudi.gui.odmr.odmr_main_window import OdmrMainWindow
+from qudi.gui.odmr.odmr_settings_dialog import OdmrSettingsDialog
 
 
 class OdmrGui(GuiBase):

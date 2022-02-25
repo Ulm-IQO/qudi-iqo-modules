@@ -24,8 +24,7 @@ from PySide2 import QtCore, QtWidgets, QtGui
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
 from qudi.util.widgets.scan_2d_widget import ImageWidget
-from qudi.util.paths import get_artwork_dir
-from .camera_settings_dialog import CameraSettingsDialog
+from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
 
 
 class CameraMainWindow(QtWidgets.QMainWindow):
@@ -38,18 +37,15 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         menu_bar = QtWidgets.QMenuBar()
         menu = menu_bar.addMenu('File')
         self.action_save_frame = QtWidgets.QAction('Save Frame')
-        path = os.path.join(get_artwork_dir(), 'icons', 'document-save')
-        self.action_save_frame.setIcon(QtGui.QIcon(path))
+        self.action_save_frame.setIcon(QtGui.QIcon(':/icons/document-save'))
         menu.addAction(self.action_save_frame)
         menu.addSeparator()
         self.action_show_settings = QtWidgets.QAction('Settings')
-        path = os.path.join(get_artwork_dir(), 'icons', 'configure')
-        self.action_show_settings.setIcon(QtGui.QIcon(path))
+        self.action_show_settings.setIcon(QtGui.QIcon(':/icons/configure'))
         menu.addAction(self.action_show_settings)
         menu.addSeparator()
         self.action_close = QtWidgets.QAction('Close')
-        path = os.path.join(get_artwork_dir(), 'icons', 'application-exit')
-        self.action_close.setIcon(QtGui.QIcon(path))
+        self.action_close.setIcon(QtGui.QIcon(':/icons/application-exit'))
         self.action_close.triggered.connect(self.close)
         menu.addAction(self.action_close)
         self.setMenuBar(menu_bar)

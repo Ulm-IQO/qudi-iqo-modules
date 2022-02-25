@@ -19,12 +19,9 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ('QDPlotMainWindow',)
+__all__ = ['QDPlotMainWindow']
 
-import os
 from PySide2 import QtCore, QtWidgets, QtGui
-
-from qudi.util.paths import get_artwork_dir
 
 
 class QDPlotMainWindow(QtWidgets.QMainWindow):
@@ -44,28 +41,26 @@ class QDPlotMainWindow(QtWidgets.QMainWindow):
         self.resize(900, 600)
 
         # Create QActions
-        icon_path = os.path.join(get_artwork_dir(), 'icons')
-
-        icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
+        icon = QtGui.QIcon(':/icons/application-exit')
         self.action_close = QtWidgets.QAction('Close')
         self.action_close.setIcon(icon)
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'document-save'))
+        icon = QtGui.QIcon(':/icons/document-save')
         self.action_save_all = QtWidgets.QAction('Save All')
         self.action_save_all.setToolTip('Save all available plots, each in their own file.')
         self.action_save_all.setIcon(icon)
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
+        icon = QtGui.QIcon(':/icons/configure')
         self.action_show_fit_configuration = QtWidgets.QAction('Fit Configuration')
         self.action_show_fit_configuration.setToolTip('Open a dialog to edit data fitting configurations.')
         self.action_show_fit_configuration.setIcon(icon)
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'document-new'))
+        icon = QtGui.QIcon(':/icons/document-new')
         self.action_new_plot = QtWidgets.QAction('New Plot')
         self.action_new_plot.setToolTip('Adds another DockWidget for a new Plot.')
         self.action_new_plot.setIcon(icon)
 
-        icon = QtGui.QIcon(os.path.join(icon_path, 'zoom-fit-best'))
+        icon = QtGui.QIcon(':/icons/zoom-fit-best')
         self.action_restore_tabbed_view = QtWidgets.QAction('Restore tabbed view')
         self.action_restore_tabbed_view.setToolTip('Restore the tabbed view of the DockWidgets for the plots.')
         self.action_restore_tabbed_view.setIcon(icon)

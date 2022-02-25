@@ -165,17 +165,17 @@ class CustomAxis(pg.AxisItem):
 
 if __name__ == '__main__':
     import sys
-    import os
-    from qudi.util.paths import get_artwork_dir
-    import qudi.core.application
-
-    stylesheet_path = os.path.join(get_artwork_dir(), 'styles', 'qdark.qss')
-    with open(stylesheet_path, 'r') as file:
-        stylesheet = file.read()
-    path = os.path.join(os.path.dirname(stylesheet_path), 'qdark').replace('\\', '/')
-    stylesheet = stylesheet.replace('{qdark}', path)
+    from qudi.util.resources import init_resources
 
     app = QtWidgets.QApplication(sys.argv)
+    init_resources()
+    file = QtCore.QFile(':/styles/qdark')
+    file.open(QtCore.QIODevice.ReadOnly)
+    try:
+        stylesheet = file.readAll().data().decode('utf-8')
+    finally:
+        file.close()
+    stylesheet = stylesheet.replace('{qdark}', ':/styles/qdark')
     app.setStyleSheet(stylesheet)
     mw = QtWidgets.QMainWindow()
     widget = SpectrometerDataWidget()

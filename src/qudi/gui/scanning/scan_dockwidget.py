@@ -20,13 +20,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ('Scan1DDockWidget', 'Scan2DDockWidget')
+__all__ = ['Scan1DDockWidget', 'Scan2DDockWidget']
 
-import os
 from PySide2 import QtGui, QtWidgets
 from qudi.util.widgets.scan_2d_widget import Scan2DWidget
 from qudi.util.widgets.scan_1d_widget import Scan1DWidget
-from qudi.util.paths import get_artwork_dir
 
 
 class Scan2DDockWidget(QtWidgets.QDockWidget):
@@ -52,11 +50,8 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
         self.setWindowTitle('{0}-{1} Scan'.format(x_axis.name.title(), y_axis.name.title()))
         self.setObjectName('{0}_{1}_scan_dockWidget'.format(x_axis.name, y_axis.name))
 
-        icon_path = os.path.join(get_artwork_dir(), 'icons')
-        start_icon_path = os.path.join(icon_path, 'scan-xy-start')
-        stop_icon_path = os.path.join(icon_path, 'stop-scan')
-        icon = QtGui.QIcon(start_icon_path)
-        icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
+        icon = QtGui.QIcon(':/icons/scan-xy-start')
+        icon.addFile(':/icons/stop-scan', mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
         self.scan_widget = Scan2DWidget(channel_units={ch.name: ch.unit for ch in channels},
                                         scan_icon=icon)
         self.scan_widget.set_axis_label('bottom', label=x_axis.name.title(), unit=x_axis.unit)
@@ -111,11 +106,8 @@ class Scan1DDockWidget(QtWidgets.QDockWidget):
         self.setWindowTitle('{0} Scan'.format(scan_axis.name.title()))
         self.setObjectName('{0}_scan_dockWidget'.format(scan_axis.name))
 
-        icon_path = os.path.join(get_artwork_dir(), 'icons')
-        start_icon_path = os.path.join(icon_path, 'scan-xy-start')
-        stop_icon_path = os.path.join(icon_path, 'stop-scan')
-        icon = QtGui.QIcon(start_icon_path)
-        icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
+        icon = QtGui.QIcon(':/icons/scan-xy-start')
+        icon.addFile(':/icons/stop-scan', mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
         self.scan_widget = Scan1DWidget(channel_units={ch.name: ch.unit for ch in channels},
                                         scan_icon=icon)
         self.scan_widget.set_axis_label(scan_axis.name.title(), scan_axis.unit)

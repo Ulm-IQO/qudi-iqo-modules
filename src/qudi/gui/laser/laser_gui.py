@@ -20,17 +20,15 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
 from PySide2 import QtCore, QtWidgets, QtGui
 
 from qudi.core.connector import Connector
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.core.module import GuiBase
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
-from qudi.util.paths import get_artwork_dir
 
-from .laser_control_dockwidget import LaserControlDockWidget
-from .laser_plot_dockwidgets import LaserOutputDockWidget, LaserTemperatureDockWidget
+from qudi.gui.laser.laser_control_dockwidget import LaserControlDockWidget
+from qudi.gui.laser.laser_plot_dockwidgets import LaserOutputDockWidget, LaserTemperatureDockWidget
 
 
 class LaserMainWindow(QtWidgets.QMainWindow):
@@ -60,8 +58,7 @@ class LaserMainWindow(QtWidgets.QMainWindow):
 
         menu = menu_bar.addMenu('File')
         self.action_close = QtWidgets.QAction('Close')
-        path = os.path.join(get_artwork_dir(), 'icons', 'application-exit')
-        self.action_close.setIcon(QtGui.QIcon(path))
+        self.action_close.setIcon(QtGui.QIcon(':/icons/application-exit'))
         self.action_close.triggered.connect(self.close)
         menu.addAction(self.action_close)
 

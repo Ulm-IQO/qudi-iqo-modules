@@ -27,10 +27,8 @@ from collections import OrderedDict
 from qudi.core.connector import Connector
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.core.module import GuiBase
-from qudi.util.paths import get_artwork_dir
 from PySide2 import QtCore, QtWidgets, QtGui
 from qudi.util.uic import loadUi
-
 
 
 class VoltScanMainWindow(QtWidgets.QMainWindow):
@@ -41,7 +39,7 @@ class VoltScanMainWindow(QtWidgets.QMainWindow):
 
         # Load it
         super(VoltScanMainWindow, self).__init__()
-        uic.loadUi(ui_file, self)
+        loadUi(ui_file, self)
         self.show()
 
 
