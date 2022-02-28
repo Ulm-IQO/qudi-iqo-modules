@@ -73,7 +73,7 @@ class ScanningProbeLogic(LogicBase):
         if not isinstance(self._scan_ranges, dict):
             self._scan_ranges = {ax.name: ax.value_range for ax in constr.axes.values()}
         if not isinstance(self._scan_resolution, dict):
-            self._scan_resolution = {ax.name: max(ax.min_resolution, min(128, ax.max_resolution))
+            self._scan_resolution = {ax.name: max(ax.min_resolution, min(128, ax.max_resolution))  # TODO Hardcoded 128?
                                      for ax in constr.axes.values()}
         if not isinstance(self._scan_frequency, dict):
             self._scan_frequency = {ax.name: ax.max_frequency for ax in constr.axes.values()}

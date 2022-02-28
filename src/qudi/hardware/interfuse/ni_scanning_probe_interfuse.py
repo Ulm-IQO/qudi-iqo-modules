@@ -25,11 +25,12 @@ from qudi.interface.scanning_probe_interface import ScanningProbeInterface, Scan
     ScannerAxis, ScannerChannel, ScanData
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
-from qudi.core.statusvariable import StatusVar
 import numpy as np
 from PySide2 import QtCore
-from qudi.util.mutex import RecursiveMutex
+from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.util.enums import SamplingOutputMode
+from qudi.util.helpers import in_range
+import time
 
 
 class NiScanningProbeInterfuse(ScanningProbeInterface):
@@ -46,7 +47,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             y: 'ao1'
             z: 'ao2'
             APD1: 'PFI8'
-        position_ranges: # in m #TODO What about channels which are not "calibrated" to 'm'?
+        position_ranges: # in m #TODO What about channels which are not "calibrated" to 'm', e.g. just use 'V'?
             x: [-100e-6, 100e-6]
             y: [0, 200e-6]
             z: [-100e-6, 100e-6]
@@ -60,12 +61,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             z: [2, 1000]
         input_channel_units:
             APD1: 'c/s'
+        backwards_line_resolution: 50 # optional
+        move_velocity: 400e-6 #m/s
     """
 
     # TODO Bool indicators deprecated; Change in scanning probe toolchain
 
     _ni_finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
-    _ni_ao = Connector(name='analog_output', interface='ProcessValueInterface')
     _ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
 
     _ni_channel_mapping = ConfigOption(name='ni_channel_mapping', missing='error')
@@ -74,7 +76,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     _resolution_ranges = ConfigOption(name='resolution_ranges', missing='error')
     _input_channel_units = ConfigOption(name='input_channel_units', missing='error')
 
-    __current_position = StatusVar(name='current_position_values', default=dict())  # TODO Move this to Ni AO
+    __backwards_line_resolution = ConfigOption(name='backwards_line_resolution', default=50)
+    __move_velocity = ConfigOption(name='move_velocity', default=400e-6)
 
     _threaded = True  # Interfuse is by default not threaded.
 
@@ -90,19 +93,15 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._constraints = None
 
+        self.__write_stack = dict()
+
         self.__ni_ao_runout_timer = None
 
         self.__read_pos = -1
 
-        self._thread_lock = RecursiveMutex()
+        self._thread_lock = RecursiveMutex()  # TODO According to @Neverhorst should rather use Mutex, but scan does not start anymore
 
     def on_activate(self):
-
-        if not self.__current_position:  # TODO Move this to Ni_AO?
-            self.log.warning(f'Could not recall latest position on start up. Scanner position at center of its ranges')
-            self.__current_position = {ax: min(rng) + (max(rng) - min(rng)) / 2 for ax, rng in
-                                       self._position_ranges.items()}
-            self.move_absolute(self.__current_position)
 
         # Sanity checks for ni_ao and ni finite sampling io
         assert set(self._position_ranges) == set(self._frequency_ranges) == set(self._resolution_ranges), \
@@ -118,10 +117,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         assert set(mapped_channels).issubset(specified_ni_finite_io_channels_set), \
             f'Channel mapping does not coincide with ni finite sampling io.'
-
-        # assert set(self._ni_channel_mapping.values()).issubset(
-        #     set(self._ni_ao() channels), \
-        #     f'Channel mapping does not coincide with ni finite sampling io.' # TODO Add once implemented
 
         # Constraints
         axes = list()
@@ -141,15 +136,16 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._constraints = ScanConstraints(axes=axes,
                                             channels=channels,
-                                            backscan_configurable=False,  # TODO where is this actually used
-                                            has_position_feedback=False,
-                                            square_px_only=False)  # TODO where is this actually used
+                                            backscan_configurable=False,  # TODO incorporate in scanning_probe toolchain
+                                            has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
+                                            square_px_only=False)  # TODO incorporate in scanning_probe toolchain
 
         # Timer to free resources after pure ni ao
         self.__ni_ao_runout_timer = QtCore.QTimer()
         self.__ni_ao_runout_timer.setSingleShot(True)
-        self.__ni_ao_runout_timer.setInterval(750)  # TODO HW test
-        self.__ni_ao_runout_timer.timeout.connect(self.__free_ni_ao_resources, QtCore.Qt.QueuedConnection)
+        self.__ni_ao_runout_timer.setInterval(5)  # Calc time delta after calls and use this
+        # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
+        self.__ni_ao_runout_timer.timeout.connect(self.__ao_write_loop, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """
@@ -171,7 +167,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def configure_scan(self, scan_settings):
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
 
-        @param dict scan_settings: scan_settings dictionary holding all the parameters 'axes', 'resolution', 'ranges'  # TODO update in interface
+        @param dict scan_settings: scan_settings dictionary holding all the parameters 'axes', 'resolution', 'ranges'
+        #  TODO update docstring in interface
 
         @return (bool, ScanSettings): Failure indicator (fail=True),
                                       altered ScanSettings instance (same as "settings")
@@ -245,20 +242,56 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         Log error and return current target position if something fails or a scan is in progress.
         """
-        if not self._ni_ao().is_active:
-            # TODO set activity state -> Initialize ni_ao task Needs implementation
-            # TODO Maybe use a timer to free resources once cross hair is no longer dragged
-            self._ni_ao().set_activity_state(True)
-            self.log.info('start')
-            # TODO wait for Ni AO to become active? (Time a task set up and check)
 
-        self.__start_ao_runout_timer()
-        try:
-            self.ni_ao().setpoints = self._position_to_voltage(position)
-            self.__current_position.update(position)
-            return self.__current_position
-        except:
-            self.log.error('Something failed')  # TODO Refine!; What about target position? Should this now be set?
+        print(f'move abs {time.time()}')
+        # assert not self.is_running, 'Cannot move the scanner while, scan is running'
+        if self.is_running:
+            self.log.error('Cannot move the scanner while, scan is running')
+            return self.get_position()
+
+        if not set(position).issubset(self.get_constraints().axes):
+            self.log.error('Invalid axes name in position')
+            return self.get_position()
+
+        with self._thread_lock:
+            start_pos = self.get_position()
+            constr = self.get_constraints()
+
+            for axis, pos in position.items():
+                in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
+                position[axis] = constr.axes[axis].clip_value(position[axis])  # TODO Adapt interface to use "in_range"?
+                if not in_range_flag:
+                    self.log.warning(f'Position out of range {constr.axes[axis].value_range} '
+                                     f'for axis {axis}. Value clipped to {position[axis]}')
+
+            dist = np.sqrt(np.sum([(position[axis]-start_pos[axis])**2 for axis in position]))
+
+            print(dist*1e6)
+
+            # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
+            if velocity is not None and velocity <= self.__move_velocity:
+                velocity = velocity
+            elif velocity is not None and velocity > self.__move_velocity:
+                self.log.warning(f'Requested velocity is exceeding the maximum velocity of {self.__move_velocity} m/s.'
+                                 f'Move will be done at maximum velocity')
+            else:
+                velocity = self.__move_velocity
+
+            granularity = velocity * self.__ni_ao_runout_timer.interval()*1e-3
+
+            self.__write_stack = {axis: np.linspace(start_pos[axis],
+                                                    position[axis],
+                                                    max(2, np.ceil(dist / granularity).astype('int'))
+                                                    )[1:]  # Since start_pos is already taken
+                                  for axis in position}
+            # TODO Keep other axis constant?
+            # TODO The whole "write_stack" thing is intended to not make to big of jumps in the scanner move ...
+
+            if not self._ni_ao().is_active:
+                self._ni_ao().set_activity_state(True)
+                self.log.info('start')  #TODO Remove
+            self.__start_ao_runout_timer()
+
             return position
 
     def move_relative(self, distance, velocity=None):
@@ -270,11 +303,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
 
         """
-        if not self._ni_ao().is_active:
-            # TODO set activity state -> Initialize ni_ao task Needs implementation
-            # TODO Maybe use a timer to free resources once cross hair is no longer dragged
-            pass
-        pass
+        current_position = self.get_position()
+        end_pos = {ax: current_position[ax] + distance[ax] for ax in distance}
+        self.move_absolute(end_pos, velocity=velocity)
+
+        return end_pos
 
     def get_target(self):
         """ Get the current target position of the scanner hardware
@@ -283,9 +316,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
 
-        self._voltage_to_position(self._ni_ao().process_values)
-
-        return self._voltage_to_position(self._ni_ao().process_values)
+        return self._voltage_to_position(self._ni_ao().setpoints)
 
     def get_position(self):
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
@@ -310,17 +341,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if self.is_running:
             self.log.error('Cannot start a scan while scanning probe is already running')
             return True
-        else:
-            self.module_state.lock()
 
         with self._thread_lock:
-
             try:
                 self._ni_finite_sampling_io().set_sample_rate(self._current_scan_frequency)
                 self._ni_finite_sampling_io().set_active_channels(
                     input_channels=(self._ni_channel_mapping[in_ch] for in_ch in self._input_channel_units),
                     output_channels=(self._ni_channel_mapping[ax] for ax in self._current_scan_axes)
-                    # TODO Use all axes and keep the unused constant?
+                    # TODO Use all axes and keep the unused constant? basically just constants in ni scan dict.
                 )
 
                 self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
@@ -333,6 +361,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self._ni_finite_sampling_io().start_buffered_frame()
 
                 self.__read_pos = 0
+
+                self.module_state.lock()
 
                 return False
 
@@ -350,6 +380,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             if self._ni_finite_sampling_io().is_running:
                 self._ni_finite_sampling_io().stop_buffered_frame()
                 self.module_state.unlock()
+
+                # FIXME How to handle move after premature stop of scan. Need to move back to "crosshair" position.
+                #  As it is now, this will pretty sure cause "scanner jumps" as position is not matching ni_ao.
+
                 return False  # TODO Bool indicators deprecated
 
         except Exception as e:
@@ -360,15 +394,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
 
         @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
+        #  TODO change interface
         """
 
         if not self.is_running:
             self.log.warning('Scan is not running, cannot get new data')
-            return True, None
+            # return True, None
+            return None
 
         with self._thread_lock:
 
-            samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
+            samples_per_complete_line = self.__backwards_line_resolution + self._current_scan_resolution[0]
             samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
             # Potentially we could also use get_buff.. without samples, but that would require some more thought
             # while writing to ScanData
@@ -379,28 +415,31 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             try:
                 for ni_ch in samples_dict.keys():
                     input_ch = reverse_routing[ni_ch]
-                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
-                    ret_line_data = samples_dict[ni_ch][-self.__backwards_line_resolution:]
+                    line_data = samples_dict[ni_ch][self.__backwards_line_resolution:  # Exclude "start line & ret. line
+                                                    self.__backwards_line_resolution + self._current_scan_resolution[0]]
 
                     if self._scan_data.scan_dimension == 1:
                         self._scan_data.data[input_ch] = line_data
-                        self.stop_scan()  # TODO Should the hardware stop itself when done?
-                        return False, self._scan_data
+                        self.stop_scan()  # TODO Should the hw stop itself?
+                        # return False, self._scan_data
+                        return self._scan_data
 
                     elif self._scan_data.scan_dimension == 2:
                         self._scan_data.data[input_ch][:, self.__read_pos] = line_data
 
                         self.__read_pos += 1
                         if self.__read_pos == self._current_scan_resolution[1]:
-                            self.stop_scan()  # TODO Should the hardware stop itself when done?
-                        return False, self._scan_data
+                            self.stop_scan()  # TODO Should the hw stop itself?
+                        # return False, self._scan_data
+                        return self._scan_data
                     else:
                         self.log.error('Invalid Scan Dimension')
-                        return True, None
+                        # return True, None
+                        return None
 
             except Exception as e:
-                self.log.error(f'Error occurred while retrieving data {e}')
-                self.stop_scan()  # TODO Delete later.
+                self.log.error(f'Error occurred while retrieving data {e}, Scan was stopped')
+                self.stop_scan()  # TODO Delete later?
                 return True, self._scan_data
 
     def emergency_stop(self):
@@ -408,6 +447,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return:
         """
+        # TODO: Implement. Yet not used in logic till yet? Maybe sth like this:
+        # self._ni_finite_sampling_io().terminate_all_tasks()
+        # self._ni_ao().set_activity_state(False)
         pass
 
     @property
@@ -469,7 +511,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
 
-        # TODO type checking?
+        # TODO check voltages given correctly checking?
         positions_data = dict()
         for ni_channel in voltages:
             axis = reverse_routing[ni_channel]
@@ -495,19 +537,30 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                       corresponding voltage 1D numpy arrays for each axis
         """
 
-        self.__backwards_line_resolution = 50  # TODO adjust toolchain to incorporate this in settings
+        # TODO adjust toolchain to incorporate __backwards_line_resolution in settings?
 
         if self._scan_data.scan_dimension == 1:
 
             horizontal_resolution = self._current_scan_resolution[0]
+
+            axis = self._current_scan_axes[0]
+            start_position = self.get_position()[axis]
+
+            horizontal_start_line = np.linspace(start_position, self._current_scan_ranges[0][0],
+                                                self.__backwards_line_resolution)
 
             horizontal = np.linspace(*self._current_scan_ranges[0], horizontal_resolution)
 
             horizontal_return_line = np.linspace(self._current_scan_ranges[0][1],
                                                  self._current_scan_ranges[0][0],
                                                  self.__backwards_line_resolution)
+            # TODO Return line for 1d included due to possible hysteresis. Might be able to drop it,
+            #  but then get_scan_data needs to be changed accordingly
 
-            horizontal_single_line = np.concatenate((horizontal, horizontal_return_line))
+            horizontal_single_line = np.concatenate((horizontal_start_line,
+                                                     horizontal,
+                                                     horizontal_return_line,
+                                                     horizontal_start_line[::-1]))
 
             positions_dict = {self._current_scan_axes[0]: horizontal_single_line}
 
@@ -519,27 +572,48 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             vertical_resolution = self._current_scan_resolution[1]
 
             # horizontal scan array / "fast axis"
+            horizontal_axis = self._current_scan_axes[0]
+            horizontal_start_position = self.get_position()[horizontal_axis]
+            # line to start of scan with backwards resolution steps
+            horizontal_start_line = np.linspace(horizontal_start_position, self._current_scan_ranges[0][0],
+                                                self.__backwards_line_resolution)
+
             horizontal = np.linspace(*self._current_scan_ranges[0], horizontal_resolution)
 
             horizontal_return_line = np.linspace(self._current_scan_ranges[0][1],
                                                  self._current_scan_ranges[0][0],
                                                  self.__backwards_line_resolution)
-
+            # a single back and forth line
             horizontal_single_line = np.concatenate((horizontal, horizontal_return_line))
-
+            # need as much lines as we have in the vertical directions
             horizontal_scan_array = np.tile(horizontal_single_line, vertical_resolution)
+            # scan array consists of line to start and then the back and forth lines
+            horizontal_scan_array = np.concatenate((horizontal_start_line, horizontal_scan_array))
 
             # vertical scan array / "slow axis"
+
+            vertcial_axis = self._current_scan_axes[1]
+            vertcial_start_position = self.get_position()[vertcial_axis]
+            # line to start of scan with backwards resolution steps
+            vertcial_start_line = np.linspace(vertcial_start_position, self._current_scan_ranges[1][0],
+                                              self.__backwards_line_resolution)
+
             vertical = np.linspace(*self._current_scan_ranges[1], vertical_resolution)
 
+            # during horizontal line, the vertical line keeps its value
+            vertical_lines = np.repeat(vertical.reshape(vertical_resolution, 1), horizontal_resolution, axis=1)
+            # during backscan of horizontal, the vertical axis increases its value by "one index"
             vertical_return_lines = np.linspace(vertical[:-1], vertical[1:], self.__backwards_line_resolution).T
+            # need to extend the vertical lines at the end, as we reach it earlier then for the horizontal axes
             vertical_return_lines = np.concatenate((vertical_return_lines,
                                                     np.ones((1, self.__backwards_line_resolution))*vertical[-1]
                                                     ))
 
-            vertical_lines = np.repeat(vertical.reshape(vertical_resolution, 1), horizontal_resolution, axis=1)
-
             vertical_scan_array = np.concatenate((vertical_lines, vertical_return_lines), axis=1).ravel()
+
+            vertical_scan_array = np.concatenate((vertcial_start_line, vertical_scan_array))
+
+            # TODO We could drop the last return line in the initialization, as it is not read in anyways till yet.
 
             positions_dict = dict(zip(self._current_scan_axes,
                                       (horizontal_scan_array, vertical_scan_array)))
@@ -564,6 +638,16 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             self.__ni_ao_runout_timer.stop()
 
-    def __free_ni_ao_resources(self):
-        self.log.info("Freed up Ni AO resources")
-        self._ni_ao().set_activity_state(False)
+    def __ao_write_loop(self):
+        with self._thread_lock:
+            new_pos = {ax: values[0] for ax, values in self.__write_stack.items()}
+            self._ni_ao().setpoints = self._position_to_voltage(new_pos)
+            self.__write_stack = {ax: values[1:] for ax, values in self.__write_stack.items()}
+
+        if not all([values.size == 0 for values in self.__write_stack.values()]):
+            if self.thread() is QtCore.QThread.currentThread():
+                self.__start_ao_runout_timer()
+                # Maybe timeout
+        else:
+            self._ni_ao().set_activity_state(False)
+            self.log.info("Freed up Ni AO resources")
