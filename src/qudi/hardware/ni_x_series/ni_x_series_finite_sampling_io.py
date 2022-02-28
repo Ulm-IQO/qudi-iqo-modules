@@ -34,6 +34,7 @@ from qudi.interface.finite_sampling_io_interface import FiniteSamplingIOInterfac
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.mutex import RecursiveMutex
 import time
+import warnings
 
 
 class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
@@ -466,8 +467,9 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
                 for output_channel in data:
                     assert not np.any(
-                        (min(data[output_channel][:-1]) < min(self.constraints.output_channel_limits[output_channel])) |
-                        (max(data[output_channel][:-1]) > max(self.constraints.output_channel_limits[output_channel]))
+                        (min(data[output_channel]) >= min(self.constraints.output_channel_limits[output_channel]))
+                        |
+                        (max(data[output_channel]) <= max(self.constraints.output_channel_limits[output_channel]))
                     ), f'Output channel {output_channel} value out of constraints range'
 
             elif self.output_mode == SamplingOutputMode.EQUIDISTANT_SWEEP:
@@ -480,8 +482,9 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
                 for output_channel in data:
                     assert not np.any(
-                        (min(data[output_channel][:-1]) < min(self.constraints.output_channel_limits[output_channel])) |
-                        (max(data[output_channel][:-1]) > max(self.constraints.output_channel_limits[output_channel]))
+                        (min(data[output_channel][:-1]) >= min(self.constraints.output_channel_limits[output_channel]))
+                        |
+                        (max(data[output_channel][:-1]) <= max(self.constraints.output_channel_limits[output_channel]))
                     ), f'Output channel {output_channel} value out of constraints range'
                 frame_size = next(iter(data.values()))[-1]
             else:
@@ -597,7 +600,9 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             with self._thread_lock:
                 self.__unread_samples_buffer = self.get_buffered_samples()
 
-            self.terminate_all_tasks()  # TODO: Maybe try catching warning of ni when not done? import warnings?
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                self.terminate_all_tasks()  # nidaqmx raises a warning when frame is stopped before all samples acq.
             self.module_state.unlock()
 
     def get_buffered_samples(self, number_of_samples=None):
