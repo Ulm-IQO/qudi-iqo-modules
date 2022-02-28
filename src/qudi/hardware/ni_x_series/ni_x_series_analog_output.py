@@ -101,6 +101,7 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         """
             Starts up the NI-card and performs sanity checks.
         """
+        # TODO Need to check the value range of config that it does not exceed ni limits
         # Check if device is connected and set device to use
         device_names = ni.system.System().devices.device_names
         if self._device_name.lower() not in set(dev.lower() for dev in device_names):
