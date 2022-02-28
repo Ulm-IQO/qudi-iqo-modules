@@ -271,22 +271,23 @@ class FastComtec(FastCounterInterface):
 
         # when not gated, record length = total sequence length, when gated, record length = laser length.
         # subtract 200 ns to make sure no sequence trigger is missed
-        record_length_FastComTech_s = record_length_s
         self.set_binwidth(bin_width_s)
 
         if self.gated:
-            # add time to account for AOM delay
-            no_of_bins = int((record_length_FastComTech_s + self.aom_delay) / bin_width_s)
+            # sequential acquisition, new line on every "sync" trigger
+            self.configure_gated_counter(bin_width_s, record_length_s,
+                                         cycles=number_of_gates, preset=1)
         else:
+            # one acquisition for all taus, one sync trigger per acquisition
             # subtract time to make sure no sequence trigger is missed
-            no_of_bins = int((record_length_FastComTech_s - self.trigger_safety) / bin_width_s)
+            no_of_bins = int((record_length_s - self.trigger_safety) / bin_width_s)
+            self.change_sweep_mode(False, cycles=None, preset=None)
+            self.set_length(no_of_bins)
 
-        self.set_length(no_of_bins)
         self.set_cycles(number_of_gates)
 
         return self.get_binwidth(), self.get_length() * self.get_binwidth(), number_of_gates
 
-    #card if running or halt or stopped ...
     def get_status(self):
         """
         Receives the current status of the Fast Counter and outputs it as return value.
@@ -630,25 +631,24 @@ class FastComtec(FastCounterInterface):
         return self.get_binwidth(), no_of_bins, self.get_cycles(), self.get_preset(), self.get_sequences()
 
 
-
-    def change_sweep_mode(self, gated, cycles = None, preset = None):
+    def change_sweep_mode(self, gated, cycles=None, preset=None):
         """ Change the sweep mode (gated, ungated)
 
         @param bool gated: Gated or ungated
-        @param int cycles: Optional, change number of cycles
-        @param int preset: Optional, change number of preset
+        @param int cycles: Optional, change number of cycles. If gated = number of laser pulses.
+        @param int preset: Optional, change number of preset. If gated, typically = 1.
         """
 
         # Reduce length to prevent crashes
         #self.set_length(1440)
         if gated:
-            self.set_cycle_mode(mode=True, cycles=cycles)
+            self.set_cycle_mode(sequential_mode=True, cycles=cycles)
             self.set_preset_mode(mode=16, preset=preset)
-            self.gated=True
+            self.gated = True
         else:
-            self.set_cycle_mode(mode=False, cycles=cycles)
+            self.set_cycle_mode(sequential_mode=False, cycles=cycles)
             self.set_preset_mode(mode=0, preset=preset)
-            self.gated=False
+            self.gated = False
         return gated
 
 
@@ -693,10 +693,11 @@ class FastComtec(FastCounterInterface):
         return int(preset)
 
 
-    def set_cycle_mode(self, mode = True, cycles = None):
-        """ Turns on or off the sequential cycle mode
+    def set_cycle_mode(self, sequential_mode=True, cycles=None):
+        """ Turns on or off the sequential cycle mode that writes to new memory on every
+        sync trigger. If disabled, photons are summed.
 
-        @param bool mode: Set or unset cycle mode
+        @param bool sequential_mode: Set or unset cycle mode for sequential acquisition
         @param int cycles: Optional, Change number of cycles
 
         @return: just the input
@@ -707,7 +708,7 @@ class FastComtec(FastCounterInterface):
         self.set_cycles(1)
 
         # Turn on or off sequential cycle mode
-        if mode:
+        if sequential_mode:
             cmd = 'sweepmode={0}'.format(hex(1978500))
         else:
             cmd = 'sweepmode={0}'.format(hex(1978496))
@@ -715,7 +716,7 @@ class FastComtec(FastCounterInterface):
 
         self.set_cycles(cycles_old)
 
-        return mode, cycles
+        return sequential_mode, cycles
 
     def set_cycles(self, cycles):
         """ Sets the cycles
@@ -734,7 +735,7 @@ class FastComtec(FastCounterInterface):
             time.sleep(0.5)
             return cycles
         else:
-            self.log.error('Dimensions {0} are too large for fast counter2!'.format(self.get_length() * cycles))
+            self.log.error('Dimensions {0} are too large for fast counter!'.format(self.get_length() * cycles))
             return -1
 
     def get_cycles(self):
