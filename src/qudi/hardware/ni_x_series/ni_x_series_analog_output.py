@@ -251,8 +251,8 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         assert self.__constraints.channel_value_in_range(value, channel)[0], \
             'Setpoint out of allowed value bounds'
         with self._thread_lock:
-            self._ao_task_handles[channel].write(self._setpoints[channel])
             self._setpoints[channel] = self.__constraints.channel_dtypes[channel](value)
+            self._ao_task_handles[channel].write(self._setpoints[channel])
 
     def get_setpoint(self, channel):
         """ Get current setpoint for a single channel.
