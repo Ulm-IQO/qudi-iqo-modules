@@ -514,14 +514,18 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # TODO check voltages given correctly checking?
         positions_data = dict()
         for ni_channel in voltages:
-            axis = reverse_routing[ni_channel]
-            voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
-            position_range = self.get_constraints().axes[axis].value_range
+            try:
+                axis = reverse_routing[ni_channel]
+                voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
+                position_range = self.get_constraints().axes[axis].value_range
 
-            slope = np.diff(position_range) / np.diff(voltage_range)
-            intercept = position_range[1] - voltage_range[1] * slope
+                slope = np.diff(position_range) / np.diff(voltage_range)
+                intercept = position_range[1] - voltage_range[1] * slope
 
-            converted = voltages[ni_channel] * slope + intercept
+                converted = voltages[ni_channel] * slope + intercept
+            except KeyError:
+                # if one of the AO channels is not used for confocal
+                continue
 
             try:
                 # In case of single value, use just this value
