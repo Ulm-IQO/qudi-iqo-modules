@@ -266,8 +266,8 @@ pulses:</string>
            <string>Delete All</string>
           </property>
           <property name="icon">
-           <iconset>
-            <normaloff>../../artwork/icons/dialog-warning.svgz</normaloff>../../artwork/icons/dialog-warning.svgz</iconset>
+           <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+            <normaloff>:/icons/dialog-warning.svgz</normaloff>:/icons/dialog-warning.svgz</iconset>
           </property>
          </widget>
         </item>

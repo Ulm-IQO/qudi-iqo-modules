@@ -843,8 +843,8 @@
   </widget>
   <action name="new_roi_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/document-new.svg</normaloff>../../artwork/icons/document-new.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/document-new.svg</normaloff>:/icons/document-new.svg</iconset>
    </property>
    <property name="text">
     <string>New ROI</string>
@@ -855,8 +855,8 @@
   </action>
   <action name="save_roi_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/document-save.svg</normaloff>../../artwork/icons/document-save.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/document-save.svg</normaloff>:/icons/document-save.svg</iconset>
    </property>
    <property name="text">
     <string>Save ROI</string>
@@ -867,8 +867,8 @@
   </action>
   <action name="load_roi_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/document-open.svgz</normaloff>../../artwork/icons/document-open.svgz</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/document-open.svgz</normaloff>:/icons/document-open.svgz</iconset>
    </property>
    <property name="text">
     <string>Load ROI</string>
@@ -947,8 +947,8 @@
   </action>
   <action name="refind_poi_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/optimize-position-poi.svgz</normaloff>../../artwork/icons/optimize-position-poi.svgz</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/optimize-position-poi.svgz</normaloff>:/icons/optimize-position-poi.svgz</iconset>
    </property>
    <property name="text">
     <string>Refind POI</string>
@@ -962,8 +962,8 @@
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/periodic-refind-poi.svgz</normaloff>../../artwork/icons/periodic-refind-poi.svgz</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/periodic-refind-poi.svgz</normaloff>:/icons/periodic-refind-poi.svgz</iconset>
    </property>
    <property name="text">
     <string>Track POI</string>
@@ -974,8 +974,8 @@
   </action>
   <action name="new_poi_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/new_poi_crosshair.svg</normaloff>../../artwork/icons/new_poi_crosshair.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/new_poi_crosshair.svg</normaloff>:/icons/new_poi_crosshair.svg</iconset>
    </property>
    <property name="text">
     <string>New POI</string>
@@ -994,8 +994,8 @@
   </action>
   <action name="goto_poi_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/goto-poi.svgz</normaloff>../../artwork/icons/goto-poi.svgz</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/goto-poi.svgz</normaloff>:/icons/goto-poi.svgz</iconset>
    </property>
    <property name="text">
     <string>Go to POI</string>
@@ -1006,8 +1006,8 @@
   </action>
   <action name="actionClose">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/application-exit.svg</normaloff>../../artwork/icons/application-exit.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
     <string>Close</string>
@@ -1026,8 +1026,8 @@
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/new_poi_mouse.svg</normaloff>../../artwork/icons/new_poi_mouse.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/new_poi_mouse.svg</normaloff>:/icons/new_poi_mouse.svg</iconset>
    </property>
    <property name="text">
     <string>Add POIs</string>
@@ -1066,8 +1066,8 @@
   </action>
   <action name="auto_find_POIs_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/auto_pois.svg</normaloff>../../artwork/icons/auto_pois.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/auto_pois.svg</normaloff>:/icons/auto_pois.svg</iconset>
    </property>
    <property name="text">
     <string>Auto find POIs</string>
@@ -1078,8 +1078,8 @@
   </action>
   <action name="del_all_pois_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/dialog-warning.svgz</normaloff>../../artwork/icons/dialog-warning.svgz</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/dialog-warning.svgz</normaloff>:/icons/dialog-warning.svgz</iconset>
    </property>
    <property name="text">
     <string>Delete all POIs</string>

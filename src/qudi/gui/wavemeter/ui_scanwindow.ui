@@ -285,8 +285,8 @@ High bin number gives noisy but detailed data.</string>
   </widget>
   <action name="actionClose">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/application-exit.svg</normaloff>../../artwork/icons/application-exit.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
     <string>&amp;Close</string>
@@ -294,8 +294,8 @@ High bin number gives noisy but detailed data.</string>
   </action>
   <action name="actionStart_scan">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/start-counter.svg</normaloff>../../artwork/icons/start-counter.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/start-counter.svg</normaloff>:/icons/start-counter.svg</iconset>
    </property>
    <property name="text">
     <string>Start scan</string>
@@ -306,8 +306,8 @@ High bin number gives noisy but detailed data.</string>
     <bool>false</bool>
    </property>
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/stop-counter.svg</normaloff>../../artwork/icons/stop-counter.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/stop-counter.svg</normaloff>:/icons/stop-counter.svg</iconset>
    </property>
    <property name="text">
     <string>Stop scan</string>
@@ -315,8 +315,8 @@ High bin number gives noisy but detailed data.</string>
   </action>
   <action name="actionSave_histogram">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/document-save.svg</normaloff>../../artwork/icons/document-save.svg</iconset>
+   <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/document-save.svg</normaloff>:/icons/document-save.svg</iconset>
    </property>
    <property name="text">
     <string>&amp;Save histogram</string>
@@ -324,8 +324,8 @@ High bin number gives noisy but detailed data.</string>
   </action>
   <action name="actionAuto_range">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/zoom-fit-best.svg</normaloff>../../artwork/icons/zoom-fit-best.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/zoom-fit-best.svg</normaloff>:/icons/zoom-fit-best.svg</iconset>
    </property>
    <property name="text">
     <string>Auto range</string>

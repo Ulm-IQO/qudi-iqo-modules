@@ -352,9 +352,9 @@ Must be an odd number to ensure perfect trace data alignment.</string>
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/start-counter.svg</normaloff>
-     <normalon>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/stop-counter.svg</normalon>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/start-counter.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/start-counter.svg</normaloff>
+     <normalon>:/icons/stop-counter.svg</normalon>:/icons/start-counter.svg</iconset>
    </property>
    <property name="text">
     <string>Start trace</string>
@@ -368,9 +368,9 @@ Must be an odd number to ensure perfect trace data alignment.</string>
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/record-counter.svgz</normaloff>
-     <normalon>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/stop-record-counter.svg</normalon>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/record-counter.svgz</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/record-counter.svgz</normaloff>
+     <normalon>:/icons/stop-record-counter.svg</normalon>:/icons/record-counter.svgz</iconset>
    </property>
    <property name="text">
     <string>Start recording</string>
@@ -411,8 +411,8 @@ Must be an odd number to ensure perfect trace data alignment.</string>
   </action>
   <action name="actionClose">
    <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/application-exit.svg</normaloff>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/application-exit.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
     <string>Close</string>
@@ -420,8 +420,8 @@ Must be an odd number to ensure perfect trace data alignment.</string>
   </action>
   <action name="trace_snapshot_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/camera-photo.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/camera-photo.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/camera-photo.svg</normaloff>:/icons/camera-photo.svg</iconset>
    </property>
    <property name="text">
     <string>Take snapshot</string>
@@ -432,8 +432,8 @@ Must be an odd number to ensure perfect trace data alignment.</string>
   </action>
   <action name="trace_view_selection_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/configure.svg</normaloff>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/configure.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
     <string>Trace view selection</string>
@@ -444,8 +444,8 @@ Must be an odd number to ensure perfect trace data alignment.</string>
   </action>
   <action name="channel_settings_Action">
    <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/configure.svg</normaloff>../../../../../../../../Development/qudi_pyside/pyside2/src/qudi/qudi/core/artwork/icons/configure.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
     <string>Channel settings</string>

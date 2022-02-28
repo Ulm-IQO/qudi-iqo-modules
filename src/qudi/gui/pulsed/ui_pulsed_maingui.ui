@@ -108,8 +108,8 @@
   </widget>
   <action name="action_Settings_Analysis">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/configure.svg</normaloff>../../artwork/icons/configure.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
     <string>Analysis Settings</string>
@@ -120,9 +120,9 @@
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/start-counter.svg</normaloff>
-     <normalon>../../artwork/icons/stop-counter.svg</normalon>../../artwork/icons/start-counter.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/start-counter.svg</normaloff>
+     <normalon>:/icons/stop-counter.svg</normalon>:/icons/start-counter.svg</iconset>
    </property>
    <property name="text">
     <string>Starts a new measurment or stops a measurement</string>
@@ -136,8 +136,8 @@
     <bool>false</bool>
    </property>
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/restart-counter.svg</normaloff>../../artwork/icons/restart-counter.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/restart-counter.svg</normaloff>:/icons/restart-counter.svg</iconset>
    </property>
    <property name="text">
     <string>Pauses or continues a measurement</string>
@@ -148,8 +148,8 @@
   </action>
   <action name="action_save">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/document-save.svg</normaloff>../../artwork/icons/document-save.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/document-save.svg</normaloff>:/icons/document-save.svg</iconset>
    </property>
    <property name="text">
     <string>Save</string>
@@ -166,8 +166,8 @@
     <bool>false</bool>
    </property>
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/view-refresh.svg</normaloff>../../artwork/icons/view-refresh.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/view-refresh.svg</normaloff>:/icons/view-refresh.svg</iconset>
    </property>
    <property name="text">
     <string>Pull and analyze data</string>
@@ -175,8 +175,8 @@
   </action>
   <action name="actionClose">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/application-exit.svg</normaloff>../../artwork/icons/application-exit.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
     <string>&amp;Close</string>
@@ -184,8 +184,8 @@
   </action>
   <action name="action_Predefined_Methods_Config">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/configure.svg</normaloff>../../artwork/icons/configure.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
     <string>Predefined Methods</string>
@@ -193,8 +193,8 @@
   </action>
   <action name="action_FitSettings">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/configure.svg</normaloff>../../artwork/icons/configure.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
     <string>Fit Settings</string>
@@ -205,8 +205,8 @@
   </action>
   <action name="action_Settings_Generator">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/configure.svg</normaloff>../../artwork/icons/configure.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
     <string>Pulse Generator Settings</string>
@@ -214,8 +214,8 @@
   </action>
   <action name="action_save_as">
    <property name="icon">
-    <iconset>
-     <normaloff>../../artwork/icons/document-save.svg</normaloff>../../artwork/icons/document-save.svg</iconset>
+    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+     <normaloff>:/icons/document-save.svg</normaloff>:/icons/document-save.svg</iconset>
    </property>
    <property name="text">
     <string>Save As...</string>
