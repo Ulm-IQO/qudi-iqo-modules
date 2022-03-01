@@ -352,7 +352,7 @@ Must be an odd number to ensure perfect trace data alignment.</string>
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/start-counter.svg</normaloff>
      <normalon>:/icons/stop-counter.svg</normalon>:/icons/start-counter.svg</iconset>
    </property>
@@ -368,7 +368,7 @@ Must be an odd number to ensure perfect trace data alignment.</string>
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/record-counter.svgz</normaloff>
      <normalon>:/icons/stop-record-counter.svg</normalon>:/icons/record-counter.svgz</iconset>
    </property>
@@ -411,7 +411,7 @@ Must be an odd number to ensure perfect trace data alignment.</string>
   </action>
   <action name="actionClose">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
@@ -420,7 +420,7 @@ Must be an odd number to ensure perfect trace data alignment.</string>
   </action>
   <action name="trace_snapshot_Action">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/camera-photo.svg</normaloff>:/icons/camera-photo.svg</iconset>
    </property>
    <property name="text">
@@ -432,7 +432,7 @@ Must be an odd number to ensure perfect trace data alignment.</string>
   </action>
   <action name="trace_view_selection_Action">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
@@ -444,7 +444,7 @@ Must be an odd number to ensure perfect trace data alignment.</string>
   </action>
   <action name="channel_settings_Action">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">

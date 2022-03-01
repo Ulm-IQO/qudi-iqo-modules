@@ -570,7 +570,7 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/start-counter.svg</normaloff>:/icons/start-counter.svg</iconset>
    </property>
    <property name="text">
@@ -588,7 +588,7 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
     <bool>false</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/record-counter.svgz</normaloff>:/icons/record-counter.svgz</iconset>
    </property>
    <property name="text">
@@ -632,7 +632,7 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
   </action>
   <action name="actionClose">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">

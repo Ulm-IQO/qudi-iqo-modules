@@ -286,7 +286,7 @@
            <string>Delete All</string>
           </property>
           <property name="icon">
-           <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+           <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
             <normaloff>:/icons/dialog-warning.svgz</normaloff>:/icons/dialog-warning.svgz</iconset>
           </property>
          </widget>
@@ -642,7 +642,7 @@ sel.</string>
            <string>Delete All</string>
           </property>
           <property name="icon">
-           <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+           <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
             <normaloff>:/icons/dialog-warning.svgz</normaloff>:/icons/dialog-warning.svgz</iconset>
           </property>
          </widget>

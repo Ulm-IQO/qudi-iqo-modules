@@ -96,7 +96,7 @@
   </widget>
   <action name="action_scanner_settings">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
@@ -105,7 +105,7 @@
   </action>
   <action name="action_close_window">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
@@ -117,7 +117,7 @@
   </action>
   <action name="action_optimizer_settings">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
@@ -129,7 +129,7 @@
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/zoom-select.svgz</normaloff>
      <normalon>:/icons/search_active.svg</normalon>:/icons/zoom-select.svgz</iconset>
    </property>
@@ -184,7 +184,7 @@ Shortcut:Alt+O</string>
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/optimize-position.svg</normaloff>
      <normalon>:/icons/scan-stop.svg</normalon>:/icons/optimize-position.svg</iconset>
    </property>
@@ -215,7 +215,7 @@ Shortcut:Ctrl+Alt+X</string>
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/go-next.svgz</normaloff>:/icons/go-next.svgz</iconset>
    </property>
    <property name="text">
@@ -234,7 +234,7 @@ Shortcut:Ctrl+R</string>
     <bool>true</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/go-previous.svgz</normaloff>:/icons/go-previous.svgz</iconset>
    </property>
    <property name="text">
@@ -261,7 +261,7 @@ Shortcut:Ctrl+Z</string>
   </action>
   <action name="action_utility_full_range">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/zoom-fit-best.svg</normaloff>:/icons/zoom-fit-best.svg</iconset>
    </property>
    <property name="text">
@@ -292,7 +292,7 @@ Shortcut: Shift+R</string>
   </action>
   <action name="action_display_settings">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/configure.svg</normaloff>:/icons/configure.svg</iconset>
    </property>
    <property name="text">
@@ -319,7 +319,7 @@ Shortcut:Alt+T</string>
   </action>
  </widget>
  <resources>
-  <include location="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc"/>
+  <include location="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc"/>
  </resources>
  <connections>
   <connection>

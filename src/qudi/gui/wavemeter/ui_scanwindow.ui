@@ -285,7 +285,7 @@ High bin number gives noisy but detailed data.</string>
   </widget>
   <action name="actionClose">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
@@ -294,7 +294,7 @@ High bin number gives noisy but detailed data.</string>
   </action>
   <action name="actionStart_scan">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/start-counter.svg</normaloff>:/icons/start-counter.svg</iconset>
    </property>
    <property name="text">
@@ -306,7 +306,7 @@ High bin number gives noisy but detailed data.</string>
     <bool>false</bool>
    </property>
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/stop-counter.svg</normaloff>:/icons/stop-counter.svg</iconset>
    </property>
    <property name="text">
@@ -315,7 +315,7 @@ High bin number gives noisy but detailed data.</string>
   </action>
   <action name="actionSave_histogram">
    <property name="icon">
-   <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+   <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/document-save.svg</normaloff>:/icons/document-save.svg</iconset>
    </property>
    <property name="text">
@@ -324,7 +324,7 @@ High bin number gives noisy but detailed data.</string>
   </action>
   <action name="actionAuto_range">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/zoom-fit-best.svg</normaloff>:/icons/zoom-fit-best.svg</iconset>
    </property>
    <property name="text">

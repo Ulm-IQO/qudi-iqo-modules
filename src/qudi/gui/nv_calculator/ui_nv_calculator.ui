@@ -804,7 +804,7 @@
   </widget>
   <action name="actionClose">
    <property name="icon">
-    <iconset resource="../../../../../qudi-core/src/qudi/artwork/qudi_core.qrc">
+    <iconset resource="../../../../../qudi-core/src/qudi/resources/qudi_core.qrc">
      <normaloff>:/icons/application-exit.svg</normaloff>:/icons/application-exit.svg</iconset>
    </property>
    <property name="text">
