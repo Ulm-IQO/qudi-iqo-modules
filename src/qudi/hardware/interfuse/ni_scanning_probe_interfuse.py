@@ -77,7 +77,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     _input_channel_units = ConfigOption(name='input_channel_units', missing='error')
 
     __backwards_line_resolution = ConfigOption(name='backwards_line_resolution', default=50)
-    __move_velocity = ConfigOption(name='move_velocity', default=400e-6)
+    __max_move_velocity = ConfigOption(name='maximum_move_velocity', default=400e-6)
 
     _threaded = True  # Interfuse is by default not threaded.
 
@@ -94,6 +94,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._constraints = None
 
         self.__write_stack = dict()
+
+        self._target_pos = dict()
+        self._stored_target_pos = dict()
+        self._velocity = -1.0
 
         self.__ni_ao_runout_timer = None
 
@@ -147,6 +151,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.__ni_ao_runout_timer.setInterval(5)  # Calc time delta after calls and use this
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_runout_timer.timeout.connect(self.__ao_write_loop, QtCore.Qt.QueuedConnection)
+
+        self._target_pos = self._voltage_dict_to_position_dict(self._ni_ao().setpoints)  # get voltages/pos from ni_ao
 
     def on_deactivate(self):
         """
@@ -278,23 +284,26 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             for axis, pos in position.items():
                 in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
-                position[axis] = constr.axes[axis].clip_value(position[axis])  # TODO Adapt interface to use "in_range"?
                 if not in_range_flag:
-                    self.log.warning(f'Position out of range {constr.axes[axis].value_range} '
+                    self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
                                      f'for axis {axis}. Value clipped to {position[axis]}')
+                position[axis] = float(constr.axes[axis].clip_value(position[axis]))
+                # TODO Adapt interface to use "in_range"?
+                self._target_pos[axis] = position[axis]
 
             dist = np.sqrt(np.sum([(position[axis]-start_pos[axis])**2 for axis in position]))
 
-            print(dist*1e6)
+            print(f'Move by distance: {dist*1e6} um')
 
             # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
-            if velocity is not None and velocity <= self.__move_velocity:
-                velocity = velocity
-            elif velocity is not None and velocity > self.__move_velocity:
-                self.log.warning(f'Requested velocity is exceeding the maximum velocity of {self.__move_velocity} m/s.'
-                                 f'Move will be done at maximum velocity')
+            if velocity is not None and velocity <= self.__max_move_velocity:
+                self._velocity = velocity
+            elif velocity is not None and velocity > self.__max_move_velocity:
+                self.log.warning(f'Requested velocity is exceeding the maximum velocity of {self.__max_move_velocity} '
+                                 f'm/s. Move will be done at maximum velocity')
+                self._velocity = self.__max_move_velocity
             else:
-                velocity = self.__move_velocity
+                self._velocity = self.__max_move_velocity
 
             granularity = velocity * self.__ni_ao_runout_timer.interval()*1e-3
 
@@ -309,9 +318,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             if not self._ni_ao().is_active:
                 self._ni_ao().set_activity_state(True)
                 self.log.info('start')  #TODO Remove
+            self._move_start_timestamp = time.time()
             self.__start_ao_runout_timer()
 
-            return position
+            return self.get_target()
 
     def move_relative(self, distance, velocity=None):
         """ Move the scanning probe by a relative distance from the current target position as fast
@@ -328,6 +338,22 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         return end_pos
 
+    # def wait_for_move_done(self):
+    #     # FIXME This just basically stops erverything and just prolongs the timer ... so useless
+    #     target = self.get_target()
+    #     pos = self.get_position()
+    #     move_distance = np.sqrt(np.sum([
+    #         (target[axis]-pos[axis])**2 for axis in target]))
+    #     while self.get_position().items() != self.get_target().items():
+    #         if time.time() - self._move_start_timestamp < 1.1 * move_distance/self._velocity:  # TODO Is this timeout ok?
+    #             continue
+    #         else:
+    #             raise TimeoutError(f'Move took too long')
+    #
+    # def test(self, pos):
+    #     self.move_absolute(pos, velocity=1e-6)
+    #     self.wait_for_move_done()
+
     def get_target(self):
         """ Get the current target position of the scanner hardware
         (i.e. the "theoretical" position).
@@ -335,7 +361,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
 
-        return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
+        return self._target_pos
 
     def get_position(self):
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
@@ -346,7 +372,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current position per axis.
         """
-        return self.get_target()
+        return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
 
     def start_scan(self):
         """
@@ -365,6 +391,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             try:
 
                 self._scan_data.new_scan()
+
+                # TODO Move to start position before scan ... and also wait till its there
 
                 self._ni_finite_sampling_io().start_buffered_frame()
 
@@ -557,7 +585,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
 
         # TODO adjust toolchain to incorporate __backwards_line_resolution in settings?
-        # TODO make linspaces with already clipped to constraints voltages. less computation and errors
         # TODO maybe need to clip to voltage range in case of float precision error in conversion?
 
         assert isinstance(scan_data, ScanData), 'This function requires a scan_data object as input'
@@ -568,7 +595,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             horizontal_resolution = scan_data.scan_resolution[0]
 
             start_position = self.get_position()[axis]
-            # TODO Needs rework, since this is now in configure scan. Start pos is useless then
+            # TODO Needs rework, since this is now called in configure scan. Start pos is useless then
 
             horizontal_start_line = np.linspace(self._position_to_voltage(axis, start_position),
                                                 self._position_to_voltage(axis, scan_data.scan_range[0][0]),
@@ -671,7 +698,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.__ni_ao_runout_timer.stop()
 
     def __ao_write_loop(self):
-        # TODO Adjust interval in each call to this function, to not accumulate error
+        # TODO Adjust interval in each call to this function, to not accumulate error (feedback from @Neverhorst)
         with self._thread_lock:
             new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, values[0])
                            for ax, values in self.__write_stack.items()}
