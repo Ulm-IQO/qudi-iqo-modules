@@ -467,9 +467,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
                 for output_channel in data:
                     assert not np.any(
-                        (min(data[output_channel]) >= min(self.constraints.output_channel_limits[output_channel]))
-                        |
-                        (max(data[output_channel]) <= max(self.constraints.output_channel_limits[output_channel]))
+                        (min(data[output_channel]) < min(self.constraints.output_channel_limits[output_channel])) |
+                        (max(data[output_channel]) > max(self.constraints.output_channel_limits[output_channel]))
                     ), f'Output channel {output_channel} value out of constraints range'
 
             elif self.output_mode == SamplingOutputMode.EQUIDISTANT_SWEEP:
@@ -482,9 +481,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
                 for output_channel in data:
                     assert not np.any(
-                        (min(data[output_channel][:-1]) >= min(self.constraints.output_channel_limits[output_channel]))
-                        |
-                        (max(data[output_channel][:-1]) <= max(self.constraints.output_channel_limits[output_channel]))
+                        (min(data[output_channel][:-1]) < min(self.constraints.output_channel_limits[output_channel])) |
+                        (max(data[output_channel][:-1]) > max(self.constraints.output_channel_limits[output_channel]))
                     ), f'Output channel {output_channel} value out of constraints range'
                 frame_size = next(iter(data.values()))[-1]
             else:
