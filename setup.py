@@ -32,6 +32,7 @@ windows_dep = [
     'PySide2>=5.15.2',
     'PyVisa>=1.11.3',
     'scipy>=1.7.1',
+    'comtypes>=1.1.8'
 ]
 
 with open('VERSION', 'r') as file:
