@@ -297,6 +297,7 @@ class ScannerGui(GuiBase):
         self.scanner_control_dockwidget.sigRangeChanged.connect(
             lambda ax, ranges: self.sigScanSettingsChanged.emit({'range': {ax: ranges}})
         )
+        # TODO: When "current target" value box is clicked in, a move is excecuted. Why and how?
         self.scanner_control_dockwidget.sigTargetChanged.connect(
             lambda ax, pos: self.sigScannerTargetChanged.emit({ax: pos}, self.module_uuid)
         )
