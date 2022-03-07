@@ -19,14 +19,30 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-# FIXME: Use PyVisa module instead of serial. Needs general cleanup and rework.
-import serial
-import time
 
+import time
+from dataclasses import dataclass, asdict
 from qudi.core.configoption import ConfigOption
 from qudi.interface.simple_laser_interface import SimpleLaserInterface
 from qudi.interface.simple_laser_interface import LaserState, ShutterState, ControlMode
+import pyvisa as visa
+import json
 
+@dataclass
+class System_info():
+    system_model_name: str = ''
+    system_manufacure_date: str = ''
+    system_calibration_date:str = ''
+    system_serial_number: str = ''
+    system_part_number: str = ''
+    firmware_version: str = ''
+    system_protocol_version: str = ''
+    system_wavelength: str = ''
+    system_power_rating: str = ''
+    device_type: str = ''
+    system_power_cycles: str = ''
+    system_power_hours: str = ''
+    diode_hours: str = ''
 
 class OBISLaser(SimpleLaserInterface):
 
@@ -36,24 +52,22 @@ class OBISLaser(SimpleLaserInterface):
 
     obis_laser:
         module.Class: 'laser.coherent_obis_laser.OBISLaser'
-        com_port: 'COM3'
+        serial_interface: 'COM3'
 
     """
 
-    eol = '\r'
     _model_name = 'UNKNOWN'
-
-    _com_port = ConfigOption('com_port', missing='error')
+    serial_interface = ConfigOption('serial_interface', missing='error')
 
     def on_activate(self):
         """ Activate module.
         """
-        self.obis = serial.Serial(self._com_port, timeout=1)
+        self.command = Obis_command()
 
         if not self.connect_laser():
-            raise RuntimeError('Laser does not seem to be connected.')
+            raise RuntimeError('Laser is not connected.')
 
-        self._model_name = self._communicate('SYST:INF:MOD?')
+        self._model_name = self.command.get_model_name()
         self._current_setpoint = self.get_current()
 
     def on_deactivate(self):
@@ -67,7 +81,8 @@ class OBISLaser(SimpleLaserInterface):
 
         @return bool: connection success
         """
-        response = self._communicate('*IDN?')[0]
+        self.command.open_visa(self.serial_interface)
+        response = self.command.get_idn()[0]
 
         if response.startswith('ERR-100'):
             return False
@@ -78,19 +93,19 @@ class OBISLaser(SimpleLaserInterface):
         """ Close the connection to the instrument.
         """
         self.set_laser_state(LaserState.OFF)
-        self.obis.close()
+        self.command.close()
 
     def allowed_control_modes(self):
         """ Control modes for this laser
         """
-        return frozenset({ControlMode.UNKNOWN})
+        return {ControlMode.POWER}
 
     def get_control_mode(self):
         """ Get current laser control mode.
 
         @return ControlMode: current laser control mode
         """
-        return ControlMode.UNKNOWN
+        return ControlMode.POWER
 
     def set_control_mode(self, mode):
         """ Set laser control mode.
@@ -98,7 +113,10 @@ class OBISLaser(SimpleLaserInterface):
         @param ControlMode mode: desired control mode
         @return ControlMode: actual control mode
         """
-        if mode != ControlMode.UNKNOWN:
+        if mode == ControlMode.POWER:
+            pass
+
+        else:
             self.log.warning(self._model_name + ' does not have control modes, '
                              'cannot set to mode {}'.format(mode))
 
@@ -107,24 +125,22 @@ class OBISLaser(SimpleLaserInterface):
 
         @return float: laser power in watts
         """
-        # The present laser output power in watts
-        return float(self._communicate('SOUR:POW:LEV?'))
+        return float(self.command.get_power_W())
 
     def get_power_setpoint(self):
         """ Get the laser power setpoint.
 
         @return float: laser power setpoint in watts
         """
-        # The present laser power level setting in watts (set level)
-        return float(self._communicate('SOUR:POW:LEV:IMM:AMPL?'))
+        return float(self.command.get_power_setpoint_W())
 
     def get_power_range(self):
         """ Get laser power range.
 
         @return float[2]: laser power range
         """
-        minpower = float(self._communicate('SOUR:POW:LIM:LOW?'))
-        maxpower = float(self._communicate('SOUR:POW:LIM:HIGH?'))
+        minpower = float(self.command.get_min_power())
+        maxpower = float(self.command.get_max_power())
         return minpower, maxpower
 
     def set_power(self, power):
@@ -132,7 +148,7 @@ class OBISLaser(SimpleLaserInterface):
 
         @param float power: desired laser power in watts
         """
-        self._communicate('SOUR:POW:LEV:IMM:AMPL {}'.format(power))
+        self.command.set_power_W(power)
 
     def get_current_unit(self):
         """ Get unit for laser current.
@@ -146,8 +162,8 @@ class OBISLaser(SimpleLaserInterface):
 
         @return float[2]: range for laser current
         """
-        low = self._communicate('SOUR:CURR:LIM:LOW?')
-        high = self._communicate('SOUR:CURR:LIM:HIGH?')
+        low = self.command.get_min_current_A()
+        high = self.command.get_max_current_A()
         return float(low), float(high)
 
     def get_current(self):
@@ -155,7 +171,7 @@ class OBISLaser(SimpleLaserInterface):
 
         @return float: current laser current in amps
         """
-        return float(self._communicate('SOUR:POW:CURR?'))
+        return self.command.get_current_A()
 
     def get_current_setpoint(self):
         """ Current laser current setpoint.
@@ -164,13 +180,13 @@ class OBISLaser(SimpleLaserInterface):
         """
         return self._current_setpoint
 
-    def set_current(self, current_percent):
+    def set_current(self, current):
         """ Set laser current setpoint.
 
         @param float current_percent: laser current setpoint
         """
-        self._communicate('SOUR:POW:CURR {}'.format(current_percent))
-        self._current_setpoint = current_percent
+        self.command.set_current(current)
+        self._current_setpoint = current
 
     def get_shutter_state(self):
         """ Get laser shutter state.
@@ -192,125 +208,169 @@ class OBISLaser(SimpleLaserInterface):
 
         @return dict: dict of temperature names and value
         """
-        return {
-            'Diode': self._get_diode_temperature(),
-            'Internal': self._get_internal_temperature(),
-            'Base Plate': self._get_baseplate_temperature()
-        }
+        return self.command.get_temperatures()
 
     def get_laser_state(self):
         """ Get laser operation state
 
         @return LaserState: laser state
         """
-        state = self._communicate('SOUR:AM:STAT?')
-        if 'ON' in state:
+        state = self.command.get_laser_state()
+        self.laser_state = state
+        if state == 'ON':
             return LaserState.ON
-        elif 'OFF' in state:
+        elif state == 'OFF':
             return LaserState.OFF
-        return LaserState.UNKNOWN
+        else:
+            return LaserState.UNKNOWN
 
-    def set_laser_state(self, status):
+    def set_laser_state(self, state):
         """ Set desited laser state.
 
         @param LaserState status: desired laser state
         @return LaserState: actual laser state
         """
-        if self.get_laser_state() != status:
-            if status == LaserState.ON:
-                self._communicate('SOUR:AM:STAT ON')
-            elif status == LaserState.OFF:
-                self._communicate('SOUR:AM:STAT OFF')
+        current_state = self.get_laser_state()
+        if  current_state != state:
+            on_off = 'ON' if state == LaserState.ON else 'OFF'
+            self.command.set_laser_state(on_off)
 
     def get_extra_info(self):
         """ Extra information from laser.
 
         @return str: multiple lines of text with information about laser
         """
-        return ('System Model Name: '       + self._communicate('SYST:INF:MOD?')    + '\n'
-                'System Manufacture Date: ' + self._communicate('SYST:INF:MDAT?')   + '\n'
-                'System Calibration Date: ' + self._communicate('SYST:INF:CDAT?')   + '\n'
-                'System Serial Number: '    + self._communicate('SYST:INF:SNUM?')   + '\n'
-                'System Part Number: '      + self._communicate('SYST:INF:PNUM?')   + '\n'
-                'Firmware version: '        + self._communicate('SYST:INF:FVER?')   + '\n'
-                'System Protocol Version: ' + self._communicate('SYST:INF:PVER?')   + '\n'
-                'System Wavelength: '       + self._communicate('SYST:INF:WAV?')    + '\n'
-                'System Power Rating: '     + self._communicate('SYST:INF:POW?')    + '\n'
-                'Device Type: '             + self._communicate('SYST:INF:TYP?')    + '\n'
-                'System Power Cycles: '     + self._communicate('SYST:CYCL?')       + '\n'
-                'System Power Hours: '      + self._communicate('SYST:HOUR?')       + '\n'
-                'Diode Hours: '             + self._communicate('SYST:DIOD:HOUR?')
-                )
+        return json.dumps(asdict(self.command.get_sys_info()))
 
-########################## communication methods ###############################
+class Visa:
 
-    def _send(self, message):
+    def open(self, interface, baud_rate, write_termination, read_termination, send_end, timeout):
+
+        self.rm = visa.ResourceManager()
+        self.inst = self.rm.open_resource(interface,
+                                         baud_rate = baud_rate,
+                                         write_termination = write_termination,
+                                         read_termination = read_termination,
+                                         send_end = send_end)
+        self.inst.timeout = timeout
+
+    def close(self):
+        self.inst.close()
+        self.rm.close()
+
+    def write(self, message):
         """ Send a message to to laser
 
         @param string message: message to be delivered to the laser
         """
-        new_message = message + self.eol
-        self.obis.write(new_message.encode())
+        self.inst.write(message)
 
-    def _communicate(self, message):
+    def query(self, message):
         """ Send a receive messages with the laser
 
         @param string message: message to be delivered to the laser
 
         @returns string response: message received from the laser
         """
-        self._send(message)
-        time.sleep(0.1)
-        response_len = self.obis.inWaiting()
-        response = []
+        values = self.inst.query(message)
+        return values
 
-        while response_len > 0:
-            this_response_line = self.obis.readline().decode().strip()
-            if (response_len == 4) and (this_response_line == 'OK'):
-                response.append('')
-            else:
-                response.append(this_response_line)
-            response_len = self.obis.inWaiting()
+    def get_idn(self):
+        return self.query('*IDN?')
 
-        # Potentially multi-line responses - need to be joined into string
-        full_response = ''.join(response)
 
-        if full_response == 'ERR-100':
-            self.log.warning(self._model_name + ' does not support the command ' + message)
-            return '-1'
+class Obis_command(Visa):
 
-        return full_response
+    sys_info = System_info()
+    visa = Visa()
 
-########################## internal methods ####################################
+    def open_visa(self, interface):
+        baud_rate = 115200
+        write_termination = '\r\n'
+        read_termination = '\r\n'
+        send_end = True
+        timeout = 1000
+        self.open(interface, baud_rate, write_termination, read_termination, send_end, timeout)
+        self.turn_off_handshaking()
 
-    def _get_diode_temperature(self):
-        """ Get laser diode temperature
+    def close_visa(self):
+        self.close()
 
-        @return float: laser diode temperature
-        """
-        response = float(self._communicate('SOUR:TEMP:DIOD?').split('C')[0])
-        return response
+    def turn_off_handshaking(self):
+        self.write('SYST:COMM:HAND OFF')
 
-    def _get_internal_temperature(self):
-        """ Get internal laser temperature
+    def get_operating_mode(self):
+        return self.query('SOUR:AM:SOUR?')
 
-        @return float: internal laser temperature
-        """
-        return float(self._communicate('SOUR:TEMP:INT?').split('C')[0])
+    def set_operating_CW_mode(self, mode):
+        self.write('SOUR:AM:INT {}'.format(mode))
 
-    def _get_baseplate_temperature(self):
-        """ Get laser base plate temperature
+    def set_power_W(self, power):
+        self.write('SOUR:POW:LEV:IMM:AMPL {}'.format(power))
 
-        @return float: laser base plate temperature
-        """
-        return float(self._communicate('SOUR:TEMP:BAS?').split('C')[0])
+    def set_current_A(self, current):
+        self.write('SOUR:POW:CURR {}'.format(current))
 
-    def _get_interlock_status(self):
+    def get_model_name(self):
+        return self.query('SYST:INF:MOD?')
+
+    def get_sys_info(self):
+        self.sys_info.system_model_name = self.query('SYST:INF:MOD?')
+        self.sys_info.system_manufacure_date = self.query('SYST:INF:MDAT?')
+        self.sys_info.system_calibration_date = self.query('SYST:INF:CDAT?')
+        self.sys_info.system_serial_number = self.query('SYST:INF:SNUM?')
+        self.sys_info.system_part_number = self.query('SYST:INF:PNUM?')
+        self.sys_info.firmware_version = self.query('SYST:INF:FVER?')
+        self.sys_info.system_protocol_version = self.query('SYST:INF:FVER?')
+        self.sys_info.system_wavelength = self.query('SYST:INF:WAV?')
+        self.sys_info.system_power_rating = self.query('SYST:INF:POW?')
+        self.sys_info.device_type = self.query('SYST:INF:TYP?')
+        self.sys_info.system_power_cycles = self.query('SYST:CYCL?')
+        self.sys_info.system_power_hours = self.query('SYST:HOUR?')
+        self.sys_info.diode_hours = self.query('SYST:DIOD:HOUR?')
+
+        return self.sys_info
+
+    def get_power_W(self):
+        return float(self.query('SOUR:POW:LEV?'))
+
+    def get_power_setpoint_W(self):
+        return float(self.query('SOUR:POW:LEV:IMM:AMPL?'))
+
+    def get_min_power(self):
+        return float(self.query('SOUR:POW:LIM:LOW?'))
+
+    def get_max_power(self):
+        return float(self.query('SOUR:POW:LIM:HIGH?'))
+
+    def get_min_current_A(self):
+        return float(self.query('SOUR:CURR:LIM:LOW?'))
+
+    def get_max_current_A(self):
+        return float(self.query('SOUR:CURR:LIM:HIGH?'))
+
+    def get_current_A(self):
+        return float(self.query('SOUR:POW:CURR?'))
+
+    def get_temperatures(self):
+        return {'Diode': str(self.query('SOUR:TEMP:DIOD?').replace('C', '')),
+                'Internal': str(self.query('SOUR:TEMP:INT?').replace('C', '')),
+                'Base Plate': str(self.query('SOUR:TEMP:BAS?').replace('C', ''))
+                }
+
+    def get_laser_state(self):
+        return self.query('SOUR:AM:STAT?')
+
+    def set_laser_state(self, state):
+        self.write('SOUR:AM:STAT {}'.format(state))
+
+    def get_interlock_status(self):
         """ Get the status of the system interlock
 
         @returns bool interlock: status of the interlock
         """
-        response = self._communicate('SYST:LOCK?')
+
+        response = self.query('SYST:LOCK?')
 
         if response.lower() == 'ok':
             return True
@@ -318,8 +378,3 @@ class OBISLaser(SimpleLaserInterface):
             return False
         else:
             return False
-
-    def _set_laser_to_11(self):
-        """ Set the laser power to 11
-        """
-        self.set_power(0.165)
