@@ -600,18 +600,18 @@ class SIwrapper():
         return status.value
 
     def get_avail_user_len_B(self):
-        c_avaiil_user_len = c_int64(0)
-        spcm_dwGetParam_i64(self.card, SPC_DATA_AVAIL_USER_LEN, byref(c_avaiil_user_len))
+        c_avaiil_user_len = c_int32()
+        spcm_dwGetParam_i32(self.card, SPC_DATA_AVAIL_USER_LEN, byref(c_avaiil_user_len))
         return c_avaiil_user_len.value
 
     def get_avail_user_pos_B(self):
-        c_avaiil_user_pos = c_int64(0)
-        spcm_dwGetParam_i64(self.card, SPC_DATA_AVAIL_USER_POS, byref(c_avaiil_user_pos))
+        c_avaiil_user_pos = c_int32()
+        spcm_dwGetParam_i32(self.card, SPC_DATA_AVAIL_USER_POS, byref(c_avaiil_user_pos))
         return c_avaiil_user_pos.value
 
     def get_avail_card_len_B(self):
-        c_avaiil_card_len = c_int64(0)
-        spcm_dwGetParam_i64(self.card, SPC_DATA_AVAIL_CARD_LEN, byref(c_avaiil_card_len))
+        c_avaiil_card_len = c_int32()
+        spcm_dwGetParam_i32(self.card, SPC_DATA_AVAIL_CARD_LEN, byref(c_avaiil_card_len))
         return c_avaiil_card_len.value
 
     def set_avail_card_len_B(self, avail_card_len_B):

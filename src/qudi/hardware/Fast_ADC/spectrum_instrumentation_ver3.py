@@ -62,8 +62,8 @@ class Card_settings:
         self.acq_seg_size_S = int(np.ceil((record_length_s / binwidth_s) / 16) * 16)  # necessary to be multuples of 16
         self.acq_post_trigs_S =  int(self.acq_seg_size_S - self.acq_pre_trigs_S)
 
-    def get_buf_size_B(self, segs_per_rep_S, reps_per_buf):
-        self.buf_size_B = segs_per_rep_S * reps_per_buf
+    def get_buf_size_B(self, segs_per_rep_B, reps_per_buf):
+        self.buf_size_B = segs_per_rep_B * reps_per_buf
 
 
 @dataclass
@@ -122,7 +122,7 @@ class Measurement_settings:
 
 def check_card_error(func):
     def wrapper(self, *args, **kwargs):
-        func(self, *args, **kwargs)
+        value = func(self, *args, **kwargs)
         if self._error_check == True:
             error = self.error
             frame = inspect.currentframe().f_back
@@ -138,6 +138,7 @@ def check_card_error(func):
                 print('line {} no error at {}'.format(frame.f_lineno, frame.f_code.co_name))
         else:
             pass
+        return value
 
     return wrapper
 
@@ -236,7 +237,7 @@ class SpectrumInstrumentation(FastCounterInterface):
             self._card_on = True
             self.cfg.card = self.card
             self.dp.card = self.card
-            self.dp.command.card = self.card
+ #           self.dp.command.card = self.card
 
 
         else:
@@ -280,15 +281,16 @@ class SpectrumInstrumentation(FastCounterInterface):
                     gate_length_s: the actual set gate length in seconds
                     number_of_gates: the number of gated, which are accepted
         """
+        self.dp.load_static_params(self.cs, self.ms)
+        self.cfg.load_static_params_of_config(self.cs, self.ms)
+
         self.ms.load_dynamic_params(binwidth_s, record_length_s, number_of_gates)
         self.cs.calc_dynamic_params_clk_and_acq(binwidth_s, record_length_s)
         self.ms.calc_segments(self.cs.acq_seg_size_S)
         self.ms.calc_buf_params()
-        self.cs.get_buf_size_B(self.ms.segs_per_rep_S, self.ms.reps_per_buf)
+        self.cs.get_buf_size_B(self.ms.segs_per_rep_B, self.ms.reps_per_buf)
 
-        self.dp.load_static_params(self.cs, self.ms)
         self.dp.load_dynamic_params(self.cs, self.ms)
-        self.cfg.load_static_params_of_config(self.cs, self.ms)
         self.cfg.load_dynamic_params(self.cs)
 
         self.cfg.c_buf_ptr = c_void_p()
@@ -440,18 +442,6 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.ms.record_length_s = 1e-6
         self.ms.number_of_gates = 0
 
-    def test_trigger(self):
-        self.cs.acq_mode = 'STD_SINGLE'
-        self.cs.trig_mode = 'EXT'
-        self.ms.binwidth_s = 1/250e6
-        self.ms.record_length_s = 1e-6
-        self.ms.number_of_gates = 0
-        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
-        self._start_card()
-        self._force_trigger()
-        self.dp.init_measure_params()
-        self.dp.data = self.dp.check_buffer_single()
-        #self.dp.save_data(self.dp.data, path)
 
     def test_status(self):
         self._init_buf_size_S = 1000
@@ -459,13 +449,13 @@ class SpectrumInstrumentation(FastCounterInterface):
         self._set_params_test_exe()
         self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
         self.dp.init_measure_params()
-        self.dp.command.check_dp_status()
+        self.dp.check_dp_status()
         self.card_start()
-        self.dp.command.check_dp_status()
+        self.dp.check_dp_status()
         self.start_dma()
-        self.dp.command.check_dp_status()
-        self.dp.command.set_avail_card_len_B(100)
-        self.dp.command.check_dp_status()
+        self.dp.check_dp_status()
+        self.dp.set_avail_card_len_B(100)
+        self.dp.check_dp_status()
 
     def test_get_per_notify(self):
         self._init_buf_size_S = 1000
@@ -473,12 +463,91 @@ class SpectrumInstrumentation(FastCounterInterface):
         self._set_params_test_exe()
         self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
         self.dp.init_measure_params()
-        self.dp.command.check_dp_status()
+        self.dp.check_dp_status()
         self.card_start()
-        self.dp.command.check_dp_status()
+        self.dp.check_dp_status()
         self.start_dma()
-        self.dp.command.check_dp_status()
-#        self.avg_data, a = self.dp._get_one_rep_per_notify()
+        self.dp.check_dp_status()
+        self.avg_data, a = self.dp._get_one_rep_per_notify()
+
+    def test_get_by_mean(self):
+        self._init_buf_size_S = 1000
+        self._buf_notify_size_B = 64
+        self._set_params_test_exe()
+        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
+        self.dp.init_measure_params()
+        self.dp.check_dp_status()
+        self.card_start()
+        self.dp.check_dp_status()
+        self.start_dma()
+        self.dp.check_dp_status()
+        self.dp.avg_data = self.dp._fetch_reps_by_mean(0, 1)
+
+    def test_get_by_mean_buf_end(self):
+        self.cs.acq_mode = 'STD_SINGLE'
+        self.cs.trig_mode = 'SW'
+        self.ms.binwidth_s = 1/250e6
+        self.ms.record_length_s = 1e-6
+        self.ms.number_of_gates = 0
+        self._init_buf_size_S = 1000
+        self._buf_notify_size_B = 64
+        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
+        self.dp.init_measure_params()
+        self.dp.check_dp_status()
+        self.card_start()
+        self.dp.check_dp_status()
+        self.start_dma()
+        self.dp.check_dp_status()
+
+    def test_trigger(self):
+        self.cs.acq_mode = 'STD_SINGLE'
+        self.cs.trig_mode = 'EXT'
+        self.ms.binwidth_s = 1/250e6
+        self.ms.record_length_s = 1e-6
+        self.ms.number_of_gates = 0
+        self._init_buf_size_S = 1000
+        self._buf_notify_size_B = 64
+        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
+        self.dp.init_measure_params()
+        self.dp.check_dp_status()
+        self.card_start()
+        self.dp.check_dp_status()
+        self.enable_trigger()
+        self.start_dma()
+        self.dp.check_dp_status()
+
+    def test_std_multi(self):
+        self.cs.acq_mode = 'STD_MULTI'
+        self.cs.trig_mode = 'EXT'
+        self.ms.binwidth_s = 1/250e6
+        self.ms.record_length_s = 1e-6
+        self.ms.number_of_gates = 0
+        self.ms.init_buf_size_S = 2000
+        self._buf_notify_size_B = 64
+        self.cfg._loops = 10
+        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
+        self.dp.init_measure_params()
+        self.dp.check_dp_status()
+        self.card_start()
+        self.dp.check_dp_status()
+        self.enable_trigger()
+        self.start_dma()
+        self.dp.check_dp_status()
+
+    def check_average(self):
+        self.sweep1 = 6
+        self.sweep2 = self.cfg.loops
+        self.avg_data_1 = si.dp._get_new_data_by_mean(0, self.sweep1)
+        self.dp.check_dp_status()
+        self.dp.set_avail_card_len_B(self.ms.segs_per_rep_B*self.sweep1)
+        self.start = self.dp.get_avail_user_pos_B()
+        self.avg_data_2 = si.dp._get_new_data_by_mean(self.start, self.head)
+        self.avg_data, self.avg_num = self.dp._get_avg_data(self.avg_data_1, self.sweep1,
+                                                            self.avg_data_2, self.sweep2)
+
+
+
+
 
 
 
@@ -534,6 +603,10 @@ class Configure_command():
             self._mode_STD_SINGLE()
             print('STD_SINGLE is used')
 
+        elif acq_mode == 'STD_MULTI':
+            self._mode_STD_MULTI()
+            print('STD_MULTI is used')
+
         elif acq_mode == 'FIFO_SINGLE':
             self._mode_FIFO_SINGLE()
             print('FIFO_SINGLE is used')
@@ -554,6 +627,16 @@ class Configure_command():
         spcm_dwSetParam_i32(self.card, SPC_MEMSIZE, self._acq_seg_size_S)
         self.error = spcm_dwSetParam_i32(self.card, SPC_POSTTRIGGER, self._acq_post_trigs_S)
         return
+
+    @check_card_error
+    def _mode_STD_MULTI(self):
+        spcm_dwSetParam_i32(self.card, SPC_CARDMODE, SPC_REC_STD_MULTI)
+        spcm_dwSetParam_i32(self.card, SPC_SEGMENTSIZE, self._acq_seg_size_S)
+        spcm_dwSetParam_i32(self.card, SPC_MEMSIZE, int(self._acq_seg_size_S * self._loops))
+        self.error = spcm_dwSetParam_i32(self.card, SPC_POSTTRIGGER, self._acq_post_trigs_S)
+
+        return
+
 
     @check_card_error
     def _mode_FIFO_SINGLE(self):
@@ -756,11 +839,12 @@ class Data_process_command():
     _dp_check = True
     _error_check = True
     status = 0
-    avail_user_pos_B = 0
-    avail_user_len_B = 0
-    avail_card_len_B = 0
-    processed_data_B = 0
-    total_data_B = 0
+    avail_user_pos_B = '-----'
+    avail_user_len_B = '-----'
+    avail_card_len_B = '-----'
+    trig_counter = '-----'
+    processed_data_B = '-----'
+    total_data_B = '-----'
 
 
     def check_dp_status_wrapper(func):
@@ -782,13 +866,16 @@ class Data_process_command():
             self.get_status()
             self.get_avail_user_pos_B()
             self.get_avail_user_len_B()
+            self.get_trig_counter()
 #            self.get_avail_card_len_B()
-            print("Stat:{0:08x}h Pos:{1:08} Avail:{2:08} "
-                  "Processed: {3} / {4}:\n".format(self.status,
+            print("Stat:{0:08x}h Pos:{1:08} B Avail:{2:08} B "
+                  "Processed: {3} B / {4} B: Trigger: {5} / {6}\n".format(self.status,
                                                self.avail_user_pos_B,
                                                self.avail_user_len_B,
                                                self.processed_data_B,
-                                               self.total_data_B)
+                                               self.total_data_B,
+                                               self.avg_num,
+                                               self.trig_counter)
 #                                              self.avail_card_len_B)
                   )
         else:
@@ -822,7 +909,7 @@ class Data_process_command():
         self.avail_card_len_B = c_avaiil_card_len_B.value
         return self.avail_card_len_B
 
-    @check_card_error
+    #@check_card_error
     def set_avail_card_len_B(self, avail_card_len_B):
         self.error = c_avaiil_card_len_B = c_int32(avail_card_len_B)
         spcm_dwSetParam_i32(self.card, SPC_DATA_AVAIL_CARD_LEN, c_avaiil_card_len_B)
@@ -832,7 +919,8 @@ class Data_process_command():
     def get_trig_counter(self):
         c_trig_counter = c_int64(0)
         self.error = spcm_dwGetParam_i64(self.card, SPC_TRIGGERCOUNTER, byref(c_trig_counter))
-        return c_trig_counter.value
+        self.trig_counter = c_trig_counter.value
+        return self.trig_counter
 
     @check_card_error
     def get_bits_per_sample(self):
@@ -844,10 +932,9 @@ class Data_process_command():
     def wait_DMA(self):
         self.error = spcm_dwSetParam_i32(self.card, SPC_M2CMD, M2CMD_CARD_WAITREADY)
 
-class Data_process():
+class Data_process_loop(Data_process_command):
 
     def __init__(self, cs, ms):
-        self.command = Data_process_command()
         self.load_static_params(cs, ms)
 
     def load_static_params(self, cs, ms):
@@ -897,11 +984,11 @@ class Data_process():
         while self.loop_on == True:
             if self.fetch_on == False:
                 curr_avail_reps = self._wait_new_avail_reps()
-                seg_start_B = self.command.get_avail_user_pos_B()
+                seg_start_B = self.get_avail_user_pos_B()
                 new_avg_data, new_avg_num = self._get_new_data_by_mean(seg_start_B, curr_avail_reps)
                 self.avg_data, self.avg_num = self._get_avg_data(self.avg_data, self.avg_num,
                                                                    new_avg_data, new_avg_num)
-                self.command.set_avail_card_len_B(self.segs_per_rep_B * curr_avail_reps)
+                self.set_avail_card_len_B(self.segs_per_rep_B * curr_avail_reps)
             else:
                 print('fetching')
         print('end_data_process_loop')
@@ -910,9 +997,9 @@ class Data_process():
 
     def check_buffer_single(self):
         print('start check buffer')
-#        self.command.card = self.card
+#        self.card = self.card
 #        curr_avail_reps = self._wait_new_avail_reps()
-        seg_start_B = self.command.get_avail_user_pos_B()
+        seg_start_B = self.get_avail_user_pos_B()
         c_buffer = self.cast_buf_ptr(self.c_buf_ptr, seg_start_B, self.data_type)
         np_buffer = self.asnparray(c_buffer, self.segs_per_rep_S)
         print('end check buffer')
@@ -920,7 +1007,7 @@ class Data_process():
 
     def check_buffer(self):
 
-        seg_start_B = self.command.get_avail_user_pos_B()
+        seg_start_B = self.get_avail_user_pos_B()
         c_buffer = self.cast_buf_ptr(self.c_buf_ptr, seg_start_B, self.data_type)
         np_buffer = self.asnparray(c_buffer, self.segs_per_rep_S)
         return np_buffer
@@ -930,15 +1017,15 @@ class Data_process():
         c_buffer = cast(addressof(c_buf_ptr) + seg_start_B, POINTER(data_type))
         return c_buffer
 
-    def asnparray(self, c_buffer, length):
-        np_buffer = np.ctypeslib.as_array(c_buffer, shape=(length,))
+    def asnparray(self, c_buffer, shape):
+        np_buffer = np.ctypeslib.as_array(c_buffer, shape=shape)
         return np_buffer
 
     def check_buffer(self, reps):
         print('start check buffer')
-        self.command.card = self.card
+#        self.card = self.card
         curr_avail_reps = self._wait_new_avail_reps()
-        seg_start_B = self.command.get_avail_user_pos_B()
+        seg_start_B = self.get_avail_user_pos_B()
         while curr_avail_reps < reps:#self.reps_per_buf:
             #prev_avail_reps = curr_avail_reps
             curr_avail_reps = self._wait_new_avail_reps()
@@ -957,19 +1044,19 @@ class Data_process():
 
     def _wait_new_trigger(self, prev_trig_counts):
         print('waiting for triggers')
-        curr_trig_counts = self.command.get_trig_counter()
+        curr_trig_counts = self.get_trig_counter()
         while curr_trig_counts == prev_trig_counts:
-                curr_trig_counts = self.command.get_trig_counter()
+                curr_trig_counts = self.get_trig_counter()
         print('got_new_triggs {}'.format(curr_trig_counts))
 
         return curr_trig_counts
 
     def _wait_new_avail_reps(self):
-        curr_avail_reps = int(np.floor(self.command.get_avail_user_len_B() / self.segs_per_rep_B))
+        curr_avail_reps = int(np.floor(self.get_avail_user_len_B() / self.segs_per_rep_B))
         if curr_avail_reps == 0:
             print('waiting for new avail reps')
             while curr_avail_reps == 0:
-                curr_avail_reps = int(np.floor(self.command.get_avail_user_len_B() / self.segs_per_rep_B))
+                curr_avail_reps = int(np.floor(self.get_avail_user_len_B() / self.segs_per_rep_B))
 
         return curr_avail_reps
 
@@ -977,24 +1064,13 @@ class Data_process():
         print('#####get_new_data_by_mean#####')
         rep_end = int(seg_start_B /self.segs_per_rep_B) + curr_avail_reps
 
-        if 0 < rep_end <= reps_per_buf:
+        if 0 < rep_end <= self.reps_per_buf:
             print('***within buffer***')
             np_new_avg_data = self._fetch_reps_by_mean(seg_start_B, curr_avail_reps)
 
         elif self.reps_per_buf < rep_end < 2 * self.reps_per_buf:
             print('***end of buffer***')
-            start_rep_num = int((seg_start_B / self.segs_per_rep_B) + 1)
-            curr_avail_reps_tail = self.reps_per_buf - (start_rep_num - 1)
-            curr_avail_reps_head = curr_avail_reps - curr_avail_reps_tail
-
-            np_avg_data_tail = self._fetch_reps_by_mean(seg_start_B, curr_avail_reps_tail)
-            np_avg_data_head = self._fetch_reps_by_mean(0, curr_avail_reps_head)
-            avg_weights = np.array([curr_avail_reps_tail, curr_avail_reps_head])
-
-            np_new_avg_data_set = (np.append(np_avg_data_tail, np_avg_data_head, axis=0)
-                                   .reshape((2, segs_per_rep_S))
-                                   )
-            np_new_avg_data = np.average(np_new_avg_data_set, weights=avg_weights, axis=0)
+            np_new_avg_data = self._fetch_reps_by_means_buf_end(seg_start_B, curr_avail_reps)
 
         else:
             print('error')
@@ -1003,52 +1079,67 @@ class Data_process():
 
         return np_new_avg_data, curr_avail_reps
 
-    def _fetch_reps_by_mean (self, seg_start_B, curr_avail_reps):
-        np_data = (np.ctypeslib.as_array(cast(addressof(self.c_buf_ptr) + seg_start_B,
-                                         POINTER(self.data_type)),
-                                         shape=((curr_avail_reps, self.segs_per_rep_S ))
-                                         )
-                   .mean(axis=0)
-                  )*self.V_conv_ratio
+    def _fetch_reps_by_means_buf_end(self, seg_start_B, curr_avail_reps):
+        start_rep = int((seg_start_B / self.segs_per_rep_B) + 1)
+        reps_tail = self.reps_per_buf - (start_rep - 1)
+        reps_head = curr_avail_reps - reps_tail
 
-        return np_data
+        np_avg_data_tail = self._fetch_reps_by_mean(seg_start_B, reps_tail)
+        np_avg_data_head = self._fetch_reps_by_mean(0          , reps_head)
+
+        np_avg_data_set = (np.append(np_avg_data_tail, np_avg_data_head, axis=0)
+                                 .reshape((2, self.segs_per_rep_S))
+                               )
+        avg_weights = np.array([reps_tail, reps_head])
+        np_avg_data = np.average(np_avg_data_set, weights=avg_weights, axis=0)
+        return np_avg_data
+
+    def _fetch_reps_by_mean (self, seg_start_B, curr_avail_reps):
+        c_buffer = self.cast_buf_ptr(self.c_buf_ptr, seg_start_B, self.data_type)
+        shape = (curr_avail_reps, self.segs_per_rep_S )
+        np_data = self.asnparray(c_buffer, shape)
+        np_data_mean = np_data.mean(axis=0)
+
+        return np_data_mean
 
 
 
     def _get_one_rep_per_notify(self):
         np_new_data = np.empty((0, 1))
-        self.command.processed_data_B = 0
-        self.command.total_data_B = self.segs_per_rep_B
-        while self.command.processed_data_B < self.command.total_data_B:
-            avail_user_len_B = self.command.get_avail_user_len_B()
-            self.command.check_dp_status()
+        self.processed_data_B = 0
+        self.total_data_B = self.segs_per_rep_B
+        while self.processed_data_B < self.total_data_B:
+            avail_user_len_B = self.get_avail_user_len_B()
 #            if avail_user_len_B >= self.notify_size_B:
-            if self.command.avail_user_len_B >= self.notify_size_B:
+            if self.avail_user_len_B >= self.notify_size_B:
                 np_new_data = np.append(np_new_data, self._get_notified())
-                self.command.processed_data_B += self.notify_size_B
+                self.processed_data_B += self.notify_size_B
+                self.check_dp_status()
 
         return np_new_data, 1
 
     def _get_data_per_notify(self, n):
         #np_new_data = np.empty(0)
         for i in range(n):
-            self.np_new_data = self.fetch_notified(self.np_new_data)
+            self.np_old_data = self.np_new_data
+            self.np_new_data = self.fetch_notified(self.np_old_data)
 
     def fetch_notified(self, np_old_data):
-        self.command.check_dp_status()
-        if self.command.avail_user_len_B >= self.notify_size_B:
+        self.check_dp_status()
+        if self.avail_user_len_B >= self.notify_size_B:
             np_new_data = np.append(np_old_data, self._get_notified())
-            self.command.processed_data_B += self.notify_size_B
+            self.processed_data_B += self.notify_size_B
             return np_new_data
         else:
             pass
 
 
     def _get_notified(self):
-        user_pos_B = int(self.command.get_avail_user_pos_B())
+        user_pos_B = int(self.get_avail_user_pos_B())
+        shape = (self.notify_size_S,)
         c_buffer = self.cast_buf_ptr(self.c_buf_ptr, user_pos_B, self.data_type)
-        np_buffer = self.asnparray(c_buffer, self.notify_size_S)
-        self.command.set_avail_card_len_B(self.notify_size_B)
+        np_buffer = self.asnparray(c_buffer, )
+        self.set_avail_card_len_B(self.notify_size_B)
         return np_buffer
 
 
@@ -1074,4 +1165,5 @@ class Data_process():
                 avg_num = prev_avg_reps + curr_avail_reps
 
         return np_avg_data, avg_num
+
 
