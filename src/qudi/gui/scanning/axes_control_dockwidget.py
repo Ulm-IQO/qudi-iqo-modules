@@ -162,18 +162,22 @@ class AxesControlWidget(QtWidgets.QWidget):
             layout.addWidget(pos_spinbox, index, 7)
 
             # Connect signals
-            res_spinbox.editingFinished.connect(
+            # TODO for the time being changed to "valueChanged".
+            #  "editingFinished" also fires when window gets focus again, so also after alt+tab.
+            #  However, valueChanged is fired when scrolled or while typing numbers.
+
+            res_spinbox.valueChanged.connect(
                 self.__get_axis_resolution_callback(ax_name, res_spinbox)
             )
-            min_spinbox.editingFinished.connect(
+            min_spinbox.valueChanged.connect(
                 self.__get_axis_min_range_callback(ax_name, min_spinbox)
             )
-            max_spinbox.editingFinished.connect(
+            max_spinbox.valueChanged.connect(
                 self.__get_axis_max_range_callback(ax_name, max_spinbox)
             )
             slider.doubleSliderMoved.connect(self.__get_axis_slider_moved_callback(ax_name))
             slider.sliderReleased.connect(self.__get_axis_slider_released_callback(ax_name, slider))
-            pos_spinbox.editingFinished.connect(
+            pos_spinbox.valueChanged.connect(
                 self.__get_axis_target_callback(ax_name, pos_spinbox)
             )
 
