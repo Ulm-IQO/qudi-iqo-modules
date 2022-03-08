@@ -128,7 +128,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         # unread samples buffer
         self.__unread_samples_buffer = None
-        self.__number_of_unread_samples = 0
+        self._number_of_pending_samples = 0
 
         # List of all available counters and terminals for this device
         self.__all_counters = tuple()
@@ -403,7 +403,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         @return int: Unread samples in input buffer
         """
         if not self.is_running:
-            return 0
+            return self._number_of_pending_samples
 
         if self._ai_task_handle is None:
             return self._di_task_handles[0].in_stream.avail_samp_per_chan
@@ -537,51 +537,53 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             self.module_state.unlock()
             raise NiInitError('Analog out task initialization failed; all tasks terminated')
 
-        output_data = np.ndarray((len(self.active_channels[1]), self.frame_size))
+        with self._thread_lock:
 
-        self.__number_of_unread_samples = self.frame_size  # TODO thread lock? When to use?
+            output_data = np.ndarray((len(self.active_channels[1]), self.frame_size))
 
-        for num, output_channel in enumerate(self.active_channels[1]):
-            output_data[num] = self.__frame_buffer[output_channel]
+            self._number_of_pending_samples = self.frame_size
 
-        try:
-            self._ao_writer.write_many_sample(output_data)
-        except ni.DaqError:
-            self.terminate_all_tasks()
-            self.module_state.unlock()
-            raise
+            for num, output_channel in enumerate(self.active_channels[1]):
+                output_data[num] = self.__frame_buffer[output_channel]
 
-        if self._ao_task_handle is not None:
             try:
-                self._ao_task_handle.start()
+                self._ao_writer.write_many_sample(output_data)
             except ni.DaqError:
                 self.terminate_all_tasks()
                 self.module_state.unlock()
                 raise
 
-        if self._ai_task_handle is not None:
+            if self._ao_task_handle is not None:
+                try:
+                    self._ao_task_handle.start()
+                except ni.DaqError:
+                    self.terminate_all_tasks()
+                    self.module_state.unlock()
+                    raise
+
+            if self._ai_task_handle is not None:
+                try:
+                    self._ai_task_handle.start()
+                except ni.DaqError:
+                    self.terminate_all_tasks()
+                    self.module_state.unlock()
+                    raise
+
+            if len(self._di_task_handles) > 0:
+                try:
+                    for di_task in self._di_task_handles:
+                        di_task.start()
+                except ni.DaqError:
+                    self.terminate_all_tasks()
+                    self.module_state.unlock()
+                    raise
+
             try:
-                self._ai_task_handle.start()
+                self._clk_task_handle.start()
             except ni.DaqError:
                 self.terminate_all_tasks()
                 self.module_state.unlock()
                 raise
-
-        if len(self._di_task_handles) > 0:
-            try:
-                for di_task in self._di_task_handles:
-                    di_task.start()
-            except ni.DaqError:
-                self.terminate_all_tasks()
-                self.module_state.unlock()
-                raise
-
-        try:
-            self._clk_task_handle.start()
-        except ni.DaqError:
-            self.terminate_all_tasks()
-            self.module_state.unlock()
-            raise
 
     def stop_buffered_frame(self):
         """ Will abort the currently running data frame input and output.
@@ -596,7 +598,9 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         """
         if self.is_running:
             with self._thread_lock:
+                number_of_missing_samples = self.samples_in_buffer
                 self.__unread_samples_buffer = self.get_buffered_samples()
+                self._number_of_pending_samples = number_of_missing_samples
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
@@ -630,18 +634,19 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         if number_of_samples is not None:
             assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'
 
-        if self.is_running:
-            samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
-        else:
-            samples_to_read = number_of_samples if number_of_samples is not None else self.__number_of_unread_samples
+        samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
 
-        assert samples_to_read <= self.__number_of_unread_samples, \
-            f'Requested samples are more than the pending in frame'
+        if self.is_running:
+            assert samples_to_read <= self._number_of_pending_samples, \
+                'Requested samples are more than the pending in frame'
+        else:
+            assert samples_to_read <= self._number_of_pending_samples, \
+                'Requested samples are more than the pending after premature stop of frame'
 
         if number_of_samples is not None and self.is_running:
             request_time = time.time()
             while number_of_samples > self.samples_in_buffer:
-                if time.time() - request_time < 1.1 * self.frame_size * self.sample_rate:  # TODO Is this timeout ok?
+                if time.time() - request_time < 1.1 * self.frame_size / self.sample_rate:  # TODO Is this timeout ok?
                     time.sleep(0.05)
                 else:
                     raise TimeoutError(f'Acquiring {number_of_samples} samples took longer then the whole frame')
@@ -657,11 +662,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 if number_of_samples is None:
                     data = self.__unread_samples_buffer.copy()
                     self.__unread_samples_buffer = dict.fromkeys(self.active_channels[0])
+                    self._number_of_pending_samples = 0
                     return data
                 else:
                     for key in self.__unread_samples_buffer:
                         data[key] = self.__unread_samples_buffer[key][:samples_to_read]
-                    self.__number_of_unread_samples -= samples_to_read
+                    self._number_of_pending_samples -= samples_to_read
                     self.__unread_samples_buffer = {key: arr[samples_to_read:] for (key, arr)
                                                     in self.__unread_samples_buffer.items()}
                     return data
@@ -677,7 +683,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
                     di_data = di_data.reshape(len(self.__active_channels['di_channels']), samples_to_read)
                     for num, di_channel in enumerate(self.__active_channels['di_channels']):
-                        data[di_channel] = di_data[num]
+                        data[di_channel] = di_data[num] * self.sample_rate  # To go to c/s # TODO What if unit not c/s
 
                 if self._ai_reader is not None:
                     data_buffer = np.zeros(number_of_samples * len(self.__active_channels['ai_channels']))
@@ -690,7 +696,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                     for num, ai_channel in enumerate(self.__active_channels['ai_channels']):
                         data[ai_channel] = data_buffer[num * number_of_samples:(num + 1) * number_of_samples]
 
-                self.__number_of_unread_samples -= samples_to_read
+                self._number_of_pending_samples -= samples_to_read
                 return data
 
     def get_frame(self, data=None):
@@ -828,7 +834,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         # Set up digital counting tasks
         for i, chnl in enumerate(digital_channels):
             chnl_name = '/{0}/{1}'.format(self._device_name, chnl)
-            task_name = 'PeriodCounter_{0}'.format(chnl)
+            task_name = 'PeriodCounter__{0}_{1}'.format(chnl, id(self))
             # Try to find available counter
             for ctr in self.__all_counters:
                 ctr_name = '/{0}/{1}'.format(self._device_name, ctr)
