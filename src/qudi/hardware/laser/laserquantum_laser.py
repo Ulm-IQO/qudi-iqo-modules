@@ -60,7 +60,6 @@ class LaserQuantumLaser(SimpleLaserInterface):
     serial_interface = ConfigOption(name='interface', default='ASRL1::INSTR', missing='warn')
     maxpower = ConfigOption(name='maxpower', default=0.250, missing='warn')
     psu_type = ConfigOption(name='psu', default='SMD6000', missing='warn')
-    power_setpoint = 0
 
     def on_activate(self):
         """ Activate module.
@@ -141,8 +140,7 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return float: laser power setpoint in watts
         """
-        # FIXME: This is just wrong
-        return self.power_setpoint
+        return self.cmd.power_setpoint
 
     def get_power_range(self):
         """ Get laser power range.
@@ -156,7 +154,7 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @param float power: desired laser power in watts
         """
-        self.power_setpoint = power
+        self.cmd.power_setpoint = power
         self.cmd.set_power(power)
 
     def get_current_unit(self):
@@ -178,21 +176,22 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return float: current laser current
         """
-        return float(self.cmd.get_current().split('%')[0])
+        return float(self.cmd.get_current_pct())
 
     def get_current_setpoint(self):
         """ Current laser current setpoint.
 
         @return float: laser current setpoint
         """
-        return float(self.cmd.get_current_setpoint().split('%')[0])
+        return float(self.cmd.get_current_setpoint_pct())
 
     def set_current(self, current_percent):
         """ Set laser current setpoint.
 
         @param float current_percent: laser current setpoint
         """
-        self.cmd.set_current(current_percent)
+        self.cmd.current_setpoint_pct = current_percent
+        self.cmd.set_current_pct(current_percent)
         return self.get_current()
 
     def get_shutter_state(self):
@@ -251,50 +250,6 @@ class LaserQuantumLaser(SimpleLaserInterface):
                 on_off = ('OFF')
             self.cmd.set_laser_state(on_off)
 
-    # def get_firmware_version(self):
-    #     """ Ask the laser for ID.
-    #
-    #     @return str: what the laser tells you about itself
-    #     """
-    #     if self.psu == PSUTypes.SMD6000:
-    #         self.inst.write('VERSION')
-    #     else:
-    #         self.inst.write('SOFTVER?')
-    #     lines = []
-    #     try:
-    #         while True:
-    #             lines.append(self.inst.read())
-    #     except:
-    #         pass
-    #     return lines
-    #
-    # def dump(self):
-    #     """ Return LaserQuantum information dump
-    #
-    #     @return str: diagnostic information dump from laser
-    #     """
-    #     self.inst.write('DUMP ')
-    #     lines = []
-    #     try:
-    #         while True:
-    #             lines.append(self.inst.read())
-    #     except:
-    #         pass
-    #     return lines
-    #
-    # def timers(self):
-    #     """ Return information about component runtimes.
-    #
-    #         @return str: runtimes of components
-    #     """
-    #     self.inst.write('TIMERS')
-    #     lines = []
-    #     try:
-    #         while True:
-    #             lines.append(self.inst.read())
-    #     except:
-    #         pass
-    #     return lines
 
     def get_extra_info(self):
         """ Extra information from laser.
@@ -349,6 +304,8 @@ class Visa:
 
 class QL_common_command(Visa):
     sys_info = System_info()
+    current_setpoint_pct = 0
+    power_setpoint = 0
 
     def open_visa(self, interface, baud_rate):
         write_termination = '\r\n'
@@ -361,8 +318,8 @@ class QL_common_command(Visa):
     def close_visa(self):
         self.close()
 
-    def set_current(self, current_percent):
-        self.write('CURRENT={0}'.format(current_percent))
+    def set_current_pct(self, current_pct):
+        self.write('CURRENT={0}'.format(current_pct))
         self.read()
 
     def get_psu_temperature(self):
@@ -413,8 +370,12 @@ class QL_SMD_command(QL_common_command):
     def get_current(self):
         return self.query('CURRENT?')
 
-    def get_current_setpoint(self):
-        return self.query('CURRENT?')
+    def get_current_pct(self):
+        return self._extract_num(self.get_current())
+
+    def get_current_setpoint_pct(self):
+        return self.current_setpoint_pct
+
 
     def get_laser_status(self):
         if self.psu == PSUTypes.SMD6000:
@@ -449,6 +410,9 @@ class QL_MPC_command(QL_common_command):
 
     def get_current(self):
         return self.query('SETCURRENT1?')
+
+    def get_current_pct(self):
+        return self._extract_num(self.get_current())
 
     def get_current_setpoint(self):
         return self.query('SETCURRENT1?')
