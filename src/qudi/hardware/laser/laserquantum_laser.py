@@ -323,10 +323,10 @@ class QL_common_command(Visa):
         self.read()
 
     def get_psu_temperature(self):
-        return self.query('PSUTEMP?').split('C')[0]
+        return self._extract_num(self.query('PSUTEMP?'))
 
     def get_laser_temperature(self):
-        return self.query('LASTEMP?').split('C')[0]
+        return self._extract_num(self.query('LASTEMP?'))
 
     def set_laser_state(self, on_off):
         self.write('{}'.format(on_off))
