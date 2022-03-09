@@ -62,12 +62,12 @@ class OBISLaser(SimpleLaserInterface):
     def on_activate(self):
         """ Activate module.
         """
-        self.command = Obis_command()
+        self.cmd = Obis_command()
 
         if not self.connect_laser():
             raise RuntimeError('Laser is not connected.')
 
-        self._model_name = self.command.get_model_name()
+        self._model_name = self.cmd.get_model_name()
         self._current_setpoint = self.get_current()
 
     def on_deactivate(self):
@@ -81,8 +81,8 @@ class OBISLaser(SimpleLaserInterface):
 
         @return bool: connection success
         """
-        self.command.open_visa(self.serial_interface)
-        response = self.command.get_idn()[0]
+        self.cmd.open_visa(self.serial_interface)
+        response = self.cmd.get_idn()[0]
 
         if response.startswith('ERR-100'):
             return False
@@ -93,7 +93,7 @@ class OBISLaser(SimpleLaserInterface):
         """ Close the connection to the instrument.
         """
         self.set_laser_state(LaserState.OFF)
-        self.command.close()
+        self.cmd.close()
 
     def allowed_control_modes(self):
         """ Control modes for this laser
@@ -125,22 +125,22 @@ class OBISLaser(SimpleLaserInterface):
 
         @return float: laser power in watts
         """
-        return float(self.command.get_power_W())
+        return float(self.cmd.get_power_W())
 
     def get_power_setpoint(self):
         """ Get the laser power setpoint.
 
         @return float: laser power setpoint in watts
         """
-        return float(self.command.get_power_setpoint_W())
+        return float(self.cmd.get_power_setpoint_W())
 
     def get_power_range(self):
         """ Get laser power range.
 
         @return float[2]: laser power range
         """
-        minpower = float(self.command.get_min_power())
-        maxpower = float(self.command.get_max_power())
+        minpower = float(self.cmd.get_min_power())
+        maxpower = float(self.cmd.get_max_power())
         return minpower, maxpower
 
     def set_power(self, power):
@@ -148,7 +148,7 @@ class OBISLaser(SimpleLaserInterface):
 
         @param float power: desired laser power in watts
         """
-        self.command.set_power_W(power)
+        self.cmd.set_power_W(power)
 
     def get_current_unit(self):
         """ Get unit for laser current.
@@ -162,8 +162,8 @@ class OBISLaser(SimpleLaserInterface):
 
         @return float[2]: range for laser current
         """
-        low = self.command.get_min_current_A()
-        high = self.command.get_max_current_A()
+        low = self.cmd.get_min_current_A()
+        high = self.cmd.get_max_current_A()
         return float(low), float(high)
 
     def get_current(self):
@@ -171,7 +171,7 @@ class OBISLaser(SimpleLaserInterface):
 
         @return float: current laser current in amps
         """
-        return self.command.get_current_A()
+        return self.cmd.get_current_A()
 
     def get_current_setpoint(self):
         """ Current laser current setpoint.
@@ -185,7 +185,7 @@ class OBISLaser(SimpleLaserInterface):
 
         @param float current_percent: laser current setpoint
         """
-        self.command.set_current(current)
+        self.cmd.set_current(current)
         self._current_setpoint = current
 
     def get_shutter_state(self):
@@ -208,14 +208,14 @@ class OBISLaser(SimpleLaserInterface):
 
         @return dict: dict of temperature names and value
         """
-        return self.command.get_temperatures()
+        return self.cmd.get_temperatures()
 
     def get_laser_state(self):
         """ Get laser operation state
 
         @return LaserState: laser state
         """
-        state = self.command.get_laser_state()
+        state = self.cmd.get_laser_state()
         self.laser_state = state
         if state == 'ON':
             return LaserState.ON
@@ -233,14 +233,14 @@ class OBISLaser(SimpleLaserInterface):
         current_state = self.get_laser_state()
         if  current_state != state:
             on_off = 'ON' if state == LaserState.ON else 'OFF'
-            self.command.set_laser_state(on_off)
+            self.cmd.set_laser_state(on_off)
 
     def get_extra_info(self):
         """ Extra information from laser.
 
         @return str: multiple lines of text with information about laser
         """
-        return json.dumps(asdict(self.command.get_sys_info()))
+        return json.dumps(asdict(self.cmd.get_sys_info()))
 
 class Visa:
 
