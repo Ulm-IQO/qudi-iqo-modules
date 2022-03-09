@@ -51,7 +51,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
     def on_activate(self):
         """ Activate Module.
         """
-        self.command = MEV_command()
+        self.cmd = MEV_command()
         self._control_mode = ControlMode.POWER
         self.connect_laser(self.serial_interface)
 
@@ -68,7 +68,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
             @return bool: connection success
         """
         try:
-            self.command.open_visa(interface)
+            self.cmd.open_visa(interface)
         except visa.VisaIOError as e:
             self.log.exception('Communication Failure:')
             return False
@@ -78,7 +78,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
     def disconnect_laser(self):
         """ Close the connection to the instrument.
         """
-        self.command.close_visa()
+        self.cmd.close_visa()
 
     def allowed_control_modes(self):
         """ Control modes for this laser
@@ -108,14 +108,14 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
         @return float: laser power in watts
         """
-        return float(self.command.get_power())
+        return float(self.cmd.get_power())
 
     def get_power_setpoint(self):
         """ Current laser power setpoint
 
         @return float: power setpoint in watts
         """
-        return float(self.command.get_power_setpoint())
+        return float(self.cmd.get_power_setpoint())
 
     def get_power_range(self):
         """ Laser power range
@@ -129,7 +129,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
         @param float power: desired laser power
         """
-        self.command.set_power(power)
+        self.cmd.set_power(power)
 
     def get_current_unit(self):
         """ Get unit for current
@@ -143,21 +143,21 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
             @return float[2]: range for laser current
         """
-        return 0, float(self.command.get_diode_current_limit())
+        return 0, float(self.cmd.get_diode_current_limit())
 
     def get_current(self):
         """ Get current laser current
 
         @return float: current laser current
         """
-        return float(self.command.get_diode_current())
+        return float(self.cmd.get_diode_current())
 
     def get_current_setpoint(self):
         """ Get laser current setpoint
 
         @return float: laser current setpoint
         """
-        return float(self.command.get_diode_current_setpoint())
+        return float(self.cmd.get_diode_current_setpoint())
 
     def set_current(self, current):
         """ Set laser current setpoint
@@ -165,14 +165,14 @@ class MillenniaeVLaser(SimpleLaserInterface):
         @param float current_percent: desired laser current setpoint
         @return float: actual laer current setpoint
         """
-        self.command.set_current(current)
+        self.cmd.set_current(current)
 
     def get_shutter_state(self):
         """ Get laser shutter state
 
         @return ShutterState: current laser shutter state
         """
-        state = int(self.command.get_shutter_state())
+        state = int(self.cmd.get_shutter_state())
         if state == ShutterState.OPEN:
             return ShutterState.OPEN
         elif state == ShutterState.CLOSED:
@@ -187,22 +187,22 @@ class MillenniaeVLaser(SimpleLaserInterface):
         @return ShutterState: actual laser shutter state
         """
         if state != self.get_shutter_state():
-            self.command.set_shutter_state(state)
+            self.cmd.set_shutter_state(state)
 
     def get_temperatures(self):
         """ Get all available temperatures
 
         @return dict: dict of temperature names and values
         """
-        return self.command.get_temperatures()
+        return self.cmd.get_temperatures()
 
     def get_laser_state(self):
         """ Get laser state.
 
         @return LaserState: current laser state
         """
-        diode = self.command.get_diode_state()
-        state = self.command.get_system_status()
+        diode = self.cmd.get_diode_state()
+        state = self.cmd.get_system_status()
 
         if state in ('SYS ILK', 'KEY ILK'):
             return LaserState.LOCKED
@@ -223,7 +223,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
         @return LaserState: actual laser state
         """
         if self.get_laser_state() != state:
-            self.command.set_laser_state(state)
+            self.cmd.set_laser_state(state)
 
 
     def get_extra_info(self):
@@ -231,7 +231,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
             @return str: Laser information
         """
-        return json.dumps(asdict(self.command.get_sys_info()))
+        return json.dumps(asdict(self.cmd.get_sys_info()))
 
 class Visa:
 
