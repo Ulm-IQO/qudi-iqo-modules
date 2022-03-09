@@ -85,7 +85,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
             @return ControlMode: available control modes
         """
-        return {ControlMode.POWER, ControlMode.CURRENT}
+        return {ControlMode.POWER}
 
     def get_control_mode(self):
         """ Get active control mode
@@ -100,8 +100,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
         @param ControlMode mode: desired control mode
         @return ControlMode: actual control mode
         """
-        if mode in self.allowed_control_modes():
-            self._control_mode = mode
+        pass
 
     def get_power(self):
         """ Current laser power
@@ -336,6 +335,34 @@ class MEV_command(Visa):
                 'tower': float(self.query('?TT')),
                 'cab': float(self.query('?CABTEMP'))
                 }
+
+    def alignment_mode_on(self):
+        self.set_feedback_mode('current')
+        mode = self.get_feedback_mode()
+        if mode != 0:
+            print('not in current mode')
+            return
+        self.set_current(2)
+        current = self.get_diode_current()
+        if current !=2:
+            print('current is not 2 A')
+            return
+
+    def alignment_mode_off(self):
+        self.set_feedback_mode('power')
+        mode = self.get_feedback_mode()
+        if mode != 1:
+            print('not back in power mode')
+            return
+
+    def set_feedback_mode(self, mode):
+        mode_dict = {'current':0, 'power':1}
+        self.write('M:{}'.format(mode_dict[mode]))
+
+    def get_feedback_mode(self):
+        return self.query('?M')
+
+
 
 
 
