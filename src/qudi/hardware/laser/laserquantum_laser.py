@@ -106,22 +106,18 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return ControlMode: current laser control mode
         """
-        return self.cmd.get_control_mode()
+        control_mode = self.cmd.get_control_mode()
+        mode = ControlMode.POWER if control_mode == 'POWER' else ControlMode.CURRENT
+        return mode
 
     def set_control_mode(self, mode):
         """ Set laser control mode.
 
         @param ControlMode mode: desired control mode
         """
-        if self.psu not in (PSUTypes.SMD6000, PSUTypes.SMD12):
-            if mode == ControlMode.POWER:
-                reply1 = self.inst.query('PFB=OFF')
-                reply2 = self.inst.query('CONTROL=POWER')
-                self.log.debug("Set POWER control mode {0}, {1}.".format(reply1, reply2))
-            else:
-                reply1 = self.inst.query('PFB=ON')
-                reply2 = self.inst.query('CONTROL=CURRENT')
-                self.log.debug("Set CURRENT control mode {0}, {1}.".format(reply1, reply2))
+        print('control mode {}'.format(mode))
+        control_mode = 'POWER' if mode == ControlMode.POWER else 'CURRENT'
+        self.cmd.set_control_mode(control_mode)
 
     def get_power(self):
         """ Get laser power.
@@ -362,7 +358,7 @@ class QL_common_command(Visa):
         na = self.read()
 
     def _extract_num(self, string):
-        num = re.sub(r'\D', '', string)
+        num = re.sub(r'[^\d.]', '', string)
         return num
 
 
@@ -390,9 +386,9 @@ class QL_SMD_command(QL_common_command):
             return self.query('STATUS?')
 
     def get_control_mode(self):
-        return ControlMode.POWER
+        return 'POWER'
 
-    def set_control_mode(self):
+    def set_control_mode(self, mode):
         pass
 
     def get_firmware_version(self):
@@ -420,19 +416,22 @@ class QL_MPC_command(QL_common_command):
     def get_current_pct(self):
         return self._extract_num(self.get_current())
 
-    def get_current_setpoint(self):
-        return self.query('SETCURRENT1?')
+    def get_current_setpoint_pct(self):
+        return self.current_setpoint_pct
 
     def get_laser_status(self):
-        return self.query('STATUS')
+        return self.query('STATUS?')
 
     def get_control_mode(self):
-        return ControlMode[self.query('CONTROL')]
+        return self.query('CONTROL?')
+
+    def set_control_mode(self, mode):
+        self.write('CONTROL={}'.format(mode))
+        self.read()
+
 
     def get_lcd_status(self):
         return self.query('STATUSLCD?')
-
-  #  def set_control_mode(self):
 
     def get_firmware_version(self):
         return self.query('SOFTVER?')
