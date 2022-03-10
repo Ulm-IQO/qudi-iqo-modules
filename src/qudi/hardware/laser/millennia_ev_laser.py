@@ -19,11 +19,19 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import visa
+import pyvisa as visa
 from qudi.core.configoption import ConfigOption
 from qudi.interface.simple_laser_interface import SimpleLaserInterface
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
+from dataclasses import dataclass, asdict
+import json
 
+@dataclass
+class System_info():
+    idn: str = ''
+    diode_h: str = ''
+    head_h: str = ''
+    psu_h: str = ''
 
 class MillenniaeVLaser(SimpleLaserInterface):
     """ Spectra Physics Millennia diode pumped solid state laser.
@@ -38,11 +46,12 @@ class MillenniaeVLaser(SimpleLaserInterface):
     """
 
     serial_interface = ConfigOption(name='interface', default='ASRL1::INSTR', missing='warn')
-    maxpower = ConfigOption(name='maxpower', default=25.0, missing='warn')
+    maxpower = ConfigOption(name='maxpower', default=5, missing='warn')
 
     def on_activate(self):
         """ Activate Module.
         """
+        self.cmd = MEV_command()
         self._control_mode = ControlMode.POWER
         self.connect_laser(self.serial_interface)
 
@@ -59,17 +68,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
             @return bool: connection success
         """
         try:
-            self.rm = visa.ResourceManager()
-            rate = 115200
-            self.inst = self.rm.open_resource(
-                interface,
-                baud_rate=rate,
-                write_termination='\n',
-                read_termination='\n',
-                send_end=True)
-            self.inst.timeout = 1000
-            idn = self.inst.query('*IDN?')
-            (self.mfg, self.model, self.serial, self.version) = idn.split(',')
+            self.cmd.open_visa(interface)
         except visa.VisaIOError as e:
             self.log.exception('Communication Failure:')
             return False
@@ -79,15 +78,14 @@ class MillenniaeVLaser(SimpleLaserInterface):
     def disconnect_laser(self):
         """ Close the connection to the instrument.
         """
-        self.inst.close()
-        self.rm.close()
+        self.cmd.close_visa()
 
     def allowed_control_modes(self):
         """ Control modes for this laser
 
             @return ControlMode: available control modes
         """
-        return {ControlMode.POWER, ControlMode.CURRENT}
+        return {ControlMode.POWER}
 
     def get_control_mode(self):
         """ Get active control mode
@@ -102,22 +100,21 @@ class MillenniaeVLaser(SimpleLaserInterface):
         @param ControlMode mode: desired control mode
         @return ControlMode: actual control mode
         """
-        if mode in self.allowed_control_modes():
-            self._control_mode = mode
+        pass
 
     def get_power(self):
         """ Current laser power
 
         @return float: laser power in watts
         """
-        return float(self.inst.query('?P'))
+        return float(self.cmd.get_power())
 
     def get_power_setpoint(self):
         """ Current laser power setpoint
 
         @return float: power setpoint in watts
         """
-        return float(self.inst.query('?PSET'))
+        return float(self.cmd.get_power_setpoint())
 
     def get_power_range(self):
         """ Laser power range
@@ -131,7 +128,7 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
         @param float power: desired laser power
         """
-        self.inst.query('P:{0:f}'.format(power))
+        self.cmd.set_power(power)
 
     def get_current_unit(self):
         """ Get unit for current
@@ -145,39 +142,39 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
             @return float[2]: range for laser current
         """
-        return 0, float(self.inst.query('?DCL'))
+        return 0, float(self.cmd.get_diode_current_limit())
 
     def get_current(self):
         """ Get current laser current
 
         @return float: current laser current
         """
-        return float(self.inst.query('?C1'))
+        return float(self.cmd.get_diode_current())
 
     def get_current_setpoint(self):
         """ Get laser current setpoint
 
         @return float: laser current setpoint
         """
-        return float(self.inst.query('?CS1'))
+        return float(self.cmd.get_diode_current_setpoint())
 
-    def set_current(self, current_percent):
+    def set_current(self, current):
         """ Set laser current setpoint
 
         @param float current_percent: desired laser current setpoint
         @return float: actual laer current setpoint
         """
-        self.inst.query('C:{0}'.format(current_percent))
+        self.cmd.set_current(current)
 
     def get_shutter_state(self):
         """ Get laser shutter state
 
         @return ShutterState: current laser shutter state
         """
-        state = self.inst.query('?SHT')
-        if 'OPEN' in state:
+        state = int(self.cmd.get_shutter_state())
+        if state == ShutterState.OPEN:
             return ShutterState.OPEN
-        elif 'CLOSED' in state:
+        elif state == ShutterState.CLOSED:
             return ShutterState.CLOSED
         else:
             return ShutterState.UNKNOWN
@@ -189,62 +186,26 @@ class MillenniaeVLaser(SimpleLaserInterface):
         @return ShutterState: actual laser shutter state
         """
         if state != self.get_shutter_state():
-            if state == ShutterState.OPEN:
-                self.inst.query('SHT:1')
-            elif state == ShutterState.CLOSED:
-                self.inst.query('SHT:0')
-
-    def get_crystal_temperature(self):
-        """ Get SHG crystal temerpature.
-
-        @return float: SHG crystal temperature in degrees Celsius
-        """
-        return float(self.inst.query('?SHG'))
-
-    def get_diode_temperature(self):
-        """ Get laser diode temperature.
-
-        @return float: laser diode temperature in degrees Celsius
-        """
-        return float(self.inst.query('?T'))
-
-    def get_tower_temperature(self):
-        """ Get SHG tower temperature
-
-        @return float: SHG tower temperature in degrees Celsius
-        """
-        return float(self.inst.query('?TT'))
-
-    def get_cab_temperature(self):
-        """ Get cabinet temperature
-
-        @return float: get laser cabinet temperature in degrees Celsius
-        """
-        return float(self.inst.query('?CABTEMP'))
+            self.cmd.set_shutter_state(state)
 
     def get_temperatures(self):
         """ Get all available temperatures
 
         @return dict: dict of temperature names and values
         """
-        return {
-            'crystal': self.get_crystal_temperature(),
-            'diode': self.get_diode_temperature(),
-            'tower': self.get_tower_temperature(),
-            'cab': self.get_cab_temperature()
-        }
+        return self.cmd.get_temperatures()
 
     def get_laser_state(self):
         """ Get laser state.
 
         @return LaserState: current laser state
         """
-        diode = int(self.inst.query('?D'))
-        state = self.inst.query('?F')
+        diode = self.cmd.get_diode_state()
+        state = self.cmd.get_system_status()
 
         if state in ('SYS ILK', 'KEY ILK'):
             return LaserState.LOCKED
-        elif state == 'SYSTEM OK':
+        elif state == 'System Ready':
             if diode == 1:
                 return LaserState.ON
             elif diode == 0:
@@ -254,42 +215,156 @@ class MillenniaeVLaser(SimpleLaserInterface):
         else:
             return LaserState.UNKNOWN
 
-    def set_laser_state(self, status):
+    def set_laser_state(self, state):
         """ Set laser state
 
         @param LaserState status: desited laser state
         @return LaserState: actual laser state
         """
-        if self.get_laser_state() != status:
-            if status == LaserState.ON:
-                self.inst.query('ON')
-            elif status == LaserState.OFF:
-                self.inst.query('OFF')
+        if self.get_laser_state() != state:
+            self.cmd.set_laser_state(state)
 
-    def dump(self):
-        """ Dump laser information.
-
-        @return str: laser information
-        """
-        return 'Didoe Serial: {0}\n'.format(self.inst.query('?DSN'))
-
-    def timers(self):
-        """ Laser component runtimes
-
-        @return str: laser component run times
-        """
-        lines = 'Diode ON: {0}\n'.format(self.inst.query('?DH'))
-        lines += 'Head ON: {0}\n'.format(self.inst.query('?HEADHRS'))
-        lines += 'PSU ON: {0}\n'.format(self.inst.query('?PSHRS'))
-        return lines
 
     def get_extra_info(self):
         """ Formatted information about the laser.
 
             @return str: Laser information
         """
-        extra = '{0}\n{1}\n{2}\n{3}\n'.format(self.mfg, self.model, self.serial, self.version)
-        extra += '\n'
-        extra += '\n {0}'.format(self.timers())
-        extra += '\n'
-        return extra
+        return json.dumps(asdict(self.cmd.get_sys_info()))
+
+class Visa:
+
+    def open(self, interface, baud_rate, write_termination, read_termination, send_end, timeout, query_delay):
+
+        self.rm = visa.ResourceManager()
+        self.inst = self.rm.open_resource(interface,
+                                         baud_rate = baud_rate,
+                                         write_termination = write_termination,
+                                         read_termination = read_termination,
+                                         send_end = send_end,
+                                         query_delay = query_delay)
+
+        self.inst.timeout = timeout
+
+    def close(self):
+        self.inst.close()
+        self.rm.close()
+
+    def write(self, message):
+        """ Send a message to to laser
+
+        @param string message: message to be delivered to the laser
+        """
+        self.inst.write(message)
+
+    def query(self, message):
+        """ Send a receive messages with the laser
+
+        @param string message: message to be delivered to the laser
+
+        @returns string response: message received from the laser
+        """
+        values = self.inst.query(message)
+        return values
+
+    def get_idn(self):
+        return self.query('*IDN?')
+
+class MEV_command(Visa):
+    sys_info = System_info()
+
+    def open_visa(self, interface):
+        baud_rate = 115200
+        write_termination = '\n'
+        read_termination = '\n'
+        send_end = True
+        timeout = 1000
+        query_delay = 0.01
+        self.open(interface, baud_rate, write_termination, read_termination, send_end, timeout, query_delay)
+
+    def close_visa(self):
+        self.close()
+
+    def set_power(self, power):
+        self.write('P:{0:f}'.format(power))
+
+    def set_current(self, current):
+        self.write('C:{0}'.format(current))
+
+    def set_shutter_state(self, state):
+        self.write('SHT:{}'.format(int(state)))
+
+    def set_laser_state(self, state):
+        on_off = 'ON' if state == 1 else 'OFF'
+        self.write('{}'.format(on_off))
+
+    def get_sys_info(self):
+        self.sys_info.idn = self.get_idn()
+        self.sys_info.diode_h = self.query('?DH')
+        self.sys_info.head_h = self.query('?HEADHRS')
+        self.sys_info.psu_h = self.query('?PSHRS')
+        return self.sys_info
+
+    def get_power(self):
+        return self.query('?P')
+
+    def get_power_setpoint(self):
+        return self.query('?PSET')
+
+    def get_diode_current_limit(self):
+        return self.query('?DCL')
+
+    def get_diode_current(self):
+        return self.query('?C1')
+
+    def get_diode_current_setpoint(self):
+        return self.query('?CS1')
+
+    def get_shutter_state(self):
+        return int(self.query('?SHT'))
+
+    def get_diode_state(self):
+        return int(self.query('?D'))
+
+    def get_system_status(self):
+        return self.query('?F')
+
+    def get_temperatures(self):
+        return {'crystal': float(self.query('?SHG')),
+                'diode': float(self.query('?T')),
+                'tower': float(self.query('?TT')),
+                'cab': float(self.query('?CABTEMP'))
+                }
+
+    def alignment_mode_on(self):
+        self.set_feedback_mode('current')
+        mode = self.get_feedback_mode()
+        if mode != 0:
+            print('not in current mode')
+            return
+        self.set_current(2)
+        current = self.get_diode_current()
+        if current !=2:
+            print('current is not 2 A')
+            return
+
+    def alignment_mode_off(self):
+        self.set_feedback_mode('power')
+        mode = self.get_feedback_mode()
+        if mode != 1:
+            print('not back in power mode')
+            return
+
+    def set_feedback_mode(self, mode):
+        mode_dict = {'current':0, 'power':1}
+        self.write('M:{}'.format(mode_dict[mode]))
+
+    def get_feedback_mode(self):
+        return self.query('?M')
+
+
+
+
+
+
+
