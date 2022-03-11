@@ -78,14 +78,8 @@ class LaserLogic(LogicBase):
         allowed_modes = laser.allowed_control_modes()
         self._data = {name: np.zeros(self._buffer_length) for name in laser.get_temperatures()}
         self._data['time'] = time.time() - np.arange(self._buffer_length)[::-1] * self._query_interval
-        if ControlMode.POWER in allowed_modes:
-            self._data['power'] = np.zeros(self._buffer_length)
-        else:
-            self._data['power'] = None
-        if ControlMode.CURRENT in allowed_modes:
-            self._data['current'] = np.zeros(self._buffer_length)
-        else:
-            self._data['current'] = None
+        self._data['power'] = np.zeros(self._buffer_length)
+        self._data['current'] = np.zeros(self._buffer_length)
         self._last_shutter_state = laser.get_shutter_state()
         self._last_laser_state = laser.get_laser_state()
         self._last_power_setpoint = laser.get_power_setpoint()
