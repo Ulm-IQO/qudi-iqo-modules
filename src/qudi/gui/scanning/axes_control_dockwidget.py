@@ -162,22 +162,21 @@ class AxesControlWidget(QtWidgets.QWidget):
             layout.addWidget(pos_spinbox, index, 7)
 
             # Connect signals
-            # TODO for the time being changed to "valueChanged".
-            #  "editingFinished" also fires when window gets focus again, so also after alt+tab.
-            #  However, valueChanged is fired when scrolled or while typing numbers.
+            # TODO "editingFinished" also emits when window gets focus again, so also after alt+tab.
+            #  "valueChanged" was considered as a replacement but is emitted when scrolled or while typing numbers.
 
-            res_spinbox.valueChanged.connect(
+            res_spinbox.editingFinished.connect(
                 self.__get_axis_resolution_callback(ax_name, res_spinbox)
             )
-            min_spinbox.valueChanged.connect(
+            min_spinbox.editingFinished.connect(
                 self.__get_axis_min_range_callback(ax_name, min_spinbox)
             )
-            max_spinbox.valueChanged.connect(
+            max_spinbox.editingFinished.connect(
                 self.__get_axis_max_range_callback(ax_name, max_spinbox)
             )
             slider.doubleSliderMoved.connect(self.__get_axis_slider_moved_callback(ax_name))
             slider.sliderReleased.connect(self.__get_axis_slider_released_callback(ax_name, slider))
-            pos_spinbox.valueChanged.connect(
+            pos_spinbox.editingFinished.connect(
                 self.__get_axis_target_callback(ax_name, pos_spinbox)
             )
 
@@ -193,6 +192,28 @@ class AxesControlWidget(QtWidgets.QWidget):
         layout.setColumnStretch(5, 1)
         self.setLayout(layout)
         self.setMaximumHeight(self.sizeHint().height())
+
+        # set tab order of Widgets
+        res_widgets = [self.axes_widgets[ax]['res_spinbox'] for ax in self.axes]
+        min_spinboxes = [self.axes_widgets[ax]['min_spinbox'] for ax in self.axes]
+        max_spinboxes = [self.axes_widgets[ax]['max_spinbox'] for ax in self.axes]
+        pos_spinboxes = [self.axes_widgets[ax]['pos_spinbox'] for ax in self.axes]
+
+        for idx in range(len(self.axes) - 1):
+            self.setTabOrder(res_widgets[idx], res_widgets[idx + 1])
+
+        self.setTabOrder(res_widgets[-1], min_spinboxes[0])
+
+        for idx in range(len(self.axes) - 1):
+            self.setTabOrder(min_spinboxes[idx], max_spinboxes[idx])
+            self.setTabOrder(max_spinboxes[idx], min_spinboxes[idx + 1])
+
+        self.setTabOrder(min_spinboxes[-1], max_spinboxes[-1])
+
+        self.setTabOrder(max_spinboxes[-1], pos_spinboxes[0])
+
+        for idx in range(len(self.axes) - 1):
+            self.setTabOrder(pos_spinboxes[idx], pos_spinboxes[idx + 1])
 
     @property
     def axes(self):
