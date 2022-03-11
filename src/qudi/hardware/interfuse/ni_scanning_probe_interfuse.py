@@ -410,22 +410,24 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                     if self._scan_data.scan_dimension == 1:
                         self._scan_data.data[input_ch] = line_data
-                        self.stop_scan()  # TODO Should the hw stop itself?
-                        # return False, self._scan_data
-                        return self._scan_data
 
                     elif self._scan_data.scan_dimension == 2:
                         self._scan_data.data[input_ch][:, self.__read_pos] = line_data
-
-                        self.__read_pos += 1
-                        if self.__read_pos == self._current_scan_resolution[1]:
-                            self.stop_scan()  # TODO Should the hw stop itself?
-                        # return False, self._scan_data
-                        return self._scan_data
                     else:
                         self.log.error('Invalid Scan Dimension')
-                        # return True, None
+                        self.stop_scan()  # TODO Should the hw stop itself?
                         return None
+
+                if self._scan_data.scan_dimension == 1:
+                    self.stop_scan()  # TODO Should the hw stop itself?
+                    # return False, self._scan_data
+                    return self._scan_data
+                elif self._scan_data.scan_dimension == 2:
+                    self.__read_pos += 1
+                    if self.__read_pos == self._current_scan_resolution[1]:
+                        self.stop_scan()  # TODO Should the hw stop itself?
+                    # return False, self._scan_data
+                    return self._scan_data
 
             except Exception as e:
                 self.log.error(f'Error occurred while retrieving data {e}, Scan was stopped')
