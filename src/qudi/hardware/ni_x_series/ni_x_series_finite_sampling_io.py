@@ -686,15 +686,15 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                         data[di_channel] = di_data[num] * self.sample_rate  # To go to c/s # TODO What if unit not c/s
 
                 if self._ai_reader is not None:
-                    data_buffer = np.zeros(number_of_samples * len(self.__active_channels['ai_channels']))
+                    data_buffer = np.zeros(samples_to_read * len(self.__active_channels['ai_channels']))
                     read_samples = self._ai_reader.read_many_sample(
                         data_buffer,
-                        number_of_samples_per_channel=number_of_samples,
+                        number_of_samples_per_channel=samples_to_read,
                         timeout=self._rw_timeout)
-                    if read_samples != number_of_samples:
+                    if read_samples != samples_to_read:
                         return data
                     for num, ai_channel in enumerate(self.__active_channels['ai_channels']):
-                        data[ai_channel] = data_buffer[num * number_of_samples:(num + 1) * number_of_samples]
+                        data[ai_channel] = data_buffer[num * samples_to_read:(num + 1) * samples_to_read]
 
                 self._number_of_pending_samples -= samples_to_read
                 return data
