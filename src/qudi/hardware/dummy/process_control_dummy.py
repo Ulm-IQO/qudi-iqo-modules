@@ -55,6 +55,8 @@ class ProcessControlDummy(ProcessSetpointInterface, ProcessValueInterface):
                 unit: 'Hz'
                 limits: [100.0e3, 20.0e9]
                 dtype: float
+
+                # FIXME Channel dtype is interpreted as a string, if specified in config.
     """
 
     _setpoint_channels = ConfigOption(
