@@ -99,6 +99,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._stored_target_pos = dict()
         self._scan_start_indicator = False
 
+        self.__ni_ao_write_timer = None
         self.__ni_ao_runout_timer = None
         self._default_timer_interval = -1
         self._interval_time_stamp = None
@@ -149,14 +150,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             square_px_only=False)  # TODO incorporate in scanning_probe toolchain
 
         # Timer to free resources after pure ni ao
+        self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
+        self.__ni_ao_write_timer.setSingleShot(True)
+        self._default_timer_interval = 5  # in ms
+        self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+        # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
+        self.__ni_ao_write_timer.timeout.connect(self.__ao_write_loop, QtCore.Qt.QueuedConnection)
+
         self.__ni_ao_runout_timer = QtCore.QTimer(parent=self)
         self.__ni_ao_runout_timer.setSingleShot(True)
-        self._default_timer_interval = 5  # in ms
-        self.__ni_ao_runout_timer.setInterval(self._default_timer_interval)
-        # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
-        self.__ni_ao_runout_timer.timeout.connect(self.__ao_write_loop, QtCore.Qt.QueuedConnection)
-
-        self._ni_ao().set_activity_state(True)
+        self.__ni_ao_runout_timer.setInterval(1000)
+        self.__ni_ao_runout_timer.timeout.connect(self.__deactivate_ao, QtCore.Qt.QueuedConnection)
 
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
 
@@ -165,9 +169,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         Deactivate the module
         """
         with self._thread_lock:
+            self.__stop_ao_write_timer()
             self.__stop_ao_runout_timer()
             self.__write_queue = dict()
-            self.__ni_ao_runout_timer.setInterval(self._default_timer_interval)
             self._ni_ao().set_activity_state(False)
             if self._ni_finite_sampling_io().is_running:
                 self._ni_finite_sampling_io().stop_buffered_frame()
@@ -291,7 +295,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._prepare_movement(position, velocity=velocity)
 
-        self.__start_ao_runout_timer()
+        self.__start_ao_write_timer()
 
         return self.get_target()
 
@@ -326,6 +330,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current position per axis.
         """
+        if not self._ni_ao().is_active:
+            self._ni_ao().set_activity_state(True)
+
+        self.__start_ao_runout_timer()
+
         return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
 
     def start_scan(self):
@@ -376,8 +385,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self.move_absolute(self._stored_target_pos)
                 self._stored_target_pos = dict()
                 return False  # TODO Bool indicators deprecated
-
-            # TODO Somehow gui element is not toggled back after scan done ... whats the difference to scanner dummy?
 
         except Exception as e:
             self.log.error(f'Error occurred while stopping the finite IO frame:\n{e}')
@@ -611,21 +618,21 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             raise NotImplementedError('Ni Scan arrays could not be initialized for given ScanData dimension')
 
-    def __start_ao_runout_timer(self):
+    def __start_ao_write_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
+            QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
                                             'start',
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
-            self.__ni_ao_runout_timer.start()
+            self.__ni_ao_write_timer.start()
 
-    def __stop_ao_runout_timer(self):
+    def __stop_ao_write_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
+            QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
                                             'stop',
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
-            self.__ni_ao_runout_timer.stop()
+            self.__ni_ao_write_timer.stop()
 
     def __ao_write_loop(self):
         with self._thread_lock:
@@ -637,7 +644,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # Adjust the timeout each time to avoid error accumulation
             if self._interval_time_stamp is not None:
                 exec_time = time.time() - self._interval_time_stamp
-                self.__ni_ao_runout_timer.setInterval(
+                self.__ni_ao_write_timer.setInterval(
                     max(2 * self._default_timer_interval - exec_time*1e3, 1))
                 # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
                 self._interval_time_stamp = time.time()
@@ -645,12 +652,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self._interval_time_stamp = time.time()
 
         if not all([values.size == 0 for values in self.__write_queue.values()]):
-            if self.thread() is QtCore.QThread.currentThread():
-                self.__start_ao_runout_timer()
+            self.__start_ao_write_timer()
         else:
-            self.log.info('Move done')  # TODO Remove this
+            # self.log.info('Move done')  # TODO Remove this
             self._interval_time_stamp = None
-            self.__ni_ao_runout_timer.setInterval(5)
+            self.__ni_ao_write_timer.setInterval(5)
             if self._scan_start_indicator:
                 self._ni_finite_sampling_io().start_buffered_frame()
                 self._scan_start_indicator = False
@@ -660,22 +666,30 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     #     Abort the movement, stop the timer and reset interval, release memory and frees ni_ao resources
     #     """
     #     with self._thread_lock:
-    #         self.__stop_ao_runout_timer()
+    #         self.__stop_ao_write_timer()
     #         self.__write_queue = dict()
-    #         self.__ni_ao_runout_timer.setInterval(self._default_timer_interval)
+    #         self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
     #         self._ni_ao().set_activity_state(False)
 
     def _move_to_and_start_scan(self, position):
         self._prepare_movement(position, scan_start_indicator=True)
 
-        self.__start_ao_runout_timer()
+        self.__start_ao_write_timer()
 
     def _prepare_movement(self, position, velocity=None, scan_start_indicator=False):
         """
         Clips values of position to allowed range and fills up the write queue
         """
+        # FIXME When position is changed real fast one gets the QT warnings
+        #  QObject::killTimer: Timers cannot be stopped from another thread
+        #  QObject::startTimer: Timers cannot be started from another thread
 
-        self.__stop_ao_runout_timer()
+        self.__stop_ao_write_timer()
+
+        if not self._ni_ao().is_active:
+            self._ni_ao().set_activity_state(True)
+
+        self.__start_ao_runout_timer()
 
         with self._thread_lock:
             start_pos = self.get_position()
@@ -692,7 +706,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             dist = np.sqrt(np.sum([(position[axis] - start_pos[axis]) ** 2 for axis in position]))
 
-            print(f'Move by distance: {dist * 1e6} um')
+            # print(f'Move by distance: {dist * 1e6} um')
 
             # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
             if velocity is not None and velocity <= self.__max_move_velocity:
@@ -704,8 +718,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             else:
                 velocity = self.__max_move_velocity
 
-            self.__ni_ao_runout_timer.setInterval(self._default_timer_interval)
-            granularity = velocity * self.__ni_ao_runout_timer.interval() * 1e-3
+            self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+            granularity = velocity * self.__ni_ao_write_timer.interval() * 1e-3
 
             self.__write_queue = {axis: np.linspace(start_pos[axis],
                                                     position[axis],
@@ -715,12 +729,28 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # TODO Keep other axis constant?
             # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
-            assert self._ni_ao().is_active, 'Cannot perform move, since ni analog output is not active'
-
             self._scan_start_indicator = scan_start_indicator
 
-            self.log.info('Movement prepared')  # TODO Remove this
+            # self.log.info('Movement prepared')  # TODO Remove this
 
+    def __start_ao_runout_timer(self):
+        if self.thread() is not QtCore.QThread.currentThread():
+            QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
+                                            'start',
+                                            QtCore.Qt.BlockingQueuedConnection)
+        else:
+            self.__ni_ao_runout_timer.start()
 
+    def __stop_ao_runout_timer(self):
+        if self.thread() is not QtCore.QThread.currentThread():
+            QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
+                                            'stop',
+                                            QtCore.Qt.BlockingQueuedConnection)
+        else:
+            self.__ni_ao_runout_timer.stop()
+
+    def __deactivate_ao(self):
+        # self.log.info('Freed Resources')  # TODO Remove this
+        self._ni_ao().set_activity_state(False)
 
 

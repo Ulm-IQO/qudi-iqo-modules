@@ -194,7 +194,6 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         # Get analog input channels from _input_channel_units
         if analog_sources:
-            self.log.warning("Analog In not tested extensively for NIFiniteSamplingIO. Might have some issues")
             source_set = set(analog_sources)
             invalid_sources = source_set.difference(set(self.__all_analog_in_terminals))
             if invalid_sources:
