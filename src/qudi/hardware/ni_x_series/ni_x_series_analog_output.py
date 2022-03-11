@@ -185,7 +185,7 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         assert self._is_active, 'Please activate first!'
 
         with self._thread_lock:
-            voltages = {ch: val for ch, val in zip(self._ao_ch_names, self.ai_task.read())}
+            voltages = {ch: val for ch, val in zip(self._ao_ch_names, self._ai_task.read())}
             return voltages
 
     @setpoints.setter
@@ -225,7 +225,7 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
                         )
                         self._ao_task_handles[ao_ch_name] = ao_task
 
-                        self.ai_task.ai_channels.add_ai_voltage_chan(
+                        self._ai_task.ai_channels.add_ai_voltage_chan(
                             f'/{self._device_name}/_{ao_ch_name}_vs_aognd',
                             min_val=self.__constraints.channel_limits[ao_ch_name][0],
                             max_val=self.__constraints.channel_limits[ao_ch_name][1]
@@ -289,14 +289,14 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
 
     def terminate_ai_task(self):
         try:
-            if not self.ai_task.is_task_done():
-                self.ai_task.stop()
-            self.ai_task.close()
+            if not self._ai_task.is_task_done():
+                self._ai_task.stop()
+            self._ai_task.close()
         except ni.DaqError:
             self.log.exception('Error while trying to terminate analog output task.')
             err = -1
         finally:
-            del self.ai_task
+            del self._ai_task
 
     @staticmethod
     def _extract_ch_name(ch_str):
