@@ -156,12 +156,21 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_runout_timer.timeout.connect(self.__ao_write_loop, QtCore.Qt.QueuedConnection)
 
-        self._target_pos = self._voltage_dict_to_position_dict(self._ni_ao().setpoints)  # get voltages/pos from ni_ao
+        self._ni_ao().set_activity_state(True)
+
+        self._target_pos = self.get_position()  # get voltages/pos from ni_ao
 
     def on_deactivate(self):
         """
         Deactivate the module
         """
+        with self._thread_lock:
+            self.__stop_ao_runout_timer()
+            self.__write_queue = dict()
+            self.__ni_ao_runout_timer.setInterval(self._default_timer_interval)
+            self._ni_ao().set_activity_state(False)
+            if self._ni_finite_sampling_io().is_running:
+                self._ni_finite_sampling_io().stop_buffered_frame()
 
     def get_constraints(self):
         """ Get hardware constraints/limitations.
@@ -274,11 +283,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # assert not self.is_running, 'Cannot move the scanner while, scan is running'
         if self.is_running:
             self.log.error('Cannot move the scanner while, scan is running')
-            return self.get_position()
+            return self.get_target()
 
         if not set(position).issubset(self.get_constraints().axes):
             self.log.error('Invalid axes name in position')
-            return self.get_position()
+            return self.get_target()
 
         self._prepare_movement(position, velocity=velocity)
 
@@ -364,11 +373,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self._ni_finite_sampling_io().stop_buffered_frame()
                 self.module_state.unlock()
 
-                # self._infer_last_scan_position(self._scan_data, self._ni_finite_sampling_io().samples_in_buffer)
-
-                # FIXME How to handle move after premature stop of scan. Need to move back to "crosshair" position.
-                #  As it is now, this will pretty sure cause "scanner jumps" as position is not matching ni_ao.
-
+                self.move_absolute(self._stored_target_pos)
+                self._stored_target_pos = dict()
                 return False  # TODO Bool indicators deprecated
 
             # TODO Somehow gui element is not toggled back after scan done ... whats the difference to scanner dummy?
@@ -626,11 +632,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self._ni_ao().setpoints = new_voltage
             self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
 
+            # Adjust the timeout each time to avoid error accumulation
             if self._interval_time_stamp is not None:
                 exec_time = time.time() - self._interval_time_stamp
-                # print(f'time = {exec_time * 1e3}')
-                self.__ni_ao_runout_timer.setInterval(max(5+(5-exec_time*1e3), 1))  # Recalculate, but not go below 1ms
-                # Adjust the timeout each time to avoid error accumulation
+                self.__ni_ao_runout_timer.setInterval(
+                    max(2 * self._default_timer_interval - exec_time*1e3, 1))
+                # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
                 self._interval_time_stamp = time.time()
             else:
                 self._interval_time_stamp = time.time()
@@ -639,10 +646,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             if self.thread() is QtCore.QThread.currentThread():
                 self.__start_ao_runout_timer()
         else:
-            # TODO Add a timeout that the resources are not so frequently freed?
-            #  Or reconsider freeing (see _prepare_movement)
-            self._ni_ao().set_activity_state(False)
-            self.log.info("Freed up Ni AO resources")
+            self.log.info('Move done')  # TODO Remove this
             self._interval_time_stamp = None
             self.__ni_ao_runout_timer.setInterval(5)
             if self._scan_start_indicator:
@@ -709,26 +713,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # TODO Keep other axis constant?
             # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
-            if not self._ni_ao().is_active:
-                self._ni_ao().set_activity_state(True)
-                # TODO actually the ni card does not care about AO tasks with samples on demand being active when starting the scan
-                self.log.info('start')  # TODO Remove
+            assert self._ni_ao().is_active, 'Cannot perform move, since ni analog output is not active'
 
             self._scan_start_indicator = scan_start_indicator
-    #
-    # def _infer_last_scan_position(self):
-    #     first_input_channel_data = next(iter(self._scan_data.data.values()))
-    #     completed_lines = (~np.isnan(first_input_channel_data)).sum() - 1
-    #     coarse_vertical_pos = np.linspace(*self._scan_data.scan_range[1],
-    #                                       self._scan_data.scan_resolution[1])[completed_lines]
-    #
-    #     not_read_samples = self._ni_finite_sampling_io().samples_in_buffer
-    #
-    #     if not not_read_samples // self._scan_data.scan_resolution[0]:
-    #         #Stop happend during return line
-    #     elif
-    #
-    #     horizontal_line = np.linspace(*self._scan_data.scan_range[0], self._scan_data.scan_resolution[0])
+
+            self.log.info('Movement prepared')  # TODO Remove this
 
 
 
