@@ -218,7 +218,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             analog_outputs = natural_sort(source_set.difference(invalid_sources))
 
         # Check if all input channels fit in the device
-        if len(digital_sources) > 3:  # TODO is it just 2, since a clock is needed for a scanner?
+        if len(digital_sources) > 3:
             raise ValueError(
                 'Too many digital channels specified. Maximum number of digital channels is 3.'
             )
