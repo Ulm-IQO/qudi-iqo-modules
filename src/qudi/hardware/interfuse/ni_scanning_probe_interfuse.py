@@ -658,7 +658,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self._interval_time_stamp = None
             self.__ni_ao_write_timer.setInterval(5)
             if self._scan_start_indicator:
-                self._ni_finite_sampling_io().start_buffered_frame()
+                try:
+                    self._ni_finite_sampling_io().start_buffered_frame()
+                except Exception as e:
+                    self.log.error(f'Could not start frame due to {e}, {e.args}')
+                    self.module_state.unlock()
                 self._scan_start_indicator = False
 
     # def _abort_movement(self):
