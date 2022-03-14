@@ -706,8 +706,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             dist = np.sqrt(np.sum([(position[axis] - start_pos[axis]) ** 2 for axis in position]))
 
-            # print(f'Move by distance: {dist * 1e6} um')
-
             # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
             if velocity is not None and velocity <= self.__max_move_velocity:
                 velocity = velocity
@@ -750,7 +748,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.__ni_ao_runout_timer.stop()
 
     def __deactivate_ao(self):
-        # self.log.info('Freed Resources')  # TODO Remove this
-        self._ni_ao().set_activity_state(False)
+        if not all([values.size == 0 for values in self.__write_queue.values()]):
+            self.__start_ao_runout_timer()
+        else:
+            self.log.info('Freed Resources')  # TODO Remove this
+            self._ni_ao().set_activity_state(False)
 
 
