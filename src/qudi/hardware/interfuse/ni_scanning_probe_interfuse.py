@@ -591,9 +591,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             # vertical scan array / "slow axis"
 
-            vertcial_axis = scan_data.scan_axes[1]
+            vertical_axis = scan_data.scan_axes[1]
 
-            vertical = np.linspace(*self._position_to_voltage(vertcial_axis, scan_data.scan_range[1]),
+            vertical = np.linspace(*self._position_to_voltage(vertical_axis, scan_data.scan_range[1]),
                                    vertical_resolution)
 
             # during horizontal line, the vertical line keeps its value
@@ -611,7 +611,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             voltage_dict = {
                 self._ni_channel_mapping[horizontal_axis]: horizontal_scan_array,
-                self._ni_channel_mapping[vertcial_axis]: vertical_scan_array
+                self._ni_channel_mapping[vertical_axis]: vertical_scan_array
             }
 
             return voltage_dict
