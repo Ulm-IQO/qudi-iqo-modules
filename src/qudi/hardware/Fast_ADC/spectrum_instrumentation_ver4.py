@@ -358,7 +358,6 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
         self.dp.init_measure_params()
         self.dp.start_data_process()
 
-
         return 0
 
     def _start_card(self):
@@ -724,13 +723,15 @@ class Data_process_command():
 #    def __init__(self):
     _dp_check = True
     _error_check = False
-    status = 0
-    avail_user_pos_B = '-----'
-    avail_user_len_B = '-----'
-    avail_card_len_B = '-----'
-    trig_counter = '-----'
-    processed_data_B = 0
-    total_data_B = '-----'
+
+    def init_dp_params(self):
+        self.status = 0
+        self.avail_user_pos_B = '-----'
+        self.avail_user_len_B = '-----'
+        self.avail_card_len_B = '-----'
+        self.trig_counter = '-----'
+        self.processed_data_B = 0
+        self.total_data_B = '-----'
 
 
     def check_dp_status_wrapper(func):
@@ -752,17 +753,19 @@ class Data_process_command():
             self.get_status()
             self.get_avail_user_pos_B()
             self.get_avail_user_len_B()
+            self.get_avail_user_reps()
             self.get_trig_counter()
 #            self.get_avail_card_len_B()
             print("Stat:{0:04x}h Pos:{1:010}B Avail:{2:010}B "
-                  "Processed:{3:010}B / {4}B: Avg:{5} / Trig:{6}\n".format(self.status,
-                                               self.avail_user_pos_B,
-                                               self.avail_user_len_B,
-                                               self.processed_data_B,
-                                               self.total_data_B,
-                                               self.avg_num,
-                                               self.trig_counter)
-#                                              self.avail_card_len_B)
+                  "Processed:{3:010}B / {4}B: "
+                  "Avail:{5} Avg:{6} / Trig:{7} \n".format(self.status,
+                                                           self.avail_user_pos_B,
+                                                           self.avail_user_len_B,
+                                                           self.processed_data_B,
+                                                           self.total_data_B,
+                                                           self.avail_user_reps,
+                                                           self.avg_num,
+                                                           self.trig_counter)
                   )
         else:
             pass
@@ -780,6 +783,10 @@ class Data_process_command():
         self.error = spcm_dwGetParam_i64(self.card, SPC_DATA_AVAIL_USER_LEN, byref(c_avaiil_user_len))
         self.avail_user_len_B = c_avaiil_user_len.value
         return self.avail_user_len_B
+
+    def get_avail_user_reps(self):
+        self.avail_user_reps = int(np.floor(self.get_avail_user_len_B() / self.segs_per_rep_B))
+        return self.avail_user_reps
 
     @check_card_error
     def get_avail_user_pos_B(self):
@@ -804,7 +811,7 @@ class Data_process_command():
 
     @check_card_error
     def get_trig_counter(self):
-        c_trig_counter = c_int64(0)
+        c_trig_counter = c_int64()
         self.error = spcm_dwGetParam_i64(self.card, SPC_TRIGGERCOUNTER, byref(c_trig_counter))
         self.trig_counter = c_trig_counter.value
         return self.trig_counter
@@ -943,14 +950,17 @@ class Data_process_loop(Data_process_single, Card_command):
         self.initial_reps = True
 
     def init_measure_params(self):
+        self.init_dp_params()
         self.start_time = time.time()
         self.avg_data = np.zeros((self.segs_per_rep_S,), dtype=np.float64)
         self.avg_num = 0
         self.loop_on = True
         self.fetch_on = False
+        self.trigger_enabled = False
 
-    def _wait_new_trigger(self, prev_trig_counts):
+    def _wait_new_trigger(self):
         print('waiting for triggers')
+        prev_trig_counts = self.trig_counter
         curr_trig_counts = self.get_trig_counter()
         while curr_trig_counts == prev_trig_counts:
                 curr_trig_counts = self.get_trig_counter()
@@ -959,22 +969,17 @@ class Data_process_loop(Data_process_single, Card_command):
         return curr_trig_counts
 
     def _wait_new_avail_reps(self):
-        curr_avail_reps = int(np.floor(self.get_avail_user_len_B() / self.segs_per_rep_B))
+        curr_avail_reps = self.get_avail_user_reps()
         time_start = time.time()
         while curr_avail_reps == 0:
-            if time.time() - time_start > 5:
-                print('timeout at wait_new _avail_reps')
-                break
-            else:
-                curr_avail_reps = int(np.floor(self.get_avail_user_len_B() / self.segs_per_rep_B))
-                #print('curr_avail_reps {}'.format(curr_avail_reps))
+            curr_avail_reps = self.get_avail_user_reps()
+            # if time.time() - time_start > 5:
+            #     print('timeout at wait_new _avail_reps')
+            #     break
+            # else:
+            #     curr_avail_reps = self.get_avail_user_reps()
 
         return curr_avail_reps
-
-    def wait_process_triggered(self):
-
-        while self.avg_num < self.trig_counter:
-            self.check_dp_status()
 
     def start_data_process(self):
 
@@ -990,50 +995,62 @@ class Data_process_loop(Data_process_single, Card_command):
 
     def start_data_process_loop(self):
 
-
         print('start_data_process_loop')
         time_start  = time.time()
 
         while self.loop_on == True:
-            if time.time() - time_start < 5:
-                if self.fetch_on == False:
-                    self.check_dp_status()
-                    self.wait_for_processing()
-                    curr_avail_reps = self._wait_new_avail_reps()
-                    new_avg_data, new_avg_num = self._process_data_by_mean(curr_avail_reps)
-                    self.avg_data, self.avg_num = self._update_avg_data(self.avg_data, self.avg_num,
-                                                                        new_avg_data, new_avg_num)
-                    self.check_dp_status()
-                else:
-                    print('fetching')
-
+            if self.fetch_on == False:
+                self.check_dp_status()
+                self.command_process()
             else:
-                print('timeout at loop')
-                break
+                print('fetching')
         print('end_data_process_loop')
 
         return
 
-    def wait_for_processing(self):
-        if self.trigger_enabled == True:
-            if self.trig_counter - self.avg_num < 2 * self.reps_per_buf:
-                print('appropriate trigs')
-                return
-            else:
-                self.trigger_enabled = self.disable_trigger()
-                print('trigger_enabled')
-                return
+    def command_process(self):
+        unprocessed_reps = self.trig_counter - self.avg_num
+        if unprocessed_reps == 0:
+            print('wait_new_trigger')
+            self.wait_new_trigger_with_trigger_on()
 
-        elif self.trigger_enabled == False:
-            if self.trig_counter - self.avg_num < self.reps_per_buf:
+        elif unprocessed_reps < 2 * self.reps_per_buf:
+            print('process_data_with_trigger_on')
+            self.process_data_with_trigger_on()
+
+        elif unprocessed_reps >= 2 * self.reps_per_buf:
+            print('process_data_with_trigger_off')
+            self.process_data_with_trigger_off()
+
+    def wait_new_trigger_with_trigger_on(self):
+        self.toggle_trigger(trigger_on=True)
+        self._wait_new_trigger()
+
+    def process_data_with_trigger_on(self):
+        self.toggle_trigger(trigger_on=True)
+        curr_avail_reps = self._wait_new_avail_reps()
+        self.update_data(curr_avail_reps)
+
+    def process_data_with_trigger_off(self):
+        self.toggle_trigger(trigger_on=False)
+        curr_avail_reps = self._wait_new_avail_reps()
+        self.update_data(curr_avail_reps)
+
+    def toggle_trigger(self, trigger_on):
+        if trigger_on == self.trigger_enabled:
+            return
+        else:
+            if trigger_on == True:
                 self.trigger_enabled = self.enable_trigger()
-                print('trigger_disabled' )
-            else:
-                return
+            elif trigger_on == False:
+                self.trigger_enabled = self.disable_trigger()
 
+    def update_data(self, curr_avail_reps):
+        new_avg_data, new_avg_num = self._process_data_by_mean(curr_avail_reps)
+        self.avg_data, self.avg_num = self._weighted_avg_data(self.avg_data, self.avg_num,
+                                                            new_avg_data, new_avg_num)
 
-
-    def _update_avg_data(self, np_avg_data, prev_avg_reps, np_new_avg_data,  curr_avail_reps):
+    def _weighted_avg_data(self, np_avg_data, prev_avg_reps, np_new_avg_data,  curr_avail_reps):
 
 
         # if self.initial_reps == True:
@@ -1132,6 +1149,7 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
 
     def test_std_multi(self):
         '''
+        - Check if the trigger counter corresponds to the given loop number
         - Check if the avail_user_len_B corresponds to the buf_size_B
         '''
         self._set_params_test_exe()
@@ -1155,7 +1173,7 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
         self.avg_data, self.avg_num = self.dp._update_avg_data(self.avg_data_1, self.sweep1,
                                                                self.avg_data_2, self.sweep2)
 
-    def test_std_multi_more(self):
+    def test_std_multi_more_reps(self):
         self._set_params_test_exe()
         self.cs.acq_mode = 'STD_MULTI'
         self.cs.trig_mode = 'EXT'
@@ -1196,8 +1214,22 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
 
         return
 
+    def check_dp_loop(self):
+        time_start = time.time()
+        while self.dp.loop_on == True:
+            current_time = time.time() - time_start
+            if current_time < 5:
+                self.dp.check_dp_status()
+                self.dp.command_process()
+            else:
+                print('time = {}'.format(current_time))
+                return
+        return
+
     def test_fifo_multi(self):
-        self._set_params_test_exe()
+        self.ms.binwidth_s = 1 / 250e6
+        self.ms.record_length_s = 1e-6
+        self.ms.number_of_gates = 0
         self.cs.acq_mode = 'FIFO_MULTI'
         self.cs.trig_mode = 'EXT'
         self.ms.init_buf_size_S = 1e7
