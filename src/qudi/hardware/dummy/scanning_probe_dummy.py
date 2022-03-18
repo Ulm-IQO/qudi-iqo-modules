@@ -202,7 +202,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
 
         @return:
         """
-        self.log.debug('Scanning probe dummy "get_constraints" called.')
+        #self.log.debug('Scanning probe dummy "get_constraints" called.')
         return self._constraints
 
     def configure_scan(self, scan_settings):

@@ -196,6 +196,8 @@ class ScannerGui(GuiBase):
         self._optimize_logic().sigOptimizeStateChanged.connect(
             self.optimize_state_updated, QtCore.Qt.QueuedConnection
         )
+        self.sigOptimizerSettingsChanged.connect(
+            self._optimize_logic().set_optimize_settings, QtCore.Qt.QueuedConnection)
 
         # Initialize dockwidgets to default view
         self.restore_default_view()
@@ -217,24 +219,23 @@ class ScannerGui(GuiBase):
         self.sigScanSettingsChanged.disconnect()
         self.sigToggleScan.disconnect()
         self.sigToggleOptimize.disconnect()
+        self.sigOptimizerSettingsChanged.disconnect()
         self._mw.action_optimize_position.triggered[bool].disconnect()
         self._mw.action_restore_default_view.triggered.disconnect()
         self._mw.action_history_forward.triggered.disconnect()
         self._mw.action_history_back.triggered.disconnect()
         self._mw.action_utility_full_range.triggered.disconnect()
         self._mw.action_utility_zoom.toggled.disconnect()
-        self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
-        self._scanning_logic().sigScanSettingsChanged.disconnect(self.scanner_settings_updated)
-        self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
-        self._optimize_logic().sigOptimizeStepComplete.disconnect(self.optimization_step_updated)
-        self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
-        self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_scan_data)
+        self._scanning_logic().sigScannerTargetChanged.disconnect(None, self.scanner_target_updated)
+        self._scanning_logic().sigScanSettingsChanged.disconnect(None, self.scanner_settings_updated)
+        self._scanning_logic().sigScanStateChanged.disconnect(None, self.scan_state_updated)
+        self._optimize_logic().sigOptimizeStateChanged.disconnect(None, self.optimize_state_updated)
+        self._data_logic().sigHistoryScanDataRestored.disconnect(None, self._update_scan_data)
 
         for scan in tuple(self.scan_1d_dockwidgets):
             self._remove_scan_dockwidget(scan)
         for scan in tuple(self.scan_2d_dockwidgets):
             self._remove_scan_dockwidget(scan)
-        self._clear_optimizer_axes_widgets()
         return
 
     def show(self):
@@ -724,7 +725,6 @@ class ScannerGui(GuiBase):
     def change_optimizer_settings(self):
         # FIXME: sequence needs to be properly implemented
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
-        return
 
     @QtCore.Slot()
     @QtCore.Slot(dict)
@@ -773,4 +773,5 @@ class ScannerGui(GuiBase):
                     x_size = settings['scan_range'].get(scan_axes[0], crosshair.size[0])
                     y_size = settings['scan_range'].get(scan_axes[1], crosshair.size[1])
                     crosshair.set_size((x_size, y_size))
-        return
+
+
