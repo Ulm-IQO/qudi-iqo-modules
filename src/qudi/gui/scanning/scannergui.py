@@ -261,6 +261,8 @@ class ScannerGui(GuiBase):
         self._osd.rejected.connect(self.update_optimizer_settings)
         self._osd.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
             self.change_optimizer_settings)
+        # pull in data
+        self.update_optimizer_settings()
         return
 
     def _init_scanner_settings(self):
