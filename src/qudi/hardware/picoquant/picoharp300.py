@@ -25,7 +25,7 @@ import time
 from qtpy import QtCore
 
 from qudi.core.configoption import ConfigOption
-from qudi.util.paths import get_main_dir
+from qudi.util.paths import get_qudi_core_dir
 from qudi.util.mutex import Mutex
 from qudi.interface.fast_counter_interface import FastCounterInterface
 
@@ -170,7 +170,7 @@ class PicoHarp300(FastCounterInterface):
         with the appropriate integer value.
         """
 
-        maindir = get_main_dir()
+        maindir = get_qudi_core_dir()
 
         filename = os.path.join(maindir, 'hardware', 'PicoQuant', 'errorcodes.h')
         try:

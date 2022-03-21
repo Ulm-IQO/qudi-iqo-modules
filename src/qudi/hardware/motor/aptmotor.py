@@ -35,7 +35,7 @@ from collections import OrderedDict
 
 from qudi.core.module import Base
 from qudi.util.paths import get_home_dir
-from qudi.util.paths import get_main_dir
+from qudi.util.paths import get_qudi_core_dir
 from ctypes import c_long, c_buffer, c_float, windll, pointer
 from qudi.interface.motor_interface import MotorInterface
 import os
@@ -850,13 +850,13 @@ class APTStage(Base, MotorInterface):
         else:
 
             if platform.architecture()[0] == '64bit':
-                path_dll = os.path.join(get_main_dir(),
+                path_dll = os.path.join(get_qudi_core_dir(),
                                         'thirdparty',
                                         'thorlabs',
                                         'win64',
                                         'APT.dll')
             elif platform.architecture()[0] == '32bit':
-                path_dll = os.path.join(get_main_dir(),
+                path_dll = os.path.join(get_qudi_core_dir(),
                                         'thirdparty',
                                         'thorlabs',
                                         'win64',

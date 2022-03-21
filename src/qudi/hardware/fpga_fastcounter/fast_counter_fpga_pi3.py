@@ -24,7 +24,7 @@ import os
 import numpy as np
 import thirdparty.stuttgart_counter.TimeTagger as tt
 
-from qudi.util.paths import get_main_dir
+from qudi.util.paths import get_qudi_core_dir
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
 
@@ -55,7 +55,7 @@ class FastCounterFGAPiP3(FastCounterInterface):
         """ Connect and configure the access to the FPGA.
         """
         tt._Tagger_setSerial(self._fpgacounter_serial)
-        thirdpartypath = os.path.join(get_main_dir(), 'thirdparty')
+        thirdpartypath = os.path.join(get_qudi_core_dir(), 'thirdparty')
         bitfilepath = os.path.join(thirdpartypath, 'stuttgart_counter', 'TimeTaggerController.bit')
         tt._Tagger_setBitfilePath(bitfilepath)
         del bitfilepath, thirdpartypath
