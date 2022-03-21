@@ -848,7 +848,6 @@ class Data_process_single(Data_process_command):
         return np_new_data, 1
 
     def _process_data_per_notify(self, user_pos_B, n):
-        # np_new_data = np.empty(0)
         for i in range(n):
             self.np_old_data = self.np_new_data
             self.np_new_data = self._append_notified(user_pos_B, self.np_old_data)
@@ -1014,6 +1013,7 @@ class Data_process_loop(Data_process_loop_main_body):
             if self.fetch_on == False:
                 self.check_dp_status()
                 self.command_process()
+                time.sleep(1e-6)
             elif self.fetch_on == True:
                 print('fetching')
             else:
