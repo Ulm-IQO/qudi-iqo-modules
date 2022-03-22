@@ -46,8 +46,8 @@ class System_info():
 
 
 class LaserQuantumLaser(SimpleLaserInterface):
-    """ ToDo: describe
-
+    """
+    Hardware file for laser quantum laser.
     Example config for copy-paste:
 
     laserquantum_laser:
