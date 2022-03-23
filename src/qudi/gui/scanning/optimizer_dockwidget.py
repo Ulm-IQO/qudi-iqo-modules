@@ -85,6 +85,16 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
     def marker(self):
         return self.plot1d_widget.markers[-1]
 
+    def toogle_crosshair(self, enabled):
+        if enabled:
+            return self.plot2d_widget.show_crosshair(-1)
+        return self.plot2d_widget.hide_crosshair(-1)
+
+    def toogle_marker(self, enabled):
+        if enabled:
+            return self.plot1d_widget.show_marker(-1)
+        return self.plot1d_widget.hide_marker(-1)
+
     def set_2d_position(self, pos):
         self.crosshair.set_position(pos)
 

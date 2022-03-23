@@ -596,6 +596,8 @@ class ScannerGui(GuiBase):
     @QtCore.Slot(bool, dict, object)
     def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None):
         self._is_optimizer_running = is_running
+        self._is_optimizer_valid_1d = not is_running
+        self._is_optimizer_valid_2d = not is_running
 
         self._toggle_enable_scan_buttons(not is_running)
         self._toggle_enable_actions(not is_running,
@@ -605,13 +607,18 @@ class ScannerGui(GuiBase):
         # Update optimal position crosshair and marker
         if isinstance(optimal_position, dict):
             if len(optimal_position) == 2:
+                self._is_optimizer_valid_2d = True
                 self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()))
+
             elif len(optimal_position) == 1:
+                self._is_optimizer_valid_1d = True
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())))
         if fit_data is not None:
             if fit_data.ndim == 1:
                 self.optimizer_dockwidget.set_fit_data(y=fit_data)
-        return
+
+        self.optimizer_dockwidget.toogle_crosshair(self._is_optimizer_valid_2d)
+        self.optimizer_dockwidget.toogle_marker(self._is_optimizer_valid_1d)
 
     @QtCore.Slot(bool)
     def toggle_optimize(self, enabled):

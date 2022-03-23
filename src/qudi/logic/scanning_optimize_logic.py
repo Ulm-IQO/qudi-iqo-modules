@@ -73,6 +73,7 @@ class ScanningOptimizeLogic(LogicBase):
         axes = self._scan_logic().scanner_axes
         channels = self._scan_logic().scanner_channels
 
+        self.log.debug(f"Opt settings at startup, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
         # optimize settings
         if not isinstance(self._scan_range, dict):
             self._scan_range = {ax.name: abs(ax.value_range[1] - ax.value_range[0]) / 100 for ax in
@@ -136,6 +137,10 @@ class ScanningOptimizeLogic(LogicBase):
         return self._scan_sequence.copy()
 
     @property
+    def optimizer_running(self):
+        return self.module_state() != 'idle'
+
+    @property
     def optimize_settings(self):
         return {'scan_frequency': self.scan_frequency,
                 'data_channel': self._data_channel,
@@ -182,7 +187,7 @@ class ScanningOptimizeLogic(LogicBase):
     @QtCore.Slot()
     def start_optimize(self):
         with self._thread_lock:
-            print('start optimize')
+            self.log.debug('start optimize')
             if self.module_state() != 'idle':
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
                 return 0
@@ -227,6 +232,7 @@ class ScanningOptimizeLogic(LogicBase):
     @QtCore.Slot()
     def _next_sequence_step(self):
         with self._thread_lock:
+            self.log.debug(f"next sequence step {self._sequence_index}")
             print('next sequence step')
             if self.module_state() == 'idle':
                 return
@@ -245,6 +251,7 @@ class ScanningOptimizeLogic(LogicBase):
     def _scan_state_changed(self, is_running, data, caller_id):
         with self._thread_lock:
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
+                self.log.debug(f"opt scan state changed and aborted from caller {caller_id}")
                 return
             elif data is not None:
                 if data.scan_dimension == 1:
@@ -261,6 +268,8 @@ class ScanningOptimizeLogic(LogicBase):
                         xy,
                         data.data[self._data_channel].ravel()
                     )
+
+                self.log.debug(f"opt scan data= {data}")
                 position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
                 if fit_data is not None:
                     new_pos = self._scan_logic().set_target_position(position_update)
@@ -286,7 +295,7 @@ class ScanningOptimizeLogic(LogicBase):
     @QtCore.Slot()
     def stop_optimize(self):
         with self._thread_lock:
-            print('stop optimize')
+            self.log.debug('stop optimize')
             if self.module_state() == 'idle':
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
                 return 0
