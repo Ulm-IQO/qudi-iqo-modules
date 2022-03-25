@@ -104,7 +104,7 @@ class ScannerGui(GuiBase):
 
         # misc
         self._optimizer_id = 0
-        self._is_optimizer_running = False
+        self._optimizer_state = {'is_running': False}
         return
 
     def on_activate(self):
@@ -553,7 +553,7 @@ class ScannerGui(GuiBase):
     def scan_state_updated(self, is_running, scan_data=None, caller_id=None):
         scan_axes = scan_data.scan_axes if scan_data is not None else None
         self._toggle_enable_scan_buttons(not is_running, exclude_scan=scan_axes)
-        if not self._is_optimizer_running:
+        if not self._optimizer_state['is_running']:
             self._toggle_enable_actions(not is_running)
         else:
             self._toggle_enable_actions(not is_running, exclude_action=self._mw.action_optimize_position)
@@ -595,30 +595,31 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot(bool, dict, object)
     def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None):
-        self._is_optimizer_running = is_running
-        self._is_optimizer_valid_1d = not is_running
-        self._is_optimizer_valid_2d = not is_running
+        self._optimizer_state['is_running'] = is_running
+        _is_optimizer_valid_1d = not is_running
+        _is_optimizer_valid_2d = not is_running
 
         self._toggle_enable_scan_buttons(not is_running)
         self._toggle_enable_actions(not is_running,
                                     exclude_action=self._mw.action_optimize_position)
         self._toggle_enable_scan_crosshairs(not is_running)
         self._mw.action_optimize_position.setChecked(is_running)
+        
         # Update optimal position crosshair and marker
         if isinstance(optimal_position, dict):
             if len(optimal_position) == 2:
-                self._is_optimizer_valid_2d = True
+                _is_optimizer_valid_2d = True
                 self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()))
 
             elif len(optimal_position) == 1:
-                self._is_optimizer_valid_1d = True
+                _is_optimizer_valid_1d = True
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())))
         if fit_data is not None:
             if fit_data.ndim == 1:
                 self.optimizer_dockwidget.set_fit_data(y=fit_data)
 
-        self.optimizer_dockwidget.toogle_crosshair(self._is_optimizer_valid_2d)
-        self.optimizer_dockwidget.toogle_marker(self._is_optimizer_valid_1d)
+        self.optimizer_dockwidget.toogle_crosshair(_is_optimizer_valid_2d)
+        self.optimizer_dockwidget.toogle_marker(_is_optimizer_valid_1d)
 
     @QtCore.Slot(bool)
     def toggle_optimize(self, enabled):
