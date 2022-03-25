@@ -195,6 +195,7 @@ class ScanningOptimizeLogic(LogicBase):
             # ToDo: Sanity checks for settings go here
 
             self.module_state.lock()
+            self.sigOptimizeStateChanged.emit(True, dict(), None)
 
             # stash old scanner settings
             self._stashed_scan_settings = self._scan_logic().scan_settings

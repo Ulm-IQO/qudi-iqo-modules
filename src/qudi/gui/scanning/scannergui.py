@@ -104,6 +104,7 @@ class ScannerGui(GuiBase):
 
         # misc
         self._optimizer_id = 0
+        self._scanner_settings_locked = False
         self._optimizer_state = {'is_running': False}
         return
 
@@ -493,6 +494,15 @@ class ScannerGui(GuiBase):
         """
         self.scanner_settings_updated({'frequency': self._scanning_logic().scan_frequency})
 
+    @QtCore.Slot(bool)
+    def scanner_settings_toggle_gui_lock(self, locked):
+
+        if locked:
+            self._scanner_settings_locked = True
+            # todo: maybe disable/grey out scanner gui elements
+        else:
+            self._scanner_settings_locked = False #unlock
+
     @QtCore.Slot()
     @QtCore.Slot(dict)
     def scanner_settings_updated(self, settings=None):
@@ -505,6 +515,8 @@ class ScannerGui(GuiBase):
         if not isinstance(settings, dict):
             settings = self._scanning_logic().scan_settings
 
+        if self._scanner_settings_locked:
+            return
         # ToDo: Handle all remaining settings
         # ToDo: Implement backwards scanning functionality
 
@@ -604,7 +616,8 @@ class ScannerGui(GuiBase):
                                     exclude_action=self._mw.action_optimize_position)
         self._toggle_enable_scan_crosshairs(not is_running)
         self._mw.action_optimize_position.setChecked(is_running)
-        
+        self.scanner_settings_toggle_gui_lock(is_running)
+
         # Update optimal position crosshair and marker
         if isinstance(optimal_position, dict):
             if len(optimal_position) == 2:
