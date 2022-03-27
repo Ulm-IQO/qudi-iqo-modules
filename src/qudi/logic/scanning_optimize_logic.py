@@ -84,15 +84,16 @@ class ScanningOptimizeLogic(LogicBase):
         if not isinstance(self._scan_frequency, dict):
             self._scan_frequency = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
                                     in axes.values()}
+
+        self._avail_axes = tuple(axes.values())
         if self._scan_sequence is None:
-            avail_axes = tuple(axes.values())
-            if len(avail_axes) >= 3:
-                self._scan_sequence = [(avail_axes[0].name, avail_axes[1].name),
-                                       (avail_axes[2].name,)]
-            elif len(avail_axes) == 2:
-                self._scan_sequence = [(avail_axes[0].name, avail_axes[1].name)]
-            elif len(avail_axes) == 1:
-                self._scan_sequence = [(avail_axes[0].name,)]
+            if len(self._avail_axes) >= 3:
+                self._scan_sequence = [(self._avail_axes[0].name, self._avail_axes[1].name),
+                                       (self._avail_axes[2].name,)]
+            elif len(self._avail_axes) == 2:
+                self._scan_sequence = [(self._avail_axes[0].name, self._avail_axes[1].name)]
+            elif len(self._avail_axes) == 1:
+                self._scan_sequence = [(self._avail_axes[0].name,)]
             else:
                 self._scan_sequence = list()
         if self._data_channel is None:
@@ -135,6 +136,20 @@ class ScanningOptimizeLogic(LogicBase):
     @property
     def scan_sequence(self):
         return self._scan_sequence.copy()
+
+    @scan_sequence.setter
+    def scan_sequence(self, sequence):
+        """
+        @param sequence: list of strin tuples giving the scan order, eg. [('x','y'),('z')]
+        """
+        axs_flat = []
+        list(axs_flat.extend(item) for item in sequence)
+        avail_axes = [ax.name for ax in self._avail_axes]
+        if not all(elem in avail_axes for elem in axs_flat):
+            raise ValueError(f"Optimizer sequence {sequence} must contain only"
+                             f" available axes ({avail_axes})")
+
+        self._scan_sequence = sequence
 
     @property
     def optimizer_running(self):
@@ -234,10 +249,9 @@ class ScanningOptimizeLogic(LogicBase):
     def _next_sequence_step(self):
         with self._thread_lock:
             self.log.debug(f"next sequence step {self._sequence_index}")
-            print('next sequence step')
+
             if self.module_state() == 'idle':
                 return
-            print('... module not idle. Toggling scan ...')
 
             if self._scan_logic().toggle_scan(True,
                                               self._scan_sequence[self._sequence_index],
@@ -252,12 +266,11 @@ class ScanningOptimizeLogic(LogicBase):
     def _scan_state_changed(self, is_running, data, caller_id):
         with self._thread_lock:
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
-                self.log.debug(f"opt scan state changed and aborted from caller {caller_id}")
                 return
             elif data is not None:
                 if data.scan_dimension == 1:
                     x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
-                    opt_pos, fit_data = self._get_pos_from_1d_gauss_fit(
+                    opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
                         x,
                         data.data[self._data_channel]
                     )
@@ -265,17 +278,21 @@ class ScanningOptimizeLogic(LogicBase):
                     x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
                     y = np.linspace(*data.scan_range[1], data.scan_resolution[1])
                     xy = np.meshgrid(x, y, indexing='ij')
-                    opt_pos, fit_data = self._get_pos_from_2d_gauss_fit(
+                    opt_pos, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
                         xy,
                         data.data[self._data_channel].ravel()
                     )
 
-                self.log.debug(f"opt scan data= {data}")
+
                 position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
                 if fit_data is not None:
                     new_pos = self._scan_logic().set_target_position(position_update)
                     for ax in tuple(position_update):
                         position_update[ax] = new_pos[ax]
+
+                    fit_data = {'fit_data':fit_data, 'full_fit_res':fit_res}
+                    self.log.debug(f"opt scan pos= {opt_pos}, fit data= {fit_data}")
+
                 self._optimal_position.update(position_update)
                 self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
 
@@ -283,7 +300,7 @@ class ScanningOptimizeLogic(LogicBase):
                 if fit_data is None:
                     self.stop_optimize()
                     return
-            print('... Scan complete ...')
+
             self._sequence_index += 1
 
             # Terminate optimize sequence if finished; continue with next sequence step otherwise
@@ -313,7 +330,7 @@ class ScanningOptimizeLogic(LogicBase):
 
     def _get_pos_from_2d_gauss_fit(self, xy, data):
         model = Gaussian2D()
-        print('fit 2D gaussian')
+
         try:
             fit_result = model.fit(data, xy=xy, **model.estimate_peak(data, xy))
         except:
@@ -323,13 +340,13 @@ class ScanningOptimizeLogic(LogicBase):
             y_middle = (y_max - y_min) / 2 + y_min
             self.log.exception('2D Gaussian fit unsuccessful. Aborting optimization sequence.')
             return (x_middle, y_middle), None
-        print('DONE: fit 2D gaussian')
+
         return (fit_result.best_values['center_x'],
-                fit_result.best_values['center_y']), fit_result.best_fit.reshape(xy[0].shape)
+                fit_result.best_values['center_y']), fit_result.best_fit.reshape(xy[0].shape), fit_result
 
     def _get_pos_from_1d_gauss_fit(self, x, data):
         model = Gaussian()
-        print('fit 1D gaussian')
+
         try:
             fit_result = model.fit(data, x=x, **model.estimate_peak(data, x))
         except:
@@ -337,5 +354,5 @@ class ScanningOptimizeLogic(LogicBase):
             middle = (x_max - x_min) / 2 + x_min
             self.log.exception('1D Gaussian fit unsuccessful. Aborting optimization sequence.')
             return middle, None
-        print('DONE: fit 1D gaussian')
-        return (fit_result.best_values['center'],), fit_result.best_fit
+
+        return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
