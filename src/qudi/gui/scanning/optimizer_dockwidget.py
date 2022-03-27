@@ -59,12 +59,15 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         self.plot1d_widget.add_marker(movable=False, pen={'color': '#00ff00', 'width': 2})
         self.plot1d_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
-        label = QtWidgets.QLabel('(x, y, z):')
-        label.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        self._last_optimal_pos = {}
+        self._last_optimal_sigma = {}
+
+        self.pos_ax_label = QtWidgets.QLabel('(x, y, z):')
+        self.pos_ax_label.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.result_label = QtWidgets.QLabel('(?, ?, ?)')
         self.result_label.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         label_layout = QtWidgets.QHBoxLayout()
-        label_layout.addWidget(label)
+        label_layout.addWidget(self.pos_ax_label)
         label_layout.addWidget(self.result_label)
         label_layout.setStretch(1, 1)
 
@@ -95,11 +98,50 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
             return self.plot1d_widget.show_marker(-1)
         return self.plot1d_widget.hide_marker(-1)
 
-    def set_2d_position(self, pos):
+    def set_2d_position(self, pos, sigma=None):
         self.crosshair.set_position(pos)
 
-    def set_1d_position(self, pos):
+        self._last_optimal_pos['x'] = pos[0]
+        self._last_optimal_pos['y'] = pos[1]
+        if sigma:
+            self._last_optimal_sigma['x'] = sigma[0]
+            self._last_optimal_sigma['y'] = sigma[1]
+
+        self.update_result_label()
+
+    def set_1d_position(self, pos, sigma=None):
         self.marker.set_position(pos)
+
+        self._last_optimal_pos['z'] = pos
+        if sigma:
+            self._last_optimal_sigma['z'] = sigma
+
+        self.update_result_label()
+        #self.result_label = ""
+        #µ = (86.815, 58.318, 21.232) µm   σ = (0.000, 0.000, 0.000) µm
+
+    def update_result_label(self):
+        def _dict_2_str(in_dict, print_only_key=False):
+            out_str = "("
+
+            for key, val in dict(sorted(in_dict.items())).items():
+                if print_only_key:
+                    out_str += f"{key}, "
+                else:
+                    if val:
+                        out_str += f"{val*1e6:.2f}, "
+                    else:
+                        out_str += "?, "
+
+            out_str = out_str.rstrip(', ')
+            out_str += ")"
+            return out_str
+
+        axis_str = _dict_2_str(self._last_optimal_pos, True) + "= "
+        pos_str = _dict_2_str(self._last_optimal_pos)
+        sigma_str = _dict_2_str(self._last_optimal_sigma)
+        self.pos_ax_label.setText(axis_str)
+        self.result_label.setText(pos_str + " µm,  σ= " + sigma_str + " µm")
 
     def set_image(self, image, extent=None):
         self.image_item.set_image(image=image)

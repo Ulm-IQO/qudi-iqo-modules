@@ -628,8 +628,15 @@ class ScannerGui(GuiBase):
                 _is_optimizer_valid_1d = True
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())))
         if fit_data is not None:
-            if fit_data.ndim == 1:
-                self.optimizer_dockwidget.set_fit_data(y=fit_data)
+            data = fit_data['fit_data']
+            fit_res = fit_data['full_fit_res']
+            if data.ndim == 1:
+                self.optimizer_dockwidget.set_fit_data(y=data)
+                sig_z = fit_res.params['center'].stderr
+                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())), sigma=sig_z)
+            elif data.ndim == 2:
+                sig_x, sig_y = fit_res.params['center_x'].stderr, fit_res.params['center_y'].stderr
+                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()), sigma=[sig_x, sig_y])
 
         self.optimizer_dockwidget.toogle_crosshair(_is_optimizer_valid_2d)
         self.optimizer_dockwidget.toogle_marker(_is_optimizer_valid_1d)
