@@ -34,7 +34,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
     """
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, axes, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle('Optimizer')
         self.setObjectName('optimizer_dockWidget')
@@ -62,9 +62,9 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         self._last_optimal_pos = {}
         self._last_optimal_sigma = {}
 
-        self.pos_ax_label = QtWidgets.QLabel('(x, y, z):')
+        self.pos_ax_label = QtWidgets.QLabel(f'({", ".join(axes)}):')
         self.pos_ax_label.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-        self.result_label = QtWidgets.QLabel('(?, ?, ?)')
+        self.result_label = QtWidgets.QLabel(f'({", ".join(["?"]*len(axes))}):')
         self.result_label.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         label_layout = QtWidgets.QHBoxLayout()
         label_layout.addWidget(self.pos_ax_label)
