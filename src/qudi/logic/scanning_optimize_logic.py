@@ -189,6 +189,9 @@ class ScanningOptimizeLogic(LogicBase):
                 if 'scan_resolution' in settings:
                     self._scan_resolution.update(settings['scan_resolution'])
                     settings_update['scan_resolution'] = self.scan_resolution
+                if 'scan_sequence' in settings:
+                    self.scan_sequence = settings['scan_sequence']
+                    settings_update['scan_sequence'] = self.scan_sequence
 
             self.sigOptimizeSettingsChanged.emit(settings_update)
             return settings_update

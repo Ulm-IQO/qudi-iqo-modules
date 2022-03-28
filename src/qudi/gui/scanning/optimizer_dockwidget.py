@@ -98,23 +98,23 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
             return self.plot1d_widget.show_marker(-1)
         return self.plot1d_widget.hide_marker(-1)
 
-    def set_2d_position(self, pos, sigma=None):
+    def set_2d_position(self, pos, axs, sigma=None):
         self.crosshair.set_position(pos)
 
-        self._last_optimal_pos['x'] = pos[0]
-        self._last_optimal_pos['y'] = pos[1]
+        self._last_optimal_pos[axs[0]] = pos[0]
+        self._last_optimal_pos[axs[1]] = pos[1]
         if sigma:
-            self._last_optimal_sigma['x'] = sigma[0]
-            self._last_optimal_sigma['y'] = sigma[1]
+            self._last_optimal_sigma[axs[0]] = sigma[0]
+            self._last_optimal_sigma[axs[1]] = sigma[1]
 
         self.update_result_label()
 
-    def set_1d_position(self, pos, sigma=None):
+    def set_1d_position(self, pos, axs, sigma=None):
         self.marker.set_position(pos)
 
-        self._last_optimal_pos['z'] = pos
+        self._last_optimal_pos[axs[0]] = pos
         if sigma:
-            self._last_optimal_sigma['z'] = sigma
+            self._last_optimal_sigma[axs[0]] = sigma
 
         self.update_result_label()
         #self.result_label = ""

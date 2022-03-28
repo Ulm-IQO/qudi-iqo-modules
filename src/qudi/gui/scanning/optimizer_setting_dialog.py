@@ -23,6 +23,8 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('OptimizerSettingDialog', 'OptimizerSettingWidget', 'OptimizerAxesWidget')
 
 from PySide2 import QtCore, QtGui, QtWidgets
+from itertools import combinations
+
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
@@ -118,16 +120,14 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
 
     @property
     def available_opt_sequences(self):
-
-        from itertools import combinations
-
+        # todo: generalize for arbitrary dimensions
         axes = self._avail_axes
-        a = list(combinations(axes, 2))
-        b = list(combinations(axes, 1))
+        combs_2d = list(combinations(axes, 2))
+        combs_1d = list(combinations(axes, 1))
 
         out_seq = []
-        for el2 in a:
-            for el1 in b:
+        for el2 in combs_2d:
+            for el1 in combs_1d:
                 if el1[0] not in el2:
                     out_seq.append([el2, el1])
                     out_seq.append([el1, el2])
@@ -136,19 +136,31 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
 
         return out_seq
 
-
     def change_settings(self, settings):
         # FIXME: sequence needs to be properly implemented
         if 'data_channel' in settings:
             self.data_channel_combobox.blockSignals(True)
             self.data_channel_combobox.setCurrentText(settings['data_channel'])
             self.data_channel_combobox.blockSignals(False)
+        if 'scan_sequence' in settings:
+            self.optimize_sequence_combobox.blockSignals(True)
+            try:
+                idx_combo = self.available_opt_sequences.index(settings['scan_sequence'])
+            except ValueError:
+                # todo after serializatioin in StatusVar, scan_sequence is of new data type
+                print(f"{settings['scan_sequence']} not in {self.available_opt_sequences}")
+                idx_combo = 0
+            self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
+
+            self.optimize_sequence_combobox.blockSignals(False)
         if 'scan_range' in settings:
             self.axes_widget.set_range(settings['scan_range'])
         if 'scan_resolution' in settings:
             self.axes_widget.set_resolution(settings['scan_resolution'])
         if 'scan_frequency' in settings:
             self.axes_widget.set_frequency(settings['scan_frequency'])
+
+
 
 
 class OptimizerAxesWidget(QtWidgets.QWidget):

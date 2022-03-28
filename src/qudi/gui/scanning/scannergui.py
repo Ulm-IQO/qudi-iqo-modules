@@ -619,26 +619,35 @@ class ScannerGui(GuiBase):
         self._mw.action_optimize_position.setChecked(is_running)
         self.scanner_settings_toggle_gui_lock(is_running)
 
+        self.log.debug(f"Updated opt pos= {optimal_position}, fit_data={fit_data}")
+
         # Update optimal position crosshair and marker
         if isinstance(optimal_position, dict):
+            scan_axs = list(optimal_position.keys())
             if len(optimal_position) == 2:
                 _is_optimizer_valid_2d = True
-                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()))
+                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
+                                                          scan_axs)
 
             elif len(optimal_position) == 1:
                 _is_optimizer_valid_1d = True
-                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())))
-        if fit_data is not None:
-            print(type(fit_data))
+                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
+                                                          scan_axs)
+        if fit_data is not None and isinstance(optimal_position, dict):
             data = fit_data['fit_data']
             fit_res = fit_data['full_fit_res']
             if data.ndim == 1:
                 self.optimizer_dockwidget.set_fit_data(y=data)
                 sig_z = fit_res.params['center'].stderr
-                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())), sigma=sig_z)
+                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
+                                                          scan_axs, sigma=sig_z)
             elif data.ndim == 2:
                 sig_x, sig_y = fit_res.params['center_x'].stderr, fit_res.params['center_y'].stderr
-                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()), sigma=[sig_x, sig_y])
+                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
+                                                          scan_axs, sigma=[sig_x, sig_y])
+
+        if fit_data is not None and optimal_position is None:
+            raise ValueError("Can't understand fit_data without optimal position")
 
         self.optimizer_dockwidget.toogle_crosshair(_is_optimizer_valid_2d)
         self.optimizer_dockwidget.toogle_marker(_is_optimizer_valid_1d)
@@ -762,6 +771,7 @@ class ScannerGui(GuiBase):
     @QtCore.Slot()
     def change_optimizer_settings(self):
         # FIXME: sequence needs to be properly implemented
+        self.log.debug(f"Setting to logic opt settings: {self._osd.settings}")
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
 
     @QtCore.Slot()
@@ -774,9 +784,11 @@ class ScannerGui(GuiBase):
         self._osd.change_settings(settings)
 
         # FIXME: sequence needs to be properly implemented
+        self.log.debug(f"Got opt settings {settings}")
         # Adjust optimizer scan axis labels
         if 'scan_sequence' in settings:
             axes_constr = self._scanning_logic().scanner_axes
+
             for seq_step in settings['scan_sequence']:
                 if len(seq_step) == 1:
                     axis = seq_step[0]
