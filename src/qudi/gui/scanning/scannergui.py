@@ -310,7 +310,8 @@ class ScannerGui(GuiBase):
         #  Currently the scanner target position is only updated upon slider release.
         # self.scanner_control_dockwidget.sigSliderMoved.connect()
 
-        self.optimizer_dockwidget = OptimizerDockWidget()
+        # TODO Proper implementation of setting the optimization sequence needs to be done.
+        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.optimizer_dockwidget)
         self.optimizer_dockwidget.visibilityChanged.connect(
@@ -628,6 +629,7 @@ class ScannerGui(GuiBase):
                 _is_optimizer_valid_1d = True
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())))
         if fit_data is not None:
+            print(type(fit_data))
             data = fit_data['fit_data']
             fit_res = fit_data['full_fit_res']
             if data.ndim == 1:
