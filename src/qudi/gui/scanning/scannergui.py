@@ -311,6 +311,8 @@ class ScannerGui(GuiBase):
         # self.scanner_control_dockwidget.sigSliderMoved.connect()
 
         # TODO Proper implementation of setting the optimization sequence needs to be done.
+        optimizer_dimensions = [2,1]  # list dimension (2= xy, 1=z) for all optimizer sub widgets
+        # todo: also need to set the sequence (on each change) for unique mapping of axes to sub widget
         self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.optimizer_dockwidget)
@@ -790,6 +792,7 @@ class ScannerGui(GuiBase):
             axes_constr = self._scanning_logic().scanner_axes
 
             for seq_step in settings['scan_sequence']:
+                # todo: set optimizer sequence
                 if len(seq_step) == 1:
                     axis = seq_step[0]
                     self.optimizer_dockwidget.set_plot_label(axis='bottom',

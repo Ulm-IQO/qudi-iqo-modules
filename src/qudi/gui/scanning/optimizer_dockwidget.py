@@ -117,8 +117,6 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
             self._last_optimal_sigma[axs[0]] = sigma
 
         self.update_result_label()
-        #self.result_label = ""
-        #µ = (86.815, 58.318, 21.232) µm   σ = (0.000, 0.000, 0.000) µm
 
     def update_result_label(self):
         def _dict_2_str(in_dict, print_only_key=False):
