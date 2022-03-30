@@ -23,6 +23,8 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
 from PySide2 import QtCore
+import itertools
+import copy as cp
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
@@ -135,12 +137,13 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def scan_sequence(self):
-        return self._scan_sequence.copy()
+        # serialization into status variable changes step type <tuple> -> <list>
+        return [tuple(el) for el in self._scan_sequence]
 
     @scan_sequence.setter
     def scan_sequence(self, sequence):
         """
-        @param sequence: list of strin tuples giving the scan order, eg. [('x','y'),('z')]
+        @param sequence: list of string tuples giving the scan order, eg. [('x','y'),('z')]
         """
         axs_flat = []
         list(axs_flat.extend(item) for item in sequence)
@@ -359,3 +362,90 @@ class ScanningOptimizeLogic(LogicBase):
             return middle, None
 
         return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
+
+
+class OptimizerScanSequence():
+    def __init__(self, axes, dimensions=[2,1], sequence=None):
+        self._avail_axes = axes
+        self._optimizer_dim = dimensions
+        self._sequence = None
+
+    @property
+    def sequence(self):
+        return self._sequence
+
+    @sequence.setter
+    def sequence(self, sequence):
+        if not sequence in self.available_opt_sequences:
+            raise ValueError(f"Given {sequence} sequence incompatible with axes= {self._avail_axes}, dims= {self._optimizer_dim}")
+
+        self._sequence = sequence
+
+    @property
+    def available_opt_sequences(self):
+        """
+        Based on the given plot dimensions and axes configuration, give all possible permutations of scan sequences.
+        @return: list of tuples
+        """
+
+        def add_comb(old_comb, new_seqs):
+            out_comb = []
+            if not old_comb:
+                return new_seqs
+
+            for el in old_comb:
+                for seq in new_seqs:
+                    # single el tuple -> str to allow 'in' comparision
+                    seq_add = seq if len(seq) != 1 else seq[0]
+                    if len(seq_add) == 1:
+                        # single axis
+                        if seq_add not in el:
+                            out_comb.append(combine(el, seq_add))
+                    else:
+                        # 2d axes
+                        if seq_add != el:
+                            out_comb.append(combine(el, seq_add))
+
+            return out_comb
+
+        def combine(in1, in2):
+
+            in1 = cp.deepcopy(in1)
+            in2 = cp.deepcopy(in2)
+
+            if type(in1) == str:
+                in1 = tuple(in1)
+            if type(in2) == str:
+                in2 = tuple(in2)
+
+            if type(in1) == list and type(in2) == list:
+                in1.extend(in2)
+                return in1
+            elif type(in1) != list and type(in2) == list:
+                in2.append(in1)
+                return in2
+            elif type(in1) == list and type(in2) != list:
+                in1.append(in2)
+                return in1
+            else:
+                return [in1, in2]
+
+        axes = self._avail_axes
+        combs_2d = list(itertools.combinations(axes, 2))
+        combs_1d = list(itertools.combinations(axes, 1))
+        out_seqs = []
+
+        for dim in self._optimizer_dim:
+            if dim == 1:
+                out_seqs = add_comb(out_seqs, combs_1d)
+            elif dim == 2:
+                out_seqs = add_comb(out_seqs, combs_2d)
+            else:
+                raise ValueError("Only support 1d and 2d optimization sequences.")
+
+        out_seqs_any_order = []
+        for seq in out_seqs:
+            out_seqs_any_order.extend([list(el) for el in list(itertools.permutations(seq))])
+        out_seqs = out_seqs_any_order
+
+        return out_seqs
