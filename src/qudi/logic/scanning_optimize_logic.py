@@ -430,20 +430,27 @@ class OptimizerScanSequence():
     def _available_opt_seqs_raw(self):
         def add_comb(old_comb, new_seqs):
             out_comb = []
-
-            for el in old_comb:
+            # todo: must be possible nicer
+            for old_list in old_comb:
                 for seq in new_seqs:
-                    if type(el) == tuple:
-                        if len(seq) == 1 and len(el) == 2 or len(seq) == 2 and len(el) == 1:
+                    if type(old_list) == tuple:
+                        if len(seq) == 1 and len(old_list) == 2 or len(seq) == 2 and len(old_list) == 1:
                             # for single axis to single 2d, the axes from the 2d shouldn't be repeated
-                            # single el tuple -> str to allow 'in' comparision
+                            # single old_list tuple -> str to allow 'in' comparision
                             seq_add = seq if len(seq) != 1 else seq[0]
-
-                            if seq_add not in el:
-                                out_comb.append(combine(el, seq_add))
+                            if seq_add not in old_list:
+                                out_comb.append(combine(old_list, seq_add))
+                        elif len(seq) == 1 and len(old_list) == 1:
+                            # single axis to single 1d
+                            new_comb = combine(old_list, seq)
+                            if new_comb not in out_comb and seq not in old_list and seq != old_list:
+                                out_comb.append(combine(old_list, seq))
+                        else:
+                            if seq not in old_list and seq != old_list:
+                                out_comb.append(combine(old_list, seq))
                     else:
-                        if seq not in el and seq != el:
-                            out_comb.append(combine(el, seq))
+                        if seq not in old_list and seq != old_list:
+                            out_comb.append(combine(old_list, seq))
 
             if not old_comb:
                 return new_seqs
@@ -472,7 +479,7 @@ class OptimizerScanSequence():
                 in1.append(in2)
                 return in1
             else:
-                return [in1, in2]
+                return sorted([in1, in2])
 
         axes = self._avail_axes
         combs_2d = list(itertools.combinations(axes, 2))
