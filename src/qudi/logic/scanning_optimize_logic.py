@@ -390,8 +390,6 @@ class OptimizerScanSequence():
 
         def add_comb(old_comb, new_seqs):
             out_comb = []
-            if not old_comb:
-                return new_seqs
 
             for el in old_comb:
                 for seq in new_seqs:
@@ -406,6 +404,11 @@ class OptimizerScanSequence():
                     else:
                         if seq not in el and seq != el:
                             out_comb.append(combine(el, seq))
+
+            if not old_comb:
+                return new_seqs
+            if not out_comb:
+                return old_comb
 
             return out_comb
 
