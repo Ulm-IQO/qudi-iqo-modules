@@ -395,16 +395,17 @@ class OptimizerScanSequence():
 
             for el in old_comb:
                 for seq in new_seqs:
-                    # single el tuple -> str to allow 'in' comparision
-                    seq_add = seq if len(seq) != 1 else seq[0]
-                    if len(seq_add) == 1:
-                        # single axis
-                        if seq_add not in el:
-                            out_comb.append(combine(el, seq_add))
+                    if type(el) == tuple:
+                        if len(seq) == 1 and len(el) == 2 or len(seq) == 2 and len(el) == 1:
+                            # for single axis to single 2d, the axes from the 2d shouldn't be repeated
+                            # single el tuple -> str to allow 'in' comparision
+                            seq_add = seq if len(seq) != 1 else seq[0]
+
+                            if seq_add not in el:
+                                out_comb.append(combine(el, seq_add))
                     else:
-                        # 2d axes
-                        if seq_add != el:
-                            out_comb.append(combine(el, seq_add))
+                        if seq not in el and seq != el:
+                            out_comb.append(combine(el, seq))
 
             return out_comb
 
