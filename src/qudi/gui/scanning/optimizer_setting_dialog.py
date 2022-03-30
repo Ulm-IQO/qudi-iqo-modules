@@ -23,22 +23,22 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('OptimizerSettingDialog', 'OptimizerSettingWidget', 'OptimizerAxesWidget')
 
 from PySide2 import QtCore, QtGui, QtWidgets
-from itertools import combinations
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
-
+from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 
 class OptimizerSettingDialog(QtWidgets.QDialog):
     """ User configurable settings for the scanner optimizer logic
     """
 
-    def __init__(self, scanner_axes, scanner_channels):
+    def __init__(self, scanner_axes, scanner_channels, optimizer_dim=[2,1]):
         super().__init__()
         self.setObjectName('optimizer_settings_dialog')
         self.setWindowTitle('Optimizer Settings')
 
         self.settings_widget = OptimizerSettingWidget(scanner_axes=scanner_axes,
-                                                      scanner_channels=scanner_channels)
+                                                      scanner_channels=scanner_channels,
+                                                      optimizer_dim=optimizer_dim)
 
         self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
                                                      QtWidgets.QDialogButtonBox.Cancel |
@@ -66,9 +66,12 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
     """ User configurable settings for the scanner optimizer logic
     """
 
-    def __init__(self, scanner_axes, scanner_channels):
+    def __init__(self, scanner_axes, scanner_channels, optimizer_dim=[2,1]):
         super().__init__()
         self.setObjectName('optimizer_settings_widget')
+
+        self._avail_axes = sorted([ax.name for ax in scanner_axes])
+        self._optimizer_dim = optimizer_dim
 
         font = QtGui.QFont()
         font.setBold(True)
@@ -76,9 +79,6 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         self.data_channel_combobox = QtWidgets.QComboBox()
         self.data_channel_combobox.addItems(tuple(ch.name for ch in scanner_channels))
 
-
-        self._avail_axes = sorted([ax.name for ax in scanner_axes])
-        #self._avail_opt_sequences = [ax.name for ax in scanner_axes] # todo combine axes
         self.optimize_sequence_combobox = QtWidgets.QComboBox()
         self.optimize_sequence_combobox.addItems(tuple(str(seq) for seq in self.available_opt_sequences))
 
@@ -120,24 +120,12 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
 
     @property
     def available_opt_sequences(self):
-        # todo: generalize for arbitrary dimensions
-        axes = self._avail_axes
-        combs_2d = list(combinations(axes, 2))
-        combs_1d = list(combinations(axes, 1))
 
-        out_seq = []
-        for el2 in combs_2d:
-            for el1 in combs_1d:
-                if el1[0] not in el2:
-                    out_seq.append([el2, el1])
-                    out_seq.append([el1, el2])
-                if [el2] not in out_seq:
-                    out_seq.append([el2])
-
-        return out_seq
+        dummy_seq = OptimizerScanSequence(self._avail_axes,
+                                          self._optimizer_dim)
+        return dummy_seq.available_opt_sequences
 
     def change_settings(self, settings):
-        # FIXME: sequence needs to be properly implemented
         if 'data_channel' in settings:
             self.data_channel_combobox.blockSignals(True)
             self.data_channel_combobox.setCurrentText(settings['data_channel'])
@@ -147,7 +135,6 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
             try:
                 idx_combo = self.available_opt_sequences.index(settings['scan_sequence'])
             except ValueError:
-                # todo after serializatioin in StatusVar, scan_sequence is of new data type
                 print(f"{settings['scan_sequence']} not in {self.available_opt_sequences}")
                 idx_combo = 0
             self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
