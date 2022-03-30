@@ -810,7 +810,7 @@ class ScannerGui(GuiBase):
 
             dummy_seq = OptimizerScanSequence(tuple(self._scanning_logic().scanner_axes.keys()),
                                               self._optimizer_plot_dims)
-            if settings['scan_sequence'] not in dummy_seq.available_opt_sequences:
+            if settings['scan_sequence'] not in [seq.sequence for seq in dummy_seq.available_opt_sequences]:
                 new_seq = dummy_seq.available_opt_sequences[0].sequence
                 self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
                                  f" Defaulted optimizer to= {new_seq}")

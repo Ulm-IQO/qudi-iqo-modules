@@ -59,43 +59,36 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         # fill list of all optimizer subplot widgets
         for i_col, n_dim in enumerate(plot_dims):
             if n_dim == 1:
-                # todo rename widget items
-                base_plot_item = PlotDataItem(pen=mkPen(QudiPalette.c1, style=QtCore.Qt.DotLine),
+                plot_item = PlotDataItem(pen=mkPen(QudiPalette.c1, style=QtCore.Qt.DotLine),
                                               symbol='o',
                                               symbolPen=QudiPalette.c1,
                                               symbolBrush=QudiPalette.c1,
                                               symbolSize=7)
-                base_fit_plot_item = PlotDataItem(pen=mkPen(QudiPalette.c2))
-                plot1d_base_widget = Scan1DPlotWidget()
+                fit_plot_item = PlotDataItem(pen=mkPen(QudiPalette.c2))
+                plot1d_widget = Scan1DPlotWidget()
 
-                plot1d_base_widget.add_marker(movable=False, pen={'color': '#00ff00', 'width': 2})
-                plot1d_base_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+                plot1d_widget.add_marker(movable=False, pen={'color': '#00ff00', 'width': 2})
+                plot1d_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
-
-                widget = plot1d_base_widget
-                plot = base_plot_item
-                fit = base_fit_plot_item
-                widget.addItem(plot)
-                self._plot_widgets.append({'widget': widget, 'plot_1d': plot,
-                                           'fit_1d': fit, 'dim': 1})
+                plot1d_widget.addItem(plot_item)
+                self._plot_widgets.append({'widget': plot1d_widget, 'plot_1d': plot_item,
+                                           'fit_1d': fit_plot_item, 'dim': 1})
             elif n_dim == 2:
-                base_image_item = ScanImageItem()
-                plot2d_base_widget = Scan2DPlotWidget()
-                plot2d_base_widget.toggle_zoom_by_selection(False)
-                plot2d_base_widget.toggle_selection(False)
-                plot2d_base_widget.add_crosshair(movable=False, pen={'color': '#00ff00', 'width': 2})
-                plot2d_base_widget.setAspectLocked(lock=True, ratio=1.0)
-                plot2d_base_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+                image_item = ScanImageItem()
+                plot2d_widget = Scan2DPlotWidget()
+                plot2d_widget.toggle_zoom_by_selection(False)
+                plot2d_widget.toggle_selection(False)
+                plot2d_widget.add_crosshair(movable=False, pen={'color': '#00ff00', 'width': 2})
+                plot2d_widget.setAspectLocked(lock=True, ratio=1.0)
+                plot2d_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
 
-                widget = plot2d_base_widget
-                image = base_image_item
-                widget.addItem(image)
-                self._plot_widgets.append({'widget': widget, 'image_2d': image,
+                plot2d_widget.addItem(image_item)
+                self._plot_widgets.append({'widget': plot2d_widget, 'image_2d': image_item,
                                            'dim': 2})
             else:
                 raise ValueError(f"Optimizer widget can have axis dim= 1 or 2, not {n_dim}")
 
-            layout.addWidget(widget, 0, i_col)
+            layout.addWidget(self._plot_widgets[-1]['widget'], 0, i_col)
 
         layout.addLayout(label_layout, 1, 0, 1, 2)
         layout.setRowStretch(0, 1)
@@ -135,7 +128,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         else:
             raise ValueError
 
-    def _get_widget_part(self, axs, part='widget', dim=None):
+    def _get_widget_part(self, axs, part='widget'):
         """
         Based on the given axes, return the corresponding widget.
         Will keep the order given by self._scan_sequence. Eg. axs=('x','y') will
@@ -148,9 +141,6 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         widgets_2d = [wid for wid in self._plot_widgets if wid['dim'] == 2]
 
         widget = None
-        # todo: remove confusing first element if no axs given
-        if axs is None and dim != None:
-            axs = seqs_2d[0] if dim==2 else seqs_1d[0]
         axs = tuple(axs)
 
         try:

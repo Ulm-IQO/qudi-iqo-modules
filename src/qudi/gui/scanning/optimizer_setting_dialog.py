@@ -101,9 +101,9 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         scan_settings_groupbox.setFont(font)
         scan_settings_groupbox.setLayout(QtWidgets.QGridLayout())
 
-        scan_settings_groupbox.layout().addWidget(self.axes_widget,0,0,1,-1)
-        scan_settings_groupbox.layout().addWidget(label_opt_seq,1,0,1,1)
-        scan_settings_groupbox.layout().addWidget(self.optimize_sequence_combobox,1,1,1,1)
+        scan_settings_groupbox.layout().addWidget(self.axes_widget, 0, 0, 1, -1)
+        scan_settings_groupbox.layout().addWidget(label_opt_seq, 1, 0, 1, 1)
+        scan_settings_groupbox.layout().addWidget(self.optimize_sequence_combobox, 1, 1, 1, 1)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(misc_settings_groupbox)
@@ -133,9 +133,9 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         if 'scan_sequence' in settings:
             self.optimize_sequence_combobox.blockSignals(True)
             try:
-                idx_combo = self.available_opt_sequences.index(settings['scan_sequence'])
+                idx_combo = [seq.sequence for seq in self.available_opt_sequences].index(settings['scan_sequence'])
             except ValueError:
-                print(f"{settings['scan_sequence']} not in {self.available_opt_sequences}")
+                print(f"{settings['scan_sequence']} not in {[seq.sequence for seq in self.available_opt_sequences]}")
                 idx_combo = 0
             self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
 
