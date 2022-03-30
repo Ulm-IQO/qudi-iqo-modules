@@ -369,14 +369,44 @@ class OptimizerScanSequence():
         self._avail_axes = axes
         self._optimizer_dim = dimensions
         self._sequence = None
+        if sequence in self._available_opt_seqs_raw():
+            self.sequence = sequence
+
+    def __eq__(self, other):
+        if isinstance(other, OptimizerScanSequence):
+            return self._sequence == other._sequence
+        return False
+
+    def __str__(self):
+        out_str = ""
+        if self.sequence:
+            for step in self._sequence:
+                if len(step) == 1:
+                    out_str += f"{step[0]}"
+                elif len(step) == 2:
+                    out_str += f"{step[0]}{step[1]}"
+                else:
+                    raise ValueError
+                out_str += ", "
+
+            out_str = out_str.rstrip(', ')
+
+        return out_str
 
     @property
     def sequence(self):
+        """
+        @return: list of tuples
+        """
+
         return self._sequence
 
     @sequence.setter
     def sequence(self, sequence):
-        if not sequence in self.available_opt_sequences:
+        """
+        @param sequence: list of tuples, eg. [('x','y'), ('z')]
+        """
+        if not sequence in self._available_opt_seqs_raw():
             raise ValueError(f"Given {sequence} sequence incompatible with axes= {self._avail_axes}, dims= {self._optimizer_dim}")
 
         self._sequence = sequence
@@ -385,9 +415,19 @@ class OptimizerScanSequence():
     def available_opt_sequences(self):
         """
         Based on the given plot dimensions and axes configuration, give all possible permutations of scan sequences.
-        @return: list of tuples
         """
+        """
+        seqs = []
+        for seq in self._available_opt_seqs_raw():
+            s = OptimizerScanSequence(self._avail_axes, self._optimizer_dim)
+            s.sequence = seq
+            seqs.append(s)
+        return seqs
+        """
+        return [OptimizerScanSequence(self._avail_axes, self._optimizer_dim, seq) for seq in self._available_opt_seqs_raw()]
 
+
+    def _available_opt_seqs_raw(self):
         def add_comb(old_comb, new_seqs):
             out_comb = []
 
@@ -453,3 +493,5 @@ class OptimizerScanSequence():
         out_seqs = out_seqs_any_order
 
         return out_seqs
+
+

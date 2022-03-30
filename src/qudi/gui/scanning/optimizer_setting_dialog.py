@@ -80,7 +80,7 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         self.data_channel_combobox.addItems(tuple(ch.name for ch in scanner_channels))
 
         self.optimize_sequence_combobox = QtWidgets.QComboBox()
-        self.optimize_sequence_combobox.addItems(tuple(str(seq) for seq in self.available_opt_sequences))
+        self.optimize_sequence_combobox.addItems(str(seq) for seq in self.available_opt_sequences)
 
         label = QtWidgets.QLabel('Data channel:')
         label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
@@ -113,7 +113,7 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
     @property
     def settings(self):
         return {'data_channel': self.data_channel_combobox.currentText(),
-                'scan_sequence': self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()],
+                'scan_sequence': self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()].sequence,
                 'scan_resolution': self.axes_widget.resolution,
                 'scan_range': self.axes_widget.range,
                 'scan_frequency': self.axes_widget.frequency}
