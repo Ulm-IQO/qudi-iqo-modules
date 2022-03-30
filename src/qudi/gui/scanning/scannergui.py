@@ -30,6 +30,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
+from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 
 from .axes_control_dockwidget import AxesControlDockWidget
 from .optimizer_setting_dialog import OptimizerSettingDialog
@@ -71,6 +72,8 @@ class ScannerGui(GuiBase):
 
     # config options for gui
     _default_position_unit_prefix = ConfigOption(name='default_position_unit_prefix', default=None)
+    # for all optimizer sub widgets, (2= xy, 1=z)
+    _optimizer_plot_dims = ConfigOption(name='optimizer_plot_dimensions', default=[2,1])
 
     # status vars
     _window_state = StatusVar(name='window_state', default=None)
@@ -252,7 +255,8 @@ class ScannerGui(GuiBase):
         """
         # Create the Settings window
         self._osd = OptimizerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
-                                           tuple(self._scanning_logic().scanner_channels.values()))
+                                           tuple(self._scanning_logic().scanner_channels.values()),
+                                           self._optimizer_plot_dims)
 
         # Connect MainWindow actions
         self._mw.action_optimizer_settings.triggered.connect(lambda x: self._osd.exec_())
@@ -311,9 +315,10 @@ class ScannerGui(GuiBase):
         # self.scanner_control_dockwidget.sigSliderMoved.connect()
 
         # TODO Proper implementation of setting the optimization sequence needs to be done.
-        optimizer_dimensions = [2,1]  # list dimension (2= xy, 1=z) for all optimizer sub widgets
-        # todo: also need to set the sequence (on each change) for unique mapping of axes to sub widget
-        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes)
+
+        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
+                                                        plot_dims=self._optimizer_plot_dims,
+                                                        sequence=self._optimize_logic().scan_sequence)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.optimizer_dockwidget)
         self.optimizer_dockwidget.visibilityChanged.connect(
@@ -579,25 +584,31 @@ class ScannerGui(GuiBase):
                 if scan_data.scan_dimension == 2:
                     x_ax, y_ax = scan_data.scan_axes
                     self.optimizer_dockwidget.set_image(image=scan_data.data[channel],
-                                                        extent=scan_data.scan_range)
+                                                        extent=scan_data.scan_range,
+                                                        axs=scan_data.scan_axes)
                     self.optimizer_dockwidget.set_image_label(axis='bottom',
                                                               text=x_ax,
-                                                              units=scan_data.axes_units[x_ax])
+                                                              units=scan_data.axes_units[x_ax],
+                                                              axs=scan_data.scan_axes)
                     self.optimizer_dockwidget.set_image_label(axis='left',
                                                               text=y_ax,
-                                                              units=scan_data.axes_units[y_ax])
+                                                              units=scan_data.axes_units[y_ax],
+                                                              axs=scan_data.scan_axes)
                 elif scan_data.scan_dimension == 1:
                     x_ax = scan_data.scan_axes[0]
                     self.optimizer_dockwidget.set_plot_data(
                         x=np.linspace(*scan_data.scan_range[0], scan_data.scan_resolution[0]),
-                        y=scan_data.data[channel]
+                        y=scan_data.data[channel],
+                        axs=scan_data.scan_axes
                     )
                     self.optimizer_dockwidget.set_plot_label(axis='bottom',
                                                              text=x_ax,
-                                                             units=scan_data.axes_units[x_ax])
+                                                             units=scan_data.axes_units[x_ax],
+                                                             axs=scan_data.scan_axes)
                     self.optimizer_dockwidget.set_plot_label(axis='left',
                                                              text=channel,
-                                                             units=scan_data.channel_units[channel])
+                                                             units=scan_data.channel_units[channel],
+                                                             axs=scan_data.scan_axes)
             else:
                 if scan_data.scan_dimension == 2:
                     dockwidget = self.scan_2d_dockwidgets.get(scan_axes, None)
@@ -622,6 +633,8 @@ class ScannerGui(GuiBase):
         self.scanner_settings_toggle_gui_lock(is_running)
 
         self.log.debug(f"Updated opt pos= {optimal_position}, fit_data={fit_data}")
+        if fit_data is not None and optimal_position is None:
+            raise ValueError("Can't understand fit_data without optimal position")
 
         # Update optimal position crosshair and marker
         if isinstance(optimal_position, dict):
@@ -639,7 +652,7 @@ class ScannerGui(GuiBase):
             data = fit_data['fit_data']
             fit_res = fit_data['full_fit_res']
             if data.ndim == 1:
-                self.optimizer_dockwidget.set_fit_data(y=data)
+                self.optimizer_dockwidget.set_fit_data(scan_axs, y=data)
                 sig_z = fit_res.params['center'].stderr
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
                                                           scan_axs, sigma=sig_z)
@@ -648,11 +661,15 @@ class ScannerGui(GuiBase):
                 self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
                                                           scan_axs, sigma=[sig_x, sig_y])
 
-        if fit_data is not None and optimal_position is None:
-            raise ValueError("Can't understand fit_data without optimal position")
-
-        self.optimizer_dockwidget.toogle_crosshair(_is_optimizer_valid_2d)
-        self.optimizer_dockwidget.toogle_marker(_is_optimizer_valid_1d)
+        # Hide crosshair and 1d marker when scanning
+        if len(scan_axs) == 2:
+            self.optimizer_dockwidget.toogle_crosshair(scan_axs, _is_optimizer_valid_2d)
+        else:
+            self.optimizer_dockwidget.toogle_crosshair(None, _is_optimizer_valid_2d)
+        if len(scan_axs) == 1:
+            self.optimizer_dockwidget.toogle_marker(scan_axs, _is_optimizer_valid_1d)
+        else:
+            self.optimizer_dockwidget.toogle_marker(None, _is_optimizer_valid_1d)
 
     @QtCore.Slot(bool)
     def toggle_optimize(self, enabled):
@@ -775,6 +792,7 @@ class ScannerGui(GuiBase):
         # FIXME: sequence needs to be properly implemented
         self.log.debug(f"Setting to logic opt settings: {self._osd.settings}")
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
+        self.optimizer_dockwidget.scan_sequence = self._osd.settings['scan_sequence']
 
     @QtCore.Slot()
     @QtCore.Slot(dict)
@@ -789,42 +807,58 @@ class ScannerGui(GuiBase):
         self.log.debug(f"Got opt settings {settings}")
         # Adjust optimizer scan axis labels
         if 'scan_sequence' in settings:
+
+            dummy_seq = OptimizerScanSequence(tuple(self._scanning_logic().scanner_axes.keys()),
+                                              self._optimizer_plot_dims)
+            if settings['scan_sequence'] not in dummy_seq.available_opt_sequences:
+                new_seq = dummy_seq.available_opt_sequences[0]
+                self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
+                                 f" Defaulted optimizer to= {new_seq}")
+                settings['scan_sequence'] = new_seq
+                self._optimize_logic().scan_sequence = new_seq
+
             axes_constr = self._scanning_logic().scanner_axes
+            self.optimizer_dockwidget.scan_sequence = settings['scan_sequence']
 
             for seq_step in settings['scan_sequence']:
                 # todo: set optimizer sequence
                 if len(seq_step) == 1:
                     axis = seq_step[0]
                     self.optimizer_dockwidget.set_plot_label(axis='bottom',
+                                                             axs=seq_step,
                                                              text=axis,
                                                              units=axes_constr[axis].unit)
-                    self.optimizer_dockwidget.set_plot_data()
-                    self.optimizer_dockwidget.set_fit_data()
+                    self.optimizer_dockwidget.set_plot_data(axs=seq_step)
+                    self.optimizer_dockwidget.set_fit_data(axs=seq_step)
                 elif len(seq_step) == 2:
                     x_axis, y_axis = seq_step
                     self.optimizer_dockwidget.set_image_label(axis='bottom',
+                                                              axs=seq_step,
                                                               text=x_axis,
                                                               units=axes_constr[x_axis].unit)
                     self.optimizer_dockwidget.set_image_label(axis='left',
+                                                              axs=seq_step,
                                                               text=y_axis,
                                                               units=axes_constr[y_axis].unit)
-                    self.optimizer_dockwidget.set_image(None, extent=((-0.5, 0.5), (-0.5, 0.5)))
+                    self.optimizer_dockwidget.set_image(None, axs=seq_step,
+                                                        extent=((-0.5, 0.5), (-0.5, 0.5)))
 
-        # Adjust 1D plot y-axis label
-        if 'data_channel' in settings:
-            channel_constr = self._scanning_logic().scanner_channels
-            channel = settings['data_channel']
-            self.optimizer_dockwidget.set_plot_label(axis='left',
-                                                     text=channel,
-                                                     units=channel_constr[channel].unit)
+                # Adjust 1D plot y-axis label
+                if 'data_channel' in settings and len(seq_step)==1:
+                    channel_constr = self._scanning_logic().scanner_channels
+                    channel = settings['data_channel']
+                    self.optimizer_dockwidget.set_plot_label(axs=seq_step, axis='left',
+                                                             text=channel,
+                                                             units=channel_constr[channel].unit)
 
-        # Adjust crosshair size according to optimizer range
-        if 'scan_range' in settings:
-            for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
-                if any(ax in settings['scan_range'] for ax in scan_axes):
-                    crosshair = dockwidget.scan_widget.crosshairs[0]
-                    x_size = settings['scan_range'].get(scan_axes[0], crosshair.size[0])
-                    y_size = settings['scan_range'].get(scan_axes[1], crosshair.size[1])
-                    crosshair.set_size((x_size, y_size))
+                # Adjust crosshair size according to optimizer range
+                if 'scan_range' in settings and len(seq_step)==2:
+                    for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
+                        if any(ax in settings['scan_range'] for ax in scan_axes):
+                            crosshair = dockwidget.scan_widget.crosshairs[0]
+                            x_size = settings['scan_range'].get(scan_axes[0], crosshair.size[0])
+                            y_size = settings['scan_range'].get(scan_axes[1], crosshair.size[1])
+                            crosshair.set_size((x_size, y_size))
+
 
 
