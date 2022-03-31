@@ -77,7 +77,7 @@ class ScanningOptimizeLogic(LogicBase):
 
         self.log.debug(f"Opt settings at startup, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
         # optimizer settings loaded from StatusVar or defaulted
-        new_settings = self.check_sanity_scan_settings(self.optimize_settings)
+        new_settings = self.check_sanity_optimizer_settings(self.optimize_settings)
         if new_settings != self.optimize_settings:
             self._scan_range = new_settings['scan_range']
             self._scan_resolution = new_settings['scan_resolution']
@@ -162,7 +162,7 @@ class ScanningOptimizeLogic(LogicBase):
                 'scan_resolution': self.scan_resolution,
                 'scan_sequence': self.scan_sequence}
 
-    def check_sanity_scan_settings(self, settings=None):
+    def check_sanity_optimizer_settings(self, settings=None, plot_dimensions=None):
         # shaddows scanning_probe_logic::check_sanity. Unify code somehow?
 
         if not isinstance(settings, dict):
@@ -183,6 +183,8 @@ class ScanningOptimizeLogic(LogicBase):
 
             return is_valid
 
+
+        # first check settings that are defined per scanner axis
         for key, val in settings.items():
             if not check_valid(settings, key):
                 if key == 'scan_range':
@@ -194,6 +196,23 @@ class ScanningOptimizeLogic(LogicBase):
                 if key == 'scan_frequency':
                     settings['scan_frequency'] = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
                                                   in hw_axes.values()}
+
+        # scan_sequence check, only sensibel if plot dimensions (eg. from confocal gui) are available
+        if 'scan_sequence' in settings and plot_dimensions:
+            dummy_seq = OptimizerScanSequence(tuple(self._scan_logic().scanner_axes.keys()),
+                                              plot_dimensions)
+
+            if len(dummy_seq.available_opt_sequences) == 0:
+                raise ValueError(f"Configured optimizer dim= {self._optimizer_plot_dims}"
+                                 f" doesn't yield any sensible scan sequence.")
+
+            if settings['scan_sequence'] not in [seq.sequence for seq in dummy_seq.available_opt_sequences]:
+                new_seq = dummy_seq.available_opt_sequences[0].sequence
+                settings['scan_sequence'] = new_seq
+
+            if len(settings['scan_sequence']) != len(plot_dimensions):
+                self.log.warning(f"Configured optimizer dim= {plot_dimensions}"
+                                 f" doesn't fit the available sequences.")
 
         return settings
 

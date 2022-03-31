@@ -807,7 +807,7 @@ class ScannerGui(GuiBase):
 
         # Adjust optimizer scan axis labels
         if 'scan_sequence' in settings:
-            new_settings = self.check_sanity_optimizer_settings(settings)
+            new_settings = self._optimize_logic().check_sanity_optimizer_settings(settings, self._optimizer_plot_dims)
             if settings['scan_sequence'] != new_settings['scan_sequence']:
                 new_seq = new_settings['scan_sequence']
                 self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
@@ -859,29 +859,6 @@ class ScannerGui(GuiBase):
                             crosshair.set_size((x_size, y_size))
 
 
-    def check_sanity_optimizer_settings(self, settings=None):
-        if not isinstance(settings, dict):
-            settings = self._optimize_logic().optimize_settings
-
-        settings = cp.deepcopy(settings)
-
-        if 'scan_sequence' in settings:
-            dummy_seq = OptimizerScanSequence(tuple(self._scanning_logic().scanner_axes.keys()),
-                                              self._optimizer_plot_dims)
-
-            if len(dummy_seq.available_opt_sequences) == 0:
-                raise ValueError(f"Configured optimizer dim= {self._optimizer_plot_dims}"
-                                 f" doesn't yield any sensible scan sequence.")
-
-            if settings['scan_sequence'] not in [seq.sequence for seq in dummy_seq.available_opt_sequences]:
-                new_seq = dummy_seq.available_opt_sequences[0].sequence
-                settings['scan_sequence'] = new_seq
-
-            if len(settings['scan_sequence']) != len(self._optimizer_plot_dims):
-                self.log.warning(f"Configured optimizer dim= {self._optimizer_plot_dims}"
-                                 f" doesn't fit the available sequences.")
-
-        return settings
 
 
 
