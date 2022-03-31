@@ -393,6 +393,11 @@ class OptimizerScanSequence():
 
         return out_str
 
+    def __len__(self):
+        if not self.sequence:
+            return 0
+        return len(self.sequence)
+
     @property
     def sequence(self):
         """
@@ -416,46 +421,48 @@ class OptimizerScanSequence():
         """
         Based on the given plot dimensions and axes configuration, give all possible permutations of scan sequences.
         """
-        """
-        seqs = []
-        for seq in self._available_opt_seqs_raw():
-            s = OptimizerScanSequence(self._avail_axes, self._optimizer_dim)
-            s.sequence = seq
-            seqs.append(s)
-        return seqs
-        """
+
         return [OptimizerScanSequence(self._avail_axes, self._optimizer_dim, seq) for seq in self._available_opt_seqs_raw()]
 
 
-    def _available_opt_seqs_raw(self):
+    def _available_opt_seqs_raw(self, remove_1d_in_2d=True):
+        """
+        @oaram remove_1d_in_2d: remove sequences where 1d steps are repeated in 2d steps, eg. [('x','y'), ('x')]
+        """
+        def get_n_in(comb_list, seq_step):
+            if type(seq_step) != tuple:
+                raise ValueError
+
+            n_in = 0
+            for old_step in comb_list:
+                if type(old_step) != tuple:
+                    raise ValueError
+                if old_step == seq_step:
+                    n_in += 1
+                    continue
+                if len(old_step) == 2 and len(seq_step) == 2:
+                    if old_step[0] == seq_step[1] and old_step[1] == seq_step[0]:
+                        n_in += 1
+                        continue
+            return n_in
+
         def add_comb(old_comb, new_seqs):
             out_comb = []
-            # todo: must be possible nicer
+
             for old_list in old_comb:
                 for seq in new_seqs:
-                    if type(old_list) == tuple:
-                        if len(seq) == 1 and len(old_list) == 2 or len(seq) == 2 and len(old_list) == 1:
-                            # for single axis to single 2d, the axes from the 2d shouldn't be repeated
-                            # single old_list tuple -> str to allow 'in' comparision
-                            seq_add = seq if len(seq) != 1 else seq[0]
-                            if seq_add not in old_list:
-                                out_comb.append(combine(old_list, seq_add))
-                        elif len(seq) == 1 and len(old_list) == 1:
-                            # single axis to single 1d
-                            new_comb = combine(old_list, seq)
-                            if new_comb not in out_comb and seq not in old_list and seq != old_list:
-                                out_comb.append(combine(old_list, seq))
-                        else:
-                            if seq not in old_list and seq != old_list:
-                                out_comb.append(combine(old_list, seq))
-                    else:
-                        if seq not in old_list and seq != old_list:
-                            out_comb.append(combine(old_list, seq))
+                    out_comb.append(combine(old_list, seq))
 
             if not old_comb:
                 return new_seqs
             if not out_comb:
                 return old_comb
+
+            # clean doubles within combination
+            out_clean = []
+            for comb in out_comb:
+                out_clean.append([el for el in comb if get_n_in(comb, el) == 1])
+            out_comb = [el for el in out_clean if len(el) == len(out_comb[0])]
 
             return out_comb
 
@@ -473,17 +480,39 @@ class OptimizerScanSequence():
                 in1.extend(in2)
                 return in1
             elif type(in1) != list and type(in2) == list:
-                in2.append(in1)
+                in2.insert(0, in1)
                 return in2
             elif type(in1) == list and type(in2) != list:
                 in1.append(in2)
                 return in1
             else:
-                return sorted([in1, in2])
+                return [in1, in2]
 
-        axes = self._avail_axes
-        combs_2d = list(itertools.combinations(axes, 2))
-        combs_1d = list(itertools.combinations(axes, 1))
+        def remove_duplicates(comb_list):
+            out_seqs = []
+            for seq in comb_list:
+                if seq not in out_seqs:
+                    out_seqs.append(seq)
+
+            return out_seqs
+
+        def remove_1d_in_2d_axes_dupl(comb_list):
+            out_seqs = []
+            for seq in comb_list:
+                is_1d_in_2d = False
+                for step in seq:
+                    if type(step) == tuple and len(step) == 1:
+                        # if 1d step, check whether in any of the other 2 stpes
+                        is_step_in = any([step[0] in s for s in seq if type(s)==tuple and len(s)==2])
+                        if is_step_in:
+                            is_1d_in_2d = True
+
+                if not is_1d_in_2d:
+                    out_seqs.append(seq)
+            return out_seqs
+
+        combs_2d = list(itertools.combinations(self._avail_axes, 2))
+        combs_1d = list(itertools.combinations(self._avail_axes, 1))
         out_seqs = []
 
         for dim in self._optimizer_dim:
@@ -494,10 +523,15 @@ class OptimizerScanSequence():
             else:
                 raise ValueError("Only support 1d and 2d optimization sequences.")
 
+        # add permutations
         out_seqs_any_order = []
         for seq in out_seqs:
             out_seqs_any_order.extend([list(el) for el in list(itertools.permutations(seq))])
         out_seqs = out_seqs_any_order
+        # clean up
+        out_seqs = remove_duplicates(out_seqs)
+        if remove_1d_in_2d:
+            out_seqs = remove_1d_in_2d_axes_dupl(out_seqs)
 
         return out_seqs
 

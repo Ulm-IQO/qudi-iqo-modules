@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import numpy as np
+import copy as cp
 from PySide2 import QtCore, QtGui, QtWidgets
 
 import qudi.util.uic as uic
@@ -789,8 +790,8 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot()
     def change_optimizer_settings(self):
-        # FIXME: sequence needs to be properly implemented
         self.log.debug(f"Setting to logic opt settings: {self._osd.settings}")
+
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
         self.optimizer_dockwidget.scan_sequence = self._osd.settings['scan_sequence']
 
@@ -802,26 +803,23 @@ class ScannerGui(GuiBase):
 
         # Update optimizer settings QDialog
         self._osd.change_settings(settings)
-
-        # FIXME: sequence needs to be properly implemented
         self.log.debug(f"Got opt settings {settings}")
+
         # Adjust optimizer scan axis labels
         if 'scan_sequence' in settings:
-
-            dummy_seq = OptimizerScanSequence(tuple(self._scanning_logic().scanner_axes.keys()),
-                                              self._optimizer_plot_dims)
-            if settings['scan_sequence'] not in [seq.sequence for seq in dummy_seq.available_opt_sequences]:
-                new_seq = dummy_seq.available_opt_sequences[0].sequence
+            new_settings = self.check_sanity_optimizer_settings(settings)
+            if settings['scan_sequence'] != new_settings['scan_sequence']:
+                new_seq = new_settings['scan_sequence']
                 self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
                                  f" Defaulted optimizer to= {new_seq}")
                 settings['scan_sequence'] = new_seq
                 self._optimize_logic().scan_sequence = new_seq
 
+
             axes_constr = self._scanning_logic().scanner_axes
             self.optimizer_dockwidget.scan_sequence = settings['scan_sequence']
 
             for seq_step in settings['scan_sequence']:
-                # todo: set optimizer sequence
                 if len(seq_step) == 1:
                     axis = seq_step[0]
                     self.optimizer_dockwidget.set_plot_label(axis='bottom',
@@ -859,6 +857,31 @@ class ScannerGui(GuiBase):
                             x_size = settings['scan_range'].get(scan_axes[0], crosshair.size[0])
                             y_size = settings['scan_range'].get(scan_axes[1], crosshair.size[1])
                             crosshair.set_size((x_size, y_size))
+
+
+    def check_sanity_optimizer_settings(self, settings=None):
+        if not isinstance(settings, dict):
+            settings = self._optimize_logic().optimize_settings
+
+        settings = cp.deepcopy(settings)
+
+        if 'scan_sequence' in settings:
+            dummy_seq = OptimizerScanSequence(tuple(self._scanning_logic().scanner_axes.keys()),
+                                              self._optimizer_plot_dims)
+
+            if len(dummy_seq.available_opt_sequences) == 0:
+                raise ValueError(f"Configured optimizer dim= {self._optimizer_plot_dims}"
+                                 f" doesn't yield any sensible scan sequence.")
+
+            if settings['scan_sequence'] not in [seq.sequence for seq in dummy_seq.available_opt_sequences]:
+                new_seq = dummy_seq.available_opt_sequences[0].sequence
+                settings['scan_sequence'] = new_seq
+
+            if len(settings['scan_sequence']) != len(self._optimizer_plot_dims):
+                self.log.warning(f"Configured optimizer dim= {self._optimizer_plot_dims}"
+                                 f" doesn't fit the available sequences.")
+
+        return settings
 
 
 

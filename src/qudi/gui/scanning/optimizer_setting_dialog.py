@@ -135,7 +135,6 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
             try:
                 idx_combo = [seq.sequence for seq in self.available_opt_sequences].index(settings['scan_sequence'])
             except ValueError:
-                print(f"{settings['scan_sequence']} not in {[seq.sequence for seq in self.available_opt_sequences]}")
                 idx_combo = 0
             self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
 
