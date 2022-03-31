@@ -312,10 +312,9 @@ class ScannerGui(GuiBase):
             lambda ax, pos: self.sigScannerTargetChanged.emit({ax: pos}, self.module_uuid)
         )
         # ToDo: Implement a way to avoid too fast position update from slider movement.
-        #  Currently the scanner target position is only updated upon slider release.
-        # self.scanner_control_dockwidget.sigSliderMoved.connect()
+        self.scanner_control_dockwidget.sigSliderMoved.connect(
+            lambda ax, pos: self._update_scan_crosshairs(pos_dict={ax: pos}, exclude_scan=None))
 
-        # TODO Proper implementation of setting the optimization sequence needs to be done.
 
         self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
                                                         plot_dims=self._optimizer_plot_dims,
@@ -474,6 +473,10 @@ class ScannerGui(GuiBase):
             dockwidget.sigPositionDragged.connect(self.__get_crosshair_update_func(axes))
             dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
             dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
+
+            dockwidget.sigCrosshairMoved.connect(
+                lambda x, y: self._update_scan_sliders({axes[0]: x,
+                                                        axes[1]: y}))
         return
 
     @QtCore.Slot(bool)
@@ -695,6 +698,16 @@ class ScannerGui(GuiBase):
                 continue
             new_pos = pos_dict.get(scan_axes[0], dockwidget.marker.position)
             dockwidget.marker.set_position(new_pos)
+
+    def _update_scan_sliders(self, pos_dict):
+        """
+        """
+
+        for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
+            if not any(ax in pos_dict for ax in scan_axes):
+                continue
+        self.scanner_control_dockwidget.set_target(pos_dict)
+
 
     def _update_scan_data(self, scan_data):
         """
