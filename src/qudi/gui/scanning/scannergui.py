@@ -238,6 +238,9 @@ class ScannerGui(GuiBase):
         self._optimize_logic().sigOptimizeStateChanged.disconnect(None, self.optimize_state_updated)
         self._data_logic().sigHistoryScanDataRestored.disconnect(None, self._update_scan_data)
 
+        self.scanner_control_dockwidget.sigTargetChanged.disconnect()
+        self.scanner_control_dockwidget.sigSliderMoved.disconnect()
+
         for scan in tuple(self.scan_1d_dockwidgets):
             self._remove_scan_dockwidget(scan)
         for scan in tuple(self.scan_2d_dockwidgets):
@@ -435,6 +438,7 @@ class ScannerGui(GuiBase):
             self.scan_2d_dockwidgets[axes].sigPositionDragged.disconnect()
             self.scan_2d_dockwidgets[axes].sigScanToggled.disconnect()
             self.scan_2d_dockwidgets[axes].sigMouseAreaSelected.disconnect()
+            self.scan_2d_dockwidgets[axes].sigCrosshairMoved.disconnect()
             self.scan_2d_dockwidgets[axes].deleteLater()
             del self.scan_2d_dockwidgets[axes]
         return
