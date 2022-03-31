@@ -76,16 +76,12 @@ class ScanningOptimizeLogic(LogicBase):
         channels = self._scan_logic().scanner_channels
 
         self.log.debug(f"Opt settings at startup, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
-        # optimize settings
-        if not isinstance(self._scan_range, dict):
-            self._scan_range = {ax.name: abs(ax.value_range[1] - ax.value_range[0]) / 100 for ax in
-                                axes.values()}
-        if not isinstance(self._scan_resolution, dict):
-            self._scan_resolution = {ax.name: max(ax.min_resolution, min(16, ax.max_resolution))
-                                     for ax in axes.values()}
-        if not isinstance(self._scan_frequency, dict):
-            self._scan_frequency = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
-                                    in axes.values()}
+        # optimizer settings loaded from StatusVar or defaulted
+        new_settings = self.check_sanity_scan_settings(self.optimize_settings)
+        if new_settings != self.optimize_settings:
+            self._scan_range = new_settings['scan_range']
+            self._scan_resolution = new_settings['scan_resolution']
+            self._scan_frequency = new_settings['scan_frequency']
 
         self._avail_axes = tuple(axes.values())
         if self._scan_sequence is None:
@@ -165,6 +161,42 @@ class ScanningOptimizeLogic(LogicBase):
                 'scan_range': self.scan_range,
                 'scan_resolution': self.scan_resolution,
                 'scan_sequence': self.scan_sequence}
+
+    def check_sanity_scan_settings(self, settings=None):
+        # shaddows scanning_probe_logic::check_sanity. Unify code somehow?
+
+        if not isinstance(settings, dict):
+            settings = self.optimize_settings
+
+        settings = cp.deepcopy(settings)
+        hw_axes = self._scan_logic().scanner_axes
+
+        def check_valid(settings, key):
+            is_valid = True  # non present key -> valid
+            if key in settings:
+                if not isinstance(settings[key], dict):
+                    is_valid = False
+                else:
+                    axes = settings[key].keys()
+                    if axes != hw_axes.keys():
+                        is_valid = False
+
+            return is_valid
+
+        for key, val in settings.items():
+            if not check_valid(settings, key):
+                if key == 'scan_range':
+                    settings['scan_range'] = {ax.name: abs(ax.value_range[1] - ax.value_range[0]) / 100 for ax in
+                                              hw_axes.values()}
+                if key == 'scan_resolution':
+                    settings['scan_resolution'] = {ax.name: max(ax.min_resolution, min(16, ax.max_resolution))
+                                                   for ax in hw_axes.values()}
+                if key == 'scan_frequency':
+                    settings['scan_frequency'] = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
+                                                  in hw_axes.values()}
+
+        return settings
+
 
     @property
     def optimal_position(self):

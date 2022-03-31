@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from PySide2 import QtCore
+import copy as cp
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
@@ -68,8 +69,15 @@ class ScanningProbeLogic(LogicBase):
         """ Initialisation performed during activation of the module.
         """
         constr = self.scanner_constraints
+        self.log.debug(f"Scanner settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
 
-        # scanner settings
+        # scanner settings loaded from StatusVar or defaulted
+        new_settings = self.check_sanity_scan_settings(self.scan_settings)
+        if new_settings != self.scan_settings:
+            self._scan_ranges = new_settings['range']
+            self._scan_resolution = new_settings['resolution']
+            self._scan_frequency = new_settings['frequency']
+        """
         if not isinstance(self._scan_ranges, dict):
             self._scan_ranges = {ax.name: ax.value_range for ax in constr.axes.values()}
         if not isinstance(self._scan_resolution, dict):
@@ -77,7 +85,7 @@ class ScanningProbeLogic(LogicBase):
                                      for ax in constr.axes.values()}
         if not isinstance(self._scan_frequency, dict):
             self._scan_frequency = {ax.name: ax.max_frequency for ax in constr.axes.values()}
-
+        """
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
@@ -141,9 +149,9 @@ class ScanningProbeLogic(LogicBase):
     @property
     def scan_settings(self):
         with self._thread_lock:
-            return {'range': self._scan_ranges.copy(),
-                    'resolution': self._scan_resolution.copy(),
-                    'frequency': self._scan_frequency.copy()}
+            return {'range': self._scan_ranges.copy() if self._scan_ranges else None,
+                    'resolution': self._scan_resolution.copy() if self._scan_resolution else None,
+                    'frequency': self._scan_frequency.copy() if self._scan_frequency else None}
 
     @QtCore.Slot(dict)
     def set_scan_settings(self, settings):
@@ -154,6 +162,37 @@ class ScanningProbeLogic(LogicBase):
                 self.set_scan_resolution(settings['resolution'])
             if 'frequency' in settings:
                 self.set_scan_frequency(settings['frequency'])
+
+    def check_sanity_scan_settings(self, settings=None):
+        if not isinstance(settings, dict):
+            settings = self.scan_settings
+
+        settings = cp.deepcopy(settings)
+        constr = self.scanner_constraints
+
+        def check_valid(settings, key):
+            is_valid = True  # non present key -> valid
+            if key in settings:
+                if not isinstance(settings[key], dict):
+                    is_valid = False
+                else:
+                    axes = settings[key].keys()
+                    if axes != constr.axes.keys():
+                        is_valid = False
+
+            return is_valid
+
+        for key, val in settings.items():
+            if not check_valid(settings, key):
+                if key == 'range':
+                    settings['range'] = {ax.name: ax.value_range for ax in constr.axes.values()}
+                if key == 'resolution':
+                    settings['resolution'] = {ax.name: max(ax.min_resolution, min(128, ax.max_resolution))  # TODO Hardcoded 128?
+                                              for ax in constr.axes.values()}
+                if key == 'frequency':
+                    settings['frequency'] = {ax.name: ax.max_frequency for ax in constr.axes.values()}
+
+        return settings
 
     @QtCore.Slot(dict)
     def set_scan_range(self, ranges):
