@@ -138,8 +138,8 @@ class ScannerGui(GuiBase):
         scans = list()
         axes = tuple(self._scanning_logic().scanner_axes)
         for i, first_ax in enumerate(axes, 1):
-            if not scans:
-                scans.append((first_ax,))
+            #if not scans:
+            scans.append((first_ax,))
             for second_ax in axes[i:]:
                 scans.append((first_ax, second_ax))
         for scan in scans:
@@ -298,8 +298,8 @@ class ScannerGui(GuiBase):
             self.scanner_control_dockwidget.set_assumed_unit_prefix(
                 self._default_position_unit_prefix
             )
-        self.scanner_control_dockwidget.setAllowedAreas(QtCore.Qt.BottomDockWidgetArea)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.scanner_control_dockwidget)
+        self.scanner_control_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.scanner_control_dockwidget)
         self.scanner_control_dockwidget.visibilityChanged.connect(
             self._mw.action_view_scanner_control.setChecked)
         self._mw.action_view_scanner_control.triggered[bool].connect(
@@ -323,7 +323,7 @@ class ScannerGui(GuiBase):
                                                         plot_dims=self._optimizer_plot_dims,
                                                         sequence=self._optimize_logic().scan_sequence)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.optimizer_dockwidget)
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
         self.optimizer_dockwidget.visibilityChanged.connect(
             self._mw.action_view_optimizer.setChecked)
         self._mw.action_view_optimizer.triggered[bool].connect(
@@ -376,28 +376,10 @@ class ScannerGui(GuiBase):
         self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
         self.optimizer_dockwidget.setFloating(False)
 
-        # tabify dockwidgets if needed
-        if multiple_2d_scans:
-            if has_1d_scans:
-                for ii, dockwidget in enumerate(dockwidgets_2d[1:]):
-                    self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
-                dockwidgets_2d[0].raise_()
-            else:
-                for ii, dockwidget in enumerate(dockwidgets_2d[2:]):
-                    if ii == 0:
-                        self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
-                    else:
-                        self._mw.tabifyDockWidget(dockwidgets_2d[ii+1], dockwidget)
-                dockwidgets_2d[0].raise_()
-        if multiple_1d_scans:
-            for ii, dockwidget in enumerate(dockwidgets_1d[1:]):
-                self._mw.tabifyDockWidget(dockwidgets_1d[ii], dockwidget)
-            dockwidgets_1d[0].raise_()
 
         # split scan dock widget with optimizer dock widget if needed. Resize all groups.
         if has_1d_scans and has_2d_scans:
-            self._mw.splitDockWidget(dockwidgets_1d[0],
-                                     self.optimizer_dockwidget,
+            self._mw.splitDockWidget(dockwidgets_1d[0], self.optimizer_dockwidget,
                                      QtCore.Qt.Vertical)
             self._mw.resizeDocks((dockwidgets_1d[0], self.optimizer_dockwidget),
                                  (3, 2),
@@ -423,6 +405,25 @@ class ScannerGui(GuiBase):
             self._mw.resizeDocks((dockwidgets_2d[0], self.optimizer_dockwidget),
                                  (1, 1),
                                  QtCore.Qt.Horizontal)
+
+        # tabify dockwidgets if needed, needs to be done after .splitDockWidget()
+        if multiple_2d_scans:
+            if has_1d_scans:
+                for ii, dockwidget in enumerate(dockwidgets_2d[1:]):
+                    self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
+                dockwidgets_2d[0].raise_()
+            else:
+                for ii, dockwidget in enumerate(dockwidgets_2d[2:]):
+                    if ii == 0:
+                        self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
+                    else:
+                        self._mw.tabifyDockWidget(dockwidgets_2d[ii+1], dockwidget)
+                dockwidgets_2d[0].raise_()
+        if multiple_1d_scans:
+            for ii, dockwidget in enumerate(dockwidgets_1d[1:]):
+                self._mw.tabifyDockWidget(dockwidgets_1d[ii], dockwidget)
+            dockwidgets_1d[0].raise_()
+
         return
 
     def _remove_scan_dockwidget(self, axes):
