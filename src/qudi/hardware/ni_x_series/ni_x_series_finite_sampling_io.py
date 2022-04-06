@@ -264,13 +264,17 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         output_voltage_ranges = {self._extract_terminal(key): value
                                  for key, value in self._output_voltage_ranges.items()}
 
-        input_limits = {self._extract_terminal(key): [0, int(1e8)]
-                        for key in digital_sources}  # TODO Real HW constraint?
+        input_limits = dict()
 
-        adc_voltage_ranges = {self._extract_terminal(key): value
-                              for key, value in self._adc_voltage_ranges.items()}
+        if digital_sources:
+            input_limits.update({self._extract_terminal(key): [0, int(1e8)]
+                                 for key in digital_sources})  # TODO Real HW constraint?
 
-        input_limits.update(adc_voltage_ranges)
+        if analog_sources:
+            adc_voltage_ranges = {self._extract_terminal(key): value
+                                  for key, value in self._adc_voltage_ranges.items()}
+
+            input_limits.update(adc_voltage_ranges)
 
         # Create constraints
         self._constraints = FiniteSamplingIOConstraints(
