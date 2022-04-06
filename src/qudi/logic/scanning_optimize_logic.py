@@ -90,13 +90,6 @@ class ScanningOptimizeLogic(LogicBase):
             self._scan_frequency = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
                                     in axes.values()}
 
-        # optimizer settings loaded from StatusVar
-        new_settings = self.check_sanity_optimizer_settings(self.optimize_settings)
-        if new_settings != self.optimize_settings:
-            self._scan_range = new_settings['scan_range']
-            self._scan_resolution = new_settings['scan_resolution']
-            self._scan_frequency = new_settings['scan_frequency']
-
         self._avail_axes = tuple(axes.values())
         if self._scan_sequence is None:
             if len(self._avail_axes) >= 3:
@@ -110,6 +103,14 @@ class ScanningOptimizeLogic(LogicBase):
                 self._scan_sequence = list()
         if self._data_channel is None:
             self._data_channel = tuple(channels.values())[0].name
+
+        # optimizer settings loaded from StatusVar
+        new_settings = self.check_sanity_optimizer_settings(self.optimize_settings)
+        if new_settings != self.optimize_settings:
+            self._scan_range = new_settings['scan_range']
+            self._scan_resolution = new_settings['scan_resolution']
+            self._scan_frequency = new_settings['scan_frequency']
+
 
         self._stashed_scan_settings = dict()
         self._sequence_index = 0
