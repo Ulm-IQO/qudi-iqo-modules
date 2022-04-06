@@ -76,7 +76,21 @@ class ScanningOptimizeLogic(LogicBase):
         channels = self._scan_logic().scanner_channels
 
         self.log.debug(f"Opt settings at startup, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
-        # optimizer settings loaded from StatusVar or defaulted
+
+        # In case StatusVar had been cleared default the values.
+        if not isinstance(self._scan_range, dict):
+            self._scan_range = {ax.name: abs(ax.value_range[1] - ax.value_range[0]) / 100 for ax in
+                                axes.values()}
+
+        if not isinstance(self._scan_resolution, dict):
+            self._scan_resolution = {ax.name: max(ax.min_resolution, min(16, ax.max_resolution))
+                                     for ax in axes.values()}
+
+        if not isinstance(self._scan_frequency, dict):
+            self._scan_frequency = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
+                                    in axes.values()}
+
+        # optimizer settings loaded from StatusVar
         new_settings = self.check_sanity_optimizer_settings(self.optimize_settings)
         if new_settings != self.optimize_settings:
             self._scan_range = new_settings['scan_range']
