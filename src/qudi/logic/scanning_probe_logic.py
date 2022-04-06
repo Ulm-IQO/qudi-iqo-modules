@@ -134,24 +134,24 @@ class ScanningProbeLogic(LogicBase):
     @property
     def scan_ranges(self):
         with self._thread_lock:
-            return self._scan_ranges.copy()
+            return self._scan_ranges.copy() if self._scan_ranges!=None else None
 
     @property
     def scan_resolution(self):
         with self._thread_lock:
-            return self._scan_resolution.copy()
+            return self._scan_resolution.copy() if self._scan_resolution!=None else None
 
     @property
     def scan_frequency(self):
         with self._thread_lock:
-            return self._scan_frequency.copy()
+            return self._scan_frequency.copy() if self._scan_frequency!=None else None
 
     @property
     def scan_settings(self):
         with self._thread_lock:
-            return {'range': self._scan_ranges.copy() if self._scan_ranges else None,
-                    'resolution': self._scan_resolution.copy() if self._scan_resolution else None,
-                    'frequency': self._scan_frequency.copy() if self._scan_frequency else None}
+            return {'range': self._scan_ranges,
+                    'resolution': self._scan_resolution,
+                    'frequency': self._scan_frequency}
 
     @QtCore.Slot(dict)
     def set_scan_settings(self, settings):

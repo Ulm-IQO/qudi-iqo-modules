@@ -77,19 +77,6 @@ class ScanningOptimizeLogic(LogicBase):
 
         self.log.debug(f"Opt settings at startup, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
 
-        # In case StatusVar had been cleared default the values.
-        if not isinstance(self._scan_range, dict):
-            self._scan_range = {ax.name: abs(ax.value_range[1] - ax.value_range[0]) / 100 for ax in
-                                axes.values()}
-
-        if not isinstance(self._scan_resolution, dict):
-            self._scan_resolution = {ax.name: max(ax.min_resolution, min(16, ax.max_resolution))
-                                     for ax in axes.values()}
-
-        if not isinstance(self._scan_frequency, dict):
-            self._scan_frequency = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
-                                    in axes.values()}
-
         self._avail_axes = tuple(axes.values())
         if self._scan_sequence is None:
             if len(self._avail_axes) >= 3:
@@ -104,12 +91,13 @@ class ScanningOptimizeLogic(LogicBase):
         if self._data_channel is None:
             self._data_channel = tuple(channels.values())[0].name
 
-        # optimizer settings loaded from StatusVar
+        # check nd correct optimizer settings loaded from StatusVar
         new_settings = self.check_sanity_optimizer_settings(self.optimize_settings)
         if new_settings != self.optimize_settings:
             self._scan_range = new_settings['scan_range']
             self._scan_resolution = new_settings['scan_resolution']
             self._scan_frequency = new_settings['scan_frequency']
+        self.log.debug(f"Opt settings after sanity check, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
 
 
         self._stashed_scan_settings = dict()
@@ -136,15 +124,15 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def scan_frequency(self):
-        return self._scan_frequency.copy()
+        return self._scan_frequency.copy() if self._scan_frequency!=None else None
 
     @property
     def scan_range(self):
-        return self._scan_range.copy()
+        return self._scan_range.copy() if self._scan_range!=None else None
 
     @property
     def scan_resolution(self):
-        return self._scan_resolution.copy()
+        return self._scan_resolution.copy() if self._scan_resolution!= None else None
 
     @property
     def scan_sequence(self):
