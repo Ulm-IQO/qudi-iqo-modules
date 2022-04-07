@@ -278,7 +278,8 @@ class ScannerGui(GuiBase):
         """
         """
         # Create the Settings dialog
-        self._ssd = ScannerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()))
+        self._ssd = ScannerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
+                                         self._scanning_logic().scanner_constraints)
 
         # Connect MainWindow actions
         self._mw.action_scanner_settings.triggered.connect(lambda x: self._ssd.exec_())
