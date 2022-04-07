@@ -284,11 +284,12 @@ class ScannerGui(GuiBase):
         self._mw.action_scanner_settings.triggered.connect(lambda x: self._ssd.exec_())
 
         # Connect the action of the settings dialog with the GUI module:
-        self._ssd.accepted.connect(self.change_scanner_settings)
+        self._ssd.accepted.connect(self.apply_scanner_settings)
         self._ssd.rejected.connect(self.restore_scanner_settings)
         self._ssd.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
-            self.change_scanner_settings
+            self.apply_scanner_settings
         )
+
 
     def _init_static_dockwidgets(self):
         self.scanner_control_dockwidget = AxesControlDockWidget(
@@ -306,13 +307,15 @@ class ScannerGui(GuiBase):
             self.scanner_control_dockwidget.setVisible)
         self.scanner_control_dockwidget.sigResolutionChanged.connect(
             lambda ax, res: self.sigScanSettingsChanged.emit({'resolution': {ax: res}})
+             if not self._scanner_settings_locked else None
         )
         self.scanner_control_dockwidget.sigRangeChanged.connect(
             lambda ax, ranges: self.sigScanSettingsChanged.emit({'range': {ax: ranges}})
+            if not self._scanner_settings_locked else None
         )
         # TODO: When "current target" value box is clicked in, a move is excecuted. Why and how?
         self.scanner_control_dockwidget.sigTargetChanged.connect(
-            lambda ax, pos: self.sigScannerTargetChanged.emit({ax: pos}, self.module_uuid)
+            lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
         # ToDo: Implement a way to avoid too fast position update from slider movement.
         self.scanner_control_dockwidget.sigSliderMoved.connect(
@@ -498,7 +501,7 @@ class ScannerGui(GuiBase):
         return
 
     @QtCore.Slot()
-    def change_scanner_settings(self):
+    def apply_scanner_settings(self):
         """ ToDo: Document
         """
         # ToDo: Implement backwards scanning functionality
@@ -513,7 +516,6 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot(bool)
     def scanner_settings_toggle_gui_lock(self, locked):
-
         if locked:
             self._scanner_settings_locked = True
             # todo: maybe disable/grey out scanner gui elements
@@ -554,7 +556,11 @@ class ScannerGui(GuiBase):
 
         @param dict target_pos:
         """
-        self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
+        if not self._scanner_settings_locked:
+            self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
+        else:
+            # refresh gui with stored values
+            self.scanner_target_updated(pos_dict=None, caller_id=None)
 
     @QtCore.Slot(dict)
     @QtCore.Slot(dict, object)
@@ -587,6 +593,8 @@ class ScannerGui(GuiBase):
         else:
             self._toggle_enable_actions(not is_running, exclude_action=self._mw.action_optimize_position)
         self._toggle_enable_scan_crosshairs(not is_running)
+        self.scanner_settings_toggle_gui_lock(is_running)
+
         if scan_data is not None:
             if caller_id is self._optimizer_id:
                 channel = self._osd.settings['data_channel']
