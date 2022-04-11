@@ -319,8 +319,11 @@ class ScannerGui(GuiBase):
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
         # ToDo: Implement a way to avoid too fast position update from slider movement.
+        # todo: why is _update_scan_crosshairds issuing (not only displaying) at all?
         self.scanner_control_dockwidget.sigSliderMoved.connect(
-            lambda ax, pos: self._update_scan_crosshairs(pos_dict={ax: pos}, exclude_scan=None))
+            #lambda ax, pos: self._update_scan_crosshairs(pos_dict={ax: pos}, exclude_scan=None)
+            lambda ax, pos: self.set_scanner_target_position({ax: pos})
+        )
 
 
         self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
@@ -552,13 +555,19 @@ class ScannerGui(GuiBase):
             self._ssd.settings_widget.set_frequency(new_freq)
         return
 
+    @QtCore.Slot(dict)
     def set_scanner_target_position(self, target_pos):
         """
+        Issues new target to logic and updates gui.
 
         @param dict target_pos:
         """
         if not self._scanner_settings_locked:
+            #self.log.debug(f"Issue target from gui: {target_pos}")
             self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
+            # update gui with target, not actual logic values
+            # we can not rely on the execution order of the above emit
+            self.scanner_target_updated(pos_dict=target_pos, caller_id=None)
         else:
             # refresh gui with stored values
             self.scanner_target_updated(pos_dict=None, caller_id=None)
@@ -573,6 +582,10 @@ class ScannerGui(GuiBase):
                               If None (default) read the scanner position from logic and update.
         @param int caller_id: The qudi module object id responsible for triggering this update
         """
+
+        #self.log.debug(f"Gui updated from logic: {caller_id is not self.module_uuid}: {pos_dict}, "
+        #               f"full caller: {caller_id}")
+
         # If this update has been issued by this module, do not update display.
         # This has already been done before notifying the logic.
         if caller_id is self.module_uuid:
@@ -778,7 +791,7 @@ class ScannerGui(GuiBase):
     def __get_crosshair_update_func(self, axes):
         def update_func(x, y):
             pos_dict = {axes[0]: x, axes[1]: y}
-            self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
+            #self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
             # self.scanner_control_dockwidget.widget().set_target(pos_dict)
             self.set_scanner_target_position(pos_dict)
         return update_func
@@ -786,7 +799,7 @@ class ScannerGui(GuiBase):
     def __get_marker_update_func(self, axes):
         def update_func(pos):
             pos_dict = {axes[0]: pos}
-            self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
+            #self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
             # self.scanner_control_dockwidget.widget().set_target(pos_dict)
             self.set_scanner_target_position(pos_dict)
         return update_func
