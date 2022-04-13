@@ -376,6 +376,7 @@ class ScanningProbeLogic(LogicBase):
             err = self._scanner().stop_scan() if self._scanner().module_state() != 'idle' else 0
 
             self.module_state.unlock()
+            self._curr_caller_id = self.module_uuid  # module_uuid signals data logic data-ready
             self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
             return err
 
