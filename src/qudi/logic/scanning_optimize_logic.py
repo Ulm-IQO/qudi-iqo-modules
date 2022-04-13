@@ -299,6 +299,9 @@ class ScanningOptimizeLogic(LogicBase):
                     'Some optimize scan resolutions have been changed by the scanner.')
                 self.set_optimize_settings({'scan_resolution': actual_setting})
 
+            # optimizer scans are never saved
+            self._scan_logic().set_scan_settings({'save_to_history': False})
+
             self._sequence_index = 0
             self._optimal_position = dict()
             self.sigOptimizeStateChanged.emit(True, self.optimal_position, None)
@@ -379,6 +382,7 @@ class ScanningOptimizeLogic(LogicBase):
                 return 0
 
             if self._scan_logic().module_state() != 'idle':
+                # optimizer scans are never saved in scanning history
                 err = self._scan_logic().stop_scan()
             else:
                 err = 0

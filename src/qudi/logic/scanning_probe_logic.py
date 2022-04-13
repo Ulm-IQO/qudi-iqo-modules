@@ -69,8 +69,10 @@ class ScanningProbeLogic(LogicBase):
         """ Initialisation performed during activation of the module.
         """
         constr = self.scanner_constraints
-        self.log.debug(f"Scanner settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
 
+        self._scan_saved_to_hist = True
+
+        self.log.debug(f"Scanner settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
         # scanner settings loaded from StatusVar or defaulted
         new_settings = self.check_sanity_scan_settings(self.scan_settings)
         if new_settings != self.scan_settings:
@@ -147,11 +149,17 @@ class ScanningProbeLogic(LogicBase):
             return self._scan_frequency.copy() if self._scan_frequency!=None else None
 
     @property
+    def scan_saved_to_history(self):
+        with self._thread_lock:
+            return self._scan_saved_to_hist
+
+    @property
     def scan_settings(self):
         with self._thread_lock:
             return {'range': self._scan_ranges,
                     'resolution': self._scan_resolution,
-                    'frequency': self._scan_frequency}
+                    'frequency': self._scan_frequency,
+                    'save_to_history': self._scan_saved_to_hist}
 
     @QtCore.Slot(dict)
     def set_scan_settings(self, settings):
@@ -162,6 +170,8 @@ class ScanningProbeLogic(LogicBase):
                 self.set_scan_resolution(settings['resolution'])
             if 'frequency' in settings:
                 self.set_scan_frequency(settings['frequency'])
+            if 'save_to_history' in settings:
+                self._scan_saved_to_hist = settings['save_to_history']
 
     def check_sanity_scan_settings(self, settings=None):
         if not isinstance(settings, dict):
@@ -291,6 +301,7 @@ class ScanningProbeLogic(LogicBase):
             new_pos = self._scanner().move_absolute(new_pos)
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
+            #self.log.debug(f"Logic issuing with id {caller_id}: {new_pos}")
             self.sigScannerTargetChanged.emit(
                 new_pos,
                 self.module_uuid if caller_id is None else caller_id
@@ -376,8 +387,13 @@ class ScanningProbeLogic(LogicBase):
             err = self._scanner().stop_scan() if self._scanner().module_state() != 'idle' else 0
 
             self.module_state.unlock()
-            self._curr_caller_id = self.module_uuid  # module_uuid signals data logic data-ready
-            self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+
+            if self.scan_settings['save_to_history']:
+                # module_uuid signals data-ready to data logic
+                self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
+            else:
+                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+
             return err
 
     @QtCore.Slot()
