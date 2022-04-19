@@ -492,7 +492,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         slope = np.diff(voltage_range) / np.diff(position_range)
         intercept = voltage_range[1] - position_range[1] * slope
 
-        converted = positions * slope + intercept
+        converted = np.clip(positions * slope + intercept, min(voltage_range), max(voltage_range))
 
         try:
             # In case of single value, use just this value
@@ -709,9 +709,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             for axis, pos in position.items():
                 in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
                 if not in_range_flag:
+                    position[axis] = float(constr.axes[axis].clip_value(position[axis]))
                     self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
                                      f'for axis {axis}. Value clipped to {position[axis]}')
-                position[axis] = float(constr.axes[axis].clip_value(position[axis]))
+
                 # TODO Adapt interface to use "in_range"?
                 self._target_pos[axis] = position[axis]
 
