@@ -92,7 +92,28 @@ docstring of every module's python file. In the list above, a direct link for ev
                 #APD3: 'c/s'
             backwards_line_resolution: 50 # optional
             maximum_move_velocity: 400e-6 #m/s
-
+        
+        # dummy, if no real hardware available
+        scanner_dummy:
+            module.Class: 'dummy.scanning_probe_dummy.ScanningProbeDummy'
+            position_ranges:
+                'x': [0, 200e-6]
+                'y': [0, 200e-6]
+                'z': [-100e-6, 100e-6]
+            frequency_ranges:
+                'x': [0, 10000]
+                'y': [0, 10000]
+                'z': [0, 5000]
+            resolution_ranges:
+                'x': [2, 2147483647]
+                'y': [2, 2147483647]
+                'z': [2, 2147483647]
+            position_accuracy:
+                'x': 10e-9
+                'y': 10e-9
+                'z': 50e-9
+            spot_density: 1e11
+        
         ni_io:
             module.Class: 'ni_x_series.ni_x_series_finite_sampling_io.NIXSeriesFiniteSamplingIO'
             device_name: 'Dev1'
@@ -156,3 +177,6 @@ docstring of every module's python file. In the list above, a direct link for ev
             read_write_timeout: 10  # optional
 
 
+# Todo this readme:
+- clean up example config, currently living (here, [in config folder](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/omniscan_dev/src/qudi/config/ni_scanning_testing.cfg), in python files)
+- finish links to python files config docstrings
