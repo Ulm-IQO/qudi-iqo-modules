@@ -318,8 +318,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current target position per axis.
         """
-
-        return self._target_pos
+        if self.is_running:
+            self._stored_target_pos
+        else:
+            return self._target_pos
 
     def get_position(self):
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
