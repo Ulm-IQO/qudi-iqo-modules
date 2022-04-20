@@ -446,7 +446,7 @@ class PoiManagerLogic(LogicBase):
 
     @property
     def optimise_xy_size(self):
-        return float(self._scanninglogic().scan_ranges['x']), float(self._scanninglogic().scan_ranges['y'])
+        return np.max([self._optimizelogic().scan_range['x'], self._optimizelogic().scan_range['y']])
 
     @property
     def active_poi(self):
@@ -454,8 +454,9 @@ class PoiManagerLogic(LogicBase):
 
     @active_poi.setter
     def active_poi(self, name):
-        self.set_active_poi(name)
-        return
+        with self._thread_lock:
+            self.set_active_poi(name)
+            return
 
     @property
     def poi_names(self):
@@ -475,7 +476,8 @@ class PoiManagerLogic(LogicBase):
 
     @roi_name.setter
     def roi_name(self, name):
-        self.rename_roi(new_name=name)
+        with self._thread_lock:
+            self.rename_roi(new_name=name)
 
     @property
     def poi_nametag(self):
@@ -483,8 +485,9 @@ class PoiManagerLogic(LogicBase):
 
     @poi_nametag.setter
     def poi_nametag(self, tag):
-        self.set_poi_nametag(tag)
-        return
+        with self._thread_lock:
+            self.set_poi_nametag(tag)
+            return
 
     @property
     def roi_origin(self):
@@ -516,8 +519,9 @@ class PoiManagerLogic(LogicBase):
 
     @refocus_period.setter
     def refocus_period(self, period):
-        self.set_refocus_period(period)
-        return
+        with self._thread_lock:
+            self.set_refocus_period(period)
+            return
 
     @property
     def poi_threshold(self):
@@ -525,8 +529,9 @@ class PoiManagerLogic(LogicBase):
 
     @poi_threshold.setter
     def poi_threshold(self, new_threshold):
-        self.set_poi_threshold(new_threshold)
-        return
+        with self._thread_lock:
+            self.set_poi_threshold(new_threshold)
+            return
 
     @property
     def poi_diameter(self):
@@ -534,8 +539,9 @@ class PoiManagerLogic(LogicBase):
 
     @poi_diameter.setter
     def poi_diameter(self, new_diameter):
-        self.set_poi_diameter(new_diameter)
-        return
+        with self._thread_lock:
+            self.set_poi_diameter(new_diameter)
+            return
 
     @property
     def time_until_refocus(self):
@@ -545,7 +551,7 @@ class PoiManagerLogic(LogicBase):
 
     @property
     def scanner_position(self):
-        return np.array(self._scanninglogic().scanner_position.values())
+        return np.array(list(self._scanninglogic().scanner_position.values()))
 
     @property
     def move_scanner_after_optimise(self):
@@ -553,26 +559,28 @@ class PoiManagerLogic(LogicBase):
 
     @move_scanner_after_optimise.setter
     def move_scanner_after_optimise(self, move):
-        self.set_move_scanner_after_optimise(move)
-        return
+        with self._thread_lock:
+            self.set_move_scanner_after_optimise(move)
+            return
 
     @QtCore.Slot(int)
     @QtCore.Slot(bool)
     def set_move_scanner_after_optimise(self, move):
-        with self._threadlock:
+        with self._thread_lock:
             self._move_scanner_after_optimization = bool(move)
         return
 
     @QtCore.Slot(str)
     def set_poi_nametag(self, tag):
-        if tag is None or isinstance(tag, str):
-            if tag == '':
-                tag = None
-            self._roi.poi_nametag = tag
-            self.sigRoiUpdated.emit({'poi_nametag': self.poi_nametag})
-        else:
-            self.log.error('POI name tag must be str or None.')
-        return
+        with self._thread_lock:
+            if tag is None or isinstance(tag, str):
+                if tag == '':
+                    tag = None
+                self._roi.poi_nametag = tag
+                self.sigRoiUpdated.emit({'poi_nametag': self.poi_nametag})
+            else:
+                self.log.error('POI name tag must be str or None.')
+            return
 
     @QtCore.Slot()
     @QtCore.Slot(np.ndarray)
@@ -588,25 +596,26 @@ class PoiManagerLogic(LogicBase):
                                    scanner crosshair position to be used.
         @param bool emit_change: Flag indicating if the changed POI set should be signaled.
         """
-        # Get current scanner position from  if no position is provided.
-        if position is None:
-            position = self.scanner_position
+        with self._thread_lock:
+            # Get current scanner position from  if no position is provided.
+            if position is None:
+                position = self.scanner_position
 
-        current_poi_set = set(self.poi_names)
+            current_poi_set = set(self.poi_names)
 
-        # Add POI to current ROI
-        self._roi.add_poi(position=position, name=name)
+            # Add POI to current ROI
+            self._roi.add_poi(position=position, name=name)
 
-        # Get newly added POI name from comparing POI names before and after addition of new POI
-        poi_name = set(self.poi_names).difference(current_poi_set).pop()
+            # Get newly added POI name from comparing POI names before and after addition of new POI
+            poi_name = set(self.poi_names).difference(current_poi_set).pop()
 
-        # Notify about a changed set of POIs if necessary
-        if emit_change:
-            self.sigPoiUpdated.emit('', poi_name, self.get_poi_position(poi_name))
+            # Notify about a changed set of POIs if necessary
+            if emit_change:
+                self.sigPoiUpdated.emit('', poi_name, self.get_poi_position(poi_name))
 
-        # Set newly created POI as active poi
-        self.set_active_poi(poi_name)
-        return
+            # Set newly created POI as active poi
+            self.set_active_poi(poi_name)
+            return
 
     @QtCore.Slot()
     def delete_poi(self, name=None):
@@ -616,35 +625,37 @@ class PoiManagerLogic(LogicBase):
         @param str name: Name of the POI to delete. If None (default) delete active POI.
         @param bool emit_change: Flag indicating if the changed POI set should be signaled.
         """
-        if len(self.poi_names) == 0:
-            self.log.warning('Can not delete POI. No POI present in ROI.')
-            return
-        if name is None:
-            if self.active_poi is None:
-                self.log.error('No POI name to delete and no active POI set.')
+        with self._thread_lock:
+            if len(self.poi_names) == 0:
+                self.log.warning('Can not delete POI. No POI present in ROI.')
                 return
-            else:
-                name = self.active_poi
+            if name is None:
+                if self.active_poi is None:
+                    self.log.error('No POI name to delete and no active POI set.')
+                    return
+                else:
+                    name = self.active_poi
 
-        self._roi.delete_poi(name)
+            self._roi.delete_poi(name)
 
-        if self.active_poi == name:
-            if len(self.poi_names) > 0:
-                self.set_active_poi(self.poi_names[0])
-            else:
-                self.set_active_poi(None)
+            if self.active_poi == name:
+                if len(self.poi_names) > 0:
+                    self.set_active_poi(self.poi_names[0])
+                else:
+                    self.set_active_poi(None)
 
-        # Notify about a changed set of POIs if necessary
-        self.sigPoiUpdated.emit(name, '', np.zeros(3))
-        return
+            # Notify about a changed set of POIs if necessary
+            self.sigPoiUpdated.emit(name, '', np.zeros(3))
+            return
 
     @QtCore.Slot()
     def delete_all_pois(self):
-        self.active_poi = None
-        for name in self.poi_names:
-            self._roi.delete_poi(name)
-            self.sigPoiUpdated.emit(name, '', np.zeros(3))
-        return
+        with self._thread_lock:
+            self.active_poi = None
+            for name in self.poi_names:
+                self._roi.delete_poi(name)
+                self.sigPoiUpdated.emit(name, '', np.zeros(3))
+            return
 
     @QtCore.Slot(str)
     @QtCore.Slot(str, str)
@@ -654,24 +665,25 @@ class PoiManagerLogic(LogicBase):
         @param str name:
         @param str new_name:
         """
-        if not isinstance(new_name, str) or not new_name:
-            self.log.error('POI name to set must be str of length > 0.')
-            return
-
-        if name is None:
-            if self.active_poi is None:
-                self.log.error('Unable to rename POI. No POI name given and no active POI set.')
+        with self._thread_lock:
+            if not isinstance(new_name, str) or not new_name:
+                self.log.error('POI name to set must be str of length > 0.')
                 return
-            else:
-                name = self.active_poi
 
-        self._roi.rename_poi(name=name, new_name=new_name)
+            if name is None:
+                if self.active_poi is None:
+                    self.log.error('Unable to rename POI. No POI name given and no active POI set.')
+                    return
+                else:
+                    name = self.active_poi
 
-        self.sigPoiUpdated.emit(name, new_name, self.get_poi_position(new_name))
+            self._roi.rename_poi(name=name, new_name=new_name)
 
-        if self.active_poi == name:
-            self.set_active_poi(new_name)
-        return
+            self.sigPoiUpdated.emit(name, new_name, self.get_poi_position(new_name))
+
+            if self.active_poi == name:
+                self.set_active_poi(new_name)
+            return
 
     @QtCore.Slot(str)
     def set_active_poi(self, name=None):
@@ -679,18 +691,19 @@ class PoiManagerLogic(LogicBase):
         Set the name of the currently active POI
         @param name:
         """
-        if not isinstance(name, str) and name is not None:
-            self.log.error('POI name must be of type str or None.')
-        elif name is None or name == '':
-            self._active_poi = None
-        elif name in self.poi_names:
-            self._active_poi = str(name)
-        else:
-            self.log.error('No POI with name "{0}" found in POI list.'.format(name))
+        with self._thread_lock:
+            if not isinstance(name, str) and name is not None:
+                self.log.error('POI name must be of type str or None.')
+            elif name is None or name == '':
+                self._active_poi = None
+            elif name in self.poi_names:
+                self._active_poi = str(name)
+            else:
+                self.log.error('No POI with name "{0}" found in POI list.'.format(name))
 
-        self.sigActivePoiUpdated.emit('' if self.active_poi is None else self.active_poi)
-        self.update_poi_tag_in_savelogic()
-        return
+            self.sigActivePoiUpdated.emit('' if self.active_poi is None else self.active_poi)
+            self.update_poi_tag_in_savelogic()
+            return
 
     def get_poi_position(self, name=None):
         """
@@ -700,9 +713,10 @@ class PoiManagerLogic(LogicBase):
                              If None (default) the active POI position is returned.
         @return float[3]: Coordinates of the desired POI (x,y,z)
         """
-        if name is None:
-            name = self.active_poi
-        return self._roi.get_poi_position(name)
+        with self._thread_lock:
+            if name is None:
+                name = self.active_poi
+            return self._roi.get_poi_position(name)
 
     def get_poi_anchor(self, name=None):
         """
@@ -713,74 +727,79 @@ class PoiManagerLogic(LogicBase):
                          If None (default) the active POI position is returned.
         @return float[3]: Coordinates of the desired POI anchor (x,y,z)
         """
-        if name is None:
-            name = self.active_poi
-        return self._roi.get_poi_anchor(name)
+        with self._thread_lock:
+            if name is None:
+                name = self.active_poi
+            return self._roi.get_poi_anchor(name)
 
     @QtCore.Slot()
     def move_roi_from_poi_position(self, name=None, position=None):
-        if position is None:
-            position = self.scanner_position
+        with self._thread_lock:
+            if position is None:
+                position = self.scanner_position
 
-        if name is None:
-            if self.active_poi is None:
-                self.log.error('Unable to set POI position. '
-                               'No POI name given and no active POI set.')
+            if name is None:
+                if self.active_poi is None:
+                    self.log.error('Unable to set POI position. '
+                                   'No POI name given and no active POI set.')
+                    return
+                else:
+                    name = self.active_poi
+
+            if len(position) != 3:
+                self.log.error('POI position must be iterable of length 3.')
                 return
-            else:
-                name = self.active_poi
+            if not isinstance(name, str):
+                self.log.error('POI name must be of type str.')
 
-        if len(position) != 3:
-            self.log.error('POI position must be iterable of length 3.')
+            shift = position - self.get_poi_position(name)
+            self.add_roi_position(self.roi_origin + shift)
             return
-        if not isinstance(name, str):
-            self.log.error('POI name must be of type str.')
-
-        shift = position - self.get_poi_position(name)
-        self.add_roi_position(self.roi_origin + shift)
-        return
 
     @QtCore.Slot()
     def set_poi_anchor_from_position(self, name=None, position=None):
-        if position is None:
-            position = self.scanner_position
+        with self._thread_lock:
+            if position is None:
+                position = self.scanner_position
 
-        if name is None:
-            if self.active_poi is None:
-                self.log.error('Unable to set POI position. '
-                               'No POI name given and no active POI set.')
+            if name is None:
+                if self.active_poi is None:
+                    self.log.error('Unable to set POI position. '
+                                   'No POI name given and no active POI set.')
+                    return
+                else:
+                    name = self.active_poi
+
+            if len(position) != 3:
+                self.log.error('POI position must be iterable of length 3.')
                 return
-            else:
-                name = self.active_poi
+            if not isinstance(name, str):
+                self.log.error('POI name must be of type str.')
 
-        if len(position) != 3:
-            self.log.error('POI position must be iterable of length 3.')
+            shift = position - self.get_poi_position(name)
+            self._roi.set_poi_anchor(name, self.get_poi_anchor(name) + shift)
+            self.sigPoiUpdated.emit(name, name, self.get_poi_position(name))
             return
-        if not isinstance(name, str):
-            self.log.error('POI name must be of type str.')
-
-        shift = position - self.get_poi_position(name)
-        self._roi.set_poi_anchor(name, self.get_poi_anchor(name) + shift)
-        self.sigPoiUpdated.emit(name, name, self.get_poi_position(name))
-        return
 
     @QtCore.Slot(str)
     def rename_roi(self, new_name):
-        if not isinstance(new_name, str) or new_name == '':
-            self.log.error('ROI name to set must be str of length > 0.')
+        with self._thread_lock:
+            if not isinstance(new_name, str) or new_name == '':
+                self.log.error('ROI name to set must be str of length > 0.')
+                return
+            self._roi.name = new_name
+            self.sigRoiUpdated.emit({'name': self.roi_name})
             return
-        self._roi.name = new_name
-        self.sigRoiUpdated.emit({'name': self.roi_name})
-        return
 
     @QtCore.Slot(np.ndarray)
     def add_roi_position(self, position):
-        self._roi.add_history_entry(position)
-        self.sigRoiUpdated.emit({'pois': self.poi_positions,
-                                 'history': self.roi_pos_history,
-                                 'scan_image': self.roi_scan_image,
-                                 'scan_image_extent': self.roi_scan_image_extent})
-        return
+        with self._thread_lock:
+            self._roi.add_history_entry(position)
+            self.sigRoiUpdated.emit({'pois': self.poi_positions,
+                                     'history': self.roi_pos_history,
+                                     'scan_image': self.roi_scan_image,
+                                     'scan_image_extent': self.roi_scan_image_extent})
+            return
 
     @QtCore.Slot()
     @QtCore.Slot(int)
@@ -790,65 +809,71 @@ class PoiManagerLogic(LogicBase):
 
         @param int|slice history_index: List index for history entry
         """
-        old_roi_origin = self.roi_origin
-        self._roi.delete_history_entry(history_index)
-        if np.any(old_roi_origin != self.roi_origin):
-            self.sigRoiUpdated.emit({'pois': self.poi_positions,
-                                     'history': self.roi_pos_history,
-                                     'scan_image': self.roi_scan_image,
-                                     'scan_image_extent': self.roi_scan_image_extent})
-        else:
-            self.sigRoiUpdated.emit({'history': self.roi_pos_history})
-        return
+        with self._thread_lock:
+            old_roi_origin = self.roi_origin
+            self._roi.delete_history_entry(history_index)
+            if np.any(old_roi_origin != self.roi_origin):
+                self.sigRoiUpdated.emit({'pois': self.poi_positions,
+                                         'history': self.roi_pos_history,
+                                         'scan_image': self.roi_scan_image,
+                                         'scan_image_extent': self.roi_scan_image_extent})
+            else:
+                self.sigRoiUpdated.emit({'history': self.roi_pos_history})
+            return
 
-    @QtCore.Slot()
+    @QtCore.Slot(str)
     def go_to_poi(self, name=None):
         """
         Move crosshair to the given poi.
 
         @param str name: the name of the POI
         """
-        if name is None:
-            name = self.active_poi
-        if not isinstance(name, str):
-            self.log.error('POI name to move to must be of type str.')
+        self.log.warning([name, type(name)])
+        with self._thread_lock:
+            if name is None:
+                name = self.active_poi
+            if not isinstance(name, str):
+                self.log.error('POI name to move to must be of type str.')
+                return
+            self.move_scanner(self.get_poi_position(name))
             return
-        self.move_scanner(self.get_poi_position(name))
-        return
 
     def move_scanner(self, position):
-        if type(position) != dict:
-            if len(position) != 3:
-                self.log.error('Scanner position to set must be dictionary or iterable of length 3.')
-                return
-            position = {'x': position[0], 'y': position[1], 'z': position[2]}
-        self._scanninglogic().set_target_position(position)
-        return
+        with self._thread_lock:
+            if type(position) != dict:
+                if len(position) != 3:
+                    self.log.error('Scanner position to set must be dictionary or iterable of length 3.')
+                    return
+                position = {'x': position[0], 'y': position[1], 'z': position[2]}
+            self._scanninglogic().set_target_position(position)
+            return
 
-    @QtCore.Slot()
+    @QtCore.Slot(bool)
     def set_scan_image(self, emit_change=True):
         """ Get the current xy scan data and set as scan_image of ROI. """
-        self._roi.set_scan_image(self._scanninglogic().scan_data.data[self._optimizelogic()._data_channel],
-            self._scanninglogic().scan_data.scan_range)
+        with self._thread_lock:
+            self._roi.set_scan_image(self._scanninglogic().scan_data.data[self._optimizelogic()._data_channel],
+                self._scanninglogic().scan_data.scan_range)
 
-        if emit_change:
-            self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
-                                     'scan_image_extent': self.roi_scan_image_extent})
+            if emit_change:
+                self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
+                                         'scan_image_extent': self.roi_scan_image_extent})
         return
 
     @QtCore.Slot()
     def reset_roi(self):
-        self.stop_periodic_refocus()
-        self._roi = RegionOfInterest()
-        self.set_scan_image(False)
-        self.sigRoiUpdated.emit({'name': self.roi_name,
-                                 'poi_nametag': self.poi_nametag,
-                                 'pois': self.poi_positions,
-                                 'history': self.roi_pos_history,
-                                 'scan_image': self.roi_scan_image,
-                                 'scan_image_extent': self.roi_scan_image_extent})
-        self.set_active_poi(None)
-        return
+        with self._thread_lock:
+            self.stop_periodic_refocus()
+            self._roi = RegionOfInterest()
+            self.set_scan_image(False)
+            self.sigRoiUpdated.emit({'name': self.roi_name,
+                                     'poi_nametag': self.poi_nametag,
+                                     'pois': self.poi_positions,
+                                     'history': self.roi_pos_history,
+                                     'scan_image': self.roi_scan_image,
+                                     'scan_image_extent': self.roi_scan_image_extent})
+            self.set_active_poi(None)
+            return
 
     @QtCore.Slot(int)
     @QtCore.Slot(float)
@@ -858,32 +883,35 @@ class PoiManagerLogic(LogicBase):
 
         @param float period: The time between optimisation procedures.
         """
-        if period < 0:
-            self.log.error('Refocus period must be a value > 0. Unable to set period of "{0}".'
-                           ''.format(period))
+        with self._thread_lock:
+            if period < 0:
+                self.log.error('Refocus period must be a value > 0. Unable to set period of "{0}".'
+                               ''.format(period))
+                return
+            # Acquire thread lock in order to change the period during a running periodic refocus
+            with self._threadlock:
+                self._refocus_period = float(period)
+                if self.__timer.isActive():
+                    self.sigOptimizeTimerUpdated.emit(True, self.refocus_period, self.time_until_refocus)
+                else:
+                    self.sigOptimizeTimerUpdated.emit(False, self.refocus_period, self.refocus_period)
             return
-        # Acquire thread lock in order to change the period during a running periodic refocus
-        with self._threadlock:
-            self._refocus_period = float(period)
-            if self.__timer.isActive():
-                self.sigOptimizeTimerUpdated.emit(True, self.refocus_period, self.time_until_refocus)
-            else:
-                self.sigOptimizeTimerUpdated.emit(False, self.refocus_period, self.refocus_period)
-        return
 
     @QtCore.Slot(float)
     def set_poi_threshold(self, threshold):
-        if not threshold > 1:
-            self.log.error('threshold must > 1!')
-        self._poi_threshold = float(threshold)
-        self.sigThresholdUpdated.emit(threshold)
-        return
+        with self._thread_lock:
+            if not threshold > 1:
+                self.log.error('threshold must > 1!')
+            self._poi_threshold = float(threshold)
+            self.sigThresholdUpdated.emit(threshold)
+            return
 
     @QtCore.Slot(float)
     def set_poi_diameter(self, diameter):
-        self._poi_diameter = float(diameter)
-        self.sigDiameterUpdated.emit(diameter)
-        return
+        with self._thread_lock:
+            self._poi_diameter = float(diameter)
+            self.sigDiameterUpdated.emit(diameter)
+            return
 
     def start_periodic_refocus(self, name=None):
         """
@@ -904,7 +932,7 @@ class PoiManagerLogic(LogicBase):
                            'Unable to start periodic refocus.')
             return
 
-        with self._threadlock:
+        with self._thread_lock:
             if self.__timer.isActive():
                 self.log.error('Periodic refocus already running. Unable to start a new one.')
                 return
@@ -920,7 +948,7 @@ class PoiManagerLogic(LogicBase):
 
     def stop_periodic_refocus(self):
         """ Stops the periodic refocusing of the POI. """
-        with self._threadlock:
+        with self._thread_lock:
             if self.__timer.isActive():
                 self.__timer.stop()
                 self.__timer.timeout.disconnect()
@@ -935,11 +963,12 @@ class PoiManagerLogic(LogicBase):
 
         @param switch_on:
         """
-        if switch_on:
-            self.__sigStartPeriodicRefocus.emit()
-        else:
-            self.__sigStopPeriodicRefocus.emit()
-        return
+        with self._thread_lock:
+            if switch_on:
+                self.__sigStartPeriodicRefocus.emit()
+            else:
+                self.__sigStopPeriodicRefocus.emit()
+            return
 
     @QtCore.Slot()
     def _periodic_refocus_loop(self):
@@ -948,7 +977,7 @@ class PoiManagerLogic(LogicBase):
         If the time has run out, it refocuses the current poi.
         Otherwise it just updates the time that is left.
         """
-        with self._threadlock:
+        with self._thread_lock:
             if self.__timer.isActive():
                 remaining_time = self.time_until_refocus
                 self.sigOptimizeTimerUpdated.emit(True, self.refocus_period, remaining_time)
@@ -979,13 +1008,14 @@ class PoiManagerLogic(LogicBase):
         self._optimize_poi_name = name
         self._update_roi_position = update_roi_position
 
-        if self.optimizelogic().module_state() == 'idle':
-            self.__poi_optimization_running = True
-            self.optimizelogic().start_optimize()
-            self.sigOptimizeStateUpdated.emit(True)
-        else:
-            self.log.warning('Unable to start POI refocus procedure. '
-                             'OptimizeLogic module is still locked.')
+        with self._thread_lock:
+            if self._optimizelogic().module_state() == 'idle':
+                self.__poi_optimization_running = True
+                self._optimizelogic().start_optimize()
+                self.sigOptimizeStateUpdated.emit(True)
+            else:
+                self.log.warning('Unable to start POI refocus procedure. '
+                                 'OptimizeLogic module is still locked.')
         return
 
     def _optimisation_callback(self, is_running, optimal_position=None, fit_data=None):
@@ -997,21 +1027,24 @@ class PoiManagerLogic(LogicBase):
         @param optimal_pos:
         @param fit_data:
         """
-        # If the refocus was initiated by poimanager, update POI and ROI position
-        if self.__poi_optimization_running:
-            if is_running:
-                self.position_update = optimal_position.values()
-            else:
-                self.__poi_optimization_running = False
-                poi_name = self._optimize_poi_name
-                if poi_name in self.poi_names:
-                    if self._update_roi_position:
-                        self.move_roi_from_poi_position(name=poi_name, position=self.position_update)
-                    else:
-                        self.set_poi_anchor_from_position(name=poi_name, position=self.position_update)
-                    if self._move_scanner_after_optimization:
-                        self.move_scanner(position=self.position_update)
-                self.sigOptimizeStateUpdated.emit(False)
+        with self._thread_lock:
+            # If the refocus was initiated by poimanager, update POI and ROI position
+            if self.__poi_optimization_running:
+                if is_running:
+                    self.position_update = np.array(list(optimal_position.values()))
+                    self.log.warning([self.position_update, type(self.position_update)])
+                else:
+                    self.log.warning(['last', self.position_update, type(self.position_update)])
+                    self.__poi_optimization_running = False
+                    poi_name = self._optimize_poi_name
+                    if poi_name in self.poi_names:
+                        if self._update_roi_position:
+                            self.move_roi_from_poi_position(name=poi_name, position=self.position_update)
+                        else:
+                            self.set_poi_anchor_from_position(name=poi_name, position=self.position_update)
+                        if self._move_scanner_after_optimization:
+                            self.move_scanner(position=self.position_update)
+                    self.sigOptimizeStateUpdated.emit(False)
         return
 
     def update_poi_tag_in_savelogic(self):

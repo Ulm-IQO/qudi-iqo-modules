@@ -30,14 +30,10 @@ from qudi.util.units import ScaledFloat
 from qudi.util.helpers import natural_sort
 from qudi.core.module import GuiBase
 
-from qudi.util.widgets.colorbar import ColorBarWidget
-from .scan_dockwidget import Scan2DDockWidget
-from qudi.util.colordefs import ColorScaleInferno
 from qudi.util.colordefs import QudiPalettePale as palette
 from PySide2 import QtCore, QtGui, QtWidgets
 from qudi.util import uic
-from qudi.util.widgets.scan_2d_widget import ScanImageItem
-
+from qudi.util.widgets.scan_2d_widget import ImageWidget
 
 
 class PoiMarker(pg.EllipseROI):
@@ -235,6 +231,13 @@ class PoiManagerMainWindow(QtWidgets.QMainWindow):
         # Load it
         super(PoiManagerMainWindow, self).__init__()
         uic.loadUi(ui_file, self)
+
+        # Create central widget
+        self.roi_image = ImageWidget()
+        self.roi_image._image_item.setOpts(False)
+        self.roi_image.set_axis_label('bottom', label='Position', unit='um')
+        self.roi_image.set_axis_label('left', label='Position', unit='um')
+        self.setCentralWidget(self.roi_image)
         self.show()
 
 
@@ -258,8 +261,6 @@ class PoiManagerGui(GuiBase):
         super().__init__(config=config, **kwargs)
 
         self._mw = None             # QMainWindow handle
-        self.roi_image = None       # pyqtgraph PlotImage for ROI scan image
-        self.roi_cb = None          # The qudi colorbar to use with roi_image
         self.x_shift_plot = None    # pyqtgraph PlotDataItem for ROI history plot
         self.y_shift_plot = None    # pyqtgraph PlotDataItem for ROI history plot
         self.z_shift_plot = None    # pyqtgraph PlotDataItem for ROI history plot
@@ -309,11 +310,13 @@ class PoiManagerGui(GuiBase):
         self._update_poi_threshold(self._poi_manager_logic().poi_threshold)
         # Initialize Auto POI diameter
         self._update_poi_diameter(self._poi_manager_logic().poi_diameter)
+
+        # Todo: needed?
         # Distance Measurement:
         # Introducing a SignalProxy will limit the rate of signals that get fired.
-        self._mouse_moved_proxy = pg.SignalProxy(signal=self.roi_image.scene().sigMouseMoved,
-                                                 rateLimit=30,
-                                                 slot=self.mouse_moved_callback)
+        #self._mouse_moved_proxy = pg.SignalProxy(signal=self._mw.roi_image._image_item.scene().sigMouseMoved,
+        #                                         rateLimit=30,
+        #                                         slot=self.mouse_moved_callback)
 
         # Connect signals
         self.__connect_internal_signals()
@@ -371,27 +374,6 @@ class PoiManagerGui(GuiBase):
         return
 
     def __init_roi_scan_image(self):
-        # Get the color scheme
-        my_colors = ColorScaleInferno()
-        # Setting up display of ROI xy scan image
-        self.roi_image = ScanImageItem(axisOrder='row-major', lut=my_colors.lut)
-        self._mw.roi_map_ViewWidget.addItem(self.roi_image)
-        self._mw.roi_map_ViewWidget.setLabel('bottom', 'X position', units='m')
-        self._mw.roi_map_ViewWidget.setLabel('left', 'Y position', units='m')
-        self._mw.roi_map_ViewWidget.setAspectLocked(lock=True, ratio=1.0)
-        # Set up color bar
-        self.roi_cb = ColorBarWidget()#my_colors.cmap_normed, 100, 0, 100000)
-        self._mw.roi_cb_ViewWidget.addItem(self.roi_cb)
-        self._mw.roi_cb_ViewWidget.hideAxis('bottom')
-        self._mw.roi_cb_ViewWidget.setLabel('left', 'Fluorescence', units='c/s')
-        self._mw.roi_cb_ViewWidget.setMouseEnabled(x=False, y=False)
-
-        dockwidget = Scan2DDockWidget(scan_axes=(_scanning_logic.scanner_axes['x'], _scanning_logic.scanner_axes['y']),
-                                      channels=tuple(_scanning_logic.channel_constr.values()))
-        dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
-        dockwidget.crosshair.set_size(tuple(optimizer_range[ax] for ax in axes))
-        self.scan_2d_dockwidgets[axes] = dockwidget
-
         # Get scan image from logic and update initialize plot
         self._update_scan_image(self._poi_manager_logic().roi_scan_image,
                                 self._poi_manager_logic().roi_scan_image_extent)
@@ -470,13 +452,13 @@ class PoiManagerGui(GuiBase):
         self._mw.del_all_pois_PushButton.clicked.connect(
             self.delete_all_pois_clicked, QtCore.Qt.QueuedConnection)
         self._mw.goto_poi_Action.triggered.connect(
-            self._poi_manager_logic().go_to_poi, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().go_to_poi(), QtCore.Qt.QueuedConnection)
         self._mw.new_roi_Action.triggered.connect(
             self._poi_manager_logic().reset_roi, QtCore.Qt.QueuedConnection)
         self._mw.refind_poi_Action.triggered.connect(
             self._poi_manager_logic().optimise_poi_position, QtCore.Qt.QueuedConnection)
         self._mw.get_confocal_image_PushButton.clicked.connect(
-            self._poi_manager_logic().set_scan_image, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().set_scan_image(True), QtCore.Qt.QueuedConnection)
         self._mw.set_poi_PushButton.clicked.connect(
             self._poi_manager_logic().add_poi, QtCore.Qt.QueuedConnection)
         self._mw.delete_last_pos_Button.clicked.connect(
@@ -544,12 +526,6 @@ class PoiManagerGui(GuiBase):
         self._mw.load_roi_Action.triggered.connect(self.load_roi)
         self._mw.blink_correction_view_Action.triggered.connect(self.toggle_blink_correction)
         self._mw.poi_selector_Action.toggled.connect(self.toggle_poi_selector)
-        self._mw.roi_cb_centiles_RadioButton.toggled.connect(self.update_cb)
-        self._mw.roi_cb_manual_RadioButton.toggled.connect(self.update_cb)
-        self._mw.roi_cb_min_SpinBox.valueChanged.connect(self.update_cb_absolute)
-        self._mw.roi_cb_max_SpinBox.valueChanged.connect(self.update_cb_absolute)
-        self._mw.roi_cb_low_percentile_DoubleSpinBox.valueChanged.connect(self.update_cb_centiles)
-        self._mw.roi_cb_high_percentile_DoubleSpinBox.valueChanged.connect(self.update_cb_centiles)
         self._mw.restore_default_view_Action.triggered.connect(self.restore_dockwidgets_default)
         return
 
@@ -562,12 +538,6 @@ class PoiManagerGui(GuiBase):
         self._mw.load_roi_Action.triggered.disconnect()
         self._mw.blink_correction_view_Action.triggered.disconnect()
         self._mw.poi_selector_Action.toggled.disconnect()
-        self._mw.roi_cb_centiles_RadioButton.toggled.disconnect()
-        self._mw.roi_cb_manual_RadioButton.toggled.disconnect()
-        self._mw.roi_cb_min_SpinBox.valueChanged.disconnect()
-        self._mw.roi_cb_max_SpinBox.valueChanged.disconnect()
-        self._mw.roi_cb_low_percentile_DoubleSpinBox.valueChanged.disconnect()
-        self._mw.roi_cb_high_percentile_DoubleSpinBox.valueChanged.disconnect()
         self._mw.restore_default_view_Action.triggered.disconnect()
         return
 
@@ -579,9 +549,10 @@ class PoiManagerGui(GuiBase):
 
     @QtCore.Slot(bool)
     def toggle_blink_correction(self, is_active):
-        self.roi_image.activate_blink_correction(is_active)
+        self._mw.roi_image.activate_blink_correction(is_active)
         return
 
+    # Todo: needed?
     @QtCore.Slot(object)
     def mouse_moved_callback(self, event):
         """ Handles any mouse movements inside the image.
@@ -594,7 +565,7 @@ class PoiManagerGui(GuiBase):
         """
 
         # converts the absolute mouse position to a position relative to the axis
-        mouse_pos = self.roi_image.getViewBox().mapSceneToView(event[0])
+        mouse_pos = self._mw.roi_image.getViewBox().mapSceneToView(event[0])
 
         # only calculate distance, if a POI is selected
         active_poi = self._poi_manager_logic().active_poi
@@ -619,11 +590,11 @@ class PoiManagerGui(GuiBase):
             self._mw.poi_selector_Action.blockSignals(False)
         if is_active != self.__poi_selector_active:
             if is_active:
-                self.roi_image.sigMouseClicked.connect(self.create_poi_from_click)
-                self.roi_image.setCursor(QtCore.Qt.CrossCursor)
+                self._mw.roi_image.sigMouseClicked.connect(self.create_poi_from_click)
+                self._mw.roi_image.setCursor(QtCore.Qt.CrossCursor)
             else:
-                self.roi_image.sigMouseClicked.disconnect()
-                self.roi_image.setCursor(QtCore.Qt.ArrowCursor)
+                self._mw.roi_image.sigMouseClicked.disconnect()
+                self._mw.roi_image.setCursor(QtCore.Qt.ArrowCursor)
         self.__poi_selector_active = is_active
         return
 
@@ -635,8 +606,7 @@ class PoiManagerGui(GuiBase):
             return
         # Z position from ROI origin, X and Y positions from click event
         new_pos = self._poi_manager_logic().roi_origin
-        new_pos[0] = pos.x()
-        new_pos[1] = pos.y()
+        new_pos[0], new_pos[1] = (pos[0], pos[1])
         self.sigAddPoiByClick.emit(new_pos)
         return
 
@@ -791,6 +761,7 @@ class PoiManagerGui(GuiBase):
         self.sigPoiNameTagChanged.emit(self._mw.poi_nametag_LineEdit.text())
         return
 
+    # Todo
     @QtCore.Slot()
     def save_roi(self):
         """ Save ROI to file."""
@@ -799,6 +770,7 @@ class PoiManagerGui(GuiBase):
         self._poi_manager_logic().save_roi()
         return
 
+    # Todo
     @QtCore.Slot()
     def load_roi(self):
         """ Load a saved ROI from file."""
@@ -808,32 +780,6 @@ class PoiManagerGui(GuiBase):
                                                           'Data files (*.dat)')[0]
         if this_file:
             self._poi_manager_logic().load_roi(complete_path=this_file)
-        return
-
-    @QtCore.Slot()
-    def update_cb_centiles(self):
-        if not self._mw.roi_cb_centiles_RadioButton.isChecked():
-            self._mw.roi_cb_centiles_RadioButton.toggle()
-        else:
-            self.update_cb()
-        return
-
-    @QtCore.Slot()
-    def update_cb_absolute(self):
-        if not self._mw.roi_cb_manual_RadioButton.isChecked():
-            self._mw.roi_cb_manual_RadioButton.toggle()
-        else:
-            self.update_cb()
-        return
-
-    @QtCore.Slot()
-    def update_cb(self):
-        image = self._poi_manager_logic().roi_scan_image
-        if image is None:
-            return
-        cb_range = self.get_cb_range(image)
-        self.roi_image.setLevels(cb_range)
-        self.roi_cb.refresh_colorbar(*cb_range)
         return
 
     @QtCore.Slot()
@@ -852,17 +798,8 @@ class PoiManagerGui(GuiBase):
         @param scan_image:
         @param image_extent:
         """
-        if scan_image is None or image_extent is None:
-            self._mw.roi_map_ViewWidget.removeItem(self.roi_image)
-            return
-        elif self.roi_image not in self._mw.roi_map_ViewWidget.items():
-            self._mw.roi_map_ViewWidget.addItem(self.roi_image)
-        self.roi_image.setImage(image=scan_image)
-        (x_min, x_max), (y_min, y_max) = image_extent
-        self.roi_image.getViewBox().enableAutoRange()
-        self.roi_image.setRect(QtCore.QRectF(x_min, y_min, x_max - x_min, y_max - y_min))
-
-        self.update_cb()
+        self._mw.roi_image.set_image(image=scan_image)
+        self._mw.roi_image._image_item.set_image_extent(image_extent)
         return
 
     def _update_roi_name(self, name):
@@ -957,21 +894,6 @@ class PoiManagerGui(GuiBase):
         self._mw.active_poi_ComboBox.blockSignals(False)
         return
 
-    def get_cb_range(self, image):
-        """ Process UI input to determine color bar range"""
-        # If "Centiles" is checked, adjust colour scaling automatically to centiles.
-        # Otherwise, take user-defined values.
-        if self._mw.roi_cb_centiles_RadioButton.isChecked():
-            low_centile = self._mw.roi_cb_low_percentile_DoubleSpinBox.value()
-            high_centile = self._mw.roi_cb_high_percentile_DoubleSpinBox.value()
-
-            cb_min = np.percentile(image, low_centile)
-            cb_max = np.percentile(image, high_centile)
-        else:
-            cb_min = self._mw.roi_cb_min_SpinBox.value()
-            cb_max = self._mw.roi_cb_max_SpinBox.value()
-        return cb_min, cb_max
-
     def _add_poi_marker(self, name, position):
         """ Add a circular POI marker to the ROI scan image. """
         if name:
@@ -979,7 +901,7 @@ class PoiManagerGui(GuiBase):
                 self.log.error('Unable to add POI marker to ROI image. POI marker already present.')
                 return
             marker = PoiMarker(position=position[:2],
-                               view_widget=self._mw.roi_map_ViewWidget,
+                               view_widget=self._mw.roi_image._plot_widget,
                                poi_name=name,
                                radius=self._poi_manager_logic().optimise_xy_size / np.sqrt(2),
                                movable=False)
