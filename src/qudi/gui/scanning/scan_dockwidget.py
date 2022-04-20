@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('Scan1DDockWidget', 'Scan2DDockWidget')
 
 import os
-from PySide2 import QtGui, QtWidgets
+from PySide2 import QtGui, QtWidgets, QtCore
 from qudi.util.widgets.scan_2d_widget import Scan2DWidget
 from qudi.util.widgets.scan_1d_widget import Scan1DWidget
 from qudi.util.paths import get_artwork_dir
@@ -41,6 +41,8 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
          'zoom_by_selection_enabled', 'toggle_selection', 'toggle_zoom_by_selection',
          'set_image_extent', 'toggle_scan', 'toggle_enabled', 'set_scan_data'}
     )
+
+    sigCrosshairMoved = QtCore.Signal(float, float)
 
     def __init__(self, *args, scan_axes, channels, **kwargs):
         x_axis, y_axis = scan_axes
@@ -67,6 +69,8 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
         self.scan_widget.crosshairs[-1].set_size((0.1, 0.1))
         self.scan_widget.toggle_zoom_by_selection(True)
 
+        self.crosshair.sigPositionChanged.connect(self.__get_crosshair_moved_callback())
+
         self.setWidget(self.scan_widget)
 
     def __getattr__(self, item):
@@ -88,6 +92,15 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
         if enabled:
             return self.scan_widget.show_crosshair(-1)
         return self.scan_widget.hide_crosshair(-1)
+
+    def __get_crosshair_moved_callback(self):
+        def callback(value_x, value_y):
+            #spinbox = self.axes_widgets[axis]['pos_spinbox']
+            #spinbox.blockSignals(True)
+            #spinbox.setValue(value)
+            #spinbox.blockSignals(False)
+            self.sigCrosshairMoved.emit(value_x, value_y)
+        return callback
 
 
 class Scan1DDockWidget(QtWidgets.QDockWidget):

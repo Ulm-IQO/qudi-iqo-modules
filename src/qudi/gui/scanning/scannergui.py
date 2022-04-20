@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import numpy as np
+import copy as cp
 from PySide2 import QtCore, QtGui, QtWidgets
 
 import qudi.util.uic as uic
@@ -30,6 +31,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
+from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 
 from .axes_control_dockwidget import AxesControlDockWidget
 from .optimizer_setting_dialog import OptimizerSettingDialog
@@ -71,6 +73,8 @@ class ScannerGui(GuiBase):
 
     # config options for gui
     _default_position_unit_prefix = ConfigOption(name='default_position_unit_prefix', default=None)
+    # for all optimizer sub widgets, (2= xy, 1=z)
+    _optimizer_plot_dims = ConfigOption(name='optimizer_plot_dimensions', default=[2,1])
 
     # status vars
     _window_state = StatusVar(name='window_state', default=None)
@@ -104,7 +108,8 @@ class ScannerGui(GuiBase):
 
         # misc
         self._optimizer_id = 0
-        self._is_optimizer_running = False
+        self._scanner_settings_locked = False
+        self._optimizer_state = {'is_running': False}
         return
 
     def on_activate(self):
@@ -133,8 +138,8 @@ class ScannerGui(GuiBase):
         scans = list()
         axes = tuple(self._scanning_logic().scanner_axes)
         for i, first_ax in enumerate(axes, 1):
-            if not scans:
-                scans.append((first_ax,))
+            #if not scans:
+            scans.append((first_ax,))
             for second_ax in axes[i:]:
                 scans.append((first_ax, second_ax))
         for scan in scans:
@@ -233,6 +238,9 @@ class ScannerGui(GuiBase):
         self._optimize_logic().sigOptimizeStateChanged.disconnect(None, self.optimize_state_updated)
         self._data_logic().sigHistoryScanDataRestored.disconnect(None, self._update_scan_data)
 
+        self.scanner_control_dockwidget.sigTargetChanged.disconnect()
+        self.scanner_control_dockwidget.sigSliderMoved.disconnect()
+
         for scan in tuple(self.scan_1d_dockwidgets):
             self._remove_scan_dockwidget(scan)
         for scan in tuple(self.scan_2d_dockwidgets):
@@ -251,7 +259,8 @@ class ScannerGui(GuiBase):
         """
         # Create the Settings window
         self._osd = OptimizerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
-                                           tuple(self._scanning_logic().scanner_channels.values()))
+                                           tuple(self._scanning_logic().scanner_channels.values()),
+                                           self._optimizer_plot_dims)
 
         # Connect MainWindow actions
         self._mw.action_optimizer_settings.triggered.connect(lambda x: self._osd.exec_())
@@ -269,17 +278,19 @@ class ScannerGui(GuiBase):
         """
         """
         # Create the Settings dialog
-        self._ssd = ScannerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()))
+        self._ssd = ScannerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
+                                         self._scanning_logic().scanner_constraints)
 
         # Connect MainWindow actions
         self._mw.action_scanner_settings.triggered.connect(lambda x: self._ssd.exec_())
 
         # Connect the action of the settings dialog with the GUI module:
-        self._ssd.accepted.connect(self.change_scanner_settings)
+        self._ssd.accepted.connect(self.apply_scanner_settings)
         self._ssd.rejected.connect(self.restore_scanner_settings)
         self._ssd.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
-            self.change_scanner_settings
+            self.apply_scanner_settings
         )
+
 
     def _init_static_dockwidgets(self):
         self.scanner_control_dockwidget = AxesControlDockWidget(
@@ -289,29 +300,37 @@ class ScannerGui(GuiBase):
             self.scanner_control_dockwidget.set_assumed_unit_prefix(
                 self._default_position_unit_prefix
             )
-        self.scanner_control_dockwidget.setAllowedAreas(QtCore.Qt.BottomDockWidgetArea)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.scanner_control_dockwidget)
+        self.scanner_control_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.scanner_control_dockwidget)
         self.scanner_control_dockwidget.visibilityChanged.connect(
             self._mw.action_view_scanner_control.setChecked)
         self._mw.action_view_scanner_control.triggered[bool].connect(
             self.scanner_control_dockwidget.setVisible)
         self.scanner_control_dockwidget.sigResolutionChanged.connect(
             lambda ax, res: self.sigScanSettingsChanged.emit({'resolution': {ax: res}})
+             if not self._scanner_settings_locked else None
         )
         self.scanner_control_dockwidget.sigRangeChanged.connect(
             lambda ax, ranges: self.sigScanSettingsChanged.emit({'range': {ax: ranges}})
+            if not self._scanner_settings_locked else None
         )
         # TODO: When "current target" value box is clicked in, a move is excecuted. Why and how?
         self.scanner_control_dockwidget.sigTargetChanged.connect(
-            lambda ax, pos: self.sigScannerTargetChanged.emit({ax: pos}, self.module_uuid)
+            lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
         # ToDo: Implement a way to avoid too fast position update from slider movement.
-        #  Currently the scanner target position is only updated upon slider release.
-        # self.scanner_control_dockwidget.sigSliderMoved.connect()
+        # todo: why is _update_scan_crosshairds issuing (not only displaying) at all?
+        self.scanner_control_dockwidget.sigSliderMoved.connect(
+            #lambda ax, pos: self._update_scan_crosshairs(pos_dict={ax: pos}, exclude_scan=None)
+            lambda ax, pos: self.set_scanner_target_position({ax: pos})
+        )
 
-        self.optimizer_dockwidget = OptimizerDockWidget()
+
+        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
+                                                        plot_dims=self._optimizer_plot_dims,
+                                                        sequence=self._optimize_logic().scan_sequence)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.optimizer_dockwidget)
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
         self.optimizer_dockwidget.visibilityChanged.connect(
             self._mw.action_view_optimizer.setChecked)
         self._mw.action_view_optimizer.triggered[bool].connect(
@@ -364,28 +383,10 @@ class ScannerGui(GuiBase):
         self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
         self.optimizer_dockwidget.setFloating(False)
 
-        # tabify dockwidgets if needed
-        if multiple_2d_scans:
-            if has_1d_scans:
-                for ii, dockwidget in enumerate(dockwidgets_2d[1:]):
-                    self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
-                dockwidgets_2d[0].raise_()
-            else:
-                for ii, dockwidget in enumerate(dockwidgets_2d[2:]):
-                    if ii == 0:
-                        self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
-                    else:
-                        self._mw.tabifyDockWidget(dockwidgets_2d[ii+1], dockwidget)
-                dockwidgets_2d[0].raise_()
-        if multiple_1d_scans:
-            for ii, dockwidget in enumerate(dockwidgets_1d[1:]):
-                self._mw.tabifyDockWidget(dockwidgets_1d[ii], dockwidget)
-            dockwidgets_1d[0].raise_()
 
         # split scan dock widget with optimizer dock widget if needed. Resize all groups.
         if has_1d_scans and has_2d_scans:
-            self._mw.splitDockWidget(dockwidgets_1d[0],
-                                     self.optimizer_dockwidget,
+            self._mw.splitDockWidget(dockwidgets_1d[0], self.optimizer_dockwidget,
                                      QtCore.Qt.Vertical)
             self._mw.resizeDocks((dockwidgets_1d[0], self.optimizer_dockwidget),
                                  (3, 2),
@@ -411,6 +412,25 @@ class ScannerGui(GuiBase):
             self._mw.resizeDocks((dockwidgets_2d[0], self.optimizer_dockwidget),
                                  (1, 1),
                                  QtCore.Qt.Horizontal)
+
+        # tabify dockwidgets if needed, needs to be done after .splitDockWidget()
+        if multiple_2d_scans:
+            if has_1d_scans:
+                for ii, dockwidget in enumerate(dockwidgets_2d[1:]):
+                    self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
+                dockwidgets_2d[0].raise_()
+            else:
+                for ii, dockwidget in enumerate(dockwidgets_2d[2:]):
+                    if ii == 0:
+                        self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
+                    else:
+                        self._mw.tabifyDockWidget(dockwidgets_2d[ii+1], dockwidget)
+                dockwidgets_2d[0].raise_()
+        if multiple_1d_scans:
+            for ii, dockwidget in enumerate(dockwidgets_1d[1:]):
+                self._mw.tabifyDockWidget(dockwidgets_1d[ii], dockwidget)
+            dockwidgets_1d[0].raise_()
+
         return
 
     def _remove_scan_dockwidget(self, axes):
@@ -426,6 +446,7 @@ class ScannerGui(GuiBase):
             self.scan_2d_dockwidgets[axes].sigPositionDragged.disconnect()
             self.scan_2d_dockwidgets[axes].sigScanToggled.disconnect()
             self.scan_2d_dockwidgets[axes].sigMouseAreaSelected.disconnect()
+            self.scan_2d_dockwidgets[axes].sigCrosshairMoved.disconnect()
             self.scan_2d_dockwidgets[axes].deleteLater()
             del self.scan_2d_dockwidgets[axes]
         return
@@ -464,6 +485,10 @@ class ScannerGui(GuiBase):
             dockwidget.sigPositionDragged.connect(self.__get_crosshair_update_func(axes))
             dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
             dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
+
+            dockwidget.sigCrosshairMoved.connect(
+                lambda x, y: self._update_scan_sliders({axes[0]: x,
+                                                        axes[1]: y}))
         return
 
     @QtCore.Slot(bool)
@@ -480,7 +505,7 @@ class ScannerGui(GuiBase):
         return
 
     @QtCore.Slot()
-    def change_scanner_settings(self):
+    def apply_scanner_settings(self):
         """ ToDo: Document
         """
         # ToDo: Implement backwards scanning functionality
@@ -492,6 +517,14 @@ class ScannerGui(GuiBase):
         """ ToDo: Document
         """
         self.scanner_settings_updated({'frequency': self._scanning_logic().scan_frequency})
+
+    @QtCore.Slot(bool)
+    def scanner_settings_toggle_gui_lock(self, locked):
+        if locked:
+            self._scanner_settings_locked = True
+            # todo: maybe disable/grey out scanner gui elements
+        else:
+            self._scanner_settings_locked = False #unlock
 
     @QtCore.Slot()
     @QtCore.Slot(dict)
@@ -505,6 +538,8 @@ class ScannerGui(GuiBase):
         if not isinstance(settings, dict):
             settings = self._scanning_logic().scan_settings
 
+        if self._scanner_settings_locked:
+            return
         # ToDo: Handle all remaining settings
         # ToDo: Implement backwards scanning functionality
 
@@ -520,12 +555,22 @@ class ScannerGui(GuiBase):
             self._ssd.settings_widget.set_frequency(new_freq)
         return
 
+    @QtCore.Slot(dict)
     def set_scanner_target_position(self, target_pos):
         """
+        Issues new target to logic and updates gui.
 
         @param dict target_pos:
         """
-        self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
+        if not self._scanner_settings_locked:
+            #self.log.debug(f"Issue target from gui: {target_pos}")
+            self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
+            # update gui with target, not actual logic values
+            # we can not rely on the execution order of the above emit
+            self.scanner_target_updated(pos_dict=target_pos, caller_id=None)
+        else:
+            # refresh gui with stored values
+            self.scanner_target_updated(pos_dict=None, caller_id=None)
 
     @QtCore.Slot(dict)
     @QtCore.Slot(dict, object)
@@ -537,6 +582,10 @@ class ScannerGui(GuiBase):
                               If None (default) read the scanner position from logic and update.
         @param int caller_id: The qudi module object id responsible for triggering this update
         """
+
+        #self.log.debug(f"Gui updated from logic: {caller_id is not self.module_uuid}: {pos_dict}, "
+        #               f"full caller: {caller_id}")
+
         # If this update has been issued by this module, do not update display.
         # This has already been done before notifying the logic.
         if caller_id is self.module_uuid:
@@ -553,36 +602,44 @@ class ScannerGui(GuiBase):
     def scan_state_updated(self, is_running, scan_data=None, caller_id=None):
         scan_axes = scan_data.scan_axes if scan_data is not None else None
         self._toggle_enable_scan_buttons(not is_running, exclude_scan=scan_axes)
-        if not self._is_optimizer_running:
+        if not self._optimizer_state['is_running']:
             self._toggle_enable_actions(not is_running)
         else:
             self._toggle_enable_actions(not is_running, exclude_action=self._mw.action_optimize_position)
         self._toggle_enable_scan_crosshairs(not is_running)
+        self.scanner_settings_toggle_gui_lock(is_running)
+
         if scan_data is not None:
             if caller_id is self._optimizer_id:
                 channel = self._osd.settings['data_channel']
                 if scan_data.scan_dimension == 2:
                     x_ax, y_ax = scan_data.scan_axes
                     self.optimizer_dockwidget.set_image(image=scan_data.data[channel],
-                                                        extent=scan_data.scan_range)
+                                                        extent=scan_data.scan_range,
+                                                        axs=scan_data.scan_axes)
                     self.optimizer_dockwidget.set_image_label(axis='bottom',
                                                               text=x_ax,
-                                                              units=scan_data.axes_units[x_ax])
+                                                              units=scan_data.axes_units[x_ax],
+                                                              axs=scan_data.scan_axes)
                     self.optimizer_dockwidget.set_image_label(axis='left',
                                                               text=y_ax,
-                                                              units=scan_data.axes_units[y_ax])
+                                                              units=scan_data.axes_units[y_ax],
+                                                              axs=scan_data.scan_axes)
                 elif scan_data.scan_dimension == 1:
                     x_ax = scan_data.scan_axes[0]
                     self.optimizer_dockwidget.set_plot_data(
                         x=np.linspace(*scan_data.scan_range[0], scan_data.scan_resolution[0]),
-                        y=scan_data.data[channel]
+                        y=scan_data.data[channel],
+                        axs=scan_data.scan_axes
                     )
                     self.optimizer_dockwidget.set_plot_label(axis='bottom',
                                                              text=x_ax,
-                                                             units=scan_data.axes_units[x_ax])
+                                                             units=scan_data.axes_units[x_ax],
+                                                             axs=scan_data.scan_axes)
                     self.optimizer_dockwidget.set_plot_label(axis='left',
                                                              text=channel,
-                                                             units=scan_data.channel_units[channel])
+                                                             units=scan_data.channel_units[channel],
+                                                             axs=scan_data.scan_axes)
             else:
                 if scan_data.scan_dimension == 2:
                     dockwidget = self.scan_2d_dockwidgets.get(scan_axes, None)
@@ -595,30 +652,55 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot(bool, dict, object)
     def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None):
-        self._is_optimizer_running = is_running
-        self._is_optimizer_valid_1d = not is_running
-        self._is_optimizer_valid_2d = not is_running
+        self._optimizer_state['is_running'] = is_running
+        _is_optimizer_valid_1d = not is_running
+        _is_optimizer_valid_2d = not is_running
 
         self._toggle_enable_scan_buttons(not is_running)
         self._toggle_enable_actions(not is_running,
                                     exclude_action=self._mw.action_optimize_position)
         self._toggle_enable_scan_crosshairs(not is_running)
         self._mw.action_optimize_position.setChecked(is_running)
+        self.scanner_settings_toggle_gui_lock(is_running)
+
+        self.log.debug(f"Updated opt pos= {optimal_position}, fit_data={fit_data}")
+        if fit_data is not None and optimal_position is None:
+            raise ValueError("Can't understand fit_data without optimal position")
+
         # Update optimal position crosshair and marker
         if isinstance(optimal_position, dict):
+            scan_axs = list(optimal_position.keys())
             if len(optimal_position) == 2:
-                self._is_optimizer_valid_2d = True
-                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()))
+                _is_optimizer_valid_2d = True
+                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
+                                                          scan_axs)
 
             elif len(optimal_position) == 1:
-                self._is_optimizer_valid_1d = True
-                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())))
-        if fit_data is not None:
-            if fit_data.ndim == 1:
-                self.optimizer_dockwidget.set_fit_data(y=fit_data)
+                _is_optimizer_valid_1d = True
+                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
+                                                          scan_axs)
+        if fit_data is not None and isinstance(optimal_position, dict):
+            data = fit_data['fit_data']
+            fit_res = fit_data['full_fit_res']
+            if data.ndim == 1:
+                self.optimizer_dockwidget.set_fit_data(scan_axs, y=data)
+                sig_z = fit_res.params['center'].stderr
+                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
+                                                          scan_axs, sigma=sig_z)
+            elif data.ndim == 2:
+                sig_x, sig_y = fit_res.params['center_x'].stderr, fit_res.params['center_y'].stderr
+                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
+                                                          scan_axs, sigma=[sig_x, sig_y])
 
-        self.optimizer_dockwidget.toogle_crosshair(self._is_optimizer_valid_2d)
-        self.optimizer_dockwidget.toogle_marker(self._is_optimizer_valid_1d)
+        # Hide crosshair and 1d marker when scanning
+        if len(scan_axs) == 2:
+            self.optimizer_dockwidget.toogle_crosshair(scan_axs, _is_optimizer_valid_2d)
+        else:
+            self.optimizer_dockwidget.toogle_crosshair(None, _is_optimizer_valid_2d)
+        if len(scan_axs) == 1:
+            self.optimizer_dockwidget.toogle_marker(scan_axs, _is_optimizer_valid_1d)
+        else:
+            self.optimizer_dockwidget.toogle_marker(None, _is_optimizer_valid_1d)
 
     @QtCore.Slot(bool)
     def toggle_optimize(self, enabled):
@@ -643,6 +725,16 @@ class ScannerGui(GuiBase):
                 continue
             new_pos = pos_dict.get(scan_axes[0], dockwidget.marker.position)
             dockwidget.marker.set_position(new_pos)
+
+    def _update_scan_sliders(self, pos_dict):
+        """
+        """
+
+        for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
+            if not any(ax in pos_dict for ax in scan_axes):
+                continue
+        self.scanner_control_dockwidget.set_target(pos_dict)
+
 
     def _update_scan_data(self, scan_data):
         """
@@ -699,7 +791,7 @@ class ScannerGui(GuiBase):
     def __get_crosshair_update_func(self, axes):
         def update_func(x, y):
             pos_dict = {axes[0]: x, axes[1]: y}
-            self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
+            #self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
             # self.scanner_control_dockwidget.widget().set_target(pos_dict)
             self.set_scanner_target_position(pos_dict)
         return update_func
@@ -707,7 +799,7 @@ class ScannerGui(GuiBase):
     def __get_marker_update_func(self, axes):
         def update_func(pos):
             pos_dict = {axes[0]: pos}
-            self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
+            #self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
             # self.scanner_control_dockwidget.widget().set_target(pos_dict)
             self.set_scanner_target_position(pos_dict)
         return update_func
@@ -738,8 +830,10 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot()
     def change_optimizer_settings(self):
-        # FIXME: sequence needs to be properly implemented
+        self.log.debug(f"Setting to logic opt settings: {self._osd.settings}")
+
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
+        self.optimizer_dockwidget.scan_sequence = self._osd.settings['scan_sequence']
 
     @QtCore.Slot()
     @QtCore.Slot(dict)
@@ -749,44 +843,62 @@ class ScannerGui(GuiBase):
 
         # Update optimizer settings QDialog
         self._osd.change_settings(settings)
+        self.log.debug(f"Got opt settings {settings}")
 
-        # FIXME: sequence needs to be properly implemented
         # Adjust optimizer scan axis labels
         if 'scan_sequence' in settings:
+            new_settings = self._optimize_logic().check_sanity_optimizer_settings(settings, self._optimizer_plot_dims)
+            if settings['scan_sequence'] != new_settings['scan_sequence']:
+                new_seq = new_settings['scan_sequence']
+                self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
+                                 f" Defaulted optimizer to= {new_seq}")
+                settings['scan_sequence'] = new_seq
+                self._optimize_logic().scan_sequence = new_seq
+
+
             axes_constr = self._scanning_logic().scanner_axes
+            self.optimizer_dockwidget.scan_sequence = settings['scan_sequence']
+
             for seq_step in settings['scan_sequence']:
                 if len(seq_step) == 1:
                     axis = seq_step[0]
                     self.optimizer_dockwidget.set_plot_label(axis='bottom',
+                                                             axs=seq_step,
                                                              text=axis,
                                                              units=axes_constr[axis].unit)
-                    self.optimizer_dockwidget.set_plot_data()
-                    self.optimizer_dockwidget.set_fit_data()
+                    self.optimizer_dockwidget.set_plot_data(axs=seq_step)
+                    self.optimizer_dockwidget.set_fit_data(axs=seq_step)
                 elif len(seq_step) == 2:
                     x_axis, y_axis = seq_step
                     self.optimizer_dockwidget.set_image_label(axis='bottom',
+                                                              axs=seq_step,
                                                               text=x_axis,
                                                               units=axes_constr[x_axis].unit)
                     self.optimizer_dockwidget.set_image_label(axis='left',
+                                                              axs=seq_step,
                                                               text=y_axis,
                                                               units=axes_constr[y_axis].unit)
-                    self.optimizer_dockwidget.set_image(None, extent=((-0.5, 0.5), (-0.5, 0.5)))
+                    self.optimizer_dockwidget.set_image(None, axs=seq_step,
+                                                        extent=((-0.5, 0.5), (-0.5, 0.5)))
 
-        # Adjust 1D plot y-axis label
-        if 'data_channel' in settings:
-            channel_constr = self._scanning_logic().scanner_channels
-            channel = settings['data_channel']
-            self.optimizer_dockwidget.set_plot_label(axis='left',
-                                                     text=channel,
-                                                     units=channel_constr[channel].unit)
+                # Adjust 1D plot y-axis label
+                if 'data_channel' in settings and len(seq_step)==1:
+                    channel_constr = self._scanning_logic().scanner_channels
+                    channel = settings['data_channel']
+                    self.optimizer_dockwidget.set_plot_label(axs=seq_step, axis='left',
+                                                             text=channel,
+                                                             units=channel_constr[channel].unit)
 
-        # Adjust crosshair size according to optimizer range
-        if 'scan_range' in settings:
-            for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
-                if any(ax in settings['scan_range'] for ax in scan_axes):
-                    crosshair = dockwidget.scan_widget.crosshairs[0]
-                    x_size = settings['scan_range'].get(scan_axes[0], crosshair.size[0])
-                    y_size = settings['scan_range'].get(scan_axes[1], crosshair.size[1])
-                    crosshair.set_size((x_size, y_size))
+                # Adjust crosshair size according to optimizer range
+                if 'scan_range' in settings and len(seq_step)==2:
+                    for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
+                        if any(ax in settings['scan_range'] for ax in scan_axes):
+                            crosshair = dockwidget.scan_widget.crosshairs[0]
+                            x_size = settings['scan_range'].get(scan_axes[0], crosshair.size[0])
+                            y_size = settings['scan_range'].get(scan_axes[1], crosshair.size[1])
+                            crosshair.set_size((x_size, y_size))
+
+
+
 
 

@@ -264,13 +264,17 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         output_voltage_ranges = {self._extract_terminal(key): value
                                  for key, value in self._output_voltage_ranges.items()}
 
-        input_limits = {self._extract_terminal(key): [0, int(1e8)]
-                        for key in digital_sources}  # TODO Real HW constraint?
+        input_limits = dict()
 
-        adc_voltage_ranges = {self._extract_terminal(key): value
-                              for key, value in self._adc_voltage_ranges.items()}
+        if digital_sources:
+            input_limits.update({self._extract_terminal(key): [0, int(1e8)]
+                                 for key in digital_sources})  # TODO Real HW constraint?
 
-        input_limits.update(adc_voltage_ranges)
+        if analog_sources:
+            adc_voltage_ranges = {self._extract_terminal(key): value
+                                  for key, value in self._adc_voltage_ranges.items()}
+
+            input_limits.update(adc_voltage_ranges)
 
         # Create constraints
         self._constraints = FiniteSamplingIOConstraints(
@@ -404,10 +408,13 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         if not self.is_running:
             return self._number_of_pending_samples
 
-        if self._ai_task_handle is None:
+        if self._ai_task_handle is None and self._di_task_handles is not None:
             return self._di_task_handles[0].in_stream.avail_samp_per_chan
-        else:
+        elif self._ai_task_handle is not None and self._di_task_handles is None:
             return self._ai_task_handle.in_stream.avail_samp_per_chan
+        else:
+            return min(self._ai_task_handle.in_stream.avail_samp_per_chan,
+                       self._di_task_handles[0].in_stream.avail_samp_per_chan)
 
     @property
     def frame_size(self):
@@ -635,6 +642,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
 
+        self.log.debug(f'Samples to read: {samples_to_read} and samples in buff: {self.samples_in_buffer}')
+
         if self.is_running:
             assert samples_to_read <= self._number_of_pending_samples, \
                 'Requested samples are more than the pending in frame'
@@ -677,7 +686,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                     for di_reader in self._di_readers:
                         di_reader.read_many_sample_double(
                             di_data[write_offset:],
-                            number_of_samples_per_channel=samples_to_read)
+                            number_of_samples_per_channel=samples_to_read,
+                            timeout=self._rw_timeout)
                         write_offset += samples_to_read
 
                     di_data = di_data.reshape(len(self.__active_channels['di_channels']), samples_to_read)
@@ -686,6 +696,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
                 if self._ai_reader is not None:
                     data_buffer = np.zeros(samples_to_read * len(self.__active_channels['ai_channels']))
+                    self.log.debug(f'Buff shape {data_buffer.shape} and len {len(data_buffer)}')
                     read_samples = self._ai_reader.read_many_sample(
                         data_buffer,
                         number_of_samples_per_channel=samples_to_read,

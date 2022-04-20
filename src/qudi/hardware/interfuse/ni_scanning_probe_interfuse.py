@@ -318,8 +318,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current target position per axis.
         """
-
-        return self._target_pos
+        if self.is_running:
+            self._stored_target_pos
+        else:
+            return self._target_pos
 
     def get_position(self):
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
@@ -490,7 +492,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         slope = np.diff(voltage_range) / np.diff(position_range)
         intercept = voltage_range[1] - position_range[1] * slope
 
-        converted = positions * slope + intercept
+        converted = np.clip(positions * slope + intercept, min(voltage_range), max(voltage_range))
 
         try:
             # In case of single value, use just this value
@@ -635,35 +637,39 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.__ni_ao_write_timer.stop()
 
     def __ao_write_loop(self):
-        with self._thread_lock:
-            new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, values[0])
-                           for ax, values in self.__write_queue.items()}
-            self._ni_ao().setpoints = new_voltage
-            self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
+        try:
+            with self._thread_lock:
+                new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, values[0])
+                               for ax, values in self.__write_queue.items()}
+                self._ni_ao().setpoints = new_voltage
+                self.log.debug(f'Wrote voltages {new_voltage} to hardware')
+                self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
 
-            # Adjust the timeout each time to avoid error accumulation
-            if self._interval_time_stamp is not None:
-                exec_time = time.time() - self._interval_time_stamp
-                self.__ni_ao_write_timer.setInterval(
-                    max(2 * self._default_timer_interval - exec_time*1e3, 1))
-                # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
-                self._interval_time_stamp = time.time()
+                # Adjust the timeout each time to avoid error accumulation
+                if self._interval_time_stamp is not None:
+                    exec_time = time.time() - self._interval_time_stamp
+                    self.__ni_ao_write_timer.setInterval(
+                        max(2 * self._default_timer_interval - exec_time*1e3, 1))
+                    # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
+                    self._interval_time_stamp = time.time()
+                else:
+                    self._interval_time_stamp = time.time()
+
+            if not all([values.size == 0 for values in self.__write_queue.values()]):
+                self.__start_ao_write_timer()
             else:
-                self._interval_time_stamp = time.time()
-
-        if not all([values.size == 0 for values in self.__write_queue.values()]):
-            self.__start_ao_write_timer()
-        else:
-            # self.log.info('Move done')  # TODO Remove this
-            self._interval_time_stamp = None
-            self.__ni_ao_write_timer.setInterval(5)
-            if self._scan_start_indicator:
-                try:
-                    self._ni_finite_sampling_io().start_buffered_frame()
-                except Exception as e:
-                    self.log.error(f'Could not start frame due to {e}, {e.args}')
-                    self.module_state.unlock()
-                self._scan_start_indicator = False
+                self.log.debug('Move done')
+                self._interval_time_stamp = None
+                self.__ni_ao_write_timer.setInterval(5)
+                if self._scan_start_indicator:
+                    try:
+                        self._ni_finite_sampling_io().start_buffered_frame()
+                    except Exception as e:
+                        self.log.error(f'Could not start frame due to {e}, {e.args}')
+                        self.module_state.unlock()
+                    self._scan_start_indicator = False
+        except Exception as e:
+            self.log.error(e)
 
     # def _abort_movement(self):
     #     """
@@ -679,6 +685,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._prepare_movement(position, scan_start_indicator=True)
 
         self.__start_ao_write_timer()
+        self.log.debug('Started ao write timer')
 
     def _prepare_movement(self, position, velocity=None, scan_start_indicator=False):
         """
@@ -702,9 +709,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             for axis, pos in position.items():
                 in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
                 if not in_range_flag:
+                    position[axis] = float(constr.axes[axis].clip_value(position[axis]))
                     self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
                                      f'for axis {axis}. Value clipped to {position[axis]}')
-                position[axis] = float(constr.axes[axis].clip_value(position[axis]))
+
                 # TODO Adapt interface to use "in_range"?
                 self._target_pos[axis] = position[axis]
 
@@ -733,7 +741,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             self._scan_start_indicator = scan_start_indicator
 
-            # self.log.info('Movement prepared')  # TODO Remove this
+            self.log.debug(f'Movement prepared to {position} with a distance of {dist} '
+                           f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
 
     def __start_ao_runout_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
@@ -755,7 +764,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if not all([values.size == 0 for values in self.__write_queue.values()]):
             self.__start_ao_runout_timer()
         else:
-            self.log.info('Freed Resources')  # TODO Remove this
+            self.log.info('Freed AO Resources')
             self._ni_ao().set_activity_state(False)
 
 

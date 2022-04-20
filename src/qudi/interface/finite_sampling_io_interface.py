@@ -221,7 +221,7 @@ class FiniteSamplingIOConstraints:
         assert all(len(lim) == 2 for lim in input_channel_limits.values()),\
             'Output channel limits need to be of length 2'
         assert input_channel_units.keys() == input_channel_limits.keys(),\
-            'Keys in input channel limits and units do not match'
+            f'Keys in input channel limits ({input_channel_units.keys()}) and units ({input_channel_units.keys()}) do not match'
 
         self._supported_output_modes = frozenset(supported_output_modes)
         self._sample_rate_limits = (float(min(sample_rate_limits)), float(max(sample_rate_limits)))
