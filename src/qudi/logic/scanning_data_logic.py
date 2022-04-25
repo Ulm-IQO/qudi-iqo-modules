@@ -148,7 +148,7 @@ class ScanningDataLogic(LogicBase):
             }
             self._scan_logic().set_scan_settings(settings)
 
-            self.log.debug(f"Restoring hist settings from index {index} with {settings}/ data: {data.data['APD events']}")
+            self.log.debug(f"Restoring hist settings from index {index} with {settings}")
 
             self._curr_history_index = index
             self._curr_data_per_scan[data.scan_axes] = data
@@ -278,6 +278,7 @@ class ScanningDataLogic(LogicBase):
                     arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
         return fig
 
+    @QtCore.Slot(tuple, object)
     @QtCore.Slot(tuple, object)
     def save_2d_scan(self, axes, color_range=None):
         axes = tuple(str(ax).lower() for ax in axes)
