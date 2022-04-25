@@ -834,6 +834,13 @@ class ScannerGui(GuiBase):
 
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
         self.optimizer_dockwidget.scan_sequence = self._osd.settings['scan_sequence']
+        self.update_crosshair_sizes()
+
+    def update_crosshair_sizes(self):
+        for ax, wid in self.scan_2d_dockwidgets.items():
+            width = self._osd.settings['scan_range'][ax[0]]
+            height = self._osd.settings['scan_range'][ax[1]]
+            wid.crosshair.set_size((width, height))
 
     @QtCore.Slot()
     @QtCore.Slot(dict)

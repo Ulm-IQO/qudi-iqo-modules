@@ -111,6 +111,9 @@ class ScanningDataLogic(LogicBase):
                 self.log.warning('Unable to restore previous state from scan history. '
                                  'Already at earliest history entry.')
                 return
+
+            self.log.debug(f"Previous hist index called. Curr index: {self._curr_history_index}")
+
             return self.restore_from_history(self._curr_history_index - 1)
 
     @QtCore.Slot()
@@ -145,6 +148,8 @@ class ScanningDataLogic(LogicBase):
             }
             self._scan_logic().set_scan_settings(settings)
 
+            self.log.debug(f"Restoring hist settings from index {index} with {settings}")
+
             self._curr_history_index = index
             self._curr_data_per_scan[data.scan_axes] = data
             self.sigHistoryScanDataRestored.emit(data)
@@ -152,8 +157,16 @@ class ScanningDataLogic(LogicBase):
 
     @QtCore.Slot(bool, object, object)
     def _update_scan_state(self, running, data, caller_id):
+
+        settings = {
+            'range': {ax: data.scan_range[i] for i, ax in enumerate(data.scan_axes)},
+            'resolution': {ax: data.scan_resolution[i] for i, ax in enumerate(data.scan_axes)},
+            'frequency': {data.scan_axes[0]: data.scan_frequency}
+        }
+
         with self._thread_lock:
             if not running and caller_id is self._logic_id:
+                self.log.debug(f"Adding to data history with settings {settings}")
                 self._scan_history.append(data)
                 self._shrink_history()
                 self._curr_data_per_scan[data.scan_axes] = data
@@ -162,11 +175,11 @@ class ScanningDataLogic(LogicBase):
 
     def _shrink_history(self):
         while len(self._scan_history) > self._max_history_length:
-            self._scan_history.pop()
+            self._scan_history.pop(0)
 
     @QtCore.Slot(tuple)
     def save_1d_scan(self, axis):
-        with self.threadlock:
+        with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 1D scan. Saving still in progress...')
                 return
@@ -215,6 +228,9 @@ class ScanningDataLogic(LogicBase):
                     # thumbnail
                     figure = self.draw_1d_scan_figure(scan_data, channel)
                     ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
+
+                    self.log.debug(f'Scan image saved: {file_path}')
+
             finally:
                 self.module_state.unlock()
                 self.sigSaveStateChanged.emit(False)
@@ -227,7 +243,7 @@ class ScanningDataLogic(LogicBase):
         """
         data = scan_data.data[channel]
         axis = scan_data.scan_axes[0]
-        scanner_pos = self._scanner().get_target()
+        scanner_pos = self._scan_logic().scanner_target
 
         # ToDo: Scale data and axes in a suitable and general way (with utils)
 
@@ -286,7 +302,8 @@ class ScanningDataLogic(LogicBase):
                 ds = TextDataStorage(root_dir=self.module_default_data_dir)
                 timestamp = datetime.datetime.now()
 
-                # ToDo: Add meaningful metadata if missing
+                # ToDo: Add meaningful metadata if missing:
+                # at time of scan: all axes positions (xyz, etc)
                 parameters = {'x-axis name'      : scan_data.scan_axes[0],
                               'x-axis unit'      : scan_data.axes_units[scan_data.scan_axes[0]],
                               'x-axis min'       : scan_data.scan_range[0][0],
@@ -312,7 +329,7 @@ class ScanningDataLogic(LogicBase):
                     figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
                     ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
 
-                self.log.debug('Scan image saved.')
+                    self.log.debug(f'Scan image saved: {file_path}')
             finally:
                 self.module_state.unlock()
                 self.sigSaveStateChanged.emit(False)
@@ -325,7 +342,8 @@ class ScanningDataLogic(LogicBase):
         """
         image_arr = scan_data.data[channel]
         scan_axes = scan_data.scan_axes
-        scanner_pos = self._scanner().get_target()
+        scanner_pos = self._scan_logic().scanner_target
+
 
         # If no colorbar range was given, take full range of data
         if cbar_range is None:
