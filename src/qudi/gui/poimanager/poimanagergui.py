@@ -7,10 +7,6 @@ distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
 
-The file was originally written by Neverhorst and, with his consent, is adapted and transferred
-here without keeping its original history. The full history can be found at
-<https://github.com/Ulm-IQO/qudi/blob/master/gui/poimanager/poimangui.py>
-
 Qudi is free software: you can redistribute it and/or modify it under the terms of
 the GNU Lesser General Public License as published by the Free Software Foundation,
 either version 3 of the License, or (at your option) any later version.

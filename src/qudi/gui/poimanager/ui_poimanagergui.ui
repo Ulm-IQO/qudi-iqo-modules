@@ -1,6 +1,3 @@
-<!--The file was originally created by Neverhorst and, with his consent, is adapted and -->
-<!--transferred here without keeping its original history. The full history can be found at-->
-<!--https://github.com/Ulm-IQO/qudi/blob/master/gui/poimanager/ui_poimangui.ui-->
 <?xml version="1.0" encoding="UTF-8"?>
 <ui version="4.0">
  <class>PoiManager</class>
