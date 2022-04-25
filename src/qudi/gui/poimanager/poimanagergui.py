@@ -7,6 +7,10 @@ distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
 
+The file was originally written by Neverhorst and, with his consent, is adapted and transferred
+here without keeping its original history. The full history can be found at
+<https://github.com/Ulm-IQO/qudi/blob/master/gui/poimanager/poimangui.py>
+
 Qudi is free software: you can redistribute it and/or modify it under the terms of
 the GNU Lesser General Public License as published by the Free Software Foundation,
 either version 3 of the License, or (at your option) any later version.
@@ -235,8 +239,8 @@ class PoiManagerMainWindow(QtWidgets.QMainWindow):
         # Create central widget
         self.roi_image = ImageWidget()
         self.roi_image._image_item.setOpts(False)
-        self.roi_image.set_axis_label('bottom', label='Position', unit='um')
-        self.roi_image.set_axis_label('left', label='Position', unit='um')
+        self.roi_image.set_axis_label('bottom', label='Position', unit='m')
+        self.roi_image.set_axis_label('left', label='Position', unit='m')
         self.setCentralWidget(self.roi_image)
         self.show()
 
