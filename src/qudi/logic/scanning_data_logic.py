@@ -111,6 +111,9 @@ class ScanningDataLogic(LogicBase):
                 self.log.warning('Unable to restore previous state from scan history. '
                                  'Already at earliest history entry.')
                 return
+
+            self.log.debug(f"Previous hist index called. Curr index: {self._curr_history_index}")
+
             return self.restore_from_history(self._curr_history_index - 1)
 
     @QtCore.Slot()
@@ -145,6 +148,8 @@ class ScanningDataLogic(LogicBase):
             }
             self._scan_logic().set_scan_settings(settings)
 
+            self.log.debug(f"Restoring hist settings from index {index} with {settings}/ data: {data.data['APD events']}")
+
             self._curr_history_index = index
             self._curr_data_per_scan[data.scan_axes] = data
             self.sigHistoryScanDataRestored.emit(data)
@@ -152,8 +157,16 @@ class ScanningDataLogic(LogicBase):
 
     @QtCore.Slot(bool, object, object)
     def _update_scan_state(self, running, data, caller_id):
+
+        settings = {
+            'range': {ax: data.scan_range[i] for i, ax in enumerate(data.scan_axes)},
+            'resolution': {ax: data.scan_resolution[i] for i, ax in enumerate(data.scan_axes)},
+            'frequency': {data.scan_axes[0]: data.scan_frequency}
+        }
+
         with self._thread_lock:
             if not running and caller_id is self._logic_id:
+                self.log.debug(f"Adding to data history with settings {settings}")
                 self._scan_history.append(data)
                 self._shrink_history()
                 self._curr_data_per_scan[data.scan_axes] = data
@@ -162,7 +175,7 @@ class ScanningDataLogic(LogicBase):
 
     def _shrink_history(self):
         while len(self._scan_history) > self._max_history_length:
-            self._scan_history.pop()
+            self._scan_history.pop(0)
 
     @QtCore.Slot(tuple)
     def save_1d_scan(self, axis):
