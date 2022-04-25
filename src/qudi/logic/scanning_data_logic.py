@@ -179,7 +179,7 @@ class ScanningDataLogic(LogicBase):
 
     @QtCore.Slot(tuple)
     def save_1d_scan(self, axis):
-        with self.threadlock:
+        with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 1D scan. Saving still in progress...')
                 return
@@ -228,6 +228,9 @@ class ScanningDataLogic(LogicBase):
                     # thumbnail
                     figure = self.draw_1d_scan_figure(scan_data, channel)
                     ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
+
+                    self.log.debug(f'Scan image saved: {file_path}')
+
             finally:
                 self.module_state.unlock()
                 self.sigSaveStateChanged.emit(False)
@@ -240,7 +243,7 @@ class ScanningDataLogic(LogicBase):
         """
         data = scan_data.data[channel]
         axis = scan_data.scan_axes[0]
-        scanner_pos = self._scanner().get_target()
+        scanner_pos = self._scan_logic().scanner_target
 
         # ToDo: Scale data and axes in a suitable and general way (with utils)
 
@@ -279,7 +282,6 @@ class ScanningDataLogic(LogicBase):
         return fig
 
     @QtCore.Slot(tuple, object)
-    @QtCore.Slot(tuple, object)
     def save_2d_scan(self, axes, color_range=None):
         axes = tuple(str(ax).lower() for ax in axes)
         with self._thread_lock:
@@ -300,7 +302,8 @@ class ScanningDataLogic(LogicBase):
                 ds = TextDataStorage(root_dir=self.module_default_data_dir)
                 timestamp = datetime.datetime.now()
 
-                # ToDo: Add meaningful metadata if missing
+                # ToDo: Add meaningful metadata if missing:
+                # at time of scan: all axes positions (xyz, etc)
                 parameters = {'x-axis name'      : scan_data.scan_axes[0],
                               'x-axis unit'      : scan_data.axes_units[scan_data.scan_axes[0]],
                               'x-axis min'       : scan_data.scan_range[0][0],
@@ -326,7 +329,7 @@ class ScanningDataLogic(LogicBase):
                     figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
                     ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
 
-                self.log.debug('Scan image saved.')
+                    self.log.debug(f'Scan image saved: {file_path}')
             finally:
                 self.module_state.unlock()
                 self.sigSaveStateChanged.emit(False)
@@ -339,7 +342,8 @@ class ScanningDataLogic(LogicBase):
         """
         image_arr = scan_data.data[channel]
         scan_axes = scan_data.scan_axes
-        scanner_pos = self._scanner().get_target()
+        scanner_pos = self._scan_logic().scanner_target
+
 
         # If no colorbar range was given, take full range of data
         if cbar_range is None:
