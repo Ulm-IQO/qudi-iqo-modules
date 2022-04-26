@@ -176,6 +176,8 @@ class ScannerGui(GuiBase):
 
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
+        self._mw.actionSave_2d_Scan.triggered.connect(self.save_2d_scan_data)
+        self._mw.actionSave_1d_Scan.triggered.connect(self.save_1d_scan_data)
         self._mw.action_utility_zoom.toggled.connect(self.toggle_cursor_zoom)
         self._mw.action_utility_full_range.triggered.connect(
             self._scanning_logic().set_full_scan_ranges, QtCore.Qt.QueuedConnection
@@ -432,6 +434,44 @@ class ScannerGui(GuiBase):
             dockwidgets_1d[0].raise_()
 
         return
+
+    def save_2d_scan_data(self):
+        """ Run the save routine from the logic to save the xy confocal data."""
+        #self._save_dialog.show()
+
+        #cb_range = self.get_xy_cb_range()
+
+        # Percentile range is None, unless the percentile scaling is selected in GUI.
+        # pcile_range = None
+        # if not self._mw.xy_cb_manual_RadioButton.isChecked():
+        #     low_centile = self._mw.xy_cb_low_percentile_DoubleSpinBox.value()
+        #     high_centile = self._mw.xy_cb_high_percentile_DoubleSpinBox.value()
+        #     pcile_range = [low_centile, high_centile]
+
+        self._data_logic().save_2d_scan('xy')
+
+        # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
+        #filepath = self._save_logic.get_path_for_module(module_name='Confocal')
+        # filename = os.path.join(
+        #     filepath,
+        #     time.strftime('%Y%m%d-%H%M-%S_confocal_xy_scan_raw_pixel_image'))
+        # if self._sd.save_purePNG_checkBox.isChecked():
+        #     self.xy_image.save(filename + '_raw.png')
+
+    def save_1d_scan_data(self):
+            """ Run the save routine from the logic to save the xy confocal data."""
+            # self._save_dialog.show()
+
+            # cb_range = self.get_xy_cb_range()
+
+            # Percentile range is None, unless the percentile scaling is selected in GUI.
+            # pcile_range = None
+            # if not self._mw.xy_cb_manual_RadioButton.isChecked():
+            #     low_centile = self._mw.xy_cb_low_percentile_DoubleSpinBox.value()
+            #     high_centile = self._mw.xy_cb_high_percentile_DoubleSpinBox.value()
+            #     pcile_range = [low_centile, high_centile]
+
+            self._data_logic().save_1d_scan('x')
 
     def _remove_scan_dockwidget(self, axes):
         if axes in tuple(self.scan_1d_dockwidgets):

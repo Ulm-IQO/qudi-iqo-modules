@@ -179,6 +179,7 @@ class ScanningDataLogic(LogicBase):
 
     @QtCore.Slot(tuple)
     def save_1d_scan(self, axis):
+        axis = tuple(str(ax).lower() for ax in axis)
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 1D scan. Saving still in progress...')
