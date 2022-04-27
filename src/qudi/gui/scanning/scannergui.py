@@ -438,6 +438,9 @@ class ScannerGui(GuiBase):
     def save_2d_scan_data(self):
         """ Run the save routine from the logic to save the xy confocal data."""
         #self._save_dialog.show()
+        axes_constr = self._scanning_logic().scan_data.scan_axes
+
+        axes = tuple(str(ax).lower() for ax in axes_constr)
 
         #cb_range = self.get_xy_cb_range()
 
@@ -448,7 +451,7 @@ class ScannerGui(GuiBase):
         #     high_centile = self._mw.xy_cb_high_percentile_DoubleSpinBox.value()
         #     pcile_range = [low_centile, high_centile]
 
-        self._data_logic().save_2d_scan('xy')
+        self._data_logic().save_2d_scan(axes)
 
         # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
         #filepath = self._save_logic.get_path_for_module(module_name='Confocal')
@@ -460,6 +463,10 @@ class ScannerGui(GuiBase):
 
     def save_1d_scan_data(self):
             """ Run the save routine from the logic to save the xy confocal data."""
+            axes_constr = self._scanning_logic().scan_data.scan_axes
+
+            axis = tuple(str(ax).lower() for ax in axes_constr)
+
             # self._save_dialog.show()
 
             # cb_range = self.get_xy_cb_range()
@@ -471,7 +478,7 @@ class ScannerGui(GuiBase):
             #     high_centile = self._mw.xy_cb_high_percentile_DoubleSpinBox.value()
             #     pcile_range = [low_centile, high_centile]
 
-            self._data_logic().save_1d_scan('x')
+            self._data_logic().save_1d_scan(axis)
 
     def _remove_scan_dockwidget(self, axes):
         if axes in tuple(self.scan_1d_dockwidgets):
