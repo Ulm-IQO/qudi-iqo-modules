@@ -177,66 +177,6 @@ class ScanningDataLogic(LogicBase):
         while len(self._scan_history) > self._max_history_length:
             self._scan_history.pop(0)
 
-    @QtCore.Slot(tuple)
-    def save_1d_scan(self, axis):
-        axis = tuple(str(ax).lower() for ax in axis)
-        with self._thread_lock:
-            if self.module_state() != 'idle':
-                self.log.error('Unable to save 1D scan. Saving still in progress...')
-                return
-
-            scan_data = self._curr_data_per_scan.get(axis, None)
-            if scan_data is None:
-                self.log.error(
-                    'Unable to save 1D scan. No data available for {0} axis.'.format(axis)
-                )
-                return
-
-            self.sigSaveStateChanged.emit(True)
-            self.module_state.lock()
-            try:
-                ds = TextDataStorage(root_dir=self.module_default_data_dir, column_formats='.15e')
-                timestamp = datetime.datetime.now()
-
-                # write the parameters:
-                parameters = {'axis name'      : scan_data.scan_axes[0],
-                              'axis unit'      : scan_data.axes_units[scan_data.scan_axes[0]],
-                              'axis min'       : scan_data.scan_range[0][0],
-                              'axis max'       : scan_data.scan_range[0][1],
-                              'axis resolution': scan_data.scan_resolution[0],
-                              'scan frequency' : scan_data.scan_frequency}
-
-                if scan_data.axes_units[scan_data.scan_axes[0]]:
-                    x_header = '{0}-axis ({1})'.format(scan_data.scan_axes[0],
-                                                       scan_data.axes_units[scan_data.scan_axes[0]])
-                else:
-                    x_header = '{0}-axis'.format(scan_data.scan_axes[0])
-
-                # Save data and thumbnail to file
-                for channel, data in scan_data.data.items():
-                    # data
-                    nametag = '{0}_{1}_scan'.format(channel, scan_data.scan_axes[0])
-                    if scan_data.channel_units[channel]:
-                        y_header = '{0} ({1})'.format(channel, scan_data.channel_units[channel])
-                    else:
-                        y_header = '{0}'.format(channel)
-                    file_path, _, _ = ds.save_data(data,
-                                                   timestamp=timestamp,
-                                                   metadata=parameters,
-                                                   nametag=nametag,
-                                                   column_headers=(x_header, y_header),
-                                                   column_dtypes=float)
-                    # thumbnail
-                    figure = self.draw_1d_scan_figure(scan_data, channel)
-                    ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
-
-                    self.log.debug(f'Scan image saved: {file_path}')
-
-            finally:
-                self.module_state.unlock()
-                self.sigSaveStateChanged.emit(False)
-            return
-
     def draw_1d_scan_figure(self, scan_data, channel):
         """ Create an XY plot of 1D scan data.
 
@@ -282,15 +222,14 @@ class ScanningDataLogic(LogicBase):
                     arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
         return fig
 
-    @QtCore.Slot(tuple, object)
-    def save_2d_scan(self, axes, color_range=None):
-        axes = tuple(str(ax).lower() for ax in axes)
+    @QtCore.Slot(object, object)
+    def save_scan(self, scan_data, color_range=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
                 return
 
-            scan_data = self._curr_data_per_scan.get(axes, None)
+
             if scan_data is None:
                 self.log.error(
                     'Unable to save 2D scan. No data available for {0} axes.'.format(axes)
@@ -305,32 +244,45 @@ class ScanningDataLogic(LogicBase):
 
                 # ToDo: Add meaningful metadata if missing:
                 # at time of scan: all axes positions (xyz, etc)
-                parameters = {'x-axis name'      : scan_data.scan_axes[0],
-                              'x-axis unit'      : scan_data.axes_units[scan_data.scan_axes[0]],
-                              'x-axis min'       : scan_data.scan_range[0][0],
-                              'x-axis max'       : scan_data.scan_range[0][1],
-                              'x-axis resolution': scan_data.scan_resolution[0],
-                              'y-axis name'      : scan_data.scan_axes[1],
-                              'y-axis unit'      : scan_data.axes_units[scan_data.scan_axes[1]],
-                              'y-axis min'       : scan_data.scan_range[1][0],
-                              'y-axis max'       : scan_data.scan_range[1][1],
-                              'y-axis resolution': scan_data.scan_resolution[1],
-                              'pixel frequency'  : scan_data.scan_frequency}
+                parameters = {}
+                for range, resolution, unit, axis in zip(scan_data.scan_range,
+                                      scan_data.scan_resolution,
+                                      scan_data.axes_units,
+                                      scan_data.scan_axes):
+
+                    parameters["axis name"] = axis
+                    parameters[f"{axis} axis unit"] = unit
+                    parameters[f"{axis} scan range"] = range
+                    parameters[f"{axis} axis resolution"] = resolution
+                    parameters[f"{axis} axis min"] = range[0]
+                    parameters[f"{axis} axis max"] = range[1]
+
+                parameters["pixel frequency"] = scan_data.scan_frequency
 
                 # Save data and thumbnail to file
                 for channel, data in scan_data.data.items():
                     # data
-                    nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.scan_axes)
+                    # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.scan_axes)
                     file_path, _, _ = ds.save_data(data,
                                                    metadata=parameters,
-                                                   nametag=nametag,
+                                                   nametag='test',
                                                    timestamp=timestamp,
                                                    column_headers='Image (columns is X, rows is Y)')
                     # thumbnail
-                    figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
-                    ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
+                    self.log.info(f'scan data axes {scan_data.scan_axes}')
+                    if len(scan_data.scan_axes) == 1:
+                        self.log.info('save 1 d figure')
+                        self.draw_1d_scan_figure(scan_data, channel)
 
-                    self.log.debug(f'Scan image saved: {file_path}')
+                        self.log.debug(f'Scan image saved: {file_path}')
+                    elif len(scan_data.scan_axes) == 2:
+                        figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
+                        ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
+                        self.log.debug(f'Scan image saved: {file_path}')
+                    else:
+                        self.log.warning('No figure saved for data with more than 2 dimensions.')
+
+
             finally:
                 self.module_state.unlock()
                 self.sigSaveStateChanged.emit(False)

@@ -192,8 +192,8 @@ class ScannerGui(GuiBase):
 
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
-        self._mw.actionSave_2d_Scan.triggered.connect(self.save_2d_scan_data)
-        self._mw.actionSave_1d_Scan.triggered.connect(self.save_1d_scan_data)
+        self._mw.actionSave_scans.triggered.connect(self.save_scan_data)
+        #self._mw.actionSave_1d_Scan.triggered.connect(self.save_1d_scan_data)
         self._mw.action_utility_zoom.toggled.connect(self.toggle_cursor_zoom)
         self._mw.action_utility_full_range.triggered.connect(
             self._scanning_logic().set_full_scan_ranges, QtCore.Qt.QueuedConnection
@@ -255,7 +255,6 @@ class ScannerGui(GuiBase):
         self._scanning_logic().sigScanStateChanged.disconnect(None, self.scan_state_updated)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(None, self.optimize_state_updated)
         self._data_logic().sigHistoryScanDataRestored.disconnect(None, self._update_scan_data)
-
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
 
@@ -263,7 +262,6 @@ class ScannerGui(GuiBase):
             self._remove_scan_dockwidget(scan)
         for scan in tuple(self.scan_2d_dockwidgets):
             self._remove_scan_dockwidget(scan)
-        return
 
     def show(self):
         """Make main window visible and put it above all other windows. """
@@ -451,15 +449,15 @@ class ScannerGui(GuiBase):
 
         return
 
-    def save_2d_scan_data(self):
+    def save_scan_data(self):
         """ Run the save routine from the logic to save the xy confocal data."""
         self._save_dialog.show()
         #axes= self.scan_2d_dockwidgets.items('scan_axes')
-        axes=self._scanning_logic().scan_data.scan_axes
 
-        scan_axes = tuple(str(ax).lower() for ax in axes)
+        rtrn = [self._data_logic().save_scan(scan)
+                for scan in self._data_logic()._curr_data_per_scan.values()]
 
-        self._data_logic().save_2d_scan (scan_axes)
+        #axes=self._scanning_logic().scan_data.scan_axes
 
         # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
         #filepath = self._save_logic.get_path_for_module(module_name='Confocal')
@@ -469,13 +467,13 @@ class ScannerGui(GuiBase):
         # if self._sd.save_purePNG_checkBox.isChecked():
         #     self.xy_image.save(filename + '_raw.png')
 
-    def save_1d_scan_data(self):
-        """ Run the save routine from the logic to save the xy confocal data."""
-        self._save_dialog.show()
-        axes_constr = self._scanning_logic().scan_data.scan_axes
-
-        axis = tuple(str(ax).lower() for ax in axes_constr)
-        self._data_logic().save_1d_scan(axis)
+    # def save_1d_scan_data(self):
+    #     """ Run the save routine from the logic to save the xy confocal data."""
+    #     self._save_dialog.show()
+    #     axes_constr = self._scanning_logic().scan_data.scan_axes
+    #
+    #     axis = tuple(str(ax).lower() for ax in axes_constr)
+    #     self._data_logic().save_1d_scan(axis)
 
     def _remove_scan_dockwidget(self, axes):
         if axes in tuple(self.scan_1d_dockwidgets):

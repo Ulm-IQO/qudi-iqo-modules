@@ -42,8 +42,7 @@
     </property>
     <addaction name="separator"/>
     <addaction name="action_close_window"/>
-    <addaction name="actionSave_2d_Scan"/>
-    <addaction name="actionSave_1d_Scan"/>
+    <addaction name="actionSave_scans"/>
    </widget>
    <widget class="QMenu" name="menu_Settings">
     <property name="title">
@@ -319,25 +318,13 @@ Shortcut:Alt+T</string>
     <string>Alt+T</string>
    </property>
   </action>
-  <action name="actionSave_2d_Scan">
+  <action name="actionSave_scans">
    <property name="icon">
     <iconset>
      <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/document-save.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/document-save.svg</iconset>
    </property>
    <property name="text">
-    <string>Save_2d_Scan</string>
-   </property>
-   <property name="toolTip">
-    <string>save 2d scan</string>
-   </property>
-  </action>
-  <action name="actionSave_1d_Scan">
-   <property name="icon">
-    <iconset>
-     <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/document-save.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/document-save.svg</iconset>
-   </property>
-   <property name="text">
-    <string>Save_1d_Scan</string>
+    <string>Save_scans</string>
    </property>
   </action>
  </widget>
