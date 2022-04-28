@@ -60,6 +60,21 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
         else:
             super().mouseDoubleClickEvent(event)
         return
+class SaveDialog(QtWidgets.QDialog):
+    """ Dialog to provide feedback and block GUI while saving """
+    def __init__(self, parent, title="Please wait", text="Saving..."):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setWindowModality(QtCore.Qt.WindowModal)
+        self.setAttribute(QtCore.Qt.WA_ShowWithoutActivating)
+
+        # Dialog layout
+        self.text = QtWidgets.QLabel("<font size='16'>" + text + "</font>")
+        self.hbox = QtWidgets.QHBoxLayout()
+        self.hbox.addSpacerItem(QtWidgets.QSpacerItem(50, 0))
+        self.hbox.addWidget(self.text)
+        self.hbox.addSpacerItem(QtWidgets.QSpacerItem(50, 0))
+        self.setLayout(self.hbox)
 
 
 class ScannerGui(GuiBase):
@@ -133,6 +148,7 @@ class ScannerGui(GuiBase):
         # Initialize dialog windows
         self._init_optimizer_settings()
         self._init_scanner_settings()
+        self._save_dialog = SaveDialog(self._mw)
 
         # Automatically generate scanning widgets for desired scans
         scans = list()
@@ -437,21 +453,13 @@ class ScannerGui(GuiBase):
 
     def save_2d_scan_data(self):
         """ Run the save routine from the logic to save the xy confocal data."""
-        #self._save_dialog.show()
-        axes_constr = self._scanning_logic().scan_data.scan_axes
+        self._save_dialog.show()
+        #axes= self.scan_2d_dockwidgets.items('scan_axes')
+        axes=self._scanning_logic().scan_data.scan_axes
 
-        axes = tuple(str(ax).lower() for ax in axes_constr)
+        scan_axes = tuple(str(ax).lower() for ax in axes)
 
-        #cb_range = self.get_xy_cb_range()
-
-        # Percentile range is None, unless the percentile scaling is selected in GUI.
-        # pcile_range = None
-        # if not self._mw.xy_cb_manual_RadioButton.isChecked():
-        #     low_centile = self._mw.xy_cb_low_percentile_DoubleSpinBox.value()
-        #     high_centile = self._mw.xy_cb_high_percentile_DoubleSpinBox.value()
-        #     pcile_range = [low_centile, high_centile]
-
-        self._data_logic().save_2d_scan(axes)
+        self._data_logic().save_2d_scan (scan_axes)
 
         # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
         #filepath = self._save_logic.get_path_for_module(module_name='Confocal')
@@ -462,23 +470,12 @@ class ScannerGui(GuiBase):
         #     self.xy_image.save(filename + '_raw.png')
 
     def save_1d_scan_data(self):
-            """ Run the save routine from the logic to save the xy confocal data."""
-            axes_constr = self._scanning_logic().scan_data.scan_axes
+        """ Run the save routine from the logic to save the xy confocal data."""
+        self._save_dialog.show()
+        axes_constr = self._scanning_logic().scan_data.scan_axes
 
-            axis = tuple(str(ax).lower() for ax in axes_constr)
-
-            # self._save_dialog.show()
-
-            # cb_range = self.get_xy_cb_range()
-
-            # Percentile range is None, unless the percentile scaling is selected in GUI.
-            # pcile_range = None
-            # if not self._mw.xy_cb_manual_RadioButton.isChecked():
-            #     low_centile = self._mw.xy_cb_low_percentile_DoubleSpinBox.value()
-            #     high_centile = self._mw.xy_cb_high_percentile_DoubleSpinBox.value()
-            #     pcile_range = [low_centile, high_centile]
-
-            self._data_logic().save_1d_scan(axis)
+        axis = tuple(str(ax).lower() for ax in axes_constr)
+        self._data_logic().save_1d_scan(axis)
 
     def _remove_scan_dockwidget(self, axes):
         if axes in tuple(self.scan_1d_dockwidgets):
