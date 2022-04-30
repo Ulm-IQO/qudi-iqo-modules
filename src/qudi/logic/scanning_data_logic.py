@@ -243,10 +243,10 @@ class ScanningDataLogic(LogicBase):
                 parameters = {}
                 for range, resolution, unit, axis in zip(scan_data.scan_range,
                                       scan_data.scan_resolution,
-                                      scan_data.axes_units,
+                                      scan_data.axes_units.values(),
                                       scan_data.scan_axes):
 
-                    parameters["axis name"] = axis
+                    parameters[f"{axis} axis name"] = axis
                     parameters[f"{axis} axis unit"] = unit
                     parameters[f"{axis} scan range"] = range
                     parameters[f"{axis} axis resolution"] = resolution
