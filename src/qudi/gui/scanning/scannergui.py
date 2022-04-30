@@ -454,8 +454,11 @@ class ScannerGui(GuiBase):
         self._save_dialog.show()
         #axes= self.scan_2d_dockwidgets.items('scan_axes')
 
-        rtrn = [self._data_logic().save_scan(scan)
-                for scan in self._data_logic()._curr_data_per_scan.values()]
+        try:
+            rtrn = [self._data_logic().save_scan(scan)
+                    for scan in self._data_logic()._curr_data_per_scan.values()]
+        finally:
+            self._save_dialog.close()
 
         #axes=self._scanning_logic().scan_data.scan_axes
 

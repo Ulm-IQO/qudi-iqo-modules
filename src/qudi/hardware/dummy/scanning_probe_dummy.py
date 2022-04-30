@@ -402,8 +402,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 scan_range=self._current_scan_ranges,
                 scan_resolution=self._current_scan_resolution,
                 scan_frequency=self._current_scan_frequency,
-                position_feedback_axes=feedback_axes
+                position_feedback_axes=feedback_axes,
+                target_at_start=self.get_target()
             )
+
             self._scan_data.new_scan()
             self.__scan_start = time.time()
             self.__last_line = -1

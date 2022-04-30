@@ -35,6 +35,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import ImageFormat, NpyDataStorage, TextDataStorage
+from qudi.util.units import ScaledFloat
 
 from qudi.interface.scanning_probe_interface import ScanData
 
@@ -229,12 +230,8 @@ class ScanningDataLogic(LogicBase):
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
                 return
 
-
             if scan_data is None:
-                self.log.error(
-                    'Unable to save 2D scan. No data available for {0} axes.'.format(axes)
-                )
-                return
+                raise ValueError('Unable to save 2D scan. No data available.')
 
             self.sigSaveStateChanged.emit(True)
             self.module_state.lock()
@@ -243,7 +240,6 @@ class ScanningDataLogic(LogicBase):
                 timestamp = datetime.datetime.now()
 
                 # ToDo: Add meaningful metadata if missing:
-                # at time of scan: all axes positions (xyz, etc)
                 parameters = {}
                 for range, resolution, unit, axis in zip(scan_data.scan_range,
                                       scan_data.scan_resolution,
@@ -258,6 +254,16 @@ class ScanningDataLogic(LogicBase):
                     parameters[f"{axis} axis max"] = range[1]
 
                 parameters["pixel frequency"] = scan_data.scan_frequency
+                parameters[f"scanner target at start"] = scan_data.scanner_target_at_start
+
+                # add meta data for axes in full target, but not scan axes
+                for new_ax in scan_data.scanner_target_at_start.keys():
+                    if new_ax not in scan_data.scan_axes:
+                        ax_info = self._scan_logic().scanner_constraints.axes[new_ax]
+                        ax_name = ax_info.name
+                        ax_unit = ax_info.unit
+                        parameters[f"{new_ax} axis name"] = ax_name
+                        parameters[f"{new_ax} axis unit"] = ax_unit
 
                 # Save data and thumbnail to file
                 for channel, data in scan_data.data.items():
@@ -281,7 +287,6 @@ class ScanningDataLogic(LogicBase):
                         self.log.debug(f'Scan image saved: {file_path}')
                     else:
                         self.log.warning('No figure saved for data with more than 2 dimensions.')
-
 
             finally:
                 self.module_state.unlock()
@@ -308,17 +313,23 @@ class ScanningDataLogic(LogicBase):
         fig, ax = plt.subplots()
 
         # Create image plot
+        si_prefix_x = ScaledFloat(scan_data.scan_range[0][1]-scan_data.scan_range[0][0]).scale
+        si_factor_x = ScaledFloat(scan_data.scan_range[0][1]-scan_data.scan_range[0][0]).scale_val
+        si_prefix_y = ScaledFloat(scan_data.scan_range[1][1]-scan_data.scan_range[1][0]).scale
+        si_factor_y = ScaledFloat(scan_data.scan_range[1][1]-scan_data.scan_range[1][0]).scale_val
+
         cfimage = ax.imshow(image_arr.transpose(),
                             cmap='inferno',  # FIXME: reference the right place in qudi
                             origin='lower',
                             vmin=cbar_range[0],
                             vmax=cbar_range[1],
                             interpolation='none',
-                            extent=(*scan_data.scan_range[0], *scan_data.scan_range[1]))
+                            extent=(*np.asarray(scan_data.scan_range[0])*1/si_factor_x,
+                                    *np.asarray(scan_data.scan_range[1])*1/si_factor_y))
 
         ax.set_aspect(1)
-        ax.set_xlabel(scan_axes[0] + ' position ({0})'.format(scan_data.axes_units[scan_axes[0]]))
-        ax.set_ylabel(scan_axes[1] + ' position ({0})'.format(scan_data.axes_units[scan_axes[1]]))
+        ax.set_xlabel(scan_axes[0] + f' position ({si_prefix_x}{scan_data.axes_units[scan_axes[0]]})')
+        ax.set_ylabel(scan_axes[1] + f' position ({si_prefix_y}{scan_data.axes_units[scan_axes[1]]})')
         ax.spines['bottom'].set_position(('outward', 10))
         ax.spines['left'].set_position(('outward', 10))
         ax.spines['top'].set_visible(False)
@@ -340,6 +351,20 @@ class ScanningDataLogic(LogicBase):
                     xytext=(-0.01, scanner_pos[scan_axes[1]]),
                     xycoords=trans_ymark,
                     arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
+
+        # Annotate the all axes scanner start target
+        target_str = ""
+        for (target_ax, target_val) in scan_data.scanner_target_at_start.items():
+            if target_ax not in scan_axes:
+                ax_info = self._scan_logic().scanner_constraints.axes[target_ax]
+                unit = ax_info.unit
+                target_str += f"{target_ax}: {ScaledFloat(target_val):.3r}{unit}\n"
+        if target_str:
+            target_str = "Scan start at:\n" + target_str
+            ax.annotate(target_str,
+                        xy=(.55, .1), xycoords='figure fraction',
+                        horizontalalignment='right', verticalalignment='bottom',
+                        fontsize=8)
 
         # Draw the colorbar
         cbar = plt.colorbar(cfimage, shrink=0.8)  #, fraction=0.046, pad=0.08, shrink=0.75)
