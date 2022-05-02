@@ -257,13 +257,14 @@ class ScanningDataLogic(LogicBase):
                 parameters[f"scanner target at start"] = scan_data.scanner_target_at_start
 
                 # add meta data for axes in full target, but not scan axes
-                for new_ax in scan_data.scanner_target_at_start.keys():
-                    if new_ax not in scan_data.scan_axes:
-                        ax_info = self._scan_logic().scanner_constraints.axes[new_ax]
-                        ax_name = ax_info.name
-                        ax_unit = ax_info.unit
-                        parameters[f"{new_ax} axis name"] = ax_name
-                        parameters[f"{new_ax} axis unit"] = ax_unit
+                if scan_data.scanner_target_at_start:
+                    for new_ax in scan_data.scanner_target_at_start.keys():
+                        if new_ax not in scan_data.scan_axes:
+                            ax_info = self._scan_logic().scanner_constraints.axes[new_ax]
+                            ax_name = ax_info.name
+                            ax_unit = ax_info.unit
+                            parameters[f"{new_ax} axis name"] = ax_name
+                            parameters[f"{new_ax} axis unit"] = ax_unit
 
                 # Save data and thumbnail to file
                 for channel, data in scan_data.data.items():
@@ -354,11 +355,12 @@ class ScanningDataLogic(LogicBase):
 
         # Annotate the all axes scanner start target
         target_str = ""
-        for (target_ax, target_val) in scan_data.scanner_target_at_start.items():
-            if target_ax not in scan_axes:
-                ax_info = self._scan_logic().scanner_constraints.axes[target_ax]
-                unit = ax_info.unit
-                target_str += f"{target_ax}: {ScaledFloat(target_val):.3r}{unit}\n"
+        if scan_data.scanner_target_at_start:
+            for (target_ax, target_val) in scan_data.scanner_target_at_start.items():
+                if target_ax not in scan_axes:
+                    ax_info = self._scan_logic().scanner_constraints.axes[target_ax]
+                    unit = ax_info.unit
+                    target_str += f"{target_ax}: {ScaledFloat(target_val):.3r}{unit}\n"
         if target_str:
             target_str = "Scan start at:\n" + target_str
             ax.annotate(target_str,
