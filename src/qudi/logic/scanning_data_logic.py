@@ -378,9 +378,7 @@ class ScanningDataLogic(LogicBase):
         return fig
 
     def _pretty_print_metainfo(self, scan_axes, scan_data, scanner_pos):
-        # annotate scanner position
         metainfo_str = ""
-        pos_x, pos_y = scanner_pos[scan_axes[0]], scanner_pos[scan_axes[1]]
 
         # annotate scanner position
         metainfo_str = "Scanner target:\n"
