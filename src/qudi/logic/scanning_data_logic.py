@@ -314,10 +314,12 @@ class ScanningDataLogic(LogicBase):
         fig, ax = plt.subplots()
 
         # Create image plot
-        si_prefix_x = ScaledFloat(scan_data.scan_range[0][1]-scan_data.scan_range[0][0]).scale
-        si_factor_x = ScaledFloat(scan_data.scan_range[0][1]-scan_data.scan_range[0][0]).scale_val
-        si_prefix_y = ScaledFloat(scan_data.scan_range[1][1]-scan_data.scan_range[1][0]).scale
-        si_factor_y = ScaledFloat(scan_data.scan_range[1][1]-scan_data.scan_range[1][0]).scale_val
+        scan_range_x = (scan_data.scan_range[0][1], scan_data.scan_range[0][0])
+        scan_range_y =  (scan_data.scan_range[1][1], scan_data.scan_range[1][0])
+        si_prefix_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale
+        si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
+        si_prefix_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale
+        si_factor_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale_val
 
         cfimage = ax.imshow(image_arr.transpose(),
                             cmap='inferno',  # FIXME: reference the right place in qudi
@@ -338,35 +340,31 @@ class ScanningDataLogic(LogicBase):
         ax.get_xaxis().tick_bottom()
         ax.get_yaxis().tick_left()
 
-        # draw the scanner position if defined
-        # ToDo: Check if scanner position is within image boundaries. Don't draw if not the case.
-        trans_xmark = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
-        trans_ymark = mpl.transforms.blended_transform_factory(ax.transAxes, ax.transData)
-        ax.annotate('',
-                    xy=(scanner_pos[scan_axes[0]], 0),
-                    xytext=(scanner_pos[scan_axes[0]], -0.01),
-                    xycoords=trans_xmark,
-                    arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
-        ax.annotate('',
-                    xy=(0, scanner_pos[scan_axes[1]]),
-                    xytext=(-0.01, scanner_pos[scan_axes[1]]),
-                    xycoords=trans_ymark,
-                    arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
 
-        # Annotate the all axes scanner start target
-        target_str = ""
-        if scan_data.scanner_target_at_start:
-            for (target_ax, target_val) in scan_data.scanner_target_at_start.items():
-                if target_ax not in scan_axes:
-                    ax_info = self._scan_logic().scanner_constraints.axes[target_ax]
-                    unit = ax_info.unit
-                    target_str += f"{target_ax}: {ScaledFloat(target_val):.3r}{unit}\n"
-        if target_str:
-            target_str = "Scan start at:\n" + target_str
-            ax.annotate(target_str,
-                        xy=(.55, .1), xycoords='figure fraction',
+        pos_x, pos_y = scanner_pos[scan_axes[0]], scanner_pos[scan_axes[1]]
+
+        # draw the scanner position if defined and in range
+        if pos_x > np.min(scan_range_x) and pos_y < np.max(scan_range_y) \
+            and pos_y > np.min(scan_range_y) and pos_y < np.max(scan_range_y):
+            trans_xmark = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
+            trans_ymark = mpl.transforms.blended_transform_factory(ax.transAxes, ax.transData)
+            ax.annotate('',
+                        xy=np.asarray([pos_x, 0])/si_factor_x,
+                        xytext=(pos_x/si_factor_x, -0.01),
+                        xycoords=trans_xmark,
+                        arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
+            ax.annotate('',
+                        xy=np.asarray([0, pos_y])/si_factor_y,
+                        xytext=(-0.01, pos_y/si_factor_y),
+                        xycoords=trans_ymark,
+                        arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
+
+        metainfo_str = self._pretty_print_metainfo(scan_axes, scan_data, scanner_pos)
+        if metainfo_str:
+            ax.annotate(metainfo_str,
+                        xy=(.58, .0), xycoords='figure fraction',
                         horizontalalignment='right', verticalalignment='bottom',
-                        fontsize=8)
+                        fontsize=7, color='grey')
 
         # Draw the colorbar
         cbar = plt.colorbar(cfimage, shrink=0.8)  #, fraction=0.046, pad=0.08, shrink=0.75)
@@ -378,3 +376,30 @@ class ScanningDataLogic(LogicBase):
         # remove ticks from colorbar for cleaner image
         cbar.ax.tick_params(which=u'both', length=0)
         return fig
+
+    def _pretty_print_metainfo(self, scan_axes, scan_data, scanner_pos):
+        # annotate scanner position
+        metainfo_str = ""
+        pos_x, pos_y = scanner_pos[scan_axes[0]], scanner_pos[scan_axes[1]]
+
+        # annotate scanner position
+        metainfo_str = "Scanner target:\n"
+        for axis in scan_axes:
+            val = scanner_pos[axis]
+            unit = scan_data.axes_units[axis]
+            metainfo_str += f"{axis}: {ScaledFloat(val):.3r}{unit}\n"
+
+        # annotate the (all axes) scanner start target
+        if scan_data.scanner_target_at_start:
+            target_str = ""
+            for (target_ax, target_val) in scan_data.scanner_target_at_start.items():
+                if target_ax not in scan_axes:
+                    ax_info = self._scan_logic().scanner_constraints.axes[target_ax]
+                    unit = ax_info.unit
+                    target_str += f"{target_ax}: {ScaledFloat(target_val):.3r}{unit}\n"
+            if target_str:
+                metainfo_str += "Scan start at:\n"
+                metainfo_str += target_str
+
+        return metainfo_str
+
