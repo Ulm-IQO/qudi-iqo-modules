@@ -25,6 +25,9 @@ import time
 import copy
 import datetime
 import numpy as np
+from functools import reduce
+import operator
+
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from PySide2 import QtCore
@@ -255,6 +258,7 @@ class ScanningDataLogic(LogicBase):
 
                 parameters["pixel frequency"] = scan_data.scan_frequency
                 parameters[f"scanner target at start"] = scan_data.scanner_target_at_start
+                parameters['measurement start'] = str(scan_data._timestamp)
 
                 # add meta data for axes in full target, but not scan axes
                 if scan_data.scanner_target_at_start:
@@ -270,9 +274,10 @@ class ScanningDataLogic(LogicBase):
                 for channel, data in scan_data.data.items():
                     # data
                     # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.scan_axes)
+                    tag = self.create_tag_from_scan_data(scan_data)
                     file_path, _, _ = ds.save_data(data,
                                                    metadata=parameters,
-                                                   nametag='test',
+                                                   nametag=tag,
                                                    timestamp=timestamp,
                                                    column_headers='Image (columns is X, rows is Y)')
                     # thumbnail
@@ -280,12 +285,9 @@ class ScanningDataLogic(LogicBase):
                     if len(scan_data.scan_axes) == 1:
                         self.log.info('save 1 d figure')
                         self.draw_1d_scan_figure(scan_data, channel)
-
-                        self.log.debug(f'Scan image saved: {file_path}')
                     elif len(scan_data.scan_axes) == 2:
                         figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
-                        self.log.debug(f'Scan image saved: {file_path}')
                     else:
                         self.log.warning('No figure saved for data with more than 2 dimensions.')
 
@@ -293,6 +295,13 @@ class ScanningDataLogic(LogicBase):
                 self.module_state.unlock()
                 self.sigSaveStateChanged.emit(False)
             return
+
+    def create_tag_from_scan_data(self, scan_data):
+        axes = scan_data.scan_axes
+        axis_dim = len(axes)
+        axes_code = reduce(operator.add, axes)
+        tag = f"{axis_dim}D-scan with {axes_code} axes"
+        return tag
 
     def draw_2d_scan_figure(self, scan_data, channel, cbar_range=None):
         """ Create a 2-D color map figure of the scan image.
