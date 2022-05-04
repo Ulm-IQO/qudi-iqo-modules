@@ -315,7 +315,7 @@ class ScanningDataLogic(LogicBase):
 
         # If no colorbar range was given, take full range of data
         if cbar_range is None:
-            cbar_range = (image_arr.min(), image_arr.max())
+            cbar_range = (np.nanmin(image_arr), np.nanmax(image_arr))
 
         # ToDo: Scale data and axes in a suitable and general way (with utils)
 
