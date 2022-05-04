@@ -317,8 +317,6 @@ class ScanningDataLogic(LogicBase):
         if cbar_range is None:
             cbar_range = (np.nanmin(image_arr), np.nanmax(image_arr))
 
-        # ToDo: Scale data and axes in a suitable and general way (with utils)
-
         # Create figure
         fig, ax = plt.subplots()
 
@@ -329,12 +327,14 @@ class ScanningDataLogic(LogicBase):
         si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
         si_prefix_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale
         si_factor_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale_val
+        si_prefix_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale
+        si_factor_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale_val
 
-        cfimage = ax.imshow(image_arr.transpose(),
+        cfimage = ax.imshow(image_arr.transpose()/si_factor_cb,
                             cmap='inferno',  # FIXME: reference the right place in qudi
                             origin='lower',
-                            vmin=cbar_range[0],
-                            vmax=cbar_range[1],
+                            vmin=cbar_range[0]/si_factor_cb,
+                            vmax=cbar_range[1]/si_factor_cb,
                             interpolation='none',
                             extent=(*np.asarray(scan_data.scan_range[0])*1/si_factor_x,
                                     *np.asarray(scan_data.scan_range[1])*1/si_factor_y))
@@ -378,9 +378,9 @@ class ScanningDataLogic(LogicBase):
         # Draw the colorbar
         cbar = plt.colorbar(cfimage, shrink=0.8)  #, fraction=0.046, pad=0.08, shrink=0.75)
         if scan_data.channel_units[channel]:
-            cbar.set_label('{0} ({1})'.format(channel, scan_data.channel_units[channel]))
+            cbar.set_label(f'{channel} ({si_prefix_cb}{scan_data.channel_units[channel]})')
         else:
-            cbar.set_label('{0}'.format(channel))
+            cbar.set_label(f'{channel}')
 
         # remove ticks from colorbar for cleaner image
         cbar.ax.tick_params(which=u'both', length=0)
