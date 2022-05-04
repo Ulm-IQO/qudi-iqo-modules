@@ -371,8 +371,8 @@ class ScanningDataLogic(LogicBase):
         metainfo_str = self._pretty_print_metainfo(scan_axes, scan_data, scanner_pos)
         if metainfo_str:
             ax.annotate(metainfo_str,
-                        xy=(.58, .0), xycoords='figure fraction',
-                        horizontalalignment='right', verticalalignment='bottom',
+                        xy=(1.10, -.17), xycoords='axes fraction',
+                        horizontalalignment='left', verticalalignment='bottom',
                         fontsize=7, color='grey')
 
         # Draw the colorbar
