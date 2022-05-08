@@ -33,7 +33,7 @@
      <x>0</x>
      <y>0</y>
      <width>1440</width>
-     <height>18</height>
+     <height>30</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -42,7 +42,7 @@
     </property>
     <addaction name="separator"/>
     <addaction name="action_close_window"/>
-    <addaction name="actionSave_scans"/>
+    <addaction name="action_save_scans"/>
    </widget>
    <widget class="QMenu" name="menu_Settings">
     <property name="title">
@@ -318,7 +318,7 @@ Shortcut:Alt+T</string>
     <string>Alt+T</string>
    </property>
   </action>
-  <action name="actionSave_scans">
+  <action name="action_save_scans">
    <property name="icon">
     <iconset>
      <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/document-save.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/document-save.svg</iconset>

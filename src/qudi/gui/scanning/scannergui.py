@@ -23,6 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import numpy as np
 import copy as cp
+from functools import partial
 from PySide2 import QtCore, QtGui, QtWidgets
 
 import qudi.util.uic as uic
@@ -192,7 +193,7 @@ class ScannerGui(GuiBase):
 
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
-        self._mw.actionSave_scans.triggered.connect(self.save_scan_data)
+        self._mw.action_save_scans.triggered.connect(self.save_scan_data)
         #self._mw.actionSave_1d_Scan.triggered.connect(self.save_1d_scan_data)
         self._mw.action_utility_zoom.toggled.connect(self.toggle_cursor_zoom)
         self._mw.action_utility_full_range.triggered.connect(
@@ -449,6 +450,14 @@ class ScannerGui(GuiBase):
 
         return
 
+    def save_axes_cur_scan_data(self, axes):
+        # first get data
+        scan_data = self._data_logic()._curr_data_per_scan[axes]
+        if scan_data:
+            self._data_logic().save_scan(scan_data)
+        else:
+            self.log.warning("There was nothing to be saved.")
+
     def save_scan_data(self):
         """ Run the save routine from the logic to save the xy confocal data."""
         self._save_dialog.show()
@@ -501,6 +510,7 @@ class ScannerGui(GuiBase):
         channel_constr = self._scanning_logic().scanner_channels
         optimizer_range = self._optimize_logic().scan_range
         axes = tuple(axes)
+
         if len(axes) == 1:
             if axes in self.scan_1d_dockwidgets:
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
@@ -534,6 +544,8 @@ class ScannerGui(GuiBase):
             dockwidget.sigCrosshairMoved.connect(
                 lambda x, y: self._update_scan_sliders({axes[0]: x,
                                                         axes[1]: y}))
+            dockwidget.sigSaveRelayAxes.connect(self.save_axes_cur_scan_data)
+
         return
 
     @QtCore.Slot(bool)
@@ -906,7 +918,6 @@ class ScannerGui(GuiBase):
                                  f" Defaulted optimizer to= {new_seq}")
                 settings['scan_sequence'] = new_seq
                 self._optimize_logic().scan_sequence = new_seq
-
 
             axes_constr = self._scanning_logic().scanner_axes
             self.optimizer_dockwidget.scan_sequence = settings['scan_sequence']

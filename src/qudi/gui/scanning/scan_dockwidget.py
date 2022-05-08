@@ -37,7 +37,7 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
         {'sigPositionChanged', 'sigPositionDragged', 'sigDragStarted', 'sigDragFinished'}
     )
     __transparent_widget_attrs = frozenset(
-        {'sigMouseClicked', 'sigMouseAreaSelected', 'sigScanToggled', 'selection_enabled',
+        {'sigMouseClicked', 'sigMouseAreaSelected', 'sigScanToggled', 'sigSaveRelayAxes','selection_enabled',
          'zoom_by_selection_enabled', 'toggle_selection', 'toggle_zoom_by_selection',
          'set_image_extent', 'toggle_scan', 'toggle_enabled', 'set_scan_data'}
     )
@@ -45,21 +45,18 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
     sigCrosshairMoved = QtCore.Signal(float, float)
 
     def __init__(self, *args, scan_axes, channels, **kwargs):
-        x_axis, y_axis = scan_axes
-
         super().__init__(*args, **kwargs)
-
+        x_axis, y_axis = scan_axes
         self._axes = (x_axis.name, y_axis.name)
-
-        self.setWindowTitle('{0}-{1} Scan'.format(x_axis.name.title(), y_axis.name.title()))
-        self.setObjectName('{0}_{1}_scan_dockWidget'.format(x_axis.name, y_axis.name))
+        self.setWindowTitle('{0}-{1} Scan'.format(scan_axes[0].name.title(), scan_axes[1].name.title()))
+        self.setObjectName('{0}_{1}_scan_dockWidget'.format(scan_axes[0].name, scan_axes[1].name))
 
         icon_path = os.path.join(get_artwork_dir(), 'icons')
         start_icon_path = os.path.join(icon_path, 'scan-xy-start')
         stop_icon_path = os.path.join(icon_path, 'stop-scan')
         icon = QtGui.QIcon(start_icon_path)
         icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
-        self.scan_widget = Scan2DWidget(channel_units={ch.name: ch.unit for ch in channels},
+        self.scan_widget = Scan2DWidget(scan_axes=scan_axes, channel_units={ch.name: ch.unit for ch in channels},
                                         scan_icon=icon)
         self.scan_widget.set_axis_label('bottom', label=x_axis.name.title(), unit=x_axis.unit)
         self.scan_widget.set_axis_label('left', label=y_axis.name.title(), unit=y_axis.unit)
