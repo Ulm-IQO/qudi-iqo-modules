@@ -136,17 +136,17 @@ class ScanningProbeLogic(LogicBase):
     @property
     def scan_ranges(self):
         with self._thread_lock:
-            return self._scan_ranges.copy() if self._scan_ranges!=None else None
+            return cp.copy(self._scan_ranges)
 
     @property
     def scan_resolution(self):
         with self._thread_lock:
-            return self._scan_resolution.copy() if self._scan_resolution!=None else None
+            return cp.copy(self._scan_resolution)
 
     @property
     def scan_frequency(self):
         with self._thread_lock:
-            return self._scan_frequency.copy() if self._scan_frequency!=None else None
+            return cp.copy(self._scan_frequency)
 
     @property
     def scan_saved_to_history(self):
@@ -156,10 +156,10 @@ class ScanningProbeLogic(LogicBase):
     @property
     def scan_settings(self):
         with self._thread_lock:
-            return {'range': self._scan_ranges,
-                    'resolution': self._scan_resolution,
-                    'frequency': self._scan_frequency,
-                    'save_to_history': self._scan_saved_to_hist}
+            return {'range': self.scan_ranges,
+                    'resolution': self.scan_resolution,
+                    'frequency': self.scan_frequency,
+                    'save_to_history': cp.copy(self._scan_saved_to_hist)}
 
     @QtCore.Slot(dict)
     def set_scan_settings(self, settings):
@@ -209,7 +209,7 @@ class ScanningProbeLogic(LogicBase):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.warning('Scan is running. Unable to change scan ranges.')
-                new_ranges = self._scan_ranges.copy()
+                new_ranges = self.scan_ranges
                 self.sigScanSettingsChanged.emit({'range': new_ranges})
                 return new_ranges
 
@@ -217,7 +217,7 @@ class ScanningProbeLogic(LogicBase):
             for ax, ax_range in ranges.items():
                 if ax not in constr.axes:
                     self.log.error('Unknown scanner axis "{0}" encountered.'.format(ax))
-                    new_ranges = self._scan_ranges.copy()
+                    new_ranges = self.scan_ranges
                     self.sigScanSettingsChanged.emit({'range': new_ranges})
                     return new_ranges
 
@@ -233,7 +233,7 @@ class ScanningProbeLogic(LogicBase):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.warning('Scan is running. Unable to change scan resolution.')
-                new_res = self._scan_resolution.copy()
+                new_res = self.scan_resolution
                 self.sigScanSettingsChanged.emit({'resolution': new_res})
                 return new_res
 
@@ -241,7 +241,7 @@ class ScanningProbeLogic(LogicBase):
             for ax, ax_res in resolution.items():
                 if ax not in constr.axes:
                     self.log.error('Unknown axis "{0}" encountered.'.format(ax))
-                    new_res = self._scan_resolution.copy()
+                    new_res = self.scan_resolution
                     self.sigScanSettingsChanged.emit({'resolution': new_res})
                     return new_res
 
@@ -256,7 +256,7 @@ class ScanningProbeLogic(LogicBase):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.warning('Scan is running. Unable to change scan frequency.')
-                new_freq = self._scan_frequency.copy()
+                new_freq = self.scan_frequency
                 self.sigScanSettingsChanged.emit({'frequency': new_freq})
                 return new_freq
 
@@ -264,7 +264,7 @@ class ScanningProbeLogic(LogicBase):
             for ax, ax_freq in frequency.items():
                 if ax not in constr.axes:
                     self.log.error('Unknown axis "{0}" encountered.'.format(ax))
-                    new_freq = self._scan_frequency.copy()
+                    new_freq = self.scan_frequency
                     self.sigScanSettingsChanged.emit({'frequency': new_freq})
                     return new_freq
 
