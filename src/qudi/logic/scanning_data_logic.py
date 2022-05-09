@@ -284,7 +284,8 @@ class ScanningDataLogic(LogicBase):
                     self.log.info(f'scan data axes {scan_data.scan_axes}')
                     if len(scan_data.scan_axes) == 1:
                         self.log.info('save 1 d figure')
-                        self.draw_1d_scan_figure(scan_data, channel)
+                        figure = self.draw_1d_scan_figure(scan_data, channel)
+                        ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
                     elif len(scan_data.scan_axes) == 2:
                         figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
