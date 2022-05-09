@@ -525,6 +525,7 @@ class ScannerGui(GuiBase):
             dockwidget.sigPositionDragged.connect(self.__get_marker_update_func(axes))
             dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
             dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
+            dockwidget.sigSaveRelayAxis.connect(self.save_axes_cur_scan_data)
         else:
             if axes in self.scan_2d_dockwidgets:
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '

@@ -108,7 +108,7 @@ class Scan1DDockWidget(QtWidgets.QDockWidget):
         {'sigPositionChanged', 'sigPositionDragged', 'sigDragStarted', 'sigDragFinished'}
     )
     __transparent_widget_attrs = frozenset(
-        {'sigMouseClicked', 'sigMouseAreaSelected', 'sigScanToggled', 'selection_enabled',
+        {'sigMouseClicked', 'sigMouseAreaSelected', 'sigScanToggled', 'sigSaveRelayAxis', 'selection_enabled',
          'zoom_by_selection_enabled', 'toggle_selection', 'toggle_zoom_by_selection', 'toggle_scan',
          'toggle_enabled', 'set_scan_data'}
     )
@@ -126,7 +126,7 @@ class Scan1DDockWidget(QtWidgets.QDockWidget):
         stop_icon_path = os.path.join(icon_path, 'stop-scan')
         icon = QtGui.QIcon(start_icon_path)
         icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
-        self.scan_widget = Scan1DWidget(channel_units={ch.name: ch.unit for ch in channels},
+        self.scan_widget = Scan1DWidget(scan_axis=scan_axis, channel_units={ch.name: ch.unit for ch in channels},
                                         scan_icon=icon)
         self.scan_widget.set_axis_label(scan_axis.name.title(), scan_axis.unit)
         self.scan_widget.set_data_channels({ch.name: ch.unit for ch in channels})
