@@ -231,6 +231,8 @@ class ScannerGui(GuiBase):
         # Initialize dockwidgets to default view
         self.restore_default_view()
         self.show()
+
+        self.restore_history()
         return
 
     def on_deactivate(self):
@@ -259,6 +261,7 @@ class ScannerGui(GuiBase):
         self._scanning_logic().sigScanSettingsChanged.disconnect(None, self.scanner_settings_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(None, self.scan_state_updated)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(None, self.optimize_state_updated)
+        # todo: change active tab, otherwise won't see anything
         self._data_logic().sigHistoryScanDataRestored.disconnect(None, self._update_scan_data)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
@@ -528,6 +531,18 @@ class ScannerGui(GuiBase):
 
         return
 
+    def set_active_tab(self, axes):
+        avail_axs = list(self.scan_1d_dockwidgets.keys())
+        avail_axs.extend(self.scan_2d_dockwidgets.keys())
+
+        if axes not in avail_axs:
+            raise ValueError(f"Unknown axes: {axes}")
+
+        if len(axes) == 1:
+            self.scan_1d_dockwidgets.get(axes).raise_()
+        else:
+            self.scan_2d_dockwidgets.get(axes).raise_()
+
     @QtCore.Slot(bool)
     def toggle_cursor_zoom(self, enable):
         if self._mw.action_utility_zoom.isChecked() != enable:
@@ -748,6 +763,27 @@ class ScannerGui(GuiBase):
         self._toggle_enable_scan_crosshairs(not enabled)
         self.sigToggleOptimize.emit(enabled)
 
+    def restore_history(self):
+        """
+        For all axes, restore last taken image.
+        """
+        avail_axs = list(self.scan_1d_dockwidgets.keys())
+        avail_axs.extend(self.scan_2d_dockwidgets.keys())
+
+        restored_axs = []
+        ids_to_restore = [self._data_logic().get_history_last(ax) for ax in avail_axs]
+        ids_to_restore = [ret_tuple[0] for ret_tuple in ids_to_restore if ret_tuple[1]]
+
+        [self._data_logic().restore_from_history(id) for id in ids_to_restore]
+
+        # auto range 2d widgets
+        # todo: shouldn't be needed, as .restore_from_history() calls _update_scan_data() calls autoRange()
+        for ax in avail_axs:
+            if len(ax) == 2:
+                dockwidget = self.scan_2d_dockwidgets.get(ax, None)
+                dockwidget.scan_widget.autoRange()
+
+
     def _update_scan_crosshairs(self, pos_dict, exclude_scan=None):
         """
         """
@@ -780,6 +816,9 @@ class ScannerGui(GuiBase):
         axes = scan_data.scan_axes
         data = scan_data.data
         extent = scan_data.scan_range
+
+        #self.log.debug(f"Update scan data called with for ax: {axes}")
+
         if scan_data.scan_dimension == 2:
             dockwidget = self.scan_2d_dockwidgets.get(axes, None)
             if dockwidget is None:
