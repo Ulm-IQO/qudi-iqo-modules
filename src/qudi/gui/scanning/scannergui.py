@@ -61,6 +61,7 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
         else:
             super().mouseDoubleClickEvent(event)
         return
+
 class SaveDialog(QtWidgets.QDialog):
     """ Dialog to provide feedback and block GUI while saving """
     def __init__(self, parent, title="Please wait", text="Saving..."):
@@ -102,6 +103,7 @@ class ScannerGui(GuiBase):
     sigToggleScan = QtCore.Signal(bool, tuple, object)
     sigOptimizerSettingsChanged = QtCore.Signal(dict)
     sigToggleOptimize = QtCore.Signal(bool)
+    sigShowSaveDialog = QtCore.Signal(bool)
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -222,6 +224,9 @@ class ScannerGui(GuiBase):
         )
         self.sigOptimizerSettingsChanged.connect(
             self._optimize_logic().set_optimize_settings, QtCore.Qt.QueuedConnection)
+
+        self.sigShowSaveDialog.connect(lambda x: self._save_dialog.show() if x else self._save_dialog.hide(),
+                                       QtCore.Qt.DirectConnection)
 
         # Initialize dockwidgets to default view
         self.restore_default_view()
@@ -451,14 +456,15 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot(tuple)
     def save_scan_data(self, scan_axes=None):
-        self._save_dialog.show()
+        self.sigShowSaveDialog.emit(True)
+
         try:
             cbar_range = self.scan_2d_dockwidgets[scan_axes].scan_widget.colorbar_limits if len(scan_axes) == 2 \
                 else None
             [self._data_logic().save_scan(scan, color_range=cbar_range)
              for scan in self._data_logic().get_current_scan_data(scan_axes=scan_axes)]
         finally:
-            self._save_dialog.close()
+            self.sigShowSaveDialog.emit(False)
 
     def _remove_scan_dockwidget(self, axes):
         if axes in tuple(self.scan_1d_dockwidgets):
