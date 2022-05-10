@@ -193,8 +193,7 @@ class ScannerGui(GuiBase):
 
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
-        self._mw.action_save_scans.triggered.connect(self.save_scan_data)
-        #self._mw.actionSave_1d_Scan.triggered.connect(self.save_1d_scan_data)
+        self._mw.action_save_all_scans.triggered.connect(lambda x: self.save_scan_data(scan_axes=None))
         self._mw.action_utility_zoom.toggled.connect(self.toggle_cursor_zoom)
         self._mw.action_utility_full_range.triggered.connect(
             self._scanning_logic().set_full_scan_ranges, QtCore.Qt.QueuedConnection
@@ -450,42 +449,14 @@ class ScannerGui(GuiBase):
 
         return
 
-    def save_axes_cur_scan_data(self, axes):
-        # first get data
-        scan_data = self._data_logic()._curr_data_per_scan[axes]
-        if scan_data:
-            self._data_logic().save_scan(scan_data)
-        else:
-            self.log.warning("There was nothing to be saved.")
-
-    def save_scan_data(self):
-        """ Run the save routine from the logic to save the xy confocal data."""
+    @QtCore.Slot(tuple)
+    def save_scan_data(self, scan_axes=None):
         self._save_dialog.show()
-        #axes= self.scan_2d_dockwidgets.items('scan_axes')
-
         try:
-            rtrn = [self._data_logic().save_scan(scan)
-                    for scan in self._data_logic()._curr_data_per_scan.values()]
+            [self._data_logic().save_scan(scan)
+             for scan in self._data_logic().get_current_scan_data(scan_axes=scan_axes)]
         finally:
             self._save_dialog.close()
-
-        #axes=self._scanning_logic().scan_data.scan_axes
-
-        # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
-        #filepath = self._save_logic.get_path_for_module(module_name='Confocal')
-        # filename = os.path.join(
-        #     filepath,
-        #     time.strftime('%Y%m%d-%H%M-%S_confocal_xy_scan_raw_pixel_image'))
-        # if self._sd.save_purePNG_checkBox.isChecked():
-        #     self.xy_image.save(filename + '_raw.png')
-
-    # def save_1d_scan_data(self):
-    #     """ Run the save routine from the logic to save the xy confocal data."""
-    #     self._save_dialog.show()
-    #     axes_constr = self._scanning_logic().scan_data.scan_axes
-    #
-    #     axis = tuple(str(ax).lower() for ax in axes_constr)
-    #     self._data_logic().save_1d_scan(axis)
 
     def _remove_scan_dockwidget(self, axes):
         if axes in tuple(self.scan_1d_dockwidgets):
@@ -525,7 +496,7 @@ class ScannerGui(GuiBase):
             dockwidget.sigPositionDragged.connect(self.__get_marker_update_func(axes))
             dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
             dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
-            dockwidget.sigSaveRelayAxis.connect(self.save_axes_cur_scan_data)
+            dockwidget.sigSaveRelayAxis.connect(lambda ax: self.save_scan_data(axes))
         else:
             if axes in self.scan_2d_dockwidgets:
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
@@ -545,7 +516,7 @@ class ScannerGui(GuiBase):
             dockwidget.sigCrosshairMoved.connect(
                 lambda x, y: self._update_scan_sliders({axes[0]: x,
                                                         axes[1]: y}))
-            dockwidget.sigSaveRelayAxes.connect(self.save_axes_cur_scan_data)
+            dockwidget.sigSaveRelayAxes.connect(lambda ax: self.save_scan_data(axes))
 
         return
 

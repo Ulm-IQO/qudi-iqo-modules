@@ -100,9 +100,16 @@ class ScanningDataLogic(LogicBase):
     def __scan_history_from_dicts(self, history_dicts):
         return [ScanData.from_dict(hist_dict) for hist_dict in history_dicts]
 
-    def get_current_scan_data(self, scan_axes):
+    def get_current_scan_data(self, scan_axes=None):
+        """
+        Get the most recent scan data for a certain (or all) scan axes.
+        @return list: list of ScanData
+        """
         with self._thread_lock:
-            return self._curr_data_per_scan.get(scan_axes, None)
+            if scan_axes is None:
+                return self._curr_data_per_scan.values()
+            else:
+                return [self._curr_data_per_scan.get(scan_axes, None)]
 
     def get_all_current_scan_data(self):
         with self._thread_lock:
