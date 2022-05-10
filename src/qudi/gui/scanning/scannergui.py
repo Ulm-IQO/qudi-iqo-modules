@@ -453,7 +453,9 @@ class ScannerGui(GuiBase):
     def save_scan_data(self, scan_axes=None):
         self._save_dialog.show()
         try:
-            [self._data_logic().save_scan(scan)
+            cbar_range = self.scan_2d_dockwidgets[scan_axes].scan_widget.colorbar_limits if len(scan_axes) == 2 \
+                else None
+            [self._data_logic().save_scan(scan, color_range=cbar_range)
              for scan in self._data_logic().get_current_scan_data(scan_axes=scan_axes)]
         finally:
             self._save_dialog.close()
