@@ -197,21 +197,35 @@ class ScanningDataLogic(LogicBase):
         axis = scan_data.scan_axes[0]
         scanner_pos = self._scan_logic().scanner_target
 
-        # ToDo: Scale data and axes in a suitable and general way (with utils)
+        # Scale axes and data
+        scan_range_x = (scan_data.scan_range[0][0], scan_data.scan_range[0][1])
+        si_prefix_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale
+        si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
+        si_prefix_data = ScaledFloat(np.nanmax(data)-np.nanmin(data)).scale
+        si_factor_data = ScaledFloat(np.nanmax(data)-np.nanmin(data)).scale_val
 
         # Create figure
         fig, ax = plt.subplots()
 
         # Create image plot
-        xy_plot = ax.plot(np.linspace(*scan_data.scan_range[0], scan_data.scan_resolution[0]), data)
+        x_axis = np.linspace(scan_data.scan_range[0][0],
+                             scan_data.scan_range[0][1],
+                             scan_data.scan_resolution[0])
+        x_axis = x_axis[~np.isnan(data)]
+        data = data[~np.isnan(data)]
+
+        xy_plot = ax.plot(x_axis/si_factor_x,
+                          data/si_factor_data)
+
+        # Axes labels
         if scan_data.axes_units[axis]:
-            x_label = '{0} position ({1})'.format(axis, scan_data.axes_units[axis])
+            x_label = axis + f' position ({si_prefix_x}{scan_data.axes_units[axis]})'
         else:
-            x_label = '{0} position'.format(axis)
+            x_label = axis + f' position ({si_prefix_x})'
         if scan_data.channel_units[channel]:
-            y_label = '{0} ({1})'.format(channel, scan_data.channel_units[channel])
+            y_label = f'{channel} ({si_prefix_data}{scan_data.channel_units[channel]})'
         else:
-            y_label = '{0}'.format(channel)
+            y_label = f'{channel} ({si_prefix_data})'
 
         # ax.set_aspect(1)
         ax.set_xlabel(x_label)
@@ -224,13 +238,14 @@ class ScanningDataLogic(LogicBase):
         # ax.get_yaxis().tick_left()
 
         # draw the scanner position if defined
-        # ToDo: Check if scanner position is within image boundaries. Don't draw if not the case.
-        trans_xmark = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
-        ax.annotate('',
-                    xy=(scanner_pos[axis], 0),
-                    xytext=(scanner_pos[axis], -0.01),
-                    xycoords=trans_xmark,
-                    arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
+        pos_x = scanner_pos[axis]
+        if pos_x > np.min(x_axis) and pos_x < np.max(x_axis):
+            trans_xmark = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
+            ax.annotate('',
+                        xy=np.asarray([pos_x, 0])/si_factor_x,
+                        xytext=(pos_x/si_factor_x, -0.01),
+                        xycoords=trans_xmark,
+                        arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
         return fig
 
     @QtCore.Slot(object, object)
@@ -328,7 +343,7 @@ class ScanningDataLogic(LogicBase):
         # Create figure
         fig, ax = plt.subplots()
 
-        # Create image plot
+        # Scale axes and data
         scan_range_x = (scan_data.scan_range[0][1], scan_data.scan_range[0][0])
         scan_range_y =  (scan_data.scan_range[1][1], scan_data.scan_range[1][0])
         si_prefix_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale
@@ -338,14 +353,15 @@ class ScanningDataLogic(LogicBase):
         si_prefix_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale
         si_factor_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale_val
 
+        # Create image plot
         cfimage = ax.imshow(image_arr.transpose()/si_factor_cb,
                             cmap='inferno',  # FIXME: reference the right place in qudi
                             origin='lower',
                             vmin=cbar_range[0]/si_factor_cb,
                             vmax=cbar_range[1]/si_factor_cb,
                             interpolation='none',
-                            extent=(*np.asarray(scan_data.scan_range[0])*1/si_factor_x,
-                                    *np.asarray(scan_data.scan_range[1])*1/si_factor_y))
+                            extent=(*np.asarray(scan_data.scan_range[0])/si_factor_x,
+                                    *np.asarray(scan_data.scan_range[1])/si_factor_y))
 
         ax.set_aspect(1)
         ax.set_xlabel(scan_axes[0] + f' position ({si_prefix_x}{scan_data.axes_units[scan_axes[0]]})')
@@ -361,7 +377,7 @@ class ScanningDataLogic(LogicBase):
         pos_x, pos_y = scanner_pos[scan_axes[0]], scanner_pos[scan_axes[1]]
 
         # draw the scanner position if defined and in range
-        if pos_x > np.min(scan_range_x) and pos_y < np.max(scan_range_y) \
+        if pos_x > np.min(scan_range_x) and pos_x < np.max(scan_range_x) \
             and pos_y > np.min(scan_range_y) and pos_y < np.max(scan_range_y):
             trans_xmark = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
             trans_ymark = mpl.transforms.blended_transform_factory(ax.transAxes, ax.transData)
