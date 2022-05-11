@@ -166,6 +166,17 @@ class ScanningDataLogic(LogicBase):
             self.sigHistoryScanDataRestored.emit(data)
             return
 
+    def get_history_last(self, axes):
+
+        idx_i = -1
+        for scan_data in reversed(self._scan_history):
+            if scan_data.scan_axes == axes:
+                return idx_i, scan_data
+            idx_i -= 1
+
+        return np.nan, None
+
+
     @QtCore.Slot(bool, object, object)
     def _update_scan_state(self, running, data, caller_id):
 
