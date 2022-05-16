@@ -257,11 +257,11 @@ class ScannerGui(GuiBase):
         self._mw.action_history_back.triggered.disconnect()
         self._mw.action_utility_full_range.triggered.disconnect()
         self._mw.action_utility_zoom.toggled.disconnect()
-        self._scanning_logic().sigScannerTargetChanged.disconnect(None, self.scanner_target_updated)
-        self._scanning_logic().sigScanSettingsChanged.disconnect(None, self.scanner_settings_updated)
-        self._scanning_logic().sigScanStateChanged.disconnect(None, self.scan_state_updated)
-        self._optimize_logic().sigOptimizeStateChanged.disconnect(None, self.optimize_state_updated)
-        self._data_logic().sigHistoryScanDataRestored.disconnect(None, self._update_from_history)
+        self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
+        self._scanning_logic().sigScanSettingsChanged.disconnect(self.scanner_settings_updated)
+        self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
+        self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
+        self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
 
@@ -577,7 +577,6 @@ class ScannerGui(GuiBase):
         else:
             self._scanner_settings_locked = False #unlock
 
-    @QtCore.Slot()
     @QtCore.Slot(dict)
     def scanner_settings_updated(self, settings=None):
         """
@@ -623,8 +622,6 @@ class ScannerGui(GuiBase):
             # refresh gui with stored values
             self.scanner_target_updated(pos_dict=None, caller_id=None)
 
-    @QtCore.Slot(dict)
-    @QtCore.Slot(dict, object)
     def scanner_target_updated(self, pos_dict=None, caller_id=None):
         """
         Updates the scanner target and set widgets accordingly.
