@@ -770,8 +770,8 @@ class ScannerGui(GuiBase):
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
         restored_axs = []
-        ids_to_restore = [self._data_logic().get_history_last(ax) for ax in avail_axs]
-        ids_to_restore = [ret_tuple[0] for ret_tuple in ids_to_restore if ret_tuple[1]]
+        ids_to_restore = np.asarray([self._data_logic().get_current_scan_id(ax) for ax in avail_axs])
+        ids_to_restore = ids_to_restore[~np.isnan(ids_to_restore)].astype(int)
 
         [self._data_logic().restore_from_history(id) for id in ids_to_restore]
 

@@ -111,6 +111,24 @@ class ScanningDataLogic(LogicBase):
             else:
                 return [self._curr_data_per_scan.get(scan_axes, None)]
 
+    def get_current_scan_id(self, scan_axes):
+
+        with self._thread_lock:
+            ret_id = np.nan
+            idx_i = -1
+            for scan_data in reversed(self._scan_history):
+                if scan_data.scan_axes == scan_axes:
+                    ret_id = idx_i
+                    break
+                idx_i -= 1
+
+            if np.isnan(ret_id):
+                return np.nan
+
+            assert self._scan_history[ret_id] == self.get_current_scan_data(scan_axes)[0]
+            return ret_id
+
+
     def get_all_current_scan_data(self):
         with self._thread_lock:
             return self._curr_data_per_scan.copy()
@@ -165,17 +183,6 @@ class ScanningDataLogic(LogicBase):
             self._curr_data_per_scan[data.scan_axes] = data
             self.sigHistoryScanDataRestored.emit(data)
             return
-
-    def get_history_last(self, axes):
-
-        idx_i = -1
-        for scan_data in reversed(self._scan_history):
-            if scan_data.scan_axes == axes:
-                return idx_i, scan_data
-            idx_i -= 1
-
-        return np.nan, None
-
 
     @QtCore.Slot(bool, object, object)
     def _update_scan_state(self, running, data, caller_id):
