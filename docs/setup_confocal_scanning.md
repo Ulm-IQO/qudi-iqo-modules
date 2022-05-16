@@ -178,6 +178,8 @@ docstring of every module's python file. In the list above, a direct link for ev
             max_channel_samples_buffer: 10000000  # optional
             read_write_timeout: 10  # optional
 
+# Configuration hints:
+- The scanning gui's `optimizer_plot_dimensions` ConfigOption allows to specify the optimizer's scanning behavior. The default setting `[2,1]` enables one 2D and one 1D optimization step. You may set to eg. `[2,2,2]` to have three two-dimensionsal scans done for optimzation. In the gui (Settings/Optimizer Settings), this will change the list of possible optimizer sequences.  
 
 # Todo this readme:
 - clean up example config, currently living (here, [in config folder](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/omniscan_dev/src/qudi/config/ni_scanning_testing.cfg), in python files)
