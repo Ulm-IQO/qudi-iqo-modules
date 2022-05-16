@@ -32,6 +32,7 @@ docstring of every module's python file. In the list above, a direct link for ev
           module.Class: 'scanning.scannergui.ScannerGui'
           image_axes_padding: 0.02
           default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
+          optimizer_plot_dimensions: [2,1]
           connect:
               scanning_logic: scanning_probe_logic
               data_logic: scanning_data_logic
