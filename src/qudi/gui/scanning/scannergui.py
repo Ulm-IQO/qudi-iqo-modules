@@ -882,12 +882,12 @@ class ScannerGui(GuiBase):
             self.set_scanner_target_position(pos_dict)
         return update_func
 
-    def __get_toggle_scan_func(self, axes):
+    def __get_toggle_scan_func(self, excl_axes):
         def toggle_func(enabled):
-            self._toggle_enable_scan_buttons(not enabled, exclude_scan=axes)
+            self._toggle_enable_scan_buttons(not enabled, exclude_scan=excl_axes)
             self._toggle_enable_actions(not enabled)
             self._toggle_enable_scan_crosshairs(not enabled)
-            self.sigToggleScan.emit(enabled, axes, self.module_uuid)
+            self.sigToggleScan.emit(enabled, excl_axes, self.module_uuid)
         return toggle_func
 
     def __get_range_from_selection_func(self, axes):

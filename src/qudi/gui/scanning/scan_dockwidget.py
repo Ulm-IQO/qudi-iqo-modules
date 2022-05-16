@@ -53,8 +53,8 @@ class Scan2DDockWidget(QtWidgets.QDockWidget):
 
         icon_path = os.path.join(get_artwork_dir(), 'icons')
         start_icon_path = os.path.join(icon_path, 'scan-xy-start')
-        stop_icon_path = os.path.join(icon_path, 'stop-scan')
-        icon = QtGui.QIcon(start_icon_path)
+        stop_icon_path = os.path.join(icon_path, 'scan-stop')
+        icon = QtGui.QIcon(start_icon_path, state=QtGui.QIcon.Off)
         icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
         self.scan_widget = Scan2DWidget(scan_axes=scan_axes, channel_units={ch.name: ch.unit for ch in channels},
                                         scan_icon=icon)
@@ -123,8 +123,8 @@ class Scan1DDockWidget(QtWidgets.QDockWidget):
 
         icon_path = os.path.join(get_artwork_dir(), 'icons')
         start_icon_path = os.path.join(icon_path, 'scan-xy-start')
-        stop_icon_path = os.path.join(icon_path, 'stop-scan')
-        icon = QtGui.QIcon(start_icon_path)
+        stop_icon_path = os.path.join(icon_path, 'scan-stop')
+        icon = QtGui.QIcon(start_icon_path, state=QtGui.QIcon.Off)
         icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
         self.scan_widget = Scan1DWidget(scan_axis=scan_axis, channel_units={ch.name: ch.unit for ch in channels},
                                         scan_icon=icon)
