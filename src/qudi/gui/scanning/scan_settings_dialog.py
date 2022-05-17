@@ -64,8 +64,6 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
     def __init__(self, *args, scanner_axes, scanner_constraints, **kwargs):
         super().__init__(*args, **kwargs)
 
-        print(f"Scanner stg dialogue got hw constarints: {scanner_constraints}")
-
         self.axes_widgets = dict()
         self._backscan_configurable = scanner_constraints._backscan_configurable
 

@@ -613,7 +613,6 @@ class ScannerGui(GuiBase):
         @param dict target_pos:
         """
         if not self._scanner_settings_locked:
-            #self.log.debug(f"Issue target from gui: {target_pos}")
             self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
             # update gui with target, not actual logic values
             # we can not rely on the execution order of the above emit
@@ -630,9 +629,6 @@ class ScannerGui(GuiBase):
                               If None (default) read the scanner position from logic and update.
         @param int caller_id: The qudi module object id responsible for triggering this update
         """
-
-        #self.log.debug(f"Gui updated from logic: {caller_id is not self.module_uuid}: {pos_dict}, "
-        #               f"full caller: {caller_id}")
 
         # If this update has been issued by this module, do not update display.
         # This has already been done before notifying the logic.
@@ -711,7 +707,6 @@ class ScannerGui(GuiBase):
         self._mw.action_optimize_position.setChecked(is_running)
         self.scanner_settings_toggle_gui_lock(is_running)
 
-        self.log.debug(f"Updated opt pos= {optimal_position}, fit_data={fit_data}")
         if fit_data is not None and optimal_position is None:
             raise ValueError("Can't understand fit_data without optimal position")
 
@@ -819,8 +814,6 @@ class ScannerGui(GuiBase):
         data = scan_data.data
         extent = scan_data.scan_range
 
-        #self.log.debug(f"Update scan data called with for ax: {axes}")
-
         if scan_data.scan_dimension == 2:
             dockwidget = self.scan_2d_dockwidgets.get(axes, None)
             if dockwidget is None:
@@ -908,7 +901,6 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot()
     def change_optimizer_settings(self):
-        self.log.debug(f"Setting to logic opt settings: {self._osd.settings}")
 
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
         self.optimizer_dockwidget.scan_sequence = self._osd.settings['scan_sequence']
@@ -928,7 +920,6 @@ class ScannerGui(GuiBase):
 
         # Update optimizer settings QDialog
         self._osd.change_settings(settings)
-        self.log.debug(f"Got opt settings {settings}")
 
         # Adjust optimizer scan axis labels
         if 'scan_sequence' in settings:

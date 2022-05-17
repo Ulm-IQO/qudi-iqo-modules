@@ -141,8 +141,6 @@ class ScanningDataLogic(LogicBase):
                                  'Already at earliest history entry.')
                 return
 
-            self.log.debug(f"Previous hist index called. Curr index: {self._curr_history_index}")
-
             return self.restore_from_history(self._curr_history_index - 1)
 
     @QtCore.Slot()
@@ -177,7 +175,7 @@ class ScanningDataLogic(LogicBase):
             }
             self._scan_logic().set_scan_settings(settings)
 
-            self.log.debug(f"Restoring hist settings from index {index} with {settings}")
+            #self.log.debug(f"Restoring hist settings from index {index} with {settings}")
 
             self._curr_history_index = index
             self._curr_data_per_scan[data.scan_axes] = data
@@ -195,7 +193,7 @@ class ScanningDataLogic(LogicBase):
 
         with self._thread_lock:
             if not running and caller_id is self._logic_id:
-                self.log.debug(f"Adding to data history with settings {settings}")
+                #self.log.debug(f"Adding to data history with settings {settings}")
                 self._scan_history.append(data)
                 self._shrink_history()
                 self._curr_data_per_scan[data.scan_axes] = data
@@ -321,9 +319,7 @@ class ScanningDataLogic(LogicBase):
                                                    timestamp=timestamp,
                                                    column_headers='Image (columns is X, rows is Y)')
                     # thumbnail
-                    self.log.info(f'scan data axes {scan_data.scan_axes}')
                     if len(scan_data.scan_axes) == 1:
-                        self.log.info('save 1 d figure')
                         figure = self.draw_1d_scan_figure(scan_data, channel)
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
                     elif len(scan_data.scan_axes) == 2:

@@ -97,7 +97,6 @@ class ScanningOptimizeLogic(LogicBase):
             self._scan_range = new_settings['scan_range']
             self._scan_resolution = new_settings['scan_resolution']
             self._scan_frequency = new_settings['scan_frequency']
-        self.log.debug(f"Opt settings after sanity check, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
 
 
         self._stashed_scan_settings = dict()
@@ -262,7 +261,6 @@ class ScanningOptimizeLogic(LogicBase):
     @QtCore.Slot()
     def start_optimize(self):
         with self._thread_lock:
-            self.log.debug('start optimize')
             if self.module_state() != 'idle':
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
                 return 0
@@ -311,7 +309,6 @@ class ScanningOptimizeLogic(LogicBase):
     @QtCore.Slot()
     def _next_sequence_step(self):
         with self._thread_lock:
-            self.log.debug(f"next sequence step {self._sequence_index}")
 
             if self.module_state() == 'idle':
                 return
@@ -327,6 +324,7 @@ class ScanningOptimizeLogic(LogicBase):
 
     @QtCore.Slot(bool, object, object)
     def _scan_state_changed(self, is_running, data, caller_id):
+
         with self._thread_lock:
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
@@ -354,7 +352,6 @@ class ScanningOptimizeLogic(LogicBase):
                         position_update[ax] = new_pos[ax]
 
                     fit_data = {'fit_data':fit_data, 'full_fit_res':fit_res}
-                    self.log.debug(f"opt scan pos= {opt_pos}, fit data= {fit_data}")
 
                 self._optimal_position.update(position_update)
                 self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
@@ -376,7 +373,6 @@ class ScanningOptimizeLogic(LogicBase):
     @QtCore.Slot()
     def stop_optimize(self):
         with self._thread_lock:
-            self.log.debug('stop optimize')
             if self.module_state() == 'idle':
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
                 return 0
