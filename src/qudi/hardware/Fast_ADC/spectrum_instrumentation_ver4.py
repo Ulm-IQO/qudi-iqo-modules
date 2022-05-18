@@ -161,6 +161,10 @@ class Card_command():
         self.error = spcm_dwSetParam_i32(self.card, SPC_M2CMD, M2CMD_CARD_STOP)
 
     @check_card_error
+    def card_reset(self):
+        self.error = spcm_dwSetParam_i32(self.card, SPC_M2CMD, M2CMD_CARD_RESET)
+
+    @check_card_error
     def enable_trigger(self):
         self.error = spcm_dwSetParam_i32(self.card, SPC_M2CMD, M2CMD_CARD_ENABLETRIGGER)
         trigger_enabled = True
@@ -913,12 +917,15 @@ class Data_process_loop_main_body(Data_process_single, Card_command):
     def command_process(self):
         unprocessed_reps = self.trig_counter - self.avg_num
         if unprocessed_reps == 0:
+            print('wait new trigger')
             self._wait_new_trigger_with_trigger_on()
 
         elif unprocessed_reps < 2 * self.reps_per_buf:
+            print('process data with trigger on')
             self._process_data_with_trigger_on()
 
         elif unprocessed_reps >= 2 * self.reps_per_buf:
+            print('process data with trigger off')
             self._process_data_with_trigger_off()
 
     def _wait_new_trigger_with_trigger_on(self):
@@ -1119,7 +1126,7 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
         self.avg_data_1, self.avg_num_1 = self.dp._process_data_by_mean(self.sweep1)
         self.dp.check_dp_status()
         self.avg_data_2, self.avg_num_2 = self.dp._process_data_by_mean(self.sweep2)
-        self.avg_data, self.avg_num = self.dp._update_avg_data(self.avg_data_1, self.sweep1,
+        self.avg_data, self.avg_num = self.dp._weighted_avg_data(self.avg_data_1, self.sweep1,
                                                                self.avg_data_2, self.sweep2)
 
     def test_std_multi_more_reps(self):
@@ -1129,6 +1136,42 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
         self.ms.init_buf_size_S = 1e7
         self.cfg._loops = 60000
         self._start_card_with_trigger()
+        self.dp.check_dp_status()
+
+
+    def start_data_process_loop(self, n):
+        '''
+        - Check if the first acquistion is limited by the buffersize
+        - Check if the later acquistion is done
+        '''
+        print('start_data_process_loop')
+
+        for i in range(n):
+            if self.dp.fetch_on == False:
+                self.dp.check_dp_status()
+                curr_avail_reps = self.dp.get_avail_user_reps()
+                new_avg_data, new_avg_num = self.dp._process_data_by_mean(curr_avail_reps)
+                self.dp.avg_data, self.dp.avg_num = self.dp._weighted_avg_data(self.dp.avg_data, self.dp.avg_num,
+                                                                    new_avg_data, new_avg_num)
+                self.dp.check_dp_status()
+            else:
+                print('fetching')
+        print('end_data_process_loop')
+
+        return
+
+
+    def check_dp_loop(self):
+        time_start = time.time()
+        while self.dp.loop_on == True:
+            current_time = time.time() - time_start
+            if current_time < 5:
+                self.dp.check_dp_status()
+                self.dp.command_process()
+            else:
+                print('time = {}'.format(current_time))
+                return
+        return
 
     def check_loop(self):
         '''
@@ -1142,38 +1185,6 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
         self.dp.check_dp_status()
         self.dp.stop_data_process()
 
-    def start_data_process_loop(self, n):
-        '''
-        - Check if the first acquistion is limited by the buffersize
-        - Check if the later acquistion is done
-        '''
-        print('start_data_process_loop')
-
-        for i in range(n):
-            if self.dp.fetch_on == False:
-                self.dp.check_dp_status()
-                curr_avail_reps = self.dp._wait_new_avail_reps()
-                new_avg_data, new_avg_num = self.dp._process_data_by_mean(curr_avail_reps)
-                self.dp.avg_data, self.dp.avg_num = self.dp._update_avg_data(self.dp.avg_data, self.dp.avg_num,
-                                                                    new_avg_data, new_avg_num)
-                self.dp.check_dp_status()
-            else:
-                print('fetching')
-        print('end_data_process_loop')
-
-        return
-
-    def check_dp_loop(self):
-        time_start = time.time()
-        while self.dp.loop_on == True:
-            current_time = time.time() - time_start
-            if current_time < 5:
-                self.dp.check_dp_status()
-                self.dp.command_process()
-            else:
-                print('time = {}'.format(current_time))
-                return
-        return
 
     def test_fifo_multi(self):
         self.ms.binwidth_s = 1 / 250e6
