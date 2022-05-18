@@ -377,6 +377,7 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
         """
         Fetch the averaged data so far.
         """
+        self.dp.check_dp_status()
         avg_data, avg_num = self.dp.fetch_data_trace()
         info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.dp.start_time}
 
@@ -719,6 +720,7 @@ class Data_process_command():
         self.trig_counter = '-----'
         self.processed_data_B = 0
         self.total_data_B = '-----'
+        self.avg_num = 0
 
     def check_dp_status(self):
         self.get_status()
@@ -1186,12 +1188,17 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
         self.dp.stop_data_process()
 
 
-    def test_fifo_multi(self):
+    def _set_params_fifo_multi(self):
+#        self.cfg._error_check = True
+#        self.dp._error_check = True
         self.ms.binwidth_s = 1 / 250e6
         self.ms.record_length_s = 1e-6
         self.ms.number_of_gates = 0
         self.cs.acq_mode = 'FIFO_MULTI'
         self.cs.trig_mode = 'EXT'
         self.ms.init_buf_size_S = 1e7
-        self._start_card_with_trigger()
+        self.dp.init_dp_params()
+        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
+
+
 
