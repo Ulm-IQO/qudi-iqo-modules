@@ -27,8 +27,8 @@ from PySide2 import QtCore, QtWidgets
 from pyqtgraph import PlotDataItem, mkPen
 import copy as cp
 
-from qudi.util.widgets.scan_2d_widget import Scan2DPlotWidget, ScanImageItem
-from qudi.util.widgets.scan_1d_widget import Scan1DPlotWidget
+from qudi.util.widgets.plotting.plot_widget import DataSelectionPlotWidget
+from qudi.util.widgets.plotting.plot_item import DataImageItem, XYPlotItem
 from qudi.util.colordefs import QudiPalette
 
 
@@ -59,31 +59,29 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         # fill list of all optimizer subplot widgets
         for i_col, n_dim in enumerate(plot_dims):
             if n_dim == 1:
-                plot_item = PlotDataItem(pen=mkPen(QudiPalette.c1, style=QtCore.Qt.DotLine),
-                                              symbol='o',
-                                              symbolPen=QudiPalette.c1,
-                                              symbolBrush=QudiPalette.c1,
-                                              symbolSize=7)
-                fit_plot_item = PlotDataItem(pen=mkPen(QudiPalette.c2))
-                plot1d_widget = Scan1DPlotWidget()
-
-                plot1d_widget.add_marker(movable=False, pen={'color': '#00ff00', 'width': 2})
+                plot_item = XYPlotItem(pen=mkPen(QudiPalette.c1, style=QtCore.Qt.DotLine),
+                                       symbol='o',
+                                       symbolPen=QudiPalette.c1,
+                                       symbolBrush=QudiPalette.c1,
+                                       symbolSize=7)
+                fit_plot_item = XYPlotItem(pen=mkPen(QudiPalette.c2))
+                plot1d_widget = DataSelectionPlotWidget()
+                plot1d_widget.set_selection_mutable(False)
                 plot1d_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-
                 plot1d_widget.addItem(plot_item)
+                plot1d_widget.add_marker_selection((0, 0),
+                                                   mode=DataSelectionPlotWidget.SelectionMode.X)
                 self._plot_widgets.append({'widget': plot1d_widget, 'plot_1d': plot_item,
                                            'fit_1d': fit_plot_item, 'dim': 1})
             elif n_dim == 2:
-                image_item = ScanImageItem()
-                plot2d_widget = Scan2DPlotWidget()
-                plot2d_widget.toggle_zoom_by_selection(False)
-                plot2d_widget.toggle_selection(False)
-                plot2d_widget.add_crosshair(movable=False, pen={'color': '#00ff00', 'width': 2})
-                plot2d_widget.setAspectLocked(lock=True, ratio=1.0)
-                plot2d_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
-
+                plot2d_widget = DataSelectionPlotWidget()
+                plot2d_widget.set_selection_mutable(False)
+                plot2d_widget.add_marker_selection((0, 0),
+                                                   mode=DataSelectionPlotWidget.SelectionMode.XY)
+                image_item = DataImageItem()
                 plot2d_widget.addItem(image_item)
-                self._plot_widgets.append({'widget': plot2d_widget, 'image_2d': image_item,
+                self._plot_widgets.append({'widget': plot2d_widget,
+                                           'image_2d': image_item,
                                            'dim': 2})
             else:
                 raise ValueError(f"Optimizer widget can have axis dim= 1 or 2, not {n_dim}")

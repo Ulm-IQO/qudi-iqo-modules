@@ -34,11 +34,11 @@ from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
 from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 
-from .axes_control_dockwidget import AxesControlDockWidget
-from .optimizer_setting_dialog import OptimizerSettingDialog
-from .scan_settings_dialog import ScannerSettingDialog
-from .scan_dockwidget import Scan2DDockWidget, Scan1DDockWidget
-from .optimizer_dockwidget import OptimizerDockWidget
+from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
+from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
+from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
+from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
+from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
@@ -498,7 +498,6 @@ class ScannerGui(GuiBase):
 
     def _add_scan_dockwidget(self, axes):
         axes_constr = self._scanning_logic().scanner_axes
-        channel_constr = self._scanning_logic().scanner_channels
         optimizer_range = self._optimize_logic().scan_range
         axes = tuple(axes)
 
@@ -507,37 +506,34 @@ class ScannerGui(GuiBase):
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            dockwidget = Scan1DDockWidget(scan_axis=axes_constr[axes[0]],
-                                          channels=tuple(channel_constr.values()))
+            dockwidget = ScanDockWidget(scan_axes=(axes_constr[axes[0]],))
             dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
             self.scan_1d_dockwidgets[axes] = dockwidget
             self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
 
-            dockwidget.sigPositionDragged.connect(self.__get_marker_update_func(axes))
-            dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
-            dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
-            dockwidget.sigSaveRelayAxis.connect(lambda ax: self.save_scan_data(axes))
+            # dockwidget.sigPositionDragged.connect(self.__get_marker_update_func(axes))
+            # dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
+            # dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
+            # dockwidget.sigSaveRelayAxis.connect(lambda ax: self.save_scan_data(axes))
         else:
             if axes in self.scan_2d_dockwidgets:
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            dockwidget = Scan2DDockWidget(scan_axes=(axes_constr[axes[0]], axes_constr[axes[1]]),
-                                          channels=tuple(channel_constr.values()))
+            dockwidget = ScanDockWidget(scan_axes=(axes_constr[axes[0]], axes_constr[axes[1]]))
             dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
-            dockwidget.crosshair.set_size(tuple(optimizer_range[ax] for ax in axes))
+            dockwidget.scan_widget.set_crosshair_size(tuple(optimizer_range[ax] for ax in axes))
             self.scan_2d_dockwidgets[axes] = dockwidget
             self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
 
-            dockwidget.sigPositionDragged.connect(self.__get_crosshair_update_func(axes))
-            dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
-            dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
-
-            dockwidget.sigCrosshairMoved.connect(
-                lambda x, y: self._update_scan_sliders({axes[0]: x,
-                                                        axes[1]: y}))
-            dockwidget.sigSaveRelayAxes.connect(lambda ax: self.save_scan_data(axes))
-
+            # dockwidget.sigPositionDragged.connect(self.__get_crosshair_update_func(axes))
+            # dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
+            # dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
+            #
+            # dockwidget.sigCrosshairMoved.connect(
+            #     lambda x, y: self._update_scan_sliders({axes[0]: x,
+            #                                             axes[1]: y}))
+            # dockwidget.sigSaveRelayAxes.connect(lambda ax: self.save_scan_data(axes))
         return
 
     def set_active_tab(self, axes):

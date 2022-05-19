@@ -1,0 +1,218 @@
+# -*- coding: utf-8 -*-
+
+"""
+This file contains a specialized widget to display interactive scan data.
+
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
+
+This file is part of qudi.
+
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
+"""
+
+__all__ = ['Scan1DWidget', 'Scan2DWidget']
+
+import os
+from typing import Tuple, Union, Sequence
+from PySide2 import QtCore, QtWidgets, QtGui
+from typing import Optional, Any
+from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWidget
+from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
+from qudi.util.widgets.plotting.plot_item import XYPlotItem
+from qudi.util.widgets.plotting.marker import InfiniteCrosshairRectangle
+from qudi.util.paths import get_artwork_dir
+from qudi.interface.scanning_probe_interface import ScanData
+
+
+class _BaseScanWidget(QtWidgets.QWidget):
+    """ Base Widget to interactively display multichannel 1D or 2D scan data as well as
+    toggling and saving scans.
+
+    WARNING: Do NOT use this widget directly
+    """
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        super().__init__(parent=parent)
+
+        layout = QtWidgets.QGridLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        self.setLayout(layout)
+
+        scan_icon = QtGui.QIcon()
+        scan_icon.addFile(os.path.join(get_artwork_dir(), 'icons', 'start-counter.svg'),
+                          QtCore.QSize(),
+                          QtGui.QIcon.Normal,
+                          QtGui.QIcon.Off)
+        scan_icon.addFile(os.path.join(get_artwork_dir(), 'icons', 'stop-counter.svg'),
+                          QtCore.QSize(),
+                          QtGui.QIcon.Normal,
+                          QtGui.QIcon.On)
+        self.toggle_scan_button = QtWidgets.QPushButton(scan_icon, 'Toggle Scan')
+        self.toggle_scan_button.setCheckable(True)
+
+        save_icon = QtGui.QIcon(os.path.join(get_artwork_dir(), 'icons', 'document-save.svg'))
+        self.save_scan_button = QtWidgets.QPushButton(save_icon, '')
+        self.save_scan_button.setCheckable(False)
+
+        self.channel_selection_label = QtWidgets.QLabel('Channel:')
+        self.channel_selection_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.channel_selection_combobox = QtWidgets.QComboBox()
+        self.channel_selection_combobox.setMinimumContentsLength(15)
+        self.channel_selection_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+
+        layout.addWidget(self.toggle_scan_button, 0, 0)
+        layout.addWidget(self.save_scan_button, 0, 1)
+        layout.addWidget(self.channel_selection_label, 0, 2)
+        layout.addWidget(self.channel_selection_combobox, 0, 3)
+        layout.setColumnStretch(2, 1)
+        layout.setColumnStretch(3, 1)
+
+        self._scan_data = None
+
+    def _set_available_channels(self, channels: Sequence[str]) -> None:
+        current_channel = self.channel_selection_combobox.currentText()
+        self.channel_selection_combobox.blockSignals(True)
+        self.channel_selection_combobox.clear()
+        self.channel_selection_combobox.addItems(channels)
+        if current_channel and (current_channel in channels):
+            self.channel_selection_combobox.setCurrentText(current_channel)
+        self.channel_selection_combobox.blockSignals(False)
+
+
+class Scan1DWidget(_BaseScanWidget):
+    """ Widget to interactively display multichannel 1D scan data as well as toggling and saving
+    scans.
+    """
+    sigMarkerPositionChanged = QtCore.Signal(float)
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        super().__init__(parent=parent)
+
+        self.plot_item = XYPlotItem([-0.5, 0.5], [0, 0])
+        self.plot_widget = RubberbandZoomSelectionPlotWidget()
+        self.plot_widget.addItem(self.plot_item)
+        self.plot_widget.set_selection_mutable(True)
+        self.plot_widget.add_marker_selection(position=(0, 0),
+                                              mode=self.plot_widget.SelectionMode.X)
+        self.plot_widget.sigMarkerSelectionChanged.connect(self._markers_changed)
+        self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
+
+        self.layout().addWidget(self.plot_widget, 1, 0, 1, 4)
+
+    @property
+    def marker_position(self) -> float:
+        return self.plot_widget.marker_selection[self.plot_widget.SelectionMode.X][0]
+
+    def set_marker_position(self, position: float) -> None:
+        self.plot_widget.move_marker_selection((position, 0), 0)
+
+    def set_scan_data(self, data: ScanData) -> None:
+        # Set axis label
+        self.plot_widget.setLabel('bottom',
+                                  text=data.scan_axes[0].name.title(),
+                                  units=data.scan_axes[0].unit)
+        # Set channels
+        self._set_available_channels(data.channels)
+        # Save reference for channel changes
+        self._scan_data = data
+        # Set data
+        self._update_scan_data()
+
+    def _markers_changed(self, markers) -> None:
+        position = markers[self.plot_widget.SelectionMode.X][0]
+        self.sigMarkerPositionChanged.emit(position)
+
+    def _update_scan_data(self) -> None:
+        if (self._scan_data is None) or (self._scan_data.data is None):
+            self.plot_item.clear()
+        else:
+            current_channel = self.channel_selection_combobox.currentText()
+            self.plot_item.setData(self._scan_data.data[current_channel])
+            self.plot_widget.setLabel('left',
+                                      text=current_channel,
+                                      units=self._scan_data.channel_units[current_channel])
+
+
+class Scan2DWidget(_BaseScanWidget):
+    """ Widget to interactively display multichannel 2D scan data as well as toggling and saving
+    scans.
+    """
+
+    sigCrosshairPositionChanged = QtCore.Signal(tuple)
+
+    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+        super().__init__(parent=parent)
+
+        self.image_widget = RubberbandZoomSelectionImageWidget()
+        self.crosshair = InfiniteCrosshairRectangle(self.image_widget.plot_widget.getViewBox())
+        self.image_item = self.image_widget.image_item
+        self.crosshair.sigAreaDragged.connect(self._crosshair_dragged)
+        self.crosshair.sigAreaChanged.connect(self._crosshair_changed)
+        self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
+
+        self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
+
+    @property
+    def crosshair_position(self) -> Tuple[float, float]:
+        return self.crosshair.position
+
+    def set_crosshair_position(self, position: Tuple[float, float]) -> None:
+        self.crosshair.set_position(position)
+
+    @property
+    def crosshair_size(self) -> Tuple[float, float]:
+        return self.crosshair.size
+
+    def set_crosshair_size(self, size: Tuple[float, float]) -> None:
+        self.crosshair.set_size(size)
+
+    def set_scan_data(self, data: ScanData) -> None:
+        # Set axes labels
+        self.image_widget.set_axis_label('bottom',
+                                         label=data.scan_axes[0].name.title(),
+                                         unit=data.scan_axes[0].unit)
+        self.image_widget.set_axis_label('left',
+                                         label=data.scan_axes[1].name.title(),
+                                         unit=data.scan_axes[1].unit)
+        # Set channels
+        self._set_available_channels(data.channels)
+        # Save reference for channel changes
+        self._scan_data = data
+        # Set data
+        self._update_scan_data()
+
+    def _crosshair_dragged(self,
+                           start_area: QtCore.QRectF,
+                           current_area: QtCore.QRectF,
+                           is_start: bool,
+                           is_finished: bool
+                           ) -> None:
+        # if this is the last dragged signal,
+        # _crosshair_changed will be called immediately afterwards anyways. This avoids duplication.
+        if not is_finished:
+            center = current_area.center()
+            self.sigCrosshairPositionChanged.emit((center.x(), center.y()))
+
+    def _crosshair_changed(self, area: QtCore.QRectF) -> None:
+        center = area.center()
+        self.sigCrosshairPositionChanged.emit((center.x(), center.y()))
+
+    def _update_scan_data(self) -> None:
+        if (self._scan_data is None) or (self._scan_data.data is None):
+            self.image_widget.set_image(None)
+        else:
+            current_channel = self.channel_selection_combobox.currentText()
+            self.image_widget.set_image(self._scan_data.data[current_channel])
+            self.image_widget.set_image_extent(self._scan_data.scan_range, adjust_for_px_size=True)
+            self.image_widget.set_data_label(label=current_channel,
+                                             unit=self._scan_data.channel_units[current_channel])

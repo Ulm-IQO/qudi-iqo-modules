@@ -20,138 +20,47 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ('Scan1DDockWidget', 'Scan2DDockWidget')
+__all__ = ['ScanDockWidget']
 
-import os
-from PySide2 import QtGui, QtWidgets, QtCore
-from qudi.util.widgets.scan_2d_widget import Scan2DWidget
-from qudi.util.widgets.scan_1d_widget import Scan1DWidget
-from qudi.util.paths import get_artwork_dir
+from PySide2 import QtWidgets
+from typing import Optional
+from qudi.gui.scanning.scan_widget import Scan2DWidget, Scan1DWidget
 
 
-class Scan2DDockWidget(QtWidgets.QDockWidget):
+class ScanDockWidget(QtWidgets.QDockWidget):
     """
     """
 
-    __transparent_crosshair_attrs = frozenset(
-        {'sigPositionChanged', 'sigPositionDragged', 'sigDragStarted', 'sigDragFinished'}
-    )
-    __transparent_widget_attrs = frozenset(
-        {'sigMouseClicked', 'sigMouseAreaSelected', 'sigScanToggled', 'sigSaveRelayAxes','selection_enabled',
-         'zoom_by_selection_enabled', 'toggle_selection', 'toggle_zoom_by_selection',
-         'set_image_extent', 'toggle_scan', 'toggle_enabled', 'set_scan_data'}
-    )
+    def __init__(self, scan_axes, parent: Optional[QtWidgets.QWidget] = None):
+        try:
+            x_axis, y_axis = scan_axes
+            title = f'{x_axis.name.title()}-{y_axis.name.title()} Scan'
+            self._scan_axes = tuple(scan_axes)
+        except ValueError:
+            x_axis = scan_axes[0]
+            title = f'{x_axis.name.title()} Scan'
+            self._scan_axes = (x_axis,)
 
-    sigCrosshairMoved = QtCore.Signal(float, float)
+        super().__init__(title, parent=parent)
+        self.setObjectName(
+            '{0}_scan_dockWidget'.format('_'.join(ax.name for ax in self._scan_axes))
+        )
 
-    def __init__(self, *args, scan_axes, channels, **kwargs):
-        super().__init__(*args, **kwargs)
-        x_axis, y_axis = scan_axes
-        self._axes = (x_axis.name, y_axis.name)
-        self.setWindowTitle('{0}-{1} Scan'.format(scan_axes[0].name.title(), scan_axes[1].name.title()))
-        self.setObjectName('{0}_{1}_scan_dockWidget'.format(scan_axes[0].name, scan_axes[1].name))
-
-        icon_path = os.path.join(get_artwork_dir(), 'icons')
-        start_icon_path = os.path.join(icon_path, 'scan-xy-start')
-        stop_icon_path = os.path.join(icon_path, 'scan-stop')
-        icon = QtGui.QIcon(start_icon_path, state=QtGui.QIcon.Off)
-        icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
-        self.scan_widget = Scan2DWidget(scan_axes=scan_axes, channel_units={ch.name: ch.unit for ch in channels},
-                                        scan_icon=icon)
-        self.scan_widget.set_axis_label('bottom', label=x_axis.name.title(), unit=x_axis.unit)
-        self.scan_widget.set_axis_label('left', label=y_axis.name.title(), unit=y_axis.unit)
-        self.scan_widget.set_data_channels({ch.name: ch.unit for ch in channels})
-        self.scan_widget.add_crosshair(movable=True, min_size_factor=0.02)
-        self.scan_widget.crosshairs[-1].set_allowed_range((x_axis.value_range, y_axis.value_range))
-        self.scan_widget.crosshairs[-1].set_size((0.1, 0.1))
-        self.scan_widget.toggle_zoom_by_selection(True)
-
-        self.crosshair.sigPositionChanged.connect(self.__get_crosshair_moved_callback())
-
+        if len(self._scan_axes) == 1:
+            self.scan_widget = Scan1DWidget()
+            self.scan_widget.plot_widget.setLabel('bottom',
+                                                  text=x_axis.name.title(),
+                                                  units=x_axis.unit)
+        else:
+            self.scan_widget = Scan2DWidget()
+            self.scan_widget.image_widget.set_axis_label('bottom',
+                                                         label=x_axis.name.title(),
+                                                         unit=x_axis.unit)
+            self.scan_widget.image_widget.set_axis_label('left',
+                                                         label=y_axis.name.title(),
+                                                         unit=y_axis.unit)
         self.setWidget(self.scan_widget)
 
-    def __getattr__(self, item):
-        if item in self.__transparent_crosshair_attrs:
-            return getattr(self.scan_widget.crosshairs[-1], item)
-        if item in self.__transparent_widget_attrs:
-            return getattr(self.scan_widget, item)
-        raise AttributeError('Scan2DDockWidget has no attribute "{0}"'.format(item))
-
     @property
-    def axes(self):
-        return self._axes
-
-    @property
-    def crosshair(self):
-        return self.scan_widget.crosshairs[-1]
-
-    def toggle_crosshair(self, enabled):
-        if enabled:
-            return self.scan_widget.show_crosshair(-1)
-        return self.scan_widget.hide_crosshair(-1)
-
-    def __get_crosshair_moved_callback(self):
-        def callback(value_x, value_y):
-            #spinbox = self.axes_widgets[axis]['pos_spinbox']
-            #spinbox.blockSignals(True)
-            #spinbox.setValue(value)
-            #spinbox.blockSignals(False)
-            self.sigCrosshairMoved.emit(value_x, value_y)
-        return callback
-
-
-class Scan1DDockWidget(QtWidgets.QDockWidget):
-    """
-    """
-
-    __transparent_marker_attrs = frozenset(
-        {'sigPositionChanged', 'sigPositionDragged', 'sigDragStarted', 'sigDragFinished'}
-    )
-    __transparent_widget_attrs = frozenset(
-        {'sigMouseClicked', 'sigMouseAreaSelected', 'sigScanToggled', 'sigSaveRelayAxis', 'selection_enabled',
-         'zoom_by_selection_enabled', 'toggle_selection', 'toggle_zoom_by_selection', 'toggle_scan',
-         'toggle_enabled', 'set_scan_data'}
-    )
-
-    def __init__(self, *args, scan_axis, channels, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self._axis = scan_axis.name
-
-        self.setWindowTitle('{0} Scan'.format(scan_axis.name.title()))
-        self.setObjectName('{0}_scan_dockWidget'.format(scan_axis.name))
-
-        icon_path = os.path.join(get_artwork_dir(), 'icons')
-        start_icon_path = os.path.join(icon_path, 'scan-xy-start')
-        stop_icon_path = os.path.join(icon_path, 'scan-stop')
-        icon = QtGui.QIcon(start_icon_path, state=QtGui.QIcon.Off)
-        icon.addPixmap(QtGui.QPixmap(stop_icon_path), mode=QtGui.QIcon.Normal, state=QtGui.QIcon.On)
-        self.scan_widget = Scan1DWidget(scan_axis=scan_axis, channel_units={ch.name: ch.unit for ch in channels},
-                                        scan_icon=icon)
-        self.scan_widget.set_axis_label(scan_axis.name.title(), scan_axis.unit)
-        self.scan_widget.set_data_channels({ch.name: ch.unit for ch in channels})
-        self.scan_widget.add_marker(movable=True)
-        self.scan_widget.markers[-1].set_allowed_range(scan_axis.value_range)
-        self.scan_widget.toggle_zoom_by_selection(True)
-
-        self.setWidget(self.scan_widget)
-
-    def __getattr__(self, item):
-        if item in self.__transparent_marker_attrs:
-            return getattr(self.scan_widget.markers[-1], item)
-        if item in self.__transparent_widget_attrs:
-            return getattr(self.scan_widget, item)
-        raise AttributeError('Scan1DDockWidget has no attribute "{0}"'.format(item))
-
-    @property
-    def axis(self):
-        return self._axis
-
-    @property
-    def marker(self):
-        return self.scan_widget.markers[-1]
-
-    def toggle_marker(self, enabled):
-        if enabled:
-            return self.scan_widget.show_marker(-1)
-        return self.scan_widget.hide_marker(-1)
+    def scan_axes(self):
+        return self._scan_axes
