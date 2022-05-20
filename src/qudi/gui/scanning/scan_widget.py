@@ -98,7 +98,8 @@ class Scan1DWidget(_BaseScanWidget):
         super().__init__(parent=parent)
 
         self.plot_item = XYPlotItem([-0.5, 0.5], [0, 0])
-        self.plot_widget = RubberbandZoomSelectionPlotWidget()
+        self.plot_widget = RubberbandZoomSelectionPlotWidget(allow_tracking_outside_data=True,
+                                                             emit_while_dragging=True)
         self.plot_widget.addItem(self.plot_item)
         self.plot_widget.set_selection_mutable(True)
         self.plot_widget.add_marker_selection(position=(0, 0),
@@ -162,8 +163,10 @@ class Scan2DWidget(_BaseScanWidget):
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent=parent)
 
-        self.image_widget = RubberbandZoomSelectionImageWidget(xy_region_selection_crosshair=True,
-                                                               xy_region_selection_handles=False)
+        self.image_widget = RubberbandZoomSelectionImageWidget(allow_tracking_outside_data=True,
+                                                               xy_region_selection_crosshair=True,
+                                                               xy_region_selection_handles=False,
+                                                               emit_while_dragging=True)
         self.image_widget.set_selection_mutable(True)
         self.image_widget.add_region_selection(span=((-0.5, 0.5), (-0.5, 0.5)),
                                                mode=self.image_widget.SelectionMode.XY)
