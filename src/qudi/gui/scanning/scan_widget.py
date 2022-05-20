@@ -107,7 +107,7 @@ class Scan1DWidget(_BaseScanWidget):
                                               mode=self.plot_widget.SelectionMode.X)
         self.plot_widget.sigMarkerSelectionChanged.connect(self._markers_changed)
         self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
-        self.plot_widget.sigMouseDragged.connect(self._mouse_dragged)
+        self.plot_widget.sigZoomAreaApplied.connect(self._zoom_applied)
 
         self.layout().addWidget(self.plot_widget, 1, 0, 1, 4)
 
@@ -148,13 +148,11 @@ class Scan1DWidget(_BaseScanWidget):
         position = markers[self.plot_widget.SelectionMode.X][0]
         self.sigMarkerPositionChanged.emit(position)
 
-    @QtCore.Slot(tuple, tuple, object)
-    def _mouse_dragged(self, start_position, current_position, event) -> None:
+    @QtCore.Slot(QtCore.QRectF)
+    def _zoom_applied(self, zoom_area) -> None:
         if self.plot_widget.rubberband_zoom_selection_mode == self.plot_widget.SelectionMode.X:
-            if event.isFinish():
-                self.sigZoomAreaSelected.emit(
-                    tuple(sorted([start_position[0], current_position[0]]))
-                )
+            x_range = tuple(sorted([zoom_area.left(), zoom_area.right()]))
+            self.sigZoomAreaSelected.emit(x_range)
 
     def _update_scan_data(self) -> None:
         if (self._scan_data is None) or (self._scan_data.data is None):
@@ -188,7 +186,7 @@ class Scan2DWidget(_BaseScanWidget):
         self.image_item = self.image_widget.image_item
         self.image_widget.sigRegionSelectionChanged.connect(self._region_changed)
         self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
-        self.image_widget.sigMouseDragged.connect(self._mouse_dragged)
+        self.image_widget.sigZoomAreaApplied.connect(self._zoom_applied)
 
         self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
 
@@ -253,14 +251,12 @@ class Scan2DWidget(_BaseScanWidget):
         center = regions[self.image_widget.SelectionMode.XY][0].center()
         self.sigMarkerPositionChanged.emit((center.x(), center.y()))
 
-    @QtCore.Slot(tuple, tuple, object)
-    def _mouse_dragged(self, start_position, current_position, event) -> None:
+    @QtCore.Slot(QtCore.QRectF)
+    def _zoom_applied(self, zoom_area) -> None:
         if self.image_widget.rubberband_zoom_selection_mode == self.image_widget.SelectionMode.XY:
-            if event.isFinish():
-                self.sigZoomAreaSelected.emit(
-                    tuple(sorted([start_position[0], current_position[0]])),
-                    tuple(sorted([start_position[1], current_position[1]]))
-                )
+            x_range = tuple(sorted([zoom_area.left(), zoom_area.right()]))
+            y_range = tuple(sorted([zoom_area.top(), zoom_area.bottom()]))
+            self.sigZoomAreaSelected.emit(x_range, y_range)
 
     def _update_scan_data(self) -> None:
         if (self._scan_data is None) or (self._scan_data.data is None):
