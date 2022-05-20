@@ -23,6 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import numpy as np
 import copy as cp
+from typing import Union, Tuple
 from functools import partial
 from PySide2 import QtCore, QtGui, QtWidgets
 
@@ -344,7 +345,7 @@ class ScannerGui(GuiBase):
         # ToDo: Implement a way to avoid too fast position update from slider movement.
         # todo: why is _update_scan_crosshairds issuing (not only displaying) at all?
         self.scanner_control_dockwidget.sigSliderMoved.connect(
-            #lambda ax, pos: self._update_scan_crosshairs(pos_dict={ax: pos}, exclude_scan=None)
+            #lambda ax, pos: self._update_scan_markers(pos_dict={ax: pos}, exclude_scan=None)
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
 
@@ -511,8 +512,12 @@ class ScannerGui(GuiBase):
             self.scan_1d_dockwidgets[axes] = dockwidget
             self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
 
-            # dockwidget.sigPositionDragged.connect(self.__get_marker_update_func(axes))
-            # dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
+            dockwidget.scan_widget.sigMarkerPositionChanged.connect(
+                self.__get_marker_update_func(axes)
+            )
+            dockwidget.scan_widget.toggle_scan_button.clicked.connect(
+                self.__get_toggle_scan_func(axes)
+            )
             # dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
             # dockwidget.sigSaveRelayAxis.connect(lambda ax: self.save_scan_data(axes))
         else:
@@ -522,19 +527,22 @@ class ScannerGui(GuiBase):
                 return
             dockwidget = ScanDockWidget(scan_axes=(axes_constr[axes[0]], axes_constr[axes[1]]))
             dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
-            dockwidget.scan_widget.set_crosshair_size(tuple(optimizer_range[ax] for ax in axes))
+            dockwidget.scan_widget.set_marker_size(tuple(optimizer_range[ax] for ax in axes))
             self.scan_2d_dockwidgets[axes] = dockwidget
             self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
 
-            # dockwidget.sigPositionDragged.connect(self.__get_crosshair_update_func(axes))
-            # dockwidget.sigScanToggled.connect(self.__get_toggle_scan_func(axes))
+            dockwidget.scan_widget.sigMarkerPositionChanged.connect(
+                self.__get_marker_update_func(axes)
+            )
+            dockwidget.scan_widget.toggle_scan_button.clicked.connect(
+                self.__get_toggle_scan_func(axes)
+            )
             # dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
             #
             # dockwidget.sigCrosshairMoved.connect(
             #     lambda x, y: self._update_scan_sliders({axes[0]: x,
             #                                             axes[1]: y}))
             # dockwidget.sigSaveRelayAxes.connect(lambda ax: self.save_scan_data(axes))
-        return
 
     def set_active_tab(self, axes):
         avail_axs = list(self.scan_1d_dockwidgets.keys())
@@ -556,10 +564,9 @@ class ScannerGui(GuiBase):
             self._mw.action_utility_zoom.blockSignals(False)
 
         for dockwidget in self.scan_2d_dockwidgets.values():
-            dockwidget.toggle_selection(enable)
+            dockwidget.scan_widget.toggle_zoom(enable)
         for dockwidget in self.scan_1d_dockwidgets.values():
-            dockwidget.toggle_selection(enable)
-        return
+            dockwidget.scan_widget.toggle_zoom(enable)
 
     @QtCore.Slot()
     def apply_scanner_settings(self):
@@ -644,7 +651,7 @@ class ScannerGui(GuiBase):
         if not isinstance(pos_dict, dict):
             pos_dict = self._scanning_logic().scanner_target
 
-        self._update_scan_crosshairs(pos_dict)
+        self._update_scan_markers(pos_dict)
         self.scanner_control_dockwidget.set_target(pos_dict)
         return
 
@@ -778,23 +785,24 @@ class ScannerGui(GuiBase):
         for ax in avail_axs:
             if len(ax) == 2:
                 dockwidget = self.scan_2d_dockwidgets.get(ax, None)
-                dockwidget.scan_widget.autoRange()
+                dockwidget.scan_widget.image_widget.autoRange()
 
-
-    def _update_scan_crosshairs(self, pos_dict, exclude_scan=None):
+    def _update_scan_markers(self, pos_dict, exclude_scan=None):
         """
         """
         for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
-            if exclude_scan == scan_axes or not any(ax in pos_dict for ax in scan_axes):
-                continue
-            old_x, old_y = dockwidget.crosshair.position
-            new_pos = (pos_dict.get(scan_axes[0], old_x), pos_dict.get(scan_axes[1], old_y))
-            dockwidget.crosshair.set_position(new_pos)
+            if exclude_scan != scan_axes:
+                old_x, old_y = dockwidget.scan_widget.marker_position
+                new_pos = (pos_dict.get(scan_axes[0], old_x), pos_dict.get(scan_axes[1], old_y))
+                dockwidget.scan_widget.blockSignals(True)
+                dockwidget.scan_widget.set_marker_position(new_pos)
+                dockwidget.scan_widget.blockSignals(False)
         for scan_axes, dockwidget in self.scan_1d_dockwidgets.items():
-            if exclude_scan == scan_axes or not any(ax in pos_dict for ax in scan_axes):
-                continue
-            new_pos = pos_dict.get(scan_axes[0], dockwidget.marker.position)
-            dockwidget.marker.set_position(new_pos)
+            if exclude_scan != scan_axes:
+                new_pos = pos_dict.get(scan_axes[0], dockwidget.scan_widget.marker_position)
+                dockwidget.scan_widget.blockSignals(True)
+                dockwidget.scan_widget.set_marker_position(new_pos)
+                dockwidget.scan_widget.blockSignals(False)
 
     def _update_scan_sliders(self, pos_dict):
         """
@@ -839,19 +847,17 @@ class ScannerGui(GuiBase):
 
     def _toggle_enable_scan_crosshairs(self, enable):
         for dockwidget in self.scan_2d_dockwidgets.values():
-            dockwidget.toggle_crosshair(enable)
+            dockwidget.scan_widget.toggle_marker(enable)
         for axes, dockwidget in self.scan_1d_dockwidgets.items():
-            dockwidget.toggle_marker(enable)
+            dockwidget.scan_widget.toggle_marker(enable)
 
     def _toggle_enable_scan_buttons(self, enable, exclude_scan=None):
         for axes, dockwidget in self.scan_2d_dockwidgets.items():
-            if exclude_scan == axes:
-                continue
-            dockwidget.toggle_enabled(enable)
+            if exclude_scan != axes:
+                dockwidget.scan_widget.toggle_scan_button.setEnabled(enable)
         for axes, dockwidget in self.scan_1d_dockwidgets.items():
-            if exclude_scan == axes:
-                continue
-            dockwidget.toggle_enabled(enable)
+            if exclude_scan != axes:
+                dockwidget.scan_widget.toggle_scan_button.setEnabled(enable)
 
     def _toggle_enable_actions(self, enable, exclude_action=None):
         if exclude_action is not self._mw.action_utility_zoom:
@@ -865,18 +871,13 @@ class ScannerGui(GuiBase):
         if exclude_action is not self._mw.action_optimize_position:
             self._mw.action_optimize_position.setEnabled(enable)
 
-    def __get_crosshair_update_func(self, axes):
-        def update_func(x, y):
-            pos_dict = {axes[0]: x, axes[1]: y}
-            #self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
-            # self.scanner_control_dockwidget.widget().set_target(pos_dict)
-            self.set_scanner_target_position(pos_dict)
-        return update_func
-
-    def __get_marker_update_func(self, axes):
-        def update_func(pos):
-            pos_dict = {axes[0]: pos}
-            #self._update_scan_crosshairs(pos_dict, exclude_scan=axes)
+    def __get_marker_update_func(self, axes: Union[Tuple[str], Tuple[str, str]]):
+        def update_func(pos: Union[float, Tuple[float, float]]):
+            if len(axes) == 1:
+                pos_dict = {axes[0]: pos}
+            else:
+                pos_dict = {axes[0]: pos[0], axes[1]: pos[1]}
+            #self._update_scan_markers(pos_dict, exclude_scan=axes)
             # self.scanner_control_dockwidget.widget().set_target(pos_dict)
             self.set_scanner_target_position(pos_dict)
         return update_func

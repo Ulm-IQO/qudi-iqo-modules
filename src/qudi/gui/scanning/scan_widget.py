@@ -29,7 +29,6 @@ from typing import Optional, Any
 from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWidget
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
 from qudi.util.widgets.plotting.plot_item import XYPlotItem
-from qudi.util.widgets.plotting.marker import InfiniteCrosshairRectangle
 from qudi.util.paths import get_artwork_dir
 from qudi.interface.scanning_probe_interface import ScanData
 
@@ -116,6 +115,15 @@ class Scan1DWidget(_BaseScanWidget):
     def set_marker_position(self, position: float) -> None:
         self.plot_widget.move_marker_selection((position, 0), 0)
 
+    def toggle_zoom(self, enable: bool) -> None:
+        self.plot_widget.set_rubberband_zoom_selection_mode(self.plot_widget.SelectionMode.X)
+
+    def toggle_marker(self, show: bool) -> None:
+        if show:
+            self.plot_widget.show_marker_selections()
+        else:
+            self.plot_widget.hide_marker_selections()
+
     def set_scan_data(self, data: ScanData) -> None:
         # Set axis label
         self.plot_widget.setLabel('bottom',
@@ -128,6 +136,7 @@ class Scan1DWidget(_BaseScanWidget):
         # Set data
         self._update_scan_data()
 
+    @QtCore.Slot(dict)
     def _markers_changed(self, markers) -> None:
         position = markers[self.plot_widget.SelectionMode.X][0]
         self.sigMarkerPositionChanged.emit(position)
@@ -148,33 +157,56 @@ class Scan2DWidget(_BaseScanWidget):
     scans.
     """
 
-    sigCrosshairPositionChanged = QtCore.Signal(tuple)
+    sigMarkerPositionChanged = QtCore.Signal(tuple)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent=parent)
 
-        self.image_widget = RubberbandZoomSelectionImageWidget()
-        self.crosshair = InfiniteCrosshairRectangle(self.image_widget.plot_widget.getViewBox())
+        self.image_widget = RubberbandZoomSelectionImageWidget(xy_region_selection_crosshair=True,
+                                                               xy_region_selection_handles=False)
+        self.image_widget.set_selection_mutable(True)
+        self.image_widget.add_region_selection(span=((-0.5, 0.5), (-0.5, 0.5)),
+                                               mode=self.image_widget.SelectionMode.XY)
         self.image_item = self.image_widget.image_item
-        self.crosshair.sigAreaDragged.connect(self._crosshair_dragged)
-        self.crosshair.sigAreaChanged.connect(self._crosshair_changed)
+        self.image_widget.sigRegionSelectionChanged.connect(self._region_changed)
         self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
 
         self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
 
     @property
-    def crosshair_position(self) -> Tuple[float, float]:
-        return self.crosshair.position
+    def marker_position(self) -> Tuple[float, float]:
+        center = self.image_widget.region_selection[self.image_widget.SelectionMode.XY][0].center()
+        return center.x(), center.y()
 
-    def set_crosshair_position(self, position: Tuple[float, float]) -> None:
-        self.crosshair.set_position(position)
+    def set_marker_position(self, position: Tuple[float, float]) -> None:
+        size = self.marker_size
+        x_min = position[0] - size[0] / 2
+        x_max = position[0] + size[0] / 2
+        y_min = position[1] - size[1] / 2
+        y_max = position[1] + size[1] / 2
+        self.image_widget.move_region_selection(((x_min, x_max), (y_min, y_max)), 0)
+
+    def toggle_zoom(self, enable: bool) -> None:
+        self.image_widget.set_rubberband_zoom_selection_mode(self.image_widget.SelectionMode.XY)
+
+    def toggle_marker(self, show: bool) -> None:
+        if show:
+            self.image_widget.show_region_selections()
+        else:
+            self.image_widget.hide_region_selections()
 
     @property
-    def crosshair_size(self) -> Tuple[float, float]:
-        return self.crosshair.size
+    def marker_size(self) -> Tuple[float, float]:
+        rect = self.image_widget.region_selection[self.image_widget.SelectionMode.XY][0]
+        return abs(rect.width()), abs(rect.height())
 
-    def set_crosshair_size(self, size: Tuple[float, float]) -> None:
-        self.crosshair.set_size(size)
+    def set_marker_size(self, size: Tuple[float, float]) -> None:
+        position = self.marker_position
+        x_min = position[0] - size[0] / 2
+        x_max = position[0] + size[0] / 2
+        y_min = position[1] - size[1] / 2
+        y_max = position[1] + size[1] / 2
+        self.image_widget.move_region_selection(((x_min, x_max), (y_min, y_max)), 0)
 
     def set_scan_data(self, data: ScanData) -> None:
         # Set axes labels
@@ -191,21 +223,10 @@ class Scan2DWidget(_BaseScanWidget):
         # Set data
         self._update_scan_data()
 
-    def _crosshair_dragged(self,
-                           start_area: QtCore.QRectF,
-                           current_area: QtCore.QRectF,
-                           is_start: bool,
-                           is_finished: bool
-                           ) -> None:
-        # if this is the last dragged signal,
-        # _crosshair_changed will be called immediately afterwards anyways. This avoids duplication.
-        if not is_finished:
-            center = current_area.center()
-            self.sigCrosshairPositionChanged.emit((center.x(), center.y()))
-
-    def _crosshair_changed(self, area: QtCore.QRectF) -> None:
-        center = area.center()
-        self.sigCrosshairPositionChanged.emit((center.x(), center.y()))
+    @QtCore.Slot(dict)
+    def _region_changed(self, regions) -> None:
+        center = regions[self.image_widget.SelectionMode.XY][0].center()
+        self.sigMarkerPositionChanged.emit((center.x(), center.y()))
 
     def _update_scan_data(self) -> None:
         if (self._scan_data is None) or (self._scan_data.data is None):
