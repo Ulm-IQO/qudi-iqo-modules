@@ -42,9 +42,7 @@ class ScanDockWidget(QtWidgets.QDockWidget):
             self._scan_axes = (x_axis,)
 
         super().__init__(title, parent=parent)
-        self.setObjectName(
-            '{0}_scan_dockWidget'.format('_'.join(ax.name for ax in self._scan_axes))
-        )
+        self.setObjectName(f'{"_".join(ax.name for ax in self._scan_axes)}_scan_dockWidget')
 
         if len(self._scan_axes) == 1:
             self.scan_widget = Scan1DWidget()
