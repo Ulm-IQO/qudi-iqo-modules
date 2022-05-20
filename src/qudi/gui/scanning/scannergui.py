@@ -508,41 +508,30 @@ class ScannerGui(GuiBase):
                                'already created. Remove old widget first.'.format(axes))
                 return
             dockwidget = ScanDockWidget(scan_axes=(axes_constr[axes[0]],))
-            dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
             self.scan_1d_dockwidgets[axes] = dockwidget
-            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
-
-            dockwidget.scan_widget.sigMarkerPositionChanged.connect(
-                self.__get_marker_update_func(axes)
-            )
-            dockwidget.scan_widget.toggle_scan_button.clicked.connect(
-                self.__get_toggle_scan_func(axes)
-            )
-            # dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
-            # dockwidget.sigSaveRelayAxis.connect(lambda ax: self.save_scan_data(axes))
         else:
             if axes in self.scan_2d_dockwidgets:
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
             dockwidget = ScanDockWidget(scan_axes=(axes_constr[axes[0]], axes_constr[axes[1]]))
-            dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
             dockwidget.scan_widget.set_marker_size(tuple(optimizer_range[ax] for ax in axes))
             self.scan_2d_dockwidgets[axes] = dockwidget
-            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
 
-            dockwidget.scan_widget.sigMarkerPositionChanged.connect(
-                self.__get_marker_update_func(axes)
-            )
-            dockwidget.scan_widget.toggle_scan_button.clicked.connect(
-                self.__get_toggle_scan_func(axes)
-            )
-            # dockwidget.sigMouseAreaSelected.connect(self.__get_range_from_selection_func(axes))
-            #
-            # dockwidget.sigCrosshairMoved.connect(
-            #     lambda x, y: self._update_scan_sliders({axes[0]: x,
-            #                                             axes[1]: y}))
-            # dockwidget.sigSaveRelayAxes.connect(lambda ax: self.save_scan_data(axes))
+        dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+        dockwidget.scan_widget.sigMarkerPositionChanged.connect(
+            self.__get_marker_update_func(axes)
+        )
+        dockwidget.scan_widget.toggle_scan_button.clicked.connect(
+            self.__get_toggle_scan_func(axes)
+        )
+        dockwidget.scan_widget.save_scan_button.clicked.connect(
+            self.__get_save_scan_data_func(axes)
+        )
+        dockwidget.scan_widget.sigZoomAreaSelected.connect(
+            self.__get_range_from_selection_func(axes)
+        )
 
     def set_active_tab(self, axes):
         avail_axs = list(self.scan_1d_dockwidgets.keys())
@@ -653,7 +642,6 @@ class ScannerGui(GuiBase):
 
         self._update_scan_markers(pos_dict)
         self.scanner_control_dockwidget.set_target(pos_dict)
-        return
 
     @QtCore.Slot(bool, object, object)
     def scan_state_updated(self, is_running, scan_data=None, caller_id=None):
@@ -882,27 +870,30 @@ class ScannerGui(GuiBase):
             self.set_scanner_target_position(pos_dict)
         return update_func
 
-    def __get_toggle_scan_func(self, excl_axes):
+    def __get_toggle_scan_func(self, axes: Union[Tuple[str], Tuple[str, str]]):
         def toggle_func(enabled):
-            self._toggle_enable_scan_buttons(not enabled, exclude_scan=excl_axes)
+            self._toggle_enable_scan_buttons(not enabled, exclude_scan=axes)
             self._toggle_enable_actions(not enabled)
             self._toggle_enable_scan_crosshairs(not enabled)
-            self.sigToggleScan.emit(enabled, excl_axes, self.module_uuid)
+            self.sigToggleScan.emit(enabled, axes, self.module_uuid)
         return toggle_func
+
+    def __get_save_scan_data_func(self, axes: Union[Tuple[str], Tuple[str, str]]):
+        def save_scan_func():
+            self.save_scan_data(axes)
+        return save_scan_func
 
     def __get_range_from_selection_func(self, axes):
         if len(axes) == 2:
             def set_range_func(x_range, y_range):
-                x_min, x_max = min(x_range), max(x_range)
-                y_min, y_max = min(y_range), max(y_range)
-                self.sigScanSettingsChanged.emit(
-                    {'range': {axes[0]: (x_min, x_max), axes[1]: (y_min, y_max)}}
-                )
+                x_range = tuple(sorted(x_range))
+                y_range = tuple(sorted(y_range))
+                self.sigScanSettingsChanged.emit({'range': {axes[0]: x_range, axes[1]: y_range}})
                 self._mw.action_utility_zoom.setChecked(False)
         else:
-            def set_range_func(start, stop):
-                extent = (stop, start) if start > stop else (start, stop)
-                self.sigScanSettingsChanged.emit({'range': {axes[0]: extent}})
+            def set_range_func(x_range):
+                x_range = tuple(sorted(x_range))
+                self.sigScanSettingsChanged.emit({'range': {axes[0]: x_range}})
                 self._mw.action_utility_zoom.setChecked(False)
         return set_range_func
 

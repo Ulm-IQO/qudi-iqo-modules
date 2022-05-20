@@ -93,6 +93,7 @@ class Scan1DWidget(_BaseScanWidget):
     scans.
     """
     sigMarkerPositionChanged = QtCore.Signal(float)
+    sigZoomAreaSelected = QtCore.Signal(tuple)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent=parent)
@@ -106,6 +107,7 @@ class Scan1DWidget(_BaseScanWidget):
                                               mode=self.plot_widget.SelectionMode.X)
         self.plot_widget.sigMarkerSelectionChanged.connect(self._markers_changed)
         self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
+        self.plot_widget.sigMouseDragged.connect(self._mouse_dragged)
 
         self.layout().addWidget(self.plot_widget, 1, 0, 1, 4)
 
@@ -117,7 +119,11 @@ class Scan1DWidget(_BaseScanWidget):
         self.plot_widget.move_marker_selection((position, 0), 0)
 
     def toggle_zoom(self, enable: bool) -> None:
-        self.plot_widget.set_rubberband_zoom_selection_mode(self.plot_widget.SelectionMode.X)
+        if enable:
+            mode = self.plot_widget.SelectionMode.X
+        else:
+            mode = self.plot_widget.SelectionMode.Disabled
+        self.plot_widget.set_rubberband_zoom_selection_mode(mode)
 
     def toggle_marker(self, show: bool) -> None:
         if show:
@@ -142,6 +148,14 @@ class Scan1DWidget(_BaseScanWidget):
         position = markers[self.plot_widget.SelectionMode.X][0]
         self.sigMarkerPositionChanged.emit(position)
 
+    @QtCore.Slot(tuple, tuple, object)
+    def _mouse_dragged(self, start_position, current_position, event) -> None:
+        if self.plot_widget.rubberband_zoom_selection_mode == self.plot_widget.SelectionMode.X:
+            if event.isFinish():
+                self.sigZoomAreaSelected.emit(
+                    tuple(sorted([start_position[0], current_position[0]]))
+                )
+
     def _update_scan_data(self) -> None:
         if (self._scan_data is None) or (self._scan_data.data is None):
             self.plot_item.clear()
@@ -159,6 +173,7 @@ class Scan2DWidget(_BaseScanWidget):
     """
 
     sigMarkerPositionChanged = QtCore.Signal(tuple)
+    sigZoomAreaSelected = QtCore.Signal(tuple, tuple)
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
         super().__init__(parent=parent)
@@ -173,6 +188,7 @@ class Scan2DWidget(_BaseScanWidget):
         self.image_item = self.image_widget.image_item
         self.image_widget.sigRegionSelectionChanged.connect(self._region_changed)
         self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
+        self.image_widget.sigMouseDragged.connect(self._mouse_dragged)
 
         self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
 
@@ -190,7 +206,11 @@ class Scan2DWidget(_BaseScanWidget):
         self.image_widget.move_region_selection(((x_min, x_max), (y_min, y_max)), 0)
 
     def toggle_zoom(self, enable: bool) -> None:
-        self.image_widget.set_rubberband_zoom_selection_mode(self.image_widget.SelectionMode.XY)
+        if enable:
+            mode = self.image_widget.SelectionMode.XY
+        else:
+            mode = self.image_widget.SelectionMode.Disabled
+        self.image_widget.set_rubberband_zoom_selection_mode(mode)
 
     def toggle_marker(self, show: bool) -> None:
         if show:
@@ -230,6 +250,15 @@ class Scan2DWidget(_BaseScanWidget):
     def _region_changed(self, regions) -> None:
         center = regions[self.image_widget.SelectionMode.XY][0].center()
         self.sigMarkerPositionChanged.emit((center.x(), center.y()))
+
+    @QtCore.Slot(tuple, tuple, object)
+    def _mouse_dragged(self, start_position, current_position, event) -> None:
+        if self.image_widget.rubberband_zoom_selection_mode == self.image_widget.SelectionMode.XY:
+            if event.isFinish():
+                self.sigZoomAreaSelected.emit(
+                    tuple(sorted([start_position[0], current_position[0]])),
+                    tuple(sorted([start_position[1], current_position[1]]))
+                )
 
     def _update_scan_data(self) -> None:
         if (self._scan_data is None) or (self._scan_data.data is None):
