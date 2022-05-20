@@ -809,7 +809,7 @@ class ScannerGui(GuiBase):
         """
         axes = scan_data.scan_axes
         try:
-            dockwidget = self.scan_2d_dockwidgets.get(axes)
+            dockwidget = self.scan_2d_dockwidgets[axes]
         except KeyError:
             dockwidget = self.scan_1d_dockwidgets.get(axes, None)
         if dockwidget is None:
