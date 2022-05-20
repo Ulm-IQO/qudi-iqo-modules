@@ -889,10 +889,10 @@ class ScannerGui(GuiBase):
         self.update_crosshair_sizes()
 
     def update_crosshair_sizes(self):
-        for ax, wid in self.scan_2d_dockwidgets.items():
+        for ax, dockwidget in self.scan_2d_dockwidgets.items():
             width = self._osd.settings['scan_range'][ax[0]]
             height = self._osd.settings['scan_range'][ax[1]]
-            wid.crosshair.set_size((width, height))
+            dockwidget.scan_widget.set_marker_size((width, height))
 
     @QtCore.Slot(dict)
     def update_optimizer_settings(self, settings=None):
@@ -949,10 +949,10 @@ class ScannerGui(GuiBase):
                 if 'scan_range' in settings and len(seq_step)==2:
                     for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
                         if any(ax in settings['scan_range'] for ax in scan_axes):
-                            crosshair = dockwidget.scan_widget.crosshairs[0]
-                            x_size = settings['scan_range'].get(scan_axes[0], crosshair.size[0])
-                            y_size = settings['scan_range'].get(scan_axes[1], crosshair.size[1])
-                            crosshair.set_size((x_size, y_size))
+                            old_size = dockwidget.scan_widget.marker_size
+                            x_size = settings['scan_range'].get(scan_axes[0], old_size[0])
+                            y_size = settings['scan_range'].get(scan_axes[1], old_size[1])
+                            dockwidget.scan_widget.set_marker_size((x_size, y_size))
 
 
 
