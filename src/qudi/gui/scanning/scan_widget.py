@@ -133,9 +133,9 @@ class Scan1DWidget(_BaseScanWidget):
 
     def set_scan_data(self, data: ScanData) -> None:
         # Set axis label
-        self.plot_widget.setLabel('bottom',
-                                  text=data.scan_axes[0].name.title(),
-                                  units=data.scan_axes[0].unit)
+        scan_axis = data.scan_axes[0]
+        axis_unit = data.axes_units[scan_axis]
+        self.plot_widget.setLabel('bottom', text=scan_axis.title(), units=axis_unit)
         # Set channels
         self._set_available_channels(data.channels)
         # Save reference for channel changes
@@ -233,12 +233,14 @@ class Scan2DWidget(_BaseScanWidget):
 
     def set_scan_data(self, data: ScanData) -> None:
         # Set axes labels
+        scan_axes = data.scan_axes
+        axes_units = data.axes_units
         self.image_widget.set_axis_label('bottom',
-                                         label=data.scan_axes[0].name.title(),
-                                         unit=data.scan_axes[0].unit)
+                                         label=scan_axes[0].title(),
+                                         unit=axes_units[scan_axes[0]])
         self.image_widget.set_axis_label('left',
-                                         label=data.scan_axes[1].name.title(),
-                                         unit=data.scan_axes[1].unit)
+                                         label=scan_axes[1].title(),
+                                         unit=axes_units[scan_axes[1]])
         # Set channels
         self._set_available_channels(data.channels)
         # Save reference for channel changes
@@ -269,3 +271,4 @@ class Scan2DWidget(_BaseScanWidget):
             self.image_widget.set_image_extent(self._scan_data.scan_range, adjust_for_px_size=True)
             self.image_widget.set_data_label(label=current_channel,
                                              unit=self._scan_data.channel_units[current_channel])
+            self.image_widget.autoRange()

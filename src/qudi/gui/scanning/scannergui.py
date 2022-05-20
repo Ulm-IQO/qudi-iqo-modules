@@ -480,22 +480,17 @@ class ScannerGui(GuiBase):
             self.sigShowSaveDialog.emit(False)
 
     def _remove_scan_dockwidget(self, axes):
-        if axes in tuple(self.scan_1d_dockwidgets):
-            self._mw.removeDockWidget(self.scan_1d_dockwidgets[axes])
-            self.scan_1d_dockwidgets[axes].sigPositionDragged.disconnect()
-            self.scan_1d_dockwidgets[axes].sigScanToggled.disconnect()
-            self.scan_1d_dockwidgets[axes].sigMouseAreaSelected.disconnect()
-            self.scan_1d_dockwidgets[axes].deleteLater()
-            del self.scan_1d_dockwidgets[axes]
-        elif axes in tuple(self.scan_2d_dockwidgets):
-            self._mw.removeDockWidget(self.scan_2d_dockwidgets[axes])
-            self.scan_2d_dockwidgets[axes].sigPositionDragged.disconnect()
-            self.scan_2d_dockwidgets[axes].sigScanToggled.disconnect()
-            self.scan_2d_dockwidgets[axes].sigMouseAreaSelected.disconnect()
-            self.scan_2d_dockwidgets[axes].sigCrosshairMoved.disconnect()
-            self.scan_2d_dockwidgets[axes].deleteLater()
-            del self.scan_2d_dockwidgets[axes]
-        return
+        try:
+            dockwidget = self.scan_1d_dockwidgets.pop(axes)
+        except KeyError:
+            dockwidget = self.scan_2d_dockwidgets.pop(axes)
+        dockwidget.scan_widget.sigMarkerPositionChanged.disconnect()
+        dockwidget.scan_widget.toggle_scan_button.clicked.disconnect()
+        dockwidget.scan_widget.save_scan_button.clicked.disconnect()
+        dockwidget.scan_widget.sigZoomAreaSelected.disconnect()
+        self._mw.removeDockWidget(dockwidget)
+        dockwidget.setParent(None)
+        dockwidget.deleteLater()
 
     def _add_scan_dockwidget(self, axes):
         axes_constr = self._scanning_logic().scanner_axes
@@ -691,7 +686,7 @@ class ScannerGui(GuiBase):
                 else:
                     dockwidget = self.scan_1d_dockwidgets.get(scan_axes, None)
                 if dockwidget is not None:
-                    dockwidget.toggle_scan(is_running)
+                    dockwidget.scan_widget.toggle_scan_button.setChecked(is_running)
                     self._update_scan_data(scan_data)
         return
 
@@ -813,25 +808,14 @@ class ScannerGui(GuiBase):
         @param ScanData scan_data:
         """
         axes = scan_data.scan_axes
-        data = scan_data.data
-        extent = scan_data.scan_range
-
-        if scan_data.scan_dimension == 2:
-            dockwidget = self.scan_2d_dockwidgets.get(axes, None)
-            if dockwidget is None:
-                self.log.error('No 2D scan dockwidget found for scan axes {0}'.format(axes))
-                return
-            dockwidget.set_scan_data(data)
-            if data is not None:
-                dockwidget.set_image_extent(extent)
-            dockwidget.scan_widget.autoRange()
-        else:
+        try:
+            dockwidget = self.scan_2d_dockwidgets.get(axes)
+        except KeyError:
             dockwidget = self.scan_1d_dockwidgets.get(axes, None)
-            if dockwidget is None:
-                self.log.error('No 1D scan dockwidget found for scan axes {0}'.format(axes))
-                return
-            dockwidget.set_scan_data(data, x=np.linspace(*extent[0], scan_data.scan_resolution[0]))
-        return
+        if dockwidget is None:
+            self.log.error(f'No scan dockwidget found for scan axes {axes}')
+        else:
+            dockwidget.scan_widget.set_scan_data(scan_data)
 
     def _toggle_enable_scan_crosshairs(self, enable):
         for dockwidget in self.scan_2d_dockwidgets.values():
