@@ -359,6 +359,7 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
         """
         Start the acquistion and data process loop
         """
+        self._internal_status = CardStatus.running
         self.log.info('Measurement started')
         self.configure(self.ms.binwidth_s, self.ms.actual_length, self.ms.number_of_gates)
         self._start_card()
@@ -372,6 +373,7 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
         self.card_start()
         self.dp.trigger_enabled = self.enable_trigger()
         self.start_dma()
+        self.dp.wait_DMA()
 
     def get_data_trace(self):
         """
@@ -1040,14 +1042,14 @@ class Data_process_loop(Data_process_loop_main_body):
 
 class SpectrumInstrumentationTest(SpectrumInstrumentation):
 
-    def _set_params_test_exe(self):
+    def _set_params_test_exe(self, buf_length_S=1e7, notify_size_B =64):
         self.cs.acq_mode = 'STD_SINGLE'
         self.cs.trig_mode = 'SW'
         self.ms.binwidth_s = 1 / 250e6
         self.ms.record_length_s = 1e-6
         self.ms.number_of_gates = 0
-        self.ms.init_buf_size_S = 1000
-        self.cs.buf_notify_size_B = 64
+        self.ms.init_buf_size_S = buf_length_S
+        self.cs.buf_notify_size_B = notify_size_B
 
     def _start_card(self):
         self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
@@ -1071,13 +1073,13 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
 
 
 
-    def test_status(self):
+    def test_status(self, buf_length_S=1e7, notify_size_B=64):
         '''
         - Check if avail_user_len increases
         - Check if the avail_user_len decreases after set_avail_card_len
         - check if the user_pos shifts
         '''
-        self._set_params_test_exe()
+        self._set_params_test_exe(buf_length_S, notify_size_B)
         self._start_card()
         self.dp.set_avail_card_len_B(100)
         self.dp.check_dp_status()
