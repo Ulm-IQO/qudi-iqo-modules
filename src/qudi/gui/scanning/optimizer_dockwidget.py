@@ -75,6 +75,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
                                            'fit_1d': fit_plot_item, 'dim': 1})
             elif n_dim == 2:
                 plot2d_widget = DataSelectionPlotWidget()
+                plot2d_widget.setAspectLocked(lock=True, ratio=1)
                 plot2d_widget.set_selection_mutable(False)
                 plot2d_widget.add_marker_selection((0, 0),
                                                    mode=DataSelectionPlotWidget.SelectionMode.XY)
@@ -102,16 +103,6 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
     @scan_sequence.setter
     def scan_sequence(self, sequence):
         self._scanner_sequence = sequence
-
-    def crosshair(self, axs):
-        plot2d_widget = self._get_widget_part(axs, part='widget')
-
-        return plot2d_widget.crosshairs[-1]
-
-    def marker(self, axs):
-        plot1d_widget = self._get_widget_part(axs, part='widget')
-
-        return plot1d_widget.markers[-1]
 
     def _get_all_widgets_part(self, part='widget', dim=None):
         widgets_1d = [wid for wid in self._plot_widgets if wid['dim'] == 1]
@@ -155,11 +146,8 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
 
         return widget[part]
 
-    def get_plot2d_widget(self, axs):
-        return self._get_widget_part(axs, dim=2, part='widget')
-
-    def get_plot1d_widget(self, axs):
-        return self._get_widget_part(axs, dim=1, part='widget')
+    def get_plot_widget(self, axs):
+        return self._get_widget_part(axs, part='widget')
 
     def toogle_crosshair(self, axs=None, enabled=False):
         """
@@ -172,9 +160,9 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
 
         for wid in plot2d_widgets:
             if enabled:
-                wid.show_crosshair(-1)
+                wid.show_marker_selections()
             else:
-                wid.hide_crosshair(-1)
+                wid.hide_marker_selections()
 
     def toogle_marker(self, axs=None, enabled=False):
         """
@@ -185,15 +173,15 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         else:
             plot1d_widgets = self._get_all_widgets_part(dim=1)
 
-
         for wid in plot1d_widgets:
             if enabled:
-                wid.show_marker(-1)
+                wid.show_marker_selections()
             else:
-                wid.hide_marker(-1)
+                wid.hide_marker_selections()
 
     def set_2d_position(self, pos, axs, sigma=None):
-        self.crosshair(axs).set_position(pos)
+        widget = self.get_plot_widget(axs)
+        widget.move_marker_selection(pos, index=0)
 
         self._last_optimal_pos[axs[0]] = pos[0]
         self._last_optimal_pos[axs[1]] = pos[1]
@@ -204,7 +192,8 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
         self.update_result_label()
 
     def set_1d_position(self, pos, axs, sigma=None):
-        self.marker(axs).set_position(pos)
+        widget = self.get_plot_widget(axs)
+        widget.move_marker_selection((pos, 0), index=0)
 
         self._last_optimal_pos[axs[0]] = pos
         if sigma:

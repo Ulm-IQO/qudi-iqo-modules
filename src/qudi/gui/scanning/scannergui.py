@@ -796,7 +796,6 @@ class ScannerGui(GuiBase):
                 continue
         self.scanner_control_dockwidget.set_target(pos_dict)
 
-
     @QtCore.Slot(object)
     def _update_from_history(self, scan_data):
         self._update_scan_data(scan_data)
@@ -894,7 +893,6 @@ class ScannerGui(GuiBase):
             height = self._osd.settings['scan_range'][ax[1]]
             wid.crosshair.set_size((width, height))
 
-    @QtCore.Slot()
     @QtCore.Slot(dict)
     def update_optimizer_settings(self, settings=None):
         if not isinstance(settings, dict):
