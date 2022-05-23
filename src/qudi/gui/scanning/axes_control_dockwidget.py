@@ -135,10 +135,11 @@ class AxesControlWidget(QtWidgets.QWidget):
             slider = DoubleSlider(QtCore.Qt.Horizontal)
             slider.setObjectName('{0}_position_doubleSlider'.format(ax_name))
             slider.setRange(*axis.value_range)
+            granularity = 2 ** 31 - 1
             if axis.min_step > 0:
-                slider.set_granularity(round((axis.max_value - axis.min_value) / axis.min_step) + 1)
-            else:
-                slider.set_granularity(2**16-1)
+                granularity = min(granularity,
+                                  round((axis.max_value - axis.min_value) / axis.min_step) + 1)
+            slider.set_granularity(granularity)
             slider.setValue(init_pos)
             slider.setMinimumSize(150, 0)
             slider.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)

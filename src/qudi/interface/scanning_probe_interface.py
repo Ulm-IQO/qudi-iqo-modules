@@ -184,7 +184,6 @@ class ScanData:
         self._scan_frequency = float(scan_frequency)
         self._channels = tuple(channels)
 
-
         if position_feedback_axes is None:
             self._position_feedback_axes = None
         else:

@@ -23,6 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ['Scan1DWidget', 'Scan2DWidget']
 
 import os
+import numpy as np
 from typing import Tuple, Union, Sequence
 from PySide2 import QtCore, QtWidgets, QtGui
 from typing import Optional, Any
@@ -30,7 +31,7 @@ from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWi
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
 from qudi.util.widgets.plotting.plot_item import XYPlotItem
 from qudi.util.paths import get_artwork_dir
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.interface.scanning_probe_interface import ScanData, ScannerAxis, ScannerChannel
 
 
 class _BaseScanWidget(QtWidgets.QWidget):
@@ -40,7 +41,10 @@ class _BaseScanWidget(QtWidgets.QWidget):
     WARNING: Do NOT use this widget directly
     """
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
+    def __init__(self,
+                 channels: Sequence[ScannerChannel],
+                 parent: Optional[QtWidgets.QWidget] = None
+                 ) -> None:
         super().__init__(parent=parent)
 
         layout = QtWidgets.QGridLayout()
@@ -66,8 +70,11 @@ class _BaseScanWidget(QtWidgets.QWidget):
         self.channel_selection_label = QtWidgets.QLabel('Channel:')
         self.channel_selection_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.channel_selection_combobox = QtWidgets.QComboBox()
+        self.channel_selection_combobox.addItems([ch.name for ch in channels])
         self.channel_selection_combobox.setMinimumContentsLength(15)
-        self.channel_selection_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.channel_selection_combobox.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.AdjustToContentsOnFirstShow
+        )
 
         layout.addWidget(self.toggle_scan_button, 0, 0)
         layout.addWidget(self.save_scan_button, 0, 1)
@@ -78,15 +85,6 @@ class _BaseScanWidget(QtWidgets.QWidget):
 
         self._scan_data = None
 
-    def _set_available_channels(self, channels: Sequence[str]) -> None:
-        current_channel = self.channel_selection_combobox.currentText()
-        self.channel_selection_combobox.blockSignals(True)
-        self.channel_selection_combobox.clear()
-        self.channel_selection_combobox.addItems(channels)
-        if current_channel and (current_channel in channels):
-            self.channel_selection_combobox.setCurrentText(current_channel)
-        self.channel_selection_combobox.blockSignals(False)
-
 
 class Scan1DWidget(_BaseScanWidget):
     """ Widget to interactively display multichannel 1D scan data as well as toggling and saving
@@ -95,19 +93,24 @@ class Scan1DWidget(_BaseScanWidget):
     sigMarkerPositionChanged = QtCore.Signal(float)
     sigZoomAreaSelected = QtCore.Signal(tuple)
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super().__init__(parent=parent)
+    def __init__(self,
+                 axes: Tuple[ScannerAxis],
+                 channels: Sequence[ScannerChannel],
+                 parent: Optional[QtWidgets.QWidget] = None
+                 ) -> None:
+        super().__init__(channels, parent=parent)
 
         self.plot_item = XYPlotItem([-0.5, 0.5], [0, 0])
-        self.plot_widget = RubberbandZoomSelectionPlotWidget(allow_tracking_outside_data=True,
-                                                             emit_while_dragging=True)
+        self.plot_widget = RubberbandZoomSelectionPlotWidget(allow_tracking_outside_data=True)
         self.plot_widget.addItem(self.plot_item)
         self.plot_widget.set_selection_mutable(True)
         self.plot_widget.add_marker_selection(position=(0, 0),
                                               mode=self.plot_widget.SelectionMode.X)
         self.plot_widget.sigMarkerSelectionChanged.connect(self._markers_changed)
-        self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
+        self.channel_selection_combobox.currentIndexChanged.connect(self._data_channel_changed)
         self.plot_widget.sigZoomAreaApplied.connect(self._zoom_applied)
+        self.plot_widget.setLabel('bottom', text=axes[0].name.title(), units=axes[0].unit)
+        self.plot_widget.setLabel('left', text=channels[0].name, units=channels[0].unit)
 
         self.layout().addWidget(self.plot_widget, 1, 0, 1, 4)
 
@@ -132,16 +135,11 @@ class Scan1DWidget(_BaseScanWidget):
             self.plot_widget.hide_marker_selections()
 
     def set_scan_data(self, data: ScanData) -> None:
-        # Set axis label
-        scan_axis = data.scan_axes[0]
-        axis_unit = data.axes_units[scan_axis]
-        self.plot_widget.setLabel('bottom', text=scan_axis.title(), units=axis_unit)
-        # Set channels
-        self._set_available_channels(data.channels)
         # Save reference for channel changes
+        update_range = (self._scan_data is None) or (self._scan_data.scan_range != data.scan_range)
         self._scan_data = data
         # Set data
-        self._update_scan_data()
+        self._update_scan_data(update_range=update_range)
 
     @QtCore.Slot(dict)
     def _markers_changed(self, markers) -> None:
@@ -154,15 +152,26 @@ class Scan1DWidget(_BaseScanWidget):
             x_range = tuple(sorted([zoom_area.left(), zoom_area.right()]))
             self.sigZoomAreaSelected.emit(x_range)
 
-    def _update_scan_data(self) -> None:
+    def _data_channel_changed(self) -> None:
+        if self._scan_data is not None:
+            current_channel = self.channel_selection_combobox.currentText()
+            self.plot_widget.setLabel('left',
+                                      text=current_channel,
+                                      units=self._scan_data.channel_units[current_channel])
+        self._update_scan_data(update_range=False)
+
+    def _update_scan_data(self, update_range: bool) -> None:
         if (self._scan_data is None) or (self._scan_data.data is None):
             self.plot_item.clear()
         else:
             current_channel = self.channel_selection_combobox.currentText()
-            self.plot_item.setData(self._scan_data.data[current_channel])
-            self.plot_widget.setLabel('left',
-                                      text=current_channel,
-                                      units=self._scan_data.channel_units[current_channel])
+            if update_range:
+                x_data = np.linspace(*self._scan_data.scan_range[0],
+                                     self._scan_data.scan_resolution[0])
+                self.plot_item.setData(y=self._scan_data.data[current_channel], x=x_data)
+            else:
+                self.plot_item.setData(y=self._scan_data.data[current_channel],
+                                       x=self.plot_item.xData)
 
 
 class Scan2DWidget(_BaseScanWidget):
@@ -173,20 +182,26 @@ class Scan2DWidget(_BaseScanWidget):
     sigMarkerPositionChanged = QtCore.Signal(tuple)
     sigZoomAreaSelected = QtCore.Signal(tuple, tuple)
 
-    def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super().__init__(parent=parent)
+    def __init__(self,
+                 axes: Tuple[ScannerAxis, ScannerAxis],
+                 channels: Sequence[ScannerChannel],
+                 parent: Optional[QtWidgets.QWidget] = None
+                 ) -> None:
+        super().__init__(channels, parent=parent)
 
         self.image_widget = RubberbandZoomSelectionImageWidget(allow_tracking_outside_data=True,
                                                                xy_region_selection_crosshair=True,
-                                                               xy_region_selection_handles=False,
-                                                               emit_while_dragging=True)
+                                                               xy_region_selection_handles=False)
         self.image_widget.set_selection_mutable(True)
         self.image_widget.add_region_selection(span=((-0.5, 0.5), (-0.5, 0.5)),
                                                mode=self.image_widget.SelectionMode.XY)
         self.image_item = self.image_widget.image_item
         self.image_widget.sigRegionSelectionChanged.connect(self._region_changed)
-        self.channel_selection_combobox.currentIndexChanged.connect(self._update_scan_data)
+        self.channel_selection_combobox.currentIndexChanged.connect(self._data_channel_changed)
         self.image_widget.sigZoomAreaApplied.connect(self._zoom_applied)
+        self.image_widget.set_axis_label('bottom', label=axes[0].name.title(), unit=axes[0].unit)
+        self.image_widget.set_axis_label('left', label=axes[1].name.title(), unit=axes[1].unit)
+        self.image_widget.set_data_label(label=channels[0].name, unit=channels[0].unit)
 
         self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
 
@@ -230,17 +245,6 @@ class Scan2DWidget(_BaseScanWidget):
         self.image_widget.move_region_selection(((x_min, x_max), (y_min, y_max)), 0)
 
     def set_scan_data(self, data: ScanData) -> None:
-        # Set axes labels
-        scan_axes = data.scan_axes
-        axes_units = data.axes_units
-        self.image_widget.set_axis_label('bottom',
-                                         label=scan_axes[0].title(),
-                                         unit=axes_units[scan_axes[0]])
-        self.image_widget.set_axis_label('left',
-                                         label=scan_axes[1].title(),
-                                         unit=axes_units[scan_axes[1]])
-        # Set channels
-        self._set_available_channels(data.channels)
         # Save reference for channel changes
         self._scan_data = data
         # Set data
@@ -258,13 +262,19 @@ class Scan2DWidget(_BaseScanWidget):
             y_range = tuple(sorted([zoom_area.top(), zoom_area.bottom()]))
             self.sigZoomAreaSelected.emit(x_range, y_range)
 
+    def _data_channel_changed(self) -> None:
+        if self._scan_data is not None:
+            current_channel = self.channel_selection_combobox.currentText()
+            self.image_widget.set_data_label(label=current_channel,
+                                             unit=self._scan_data.channel_units[current_channel])
+        self._update_scan_data()
+
     def _update_scan_data(self) -> None:
         if (self._scan_data is None) or (self._scan_data.data is None):
             self.image_widget.set_image(None)
         else:
             current_channel = self.channel_selection_combobox.currentText()
             self.image_widget.set_image(self._scan_data.data[current_channel])
-            self.image_widget.set_image_extent(self._scan_data.scan_range, adjust_for_px_size=True)
-            self.image_widget.set_data_label(label=current_channel,
-                                             unit=self._scan_data.channel_units[current_channel])
+            self.image_widget.set_image_extent(self._scan_data.scan_range,
+                                               adjust_for_px_size=True)
             self.image_widget.autoRange()

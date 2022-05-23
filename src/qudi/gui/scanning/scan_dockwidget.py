@@ -23,21 +23,26 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ['ScanDockWidget']
 
 from PySide2 import QtWidgets
-from typing import Optional
+from typing import Optional, Tuple, Sequence, Union
 from qudi.gui.scanning.scan_widget import Scan2DWidget, Scan1DWidget
+from qudi.interface.scanning_probe_interface import ScannerAxis, ScannerChannel
 
 
 class ScanDockWidget(QtWidgets.QDockWidget):
     """
     """
 
-    def __init__(self, scan_axes, parent: Optional[QtWidgets.QWidget] = None):
+    def __init__(self,
+                 axes: Union[Tuple[ScannerAxis], Tuple[ScannerAxis, ScannerAxis]],
+                 channels: Sequence[ScannerChannel],
+                 parent: Optional[QtWidgets.QWidget] = None
+                 ) -> None:
         try:
-            x_axis, y_axis = scan_axes
+            x_axis, y_axis = axes
             title = f'{x_axis.name.title()}-{y_axis.name.title()} Scan'
-            self._scan_axes = tuple(scan_axes)
+            self._scan_axes = tuple(axes)
         except ValueError:
-            x_axis = scan_axes[0]
+            x_axis = axes[0]
             title = f'{x_axis.name.title()} Scan'
             self._scan_axes = (x_axis,)
 
@@ -45,18 +50,9 @@ class ScanDockWidget(QtWidgets.QDockWidget):
         self.setObjectName(f'{"_".join(ax.name for ax in self._scan_axes)}_scan_dockWidget')
 
         if len(self._scan_axes) == 1:
-            self.scan_widget = Scan1DWidget()
-            self.scan_widget.plot_widget.setLabel('bottom',
-                                                  text=x_axis.name.title(),
-                                                  units=x_axis.unit)
+            self.scan_widget = Scan1DWidget(self._scan_axes, channels)
         else:
-            self.scan_widget = Scan2DWidget()
-            self.scan_widget.image_widget.set_axis_label('bottom',
-                                                         label=x_axis.name.title(),
-                                                         unit=x_axis.unit)
-            self.scan_widget.image_widget.set_axis_label('left',
-                                                         label=y_axis.name.title(),
-                                                         unit=y_axis.unit)
+            self.scan_widget = Scan2DWidget(self._scan_axes, channels)
         self.setWidget(self.scan_widget)
 
     @property

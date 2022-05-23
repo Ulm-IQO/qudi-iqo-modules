@@ -495,6 +495,7 @@ class ScannerGui(GuiBase):
 
     def _add_scan_dockwidget(self, axes):
         axes_constr = self._scanning_logic().scanner_axes
+        channel_constr = list(self._scanning_logic().scanner_channels.values())
         optimizer_range = self._optimize_logic().scan_range
         axes = tuple(axes)
 
@@ -503,14 +504,15 @@ class ScannerGui(GuiBase):
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            dockwidget = ScanDockWidget(scan_axes=(axes_constr[axes[0]],))
+            dockwidget = ScanDockWidget(axes=(axes_constr[axes[0]],), channels=channel_constr)
             self.scan_1d_dockwidgets[axes] = dockwidget
         else:
             if axes in self.scan_2d_dockwidgets:
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            dockwidget = ScanDockWidget(scan_axes=(axes_constr[axes[0]], axes_constr[axes[1]]))
+            dockwidget = ScanDockWidget(axes=(axes_constr[axes[0]], axes_constr[axes[1]]),
+                                        channels=channel_constr)
             dockwidget.scan_widget.set_marker_size(tuple(optimizer_range[ax] for ax in axes))
             self.scan_2d_dockwidgets[axes] = dockwidget
 
