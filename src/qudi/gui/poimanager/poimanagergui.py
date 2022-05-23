@@ -33,7 +33,7 @@ from qudi.core.module import GuiBase
 from qudi.util.colordefs import QudiPalettePale as palette
 from PySide2 import QtCore, QtGui, QtWidgets
 from qudi.util import uic
-from qudi.util.widgets.scan_2d_widget import ImageWidget
+from qudi.util.widgets.plotting.image_widget import ImageWidget
 
 
 class PoiMarker(pg.EllipseROI):
@@ -234,7 +234,7 @@ class PoiManagerMainWindow(QtWidgets.QMainWindow):
 
         # Create central widget
         self.roi_image = ImageWidget()
-        self.roi_image._image_item.setOpts(False)
+        self.roi_image.image_item.setOpts(False)
         self.roi_image.set_axis_label('bottom', label='Position', unit='m')
         self.roi_image.set_axis_label('left', label='Position', unit='m')
         self.setCentralWidget(self.roi_image)
