@@ -1111,7 +1111,7 @@
   #<customwidget>
   # <class>ImageWidget</class>
   # <extends>QtWidgets.QWidget</extends>
-  # <header>qudi.util.widgets.scan_2d_widget.h</header>
+  # <header>qudi.util.widgets.plotting.image_widget.h</header>
   #</customwidget>
  </customwidgets>
  <resources/>
