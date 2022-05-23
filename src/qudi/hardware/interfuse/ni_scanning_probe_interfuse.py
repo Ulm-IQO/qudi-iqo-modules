@@ -643,7 +643,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, values[0])
                                for ax, values in self.__write_queue.items()}
                 self._ni_ao().setpoints = new_voltage
-                self.log.debug(f'Wrote voltages {new_voltage} to hardware')
                 self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
 
                 # Adjust the timeout each time to avoid error accumulation
@@ -742,7 +741,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             self._scan_start_indicator = scan_start_indicator
 
-            self.log.debug(f'Movement prepared to {position} with a distance of {dist} '
+            self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6} um '
                            f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
 
     def __start_ao_runout_timer(self):
@@ -765,7 +764,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if not all([values.size == 0 for values in self.__write_queue.values()]):
             self.__start_ao_runout_timer()
         else:
-            self.log.info('Freed AO Resources')
+            self.log.debug('Freed AO Resources')
             self._ni_ao().set_activity_state(False)
 
 
