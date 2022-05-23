@@ -642,8 +642,6 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
 
-        self.log.debug(f'Samples to read: {samples_to_read} and samples in buff: {self.samples_in_buffer}')
-
         if self.is_running:
             assert samples_to_read <= self._number_of_pending_samples, \
                 'Requested samples are more than the pending in frame'
