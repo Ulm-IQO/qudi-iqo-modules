@@ -23,9 +23,9 @@ import os
 from PySide2 import QtCore, QtWidgets, QtGui
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
-from qudi.util.widgets.scan_2d_widget import ImageWidget
+from qudi.util.widgets.plotting.image_widget import ImageWidget
 from qudi.util.paths import get_artwork_dir
-from .camera_settings_dialog import CameraSettingsDialog
+from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
 
 
 class CameraMainWindow(QtWidgets.QMainWindow):
@@ -68,7 +68,7 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         # Create central widget
         self.image_widget = ImageWidget()
         # FIXME: The camera hardware is currently transposing the image leading to this dirty hack
-        self.image_widget._image_item.setOpts(False, axisOrder='row-major')
+        self.image_widget.image_item.setOpts(False, axisOrder='row-major')
         self.setCentralWidget(self.image_widget)
 
 
