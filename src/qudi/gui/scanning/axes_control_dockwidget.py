@@ -153,6 +153,7 @@ class AxesControlWidget(QtWidgets.QWidget):
             pos_spinbox.setMinimumSize(75, 0)
             pos_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                       QtWidgets.QSizePolicy.Preferred)
+            pos_spinbox.dynamic_precision = False
 
             # Add to layout
             layout.addWidget(label, index, 0)
