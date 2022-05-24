@@ -33,7 +33,7 @@ from qudi.core.module import GuiBase
 from qudi.util.colordefs import QudiPalettePale as palette
 from PySide2 import QtCore, QtGui, QtWidgets
 from qudi.util import uic
-from qudi.util.widgets.plotting.image_widget import ImageWidget
+from qudi.util.widgets.plotting.image_widget import MouseTrackingImageWidget
 
 
 class PoiMarker(pg.EllipseROI):
@@ -233,7 +233,7 @@ class PoiManagerMainWindow(QtWidgets.QMainWindow):
         uic.loadUi(ui_file, self)
 
         # Create central widget
-        self.roi_image = ImageWidget()
+        self.roi_image = MouseTrackingImageWidget()
         self.roi_image.image_item.setOpts(False)
         self.roi_image.set_axis_label('bottom', label='Position', unit='m')
         self.roi_image.set_axis_label('left', label='Position', unit='m')
@@ -267,8 +267,6 @@ class PoiManagerGui(GuiBase):
 
         self._markers = dict()      # dict to hold handles for the POI markers
 
-        self._mouse_moved_proxy = None  # Signal proxy to limit mousMoved event rate
-
         self.__poi_selector_active = False  # Flag indicating if the poi selector is active
         return
 
@@ -278,9 +276,6 @@ class PoiManagerGui(GuiBase):
 
         This method executes the init methods for each of the GUIs.
         """
-        #raise NotImplementedError('This module is not implemented in the new core, yet.'
-        #                          'Things like "Colorbar" changed not backwards compatible. Please reimplement me')
-
         self._markers = dict()
 
         self._mw = PoiManagerMainWindow()
@@ -310,13 +305,6 @@ class PoiManagerGui(GuiBase):
         self._update_poi_threshold(self._poi_manager_logic().poi_threshold)
         # Initialize Auto POI diameter
         self._update_poi_diameter(self._poi_manager_logic().poi_diameter)
-
-        # Todo: needed?
-        # Distance Measurement:
-        # Introducing a SignalProxy will limit the rate of signals that get fired.
-        #self._mouse_moved_proxy = pg.SignalProxy(signal=self._mw.roi_image._image_item.scene().sigMouseMoved,
-        #                                         rateLimit=30,
-        #                                         slot=self.mouse_moved_callback)
 
         # Connect signals
         self.__connect_internal_signals()
@@ -552,36 +540,6 @@ class PoiManagerGui(GuiBase):
         self._mw.roi_image.activate_blink_correction(is_active)
         return
 
-    # Todo: needed?
-    @QtCore.Slot(object)
-    def mouse_moved_callback(self, event):
-        """ Handles any mouse movements inside the image.
-
-        @param event:   Event that signals the new mouse movement.
-                        This should be of type QPointF.
-
-        Gets the mouse position, converts it to a position scaled to the image axis
-        and than calculates and updated the position to the current POI.
-        """
-
-        # converts the absolute mouse position to a position relative to the axis
-        mouse_pos = self._mw.roi_image.getViewBox().mapSceneToView(event[0])
-
-        # only calculate distance, if a POI is selected
-        active_poi = self._poi_manager_logic().active_poi
-        if active_poi:
-            poi_pos = self._poi_manager_logic().get_poi_position(active_poi)
-            dx = ScaledFloat(mouse_pos.x() - poi_pos[0])
-            dy = ScaledFloat(mouse_pos.y() - poi_pos[1])
-            d_total = ScaledFloat(
-                np.sqrt((mouse_pos.x() - poi_pos[0])**2 + (mouse_pos.y() - poi_pos[1])**2))
-
-            self._mw.poi_distance_label.setText(
-                '{0:.2r}m ({1:.2r}m, {2:.2r}m)'.format(d_total, dx, dy))
-        else:
-            self._mw.poi_distance_label.setText('? (?, ?)')
-        pass
-
     @QtCore.Slot(bool)
     def toggle_poi_selector(self, is_active):
         if is_active != self._mw.poi_selector_Action.isChecked():
@@ -599,10 +557,10 @@ class PoiManagerGui(GuiBase):
         return
 
     @QtCore.Slot(object, QtCore.QPointF)
-    def create_poi_from_click(self, button, pos):
+    def create_poi_from_click(self, pos, button):
         # Only create new POI if the mouse click event has not been accepted by some other means
         # In our case this is most likely the POI marker to select the active POI from.
-        if button != QtCore.Qt.LeftButton:
+        if button.button() != QtCore.Qt.MouseButton.LeftButton:
             return
         # Z position from ROI origin, X and Y positions from click event
         new_pos = self._poi_manager_logic().roi_origin
@@ -761,7 +719,6 @@ class PoiManagerGui(GuiBase):
         self.sigPoiNameTagChanged.emit(self._mw.poi_nametag_LineEdit.text())
         return
 
-    # Todo
     @QtCore.Slot()
     def save_roi(self):
         """ Save ROI to file."""
@@ -770,7 +727,6 @@ class PoiManagerGui(GuiBase):
         self._poi_manager_logic().save_roi()
         return
 
-    # Todo
     @QtCore.Slot()
     def load_roi(self):
         """ Load a saved ROI from file."""
@@ -794,12 +750,11 @@ class PoiManagerGui(GuiBase):
 
     def _update_scan_image(self, scan_image, image_extent):
         """
-
         @param scan_image:
         @param image_extent:
         """
         self._mw.roi_image.set_image(image=scan_image)
-        self._mw.roi_image._image_item.set_image_extent(image_extent)
+        self._mw.roi_image.image_item.set_image_extent(image_extent)
         return
 
     def _update_roi_name(self, name):
@@ -901,7 +856,7 @@ class PoiManagerGui(GuiBase):
                 self.log.error('Unable to add POI marker to ROI image. POI marker already present.')
                 return
             marker = PoiMarker(position=position[:2],
-                               view_widget=self._mw.roi_image._plot_widget,
+                               view_widget=self._mw.roi_image.plot_widget,
                                poi_name=name,
                                radius=self._poi_manager_logic().optimise_xy_size / np.sqrt(2),
                                movable=False)

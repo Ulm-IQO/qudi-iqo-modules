@@ -445,10 +445,6 @@ class PoiManagerLogic(LogicBase):
         return
 
     @property
-    def data_directory(self):
-        return #Todo self.savelogic().data_dir
-
-    @property
     def optimise_xy_size(self):
         return np.max([self._optimizelogic().scan_range['x'], self._optimizelogic().scan_range['y']])
 
@@ -1052,13 +1048,6 @@ class PoiManagerLogic(LogicBase):
                     self.sigOptimizeStateUpdated.emit(False)
         return
 
-    def update_poi_tag_in_savelogic(self):
-        return #Todo
-        #if not self._active_poi:
-        #    self.savelogic().remove_additional_parameter('Active POI')
-        #else:
-        #    self.savelogic().update_additional_parameters({'Active POI': self._active_poi})
-
     def save_roi(self):
         """
         Save all current absolute POI coordinates to a file.
@@ -1067,7 +1056,7 @@ class PoiManagerLogic(LogicBase):
         """
         with self._thread_lock:
             data_storage = TextDataStorage(root_dir=self.module_default_data_dir,
-                                           column_formats='.15e')
+                                           column_formats=['s', '.6e', '.6e', '.6e'])
 
             # File path and names
             #filepath = self.savelogic().get_path_for_module(module_name='ROIs')
@@ -1082,33 +1071,23 @@ class PoiManagerLogic(LogicBase):
             # Metadata to save in both file headers
             x_extent, y_extent = self.roi_scan_image_extent
             parameters = OrderedDict()
+            parameters['Active POI'] = self.active_poi
             parameters['roi_name'] = self.roi_name
             parameters['poi_nametag'] = '' if self.poi_nametag is None else self.poi_nametag
             parameters['roi_creation_time'] = self.roi_creation_time_as_str
             parameters['scan_image_x_extent'] = '{0:.9e},{1:.9e}'.format(*x_extent)
             parameters['scan_image_y_extent'] = '{0:.9e},{1:.9e}'.format(*y_extent)
+            parameters['data format'] = 'name   X (m)   Y (m)   Z (m)'
 
             ##################################
             # Save POI positions to first file
             ##################################
             poi_dict = self.poi_positions
             poi_positions = np.array(tuple(poi_dict.values()), dtype=float)
-            data = OrderedDict()
-            # Save POI names in the first column
-            data['name'] = np.array(tuple(poi_dict), dtype=str)
-            # Save x,y,z coordinates in the following 3 columns
-            data['X (m)'] = poi_positions[:, 0]
-            data['Y (m)'] = poi_positions[:, 1]
-            data['Z (m)'] = poi_positions[:, 2]
+            data = [[poi_name, poi_positions[ii, 0], poi_positions[ii, 1], poi_positions[ii, 2]] for ii, poi_name in
+                    enumerate(list(poi_dict))]
 
-            data_storage.save_data([0], metadata=data, nametag=pois_filename, timestamp=timestamp)
-
-            #self.savelogic().save_data(data,
-            #                           timestamp=timestamp,
-            #                           filepath=filepath,
-            #                           parameters=parameters,
-            #                           filelabel=pois_filename,
-            #                           fmt=['%s', '%.6e', '%.6e', '%.6e'])
+            data_storage.save_data(data, metadata=parameters, nametag=pois_filename, timestamp=timestamp)
 
             ############################################
             # Save ROI history to second file (binary) if present
@@ -1123,97 +1102,99 @@ class PoiManagerLogic(LogicBase):
                 np.save(os.path.join(self.module_default_data_dir, roi_image_filename), self.roi_scan_image)
         return
 
-#     def load_roi(self, complete_path=None):
-#         if complete_path is None:
-#             return
-#         filepath, filename = os.path.split(complete_path)
-#
-#         # Try to detect legacy file format
-#         is_legacy_format = False
-#         if not complete_path.endswith('_poi_list.dat'):
-#             self.log.info('Trying to read ROI from legacy file format...')
-#             with open(complete_path, 'r') as file:
-#                 for line in file.readlines():
-#                     if line.strip() == '#POI Name\tPOI Key\tX\tY\tZ':
-#                         is_legacy_format = True
-#                     elif not line.startswith('#'):
-#                         break
-#             if not is_legacy_format:
-#                 self.log.error('Unable to load ROI from file. File format not understood.')
-#                 return
-#
-#         if is_legacy_format:
-#             filetag = filename.split('_', 1)[1].rsplit('.dat', 1)[0]
-#         else:
-#             filetag = filename.rsplit('_poi_list.dat', 1)[0]
-#
-#         # Read POI data as well as roi metadata from textfile
-#         poi_names = np.loadtxt(complete_path, delimiter='\t', usecols=0, dtype=str)
-#         if is_legacy_format:
-#             poi_coords = np.loadtxt(complete_path, delimiter='\t', usecols=(2, 3, 4), dtype=float)
-#         else:
-#             poi_coords = np.loadtxt(complete_path, delimiter='\t', usecols=(1, 2, 3), dtype=float)
-#
-#         # Create list of POI instances
-#         poi_list = [PointOfInterest(pos, poi_names[i]) for i, pos in enumerate(poi_coords)]
-#
-#         roi_name = None
-#         poi_nametag = None
-#         roi_creation_time = None
-#         scan_extent = None
-#         if is_legacy_format:
-#             roi_name = filetag
-#         else:
-#             with open(complete_path, 'r') as file:
-#                 for line in file.readlines():
-#                     if not line.startswith('#'):
-#                         break
-#                     if line.startswith('#roi_name:'):
-#                         roi_name = line.split('#roi_name:', 1)[1].strip()
-#                     elif line.startswith('#poi_nametag:'):
-#                         poi_nametag = line.split('#poi_nametag:', 1)[1].strip()
-#                     elif line.startswith('#roi_creation_time:'):
-#                         roi_creation_time = line.split('#roi_creation_time:', 1)[1].strip()
-#                     elif line.startswith('#scan_image_x_extent:'):
-#                         scan_x_extent = line.split('#scan_image_x_extent:', 1)[1].strip().split(',')
-#                     elif line.startswith('#scan_image_y_extent:'):
-#                         scan_y_extent = line.split('#scan_image_y_extent:', 1)[1].strip().split(',')
-#             scan_extent = ((float(scan_x_extent[0]), float(scan_x_extent[1])),
-#                            (float(scan_y_extent[0]), float(scan_y_extent[1])))
-#             poi_nametag = None if not poi_nametag else poi_nametag
-#
-#         # Read ROI position history from binary file
-#         history_filename = os.path.join(filepath, '{0}_history.npy'.format(filetag))
-#         try:
-#             roi_history = np.load(history_filename)
-#         except FileNotFoundError:
-#             roi_history = None
-#
-#         # Read ROI scan image from binary file
-#         image_filename = os.path.join(filepath, '{0}_scan_image.npy'.format(filetag))
-#         try:
-#             roi_scan_image = np.load(image_filename)
-#         except FileNotFoundError:
-#             roi_scan_image = None
-#
-#         # Reset current ROI and initialize new one from loaded data
-#         self.reset_roi()
-#         self._roi = RegionOfInterest(name=roi_name,
-#                                      creation_time=roi_creation_time,
-#                                      history=roi_history,
-#                                      scan_image=roi_scan_image,
-#                                      scan_image_extent=scan_extent,
-#                                      poi_list=poi_list,
-#                                      poi_nametag=poi_nametag)
-#         print(poi_nametag, self.poi_nametag)
-#         self.sigRoiUpdated.emit({'name': self.roi_name,
-#                                  'poi_nametag': self.poi_nametag,
-#                                  'pois': self.poi_positions,
-#                                  'history': self.roi_pos_history,
-#                                  'scan_image': self.roi_scan_image,
-#                                  'scan_image_extent': self.roi_scan_image_extent})
-#         self.set_active_poi(None if len(poi_names) == 0 else poi_names[0])
-#         return
+    def load_roi(self, complete_path=None):
+        if complete_path is None:
+            return
+        filepath, filename = os.path.split(complete_path)
+
+        # Try to detect legacy file format
+        is_legacy_format = False
+        if not complete_path.endswith('_poi_list.dat'):
+            self.log.info('Trying to read ROI from legacy file format...')
+            with open(complete_path, 'r') as file:
+                for line in file.readlines():
+                    if line.strip() == '#POI Name\tPOI Key\tX\tY\tZ':
+                        is_legacy_format = True
+                    elif not line.startswith('#'):
+                        break
+            if not is_legacy_format:
+                self.log.error('Unable to load ROI from file. File format not understood.')
+                return
+
+        if is_legacy_format:
+            filetag = filename.split('_', 1)[1].rsplit('.dat', 1)[0]
+        else:
+            filetag = filename.rsplit('_poi_list.dat', 1)[0]
+
+        # Read POI data as well as roi metadata from textfile
+        poi_names = np.loadtxt(complete_path, delimiter='\t', usecols=0, dtype=str)
+        if is_legacy_format:
+            poi_coords = np.loadtxt(complete_path, delimiter='\t', usecols=(2, 3, 4), dtype=float)
+        else:
+            poi_coords = np.loadtxt(complete_path, delimiter='\t', usecols=(1, 2, 3), dtype=float)
+
+        # Create list of POI instances
+        poi_list = [PointOfInterest(pos, poi_names[i]) for i, pos in enumerate(poi_coords)]
+
+        roi_name = None
+        poi_nametag = None
+        roi_creation_time = None
+        scan_extent = None
+        if is_legacy_format:
+            roi_name = filetag
+        else:
+            with open(complete_path, 'r') as file:
+                for line in file.readlines():
+                    if not line.startswith('#'):
+                        break
+                    if line.startswith('# roi_name='):
+                        roi_name = line.split('# roi_name=', 1)[1].strip().split("'")[1]
+                    elif line.startswith('# poi_nametag='):
+                        poi_nametag = line.split('# poi_nametag=', 1)[1].strip().split("'")[1]
+                    elif line.startswith('# roi_creation_time='):
+                        roi_creation_time = line.split('# roi_creation_time=', 1)[1].strip().split("'")[1]
+                    elif line.startswith('# scan_image_x_extent='):
+                        scan_x_extent = line.split('# scan_image_x_extent=', 1)[1].strip().split("'")[1].strip().split(
+                            ',')
+                    elif line.startswith('# scan_image_y_extent='):
+                        scan_y_extent = line.split('# scan_image_y_extent=', 1)[1].strip().split("'")[1].strip().split(
+                            ',')
+            scan_extent = ((float(scan_x_extent[0]), float(scan_x_extent[1])),
+                           (float(scan_y_extent[0]), float(scan_y_extent[1])))
+            poi_nametag = None if not poi_nametag else poi_nametag
+
+        # Read ROI position history from binary file
+        history_filename = os.path.join(filepath, '{0}_history.npy'.format(filetag))
+        try:
+            roi_history = np.load(history_filename)
+        except FileNotFoundError:
+            roi_history = None
+
+        # Read ROI scan image from binary file
+        image_filename = os.path.join(filepath, '{0}_scan_image.npy'.format(filetag))
+        try:
+            roi_scan_image = np.load(image_filename)
+        except FileNotFoundError:
+            roi_scan_image = None
+
+        # Reset current ROI and initialize new one from loaded data
+        self.reset_roi()
+        self._roi = RegionOfInterest(name=roi_name,
+                                     creation_time=roi_creation_time,
+                                     history=roi_history,
+                                     scan_image=roi_scan_image,
+                                     scan_image_extent=scan_extent,
+                                     poi_list=poi_list,
+                                     poi_nametag=poi_nametag)
+        print(poi_nametag, self.poi_nametag)
+        self.sigRoiUpdated.emit({'name': self.roi_name,
+                                 'poi_nametag': self.poi_nametag,
+                                 'pois': self.poi_positions,
+                                 'history': self.roi_pos_history,
+                                 'scan_image': self.roi_scan_image,
+                                 'scan_image_extent': self.roi_scan_image_extent})
+        self.set_active_poi(None if len(poi_names) == 0 else poi_names[0])
+        return
 
     @_roi.constructor
     def dict_to_roi(self, roi_dict):
@@ -1274,7 +1255,8 @@ class PoiManagerLogic(LogicBase):
                 local_arr = scan[i:i + filter_size, j:j + filter_size]
                 local_arr = np.asarray(local_arr)
                 arr_threshold = scan_m * self._poi_threshold * 0.5
-                if scan[i + mid_f][j + mid_f] == local_arr.max() and self._is_spot_shape(local_arr) and local_arr.mean() > arr_threshold:
+                if scan[i + mid_f][j + mid_f] == local_arr.max() and self._is_spot_shape(
+                        local_arr) and local_arr.mean() > arr_threshold:
                     xc.append(i + mid_f)
                     yc.append(j + mid_f)
         return xc, yc
