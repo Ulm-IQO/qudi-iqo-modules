@@ -315,7 +315,6 @@ class ScannerGui(GuiBase):
             self.apply_scanner_settings
         )
 
-
     def _init_static_dockwidgets(self):
         self.scanner_control_dockwidget = AxesControlDockWidget(
             tuple(self._scanning_logic().scanner_axes.values())
@@ -348,7 +347,6 @@ class ScannerGui(GuiBase):
             #lambda ax, pos: self._update_scan_markers(pos_dict={ax: pos}, exclude_scan=None)
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
-
 
         self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
                                                         plot_dims=self._optimizer_plot_dims,
@@ -406,7 +404,6 @@ class ScannerGui(GuiBase):
         self.optimizer_dockwidget.show()
         self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
         self.optimizer_dockwidget.setFloating(False)
-
 
         # split scan dock widget with optimizer dock widget if needed. Resize all groups.
         if has_1d_scans and has_2d_scans:
@@ -495,6 +492,7 @@ class ScannerGui(GuiBase):
 
     def _add_scan_dockwidget(self, axes):
         axes_constr = self._scanning_logic().scanner_axes
+        axes_constr = tuple(axes_constr[ax] for ax in axes)
         channel_constr = list(self._scanning_logic().scanner_channels.values())
         optimizer_range = self._optimize_logic().scan_range
         axes = tuple(axes)
@@ -504,16 +502,23 @@ class ScannerGui(GuiBase):
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            dockwidget = ScanDockWidget(axes=(axes_constr[axes[0]],), channels=channel_constr)
+            marker_bounds = (axes_constr[0].value_range, (None, None))
+            dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
+            dockwidget.scan_widget.set_marker_bounds(marker_bounds)
             self.scan_1d_dockwidgets[axes] = dockwidget
         else:
             if axes in self.scan_2d_dockwidgets:
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            dockwidget = ScanDockWidget(axes=(axes_constr[axes[0]], axes_constr[axes[1]]),
-                                        channels=channel_constr)
-            dockwidget.scan_widget.set_marker_size(tuple(optimizer_range[ax] for ax in axes))
+            marker_size = tuple(abs(optimizer_range[ax]) for ax in axes)
+            marker_bounds = ((axes_constr[0].min_value - marker_size[0] / 2,
+                              axes_constr[0].max_value + marker_size[0] / 2),
+                             (axes_constr[1].min_value - marker_size[1] / 2,
+                              axes_constr[1].max_value + marker_size[1] / 2))
+            dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
+            dockwidget.scan_widget.set_marker_size(marker_size)
+            dockwidget.scan_widget.set_marker_bounds(marker_bounds)
             self.scan_2d_dockwidgets[axes] = dockwidget
 
         dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
@@ -793,7 +798,6 @@ class ScannerGui(GuiBase):
     def _update_scan_sliders(self, pos_dict):
         """
         """
-
         for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
             if not any(ax in pos_dict for ax in scan_axes):
                 continue
@@ -885,16 +889,29 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot()
     def change_optimizer_settings(self):
-
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
         self.optimizer_dockwidget.scan_sequence = self._osd.settings['scan_sequence']
         self.update_crosshair_sizes()
 
     def update_crosshair_sizes(self):
+        axes_constr = self._scanning_logic().scanner_axes
         for ax, dockwidget in self.scan_2d_dockwidgets.items():
             width = self._osd.settings['scan_range'][ax[0]]
             height = self._osd.settings['scan_range'][ax[1]]
-            dockwidget.scan_widget.set_marker_size((width, height))
+            x_min, x_max = axes_constr[ax[0]].value_range
+            y_min, y_max = axes_constr[ax[1]].value_range
+            marker_bounds = (
+                (x_min - width / 2, x_max + width / 2),
+                (y_min - height / 2, y_max + height / 2)
+            )
+            dockwidget.scan_widget.blockSignals(True)
+            try:
+                old_pos = dockwidget.scan_widget.marker_position
+                dockwidget.scan_widget.set_marker_bounds(marker_bounds)
+                dockwidget.scan_widget.set_marker_size((width, height))
+                dockwidget.scan_widget.set_marker_position(old_pos)
+            finally:
+                dockwidget.scan_widget.blockSignals(False)
 
     @QtCore.Slot(dict)
     def update_optimizer_settings(self, settings=None):
@@ -948,15 +965,4 @@ class ScannerGui(GuiBase):
                                                              units=channel_constr[channel].unit)
 
                 # Adjust crosshair size according to optimizer range
-                if 'scan_range' in settings and len(seq_step)==2:
-                    for scan_axes, dockwidget in self.scan_2d_dockwidgets.items():
-                        if any(ax in settings['scan_range'] for ax in scan_axes):
-                            old_size = dockwidget.scan_widget.marker_size
-                            x_size = settings['scan_range'].get(scan_axes[0], old_size[0])
-                            y_size = settings['scan_range'].get(scan_axes[1], old_size[1])
-                            dockwidget.scan_widget.set_marker_size((x_size, y_size))
-
-
-
-
-
+                self.update_crosshair_sizes()

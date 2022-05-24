@@ -238,7 +238,6 @@ class AxesControlWidget(QtWidgets.QWidget):
         return self.axes_widgets[axis]['res_spinbox'].value()
 
     @QtCore.Slot(dict)
-    @QtCore.Slot(int, str)
     def set_resolution(self, value, axis=None):
         if axis is None or isinstance(value, dict):
             for ax, val in value.items():
@@ -257,7 +256,6 @@ class AxesControlWidget(QtWidgets.QWidget):
         return widget_dict['min_spinbox'].value(), widget_dict['max_spinbox'].value()
 
     @QtCore.Slot(dict)
-    @QtCore.Slot(object, str)
     def set_range(self, value, axis=None):
         if axis is None or isinstance(value, dict):
             for ax, val in value.items():
@@ -285,7 +283,6 @@ class AxesControlWidget(QtWidgets.QWidget):
         return self.axes_widgets[axis]['pos_spinbox'].value()
 
     @QtCore.Slot(dict)
-    @QtCore.Slot(float, str)
     def set_target(self, value, axis=None):
         if axis is None or isinstance(value, dict):
             for ax, val in value.items():

@@ -26,7 +26,7 @@ import os
 import numpy as np
 from typing import Tuple, Union, Sequence
 from PySide2 import QtCore, QtWidgets, QtGui
-from typing import Optional, Any
+from typing import Optional, List
 from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWidget
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
 from qudi.util.widgets.plotting.plot_item import XYPlotItem
@@ -133,6 +133,15 @@ class Scan1DWidget(_BaseScanWidget):
             self.plot_widget.show_marker_selections()
         else:
             self.plot_widget.hide_marker_selections()
+
+    @property
+    def marker_bounds(self) -> Union[None, List[Union[None, Tuple[float, float]]]]:
+        return self.plot_widget.selection_bounds
+
+    def set_marker_bounds(self,
+                          bounds: Union[None, List[Union[None, Tuple[float, float]]]]
+                          ) -> None:
+        self.plot_widget.set_selection_bounds(bounds)
 
     def set_scan_data(self, data: ScanData) -> None:
         # Save reference for channel changes
@@ -243,6 +252,15 @@ class Scan2DWidget(_BaseScanWidget):
         y_min = position[1] - size[1] / 2
         y_max = position[1] + size[1] / 2
         self.image_widget.move_region_selection(((x_min, x_max), (y_min, y_max)), 0)
+
+    @property
+    def marker_bounds(self) -> Union[None, List[Union[None, Tuple[float, float]]]]:
+        return self.image_widget.selection_bounds
+
+    def set_marker_bounds(self,
+                          bounds: Union[None, List[Union[None, Tuple[float, float]]]]
+                          ) -> None:
+        self.image_widget.set_selection_bounds(bounds)
 
     def set_scan_data(self, data: ScanData) -> None:
         # Save reference for channel changes
