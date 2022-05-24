@@ -431,7 +431,6 @@ class PoiManagerLogic(LogicBase):
                                  'scan_image': self.roi_scan_image,
                                  'scan_image_extent': self.roi_scan_image_extent})
         self.sigActivePoiUpdated.emit('' if self.active_poi is None else self.active_poi)
-        self.update_poi_tag_in_savelogic()
         return
 
     def on_deactivate(self):
@@ -702,7 +701,6 @@ class PoiManagerLogic(LogicBase):
                 self.log.error('No POI with name "{0}" found in POI list.'.format(name))
 
             self.sigActivePoiUpdated.emit('' if self.active_poi is None else self.active_poi)
-            self.update_poi_tag_in_savelogic()
             return
 
     def get_poi_position(self, name=None):
@@ -1071,7 +1069,8 @@ class PoiManagerLogic(LogicBase):
             # Metadata to save in both file headers
             x_extent, y_extent = self.roi_scan_image_extent
             parameters = OrderedDict()
-            parameters['Active POI'] = self.active_poi
+            if self.active_poi:
+                parameters['Active POI'] = self.active_poi
             parameters['roi_name'] = self.roi_name
             parameters['poi_nametag'] = '' if self.poi_nametag is None else self.poi_nametag
             parameters['roi_creation_time'] = self.roi_creation_time_as_str

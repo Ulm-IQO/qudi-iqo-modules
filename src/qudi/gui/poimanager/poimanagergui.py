@@ -246,7 +246,6 @@ class PoiManagerGui(GuiBase):
 
     # declare connectors
     _poi_manager_logic = Connector(name='poi_manager_logic', interface='PoiManagerLogic')
-    _scanning_logic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
 
     # declare signals
     sigTrackPeriodChanged = QtCore.Signal(float)
