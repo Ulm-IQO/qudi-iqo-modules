@@ -269,7 +269,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         progress.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "move_absolute" called.')
+            # self.log.debug('Scanning probe dummy "move_absolute" called.')
             if self.module_state() != 'idle':
                 self.log.error('Scanning in progress. Unable to move to position.')
             elif not set(position).issubset(self._position_ranges):
@@ -442,8 +442,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return ScanData: ScanData instance used in the scan
         """
         with self._thread_lock:
-            if self.thread() is not QtCore.QThread.currentThread():
-                self.log.debug('Scanning probe dummy "get_scan_data" called.')
+            # if self.thread() is not QtCore.QThread.currentThread():
+            #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
             if self._scan_data is None:
                 print('nope, no scan data in hardware')
                 return None
