@@ -822,19 +822,20 @@ class Data_process_single(Data_process_command):
         self.segs_per_rep_S = ms.segs_per_rep_S
         self.reps_per_buf = ms.reps_per_buf
 
-    def cast_buf_ptr(self, c_buf_ptr, user_pos_B, data_type):
+    def _cast_buf_ptr(self, c_buf_ptr, user_pos_B, data_type):
         c_buffer = cast(addressof(c_buf_ptr) + user_pos_B, POINTER(data_type))
         return c_buffer
 
-    def asnparray(self, c_buffer, shape):
+    def _asnparray(self, c_buffer, shape):
         np_buffer = np.ctypeslib.as_array(c_buffer, shape=shape)
         return np_buffer
 
-    def _fetch_sample(self, user_pos_B, sample_S):
+    def _fetch_from_buf(self, user_pos_B, sample_S):
         shape = (sample_S,)
-        c_buffer = self.cast_buf_ptr(self.c_buf_ptr, user_pos_B, self.data_type)
-        np_buffer = self.asnparray(c_buffer, shape)
+        c_buffer = self._cast_buf_ptr(self.c_buf_ptr, user_pos_B, self.data_type)
+        np_buffer = self._asnparray(c_buffer, shape)
         return np_buffer
+
 
     def process_data(self):
         if dp_mode == 'mean':
@@ -870,49 +871,52 @@ class Data_process_single(Data_process_command):
             pass
 
     def _fetch_notified(self, user_pos_B):
-        np_buffer = self._fetch_sample(user_pos_B, self.notify_size_S)
+        np_buffer = self._fetch_data(user_pos_B, self.notify_size_S)
 
         return np_buffer
 
-    def _process_data_by_mean(self, curr_avail_reps):
-        user_pos_B = self.get_avail_user_pos_B()
-        rep_end = int(user_pos_B / self.segs_per_rep_B) + curr_avail_reps
-
-        if 0 < rep_end <= self.reps_per_buf:
-            np_new_avg_data = self._fetch_reps_by_mean(user_pos_B, curr_avail_reps)
-
-        elif self.reps_per_buf < rep_end < 2 * self.reps_per_buf:
-            np_new_avg_data = self._fetch_reps_by_means_buf_end(user_pos_B, curr_avail_reps)
-
-        else:
-            print('error: rep_end {} is out of range'.format(rep_end))
-            return
-
+    def process_data_by_mean(self, curr_avail_reps):
+        np_new_data = self.get_new_data(curr_avail_reps)
+        np_new_avg_data = self.get_mean_data(np_new_data, curr_avail_reps)
         self.set_avail_card_len_B(curr_avail_reps * self.segs_per_rep_B)
 
         return np_new_avg_data, curr_avail_reps
 
-    def _fetch_reps_by_mean(self, user_pos_B, curr_avail_reps):
-        np_data = self._fetch_sample(user_pos_B, curr_avail_reps * self.segs_per_rep_S)
+    def get_new_data(self, curr_avail_reps):
+        user_pos_B = self.get_avail_user_pos_B()
+        rep_end = int(user_pos_B / self.segs_per_rep_B) + curr_avail_reps
+
+        if 0 < rep_end <= self.reps_per_buf:
+            np_data = self._fetch_data(user_pos_B, curr_avail_reps)
+
+        elif self.reps_per_buf < rep_end < 2 * self.reps_per_buf:
+            np_data = self._fetch_data_buf_end(user_pos_B, curr_avail_reps)
+        else:
+            print('error: rep_end {} is out of range'.format(rep_end))
+
+        return np_data
+
+    def _fetch_data(self, user_pos_B, curr_avail_reps):
+        np_data = self._fetch_from_buf(user_pos_B, curr_avail_reps * self.segs_per_rep_S)
+        return np_data
+
+    def _fetch_data_buf_end(self, user_pos_B, curr_avail_reps):
+        start_rep = int((user_pos_B / self.segs_per_rep_B) + 1)
+        reps_tail = self.reps_per_buf - (start_rep - 1)
+        reps_head = curr_avail_reps - reps_tail
+
+        np_data_tail = self._fetch_data(user_pos_B, reps_tail)
+        np_data_head = self._fetch_data(0, reps_head)
+        np_data = np.append(np_data_tail, np_data_head)
+
+        return np_data
+
+    def get_mean_data(self, np_data, curr_avail_reps):
         shape = (curr_avail_reps, self.segs_per_rep_S)
         np_data_mean = np_data.reshape(shape).mean(axis=0)
 
         return np_data_mean
 
-    def _fetch_reps_by_means_buf_end(self, user_pos_B, curr_avail_reps):
-        start_rep = int((user_pos_B / self.segs_per_rep_B) + 1)
-        reps_tail = self.reps_per_buf - (start_rep - 1)
-        reps_head = curr_avail_reps - reps_tail
-
-        np_avg_data_tail = self._fetch_reps_by_mean(user_pos_B, reps_tail)
-        np_avg_data_head = self._fetch_reps_by_mean(0, reps_head)
-
-        np_avg_data_set = (np.append(np_avg_data_tail, np_avg_data_head, axis=0)
-                           .reshape((2, self.segs_per_rep_S))
-                           )
-        avg_weights = np.array([reps_tail, reps_head])
-        np_avg_data = np.average(np_avg_data_set, weights=avg_weights, axis=0)
-        return np_avg_data
 
 class Data_process_loop_main_body(Data_process_single, Card_command):
     '''
@@ -973,7 +977,7 @@ class Data_process_loop_main_body(Data_process_single, Card_command):
         return curr_avail_reps
 
     def update_data(self, curr_avail_reps):
-        new_avg_data, new_avg_num = self._process_data_by_mean(curr_avail_reps)
+        new_avg_data, new_avg_num = self.process_data_by_mean(curr_avail_reps)
         self.avg_data, self.avg_num = self._weighted_avg_data(self.avg_data, self.avg_num,
                                                             new_avg_data, new_avg_num)
 
@@ -1032,6 +1036,21 @@ class Data_process_loop(Data_process_loop_main_body):
 
         return
 
+    def start_data_process_loop(self, n):
+
+        while self.avg_num <= n:
+            if self.fetch_on == False:
+                self.check_dp_status()
+                self.command_process()
+                time.sleep(1e-6)
+            elif self.fetch_on == True:
+                print('fetching')
+            else:
+                print('error on loop')
+
+        return
+
+
     def fetch_data_trace(self):
         self.fetch_on = True
         avg_data = self.avg_data
@@ -1061,7 +1080,6 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
         self.dp.check_dp_status()
 
     def _start_card_with_trigger(self):
-        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
         self.dp.init_measure_params()
         self.dp.check_dp_status()
         self.card_start()
@@ -1119,17 +1137,27 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
         self.cfg._loops = 10
         self._start_card_with_trigger()
 
+    def check_each_rep(self):
+        import  matplotlib.pyplot as plt
+        fig, ax = plt.subplots()
+
+        sweeps = np.empty(0)
+        for i in range(10):
+            sweeps = np.append(sweeps, self.dp.process_data_by_mean(1))
+            ax.plot(sweeps[i])
+        plt.show()
+
     def check_average(self):
         '''
         - Check if the average number is correct
         - Check if the average across the buffer end is done
         '''
         self.dp.initial_reps = False
-        self.sweep1 = 6
+        self.sweep1 = 1
         self.sweep2 = self.cfg._loops - self.sweep1
-        self.avg_data_1, self.avg_num_1 = self.dp._process_data_by_mean(self.sweep1)
+        self.avg_data_1, self.avg_num_1 = self.dp.process_data_by_mean(self.sweep1)
         self.dp.check_dp_status()
-        self.avg_data_2, self.avg_num_2 = self.dp._process_data_by_mean(self.sweep2)
+        self.avg_data_2, self.avg_num_2 = self.dp.process_data_by_mean(self.sweep2)
         self.avg_data, self.avg_num = self.dp._weighted_avg_data(self.avg_data_1, self.sweep1,
                                                                self.avg_data_2, self.sweep2)
 
@@ -1154,7 +1182,7 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
             if self.dp.fetch_on == False:
                 self.dp.check_dp_status()
                 curr_avail_reps = self.dp.get_avail_user_reps()
-                new_avg_data, new_avg_num = self.dp._process_data_by_mean(curr_avail_reps)
+                new_avg_data, new_avg_num = self.dp.process_data_by_mean(curr_avail_reps)
                 self.dp.avg_data, self.dp.avg_num = self.dp._weighted_avg_data(self.dp.avg_data, self.dp.avg_num,
                                                                     new_avg_data, new_avg_num)
                 self.dp.check_dp_status()
@@ -1201,6 +1229,84 @@ class SpectrumInstrumentationTest(SpectrumInstrumentation):
         self.ms.init_buf_size_S = 1e7
         self.dp.init_dp_params()
         self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
+
+
+    def test_std_multi_more_reps(self, buf_length_S, notify_size_B):
+        self.cs.acq_mode = 'STD_MULTI'
+        self.cs.trig_mode = 'EXT'
+
+        self.ms.binwidth_s = 1 / 250e6
+        self.ms.record_length_s = 1e-6
+        self.ms.number_of_gates = 0
+        self.ms.init_buf_size_S = buf_length_S
+        self.cs.buf_notify_size_B = notify_size_B
+
+        self.cfg._loops = 60000
+        self._start_card_with_trigger()
+        self.dp.check_dp_status()
+
+    def test_loop(self, n_loop, buf_length_S, notify_size_B):
+        self.cs.acq_mode = 'STD_MULTI'
+        self.cs.trig_mode = 'EXT'
+
+        self.ms.binwidth_s = 1 / 250e6
+        self.ms.record_length_s = 1e-6
+        self.ms.number_of_gates = 0
+        self.ms.init_buf_size_S = buf_length_S
+        self.cs.buf_notify_size_B = notify_size_B
+        self.cfg._loops = n_loop
+        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
+
+
+    def start_loop(self):
+        self._start_card_with_trigger()
+        self.dp.check_dp_status()
+        self.dp.start_data_process_loop(self.cfg._loops)
+
+
+    def test_fifo_gate(self, buf_length_S, notify_size_B):
+        self.cs.acq_mode = 'FIFO_GATE'
+        self.cs.trig_mode = 'EXT'
+
+        self.ms.binwidth_s = 1 / 250e6
+        self.ms.record_length_s = 1e-6
+        self.ms.number_of_gates = 0
+        self.ms.init_buf_size_S = buf_length_S
+        self.cs.buf_notify_size_B = notify_size_B
+
+        self.cfg._loops = 60000
+        self._start_card_with_trigger()
+        self.dp.check_dp_status()
+
+    def create_test_data(self):
+        import random
+        data_len = 1000
+        test_data = np.zeros(1000)
+        for i in range(100):
+            test_data[i] = random.random()
+        for i in range(100, 200):
+            test_data[i] = 1000 + random.random()
+        for i in range(200, 300):
+            test_data[i] = random.random()
+        for i in range(300, 500):
+            test_data[i] = 1000 + random.random()
+        for i in range(500, 600):
+            test_data[i] = random.random()
+        for i in range(600, 900):
+            test_data[i] = 1000 + random.random()
+        for i in range(900, 1000):
+            test_data[i] = random.random()
+        self.test_data = test_data
+
+        return test_data
+
+    def create_test_data_array(self, n):
+        data_array = []
+        for i in range(n):
+            data_array = np.append(data_array, self.create_test_data())
+        self.test_data_array = data_array
+        return data_array
+
 
 
 
