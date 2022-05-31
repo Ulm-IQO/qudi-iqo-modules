@@ -216,8 +216,7 @@ class Scan2DWidget(_BaseScanWidget):
 
     @property
     def marker_position(self) -> Tuple[float, float]:
-        center = self.image_widget.region_selection[self.image_widget.SelectionMode.XY][0].center()
-        return center.x(), center.y()
+        return self.image_widget.region_selection[self.image_widget.SelectionMode.XY][0][0]
 
     def set_marker_position(self, position: Tuple[float, float]) -> None:
         size = self.marker_size
@@ -242,8 +241,7 @@ class Scan2DWidget(_BaseScanWidget):
 
     @property
     def marker_size(self) -> Tuple[float, float]:
-        rect = self.image_widget.region_selection[self.image_widget.SelectionMode.XY][0]
-        return abs(rect.width()), abs(rect.height())
+        return self.image_widget.region_selection[self.image_widget.SelectionMode.XY][0][1]
 
     def set_marker_size(self, size: Tuple[float, float]) -> None:
         position = self.marker_position
@@ -270,8 +268,8 @@ class Scan2DWidget(_BaseScanWidget):
 
     @QtCore.Slot(dict)
     def _region_changed(self, regions) -> None:
-        center = regions[self.image_widget.SelectionMode.XY][0].center()
-        self.sigMarkerPositionChanged.emit((center.x(), center.y()))
+        center = regions[self.image_widget.SelectionMode.XY][0][0]
+        self.sigMarkerPositionChanged.emit(center)
 
     @QtCore.Slot(QtCore.QRectF)
     def _zoom_applied(self, zoom_area) -> None:

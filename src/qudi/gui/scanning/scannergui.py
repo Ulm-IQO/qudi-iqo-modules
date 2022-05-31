@@ -512,10 +512,7 @@ class ScannerGui(GuiBase):
                                'already created. Remove old widget first.'.format(axes))
                 return
             marker_size = tuple(abs(optimizer_range[ax]) for ax in axes)
-            marker_bounds = ((axes_constr[0].min_value - marker_size[0] / 2,
-                              axes_constr[0].max_value + marker_size[0] / 2),
-                             (axes_constr[1].min_value - marker_size[1] / 2,
-                              axes_constr[1].max_value + marker_size[1] / 2))
+            marker_bounds = (axes_constr[0].value_range, axes_constr[1].value_range)
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
             dockwidget.scan_widget.set_marker_size(marker_size)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
@@ -907,7 +904,6 @@ class ScannerGui(GuiBase):
             dockwidget.scan_widget.blockSignals(True)
             try:
                 old_pos = dockwidget.scan_widget.marker_position
-                dockwidget.scan_widget.set_marker_bounds(marker_bounds)
                 dockwidget.scan_widget.set_marker_size((width, height))
                 dockwidget.scan_widget.set_marker_position(old_pos)
             finally:
