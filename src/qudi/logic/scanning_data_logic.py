@@ -45,7 +45,16 @@ from qudi.interface.scanning_probe_interface import ScanData
 
 class ScanningDataLogic(LogicBase):
     """
-    ToDo: Write documentation
+    Todo: add some info about this module
+    
+    Example config:
+    
+    scanning_data_logic:
+        module.Class: 'scanning_data_logic.ScanningDataLogic'
+        max_history_length: 50
+        connect:
+            scan_logic: scanning_probe_logic
+    
     """
 
     # declare connectors
