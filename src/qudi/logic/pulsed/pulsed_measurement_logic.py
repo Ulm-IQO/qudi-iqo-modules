@@ -55,6 +55,17 @@ def _data_storage_from_cfg_option(cfg_str):
 class PulsedMeasurementLogic(LogicBase):
     """
     This is the Logic class for the control of pulsed measurements.
+
+    Example config:
+
+    pulsed_measurement_logic:
+        module.Class: 'pulsed.pulsed_measurement_logic.PulsedMeasurementLogic'
+        raw_data_save_type: 'text'
+        #additional_extraction_path: # optional
+        #additional_analysis_path:   # optional
+        connect:
+            fastcounter: 'fast_counter_dummy'
+            pulsegenerator: 'pulser_dummy'
     """
 
     # declare connectors
