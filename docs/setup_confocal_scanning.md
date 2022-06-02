@@ -5,13 +5,13 @@ To this end, its written in a very modular way.
 A typical working toolchain consists out of the following qudi modules:
 
 logic:
-- scanning_data_logic
+- [scanning_data_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_data_logic.py#L44)
 - scanning_probe_logic
 - scanning_optimize_logic
 
 hardware:
 - analog_output
-- [finite_sampling_input](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/0fd1baff383d7d2fc9024e61205509047e905f87/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_input.py#L48)
+- [finite_sampling_input](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_input.py#L48)
 - finite_sampling_io
 - actual scanning device, here NI X-series
 - (in_streamer, optional)
