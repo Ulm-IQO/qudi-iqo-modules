@@ -36,9 +36,9 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.interface.grating_spectrometer_interface import PortType
 from qudi.logic.spectrometer_logic_dund import AcquisitionMode
 #from qudi.gui.gui_components.colorbar.colorbar import ColorbarWidget
-from qudi.util.widgets.scan_2d_widget import ScanImageItem
-from qudi.util.widgets.scan_2d_widget import ImageWidget
-from qudi.util.widgets.colorbar import ColorBarWidget, ColorBarMode
+#from qudi.util.widgets.scan_2d_widget import ScanImageItem
+from qudi.util.widgets.plotting.image_widget import ImageWidget
+#from qudi.util.widgets.colorbar import ColorBarWidget, ColorBarMode
 from qudi.util import uic
 
 
@@ -368,8 +368,8 @@ class SpectrometerGui(GuiBase):
         self._image_widget = ImageWidget()
         self._image_data = np.zeros((1,1))
 
-        self._image_widget._image_item.setOpts(False, axisOrder='row-major', lut=self.my_colors.lut)
-        self._image = self._image_widget._image_item
+        self._image_widget.image_item.setOpts(False, axisOrder='row-major', lut=self.my_colors.lut)
+        self._image = self._image_widget.image_item
         self._image_tab.verticalLayout.addWidget(self._image_widget)
         #self._image_tab.horizontalLayout_3.addWidget(self._image_widget)
         #self._image_tab.graph.addItem(self._image_widget)
@@ -398,7 +398,7 @@ class SpectrometerGui(GuiBase):
             track.setBounds([0, height])
             track.hide()
             self._track_selector.append(track)
-            self._image_widget._plot_widget.addItem(track)
+            self._image_widget.plot_widget.addItem(track)
 
         self._image_tab.image_advanced.setCheckable(True)
         self._image_tab.image_advanced.clicked.connect(self._manage_image_advanced_button)
@@ -407,7 +407,7 @@ class SpectrometerGui(GuiBase):
         self._image_advanced_widget.addScaleHandle((1,0), (0,1))
         self._image_advanced_widget.addScaleHandle((0,1), (1,0))
         self._image_advanced_widget.hide()
-        self._image_widget._plot_widget.addItem(self._image_advanced_widget)
+        self._image_widget.plot_widget.addItem(self._image_advanced_widget)
 
 
         self._image_tab.horizontal_binning.setRange(1, camera_width-1)
