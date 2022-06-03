@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
+
 """
 This file contains a settings dialog for the qudi main GUI.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
-distribution and on <https://github.com/Ulm-IQO/qudi-core/>
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
 
@@ -20,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from PySide2 import QtCore, QtWidgets
-from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.toggle_switch import ToggleSwitch
 
 
@@ -47,18 +48,26 @@ class SettingsDialog(QtWidgets.QDialog):
         layout.addWidget(delete_fit_label, 0, 0)
         layout.addWidget(self.delete_fit, 0, 1)
 
+        self.max_repetitions_spinbox = ScienSpinBox()
+        self.max_repetitions_spinbox.setMinimumWidth(150)
+        self.max_repetitions_spinbox.setMinimum(0)
+        max_repetitions_label = QtWidgets.QLabel('Maximum Repetitions:')
+        max_repetitions_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        layout.addWidget(max_repetitions_label, 1, 0)
+        layout.addWidget(self.max_repetitions_spinbox, 1, 1)
+
         self.exposure_time_spinbox = ScienDSpinBox()
         self.exposure_time_spinbox.setMinimumWidth(150)
         exposure_time_label = QtWidgets.QLabel('Exposure Time:')
         exposure_time_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        layout.addWidget(exposure_time_label, 1, 0)
-        layout.addWidget(self.exposure_time_spinbox, 1, 1)
+        layout.addWidget(exposure_time_label, 2, 0)
+        layout.addWidget(self.exposure_time_spinbox, 2, 1)
 
         buttonbox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok
                                                | QtWidgets.QDialogButtonBox.Cancel
                                                | QtWidgets.QDialogButtonBox.Apply)
         buttonbox.setOrientation(QtCore.Qt.Horizontal)
-        layout.addWidget(buttonbox, 2, 0, 1, 2)
+        layout.addWidget(buttonbox, 3, 0, 1, 2)
 
         # Add internal signals
         buttonbox.accepted.connect(self.accept)

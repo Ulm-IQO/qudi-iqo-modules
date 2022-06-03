@@ -11,7 +11,7 @@ unix_dep = [
     'lmfit',
     'lxml',
     'matplotlib',
-    'nidaqmx',
+    'nidaqmx==0.5.7',
     'numpy',
     'pyqtgraph',
     'PySide2',
@@ -26,7 +26,7 @@ windows_dep = [
     'lmfit>=1.0.3',
     'lxml>=4.6.3',
     'matplotlib>=3.4.3',
-    'nidaqmx>=0.5.7',
+    'nidaqmx==0.5.7',
     'numpy>=1.21.3',
     'pyqtgraph>=0.12.3',
     'PySide2>=5.15.2',
@@ -95,6 +95,6 @@ setup(
                  ],
     license='LGPLv3',
     install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
-    python_requires='>=3.8, <=3.9',
+    python_requires='>=3.8, <3.10',
     zip_safe=False
 )

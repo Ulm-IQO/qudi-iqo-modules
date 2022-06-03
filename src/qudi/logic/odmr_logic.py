@@ -3,21 +3,21 @@
 """
 This file contains the Qudi Logic module base class.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
@@ -288,6 +288,27 @@ class OdmrLogic(LogicBase):
             except (TypeError, ValueError):
                 self.log.exception('set_runtime failed:')
             self.sigScanParametersUpdated.emit({'run_time': self._run_time})
+
+    @property
+    def scan_power(self):
+        return self._scan_power
+
+    @scan_power.setter
+    def scan_power(self, value):
+        self.set_scan_power(value)
+
+    @QtCore.Slot(object)
+    def set_scan_power(self, scan_power):
+        """ Sets the runtime for ODMR measurement
+
+        @param float scan_power: desired power for scans in dBm
+        """
+        with self._threadlock:
+            try:
+                self._scan_power = float(scan_power)
+            except (TypeError, ValueError):
+                self.log.exception('scan_power failed:')
+            self.sigScanParametersUpdated.emit({'scan_power': self._scan_power})
 
     @property
     def frequency_ranges(self):
@@ -577,7 +598,7 @@ class OdmrLogic(LogicBase):
 
             try:
                 scanner = self._data_scanner()
-                new_counts = scanner.acquire_frame(scanner.frame_size)
+                new_counts = scanner.acquire_frame()
                 if self._oversampling_factor > 1:
                     for ch in new_counts:
                         new_counts[ch] = np.mean(
@@ -593,6 +614,7 @@ class OdmrLogic(LogicBase):
             # Add new count data to raw_data array and append if array is too small
             current_line_buffer_size = next(iter(self._raw_data.values()))[0].shape[1]
             if self._elapsed_sweeps == current_line_buffer_size:
+                self.log.debug(f'extending data grid for sweep number {self._elapsed_sweeps}')
                 expand_arrays = tuple(np.full((r[-1], self.__estimated_lines), np.nan) for r in
                                       self._scan_frequency_ranges)
                 self._raw_data = {
@@ -612,7 +634,7 @@ class OdmrLogic(LogicBase):
                 for range_index, range_params in enumerate(self._scan_frequency_ranges):
                     range_list[range_index] = np.roll(range_list[range_index], 1, axis=1)
                     tmp = new_counts[ch][start:start + range_params[-1]]
-                    range_list[range_index][:, 0] = tmp
+                    range_list[range_index][0:len(tmp), 0] = tmp
                     start += range_params[-1]
 
             # Calculate averaged signal

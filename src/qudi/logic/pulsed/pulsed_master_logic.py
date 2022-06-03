@@ -3,21 +3,21 @@
 Master logic to combine sequence_generator_logic and pulsed_measurement_logic to be
 used with a single GUI.
 
-QuDi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-QuDi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with QuDi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
@@ -46,6 +46,14 @@ class PulsedMasterLogic(LogicBase):
     All calls to sub-module setter functions (PulsedMeasurementLogic and SequenceGeneratorLogic)
     are decoupled from the calling thread via Qt queued connections.
     This ensures a more intuitive and less error prone use of scripting.
+
+    Example config:
+
+    pulsed_master_logic:
+        module.Class: 'pulsed.pulsed_master_logic.PulsedMasterLogic'
+        connect:
+            pulsedmeasurementlogic: 'pulsed_measurement_logic'
+            sequencegeneratorlogic: 'sequence_generator_logic'
     """
 
     # declare connectors

@@ -3,21 +3,21 @@
 """
 This file contains the Qudi hardware module for the Windfreak SynthHDPro microwave source.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import pyvisa
@@ -212,6 +212,11 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
             self._device.write(f't{1000 * 0.75 / sample_rate:f}')
             self._scan_sample_rate = float(self._device.query('t?')) / 1000
 
+            self.log.debug(f'Configured scan with: '
+                           f'scan_power = {self._scan_power}, '
+                           f'len(scan_frequencies) = {len(self._scan_frequencies)}, '
+                           f'scan_sample_rate = {self._scan_sample_rate}')
+
     def off(self):
         """Switches off any microwave output (both scan and CW).
         Must return AFTER the device has actually stopped.
@@ -259,7 +264,7 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
                 'No scan_frequencies set. Unable to start scan.'
 
             self._in_cw_mode = False
-            self._on()
+            self.log.debug(f'start_scan: {self._on()}')
             # enable sweep mode and set to start frequency
             self._device.write('g1')
             self.module_state.lock()

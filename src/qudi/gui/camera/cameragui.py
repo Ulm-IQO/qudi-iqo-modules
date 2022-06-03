@@ -2,30 +2,30 @@
 """
 This module contains a GUI for operating the spectrometer camera logic module.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
 from PySide2 import QtCore, QtWidgets, QtGui
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
-from qudi.util.widgets.scan_2d_widget import ImageWidget
+from qudi.util.widgets.plotting.image_widget import ImageWidget
 from qudi.util.paths import get_artwork_dir
-from .camera_settings_dialog import CameraSettingsDialog
+from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
 
 
 class CameraMainWindow(QtWidgets.QMainWindow):
@@ -68,7 +68,7 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         # Create central widget
         self.image_widget = ImageWidget()
         # FIXME: The camera hardware is currently transposing the image leading to this dirty hack
-        self.image_widget._image_item.setOpts(False, axisOrder='row-major')
+        self.image_widget.image_item.setOpts(False, axisOrder='row-major')
         self.setCentralWidget(self.image_widget)
 
 

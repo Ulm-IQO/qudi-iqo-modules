@@ -31,3 +31,11 @@
 # log files
 *.log
 *.log.*
+.vscode/launch.json
+src/qudi_iqo_modules.egg-info/dependency_links.txt
+src/qudi_iqo_modules.egg-info/not-zip-safe
+src/qudi_iqo_modules.egg-info/PKG-INFO
+src/qudi_iqo_modules.egg-info/requires.txt
+src/qudi_iqo_modules.egg-info/SOURCES.txt
+src/qudi_iqo_modules.egg-info/top_level.txt
+src/qudi/config/default.cfg

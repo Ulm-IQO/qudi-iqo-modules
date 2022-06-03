@@ -3,21 +3,21 @@
 """
 This file contains the Qudi sequence generator logic for general sequence structure.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
@@ -27,6 +27,7 @@ import time
 import copy
 import traceback
 import datetime
+import re
 
 from PySide2 import QtCore
 from qudi.core.statusvariable import StatusVar
@@ -56,6 +57,16 @@ class SequenceGeneratorLogic(LogicBase):
 
     This logic is also responsible to manipulate and read back hardware settings for
     waveform/sequence playback (pp-amplitude, sample rate, active channels etc.).
+
+    Example config:
+
+    sequence_generator_logic:
+        module.Class: 'pulsed.sequence_generator_logic.SequenceGeneratorLogic'
+        #additional_predefined_methods_path: # optional
+        #additional_sampling_functions_path: # optional
+        #assets_storage_path: # optional
+        connect:
+            pulsegenerator: 'pulser_dummy'
     """
 
     # declare connectors
@@ -325,15 +336,15 @@ class SequenceGeneratorLogic(LogicBase):
         name_list = list(asset_names.values())
         if asset_type == 'waveform' and len(name_list) > 0:
             return_type = 'PulseBlockEnsemble'
-            return_name = name_list[0].rsplit('_', 1)[0]
+            return_name = self._strip_ch_extension(name_list[0])
             for name in name_list:
-                if name.rsplit('_', 1)[0] != return_name:
+                if self._strip_ch_extension(name) != return_name:
                     return '', ''
         elif asset_type == 'sequence' and len(name_list) > 0:
             return_type = 'PulseSequence'
-            return_name = name_list[0].rsplit('_', 1)[0]
+            return_name = self._strip_ch_extension(name_list[0])
             for name in name_list:
-                if name.rsplit('_', 1)[0] != return_name:
+                if self._strip_ch_extension(name) != return_name:
                     return '', ''
         else:
             return '', ''
@@ -2119,6 +2130,23 @@ class SequenceGeneratorLogic(LogicBase):
                 self.pulsegenerator().delete_sequence(seq)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         return
+    
+    @staticmethod
+    def _strip_ch_extension(wave_name):
+        """
+        :param wave_name: with (rabi_ch1) or without (rabi) channel extension.
+        :return: stripped name (rabi)
+        """
+        pattern = ".*_ch[0-9]+?"
+        has_ch_ext = True if re.match(pattern, wave_name) is not None else False
+
+        if has_ch_ext:
+            pattern_split = '_ch[0-9]+?'
+            return re.split(pattern_split, wave_name)[0]
+        else:
+            # unsafer, because name including '_' will break
+            return wave_name.rsplit('_', 1)[0]
+
 
     @QtCore.Slot()
     def run_pg_benchmark(self, t_goal=10):

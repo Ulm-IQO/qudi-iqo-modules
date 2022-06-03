@@ -3,21 +3,21 @@
 """
 This file contains a custom QDockWidget subclass to be used in the ODMR GUI module.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 __all__ = ('OdmrCwControlDockWidget', 'OdmrScanControlDockWidget')
@@ -108,6 +108,7 @@ class OdmrScanControlDockWidget(AdvancedDockWidget):
     sigRangeCountChanged = QtCore.Signal(int)
     sigRangeChanged = QtCore.Signal(float, float, int, int)
     sigRuntimeChanged = QtCore.Signal(float)
+    sigPowerChanged = QtCore.Signal(float)
     sigAveragedScansChanged = QtCore.Signal(int)
     sigDataSelectionChanged = QtCore.Signal(str, int)
 
@@ -152,6 +153,7 @@ class OdmrScanControlDockWidget(AdvancedDockWidget):
         self.scan_power_spinbox.setMinimumWidth(_min_spinbox_width)
         self.scan_power_spinbox.setDecimals(6)
         self.scan_power_spinbox.setSuffix('dBm')
+        self.scan_power_spinbox.valueChanged.connect(self._scan_power_cb)
         self.scan_power_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
                                               QtWidgets.QSizePolicy.Fixed)
         if power_range is not None:
@@ -352,6 +354,10 @@ class OdmrScanControlDockWidget(AdvancedDockWidget):
     @QtCore.Slot()
     def _runtime_changed_cb(self):
         self.sigRuntimeChanged.emit(self.runtime_spinbox.value())
+
+    @QtCore.Slot()
+    def _scan_power_cb(self):
+        self.sigPowerChanged.emit(self.scan_power_spinbox.value())
 
     @QtCore.Slot()
     def _add_frequency_clicked_cb(self):
