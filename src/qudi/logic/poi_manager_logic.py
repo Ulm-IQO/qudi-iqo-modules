@@ -362,6 +362,7 @@ class PoiManagerLogic(LogicBase):
     # declare connectors
     _optimizelogic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
     _scanninglogic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
+    _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
     #savelogic = Connector(interface='SaveLogic')
 
     # status vars
@@ -849,8 +850,11 @@ class PoiManagerLogic(LogicBase):
     def set_scan_image(self, emit_change=True):
         """ Get the current xy scan data and set as scan_image of ROI. """
         with self._thread_lock:
-            self._roi.set_scan_image(self._scanninglogic().scan_data.data[self._optimizelogic()._data_channel],
-                self._scanninglogic().scan_data.scan_range)
+
+            scan_data = self._data_logic().get_current_scan_data()
+            if len(scan_data) != 0:
+                self._roi.set_scan_image(scan_data[-1].data[self._optimizelogic()._data_channel],
+                                         scan_data[-1].scan_range)
 
             if emit_change:
                 self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
@@ -872,7 +876,6 @@ class PoiManagerLogic(LogicBase):
             self.set_active_poi(None)
             return
 
-    @QtCore.Slot(int)
     @QtCore.Slot(float)
     def set_refocus_period(self, period):
         """ Change the duration of the periodic optimise timer during active

@@ -116,7 +116,7 @@ class ScanningDataLogic(LogicBase):
         """
         with self._thread_lock:
             if scan_axes is None:
-                return self._curr_data_per_scan.values()
+                return list(self._curr_data_per_scan.values())
             else:
                 return [self._curr_data_per_scan.get(scan_axes, None)]
 
