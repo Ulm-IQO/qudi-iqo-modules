@@ -852,9 +852,9 @@ class PoiManagerLogic(LogicBase):
         with self._thread_lock:
 
             scan_data = self._data_logic().get_current_scan_data()
-            if len(scan_data) != 0:
-                self._roi.set_scan_image(scan_data[-1].data[self._optimizelogic()._data_channel],
-                                         scan_data[-1].scan_range)
+            if scan_data:
+                self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
+                                         scan_data.scan_range)
 
             if emit_change:
                 self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,

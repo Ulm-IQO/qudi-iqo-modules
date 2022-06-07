@@ -464,7 +464,7 @@ class ScannerGui(GuiBase):
         try:
             data_logic = self._data_logic()
             if scan_axes is None:
-                scan_axes = [scan.scan_axes for scan in data_logic.get_current_scan_data()]
+                scan_axes = [scan.scan_axes for scan in data_logic.get_all_current_scan_data()]
             else:
                 scan_axes = [scan_axes]
             for ax in scan_axes:
@@ -472,7 +472,7 @@ class ScannerGui(GuiBase):
                     cbar_range = self.scan_2d_dockwidgets[ax].scan_widget.image_widget.levels
                 except KeyError:
                     cbar_range = None
-                scan = data_logic.get_current_scan_data(scan_axes=ax)[0]
+                scan = data_logic.get_current_scan_data(scan_axes=ax)
                 data_logic.save_scan(scan, color_range=cbar_range)
         finally:
             self.sigShowSaveDialog.emit(False)

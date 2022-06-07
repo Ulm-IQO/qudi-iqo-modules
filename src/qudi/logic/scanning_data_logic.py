@@ -111,22 +111,28 @@ class ScanningDataLogic(LogicBase):
 
     def get_current_scan_data(self, scan_axes=None):
         """
-        Get the most recent scan data for a certain (or all) scan axes.
-        @return list: list of ScanData
+        Get the most recent scan data for a certain (or the most recent) scan axes.
+        @param tuple scan_axes: axis to get data for. If None yields most recent scan.
+        @return ScanData: most recent scan data
         """
         with self._thread_lock:
             if scan_axes is None:
-                return list(self._curr_data_per_scan.values())
-            else:
-                return [self._curr_data_per_scan.get(scan_axes, None)]
+                try:
+                    scan_axes = self._scan_history[-1].scan_axes
+                except IndexError:
+                    return None
+            return self._curr_data_per_scan.get(scan_axes, None)
 
-    def get_current_scan_id(self, scan_axes):
+    def get_current_scan_id(self, scan_axes=None):
+        """
+        Yield most recent scan data id for a given scan axis or overall.
+        """
 
         with self._thread_lock:
             ret_id = np.nan
             idx_i = -1
             for scan_data in reversed(self._scan_history):
-                if scan_data.scan_axes == scan_axes:
+                if scan_data.scan_axes == scan_axes or scan_axes is None:
                     ret_id = idx_i
                     break
                 idx_i -= 1
@@ -134,13 +140,13 @@ class ScanningDataLogic(LogicBase):
             if np.isnan(ret_id):
                 return np.nan
 
-            assert self._scan_history[ret_id] == self.get_current_scan_data(scan_axes)[0]
-            return ret_id
+            assert self._scan_history[ret_id] == self.get_current_scan_data(scan_axes)
+            return self._abs_index(ret_id)
 
 
     def get_all_current_scan_data(self):
         with self._thread_lock:
-            return self._curr_data_per_scan.copy()
+            return list(self._curr_data_per_scan.copy().values())
 
     @QtCore.Slot()
     def history_previous(self):
@@ -168,8 +174,7 @@ class ScanningDataLogic(LogicBase):
                 self.log.error('Scan is running. Unable to restore history state.')
                 return
 
-            if index < 0:
-                index = max(0, len(self._scan_history) + index)
+            index = self._abs_index(index)
 
             try:
                 data = self._scan_history[index]
@@ -212,6 +217,12 @@ class ScanningDataLogic(LogicBase):
     def _shrink_history(self):
         while len(self._scan_history) > self._max_history_length:
             self._scan_history.pop(0)
+
+    def _abs_index(self, index):
+        if index < 0:
+            index = max(0, len(self._scan_history) + index)
+
+        return index
 
     def draw_1d_scan_figure(self, scan_data, channel):
         """ Create an XY plot of 1D scan data.
