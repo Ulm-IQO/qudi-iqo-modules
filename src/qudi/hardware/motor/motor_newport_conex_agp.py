@@ -28,7 +28,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.interface.motor_interface import MotorInterface
 
 
-class MotorNewportConexAGP(Base, MotorInterface):
+class MotorNewportConexAGP(MotorInterface):
     """
     Module for the CONEX-AGP controller for Agilis stages sold by Newport.
 
