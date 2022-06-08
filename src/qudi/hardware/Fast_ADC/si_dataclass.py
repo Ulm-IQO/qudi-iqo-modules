@@ -23,6 +23,7 @@ import numpy as np
 from dataclasses import dataclass
 from pyspcm import *
 from spcm_tools import *
+import typing
 
 
 @dataclass
@@ -30,6 +31,7 @@ class Card_settings:
     '''
     This dataclass contains parameters input to the card.
     '''
+    card: typing.Any = ''
     ai_range_mV: int = 1000
     ai_offset_mV: int = 0
     ai_term: str = ''
@@ -37,18 +39,16 @@ class Card_settings:
     acq_mode: str = ''
     acq_HW_avg_num: int = 1
     acq_pre_trigs_S: int = 16
-    acq_post_trigs_S: int = 0
-    acq_mem_size_S: int = 0
-    acq_seg_size_S:int = 0
+    acq_post_trigs_S: int = 0 #Dynamic
+    acq_mem_size_S: int = 0 #Dynamic
+    acq_seg_size_S:int = 0 #Dynamic
     acq_loops: int = 0
-    buf_size_B: int = 0
+    buf_size_B: int = 0 #Dynamic
     buf_notify_size_B: int = 4096
-    clk_samplerate_Hz: int = 250e6
+    clk_samplerate_Hz: int = 250e6 #Dynamic
     clk_ref_Hz: int = 10e6
     trig_mode: str = ''
     trig_level_mV: int = 1000
-    ts_buf_size_B: int = 0
-    ts_buf_notify_size_B: int = 4096
 
 
     def calc_dynamic_cs(self, gated, binwidth_s, record_length_s):
@@ -62,29 +62,47 @@ class Card_settings:
 
     def calc_ungated_seg_size_S(self, binwidth_s, record_length_s):
         self.acq_seg_size_S = int(np.ceil((record_length_s / binwidth_s) / 16) * 16)  # necessary to be multuples of 16
-        self.acq_post_trigs_S =  int(self.acq_seg_size_S - self.acq_pre_trigs_S)
+        self.acq_post_trigs_S = int(self.acq_seg_size_S - self.acq_pre_trigs_S)
 
     def get_buf_size_B(self, seq_size_B, reps_per_buf):
         self.buf_size_B = seq_size_B * reps_per_buf
+
+@dataclass
+class Card_settings_gated(Card_settings):
+    ts_buf_size_B: int = 0
+    ts_buf_notify_size_B: int = 4096
+
+    def get_buf_size_B(self, seq_size_B, reps_per_buf):
+        super().get_buf_size_B(seq_size_B, reps_per_buf)
+        self.ts_buf_size_B = int(16 * reps_per_buf)
+
+
 
 @dataclass
 class Measurement_settings:
     '''
     This dataclass contains paremeters given by the logic and used for data process.
     '''
+    #Fixed
+    c_buf_ptr: typing.Any = c_void_p()
+    #Given by the config
     gated: bool = False
+    init_buf_size_S: int = 0
+    #Given by the measurement
     binwidth_s: float = 0
     record_length_s: float =0
     number_of_gates:int = 0
+    #Calculated
     seq_size_S: int = 0
     seq_size_B: int = 0
     reps_per_buf: int = 0
-    init_buf_size_S: int = 0
     actual_length: float = 0
     data_bits: int = 0
     gate_length_S: int = 0
     gate_end_alignment_S: int = 16
 
+    def return_c_buf_ptr(self):
+        return self.c_buf_ptr
 
     def load_dynamic_params(self, binwidth_s, record_length_s, number_of_gates):
         self.binwidth_s = binwidth_s
@@ -93,23 +111,23 @@ class Measurement_settings:
 
     def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
         if self.gated == True:
-            self.gate_length_S = self.calc_gate_length_S()
-            self.seg_size_S = self.calc_gate_segm_size_S(pre_trigs_S, post_trigs_S)
-            self.seq_size_S = self.calc_gate_seq_size_S()
+            self.gate_length_S = self._calc_gate_length_S()
+            self.seg_size_S = self._calc_gate_seg_size_S(pre_trigs_S, post_trigs_S)
+            self.seq_size_S = self._calc_gate_seq_size_S()
 
         else:
             self.seg_size_S = seg_size_S
             self.seq_size_S = self.seg_size_S
 
 
-    def calc_gate_length_S(self):
-        return int(self.record_length_s / self.binwidth_s)
+    def _calc_gate_length_S(self):
+        return int(self.record_length_s / self.binwidth_s) #On theory
 
-    def calc_gate_seg_size_S(self, pre_trigs_S, post_trigs_S):
+    def _calc_gate_seg_size_S(self, pre_trigs_S, post_trigs_S):
         return self.gate_length_S + self.gate_end_alignment_S + pre_trigs_S + post_trigs_S
 
 
-    def calc_gate_seq_size_S(self):
+    def _calc_gate_seq_size_S(self):
         return self.seg_size_S * self.number_of_gates
 
     def assign_data_bit(self, acq_mode):
@@ -139,6 +157,22 @@ class Measurement_settings:
         self.reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
         self.seq_size_B = self.seq_size_S * self.get_data_bytes_B()
 
+@dataclass()
+class Measurement_settings_gated(Measurement_settings):
+    c_ts_buf_ptr:  typing.Any = c_void_p()
+    ts_data_bits: int = 64
+    ts_data_bytes_B: int = 8
+
+    def get_ts_data_type(self):
+        return c_int8
+
+    def return_c_ts_buf_ptr(self):
+        return self.c_ts_buf_ptr
+
+
+
+
+
 
 @dataclass
 class CoreData:
@@ -158,7 +192,7 @@ class CoreData:
 
 @dataclass
 class AvgData(CoreData):
-    avg_num: int = 0
+    num: int = 0
 
     def add(self, avg_num, avg_data):
         self.avg_num = avg_num
