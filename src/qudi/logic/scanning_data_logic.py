@@ -353,6 +353,11 @@ class ScanningDataLogic(LogicBase):
                 self.sigSaveStateChanged.emit(False)
             return
 
+    def save_scan_by_axis(self, scan_axes=None, color_range=None):
+        # wrapper for self.save_scan. Avoids copying scan_data through QtSignals
+        scan = self.get_current_scan_data(scan_axes=scan_axes)
+        self.save_scan(scan, color_range=color_range)
+
     def create_tag_from_scan_data(self, scan_data):
         axes = scan_data.scan_axes
         axis_dim = len(axes)
@@ -384,7 +389,8 @@ class ScanningDataLogic(LogicBase):
         si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
         si_prefix_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale
         si_factor_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale_val
-        si_prefix_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale
+        si_prefix_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale if cbar_range[1]!=cbar_range[0] \
+            else ScaledFloat(cbar_range[1])
         si_factor_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale_val
 
         # Create image plot

@@ -106,6 +106,7 @@ class ScannerGui(GuiBase):
     sigToggleOptimize = QtCore.Signal(bool)
     sigSaveScan = QtCore.Signal(object, object)
     sigSaveFinished = QtCore.Signal()
+    sigShowSaveDialog = QtCore.Signal(bool)
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -198,7 +199,7 @@ class ScannerGui(GuiBase):
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
         self._mw.action_save_all_scans.triggered.connect(lambda x: self.save_scan_data(scan_axes=None))
-        self.sigSaveScan.connect(lambda scan, cb: self._data_logic().save_scan(scan, cb), QtCore.Qt.QueuedConnection)
+        self.sigSaveScan.connect(self._data_logic().save_scan_by_axis, QtCore.Qt.QueuedConnection)
         self.sigSaveFinished.connect(self._save_dialog.hide, QtCore.Qt.QueuedConnection)
         self._data_logic().sigSaveStateChanged.connect(lambda x: self._track_save_status(x))
 
@@ -230,6 +231,9 @@ class ScannerGui(GuiBase):
         )
         self.sigOptimizerSettingsChanged.connect(
             self._optimize_logic().set_optimize_settings, QtCore.Qt.QueuedConnection)
+
+        self.sigShowSaveDialog.connect(lambda x: self._save_dialog.show() if x else self._save_dialog.hide(),
+                                       QtCore.Qt.DirectConnection)
 
         # Initialize dockwidgets to default view
         self.restore_default_view()
@@ -462,7 +466,7 @@ class ScannerGui(GuiBase):
         Save data for a given (or all) scan axis.
         @param tuple: Axis to save. Save all currently displayed if None.
         """
-        self._save_dialog.show()
+        self.sigShowSaveDialog.emit(True)
         try:
             data_logic = self._data_logic()
             if scan_axes is None:
@@ -474,8 +478,7 @@ class ScannerGui(GuiBase):
                     cbar_range = self.scan_2d_dockwidgets[ax].scan_widget.image_widget.levels
                 except KeyError:
                     cbar_range = None
-                scan = data_logic.get_current_scan_data(scan_axes=ax)
-                self.sigSaveScan.emit(scan, cbar_range)
+                self.sigSaveScan.emit(ax, cbar_range)
         finally:
             pass
 
