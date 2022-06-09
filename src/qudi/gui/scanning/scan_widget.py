@@ -114,6 +114,10 @@ class Scan1DWidget(_BaseScanWidget):
 
         self.layout().addWidget(self.plot_widget, 1, 0, 1, 4)
 
+        # disable buggy pyqtgraph 'Export..' context menu
+        self.plot_widget.getPlotItem().vb.scene().contextMenu[0].setVisible(False)
+
+
     @property
     def marker_position(self) -> float:
         return self.plot_widget.marker_selection[self.plot_widget.SelectionMode.X][0]
@@ -213,6 +217,9 @@ class Scan2DWidget(_BaseScanWidget):
         self.image_widget.set_data_label(label=channels[0].name, unit=channels[0].unit)
 
         self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
+
+        # disable buggy pyqtgraph 'Export..' context menu
+        self.image_widget.plot_widget.getPlotItem().vb.scene().contextMenu[0].setVisible(False)
 
     @property
     def marker_position(self) -> Tuple[float, float]:
