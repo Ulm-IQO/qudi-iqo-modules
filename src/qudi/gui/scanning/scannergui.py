@@ -104,7 +104,8 @@ class ScannerGui(GuiBase):
     sigToggleScan = QtCore.Signal(bool, tuple, object)
     sigOptimizerSettingsChanged = QtCore.Signal(dict)
     sigToggleOptimize = QtCore.Signal(bool)
-    sigShowSaveDialog = QtCore.Signal(bool)
+    sigSaveScan = QtCore.Signal(object, object)
+    sigSaveFinished = QtCore.Signal()
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -129,6 +130,7 @@ class ScannerGui(GuiBase):
         self._optimizer_id = 0
         self._scanner_settings_locked = False
         self._optimizer_state = {'is_running': False}
+        self._n_save_tasks = 0
         return
 
     def on_activate(self):
@@ -193,10 +195,13 @@ class ScannerGui(GuiBase):
         self.sigToggleOptimize.connect(
             self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection
         )
-
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
         self._mw.action_save_all_scans.triggered.connect(lambda x: self.save_scan_data(scan_axes=None))
+        self.sigSaveScan.connect(lambda scan, cb: self._data_logic().save_scan(scan, cb), QtCore.Qt.QueuedConnection)
+        self.sigSaveFinished.connect(self._save_dialog.hide, QtCore.Qt.QueuedConnection)
+        self._data_logic().sigSaveStateChanged.connect(lambda x: self._track_save_status(x))
+
         self._mw.action_utility_zoom.toggled.connect(self.toggle_cursor_zoom)
         self._mw.action_utility_full_range.triggered.connect(
             self._scanning_logic().set_full_scan_ranges, QtCore.Qt.QueuedConnection
@@ -225,9 +230,6 @@ class ScannerGui(GuiBase):
         )
         self.sigOptimizerSettingsChanged.connect(
             self._optimize_logic().set_optimize_settings, QtCore.Qt.QueuedConnection)
-
-        self.sigShowSaveDialog.connect(lambda x: self._save_dialog.show() if x else self._save_dialog.hide(),
-                                       QtCore.Qt.DirectConnection)
 
         # Initialize dockwidgets to default view
         self.restore_default_view()
@@ -460,7 +462,7 @@ class ScannerGui(GuiBase):
         Save data for a given (or all) scan axis.
         @param tuple: Axis to save. Save all currently displayed if None.
         """
-        self.sigShowSaveDialog.emit(True)
+        self._save_dialog.show()
         try:
             data_logic = self._data_logic()
             if scan_axes is None:
@@ -473,9 +475,18 @@ class ScannerGui(GuiBase):
                 except KeyError:
                     cbar_range = None
                 scan = data_logic.get_current_scan_data(scan_axes=ax)
-                data_logic.save_scan(scan, color_range=cbar_range)
+                self.sigSaveScan.emit(scan, cbar_range)
         finally:
-            self.sigShowSaveDialog.emit(False)
+            pass
+
+    def _track_save_status(self, in_progress):
+        if in_progress:
+            self._n_save_tasks += 1
+        else:
+            self._n_save_tasks -= 1
+
+        if self._n_save_tasks == 0:
+            self.sigSaveFinished.emit()
 
     def _remove_scan_dockwidget(self, axes):
         try:
