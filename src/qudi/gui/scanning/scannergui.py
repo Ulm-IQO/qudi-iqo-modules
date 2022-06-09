@@ -335,6 +335,9 @@ class ScannerGui(GuiBase):
             self._mw.action_view_scanner_control.setChecked)
         self._mw.action_view_scanner_control.triggered[bool].connect(
             self.scanner_control_dockwidget.setVisible)
+        self._mw.action_view_line_scan.triggered[bool].connect(
+            lambda is_vis: [wid.setVisible(is_vis) for wid in self.scan_1d_dockwidgets.values()]
+        )
         self.scanner_control_dockwidget.sigResolutionChanged.connect(
             lambda ax, res: self.sigScanSettingsChanged.emit({'resolution': {ax: res}})
              if not self._scanner_settings_locked else None
