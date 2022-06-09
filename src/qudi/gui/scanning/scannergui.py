@@ -198,7 +198,7 @@ class ScannerGui(GuiBase):
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
         self._mw.action_save_all_scans.triggered.connect(lambda x: self.save_scan_data(scan_axes=None))
-        self.sigSaveScan.connect(lambda scan, cb: self._data_logic().save_scan(scan, cb), QtCore.Qt.QueuedConnection)
+        self.sigSaveScan.connect(self._data_logic().save_scan, QtCore.Qt.QueuedConnection)
         self.sigSaveFinished.connect(self._save_dialog.hide, QtCore.Qt.QueuedConnection)
         self._data_logic().sigSaveStateChanged.connect(lambda x: self._track_save_status(x))
 
