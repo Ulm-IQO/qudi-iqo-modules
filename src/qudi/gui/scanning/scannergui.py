@@ -745,11 +745,11 @@ class ScannerGui(GuiBase):
             fit_res = fit_data['full_fit_res']
             if data.ndim == 1:
                 self.optimizer_dockwidget.set_fit_data(scan_axs, y=data)
-                sig_z = fit_res.params['center'].stderr
+                sig_z = fit_res.params['sigma'].value
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
                                                           scan_axs, sigma=sig_z)
             elif data.ndim == 2:
-                sig_x, sig_y = fit_res.params['center_x'].stderr, fit_res.params['center_y'].stderr
+                sig_x, sig_y = fit_res.params['sigma_x'].value, fit_res.params['sigma_y'].value
                 self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
                                                           scan_axs, sigma=[sig_x, sig_y])
 
