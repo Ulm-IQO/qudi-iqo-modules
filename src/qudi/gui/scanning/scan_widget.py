@@ -117,7 +117,6 @@ class Scan1DWidget(_BaseScanWidget):
         # disable buggy pyqtgraph 'Export..' context menu
         self.plot_widget.getPlotItem().vb.scene().contextMenu[0].setVisible(False)
 
-
     @property
     def marker_position(self) -> float:
         return self.plot_widget.marker_selection[self.plot_widget.SelectionMode.X][0]
@@ -146,6 +145,12 @@ class Scan1DWidget(_BaseScanWidget):
                           bounds: Union[None, List[Union[None, Tuple[float, float]]]]
                           ) -> None:
         self.plot_widget.set_selection_bounds(bounds)
+
+    def set_plot_range(self,
+                       x_range: Optional[Tuple[float, float]] = None,
+                       y_range: Optional[Tuple[float, float]] = None
+                       ) -> None:
+        self.plot_widget.setRange(xRange=x_range, yRange=y_range)
 
     def set_scan_data(self, data: ScanData) -> None:
         # Save reference for channel changes
@@ -267,6 +272,13 @@ class Scan2DWidget(_BaseScanWidget):
                           bounds: Union[None, List[Union[None, Tuple[float, float]]]]
                           ) -> None:
         self.image_widget.set_selection_bounds(bounds)
+
+    def set_plot_range(self,
+                       x_range: Optional[Tuple[float, float]] = None,
+                       y_range: Optional[Tuple[float, float]] = None
+                       ) -> None:
+        vb = self.image_item.getViewBox()
+        vb.setRange(xRange=x_range, yRange=y_range)
 
     def set_scan_data(self, data: ScanData) -> None:
         # Save reference for channel changes
