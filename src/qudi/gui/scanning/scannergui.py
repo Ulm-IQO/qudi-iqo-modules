@@ -173,18 +173,6 @@ class ScannerGui(GuiBase):
         self.scanner_target_updated()
         self.scan_state_updated(self._scanning_logic().module_state() != 'idle')
 
-        # Try to restore window state and geometry
-        if self._window_geometry is not None:
-            if not self._mw.restoreGeometry(bytearray.fromhex(self._window_geometry)):
-                self._window_geometry = None
-                self.log.debug(
-                    'Unable to restore previous window geometry. Falling back to default.')
-        if self._window_state is not None:
-            if not self._mw.restoreState(bytearray.fromhex(self._window_state)):
-                self._window_state = None
-                self.log.debug(
-                    'Unable to restore previous window state. Falling back to default.')
-
         # Connect signals
         self.sigScannerTargetChanged.connect(
             self._scanning_logic().set_target_position, QtCore.Qt.QueuedConnection
@@ -241,6 +229,8 @@ class ScannerGui(GuiBase):
 
         self.restore_history()
 
+        self._restore_window_geometry(self._mw)
+
         self._send_pop_up_message('We would appreciate your contribution',
                                   'The scanning probe toolchain is still in active development. '
                                   'Please report bugs and issues in the qudi-iqo-modules repository '
@@ -254,8 +244,7 @@ class ScannerGui(GuiBase):
         @return int: error code (0:OK, -1:error)
         """
         # Remember window position and geometry and close window
-        self._window_geometry = str(self._mw.saveGeometry().toHex(), encoding='utf-8')
-        self._window_state = str(self._mw.saveState().toHex(), encoding='utf-8')
+        self._save_window_geometry(self._mw)
         self._mw.close()
 
         # Disconnect signals
