@@ -39,9 +39,11 @@ import warnings
 
 class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     """
-    A National Instruments device that can #TODO Document
+    A module for a National Instrument device that outputs voltages and records input from digital channels and/or
+    analog channels in a hardware timed fashion. Either as an equidistant sweep or with a list of values to write
+    depending on the output mode.
 
-    !!!!!! NI USB 63XX, NI PCIe 63XX and NI PXIe 63XX DEVICES ONLY !!!!!!
+    !!!!!!Tested and developed for NI USB 63XX, NI PCIe 63XX and NI PXIe 63XX DEVICES ONLY !!!!!!
 
     See [National Instruments X Series Documentation](@ref nidaq-x-series) for details.
 
@@ -51,22 +53,27 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         module.Class: 'ni_x_series.ni_x_series_finite_sampling_io.NIXSeriesFiniteSamplingIO'
         device_name: 'Dev1'
         input_channel_units:
-            'PFI8': 'c/s'
-            'ai0': 'V'
-            'ai1': 'V'
-        output_channel_units:
+            PFI8: 'c/s'
+            PFI9: 'c/s'
+            ai0: 'V'
+            ai1: 'V'
+        output_channel_units: # Specify used output channels
             'ao0': 'V'
             'ao1': 'V'
+            'ao2': 'V'
+            'ao3': 'V'
         adc_voltage_ranges:
             ai0: [-10, 10]  # optional
             ai1: [-10, 10]  # optional
         output_voltage_ranges:
-            ao0: [-5, 5]
-            ao1: [-10, 10]
+            ao0: [-1.5, 1.5]
+            ao1: [-1.5, 1.5]
+            ao2: [0, 10.0]
+            ao3: [-10.0, 10.0]
         frame_size_limits: [1, 1e9]  # optional #TODO actual HW constraint?
-        default_output_mode: 'JUMP_LIST' # optional, must be member of SamplingOutputMode Enum # TODO Maybe not set on startup?
+        default_output_mode: 'JUMP_LIST' # optional, must be name of SamplingOutputMode
         read_write_timeout: 10  # optional
-        sample_clock_output: '/Dev1/PFI15' # optional
+        sample_clock_output: '/Dev1/PFI11' # optional: routing of sample clock to a physical connection
 
     """
 
@@ -74,7 +81,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
     _rw_timeout = ConfigOption('read_write_timeout', default=10, missing='nothing')
 
-    # Finite Sampling #TODO Frame size hardware limits?
+    # Finite Sampling #TODO What are the frame size hardware limits?
     _frame_size_limits = ConfigOption(name='frame_size_limits', default=(1, 1e9))
     _input_channel_units = ConfigOption(name='input_channel_units',
                                         missing='error')
