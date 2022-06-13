@@ -1133,12 +1133,6 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         self._di_readers = list()
         self._ai_reader = None
 
-        if self._physical_sample_clock_output is not None:
-            clock_channel = '/{0}InternalOutput'.format(self._clk_task_handle.channel_names[0])
-            ni.system.System().disconnect_terms(source_terminal=clock_channel,
-                                                destination_terminal='/{0}/{1}'.format(
-                                                    self._device_name, self._physical_sample_clock_output))
-
         while len(self._di_task_handles) > 0:
             try:
                 if not self._di_task_handles[-1].is_task_done():
@@ -1172,6 +1166,11 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             self._ao_task_handle = None
 
         if self._clk_task_handle is not None:
+            if self._physical_sample_clock_output is not None:
+                clock_channel = '/{0}InternalOutput'.format(self._clk_task_handle.channel_names[0])
+                ni.system.System().disconnect_terms(source_terminal=clock_channel,
+                                                    destination_terminal='/{0}/{1}'.format(
+                                                        self._device_name, self._physical_sample_clock_output))
             try:
                 if not self._clk_task_handle.is_task_done():
                     self._clk_task_handle.stop()
