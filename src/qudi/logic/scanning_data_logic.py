@@ -92,14 +92,12 @@ class ScanningDataLogic(LogicBase):
             self._curr_data_per_scan = dict()
         self._logic_id = self._scan_logic().module_uuid
         self._scan_logic().sigScanStateChanged.connect(self._update_scan_state)
-        return
 
     def on_deactivate(self):
         """ Reverse steps of activation
         """
         self._scan_logic().sigScanStateChanged.disconnect(self._update_scan_state)
         self._curr_data_per_scan = dict()
-        return
 
     @_scan_history.representer
     def __scan_history_to_dicts(self, history):
@@ -142,7 +140,6 @@ class ScanningDataLogic(LogicBase):
 
             assert self._scan_history[ret_id] == self.get_current_scan_data(scan_axes)
             return self._abs_index(ret_id)
-
 
     def get_all_current_scan_data(self):
         with self._thread_lock:
@@ -196,8 +193,9 @@ class ScanningDataLogic(LogicBase):
             self.sigHistoryScanDataRestored.emit(data)
             return
 
-    @QtCore.Slot(bool, object, object)
+    @QtCore.Slot()
     def _update_scan_state(self, running, data, caller_id):
+        print('_update_scan_state', running, data, caller_id)
 
         settings = {
             'range': {ax: data.scan_range[i] for i, ax in enumerate(data.scan_axes)},
