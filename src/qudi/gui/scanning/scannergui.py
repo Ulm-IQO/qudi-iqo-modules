@@ -528,6 +528,7 @@ class ScannerGui(GuiBase):
             marker_bounds = (axes_constr[0].value_range, (None, None))
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
+            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range)
             self.scan_1d_dockwidgets[axes] = dockwidget
         else:
             if axes in self.scan_2d_dockwidgets:
@@ -539,6 +540,8 @@ class ScannerGui(GuiBase):
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
             dockwidget.scan_widget.set_marker_size(marker_size)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
+            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range,
+                                                  y_range=axes_constr[1].value_range)
             self.scan_2d_dockwidgets[axes] = dockwidget
 
         dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
