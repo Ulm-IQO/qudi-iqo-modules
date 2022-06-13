@@ -32,11 +32,13 @@ from qudi.interface.process_control_interface import ProcessControlConstraints, 
 
 
 class NIXSeriesAnalogOutput(ProcessSetpointInterface):
-    """ A dummy class to emulate a process control device (setpoints and process values)
+    """ A module to output and read back (internally routed) analog voltages
+    on an Ni Card in a software timed fashion.
+    (only tested with Ni X-Series cards so far)
 
     Example config for copy-paste:
 
-    nicard_6343_ao:
+    nicard_63XX_ao:
         module.Class: 'ni_x_series.ni_x_series_in_streamer.NIXSeriesAnalogOutput'
         device_name: 'Dev1'
 
@@ -70,7 +72,6 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
         },
         missing='info'
     )
-    _test = ConfigOption(name='test')
 
     _setpoints = StatusVar(name='current_setpoints', default=dict())
 
