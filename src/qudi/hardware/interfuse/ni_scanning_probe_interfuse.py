@@ -35,23 +35,29 @@ import time
 
 class NiScanningProbeInterfuse(ScanningProbeInterface):
     """
-    TODO: Document
+    This interfuse combines modules of a National Instrument device to make up a scanning probe hardware.
+    One module for software timed analog output (NIXSeriesAnalogOutput) to position e.g. a scanner to a specific
+    position and a hardware timed module for in and output (NIXSeriesFiniteSamplingIO) to realize 1D/2D scans.
+
+    Example config for copy-paste:
 
     ni_scanning_probe:
         module.Class: 'interfuse.ni_scanning_probe_interfuse.NiScanningProbeInterfuse'
         connect:
             scan_hardware: 'ni_finite_sampling_io'
             analog_output: 'ni_ao'
-        ni_channel_mapping: #TODO: Allow "DevX/..." notation? Actually functions in nfsio check Try none the less once!
-            x: 'ao0'  #TODO: Actually DevX needs to be referenced somehow here ...
+        ni_channel_mapping:
+            x: 'ao0'
             y: 'ao1'
             z: 'ao2'
             APD1: 'PFI8'
-        position_ranges: # in m #TODO What about channels which are not "calibrated" to 'm', e.g. just use 'V'?
+            APD2: 'PFI9'
+            AI0: 'ai0'
+        position_ranges: # in m
             x: [-100e-6, 100e-6]
             y: [0, 200e-6]
             z: [-100e-6, 100e-6]
-        frequency_ranges: #Aka values written/retrieved per second; Check with connected HW
+        frequency_ranges: #Aka values written/retrieved per second; Check with connected HW for sensible constraints.
             x: [1, 5000]
             y: [1, 5000]
             z: [1, 1000]
@@ -61,10 +67,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             z: [2, 1000]
         input_channel_units:
             APD1: 'c/s'
+            APD2: 'c/s'
+            AI0: 'V'
         backwards_line_resolution: 50 # optional
-        move_velocity: 400e-6 #m/s
+        move_velocity: 400e-6 #m/s; This speed is used for scanner movements and avoids jumps from position to position.
     """
 
+    # TODO What about channels which are not "calibrated" to 'm', e.g. just use 'V'?
     # TODO Bool indicators deprecated; Change in scanning probe toolchain
 
     _ni_finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
