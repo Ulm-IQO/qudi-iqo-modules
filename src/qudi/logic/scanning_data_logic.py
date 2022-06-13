@@ -195,7 +195,6 @@ class ScanningDataLogic(LogicBase):
 
     @QtCore.Slot()
     def _update_scan_state(self, running, data, caller_id):
-        print('_update_scan_state', running, data, caller_id)
 
         settings = {
             'range': {ax: data.scan_range[i] for i, ax in enumerate(data.scan_axes)},
