@@ -210,7 +210,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
                     out_str += f"{key}, "
                 else:
                     if val:
-                        out_str += f"{val*1e6:.2f}, "
+                        out_str += f"{val*1e6:.3f}, "
                     else:
                         out_str += "?, "
 

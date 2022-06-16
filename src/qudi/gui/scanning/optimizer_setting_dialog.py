@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('OptimizerSettingDialog', 'OptimizerSettingWidget', 'OptimizerAxesWidget')
 
+import copy as cp
 from PySide2 import QtCore, QtGui, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
@@ -73,6 +74,10 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         self._avail_axes = sorted([ax.name for ax in scanner_axes])
         self._optimizer_dim = optimizer_dim
 
+        dummy_seq = OptimizerScanSequence(self._avail_axes,
+                                          self._optimizer_dim)
+        self._available_opt_sequences = cp.copy(dummy_seq.available_opt_sequences)
+
         font = QtGui.QFont()
         font.setBold(True)
 
@@ -120,10 +125,8 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
 
     @property
     def available_opt_sequences(self):
+        return self._available_opt_sequences
 
-        dummy_seq = OptimizerScanSequence(self._avail_axes,
-                                          self._optimizer_dim)
-        return dummy_seq.available_opt_sequences
 
     def change_settings(self, settings):
         if 'data_channel' in settings:

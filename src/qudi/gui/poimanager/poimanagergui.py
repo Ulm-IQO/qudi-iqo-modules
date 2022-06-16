@@ -752,8 +752,9 @@ class PoiManagerGui(GuiBase):
         @param scan_image:
         @param image_extent:
         """
-        self._mw.roi_image.set_image(image=scan_image)
-        self._mw.roi_image.image_item.set_image_extent(image_extent)
+        if scan_image is not None:
+            self._mw.roi_image.set_image(image=scan_image)
+            self._mw.roi_image.image_item.set_image_extent(image_extent)
         return
 
     def _update_roi_name(self, name):

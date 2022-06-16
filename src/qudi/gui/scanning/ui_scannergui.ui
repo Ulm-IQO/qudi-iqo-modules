@@ -253,6 +253,9 @@ Shortcut:Ctrl+Z</string>
    <property name="checkable">
     <bool>true</bool>
    </property>
+   <property name="checked">
+    <bool>true</bool>
+   </property>
    <property name="text">
     <string>Line scan</string>
    </property>

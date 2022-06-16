@@ -205,7 +205,7 @@ class ScanningOptimizeLogic(LogicBase):
                                               plot_dimensions)
 
             if len(dummy_seq.available_opt_sequences) == 0:
-                raise ValueError(f"Configured optimizer dim= {self._optimizer_plot_dims}"
+                raise ValueError(f"Configured optimizer dim= {plot_dimensions}"
                                  f" doesn't yield any sensible scan sequence.")
 
             if settings['scan_sequence'] not in [seq.sequence for seq in dummy_seq.available_opt_sequences]:

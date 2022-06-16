@@ -104,6 +104,8 @@ class ScannerGui(GuiBase):
     sigToggleScan = QtCore.Signal(bool, tuple, object)
     sigOptimizerSettingsChanged = QtCore.Signal(dict)
     sigToggleOptimize = QtCore.Signal(bool)
+    sigSaveScan = QtCore.Signal(object, object)
+    sigSaveFinished = QtCore.Signal()
     sigShowSaveDialog = QtCore.Signal(bool)
 
     def __init__(self, config, **kwargs):
@@ -129,6 +131,7 @@ class ScannerGui(GuiBase):
         self._optimizer_id = 0
         self._scanner_settings_locked = False
         self._optimizer_state = {'is_running': False}
+        self._n_save_tasks = 0
         return
 
     def on_activate(self):
@@ -170,18 +173,6 @@ class ScannerGui(GuiBase):
         self.scanner_target_updated()
         self.scan_state_updated(self._scanning_logic().module_state() != 'idle')
 
-        # Try to restore window state and geometry
-        if self._window_geometry is not None:
-            if not self._mw.restoreGeometry(bytearray.fromhex(self._window_geometry)):
-                self._window_geometry = None
-                self.log.debug(
-                    'Unable to restore previous window geometry. Falling back to default.')
-        if self._window_state is not None:
-            if not self._mw.restoreState(bytearray.fromhex(self._window_state)):
-                self._window_state = None
-                self.log.debug(
-                    'Unable to restore previous window state. Falling back to default.')
-
         # Connect signals
         self.sigScannerTargetChanged.connect(
             self._scanning_logic().set_target_position, QtCore.Qt.QueuedConnection
@@ -193,10 +184,13 @@ class ScannerGui(GuiBase):
         self.sigToggleOptimize.connect(
             self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection
         )
-
-        self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize)
+        self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize, QtCore.Qt.QueuedConnection)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
         self._mw.action_save_all_scans.triggered.connect(lambda x: self.save_scan_data(scan_axes=None))
+        self.sigSaveScan.connect(self._data_logic().save_scan_by_axis, QtCore.Qt.QueuedConnection)
+        self.sigSaveFinished.connect(self._save_dialog.hide, QtCore.Qt.QueuedConnection)
+        self._data_logic().sigSaveStateChanged.connect(self._track_save_status)
+
         self._mw.action_utility_zoom.toggled.connect(self.toggle_cursor_zoom)
         self._mw.action_utility_full_range.triggered.connect(
             self._scanning_logic().set_full_scan_ranges, QtCore.Qt.QueuedConnection
@@ -234,6 +228,14 @@ class ScannerGui(GuiBase):
         self.show()
 
         self.restore_history()
+
+        self._restore_window_geometry(self._mw)
+
+        self._send_pop_up_message('We would appreciate your contribution',
+                                  'The scanning probe toolchain is still in active development. '
+                                  'Please report bugs and issues in the qudi-iqo-modules repository '
+                                  'or even fix them and contribute your pull request. Your help is highly appreciated.')
+
         return
 
     def on_deactivate(self):
@@ -242,8 +244,7 @@ class ScannerGui(GuiBase):
         @return int: error code (0:OK, -1:error)
         """
         # Remember window position and geometry and close window
-        self._window_geometry = str(self._mw.saveGeometry().toHex(), encoding='utf-8')
-        self._window_state = str(self._mw.saveState().toHex(), encoding='utf-8')
+        self._save_window_geometry(self._mw)
         self._mw.close()
 
         # Disconnect signals
@@ -329,6 +330,9 @@ class ScannerGui(GuiBase):
             self._mw.action_view_scanner_control.setChecked)
         self._mw.action_view_scanner_control.triggered[bool].connect(
             self.scanner_control_dockwidget.setVisible)
+        self._mw.action_view_line_scan.triggered[bool].connect(
+            lambda is_vis: [wid.setVisible(is_vis) for wid in self.scan_1d_dockwidgets.values()]
+        )
         self.scanner_control_dockwidget.sigResolutionChanged.connect(
             lambda ax, res: self.sigScanSettingsChanged.emit({'resolution': {ax: res}})
              if not self._scanner_settings_locked else None
@@ -464,7 +468,7 @@ class ScannerGui(GuiBase):
         try:
             data_logic = self._data_logic()
             if scan_axes is None:
-                scan_axes = [scan.scan_axes for scan in data_logic.get_current_scan_data()]
+                scan_axes = [scan.scan_axes for scan in data_logic.get_all_current_scan_data()]
             else:
                 scan_axes = [scan_axes]
             for ax in scan_axes:
@@ -472,10 +476,18 @@ class ScannerGui(GuiBase):
                     cbar_range = self.scan_2d_dockwidgets[ax].scan_widget.image_widget.levels
                 except KeyError:
                     cbar_range = None
-                scan = data_logic.get_current_scan_data(scan_axes=ax)[0]
-                data_logic.save_scan(scan, color_range=cbar_range)
+                self.sigSaveScan.emit(ax, cbar_range)
         finally:
-            self.sigShowSaveDialog.emit(False)
+            pass
+
+    def _track_save_status(self, in_progress):
+        if in_progress:
+            self._n_save_tasks += 1
+        else:
+            self._n_save_tasks -= 1
+
+        if self._n_save_tasks == 0:
+            self.sigSaveFinished.emit()
 
     def _remove_scan_dockwidget(self, axes):
         try:
@@ -505,6 +517,7 @@ class ScannerGui(GuiBase):
             marker_bounds = (axes_constr[0].value_range, (None, None))
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
+            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range)
             self.scan_1d_dockwidgets[axes] = dockwidget
         else:
             if axes in self.scan_2d_dockwidgets:
@@ -516,6 +529,8 @@ class ScannerGui(GuiBase):
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
             dockwidget.scan_widget.set_marker_size(marker_size)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
+            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range,
+                                                  y_range=axes_constr[1].value_range)
             self.scan_2d_dockwidgets[axes] = dockwidget
 
         dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
@@ -728,11 +743,11 @@ class ScannerGui(GuiBase):
             fit_res = fit_data['full_fit_res']
             if data.ndim == 1:
                 self.optimizer_dockwidget.set_fit_data(scan_axs, y=data)
-                sig_z = fit_res.params['center'].stderr
+                sig_z = fit_res.params['sigma'].value
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
                                                           scan_axs, sigma=sig_z)
             elif data.ndim == 2:
-                sig_x, sig_y = fit_res.params['center_x'].stderr, fit_res.params['center_y'].stderr
+                sig_x, sig_y = fit_res.params['sigma_x'].value, fit_res.params['sigma_y'].value
                 self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
                                                           scan_axs, sigma=[sig_x, sig_y])
 

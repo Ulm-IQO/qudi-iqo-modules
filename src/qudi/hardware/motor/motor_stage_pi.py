@@ -30,7 +30,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.interface.motor_interface import MotorInterface
 
 
-class MotorStagePI(Base, MotorInterface):
+class MotorStagePI(MotorInterface):
     """
     This is the Interface class to define the controls for the simple
     microwave hardware.

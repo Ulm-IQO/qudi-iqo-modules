@@ -30,7 +30,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.interface.motor_interface import MotorInterface
 
 
-class MotorStageMicos(Base, MotorInterface):
+class MotorStageMicos(MotorInterface):
     """ Hardware class to define the controls for the Micos stage of PI.
 
     unstable: Jochen Scheuer.
