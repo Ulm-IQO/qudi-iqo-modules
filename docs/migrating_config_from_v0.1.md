@@ -1,7 +1,7 @@
 # Config conversion from old qudi (release v0.1) to new core 
 This document gives a short overview how to port an existing configuration to the new qudi release vXXX (aka new core). The good new is: If you have a running configuration for v0.1 already,
 it should be straightforward to adapt it to your new qudi installation.
-Please note that we are describing the most common use case, but can't cover all modules here. 
+Please note that we are describing the most common use case, but can't cover all modules here. If you encounter issues with any configuration, it might help to look into the source (.py) file. There you'll find an example config in the docstring of the respective class.
 
 ## General qudi config
 
@@ -15,8 +15,11 @@ The setup of remote connections has changed quite a bit. Please find the instruc
 ## Module config
 
 The configuration for the following modules has changed substantially:
-- timeseries (formerly known as slow counter)
-- scanning (formely known as confocal)
+- timeseries (LINK MISSING)
+Formerly known as slow counter. The new implantation is more flexible and allows more data sources (than the TTL counting supported by our old slow counter).
+
+- scanning (LINK MISSING)
+Formely known as confocal. The refined version was rewritten from scratch and supports arbitrary input sources and axis configurations.
 
 For the following modules no/ only little changes should be required:
 - pulsed
