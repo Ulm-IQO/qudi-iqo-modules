@@ -70,11 +70,15 @@ class Card_settings:
 @dataclass
 class Card_settings_gated(Card_settings):
     ts_buf_size_B: int = 0
-    ts_buf_notify_size_B: int = 4096
+    ts_buf_notify_size_B: int = 16
 
     def get_buf_size_B(self, seq_size_B, reps_per_buf):
+        print('cs gated')
         super().get_buf_size_B(seq_size_B, reps_per_buf)
         self.ts_buf_size_B = int(16 * reps_per_buf)
+
+        print('buf size {}'.format(self.buf_size_B))
+        print('ts buf size {}'.format(self.ts_buf_size_B))
 
 
 
@@ -91,15 +95,14 @@ class Measurement_settings:
     #Given by the measurement
     binwidth_s: float = 0
     record_length_s: float =0
-    number_of_gates:int = 0
+    number_of_gates:int = 1
     #Calculated
+    seg_size_S: int = 0
     seq_size_S: int = 0
     seq_size_B: int = 0
     reps_per_buf: int = 0
     actual_length: float = 0
     data_bits: int = 0
-    gate_length_S: int = 0
-    gate_end_alignment_S: int = 16
 
     def return_c_buf_ptr(self):
         return self.c_buf_ptr
@@ -110,25 +113,8 @@ class Measurement_settings:
         self.number_of_gates = number_of_gates
 
     def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
-        if self.gated == True:
-            self.gate_length_S = self._calc_gate_length_S()
-            self.seg_size_S = self._calc_gate_seg_size_S(pre_trigs_S, post_trigs_S)
-            self.seq_size_S = self._calc_gate_seq_size_S()
-
-        else:
-            self.seg_size_S = seg_size_S
-            self.seq_size_S = self.seg_size_S
-
-
-    def _calc_gate_length_S(self):
-        return int(self.record_length_s / self.binwidth_s) #On theory
-
-    def _calc_gate_seg_size_S(self, pre_trigs_S, post_trigs_S):
-        return self.gate_length_S + self.gate_end_alignment_S + pre_trigs_S + post_trigs_S
-
-
-    def _calc_gate_seq_size_S(self):
-        return self.seg_size_S * self.number_of_gates
+        self.seg_size_S = seg_size_S
+        self.seq_size_S = self.seg_size_S
 
     def assign_data_bit(self, acq_mode):
 
@@ -162,9 +148,18 @@ class Measurement_settings_gated(Measurement_settings):
     c_ts_buf_ptr:  typing.Any = c_void_p()
     ts_data_bits: int = 64
     ts_data_bytes_B: int = 8
+    gate_length_S: int = 0
+    gate_length_rounded_S: int = 0
+    gate_end_alignment_S: int = 16
+
+    def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
+        self.gate_length_S = int(np.ceil(self.record_length_s / self.binwidth_s))
+        self.gate_length_rounded_S = int(np.ceil(self.gate_length_S / 16) * 16)
+        self.seg_size_S = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
+        self.seq_size_S = self.seg_size_S * self.number_of_gates
 
     def get_ts_data_type(self):
-        return c_int8
+        return c_uint64
 
     def return_c_ts_buf_ptr(self):
         return self.c_ts_buf_ptr
@@ -190,27 +185,15 @@ class CoreData:
         if not len(self.data) == 0:
             self.data_len = len(self.data)
 
-@dataclass
-class AvgData(CoreData):
-    num: int = 0
-
-    def add(self, avg_num, avg_data):
-        self.avg_num = avg_num
-        self.data = avg_data
-        self.set_len()
-
-    def update(self, curr_ad):
-        avg_data_set = np.vstack((self.data, curr_ad.data))
-        avg_weights = np.array([self.avg_num, curr_ad.avg_num])
-        self.avg_data = np.average(avg_data_set, axis=0, weights=avg_weights)
-        self.avg_num += curr_ad.avg_num
-        return self.avg_num, self.avg_data
-
+    def reshape_1d(self):
+        shape_1d = (self.data_len,)
+        self.data = self.data.reshape(shape_1d)
 
 @dataclass
 class PulseDataSingle(CoreData):
     rep_no: np.ndarray = np.array([])
     pulse_no: np.ndarray = np.array([])
+    pulse_len: int = 0
 
     def add(self, d):
         super().add(d)
@@ -232,27 +215,37 @@ class PulseDataMulti(PulseDataSingle):
     def avgdata(self):
         return self.rep, self.data.mean(axis=0)
 
+    def reshape_2d_by_rep(self):
+        len = int(self.data_len / self.rep)
+        shape_2d = (self.rep, len)
+        self.data = self.data.reshape(shape_2d)
+
+
 @dataclass
 class SeqDataSingle(PulseDataSingle):
     pulse: int = 0
+    seq_len: int = 0
 
     def stack_pulse(self, d):
         self.pulse_no = np.hstack((self.pulse_no, d.pulse_no))
         self.data = np.hstack((self.data, d.data))
         self.pulse = len(self.pulse_no)
 
-    def reshape_1d(self):
-        shape_1d = (self.pulse * self.data_len,)
-        return self.data.reshape(shape=shape_1d)
-
-    def reshape_2d(self):
-        shape_2d = (self.pulse, self.data_len)
-        return self.data.reshape(shape=shape2d)
+    def reshape_2d_by_pulse(self):
+        len = int(self.data_len / self.pulse)
+        shape_2d = (self.pulse, len)
+        self.data = self.data.reshape(shape_2d)
 
 @dataclass
 class SeqDataMulti(PulseDataMulti, SeqDataSingle):
-    pass
 
+    def reshape_3d_multi_seq(self):
+        shape_3d = (self.rep, self.pulse, self.pulse_len)
+        self.data = self.data.reshape(shape_3d)
+
+    def avgdata(self):
+        self.reshape_2d_by_rep()
+        return self.data.mean(axis=0)
 @dataclass
 class GateData:
     ts_r: np.ndarray = np.array([])
@@ -271,8 +264,8 @@ class PulseDataSingleGated(PulseDataSingle, GateData):
 @dataclass
 class GateDataMulti(PulseDataSingleGated):
     def stack_rep_gated(self, d):
-        self.ts_r = np.vstack((self.ts_r, d.ts_r))
-        self.ts_f = np.vstack((self.ts_f, d.ts_f))
+        self.ts_r = np.hstack((self.ts_r, d.ts_r))
+        self.ts_f = np.hstack((self.ts_f, d.ts_f))
 
 @dataclass
 class PulseDataMultiGated(PulseDataMulti, GateDataMulti):
@@ -288,12 +281,23 @@ class SeqGateData(GateData):
 
 @dataclass
 class SeqDataSingleGated(SeqDataSingle, SeqGateData):
-        def stack_pulse(self, d):
-            super().stack_pulse(d)
-            self.stack_pulse_gated(d)
+    def stack_pulse(self, d):
+        super().stack_pulse(d)
+        self.stack_pulse_gated(d)
 
 @dataclass
 class SeqDataMultiGated(PulseDataMultiGated, SeqDataSingleGated):
     pass
+
+@dataclass
+class AvgData(SeqDataSingle):
+    num: int = 0
+
+    def update(self, curr_ad):
+        avg_data_set = np.vstack((self.data, curr_ad.data))
+        avg_weights = np.array([self.num, curr_ad.num])
+        self.data = np.average(avg_data_set, axis=0, weights=avg_weights)
+        self.num += curr_ad.num
+        return self.num, self.data
 
 

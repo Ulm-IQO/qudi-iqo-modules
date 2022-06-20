@@ -72,6 +72,15 @@ class Card_command():
 
     def __init__(self, card):
         self._card = card
+        self._error_check = False
+
+    def start_all(self):
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START | M2CMD_CARD_ENABLETRIGGER
+                            | M2CMD_DATA_STARTDMA | M2CMD_EXTRA_STARTDMA)
+
+    def start_all_with_poll(self):
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START | M2CMD_CARD_ENABLETRIGGER
+                            | M2CMD_DATA_STARTDMA | M2CMD_EXTRA_POLL)
 
     @check_card_error
     def card_start(self):
@@ -114,15 +123,17 @@ class Card_command():
         self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_WAITREADY)
 
 
-class Data_process_command(Card_command):
+class Data_buffer_command(Card_command):
     '''
     This class contains commands to control the data acquistion.
     '''
     _dp_check = True
     _error_check = False
 
-    def __init__(self, card):
+    def __init__(self, card, seq_size_B):
         self._card = card
+        self._seq_size_B = seq_size_B
+        self.init_dp_params()
 
     def init_dp_params(self):
         self.status = 0
@@ -170,7 +181,7 @@ class Data_process_command(Card_command):
         return self.avail_user_len_B
 
     def get_avail_user_reps(self):
-        self.avail_user_reps = int(np.floor(self.get_avail_user_len_B() / self.seq_size_B))
+        self.avail_user_reps = int(np.floor(self.get_avail_user_len_B() / self._seq_size_B))
         return self.avail_user_reps
 
     @check_card_error
@@ -208,10 +219,21 @@ class Data_process_command(Card_command):
         return c_bits_per_sample.value
 
 
-class Ts_process_command():
+class Ts_buffer_command():
 
     def __init__(self, card):
         self._card = card
+
+    def init_ts_params(self):
+        self.ts_avail_user_pos_B = 0
+        self.ts_avail_user_len_B = 0
+        self.ts_avail_card_len_B = 0
+
+    def check_ts_params(self):
+        self.ts_avail_user_pos_B = self.get_ts_avail_user_pos_B()
+        self.ts_avail_user_len_B = self.get_ts_avail_user_len_B()
+        print('ts Pos:{} Avail:{} '.format(self.ts_avail_user_pos_B,
+                                           self.ts_avail_user_len_B))
 
     def reset_ts_counter(self):
         spcm_dwSetParam_i32(self._card, SPC_TIMESTAMP_CMD, SPC_TS_RESET)
@@ -221,6 +243,12 @@ class Ts_process_command():
 
     def wait_extra_dma(self):
         spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_EXTRA_WAITDMA)
+
+    def stop_extra_dma(self):
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_EXTRA_STOPDMA)
+
+    def poll_extra_dma(self):
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_EXTRA_POLL)
 
     def get_gate_len_alignment(self):
         c_gate_len_alignment = c_int64(0)
@@ -246,9 +274,21 @@ class Ts_process_command():
         self.ts_avail_card_len_B = c_ts_avaiil_card_len_B.value
         return self.ts_avail_card_len_B
 
+    def set_ts_avail_card_len_B(self, ts_avail_card_len_B):
+        c_ts_avaiil_card_len_B = c_int64(ts_avail_card_len_B)
+        self._error = spcm_dwSetParam_i64(self._card, SPC_TS_AVAIL_CARD_LEN, c_ts_avaiil_card_len_B)
+        return
 
 
-class SpectrumInstrumentation(FastCounterInterface, Card_command):
+    def get_timestamp_command(self):
+        c_ts_timestamp_command = c_int64()
+        self._error = spcm_dwGetParam_i64(self._card, SPC_TIMESTAMP_CMD, byref(c_ts_timestamp_command))
+        self.ts_cmd = c_ts_timestamp_command.value
+        return self.ts_cmd
+
+
+
+class SpectrumInstrumentation(FastCounterInterface):
 
     '''
     Hardware class for the spectrum instrumentation card
@@ -347,12 +387,13 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
             self.ms = Measurement_settings()
 
         self._load_settings_from_config_file()
-        self.dp = Data_process_loop()
+        self.pl = Process_loop()
         self.cfg = Configure_command()
 
         if self._card_on == False:
             self.cs.card = spcm_hOpen(create_string_buffer(b'/dev/spcm0'))
             self._card_on = True
+            self.ccmd = Card_command(self.cs.card)
 
         else:
             self.log.info('SI card is already on')
@@ -399,14 +440,16 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
         self.ms.calc_buf_params()
         self.cs.get_buf_size_B(self.ms.seq_size_B, self.ms.reps_per_buf)
 
-        self.dp.init_process(self.cs, self.ms)
-        self.cfg.load_dynamic_cfg_params(self.cs)
+        self.cfg.load_dynamic_cfg_params(self.cs, self.ms)
 
         self.cfg.configure_all()
 
         self.ms.c_buf_ptr = self.cfg.return_c_buf_ptr()
         if self.ms.gated == True:
             self.ms.c_ts_buf_ptr = self.cfg.return_c_ts_buf_ptr()
+
+        self.pl.init_process(self.cs, self.ms)
+
 
         return self.ms.binwidth_s, self.ms.actual_length, self.ms.number_of_gates
 
@@ -431,24 +474,24 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
         self.log.info('Measurement started')
         self.configure(self.ms.binwidth_s, self.ms.actual_length, self.ms.number_of_gates)
         self._start_card()
-        self.dp.init_measure_params()
-        self.dp.start_data_process()
+        self.pl.init_measure_params()
+        self.pl.start_data_process()
 
         return 0
 
     def _start_card(self):
         self._internal_status = CardStatus.running
-        self.card_start()
-        self.dp.trigger_enabled = self.enable_trigger()
+        self.ccmd.card_start()
+        self.pl.cp.trigger_enabled = self.enable_trigger()
         self.start_dma()
-        self.dp.wait_DMA()
+        self.ccmd.wait_DMA()
 
     def get_data_trace(self):
         """
         Fetch the averaged data so far.
         """
-        self.dp.check_dp_status()
-        avg_data, avg_num = self.dp.fetch_data_trace()
+        self.pl.dp.check_dp_status() #TODO
+        avg_data, avg_num = self.pl.dp.return_avg_data()
         info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.dp.start_time}
 
         return avg_data, info_dict
@@ -456,13 +499,13 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
     def stop_measure(self):
         if self._internal_status == CardStatus.running:
             self.log.info('card stopped')
-            self.dp.stop_data_process()
-            self.disable_trigger()
-            self.stop_dma()
-            self.card_stop()
+            self.pl.stop_data_process()
+            self.ccmd.disable_trigger()
+            self.ccmd.stop_dma()
+            self.ccmd.card_stop()
 
         self._internal_status = CardStatus.idle
-        self.dp.loop_on = False
+        self.pl.loop_on = False
         self.log.info('Measurement stopped')
 
         return 0
@@ -472,9 +515,9 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
 
             Fast counter must be initially in the run state to make it pause.
         """
-        self.disable_trigger()
-        self.dp.loop_on = False
-        self.dp.stop_data_process()
+        self.ccmd.disable_trigger()
+        self.pl.loop_on = False
+        self.pl.stop_data_process()
 
         self._internal_status = CardStatus.paused
         self.log.info('Measurement paused')
@@ -488,9 +531,9 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
         """
         self.log.info('Measurement continued')
         self._internal_status = CardStatus.running
-        self.dp.loop_on = True
-        self.dp.trigger_enabled = self.enable_trigger()
-        self.dp.start_data_process()
+        self.pl.loop_on = True
+        self.pl.cp.trigger_enabled = self.enable_trigger()
+        self.pl.start_data_process()
 
         return 0
 
@@ -511,7 +554,7 @@ class SpectrumInstrumentation(FastCounterInterface, Card_command):
 
 
 class Configure_acquistion_mode():
-    def set_acquistion_mode(self, card, acq_mode, pre_trigs_S, post_trigs_S, seg_size_S, loops, HW_avg_num):
+    def set_acquistion_mode(self, card, acq_mode, pre_trigs_S, post_trigs_S, seg_size_S, seq_size_S, loops, HW_avg_num):
 
         if acq_mode == 'STD_SINGLE':
             self._mode_STD_SINGLE(card, post_trigs_S, seg_size_S)
@@ -522,6 +565,9 @@ class Configure_acquistion_mode():
         elif acq_mode == 'FIFO_SINGLE':
             self._mode_FIFO_SINGLE(card, pre_trigs_S, seg_size_S, loops)
 
+        elif acq_mode == 'STD_GATE':
+            self._mode_STD_GATE(card, pre_trigs_S, post_trigs_S, seq_size_S, loops)
+
         elif acq_mode == 'FIFO_GATE':
             self._mode_FIFO_GATE(card, pre_trigs_S, post_trigs_S, loops)
 
@@ -530,6 +576,9 @@ class Configure_acquistion_mode():
 
         elif acq_mode == 'FIFO_AVERAGE':
             self._mode_FIFO_AVERAGE(card, post_trigs_S, seg_size_S, loops, HW_avg_num)
+
+        else:
+            print('error at acquistion mode')
 
     @check_card_error
     def _mode_STD_SINGLE(self, card, post_trigs_S, seg_size_S):
@@ -546,6 +595,16 @@ class Configure_acquistion_mode():
         self._error = spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
 
         return
+
+    @check_card_error
+    def _mode_STD_GATE(self, card, pre_trig_S, post_trigs_S, seq_size_S, loops):
+        spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_STD_GATE)
+        spcm_dwSetParam_i32(card, SPC_PRETRIGGER, pre_trig_S)
+        spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
+        self._error = spcm_dwSetParam_i32(card, SPC_MEMSIZE, int(seq_size_S * loops))
+
+        return
+
 
     @check_card_error
     def _mode_FIFO_SINGLE(self, card, pre_trigs_S, seg_size_S, loops=1):
@@ -584,7 +643,7 @@ class Configure_acquistion_mode():
 
 class Configure_trigger():
     def set_trigger(self, card, trig_mode, trig_level_mV):
-
+        print(trig_mode)
         if trig_mode == 'EXT':
             self._trigger_EXT(card, trig_level_mV)
 
@@ -593,6 +652,9 @@ class Configure_trigger():
 
         elif trig_mode == 'CH0':
             self._trigger_CH0(card, trig_level_mV)
+
+        else:
+            print('error at trigger')
 
     @check_card_error
     def _trigger_EXT(self, card, trig_level_mV):
@@ -618,10 +680,12 @@ class Configure_trigger():
 
 
 class Configure_data_transfer():
-    def configure_data_transfer(self, card, c_buf_ptr, buf_size_B, buf_notify_size_B):
+    def configure_data_transfer(self, card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B):
         c_buf_ptr = self.set_buffer(card, c_buf_ptr, buf_size_B)
-        self.set_data_transfer(card, c_buf_ptr, buf_size_B, buf_notify_size_B)
+        self.set_data_transfer(card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B)
         return c_buf_ptr
+
+
 
     def set_buffer(self, card, c_buf_ptr, buf_size_B):
         cont_buf_len = self.get_cont_buf_len(card, c_buf_ptr)
@@ -655,17 +719,37 @@ class Configure_data_transfer():
             dwOffset = 0
         return (c_char * qwBytes).from_buffer(pvNonAlignedBuf, dwOffset)
 
-    def set_data_transfer(self, card, c_buf_ptr, buf_size_B, buf_notify_size_B):
+    def set_data_transfer(self, card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B):
         c_buf_offset = uint64(0)
         c_buf_size_B = uint64(buf_size_B)
+        print('c_buf_ptr {}'.format(c_buf_ptr))
 
-        spcm_dwDefTransfer_i64(card, SPCM_BUF_DATA, SPCM_DIR_CARDTOPC,
-                                       buf_notify_size_B, byref(c_buf_ptr),
-                                       c_buf_offset, c_buf_size_B
-                                       )
+        spcm_dwDefTransfer_i64(card, buf_type, SPCM_DIR_CARDTOPC,
+                               buf_notify_size_B, byref(c_buf_ptr),
+                               c_buf_offset, c_buf_size_B
+                               )
+
+        print('c_buf_ptr2 {}'.format(c_buf_ptr))
         return
 
-class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_data_transfer):
+class Configure_timestamp():
+
+    def configure_ts_standard(self, card):
+        self.ts_standard_mode(card)
+#        self.ts_internal_clock(card)
+        #self.ts_no_additional_timestamp(card)
+
+    def ts_standard_mode(self, card):
+        spcm_dwSetParam_i32(card, SPC_TIMESTAMP_CMD, SPC_TSMODE_STARTRESET | SPC_TSCNT_INTERNAL | SPC_TSFEAT_NONE)
+
+    def ts_internal_clock(self, card):
+        spcm_dwSetParam_i32(card, SPC_TIMESTAMP_CMD, SPC_TSCNT_INTERNAL)
+
+    def ts_no_additional_timestamp(self, card):
+        spcm_dwSetParam_i32(card, SPC_TIMESTAMP_CMD, SPC_TSFEAT_NONE)
+
+
+class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_data_transfer, Configure_timestamp):
     '''
     This class contains methods to configure the card.
     '''
@@ -693,28 +777,35 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
         self._trig_level_mV = cs.trig_level_mV
         if self._gated == True:
             self._c_ts_buf_ptr = ms.return_c_ts_buf_ptr()
-            self._ts_buf_size_B = cs.ts_buf_size_B
             self._ts_buf_notify_size_B = cs.ts_buf_notify_size_B
 
         self._error_check = True
         self.reg = Configure_register_checker(self._card)
 
 
-    def load_dynamic_cfg_params(self, cs):
+    def load_dynamic_cfg_params(self, cs, ms):
         self._acq_post_trigs_S = cs.acq_post_trigs_S
         self._acq_seg_size_S = cs.acq_seg_size_S
         self._buf_size_B = cs.buf_size_B
+        self._acq_seq_size_S = ms.seq_size_S
+        if self._gated == True:
+            self._ts_buf_size_B = cs.ts_buf_size_B
+
 
     def configure_all(self):
 
         self.set_analog_input_conditions(self._card)
         self.set_acquistion_mode(self._card, self._acq_mode, self._acq_pre_trigs_S, self._acq_post_trigs_S,
-                                 self._acq_seg_size_S, self._acq_loops, self._acq_HW_avg_num)
+                                 self._acq_seg_size_S, self._acq_seq_size_S, self._acq_loops, self._acq_HW_avg_num)
         self.set_sampling_clock(self._card)
+        print('trig_mode = {}'.format(self._trig_mode)) #TODO delete
         self.set_trigger(self._card, self._trig_mode, self._trig_level_mV)
-        self._c_buf_ptr = self.configure_data_transfer(self._card, self._c_buf_ptr, self._buf_size_B, self._buf_notify_size_B)
+        self._c_buf_ptr = self.configure_data_transfer(self._card, SPCM_BUF_DATA, self._c_buf_ptr,
+                                                       self._buf_size_B, self._buf_notify_size_B)
         if self._gated == True:
-            self._c_ts_buf_ptr = self.configure_data_transfer(self._card, self._c_ts_buf_ptr, self._ts_buf_size_B, self._ts_buf_notify_size_B)
+            self._c_ts_buf_ptr = self.configure_data_transfer(self._card, SPCM_BUF_TIMESTAMP, self._c_ts_buf_ptr,
+                                                              self._ts_buf_size_B, self._ts_buf_notify_size_B)
+            self.configure_ts_standard(self._card)
 
     @check_card_error
     def set_analog_input_conditions(self, card):
@@ -745,9 +836,7 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
 
 class Configure_register_checker():
     def __init__(self, card):
-        print('card = {} at CSR'.format(card))
         self._card = card
-        print('self._card = {} at CSR'.format(self._card))
 
     def check_cs_registers(self):
         '''
@@ -827,6 +916,8 @@ class Data_transfer:
         self.seq_size_S = seq_size_S
         self.seq_size_B = seq_size_S * self.data_bytes_B
         self.reps_per_buf = reps_per_buf
+        print('c_buf_ptr at data_transfer {}'.format(self.c_buf_ptr))
+
 
     def _cast_buf_ptr(self, user_pos_B):
         c_buffer = cast(addressof(self.c_buf_ptr) + user_pos_B, POINTER(self.data_type))
@@ -836,13 +927,13 @@ class Data_transfer:
         np_buffer = np.ctypeslib.as_array(c_buffer, shape=shape)
         return np_buffer
 
-    def _fetch_from_buf(self, user_pos_B, sample_S, data_type):
+    def _fetch_from_buf(self, user_pos_B, sample_S):
         shape = (sample_S,)
         c_buffer = self._cast_buf_ptr(user_pos_B)
         np_buffer = self._asnparray(c_buffer, shape)
         return np_buffer
 
-    def get_new_data(self, curr_avail_reps, user_pos_B):
+    def get_new_data(self, user_pos_B, curr_avail_reps):
         rep_end = int(user_pos_B / self.seq_size_B) + curr_avail_reps
 
         if 0 < rep_end <= self.reps_per_buf:
@@ -852,6 +943,7 @@ class Data_transfer:
             np_data = self._fetch_data_buf_end(user_pos_B, curr_avail_reps)
         else:
             print('error: rep_end {} is out of range'.format(rep_end))
+            return
 
         return np_data
 
@@ -873,7 +965,7 @@ class Data_transfer:
 
 class Data_fetch_ungated():
 
-    def __init__(self , cs, ms):
+    def __init__(self, cs, ms):
         self.ms = ms
         self.cs = cs
     def init_data_fetch(self):
@@ -886,150 +978,229 @@ class Data_fetch_ungated():
         self.data_bytes_B = ms.get_data_bytes_B()
         self.seq_size_S = ms.seq_size_S
         self.seq_size_B = self.seq_size_S * self.data_bytes_B
-        self.dpcmd = Data_process_command(cs.card)
 
     def create_data_trsnsfer(self):
+        print('c_buf_ptr at hw_dT {}'.format(self.c_buf_ptr))
         self.hw_dt = Data_transfer(self.c_buf_ptr, self.data_type,
-                                   self.data_bytes_B, self.seq_size_S)
+                                   self.data_bytes_B, self.seq_size_S, self.ms.reps_per_buf)
 
-    def fetch_data_to_dc(self, curr_avail_reps , dc):
-        user_pos_B = self.dpcmd.get_avail_user_pos_B()
-        dc.data = self.hw_dt.get_new_data(curr_avail_reps, user_pos_B)
-        self.dpcmd.set_avail_card_len_B(curr_avail_reps * self.seq_size_B)
-        dc.rep = curr_avail_reps
-        return dc.data
+    def fetch_data(self, user_pos_B, curr_avail_reps):
+        #user_pos_B = self.dpcmd.get_avail_user_pos_B()
+        data = self.hw_dt.get_new_data(user_pos_B, curr_avail_reps)
+        rep = curr_avail_reps
+        return data, rep
 
 class Data_fetch_gated(Data_fetch_ungated):
     def input_params(self, cs, ms):
         super().input_params(cs, ms)
         self.c_ts_buf_ptr = ms.c_ts_buf_ptr
-        self.ts_data_type =  ms.get_data_bytes_B()
+        self.ts_data_type = ms.get_ts_data_type()
         self.ts_data_bytes_B = ms.ts_data_bytes_B
-
-        self.tscmd = Ts_process_command()
-
 
     def create_data_trsnsfer(self):
         super().create_data_trsnsfer()
         seq_size = 2
         self.ts_dt = Data_transfer(self.c_ts_buf_ptr, self.ts_data_type,
-                                   self.ts_data_bytes_B, seq_size)
+                                   self.ts_data_bytes_B, seq_size, self.ms.reps_per_buf)
 
-    def fetch_data_to_dc(self, curr_avail_reps, dc):
-        super().fetch_data_to_dc()
-        ts_user_pos_B = self.tscmd.get_ts_avail_user_pos_B()
-        ts_row = self.ts_dt.get_new_data(curr_avail_reps, ts_user_pos_B)
-        dc.ts_r = ts_row[::2]
-        dc.ts_f = ts_row[1::2]
+    def fetch_ts_data(self, ts_user_pos_B, curr_avail_reps):
+        #ts_user_pos_B = self.tscmd.get_ts_avail_user_pos_B()
+        ts_row = self.ts_dt.get_new_data(ts_user_pos_B, curr_avail_reps)
+        ts_r, ts_f = self._get_ts_rf(ts_row)
+        return ts_r, ts_f
 
+    def _get_ts_rf(self, ts_row):
+        ts_used = ts_row[::2] #odd data is always filled with zero
+        ts_r = ts_used[::2]
+        ts_f = ts_used[1::2]
+        return ts_r, ts_f
 
+class Data_process_ungated():
 
-class Data_process():
-
-    def init_data_procses(self, cs, ms):
+    def init_data_process(self, cs, ms):
+        print('init_data_process')
         self._input_settings_to_dp(cs, ms)
         self._generate_data_cls()
+        self.df.init_data_fetch()
+        self.avg = AvgData()
+        self.avg.num = 0
+        self.avg.data = np.empty(ms.seq_size_S)
 
     def _input_settings_to_dp(self, cs, ms):
         self.ms = ms
         self.cs = cs
 
     def _generate_data_cls(self):
-        if self.ms.gated == True:
-            self.dc = SeqDataMultiGated()
-            self.df = Data_fetch_gated(self.cs, self.ms)
-        else:
-            self.dc = SeqDataMulti()
-            self.df = Data_fetch_ungated(self.cs, self.ms)
+        self.dc = SeqDataMulti()
+        self.dc.data = np.empty(self.ms.seq_size_S)
+        self.df = Data_fetch_ungated(self.cs, self.ms)
 
-        self.avg = AvgData()
+    def create_dc_new(self):
+        self.dc_new = SeqDataMulti()
+        self.dc_new.pulse = self.ms.number_of_gates
+        self.dc_new.pule_len = self.ms.seg_size_S
+
+    def fetch_data_to_dc(self, user_pos_B, curr_avail_reps):
+        self.dc_new.data, self.dc_new.rep = self.df.fetch_data(user_pos_B, curr_avail_reps)
+        self.dc_new.set_len()
+        self.dc_new.reshape_2d_by_rep()
+
+
+    def stack_new_data(self):
+        self.dc.stack_rep(self.dc_new)
 
     def get_new_avg_data(self):
         self.new_avg = AvgData()
-        avg_num, avg_data = self.dc.avgdata()
-        self.new_avg.add(avg_num, avg_data)
+        self.new_avg.num, self.new_avg.data = self.dc_new.avgdata()
 
     def update_avg_data(self):
+        print('avg{}'.format(self.avg))
+        print('new_avg {}'.format(self.new_avg))
         self.avg.update(self.new_avg)
+
+    def return_avg_data(self):
+        return self.avg.data, self.avg.num
+
+class Data_process_gated(Data_process_ungated):
+
+    def _generate_data_cls(self):
+        self.dc = SeqDataMultiGated()
+        self.dc.data = np.empty((0, self.ms.seq_size_S), int)
+        self.dc.ts_r = np.empty(0, int)
+        self.dc.ts_f = np.empty(0, int)
+        self.df = Data_fetch_gated(self.cs, self.ms)
+
+    def create_dc_new(self):
+        self.dc_new = SeqDataMultiGated()
+        self.dc_new.pulse = self.ms.number_of_gates
+        self.dc_new.pule_len = self.ms.seg_size_S
+
+    def fetch_ts_data_to_dc(self, ts_user_pos_B, curr_avail_reps):
+        self.dc_new.ts_r, self.dc_new.ts_f = self.df.fetch_ts_data(ts_user_pos_B, curr_avail_reps)
+
+
+
+
+
 
 class Card_process():
 
-    def init_card_process(self, cs):
-        self._input_settings_to_cp(cs)
-        self._generate_data_process_command()
+    def init_card_process(self, cs, ms):
+        print('init_card_process')
+        self._input_settings_to_cp(cs, ms)
+        self._generate_buffer_command()
 
-    def _input_settings_to_cp(self, cs):
+    def _input_settings_to_cp(self, cs, ms):
         self.cs = cs
+        self.ms = ms
 
-    def _generate_data_process_command(self):
-        self.dp = Data_process_command(self.cs.card)
+    def _generate_buffer_command(self):
+        self.dcmd = Data_buffer_command(self.cs.card, self.ms.seq_size_B)
+        self.tscmd = Ts_buffer_command(self.cs.card)
 
-    def _toggle_trigger(self, trigger_on):
+
+    def toggle_trigger(self, trigger_on):
         if trigger_on == self.trigger_enabled:
             return
         else:
             if trigger_on == True:
-                self.trigger_enabled = self.dp.enable_trigger()
+                self.trigger_enabled = self.dcmd.enable_trigger()
             elif trigger_on == False:
-                self.trigger_enabled = self.dp.disable_trigger()
+                self.trigger_enabled = self.dcmd.disable_trigger()
 
-    def _wait_new_trigger(self, wait_trig_on):
+    def wait_new_trigger(self, wait_trig_on):
         if wait_trig_on == True:
             print('waiting for triggers')
-            prev_trig_counts = self.dp.trig_counter
-            curr_trig_counts = self.dp.get_trig_counter()
+            prev_trig_counts = self.dcmd.trig_counter
+            curr_trig_counts = self.dcmd.get_trig_counter()
             while curr_trig_counts == prev_trig_counts:
-                    curr_trig_counts = self.dp.get_trig_counter()
+                    curr_trig_counts = self.dcmd.get_trig_counter()
             print('got_new_triggs {}'.format(curr_trig_counts))
 
             return curr_trig_counts
 
     def _wait_new_avail_reps(self):
-        curr_avail_reps = self.dp.get_avail_user_reps()
+        curr_avail_reps = self.dcmd.get_avail_user_reps()
         while curr_avail_reps == 0:
-            curr_avail_reps = self.dp.get_avail_user_reps()
+            curr_avail_reps = self.dcmd.get_avail_user_reps()
 
         return curr_avail_reps
 
 
-class Data_process_commander(Data_process, Card_process):
+class Process_commander:
     '''
     This class contains the command to be executed in a single loop body.
     '''
 
     def init_process(self, cs, ms):
-        self.init_data_procses(cs, ms)
-        self.init_card_process(cs)
+        print('init_process')
+        self._input_settings_to_dpc(ms)
+        self._create_process_cls()
+        self.dp.init_data_process(cs, ms)
+        self.cp.init_card_process(cs, ms)
 
+    def _create_process_cls(self):
+        if self._gated == True:
+            self.dp = Data_process_gated()
+        else:
+            self.dp = Data_process_ungated()
+
+        self.cp = Card_process()
+
+    def _input_settings_to_dpc(self, ms):
+        self._gated = ms.gated
+        self._reps_per_buf = ms.reps_per_buf
+        self._seq_size_B = ms.seq_size_B
+        self._row_data_save = False
 
     def command_process(self):
-        unprocessed_reps = self.trig_counter - self.avg.num
+        trig_counter = self.cp.dcmd.get_trig_counter()
+        unprocessed_reps = trig_counter - self.dp.avg.num
         if unprocessed_reps == 0:
             print('wait new trigger')
             self.trigger_on = True
             self.wait_trigger_on = True
             self.data_process_on = False
 
-        elif unprocessed_reps < 2 * self.ms.reps_per_buf:
+        elif unprocessed_reps < 2 * self._reps_per_buf:
             print('process data with trigger on')
             self.trigger_on = True
             self.wait_trigger_on = False
             self.data_process_on = True
 
-        elif unprocessed_reps >= 2 * self.ms.reps_per_buf:
+        elif unprocessed_reps >= 2 * self._reps_per_buf:
             print('process data with trigger off')
             self.trigger_on = False
             self.wait_trigger_on = False
             self.data_process_on = True
 
-        self._toggle_trigger(self.trigger_on)
+        self.cp.toggle_trigger(self.trigger_on)
+        self.cp.wait_new_trigger(self.wait_trigger_on)
+        self._process_data(self.data_process_on)
 
-        self._process_data_with_trigger_off()
+    def _process_data(self, data_process_on):
+        if data_process_on == True:
+            curr_avail_reps = self.cp.dcmd.get_avail_user_reps()
+            self.dp.create_dc_new()
+            if self._gated == True:
+                self._fetch_ts(curr_avail_reps)
+            user_pos_B = self.cp.dcmd.get_avail_user_pos_B()
+            self._fetch_and_average_data(user_pos_B, curr_avail_reps)
+
+    def _fetch_and_average_data(self, user_pos_B, curr_avail_reps):
+        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
+        if self._row_data_save == True:
+            self.dp.stack_new_data()
+        self.dp.get_new_avg_data()
+        self.dp.update_avg_data()
+        self.cp.dcmd.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
+
+    def _fetch_ts(self, curr_avail_reps):
+        ts_user_pos_B = self.cp.tscmd.get_ts_avail_user_pos_B()
+        self.dp.fetch_ts_data_to_dc(ts_user_pos_B, 2 * curr_avail_reps)
 
 
-
-
-class Data_process_loop(Data_process_commander):
+class Process_loop(Process_commander):
     '''
     This is the main data process loop class.
     '''
@@ -1037,7 +1208,7 @@ class Data_process_loop(Data_process_commander):
 
 
     def init_measure_params(self):
-        self.init_dp_params()
+        self.cp.dcmd.init_dp_params()
         self.start_time = time.time()
         self.loop_on = True
         self.fetch_on = False
@@ -1091,82 +1262,6 @@ class Data_process_loop(Data_process_commander):
 
 
 class SpectrumInstrumentationTest(SpectrumInstrumentation):
-
-    def _set_params_test_exe(self, buf_length_S=1e7, notify_size_B =64):
-        self.cs.acq_mode = 'STD_SINGLE'
-        self.cs.trig_mode = 'SW'
-        self.ms.binwidth_s = 1 / 250e6
-        self.ms.record_length_s = 1e-6
-        self.ms.number_of_gates = 0
-        self.ms.init_buf_size_S = buf_length_S
-        self.cs.buf_notify_size_B = notify_size_B
-
-    def _start_card(self):
-        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
-        self.dp.init_measure_params()
-        self.dp.check_dp_status()
-        self.card_start()
-        self.dp.check_dp_status()
-        self.start_dma()
-        self.dp.check_dp_status()
-
-    def _start_card_with_trigger(self):
-        self.dp.init_measure_params()
-        self.dp.check_dp_status()
-        self.card_start()
-        self.dp.check_dp_status()
-        self.dp.trigger_enabled = self.enable_trigger()
-        self.dp.check_dp_status()
-        self.start_dma()
-        self.dp.check_dp_status()
-
-
-
-    def test_status(self, buf_length_S=1e7, notify_size_B=64):
-        '''
-        - Check if avail_user_len increases
-        - Check if the avail_user_len decreases after set_avail_card_len
-        - check if the user_pos shifts
-        '''
-        self._set_params_test_exe(buf_length_S, notify_size_B)
-        self._start_card()
-        self.dp.set_avail_card_len_B(100)
-        self.dp.check_dp_status()
-
-    def test_get_per_notify(self):
-        '''
-        - Check if the process data increases
-        - Check if the data size corresponds to the segment size
-        '''
-        self._set_params_test_exe()
-        self._start_card()
-        self.avg_data, a = self.dp._process_one_rep_per_notify()
-
-    def test_get_by_mean(self):
-        self._set_params_test_exe()
-        self._start_card()
-        self.dp.avg_data = self.dp._fetch_reps_by_mean(0, 1)
-
-
-    def test_trigger(self):
-        '''
-        - Check if the avail_user_length increases only after the trigger is input.
-        '''
-        self._set_params_test_exe()
-        self.cs.trig_mode = 'EXT'
-        self._start_card_with_trigger()
-
-    def test_std_multi(self):
-        '''
-        - Check if the trigger counter corresponds to the given loop number
-        - Check if the avail_user_len_B corresponds to the buf_size_B
-        '''
-        self._set_params_test_exe()
-        self.cs.acq_mode = 'STD_MULTI'
-        self.cs.trig_mode = 'EXT'
-        self.ms.init_buf_size_S = 2000
-        self.cfg._loops = 10
-        self._start_card_with_trigger()
 
     def check_each_rep(self):
         import  matplotlib.pyplot as plt
