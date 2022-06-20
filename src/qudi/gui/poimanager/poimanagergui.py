@@ -242,7 +242,16 @@ class PoiManagerMainWindow(QtWidgets.QMainWindow):
 
 
 class PoiManagerGui(GuiBase):
-    """ This is the GUI Class for PoiManager """
+    """
+    This is the GUI Class for PoiManager
+
+    example config for copy-paste:
+
+    poi_manager_gui:
+        module.Class: 'poimanager.poimanagergui.PoiManagerGui'
+        connect:
+            poi_manager_logic: 'poi_manager_logic'
+    """
 
     # declare connectors
     _poi_manager_logic = Connector(name='poi_manager_logic', interface='PoiManagerLogic')

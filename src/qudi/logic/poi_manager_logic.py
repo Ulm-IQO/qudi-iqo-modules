@@ -357,6 +357,15 @@ class PointOfInterest:
 class PoiManagerLogic(LogicBase):
     """
     This is the Logic class for mapping and tracking bright features in the confocal scan.
+
+    example config for copy-paste:
+
+    poi_manager_logic:
+        module.Class: 'poi_manager_logic.PoiManagerLogic'
+        connect:
+            scanning_logic: <scanning_probe_logic>
+            optimize_logic: <scanning_optimize_logic>
+            data_logic: <scanning_data_logic>
     """
 
     # declare connectors
