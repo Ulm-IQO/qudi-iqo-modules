@@ -442,6 +442,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.cs.calc_dynamic_cs(self.ms)
         self.ms.calc_data_size_S(self.cs.acq_pre_trigs_S, self.cs.acq_post_trigs_S, self.cs.acq_seg_size_S)
         self.ms.calc_buf_params()
+        self.ms.calc_actual_length_s()
         self.cs.get_buf_size_B(self.ms.seq_size_B, self.ms.reps_per_buf)
 
         self.cfg.load_dynamic_cfg_params(self.cs, self.ms)
@@ -455,7 +456,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.pl.init_process(self.cs, self.ms)
 
 
-        return self.ms.binwidth_s, self.ms.actual_length, self.ms.number_of_gates
+        return self.ms.binwidth_s, self.ms.actual_length_s, self.ms.number_of_gates
 
     def get_status(self):
         """

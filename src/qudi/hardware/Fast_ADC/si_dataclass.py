@@ -104,7 +104,7 @@ class Measurement_settings:
     seq_size_S: int = 0
     seq_size_B: int = 0
     reps_per_buf: int = 0
-    actual_length: float = 0
+    actual_length_s: float = 0
     data_bits: int = 0
 
     def return_c_buf_ptr(self):
@@ -118,6 +118,9 @@ class Measurement_settings:
     def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
         self.seg_size_S = seg_size_S
         self.seq_size_S = self.seg_size_S
+
+    def calc_actual_length_s(self):
+        self.actual_length_s = self.seq_size_S * self.binwidth_s
 
     def assign_data_bit(self, acq_mode):
 
@@ -162,6 +165,9 @@ class Measurement_settings_gated(Measurement_settings):
         self.gate_length_rounded_S = int(np.ceil(self.gate_length_S / 16) * 16)
         self.seg_size_S = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
         self.seq_size_S = self.seg_size_S * self.number_of_gates
+
+    def calc_actual_length_s(self):
+        self.actual_length_s = self.seg_size_S * self.binwidth_s
 
     def get_ts_data_type(self):
         return c_uint64
