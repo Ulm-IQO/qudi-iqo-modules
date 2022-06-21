@@ -51,10 +51,13 @@ class Card_settings:
     trig_level_mV: int = 1000
 
 
-    def calc_dynamic_cs(self, gated, binwidth_s, record_length_s):
-        self.calc_samplerate_Hz(binwidth_s)
-        if gated == False:
-            self.calc_ungated_seg_size_S(binwidth_s, record_length_s)
+    def calc_dynamic_cs(self, ms):
+        self.calc_samplerate_Hz(ms.binwidth_s)
+        if ms.gated == False:
+            self.calc_ungated_seg_size_S(ms.binwidth_s, ms.record_length_s)
+            self.acq_loops = ms.reps
+        else:
+            self.acq_loops = ms.reps * ms.number_of_gates
 
 
     def calc_samplerate_Hz(self, binwidth_s):
@@ -67,18 +70,17 @@ class Card_settings:
     def get_buf_size_B(self, seq_size_B, reps_per_buf):
         self.buf_size_B = seq_size_B * reps_per_buf
 
+
+
 @dataclass
 class Card_settings_gated(Card_settings):
     ts_buf_size_B: int = 0
-    ts_buf_notify_size_B: int = 16
+    ts_buf_notify_size_B: int = 2048
 
     def get_buf_size_B(self, seq_size_B, reps_per_buf):
-        print('cs gated')
         super().get_buf_size_B(seq_size_B, reps_per_buf)
-        self.ts_buf_size_B = int(16 * reps_per_buf)
+        self.ts_buf_size_B = int(2 * 16 * reps_per_buf)
 
-        print('buf size {}'.format(self.buf_size_B))
-        print('ts buf size {}'.format(self.ts_buf_size_B))
 
 
 
@@ -92,6 +94,7 @@ class Measurement_settings:
     #Given by the config
     gated: bool = False
     init_buf_size_S: int = 0
+    reps: int = 0
     #Given by the measurement
     binwidth_s: float = 0
     record_length_s: float =0
@@ -148,6 +151,8 @@ class Measurement_settings_gated(Measurement_settings):
     c_ts_buf_ptr:  typing.Any = c_void_p()
     ts_data_bits: int = 64
     ts_data_bytes_B: int = 8
+    ts_seq_size_S: int = 4 #rise + null + fall + null
+    ts_seq_size_B: int = 32
     gate_length_S: int = 0
     gate_length_rounded_S: int = 0
     gate_end_alignment_S: int = 16
@@ -163,11 +168,6 @@ class Measurement_settings_gated(Measurement_settings):
 
     def return_c_ts_buf_ptr(self):
         return self.c_ts_buf_ptr
-
-
-
-
-
 
 @dataclass
 class CoreData:
@@ -207,7 +207,7 @@ class PulseDataMulti(PulseDataSingle):
     def stack_rep(self, d):
         self.rep_no = np.vstack((self.rep_no, d.rep_no))
         self.data = np.vstack((self.data, d.data))
-        self.rep = len(self.rep_no)
+        self.rep = self.data.shape[0]
 
     def extract(self, n):
         return self.rep_no[n], self.pulse_no, self.data[n]

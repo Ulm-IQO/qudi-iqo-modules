@@ -130,9 +130,10 @@ class Data_buffer_command(Card_command):
     _dp_check = True
     _error_check = False
 
-    def __init__(self, card, seq_size_B):
+    def __init__(self, card, ms):
         self._card = card
-        self._seq_size_B = seq_size_B
+        self._seq_size_B = ms.seq_size_B
+        self._no_of_gates = ms.number_of_gates
         self.init_dp_params()
 
     def init_dp_params(self):
@@ -211,6 +212,11 @@ class Data_buffer_command(Card_command):
         self._error = spcm_dwGetParam_i64(self._card, SPC_TRIGGERCOUNTER, byref(c_trig_counter))
         self.trig_counter = c_trig_counter.value
         return self.trig_counter
+
+    def get_trig_reps(self):
+        trig_counter = self.get_trig_counter()
+        return int(trig_counter / self._no_of_gates)
+
 
     @check_card_error
     def get_bits_per_sample(self):
@@ -435,7 +441,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.cfg.load_static_cfg_params(self.cs, self.ms)
 
         self.ms.load_dynamic_params(binwidth_s, record_length_s, number_of_gates)
-        self.cs.calc_dynamic_cs(self.ms.gated, binwidth_s, record_length_s)
+        self.cs.calc_dynamic_cs(self.ms)
         self.ms.calc_data_size_S(self.cs.acq_pre_trigs_S, self.cs.acq_post_trigs_S, self.cs.acq_seg_size_S)
         self.ms.calc_buf_params()
         self.cs.get_buf_size_B(self.ms.seq_size_B, self.ms.reps_per_buf)
@@ -472,8 +478,8 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         self._internal_status = CardStatus.running
         self.log.info('Measurement started')
-        self.configure(self.ms.binwidth_s, self.ms.actual_length, self.ms.number_of_gates)
-        self._start_card()
+        self.ccmd.start_all()
+        self.pl.cp.trigger_enabled = True
         self.pl.init_measure_params()
         self.pl.start_data_process()
 
@@ -481,17 +487,12 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     def _start_card(self):
         self._internal_status = CardStatus.running
-        self.ccmd.card_start()
-        self.pl.cp.trigger_enabled = self.enable_trigger()
-        self.start_dma()
-        self.ccmd.wait_DMA()
 
     def get_data_trace(self):
         """
         Fetch the averaged data so far.
         """
-        self.pl.dp.check_dp_status() #TODO
-        avg_data, avg_num = self.pl.dp.return_avg_data()
+        avg_data, avg_num = self.pl.fetch_data_trace()
         info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.dp.start_time}
 
         return avg_data, info_dict
@@ -722,14 +723,10 @@ class Configure_data_transfer():
     def set_data_transfer(self, card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B):
         c_buf_offset = uint64(0)
         c_buf_size_B = uint64(buf_size_B)
-        print('c_buf_ptr {}'.format(c_buf_ptr))
-
         spcm_dwDefTransfer_i64(card, buf_type, SPCM_DIR_CARDTOPC,
                                buf_notify_size_B, byref(c_buf_ptr),
                                c_buf_offset, c_buf_size_B
                                )
-
-        print('c_buf_ptr2 {}'.format(c_buf_ptr))
         return
 
 class Configure_timestamp():
@@ -916,7 +913,6 @@ class Data_transfer:
         self.seq_size_S = seq_size_S
         self.seq_size_B = seq_size_S * self.data_bytes_B
         self.reps_per_buf = reps_per_buf
-        print('c_buf_ptr at data_transfer {}'.format(self.c_buf_ptr))
 
 
     def _cast_buf_ptr(self, user_pos_B):
@@ -934,12 +930,17 @@ class Data_transfer:
         return np_buffer
 
     def get_new_data(self, user_pos_B, curr_avail_reps):
+        print('user_pos_B {}'.format(user_pos_B))
+        print('curr_avail_reps {}'.format(curr_avail_reps))
+        print('seq_size_B {}'.format(self.seq_size_B))
+        print('reps_per_buf {}'.format(self.reps_per_buf))
         rep_end = int(user_pos_B / self.seq_size_B) + curr_avail_reps
 
         if 0 < rep_end <= self.reps_per_buf:
             np_data = self._fetch_data(user_pos_B, curr_avail_reps)
 
         elif self.reps_per_buf < rep_end < 2 * self.reps_per_buf:
+            print('buf end')
             np_data = self._fetch_data_buf_end(user_pos_B, curr_avail_reps)
         else:
             print('error: rep_end {} is out of range'.format(rep_end))
@@ -980,7 +981,6 @@ class Data_fetch_ungated():
         self.seq_size_B = self.seq_size_S * self.data_bytes_B
 
     def create_data_trsnsfer(self):
-        print('c_buf_ptr at hw_dT {}'.format(self.c_buf_ptr))
         self.hw_dt = Data_transfer(self.c_buf_ptr, self.data_type,
                                    self.data_bytes_B, self.seq_size_S, self.ms.reps_per_buf)
 
@@ -996,12 +996,12 @@ class Data_fetch_gated(Data_fetch_ungated):
         self.c_ts_buf_ptr = ms.c_ts_buf_ptr
         self.ts_data_type = ms.get_ts_data_type()
         self.ts_data_bytes_B = ms.ts_data_bytes_B
+        self.ts_seq_size_S = ms.ts_seq_size_S
 
     def create_data_trsnsfer(self):
         super().create_data_trsnsfer()
-        seq_size = 2
         self.ts_dt = Data_transfer(self.c_ts_buf_ptr, self.ts_data_type,
-                                   self.ts_data_bytes_B, seq_size, self.ms.reps_per_buf)
+                                   self.ts_data_bytes_B, self.ts_seq_size_S, self.ms.reps_per_buf * 100)
 
     def fetch_ts_data(self, ts_user_pos_B, curr_avail_reps):
         #ts_user_pos_B = self.tscmd.get_ts_avail_user_pos_B()
@@ -1054,8 +1054,6 @@ class Data_process_ungated():
         self.new_avg.num, self.new_avg.data = self.dc_new.avgdata()
 
     def update_avg_data(self):
-        print('avg{}'.format(self.avg))
-        print('new_avg {}'.format(self.new_avg))
         self.avg.update(self.new_avg)
 
     def return_avg_data(self):
@@ -1095,7 +1093,7 @@ class Card_process():
         self.ms = ms
 
     def _generate_buffer_command(self):
-        self.dcmd = Data_buffer_command(self.cs.card, self.ms.seq_size_B)
+        self.dcmd = Data_buffer_command(self.cs.card, self.ms)
         self.tscmd = Ts_buffer_command(self.cs.card)
 
 
@@ -1113,9 +1111,9 @@ class Card_process():
             print('waiting for triggers')
             prev_trig_counts = self.dcmd.trig_counter
             curr_trig_counts = self.dcmd.get_trig_counter()
-            while curr_trig_counts == prev_trig_counts:
-                    curr_trig_counts = self.dcmd.get_trig_counter()
-            print('got_new_triggs {}'.format(curr_trig_counts))
+            if curr_trig_counts == prev_trig_counts:
+                time.sleep(1e-3)
+                curr_trig_counts
 
             return curr_trig_counts
 
@@ -1152,10 +1150,13 @@ class Process_commander:
         self._reps_per_buf = ms.reps_per_buf
         self._seq_size_B = ms.seq_size_B
         self._row_data_save = False
+        self._ts_seq_size_B = ms.ts_seq_size_B
 
     def command_process(self):
-        trig_counter = self.cp.dcmd.get_trig_counter()
-        unprocessed_reps = trig_counter - self.dp.avg.num
+        trig_reps = self.cp.dcmd.get_trig_reps()
+        unprocessed_reps = trig_reps - self.dp.avg.num
+        print('trig_reps {}'.format(trig_reps))
+        print('avg_num {}'.format(self.dp.avg.num))
         if unprocessed_reps == 0:
             print('wait new trigger')
             self.trigger_on = True
@@ -1197,7 +1198,8 @@ class Process_commander:
 
     def _fetch_ts(self, curr_avail_reps):
         ts_user_pos_B = self.cp.tscmd.get_ts_avail_user_pos_B()
-        self.dp.fetch_ts_data_to_dc(ts_user_pos_B, 2 * curr_avail_reps)
+        self.dp.fetch_ts_data_to_dc(ts_user_pos_B, curr_avail_reps)
+        self.cp.tscmd.set_ts_avail_card_len_B(curr_avail_reps * self._ts_seq_size_B)
 
 
 class Process_loop(Process_commander):
@@ -1228,9 +1230,7 @@ class Process_loop(Process_commander):
 
         while self.loop_on == True:
             if self.fetch_on == False:
-                self.check_dp_status()
                 self.command_process()
-                time.sleep(1e-6)
             elif self.fetch_on == True:
                 print('fetching')
             else:
@@ -1238,13 +1238,11 @@ class Process_loop(Process_commander):
 
         return
 
-    def start_data_process_loop(self, n):
+    def start_data_process_loop_n(self, n):
 
-        while self.avg_num <= n:
+        while self.dp.avg_num <= n:
             if self.fetch_on == False:
-                self.check_dp_status()
                 self.command_process()
-                time.sleep(1e-6)
             elif self.fetch_on == True:
                 print('fetching')
             else:
@@ -1255,8 +1253,7 @@ class Process_loop(Process_commander):
 
     def fetch_data_trace(self):
         self.fetch_on = True
-        avg_data = self.avg_data
-        avg_num = self.avg_num
+        avg_data, avg_num = self.dp.return_avg_data()
         self.fetch_on = False
         return avg_data, avg_num
 
