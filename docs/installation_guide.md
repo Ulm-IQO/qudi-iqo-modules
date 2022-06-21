@@ -5,7 +5,8 @@ Follow the [qudi-core installation](https://ulm-iqo.github.io/qudi-core/setup/in
 
 ## Install qudi-iqo-modules
 
-The last step in the qudi-core installation instructions briefly explains setting up the measurement modules. More detailedly, this is how you install the qudi-iqo-modules:
+The last step in the qudi-core installation instructions briefly explains setting up the measurement modules. More detailedly, this is how you install the qudi-iqo-modules in dev mode. In this way, you can easily change code in the measurement toolchains.
+
 - Make sure you have a working git installation and that you can run the  `git` command from your console.
 - Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
 - Navigate to the folder you want the modules to install to, eg.
