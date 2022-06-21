@@ -21,9 +21,16 @@ Formerly known as slow counter. The new implantation is more flexible and allows
 - scanning (LINK MISSING)
 Formely known as confocal. The refined version was rewritten from scratch and supports arbitrary input sources and axis configurations.
 
+- cw odmr (NO LINK YET)
+
 For the following modules no/ only little changes should be required:
 - pulsed
-- (cw) odmr
 
-## Miscellaneous
+
+# Known missing features 
+Compared to the old release v0.1, the following features are currently not available yet:
+- Magnet control GUI
+- Confocal/Scanning: tilt correction, loop scans
+
+# Miscellaneous
 
