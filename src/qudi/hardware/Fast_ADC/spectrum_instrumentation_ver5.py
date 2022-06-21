@@ -39,8 +39,6 @@ class CardStatus(IntEnum):
     paused = 3
     error = -1
 
-
-
 def check_card_error(func):
     def wrapper(self, *args, **kwargs):
         value = func(self, *args, **kwargs)
@@ -62,8 +60,6 @@ def check_card_error(func):
         return value
 
     return wrapper
-
-
 
 class Card_command():
     '''
@@ -224,7 +220,6 @@ class Data_buffer_command(Card_command):
         self._error = spcm_dwGetParam_i32(self._card, SPC_MIINST_BITSPERSAMPLE, byref(c_bits_per_sample))
         return c_bits_per_sample.value
 
-
 class Ts_buffer_command():
 
     def __init__(self, card):
@@ -292,8 +287,6 @@ class Ts_buffer_command():
         self.ts_cmd = c_ts_timestamp_command.value
         return self.ts_cmd
 
-
-
 class SpectrumInstrumentation(FastCounterInterface):
 
     '''
@@ -314,20 +307,23 @@ class SpectrumInstrumentation(FastCounterInterface):
     Config example:
 
     si:
-        module.Class: 'Fast_ADC.spectrum_instrumentation_ver1.SpectrumInstrumentation'
-        ai_range_mV: 1000
+        module.Class: 'Fast_ADC.spectrum_instrumentation_ver5.SpectrumInstrumentationTest'
+        ai_range_mV: 2000
         ai_offset_mV: 0
         ai_termination: '50Ohm'
-        ai_coupling: 'AC'
-        acq_mode: 'FIFO_MULTI'
+        ai_coupling: 'DC'
+        acq_mode: 'FIFO_GATE'
         acq_HW_avg_num: 1
         acq_pre_trigger_samples: 16
-        buf_notify_size: 4096
+        acq_post_trigger_samples: 16
+        buf_notify_size_B: 4096
         clk_reference_Hz: 10e6
         trig_mode: 'EXT'
         trig_level_mV: 1000
-        gated: False
-        _init_buf_size_S: 1e9
+        gated: True
+        initial_buffer_size_S: 1e9
+        repetitions: 0
+        row_data_save: False
     '''
 
     _modtype = 'SpectrumCard'
@@ -350,12 +346,12 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     _gated = ConfigOption('gated', False, missing='warn')
     _init_buf_size_S = ConfigOption('initial_buffer_size_S', 1e9, missing='warn')
-
+    _reps = ConfigOption('repetitions', 0, missing='nothing')
 
     _check_buffer = False
+    _row_data_save = ConfigOption('row_data_save', True, missing='nothing')
     _path_for_buffer_check = ConfigOption('path_for_buffer_check', 'C:',missing='nothing')
     _reps_for_buffer_check = ConfigOption('repititions_for_buffer_check', 1, missing='nothing')
-
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -378,6 +374,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         self.ms.gated = self._gated
         self.ms.init_buf_size_S = int(self._init_buf_size_S)
+        self.ms.reps = self._reps
         self.ms.assign_data_bit(self.cs.acq_mode)
 
     def on_activate(self):
@@ -395,6 +392,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self._load_settings_from_config_file()
         self.pl = Process_loop()
         self.cfg = Configure_command()
+        self.pl.row_data_save = self._row_data_save
 
         if self._card_on == False:
             self.cs.card = spcm_hOpen(create_string_buffer(b'/dev/spcm0'))
@@ -686,8 +684,6 @@ class Configure_data_transfer():
         self.set_data_transfer(card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B)
         return c_buf_ptr
 
-
-
     def set_buffer(self, card, c_buf_ptr, buf_size_B):
         cont_buf_len = self.get_cont_buf_len(card, c_buf_ptr)
         if cont_buf_len > buf_size_B:
@@ -702,7 +698,6 @@ class Configure_data_transfer():
         c_cont_buf_len = uint64(0)
         spcm_dwGetContBuf_i64(card, SPCM_BUF_DATA, byref(c_buf_ptr), byref(c_cont_buf_len))
         return c_cont_buf_len.value
-
 
     def pvAllocMemPageAligned(self, qwBytes):
         dwAlignment = 4096
@@ -752,11 +747,9 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
     '''
 
     def load_static_cfg_params(self, cs, ms):
-        print('card = {} at Cfg'.format(cs.card))
 
         self._gated = ms.gated
         self._card = cs.card
-        print('self._card = {} at Cfg'.format(self._card))
 
         self._c_buf_ptr = ms.return_c_buf_ptr()
         self._ai_range_mV = cs.ai_range_mV
@@ -795,7 +788,6 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
         self.set_acquistion_mode(self._card, self._acq_mode, self._acq_pre_trigs_S, self._acq_post_trigs_S,
                                  self._acq_seg_size_S, self._acq_seq_size_S, self._acq_loops, self._acq_HW_avg_num)
         self.set_sampling_clock(self._card)
-        print('trig_mode = {}'.format(self._trig_mode)) #TODO delete
         self.set_trigger(self._card, self._trig_mode, self._trig_level_mV)
         self._c_buf_ptr = self.configure_data_transfer(self._card, SPCM_BUF_DATA, self._c_buf_ptr,
                                                        self._buf_size_B, self._buf_notify_size_B)
@@ -930,10 +922,6 @@ class Data_transfer:
         return np_buffer
 
     def get_new_data(self, user_pos_B, curr_avail_reps):
-        print('user_pos_B {}'.format(user_pos_B))
-        print('curr_avail_reps {}'.format(curr_avail_reps))
-        print('seq_size_B {}'.format(self.seq_size_B))
-        print('reps_per_buf {}'.format(self.reps_per_buf))
         rep_end = int(user_pos_B / self.seq_size_B) + curr_avail_reps
 
         if 0 < rep_end <= self.reps_per_buf:
@@ -1076,11 +1064,6 @@ class Data_process_gated(Data_process_ungated):
     def fetch_ts_data_to_dc(self, ts_user_pos_B, curr_avail_reps):
         self.dc_new.ts_r, self.dc_new.ts_f = self.df.fetch_ts_data(ts_user_pos_B, curr_avail_reps)
 
-
-
-
-
-
 class Card_process():
 
     def init_card_process(self, cs, ms):
@@ -1095,7 +1078,6 @@ class Card_process():
     def _generate_buffer_command(self):
         self.dcmd = Data_buffer_command(self.cs.card, self.ms)
         self.tscmd = Ts_buffer_command(self.cs.card)
-
 
     def toggle_trigger(self, trigger_on):
         if trigger_on == self.trigger_enabled:
@@ -1124,7 +1106,6 @@ class Card_process():
 
         return curr_avail_reps
 
-
 class Process_commander:
     '''
     This class contains the command to be executed in a single loop body.
@@ -1149,7 +1130,6 @@ class Process_commander:
         self._gated = ms.gated
         self._reps_per_buf = ms.reps_per_buf
         self._seq_size_B = ms.seq_size_B
-        self._row_data_save = False
         self._ts_seq_size_B = ms.ts_seq_size_B
 
     def command_process(self):
@@ -1190,7 +1170,7 @@ class Process_commander:
 
     def _fetch_and_average_data(self, user_pos_B, curr_avail_reps):
         self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
-        if self._row_data_save == True:
+        if self.row_data_save == True:
             self.dp.stack_new_data()
         self.dp.get_new_avg_data()
         self.dp.update_avg_data()
@@ -1206,8 +1186,6 @@ class Process_loop(Process_commander):
     '''
     This is the main data process loop class.
     '''
-
-
 
     def init_measure_params(self):
         self.cp.dcmd.init_dp_params()
@@ -1250,184 +1228,9 @@ class Process_loop(Process_commander):
 
         return
 
-
     def fetch_data_trace(self):
         self.fetch_on = True
         avg_data, avg_num = self.dp.return_avg_data()
         self.fetch_on = False
         return avg_data, avg_num
-
-
-class SpectrumInstrumentationTest(SpectrumInstrumentation):
-
-    def check_each_rep(self):
-        import  matplotlib.pyplot as plt
-        fig, ax = plt.subplots()
-
-        sweeps = np.empty(0)
-        for i in range(10):
-            sweeps = np.append(sweeps, self.dp.process_data_by_mean(1))
-            ax.plot(sweeps[i])
-        plt.show()
-
-    def check_average(self):
-        '''
-        - Check if the average number is correct
-        - Check if the average across the buffer end is done
-        '''
-        self.dp.initial_reps = False
-        self.sweep1 = 1
-        self.sweep2 = self.cfg._loops - self.sweep1
-        self.avg_data_1, self.avg_num_1 = self.dp.process_data_by_mean(self.sweep1)
-        self.dp.check_dp_status()
-        self.avg_data_2, self.avg_num_2 = self.dp.process_data_by_mean(self.sweep2)
-        self.avg_data, self.avg_num = self.dp._weighted_avg_data(self.avg_data_1, self.sweep1,
-                                                               self.avg_data_2, self.sweep2)
-
-    def test_std_multi_more_reps(self):
-        self._set_params_test_exe()
-        self.cs.acq_mode = 'STD_MULTI'
-        self.cs.trig_mode = 'EXT'
-        self.ms.init_buf_size_S = 1e7
-        self.cfg._loops = 60000
-        self._start_card_with_trigger()
-        self.dp.check_dp_status()
-
-
-    def start_data_process_loop(self, n):
-        '''
-        - Check if the first acquistion is limited by the buffersize
-        - Check if the later acquistion is done
-        '''
-        print('start_data_process_loop')
-
-        for i in range(n):
-            if self.dp.fetch_on == False:
-                self.dp.check_dp_status()
-                curr_avail_reps = self.dp.get_avail_user_reps()
-                new_avg_data, new_avg_num = self.dp.process_data_by_mean(curr_avail_reps)
-                self.dp.avg_data, self.dp.avg_num = self.dp._weighted_avg_data(self.dp.avg_data, self.dp.avg_num,
-                                                                    new_avg_data, new_avg_num)
-                self.dp.check_dp_status()
-            else:
-                print('fetching')
-        print('end_data_process_loop')
-
-        return
-
-
-    def check_dp_loop(self):
-        time_start = time.time()
-        while self.dp.loop_on == True:
-            current_time = time.time() - time_start
-            if current_time < 5:
-                self.dp.check_dp_status()
-                self.dp.command_process()
-            else:
-                print('time = {}'.format(current_time))
-                return
-        return
-
-    def check_loop(self):
-        '''
-        - Check if the trigger count increases
-        -
-        '''
-        self.dp.start_data_process()
-        time.sleep(1)
-        self.dp.check_dp_status()
-        self.avg_data, self.avg_num = self.dp.fetch_data_trace()
-        self.dp.check_dp_status()
-        self.dp.stop_data_process()
-
-
-    def _set_params_fifo_multi(self):
-#        self.cfg._error_check = True
-#        self.dp._error_check = True
-        self.ms.binwidth_s = 1 / 250e6
-        self.ms.record_length_s = 1e-6
-        self.ms.number_of_gates = 0
-        self.cs.acq_mode = 'FIFO_MULTI'
-        self.cs.trig_mode = 'EXT'
-        self.ms.init_buf_size_S = 1e7
-        self.dp.init_dp_params()
-        self.configure(self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates)
-
-
-    def test_std_multi_more_reps(self, buf_length_S, notify_size_B):
-        self.cs.acq_mode = 'STD_MULTI'
-        self.cs.trig_mode = 'EXT'
-
-        self.ms.binwidth_s = 1 / 250e6
-        self.ms.record_length_s = 1e-6
-        self.ms.number_of_gates = 0
-        self.ms.init_buf_size_S = buf_length_S
-        self.cs.buf_notify_size_B = notify_size_B
-
-        self.cfg._loops = 60000
-        self._start_card_with_trigger()
-        self.dp.check_dp_status()
-
-    def test_loop(self, n_loop, buf_length_S, notify_size_B):
-        self.cs.acq_mode = 'STD_MULTI'
-        self.cs.trig_mode = 'EXT'
-
-        self.ms.binwidth_s = 1 / 250e6
-        self.ms.record_length_s = 1e-6
-        self.ms.number_of_gates = 0
-        self.ms.init_buf_size_S = buf_length_S
-        self.cs.buf_notify_size_B = notify_size_B
-        self.cfg._loops = n_loop
-
-    def start_loop(self):
-        self._start_card_with_trigger()
-        self.dp.check_dp_status()
-        self.dp.start_data_process_loop(self.cfg._loops)
-
-
-    def test_fifo_gate(self, buf_length_S, notify_size_B):
-        self.cs.acq_mode = 'FIFO_GATE'
-        self.cs.trig_mode = 'EXT'
-
-        self.ms.binwidth_s = 1 / 250e6
-        self.ms.record_length_s = 1e-6
-        self.ms.number_of_gates = 0
-        self.ms.init_buf_size_S = buf_length_S
-        self.cs.buf_notify_size_B = notify_size_B
-
-        self.cfg._loops = 60000
-        self._start_card_with_trigger()
-        self.dp.check_dp_status()
-
-    def create_test_data(self):
-        import random
-        data_len = 1000
-        test_data = np.zeros(1000)
-        for i in range(100):
-            test_data[i] = random.random()
-        for i in range(100, 200):
-            test_data[i] = 1000 + random.random()
-        for i in range(200, 300):
-            test_data[i] = random.random()
-        for i in range(300, 500):
-            test_data[i] = 1000 + random.random()
-        for i in range(500, 600):
-            test_data[i] = random.random()
-        for i in range(600, 900):
-            test_data[i] = 1000 + random.random()
-        for i in range(900, 1000):
-            test_data[i] = random.random()
-        self.test_data = test_data
-
-        return test_data
-
-    def create_test_data_array(self, n):
-        data_array = []
-        for i in range(n):
-            data_array = np.append(data_array, self.create_test_data())
-        self.test_data_array = data_array
-        return data_array
-
-
-
 
