@@ -17,9 +17,13 @@ The last step in the qudi-core installation instructions briefly explains settin
 
 Now you qudi-core installation will know about the measurement modules and it's time to set up a proper qudi configuration file.
 
+## Configure Pycharm
+
 ## Config
 - Start by playing with the dummy config (LINK MISSING)
 - Continue by settting up real hardware. These links may help you:
+- As an IQO member, you might want to checkout the following repo (LINK MISSING). In there, you can find and store configuration for multiple setups in the institute.
+
 ### Remote
 ### Pitfalls
 ### Scanning Tool Chain
