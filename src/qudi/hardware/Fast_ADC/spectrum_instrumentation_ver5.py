@@ -475,15 +475,22 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         Start the acquistion and data process loop
         """
-        self._internal_status = CardStatus.running
-        self.log.info('Measurement started')
-        self.ccmd.start_all()
-        self.ccmd.wait_DMA()
-        if self.ms.gated == True:
-            self.pl.cp.tscmd.wait_extra_dma()
+        if self._internal_status == CardStatus.idle:
+            self.pl.init_measure_params()
+            self.ccmd.start_all()
+            self.ccmd.wait_DMA()
+            if self.ms.gated == True:
+                self.pl.cp.tscmd.wait_extra_dma()
+
+        if self._internal_status == CardStatus.paused:
+            self.ccmd.enable_trigger()
+
         self.pl.cp.trigger_enabled = True
-        self.pl.init_measure_params()
         self.pl.start_data_process()
+
+        self.log.info('Measurement started')
+        self._internal_status = CardStatus.running
+
 
         return 0
 
@@ -519,6 +526,7 @@ class SpectrumInstrumentation(FastCounterInterface):
             Fast counter must be initially in the run state to make it pause.
         """
         self.ccmd.disable_trigger()
+        self.pl.cp.trigger_enabled = False
         self.pl.loop_on = False
         self.pl.stop_data_process()
 
@@ -535,7 +543,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.log.info('Measurement continued')
         self._internal_status = CardStatus.running
         self.pl.loop_on = True
-        self.pl.cp.trigger_enabled = self.enable_trigger()
+        self.pl.cp.trigger_enabled = self.ccmd.enable_trigger()
         self.pl.start_data_process()
 
         return 0
