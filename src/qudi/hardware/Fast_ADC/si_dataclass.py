@@ -79,10 +79,7 @@ class Card_settings_gated(Card_settings):
 
     def get_buf_size_B(self, seq_size_B, reps_per_buf):
         super().get_buf_size_B(seq_size_B, reps_per_buf)
-        self.ts_buf_size_B = int(2 * 16 * reps_per_buf)
-
-
-
+        self.ts_buf_size_B = 15000000#int(2 * 16 * reps_per_buf)
 
 @dataclass
 class Measurement_settings:
@@ -193,7 +190,7 @@ class CoreData:
 
     def reshape_1d(self):
         shape_1d = (self.data_len,)
-        self.data = self.data.reshape(shape_1d)
+        return self.data.reshape(shape_1d)
 
 @dataclass
 class PulseDataSingle(CoreData):
@@ -224,7 +221,7 @@ class PulseDataMulti(PulseDataSingle):
     def reshape_2d_by_rep(self):
         len = int(self.data_len / self.rep)
         shape_2d = (self.rep, len)
-        self.data = self.data.reshape(shape_2d)
+        return self.data.reshape(shape_2d)
 
 
 @dataclass
@@ -240,17 +237,17 @@ class SeqDataSingle(PulseDataSingle):
     def reshape_2d_by_pulse(self):
         len = int(self.data_len / self.pulse)
         shape_2d = (self.pulse, len)
-        self.data = self.data.reshape(shape_2d)
+        return self.data.reshape(shape_2d)
 
 @dataclass
 class SeqDataMulti(PulseDataMulti, SeqDataSingle):
 
     def reshape_3d_multi_seq(self):
         shape_3d = (self.rep, self.pulse, self.pulse_len)
-        self.data = self.data.reshape(shape_3d)
+        return self.data.reshape(shape_3d)
 
     def avgdata(self):
-        self.reshape_2d_by_rep()
+        self.data = self.reshape_2d_by_rep()
         return self.data.mean(axis=0)
 @dataclass
 class GateData:

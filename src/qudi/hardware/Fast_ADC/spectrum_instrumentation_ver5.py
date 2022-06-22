@@ -19,6 +19,7 @@ along with Qudi. If not, see <http://www.gnu.org/licenses/>.
 Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
+import logging
 import threading
 import time
 import inspect
@@ -436,6 +437,7 @@ class SpectrumInstrumentation(FastCounterInterface):
                     gate_length_s: the actual set gate length in seconds
                     number_of_gates: the number of gated, which are accepted
         """
+        self.ccmd.card_reset()
         self.cfg.load_static_cfg_params(self.cs, self.ms)
 
         self.ms.load_dynamic_params(binwidth_s, record_length_s, number_of_gates)
@@ -455,8 +457,9 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         self.pl.init_process(self.cs, self.ms)
 
+        return self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates
 
-        return self.ms.binwidth_s, self.ms.actual_length_s, self.ms.number_of_gates
+#        return self.ms.binwidth_s, self.ms.actual_length_s, self.ms.number_of_gates
 
     def get_status(self):
         """
@@ -498,11 +501,27 @@ class SpectrumInstrumentation(FastCounterInterface):
         self._internal_status = CardStatus.running
 
     def get_data_trace(self):
+        """ Polls the current timetrace data from the fast counter.
+
+        Return value is a numpy array (dtype = int64).
+        The binning, specified by calling configure() in forehand, must be
+        taken care of in this hardware class. A possible overflow of the
+        histogram bins must be caught here and taken care of.
+        If the counter is NOT GATED it will return a tuple (1D-numpy-array, info_dict) with
+            returnarray[timebin_index]
+        If the counter is GATED it will return a tuple (2D-numpy-array, info_dict) with
+            returnarray[gate_index, timebin_index]
+
+        info_dict is a dictionary with keys :
+            - 'elapsed_sweeps' : the elapsed number of sweeps
+            - 'elapsed_time' : the elapsed time in seconds
+
+        If the hardware does not support these features, the values should be None
         """
-        Fetch the averaged data so far.
-        """
+        #self.pl.fetch_on = True
         avg_data, avg_num = self.pl.fetch_data_trace()
-        info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.dp.start_time}
+        #self.pl.fetch_on = False
+        info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.pl.start_time}
 
         return avg_data, info_dict
 
@@ -1024,6 +1043,7 @@ class Data_process_ungated():
         self.df.init_data_fetch()
         self.avg = AvgData()
         self.avg.num = 0
+        self.avg.pulse = ms.number_of_gates
         self.avg.data = np.empty(ms.seq_size_S)
 
     def _input_settings_to_dp(self, cs, ms):
@@ -1045,7 +1065,7 @@ class Data_process_ungated():
         print('curr_avail_reps {}'.format(curr_avail_reps))
         self.dc_new.data, self.dc_new.rep = self.df.fetch_data(user_pos_B, curr_avail_reps)
         self.dc_new.set_len()
-        self.dc_new.reshape_2d_by_rep()
+        self.dc_new.data = self.dc_new.reshape_2d_by_rep()
 
 
     def stack_new_data(self):
@@ -1057,6 +1077,7 @@ class Data_process_ungated():
 
     def update_avg_data(self):
         self.avg.update(self.new_avg)
+        self.avg.set_len()
 
     def return_avg_data(self):
         return self.avg.data, self.avg.num
@@ -1077,6 +1098,10 @@ class Data_process_gated(Data_process_ungated):
 
     def fetch_ts_data_to_dc(self, ts_user_pos_B, curr_avail_reps):
         self.dc_new.ts_r, self.dc_new.ts_f = self.df.fetch_ts_data(ts_user_pos_B, curr_avail_reps)
+
+    def return_avg_data(self):
+        avg_data_2d = self.avg.reshape_2d_by_pulse()
+        return avg_data_2d, self.avg.num
 
 class Card_process():
 
@@ -1236,6 +1261,7 @@ class Process_loop(Process_commander):
                 self.command_process()
             elif self.fetch_on == True:
                 print('fetching')
+                time.sleep(1e-3)
             else:
                 print('error on loop')
 
@@ -1248,6 +1274,8 @@ class Process_loop(Process_commander):
                 self.command_process()
             elif self.fetch_on == True:
                 print('fetching')
+                time.sleep(1)
+
             else:
                 print('error on loop')
 
@@ -1257,5 +1285,6 @@ class Process_loop(Process_commander):
         self.fetch_on = True
         avg_data, avg_num = self.dp.return_avg_data()
         self.fetch_on = False
+
         return avg_data, avg_num
 
