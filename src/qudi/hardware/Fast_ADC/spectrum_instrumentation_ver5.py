@@ -478,6 +478,9 @@ class SpectrumInstrumentation(FastCounterInterface):
         self._internal_status = CardStatus.running
         self.log.info('Measurement started')
         self.ccmd.start_all()
+        self.ccmd.wait_DMA()
+        if self.ms.gated == True:
+            self.pl.cp.tscmd.wait_extra_dma()
         self.pl.cp.trigger_enabled = True
         self.pl.init_measure_params()
         self.pl.start_data_process()
@@ -1030,6 +1033,8 @@ class Data_process_ungated():
         self.dc_new.pule_len = self.ms.seg_size_S
 
     def fetch_data_to_dc(self, user_pos_B, curr_avail_reps):
+        print('user_pos_B {}'.format(user_pos_B))
+        print('curr_avail_reps {}'.format(curr_avail_reps))
         self.dc_new.data, self.dc_new.rep = self.df.fetch_data(user_pos_B, curr_avail_reps)
         self.dc_new.set_len()
         self.dc_new.reshape_2d_by_rep()
@@ -1096,7 +1101,6 @@ class Card_process():
             curr_trig_counts = self.dcmd.get_trig_counter()
             if curr_trig_counts == prev_trig_counts:
                 time.sleep(1e-3)
-                curr_trig_counts
 
             return curr_trig_counts
 
@@ -1138,8 +1142,10 @@ class Process_commander:
         unprocessed_reps = trig_reps - self.dp.avg.num
         print('trig_reps {}'.format(trig_reps))
         print('avg_num {}'.format(self.dp.avg.num))
-        if unprocessed_reps == 0:
-            print('wait new trigger')
+        self.cp.dcmd.check_dp_status()
+        self.cp.tscmd.check_ts_params()
+        if trig_reps == 0 or unprocessed_reps == 0:
+            #print('wait new trigger')
             self.trigger_on = True
             self.wait_trigger_on = True
             self.data_process_on = False
@@ -1163,16 +1169,26 @@ class Process_commander:
     def _process_data(self, data_process_on):
         if data_process_on == True:
             curr_avail_reps = self.cp.dcmd.get_avail_user_reps()
+            if curr_avail_reps == 0:
+                return
+
             self.dp.create_dc_new()
+
+            user_pos_B = self.cp.dcmd.get_avail_user_pos_B()
+            self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
+            if self.dp.dc_new.rep == 0:
+                return
+
+            if self.row_data_save == True:
+                self.dp.stack_new_data()
+
+            self._average_data(curr_avail_reps)
+
             if self._gated == True:
                 self._fetch_ts(curr_avail_reps)
-            user_pos_B = self.cp.dcmd.get_avail_user_pos_B()
-            self._fetch_and_average_data(user_pos_B, curr_avail_reps)
 
-    def _fetch_and_average_data(self, user_pos_B, curr_avail_reps):
-        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
-        if self.row_data_save == True:
-            self.dp.stack_new_data()
+
+    def _average_data(self, curr_avail_reps):
         self.dp.get_new_avg_data()
         self.dp.update_avg_data()
         self.cp.dcmd.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
