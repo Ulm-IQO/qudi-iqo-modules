@@ -19,7 +19,7 @@ Now you qudi-core installation will know about the measurement modules and it's 
 
 ## Configure Pycharm
 
-## Config
+## qudi Configuration file
 - Start by playing with the dummy config (LINK MISSING)
 - Continue by settting up real hardware. These links may help you:
 - As an IQO member, you might want to checkout the following repo (LINK MISSING). In there, you can find and store configuration for multiple setups in the institute.
@@ -30,7 +30,10 @@ Now you qudi-core installation will know about the measurement modules and it's 
 ### Laser Tool Chain
 ### Spectrometer
 ### CW ODMR Tool Chain
-## Transcribing measurement scripts
+
+## Jupyter notebooks/ measurement scripts
+
+### Transcribing scripts from qudi v0.1
 Ipython in Qudi (either in Manager or jupyter notebook) is running 
 now in its own process. The communication between QuDi and the
 corresponding ipython process is done via rpyc. 
