@@ -328,7 +328,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         if self.is_running:
-            self._stored_target_pos
+            return self._stored_target_pos
         else:
             return self._target_pos
 
@@ -366,7 +366,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 self._scan_data.new_scan()
 
-                self._stored_target_pos = self.get_target()
+                self._stored_target_pos = self.get_target().copy()
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
 
                 first_scan_position = {ax: pos[0] for ax, pos
