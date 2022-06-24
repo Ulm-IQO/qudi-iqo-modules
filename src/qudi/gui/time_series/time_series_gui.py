@@ -3,27 +3,28 @@
 """
 This file contains the qudi time series streaming gui.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
 import pyqtgraph as pg
 from PySide2 import QtCore, QtWidgets
 
+from qudi.core.statusvariable import StatusVar
 from qudi.util.uic import loadUi
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -82,6 +83,8 @@ class TimeSeriesGui(GuiBase):
     sigStartRecording = QtCore.Signal()
     sigStopRecording = QtCore.Signal()
     sigSettingsChanged = QtCore.Signal(dict)
+
+    _view_settings = StatusVar(name='visible_settings', default={})
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -182,6 +185,7 @@ class TimeSeriesGui(GuiBase):
         #####################
         # Set up trace view selection dialog
         self._init_trace_view_selection_dialog()
+        self.visible_settings = self._view_settings
 
         #####################
         # Setting default parameters
@@ -252,6 +256,12 @@ class TimeSeriesGui(GuiBase):
         self._time_series_logic.sigStatusChanged.connect(
             self.update_status, QtCore.Qt.QueuedConnection)
 
+        # Set 'current channel' text box
+        try:
+            self.current_value_channel = self._view_settings['current_channel_idx']
+        except (IndexError, KeyError):
+            self.current_value_channel = 0
+
         self.show()
         return
 
@@ -298,6 +308,15 @@ class TimeSeriesGui(GuiBase):
         self._time_series_logic.sigStatusChanged.disconnect()
 
         self._mw.close()
+
+    @_view_settings.representer
+    def __repr_view_settings(self, value):
+        vis_settings = self.visible_settings
+
+        curr_ch = self._mw.curr_value_comboBox.currentText()
+        curr_ch_idx = self._mw.curr_value_comboBox.findText(curr_ch)
+
+        return {**vis_settings, **{'current_channel_idx': curr_ch_idx}}
 
     def _init_trace_view_selection_dialog(self):
         all_channels = tuple(ch.name for ch in self._time_series_logic.available_channels)
@@ -387,6 +406,17 @@ class TimeSeriesGui(GuiBase):
                 widgets['checkbox2'].setChecked(self.averaged_curves[chnl] not in curr_items)
         return
 
+    @property
+    def current_value_channel(self):
+        value = self._mw.curr_value_comboBox.currentText()
+        index = self._mw.curr_value_comboBox.findText(value)
+
+        return index, value
+
+    @current_value_channel.setter
+    def current_value_channel(self, index):
+        self._mw.curr_value_comboBox.setCurrentIndex(index)
+
     @QtCore.Slot()
     def apply_channel_settings(self, update_logic=True):
         """
@@ -395,16 +425,15 @@ class TimeSeriesGui(GuiBase):
         av_channels = tuple(ch for ch, w in self._csd_widgets.items() if
                             w['checkbox2'].isChecked() and ch in channels)
         # Update combobox
-        old_value = self._mw.curr_value_comboBox.currentText()
+        old_index, old_value = self.current_value_channel
         self._mw.curr_value_comboBox.clear()
         self._mw.curr_value_comboBox.addItem('None')
         self._mw.curr_value_comboBox.addItems(['average {0}'.format(ch) for ch in av_channels])
         self._mw.curr_value_comboBox.addItems(channels)
-        index = self._mw.curr_value_comboBox.findText(old_value)
-        if index < 0:
-            self._mw.curr_value_comboBox.setCurrentIndex(0)
+        if old_index < 0:
+            self.current_value_channel = 0
         else:
-            self._mw.curr_value_comboBox.setCurrentIndex(index)
+            self.current_value_channel = old_index
 
         # Update plot widget axes
         ch_list = self._time_series_logic.active_channels
@@ -439,6 +468,52 @@ class TimeSeriesGui(GuiBase):
             self.sigSettingsChanged.emit(
                 {'active_channels': channels, 'averaged_channels': av_channels})
         return
+
+    @property
+    def visible_settings(self):
+        channels = tuple(ch for ch, w in self._csd_widgets.items() if w['checkbox1'].isChecked())
+        av_channels = tuple(ch for ch, w in self._csd_widgets.items() if
+                            w['checkbox2'].isChecked() and ch in channels)
+
+        settings = {}
+
+        for chnl, widgets in self._vsd_widgets.items():
+            visible = not widgets['checkbox1'].isChecked()
+            av_visible = not widgets['checkbox2'].isChecked()
+
+            settings[chnl] = {'visible': visible, 'avg_visible': av_visible}
+
+        return settings
+
+    @visible_settings.setter
+    def visible_settings(self, settings):
+
+        # todo: restore settings from status var
+
+        channels = tuple(ch for ch, w in self._csd_widgets.items() if w['checkbox1'].isChecked())
+        av_channels = tuple(ch for ch, w in self._csd_widgets.items() if
+                            w['checkbox2'].isChecked() and ch in channels)
+
+        # Update view selection dialog
+        for chnl, widgets in self._vsd_widgets.items():
+            # Hide corresponding view selection
+            if chnl in settings.keys():
+                visible = settings[chnl]['visible']
+                av_visible = settings[chnl]['avg_visible']
+            else:
+                visible = chnl in channels
+                av_visible = chnl in av_channels
+
+            self.log.debug(f"Setting {chnl}: vis: {visible}")
+
+
+            widgets['checkbox1'].setChecked(not visible)
+            widgets['checkbox2'].setChecked(not av_visible)
+            # hide/show corresponding plot curves
+            #self._toggle_channel_data_plot(chnl, visible, av_visible)
+
+        self._vsd.accepted.emit()
+
 
     @QtCore.Slot()
     def keep_former_channel_settings(self):
