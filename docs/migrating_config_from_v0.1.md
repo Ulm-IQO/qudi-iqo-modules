@@ -24,6 +24,7 @@ Formely known as confocal. The refined version was rewritten from scratch and su
 - cw odmr (NO LINK YET)
 
 For the following modules no/ only little changes should be required:
+- laser
 - pulsed
 
 
