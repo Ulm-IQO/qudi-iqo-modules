@@ -1,5 +1,5 @@
 # Config conversion from old qudi (release v0.1) to new core 
-This document gives a short overview how to port an existing configuration to the new qudi release vXXX (aka new core). The good new is: If you have a running configuration for v0.1 already,
+This document gives a short overview how to port an existing configuration to the new qudi release vXXX (aka new core). The good news is: If you have a running configuration for v0.1 already,
 it should be straightforward to adapt it to your new qudi installation.
 Please note that we are describing the most common use case, but can't cover all modules here. If you encounter issues with any configuration, it might help to look into the source (.py) file. There you'll find an example config in the docstring of the respective class.
 
@@ -21,7 +21,7 @@ Formerly known as slow counter. The new implantation is more flexible and allows
 - scanning (LINK MISSING)
 Formely known as confocal. The refined version was rewritten from scratch and supports arbitrary input sources and axis configurations.
 
-- cw odmr (NO LINK YET)
+- cw odmr (NO LINK YET) Toolchain has changed but this doesn't affect the configuration a lot. Changes in the cw odmr configuration result from huge restructuring the NI card duties. For cw odmr `ni_x_finite_sampling_input` is required. For the correct configuration please find the example config in the docstring of the `NIXSeriesFiniteSamplingInput` class in qudi\hardware\ni_x_series\ni_x_series_finite_sampling_input.py. All ports need to adapted to your custom setup, of course. You should find the correct ports in your old configuration of the NI card. 
 
 For the following modules no/ only little changes should be required:
 - laser
