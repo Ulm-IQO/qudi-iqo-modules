@@ -18,9 +18,16 @@ The last step in the qudi-core installation instructions briefly explains settin
 Now you qudi-core installation will know about the measurement modules and it's time to set up a proper qudi configuration file.
 
 ## Configure Pycharm
+To run Qudi via pycharm you have to edirt your configuration (include maybe some screenshot?)
+- take the runnable.py file
+- use the proper interpreter Python 3.8
+- working directory?
+- still missing something?
 
 ## qudi Configuration file
-- Start by playing with the dummy config (LINK MISSING)
+
+- Start by playing with the dummy config (LINK MISSING) 
+- - Load the dummy config file via file -> load configuration
 - Continue by settting up real hardware. These links may help you:
 - As an IQO member, you might want to checkout the following repo (LINK MISSING). In there, you can find and store configuration for multiple setups in the institute.
 
