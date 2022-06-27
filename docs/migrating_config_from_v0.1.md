@@ -31,7 +31,16 @@ For the following modules no/ only little changes should be required:
 # Known missing features 
 Compared to the old release v0.1, the following features are currently not available yet:
 - Magnet control GUI
-- Confocal/Scanning: tilt correction, loop scans
+- Confocal/Scanning: tilt correction, loop scans, moving arbitrary axis during scan, Resume Scan feature 
+- wavemeter whole toolchain
+- PID Hardware software (not ported?)
+
+# Untested features
+- motors
+- power supply 
+- temperature
+- camera 
+
 
 # Miscellaneous
 
