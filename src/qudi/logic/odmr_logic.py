@@ -100,7 +100,6 @@ class OdmrLogic(LogicBase):
         super().__init__(config=config, **kwargs)
 
         self._threadlock = RecursiveMutex()
-
         self._elapsed_time = 0.0
         self._elapsed_sweeps = 0
         self.__estimated_lines = 0
@@ -112,7 +111,6 @@ class OdmrLogic(LogicBase):
         self._signal_data = None
         self._frequency_data = None
         self._fit_results = None
-
     def on_activate(self):
         """
         Initialisation performed during activation of the module.
@@ -729,9 +727,18 @@ class OdmrLogic(LogicBase):
             timestamp = datetime.datetime.now()
             metadata = self._get_metadata()
             tag = tag + '_' if tag else ''
-
             # Save raw data in a separate file per data channel
-            data_storage = TextDataStorage(root_dir=self.module_default_data_dir,
+            def create_module_default_data_dir(self, measurementtype): #TODO
+
+                timestamp = datetime.datetime.now()
+                (year, month, day) = (timestamp.strftime("%Y"), timestamp.strftime("%m"), timestamp.strftime("%d"))
+                str1 = "C:\Data"
+                my_string = str1 + str1[2] + year + str1[2] + month + str1[2] + year + month + day + str1[
+                    2] + measurementtype
+                return my_string
+
+            module_default_data_dir = create_module_default_data_dir(self, "ODMR")#TODO automatic
+            data_storage = TextDataStorage(root_dir=module_default_data_dir,
                                            column_formats='.15e')
             for channel, range_data in self._raw_data.items():
                 metadata['Channel Name'] = channel
