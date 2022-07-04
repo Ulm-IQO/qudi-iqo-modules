@@ -18,9 +18,25 @@ The last step in the qudi-core installation instructions briefly explains settin
 Now you qudi-core installation will know about the measurement modules and it's time to set up a proper qudi configuration file.
 
 ## Configure Pycharm
+Having the code as a project in the Pycharm IDE allows to easily navigate and run the qudi code.
+- Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
+- Create a new project in Pycharm and add the qudi-core and qudi-iqo-modules folders to it by 'File'->'Open..'->('Attach' option). If you did install qudi-core in non-developer mode, you can find your qudi-core folder by `python -c "import os, sys; print(os.path.dirname(sys.executable)+'\Lib\site-packages\qudi')"`
+
+To run Qudi via Pycharm you have to configure the right Python environment.
+- In Pycharm, navigate to 'File'->'Settings'->'Project:qudi'->'Project interpreter'
+- If the correct environment ist not listed yet, you can add it via the "+" button. If you followed the qudi-core installation incstructions, the environment should be named `qudi-env`.
+- You can find the path to the environment by `python -c "import os, sys; print(os.path.dirname(sys.executable))"`
+- Choose the correct environment, like shown on the screenshot.
+![grafik](https://user-images.githubusercontent.com/5861249/176209579-3175f422-e940-4a58-98e1-821a85211de3.png)
+- Now open the file `qudi-core\src\qudi\runnable.py` in Pycharm. If the environment is recognized correctly to Pycharm, you can run qudi via 'Run'->'Run runnable.py'.
+- To enable debug output displayed in the qudi manager, navigate to 'Run'->'Edit configurations' and add the flag `-d' in the line 'Parameters'
+
+- working directory?
 
 ## qudi Configuration file
-- Start by playing with the dummy config (LINK MISSING)
+
+- Start by playing with the dummy config (LINK MISSING) 
+- - Load the dummy config file via file -> load configuration
 - Continue by settting up real hardware. These links may help you:
 - As an IQO member, you might want to checkout the following repo (LINK MISSING). In there, you can find and store configuration for multiple setups in the institute.
 

@@ -55,6 +55,7 @@ docstring of every module's python file. In the list above, a direct link for ev
 
 
 # Configuration hints:
-- 
+Make sure that the hardware in the conig file is named as it is called by the logic. (Copy paste out of the hardware file can name it differently).
+
 # Todo this readme:
 
