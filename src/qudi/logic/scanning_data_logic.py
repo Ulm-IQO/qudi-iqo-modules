@@ -329,7 +329,7 @@ class ScanningDataLogic(LogicBase):
                 for channel, data in scan_data.data.items():
                     # data
                     # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.scan_axes)
-                    tag = self.create_tag_from_scan_data(scan_data)
+                    tag = self.create_tag_from_scan_data(scan_data, channel)
                     file_path, _, _ = ds.save_data(data,
                                                    metadata=parameters,
                                                    nametag=tag,
@@ -355,11 +355,11 @@ class ScanningDataLogic(LogicBase):
         scan = self.get_current_scan_data(scan_axes=scan_axes)
         self.save_scan(scan, color_range=color_range)
 
-    def create_tag_from_scan_data(self, scan_data):
+    def create_tag_from_scan_data(self, scan_data, channel):
         axes = scan_data.scan_axes
         axis_dim = len(axes)
         axes_code = reduce(operator.add, axes)
-        tag = f"{axis_dim}D-scan with {axes_code} axes"
+        tag = f"{axis_dim}D-scan with {axes_code} axes from channel {channel}"
         return tag
 
     def draw_2d_scan_figure(self, scan_data, channel, cbar_range=None):
