@@ -762,7 +762,7 @@ class APTMotor:
 # ==============================================================================
 
 
-class APTStage(Base, MotorInterface):
+class APTStage(MotorInterface):
 
     """ Control class for an arbitrary collection of APTmotor axes.
 
