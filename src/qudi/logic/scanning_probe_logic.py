@@ -411,8 +411,10 @@ class ScanningProbeLogic(LogicBase):
 
                 # Queue next call to this slot
                 self.__scan_poll_timer.start()
+            except TimeoutError:
+                self.log.exception('Timed out while waiting for scan data:')
             except:
-                self.log.exception('An exception was raised while polling the scan')
+                self.log.exception('An exception was raised while polling the scan:')
             return
 
     @QtCore.Slot()
