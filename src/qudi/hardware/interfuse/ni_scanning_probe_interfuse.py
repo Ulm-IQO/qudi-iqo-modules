@@ -390,13 +390,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # FIXME Fix the mess of bool indicators, int return values etc in toolchain
         """
         try:
+            if self._ni_ao().is_active:
+                self._abort_movement()
+
             if self._ni_finite_sampling_io().is_running:
                 self._ni_finite_sampling_io().stop_buffered_frame()
-                self.module_state.unlock()
 
-                self.move_absolute(self._stored_target_pos)
-                self._stored_target_pos = dict()
-                return False  # TODO Bool indicators deprecated
+            self.module_state.unlock()
+
+            self.move_absolute(self._stored_target_pos)
+            self._stored_target_pos = dict()
+            return False  # TODO Bool indicators deprecated
 
         except Exception as e:
             self.log.error(f'Error occurred while stopping the finite IO frame:\n{e}')
@@ -678,17 +682,18 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                         self.module_state.unlock()
                     self._scan_start_indicator = False
         except Exception as e:
-            self.log.error(e)
+            self.log.exception(e)
 
-    # def _abort_movement(self):
-    #     """
-    #     Abort the movement, stop the timer and reset interval, release memory and frees ni_ao resources
-    #     """
-    #     with self._thread_lock:
-    #         self.__stop_ao_write_timer()
-    #         self.__write_queue = dict()
-    #         self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
-    #         self._ni_ao().set_activity_state(False)
+    def _abort_movement(self):
+        """
+        Abort the movement, stop the timer and reset interval, release memory and frees ni_ao resources
+        """
+        with self._thread_lock:
+            self.__stop_ao_write_timer()
+            self.__stop_ao_runout_timer()
+            self.__write_queue = dict()
+            self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+            self._ni_ao().set_activity_state(False)
 
     def _move_to_and_start_scan(self, position):
         self._prepare_movement(position, scan_start_indicator=True)
@@ -750,7 +755,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             self._scan_start_indicator = scan_start_indicator
 
-            self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6} um '
+            self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
                            f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
 
     def __start_ao_runout_timer(self):
