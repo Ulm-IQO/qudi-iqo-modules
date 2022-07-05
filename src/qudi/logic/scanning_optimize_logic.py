@@ -230,7 +230,7 @@ class ScanningOptimizeLogic(LogicBase):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 settings_update = self.optimize_settings
-                self.log.error('Can not change optimize settings. Optimization still in progress.')
+                self.log.error('Can not change optimize settings when module is locked.')
             else:
                 settings_update = dict()
                 if 'scan_frequency' in settings:
@@ -278,24 +278,33 @@ class ScanningOptimizeLogic(LogicBase):
             optim_ranges = {ax: (pos - self._scan_range[ax] / 2, pos + self._scan_range[ax] / 2) for
                             ax, pos in curr_pos.items()}
             actual_setting = self._scan_logic().set_scan_range(optim_ranges)
+            # FIXME: Comparing floats by inequality here
             if any(val != optim_ranges[ax] for ax, val in actual_setting.items()):
                 self.log.warning('Some optimize scan ranges have been changed by the scanner.')
+                self.module_state.unlock()
                 self.set_optimize_settings(
                     {'scan_range': {ax: abs(r[1] - r[0]) for ax, r in actual_setting.items()}}
                 )
+                self.module_state.lock()
 
             # Set scan frequency
             actual_setting = self._scan_logic().set_scan_frequency(self._scan_frequency)
+            # FIXME: Comparing floats by inequality here
             if any(val != self._scan_frequency[ax] for ax, val in actual_setting.items()):
                 self.log.warning('Some optimize scan frequencies have been changed by the scanner.')
+                self.module_state.unlock()
                 self.set_optimize_settings({'scan_frequency': actual_setting})
+                self.module_state.lock()
 
             # Set scan resolution
             actual_setting = self._scan_logic().set_scan_resolution(self._scan_resolution)
+            # FIXME: Comparing floats by inequality here
             if any(val != self._scan_resolution[ax] for ax, val in actual_setting.items()):
                 self.log.warning(
                     'Some optimize scan resolutions have been changed by the scanner.')
+                self.module_state.unlock()
                 self.set_optimize_settings({'scan_resolution': actual_setting})
+                self.module_state.lock()
 
             # optimizer scans are never saved
             self._scan_logic().set_scan_settings({'save_to_history': False})
