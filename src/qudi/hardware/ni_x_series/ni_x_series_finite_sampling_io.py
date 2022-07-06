@@ -648,9 +648,9 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         @return dict: Sample arrays (values) for each active input channel (keys)
         """
 
-        if not self._tasks_started_successfully:
+        if self.module_state() == 'locked' and not self._tasks_started_successfully:
             self.log.warning('Data polled before Ni Tasks could all be setup. Try lowering the poll rate.')
-            return dict.fromkeys(self.active_channels[0])
+            return dict.fromkeys(self.active_channels[0], np.array([]))
 
         if number_of_samples is not None:
             assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'
@@ -679,14 +679,14 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         data = dict()
 
         if samples_to_read == 0:
-            return dict.fromkeys(self.active_channels[0])
+            return dict.fromkeys(self.active_channels[0], np.array([]))
 
         with self._thread_lock:
             if not self.is_running:
                 # When the IO was stopped with samples in buffer, return the ones in
                 if number_of_samples is None:
                     data = self.__unread_samples_buffer.copy()
-                    self.__unread_samples_buffer = dict.fromkeys(self.active_channels[0])
+                    self.__unread_samples_buffer = dict.fromkeys(self.active_channels[0], np.array([]))
                     self._number_of_pending_samples = 0
                     return data
                 else:
