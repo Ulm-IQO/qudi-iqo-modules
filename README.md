@@ -6,3 +6,5 @@ A collection of qudi measurement modules originally developed for experiments on
 semiconductor materials.
 
 ## ToDo: Write README
+
+If you have questions, please ask in the discussion section for [qudi-core](https://github.com/Ulm-IQO/qudi-core/discussions)

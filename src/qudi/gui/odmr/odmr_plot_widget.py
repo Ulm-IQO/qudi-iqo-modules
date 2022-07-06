@@ -142,12 +142,12 @@ class OdmrPlotWidget(QtWidgets.QWidget):
 
     @QtCore.Slot(tuple)
     def _colorbar_limits_changed(self, limits):
-        self._image_item.percentiles = None
+        self._image_item.set_percentiles(None)
         self._image_item.setLevels(limits)
 
     @QtCore.Slot(tuple)
     def _colorbar_percentiles_changed(self, percentiles):
-        self._image_item.percentiles = percentiles
+        self._image_item.set_percentiles(percentiles)
         levels = self._image_item.levels
         if levels is not None:
             self._colorbar.set_limits(*levels)
