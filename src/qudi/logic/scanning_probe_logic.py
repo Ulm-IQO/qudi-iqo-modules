@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from PySide2 import QtCore
 import copy as cp
+import numpy as np
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
@@ -46,7 +47,7 @@ class ScanningProbeLogic(LogicBase):
     _scan_frequency = StatusVar(name='scan_frequency', default=None)
 
     # config options
-    _min_poll_interval = ConfigOption(name='min_poll_interval', default=0.5)
+    _min_poll_interval = ConfigOption(name='min_poll_interval', default=None)
 
     # signals
     sigScanStateChanged = QtCore.Signal(bool, object, object)
@@ -68,8 +69,8 @@ class ScanningProbeLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        constr = self.scanner_constraints
 
+        constr = self.scanner_constraints
         self._scan_saved_to_hist = True
 
         self.log.debug(f"Scanner settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
@@ -79,6 +80,11 @@ class ScanningProbeLogic(LogicBase):
             self._scan_ranges = new_settings['range']
             self._scan_resolution = new_settings['resolution']
             self._scan_frequency = new_settings['frequency']
+
+        if not self._min_poll_interval:
+            # defaults to maximum scan frequency of scanner
+            self._min_poll_interval = 1/np.max([constr.axes[ax].frequency_range for ax in constr.axes])
+
         """
         if not isinstance(self._scan_ranges, dict):
             self._scan_ranges = {ax.name: ax.value_range for ax in constr.axes.values()}
