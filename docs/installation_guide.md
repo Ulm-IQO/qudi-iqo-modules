@@ -1,4 +1,9 @@
 # Installation Guide
+
+This guide is a step-by-step instruction how to get started with qudi + iqo-modules installation.
+For additional information, we recommend checking the [qudi-core documentation](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/index.md).
+If you're migrating an existing qudi v0.1 installation, there is a dedicated porting guide (LINK MISSING).
+
 ## Install qudi core
 
 Follow the [qudi-core installation](https://ulm-iqo.github.io/qudi-core/setup/installation.html) instructions to setup your Python environment and the basic qudi installation. We recommend installing qudi-core from PyPI (non dev), as typical users shouldn't need to change core code too often. You can still change your measurements modules that are installed next.
@@ -18,6 +23,7 @@ The last step in the qudi-core installation instructions briefly explains settin
 Now you qudi-core installation will know about the measurement modules and it's time to set up a proper qudi configuration file.
 
 ## Configure Pycharm
+It is possible to run qudi just from the command line. To this end, just type `qudi` into your console.
 Having the code as a project in the Pycharm IDE allows to easily navigate and run the qudi code.
 - Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
 - Create a new project in Pycharm and add the qudi-core and qudi-iqo-modules folders to it by 'File'->'Open..'->('Attach' option). If you did install qudi-core in non-developer mode, you can find your qudi-core folder by `python -c "import os, sys; print(os.path.dirname(sys.executable)+'\Lib\site-packages\qudi')"`

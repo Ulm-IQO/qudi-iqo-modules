@@ -5,12 +5,12 @@ Please note that we are describing the most common use case, but can't cover all
 
 ## General qudi config
 
-The core qudi facilities are configured in the 'global' section of the config file. You can find a detailed description in the qudi-core configuration guide (LINK BROKEN).
+The core qudi facilities are configured in the 'global' section of the config file. You can find a detailed description in the qudi-core [configuration guide](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md).
 It might be instructive to have a look at the respective section in the default config (NO LINK YET) which sets up a dummy configuration without real hardware.
 
 ### Remote modules
 
-The setup of remote connections has changed quite a bit. Please find the instruction here (NO LINK YET).
+The setup of remote connections has changed quite a bit. Please find the instruction to configure the [server](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#remote_modules_server) and each of the [remote modules](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#Remote%20Module).
 
 ## Module config
 
@@ -31,15 +31,21 @@ For the following modules no/ only little changes should be required:
 # Known missing features 
 Compared to the old release v0.1, the following features are currently not available yet:
 - Magnet control GUI
-- Confocal/Scanning: tilt correction, loop scans, moving arbitrary axis during scan, Resume Scan feature 
-- wavemeter whole toolchain
-- PID Hardware software (not ported?)
+- Confocal/Scanning: tilt correction, loop scans, moving arbitrary axis during scan, puase and resume scan  
+- wavemeter toolchain
+- PID Hardware and software (not ported?)
+
+In case you need these features, please reach out to us to discuss how to move forward.
+We might have already started to port a feature or can assist you in contributing.
 
 # Untested features
-- motors
-- power supply 
+Some of the toolchains and modules have been ported, but not thoroughly tested yet.
+Please let us know if you successfully use or find errors in the following modules:
+
+- motors hardware files
+- power supply hardware files
 - temperature
-- camera 
+- camera toolchain
 
 
 # Miscellaneous
