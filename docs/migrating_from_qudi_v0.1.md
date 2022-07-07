@@ -1,5 +1,8 @@
-# Config conversion from old qudi (release v0.1) to new core 
-This document gives a short overview how to port an existing configuration to the new qudi release vXXX (aka new core). The good news is: If you have a running configuration for v0.1 already,
+# Migrating from old qudi (release v0.1) to new core 
+This document gives a short overview how to migrate from an existing qudi installation (<= v0.1) to the new qudi release vXXX (aka new core).
+You can easily keep your old installation in parallel. So moving to the new core is mainly about porting your old
+configuration file.
+The good news is: If you have a running configuration for v0.1 already,
 it should be straightforward to adapt it to your new qudi installation.
 Please note that we are describing the most common use case, but can't cover all modules here. If you encounter issues with any configuration, it might help to look into the source (.py) file. There you'll find an example config in the docstring of the respective class.
 
@@ -11,6 +14,22 @@ It might be instructive to have a look at the respective section in the default 
 ### Remote modules
 
 The setup of remote connections has changed quite a bit. Please find the instruction to configure the [server](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#remote_modules_server) and each of the [remote modules](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#Remote%20Module).
+
+### Qudi kernel
+
+When you're switching between an old (v0.1) installation and the new core, you need to register the qudi kernel.
+- Open your Anaconda prompt and activate the respective qudi environment:
+
+Before starting the new core:
+
+    activate qudi-env
+    qudi-install-kernel
+
+Before starting your old installation:
+
+    activate qudi 
+    cd C:\Software\qudi\core
+    python qudikernel.py install
 
 ## Module config
 

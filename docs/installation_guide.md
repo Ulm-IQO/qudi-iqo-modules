@@ -41,17 +41,48 @@ To run Qudi via Pycharm you have to configure the right Python environment.
 
 ## qudi Configuration file
 
-- Start by playing with the dummy config (LINK MISSING) 
-- - Load the dummy config file via file -> load configuration
-- Continue by settting up real hardware. These links may help you:
-- As an IQO member, you might want to checkout the following repo (LINK MISSING). In there, you can find and store configuration for multiple setups in the institute.
+The configuration file specifies all the modules and hardware that are loaded to qudi. Additionally, many modules come with
+configuration parameters that are set in this file. On your first startup, the qudi manager might be empty.
+- As a first step, it is instructive
+to load (via File -> Load configuration) the default _dummy_ configuration (LINK MISSING) that we provide with qudi-iqo-modules. It allows to have a look at the available toolchains and modules
+without the need to attach real hardware.
+- Currently, we provide the following toolchains:
+    - Time series (/_slow counting_)
+    - Scanning (/_confocal_)
+    - Poi manager 
+    - CW ODMR 
+    - Pulsed
+    - Camera
+    - Switches
+    - Laser 
+    - Spectrometer
+    - Task runner (MISSING in dummy)
+    - Qdplot
+    - NV Calculator (MISSING in dummy)
+
+- Continue by settting up real hardware. For the more complex toolchains above, we added links to help files that explain their configuration. 
+  Otherwise, we advise you to start with the respective gui section in the dummy config file and iteratively go through all the connected modules (logic/hardware)
+  to adapt them for working with real hardware.
+  
+As an IQO member, we strongly advise to store your configuration in [qudi-iqo-config repo](https://github.com/Ulm-IQO/qudi-iqo-config). In there, you can find configurations for multiple setups in the institute.
+- To set this up, navigate in your console to the folder where you want to store your configuration. We recommend your user directory, because qudi by default stores logs and data there:
+  `cd C:\Users\quantumguy\qudi`
+- Clone the repo from git:
+  `git clone https://github.com/Ulm-IQO/qudi-iqo-config`
+- Open the created folder in Pycharm via File -> Open -> Attach
+- Copy your configuration file into this folder.
+- Commit your file by right clicking on it in Pycharm -> Git -> Commit
+- Push your change online by Git -> Push
+
+Whenever you make changes to your configuration, you should create such an commit and make it available online. All configurations are accessible for iqo members only.
 
 ### Remote
+
+Qudi allows to access modules (including hardware) that run on a different computer that is connected to the same LAN network.
+Please find the instruction to configure the [server](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#remote_modules_server) and each of the [remote modules](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#Remote%20Module).
+
 ### Pitfalls
-### Scanning Tool Chain
-### Laser Tool Chain
-### Spectrometer
-### CW ODMR Tool Chain
+
 
 ## Jupyter notebooks/ measurement scripts
 
