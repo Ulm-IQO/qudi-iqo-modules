@@ -679,6 +679,10 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     @property
+    def last_measurement_asset(self):
+        pass
+
+    @property
     def sampling_information(self):
         return self._sampling_information
 
@@ -1376,7 +1380,9 @@ class PulsedMeasurementLogic(LogicBase):
                 'alternating'                 : self._alternating,
                 'analysis parameters'         : self.analysis_settings,
                 'extraction parameters'       : self.extraction_settings,
-                'fast counter settings'       : self.fast_counter_settings}
+                'fast counter settings'       : self.fast_counter_settings,
+                # todo: save sequence belonging to signal, not last uploaded one
+                'waveform parameters'       : self.sampling_information['generation_parameters']}
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):

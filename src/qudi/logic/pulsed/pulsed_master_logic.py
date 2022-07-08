@@ -574,6 +574,10 @@ class PulsedMasterLogic(LogicBase):
         """
         if isinstance(is_running, bool) and isinstance(is_paused, bool):
             self.status_dict['measurement_running'] = is_running
+            if is_running:
+                # measurement asset cleared on loading of new asset
+                self.status_dict['measurement_asset'] = {'asset': self.loaded_asset,
+                                                         'sampling_information': self.pulsedmeasurementlogic().sampling_information}
             self.sigMeasurementStatusUpdated.emit(is_running, is_paused)
         return
 
@@ -808,6 +812,7 @@ class PulsedMasterLogic(LogicBase):
         """
         self.status_dict['sampload_busy'] = False
         self.status_dict['loading_busy'] = False
+        self.status_dict['measurement_asset'] = None
         self.sigLoadedAssetUpdated.emit(asset_name, asset_type)
         # Transfer sequence information from PulseBlockEnsemble or PulseSequence to
         # PulsedMeasurementLogic to be able to invoke measurement settings from them
