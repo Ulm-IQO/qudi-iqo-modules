@@ -1354,6 +1354,26 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     # FIXME: Revise everything below
+    def _get_state(self):
+        # todo: is there a qudi way of getting a module state
+        import copy as cp
+        # Copy the object's state from self.__dict__ which contains
+        # all our instance attributes. Always use the dict.copy()
+        # method to avoid modifying the original state.
+        state = cp.copy(self.__dict__)
+
+        unserializable = []
+
+        for key, val in self.__dict__.items():
+            try:
+                cp.deepcopy(val)
+            except TypeError:
+                unserializable.append(key)
+
+        # Remove the unpicklable entries.
+        for key in unserializable:
+            del state[key]
+        return state
 
     ############################################################################
     def _get_raw_metadata(self):
