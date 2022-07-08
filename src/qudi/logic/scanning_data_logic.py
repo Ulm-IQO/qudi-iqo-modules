@@ -193,7 +193,6 @@ class ScanningDataLogic(LogicBase):
             self.sigHistoryScanDataRestored.emit(data)
             return
 
-    @QtCore.Slot()
     def _update_scan_state(self, running, data, caller_id):
 
         settings = {

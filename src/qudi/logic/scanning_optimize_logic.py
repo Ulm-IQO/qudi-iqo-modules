@@ -112,7 +112,7 @@ class ScanningOptimizeLogic(LogicBase):
     def on_deactivate(self):
         """ Reverse steps of activation
         """
-        self._scan_logic().sigScanStateChanged.disconnect()
+        self._scan_logic().sigScanStateChanged.disconnect(self._scan_state_changed)
         self._sigNextSequenceStep.disconnect()
         self.stop_optimize()
         return
@@ -331,7 +331,6 @@ class ScanningOptimizeLogic(LogicBase):
                 self.stop_optimize()
             return
 
-    @QtCore.Slot(bool, object, object)
     def _scan_state_changed(self, is_running, data, caller_id):
 
         with self._thread_lock:
