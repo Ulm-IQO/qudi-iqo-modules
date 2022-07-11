@@ -33,11 +33,19 @@ To run Qudi via Pycharm you have to configure the right Python environment.
 - If the correct environment ist not listed yet, you can add it via the "+" button. If you followed the qudi-core installation incstructions, the environment should be named `qudi-env`.
 - You can find the path to the environment by `python -c "import os, sys; print(os.path.dirname(sys.executable))"`
 - Choose the correct environment, like shown on the screenshot.
-![grafik](https://user-images.githubusercontent.com/5861249/176209579-3175f422-e940-4a58-98e1-821a85211de3.png)
+<img src="https://user-images.githubusercontent.com/5861249/176209579-3175f422-e940-4a58-98e1-821a85211de3.png" alt="drawing" width="700"/>
 - Now open the file `qudi-core\src\qudi\runnable.py` in Pycharm. If the environment is recognized correctly to Pycharm, you can run qudi via 'Run'->'Run runnable.py'.
 - To enable debug output displayed in the qudi manager, navigate to 'Run'->'Edit configurations' and add the flag `-d' in the line 'Parameters'
 
 - working directory?
+
+### Switching branches
+Switching to some other development branch is easy, if you installed your modules in dev mode. Just look in the lower right to access Pycharm's branch control and
+checkout the desired branch from remote/origin (that is branches available online, not copies on your local computer).
+
+<img src="https://user-images.githubusercontent.com/5861249/178280865-70936ade-f1d4-488f-9979-86ece4cba5cb.png" alt="drawing" width="500"/>
+
+Now you will have a local copy of this branch in which you can create commits and push these online.
 
 ## qudi Configuration file
 
