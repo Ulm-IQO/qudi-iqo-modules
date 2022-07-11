@@ -164,7 +164,6 @@ class ScanningDataLogic(LogicBase):
             #self.log.debug(f"Hist_prev called, index {self._curr_history_index + 1}")
             return self.restore_from_history(self._curr_history_index + 1)
 
-    @QtCore.Slot(int)
     def restore_from_history(self, index):
         with self._thread_lock:
             if self._scan_logic().module_state() != 'idle':
@@ -280,7 +279,6 @@ class ScanningDataLogic(LogicBase):
                         arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
         return fig
 
-    @QtCore.Slot(object, object)
     def save_scan(self, scan_data, color_range=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
