@@ -223,7 +223,6 @@ class ScanningOptimizeLogic(LogicBase):
     def optimal_position(self):
         return self._optimal_position.copy()
 
-    @QtCore.Slot(dict)
     def set_optimize_settings(self, settings):
         """
         """
@@ -252,13 +251,11 @@ class ScanningOptimizeLogic(LogicBase):
             self.sigOptimizeSettingsChanged.emit(settings_update)
             return settings_update
 
-    @QtCore.Slot(bool)
     def toggle_optimize(self, start):
         if start:
             return self.start_optimize()
         return self.stop_optimize()
 
-    @QtCore.Slot()
     def start_optimize(self):
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -315,7 +312,6 @@ class ScanningOptimizeLogic(LogicBase):
             self._sigNextSequenceStep.emit()
             return 0
 
-    @QtCore.Slot()
     def _next_sequence_step(self):
         with self._thread_lock:
 
@@ -378,7 +374,6 @@ class ScanningOptimizeLogic(LogicBase):
                 self._sigNextSequenceStep.emit()
             return
 
-    @QtCore.Slot()
     def stop_optimize(self):
         with self._thread_lock:
             if self.module_state() == 'idle':
