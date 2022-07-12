@@ -47,7 +47,7 @@ setup(
     version=version,
     packages=find_namespace_packages(where='src'),
     package_dir={'': 'src'},
-    package_data={''        : ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md', 'VERSION'],
+    package_data={''        : ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md', 'VERSION', 'src/qudi/default.cfg'],
                   'qudi.gui': ['*.ui', '*/*.ui'],
                   },
     description='IQO measurement modules collection for qudi',
