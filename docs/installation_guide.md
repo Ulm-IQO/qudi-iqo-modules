@@ -2,7 +2,7 @@
 
 This guide is a step-by-step instruction how to get started with qudi + iqo-modules installation.
 For additional information, we recommend checking the [qudi-core documentation](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/index.md).
-If you're migrating an existing qudi v0.1 installation, there is a dedicated porting guide (LINK MISSING).
+If you're migrating an existing qudi v0.1 installation, there is a dedicated [porting guide](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/migrating_from_qudi_v0.1.md).
 
 ## Install qudi core
 
@@ -35,9 +35,11 @@ To run Qudi via Pycharm you have to configure the right Python environment.
 - Choose the correct environment, like shown on the screenshot.
 <img src="https://user-images.githubusercontent.com/5861249/176209579-3175f422-e940-4a58-98e1-821a85211de3.png" alt="drawing" width="700"/>
 - Now open the file `qudi-core\src\qudi\runnable.py` in Pycharm. If the environment is recognized correctly to Pycharm, you can run qudi via 'Run'->'Run runnable.py'.
+<img src="https://user-images.githubusercontent.com/5861249/178508718-0c141a2a-03ce-49ba-bddb-80a593ea4b25.png" alt="drawing" width="500"/>
+
+
 - To enable debug output displayed in the qudi manager, navigate to 'Run'->'Edit configurations' and add the flag `-d' in the line 'Parameters'
 
-- working directory?
 
 ### Switching branches
 Switching to some other development branch is easy, if you installed your modules in dev mode. Just look in the lower right to access Pycharm's branch control and
@@ -47,16 +49,17 @@ checkout the desired branch from remote/origin (that is branches available onlin
 
 Now you will have a local copy of this branch in which you can create commits and push these online.
 
-## qudi Configuration file
+## Qudi configuration 
 
 The configuration file specifies all the modules and hardware that are loaded to qudi. Additionally, many modules come with
 configuration parameters that are set in this file. On your first startup, the qudi manager might be empty.
-- As a first step, it is instructive
-to load (via File -> Load configuration) the default _dummy_ configuration (LINK MISSING) that we provide with qudi-iqo-modules. It allows to have a look at the available toolchains and modules
-without the need to attach real hardware.
+As a first step, it is instructive to load the default [_dummy_ configuration](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/default.cfg) that we provide with qudi-iqo-modules. It allows to have a look at the available toolchains and modules
+without the need to attach real hardware. 
+- Copy the default.cfg into your user data folder, eg. to `C:\Users\quantumguy\qudi\config`. We strongly discourage to store any configuration (except the default.cfg) in the source folder of qudi.
+- Start qudi, and then load (via File -> Load configuration) the default config that you just copied.
 - Currently, we provide the following toolchains:
-    - Time series (/_slow counting_)
-    - Scanning (/_confocal_)
+    - [Time series](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_timeseries.md) (/_slow counting_)
+    - [Scanning](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_confocal_scanning.md) (/_confocal_)
     - Poi manager 
     - CW ODMR 
     - Pulsed
@@ -64,9 +67,9 @@ without the need to attach real hardware.
     - Switches
     - Laser 
     - Spectrometer
-    - Task runner (MISSING in dummy)
+    - Task runner 
     - Qdplot
-    - NV Calculator (MISSING in dummy)
+    - NV Calculator 
 
 - Continue by settting up real hardware. For the more complex toolchains above, we added links to help files that explain their configuration. 
   Otherwise, we advise you to start with the respective gui section in the dummy config file and iteratively go through all the connected modules (logic/hardware)
@@ -88,8 +91,6 @@ Whenever you make changes to your configuration, you should create such an commi
 
 Qudi allows to access modules (including hardware) that run on a different computer that is connected to the same LAN network.
 Please find the instruction to configure the [server](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#remote_modules_server) and each of the [remote modules](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#Remote%20Module).
-
-### Pitfalls
 
 
 ## Jupyter notebooks/ measurement scripts

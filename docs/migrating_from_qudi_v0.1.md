@@ -9,7 +9,7 @@ Please note that we are describing the most common use case, but can't cover all
 ## General qudi config
 
 The core qudi facilities are configured in the 'global' section of the config file. You can find a detailed description in the qudi-core [configuration guide](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md).
-It might be instructive to have a look at the respective section in the default config (NO LINK YET) which sets up a dummy configuration without real hardware.
+It might be instructive to have a look at the respective section in the [default config]((https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/default.cfg)) which sets up a dummy configuration without real hardware.
 
 ### Remote modules
 
@@ -34,13 +34,17 @@ Before starting your old installation:
 ## Module config
 
 The configuration for the following modules has changed substantially:
-- timeseries (LINK MISSING)
-Formerly known as slow counter. The new implantation is more flexible and allows more data sources (than the TTL counting supported by our old slow counter).
+- [timeseries](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_timeseries.md)
 
-- scanning (LINK MISSING)
-Formely known as confocal. The refined version was rewritten from scratch and supports arbitrary input sources and axis configurations.
+    Formerly known as slow counter. The new implantation is more flexible and allows more data sources (than the TTL counting supported by our old slow counter).
 
-- cw odmr (NO LINK YET) Toolchain has changed but this doesn't affect the configuration a lot. Changes in the cw odmr configuration result from huge restructuring the NI card duties. For cw odmr `ni_x_finite_sampling_input` is required. For the correct configuration please find the example config in the docstring of the `NIXSeriesFiniteSamplingInput` class in qudi\hardware\ni_x_series\ni_x_series_finite_sampling_input.py. All ports need to adapted to your custom setup, of course. You should find the correct ports in your old configuration of the NI card. 
+- [scanning](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_confocal_scanning.md)
+
+    Formely known as confocal. The refined version was rewritten from scratch and supports arbitrary input sources and axis configurations.
+
+- cw odmr
+  
+  Toolchain has changed but this doesn't affect the configuration a lot. Changes in the cw odmr configuration result from huge restructuring the NI card duties. For cw odmr `ni_x_finite_sampling_input` is required. For the correct configuration please find the example config in the docstring of the `NIXSeriesFiniteSamplingInput` class in qudi\hardware\ni_x_series\ni_x_series_finite_sampling_input.py. All ports need to adapted to your custom setup, of course. You should find the correct ports in your old configuration of the NI card. 
 
 For the following modules no/ only little changes should be required:
 - laser
