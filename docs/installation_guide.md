@@ -8,6 +8,11 @@ If you're migrating an existing qudi v0.1 installation, there is a dedicated [po
 
 Follow the [qudi-core installation](https://ulm-iqo.github.io/qudi-core/setup/installation.html) instructions to setup your Python environment and the basic qudi installation. We recommend installing qudi-core from PyPI (non dev), as typical users shouldn't need to change core code too often. You can still change your measurements modules that are installed next.
 
+> **⚠ WARNING:**
+> 
+> Currently (2022/07/12), qudi-core as installed from PyPi is incompatible with iqo-modules. If you installed in non-dev mode, you need to manually update to 
+> the latest github release via `python -m pip install git+https://github.com/Ulm-IQO/qudi-core.git@main` after the qudi-core installation.
+
 ## Install qudi-iqo-modules
 
 The last step in the qudi-core installation instructions briefly explains setting up the measurement modules. More detailedly, this is how you install the qudi-iqo-modules in dev mode. In this way, you can easily change code in the measurement toolchains.
