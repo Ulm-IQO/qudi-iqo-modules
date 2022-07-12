@@ -55,6 +55,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
             y: 10e-9
             z: 50e-9
     """
+    # TODO Bool indicators deprecated; Change in scanning probe toolchain
+
     _threaded = True
 
     # config options
@@ -200,7 +202,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
 
         @return:
         """
-        self.log.debug('Scanning probe dummy "get_constraints" called.')
+        #self.log.debug('Scanning probe dummy "get_constraints" called.')
         return self._constraints
 
     def configure_scan(self, scan_settings):
@@ -240,17 +242,17 @@ class ScanningProbeDummy(ScanningProbeInterface):
                         break
                 if ranges[i][0] < axis_constr.min_value or ranges[i][1] > axis_constr.max_value:
                     self.log.error('Scan range out of bounds for axis "{0}". Maximum possible range'
-                                   ' is: {1}'.format(ax, axis_constr.value_bounds))
+                                   ' is: {1}'.format(ax, axis_constr.value_range))
                     return True, self.scan_settings
                 if resolution[i] < axis_constr.min_resolution or resolution[i] > axis_constr.max_resolution:
                     self.log.error('Scan resolution out of bounds for axis "{0}". Maximum possible '
-                                   'range is: {1}'.format(ax, axis_constr.resolution_bounds))
+                                   'range is: {1}'.format(ax, axis_constr.resolution_range))
                     return True, self.scan_settings
                 if i == 0:
                     if frequency < axis_constr.min_frequency or frequency > axis_constr.max_frequency:
                         self.log.error('Scan frequency out of bounds for fast axis "{0}". Maximum '
                                        'possible range is: {1}'
-                                       ''.format(ax, axis_constr.frequency_bounds))
+                                       ''.format(ax, axis_constr.frequency_range))
                         return True, self.scan_settings
 
             self._current_scan_resolution = tuple(resolution)
@@ -267,7 +269,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         progress.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "move_absolute" called.')
+            # self.log.debug('Scanning probe dummy "move_absolute" called.')
             if self.module_state() != 'idle':
                 self.log.error('Scanning in progress. Unable to move to position.')
             elif not set(position).issubset(self._position_ranges):
@@ -332,7 +334,6 @@ class ScanningProbeDummy(ScanningProbeInterface):
 
     def start_scan(self):
         """
-
         @return:
         """
         with self._thread_lock:
@@ -401,8 +402,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 scan_range=self._current_scan_ranges,
                 scan_resolution=self._current_scan_resolution,
                 scan_frequency=self._current_scan_frequency,
-                position_feedback_axes=feedback_axes
+                position_feedback_axes=feedback_axes,
+                target_at_start=self.get_target()
             )
+
             self._scan_data.new_scan()
             self.__scan_start = time.time()
             self.__last_line = -1
@@ -439,8 +442,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return ScanData: ScanData instance used in the scan
         """
         with self._thread_lock:
-            if self.thread() is not QtCore.QThread.currentThread():
-                self.log.debug('Scanning probe dummy "get_scan_data" called.')
+            # if self.thread() is not QtCore.QThread.currentThread():
+            #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
             if self._scan_data is None:
                 print('nope, no scan data in hardware')
                 return None

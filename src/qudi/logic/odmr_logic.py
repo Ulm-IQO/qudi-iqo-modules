@@ -38,7 +38,17 @@ from qudi.util.enums import SamplingOutputMode
 
 
 class OdmrLogic(LogicBase):
-    """ This is the Logic class for CW ODMR measurements """
+    """
+    This is the Logic class for CW ODMR measurements.
+
+    example config for copy-paste:
+
+    odmr_logic:
+        module.Class: 'odmr_logic.OdmrLogic'
+        connect:
+            microwave: <microwave_name>
+            data_scanner: <data_scanner_name>
+    """
 
     # declare connectors
     _microwave = Connector(name='microwave', interface='MicrowaveInterface')

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the qudi hardware module to use a National Instruments X-series card as mixed
-signal input data streamer.
+This file contains the qudi hardware module to use a National Instruments X-series card for input
+of data of a certain length at a given sampling rate and data type.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -37,7 +37,7 @@ from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputIn
 class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     """
     A National Instruments device that can detect and count digital pulses and measure analog
-    voltages as data stream.
+    voltages in a finite sampling way.
 
     !!!!!! NI USB 63XX, NI PCIe 63XX and NI PXIe 63XX DEVICES ONLY !!!!!!
 
@@ -55,9 +55,9 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             'ai1': 'V'
         # external_sample_clock_source: 'PFI0'  # optional
         # external_sample_clock_frequency: 1000  # optional
-        adc_voltage_range: [-10, 10]  # optional
-        max_channel_samples_buffer: 10000000  # optional
-        read_write_timeout: 10  # optional
+        adc_voltage_range: [-10, 10]  # optional, default [-10, 10]
+        max_channel_samples_buffer: 10000000  # optional, default 10000000
+        read_write_timeout: 10  # optional, default 10
         sample_clock_output: '/Dev1/PFI20'  # optional
 
     """

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-ToDo: Document
-This file contains a dummy hardware module for the
+This file contains a dummy hardware module for sampling data at a constant rate, such as for
+continuous wave ODMR for example.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -37,7 +37,19 @@ class SimulationMode(Enum):
 
 class FiniteSamplingInputDummy(FiniteSamplingInputInterface):
     """
-    ToDo: Document
+    This file contains a dummy hardware module for sampling data at a constant rate, such as for
+    continuous wave ODMR for example.
+
+    example config for copy-paste:
+
+    finite_sampling_input_dummy:
+        module.Class: 'dummy.finite_sampling_input_dummy.FiniteSamplingInputDummy'
+        simulation_mode: 'ODMR'
+        sample_rate_limits: [1, 1e6]  # optional, default [1, 1e6]
+        frame_size_limits: [1, 1e9]  # optional, default [1, 1e9]
+        channel_units:
+            'APD counts': 'c/s'
+            'Photodiode': 'V'
     """
 
     _sample_rate_limits = ConfigOption(name='sample_rate_limits', default=(1, 1e6))

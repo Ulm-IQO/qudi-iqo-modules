@@ -57,6 +57,16 @@ class SequenceGeneratorLogic(LogicBase):
 
     This logic is also responsible to manipulate and read back hardware settings for
     waveform/sequence playback (pp-amplitude, sample rate, active channels etc.).
+
+    Example config:
+
+    sequence_generator_logic:
+        module.Class: 'pulsed.sequence_generator_logic.SequenceGeneratorLogic'
+        #additional_predefined_methods_path: # optional
+        #additional_sampling_functions_path: # optional
+        #assets_storage_path: # optional
+        connect:
+            pulsegenerator: 'pulser_dummy'
     """
 
     # declare connectors
