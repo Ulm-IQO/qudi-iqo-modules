@@ -47,7 +47,7 @@ checkout the desired branch from remote/origin (that is branches available onlin
 
 Now you will have a local copy of this branch in which you can create commits and push these online.
 
-## qudi Configuration file
+## Qudi configuration file
 
 The configuration file specifies all the modules and hardware that are loaded to qudi. Additionally, many modules come with
 configuration parameters that are set in this file. On your first startup, the qudi manager might be empty.
@@ -64,9 +64,9 @@ without the need to attach real hardware.
     - Switches
     - Laser 
     - Spectrometer
-    - Task runner (MISSING in dummy)
+    - Task runner 
     - Qdplot
-    - NV Calculator (MISSING in dummy)
+    - NV Calculator 
 
 - Continue by settting up real hardware. For the more complex toolchains above, we added links to help files that explain their configuration. 
   Otherwise, we advise you to start with the respective gui section in the dummy config file and iteratively go through all the connected modules (logic/hardware)

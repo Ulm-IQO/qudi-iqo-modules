@@ -230,12 +230,12 @@ class ScannerGui(GuiBase):
         self.restore_history()
 
         self._restore_window_geometry(self._mw)
-
+        """
         self._send_pop_up_message('We would appreciate your contribution',
                                   'The scanning probe toolchain is still in active development. '
                                   'Please report bugs and issues in the qudi-iqo-modules repository '
                                   'or even fix them and contribute your pull request. Your help is highly appreciated.')
-
+        """
         return
 
     def on_deactivate(self):
