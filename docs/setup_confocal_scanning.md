@@ -174,7 +174,7 @@ docstring of every module's python file. In the list above, a direct link for ev
                 device_name: 'Dev1'
                 digital_sources:  # optional
                     - 'PFI8'
-                analog_sources:  # optional
+                #analog_sources:  # optional
                 #   - 'ai0'
                 #   - 'ai1'
                 # external_sample_clock_source: 'PFI0'  # optional
