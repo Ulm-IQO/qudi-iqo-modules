@@ -931,15 +931,15 @@ class ScannerGui(GuiBase):
         # Update optimizer settings QDialog
         self._osd.change_settings(settings)
 
-        # Adjust optimizer scan axis labels
+        # Adjust optimizer settings
         if 'scan_sequence' in settings:
             new_settings = self._optimize_logic().check_sanity_optimizer_settings(settings, self._optimizer_plot_dims)
             if settings['scan_sequence'] != new_settings['scan_sequence']:
                 new_seq = new_settings['scan_sequence']
                 self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
                                  f" Defaulted optimizer to= {new_seq}")
-                settings['scan_sequence'] = new_seq
                 self._optimize_logic().scan_sequence = new_seq
+            settings = new_settings
 
             axes_constr = self._scanning_logic().scanner_axes
             self.optimizer_dockwidget.scan_sequence = settings['scan_sequence']
