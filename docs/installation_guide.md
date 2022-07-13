@@ -31,14 +31,19 @@ Now you qudi-core installation will know about the measurement modules and it's 
 It is possible to run qudi just from the command line. To this end, just type `qudi` into your console.
 Having the code as a project in the Pycharm IDE allows to easily navigate and run the qudi code.
 - Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
-- Create a new project in Pycharm and add the qudi-core and qudi-iqo-modules folders to it by 'File'->'Open..'->('Attach' option). If you did install qudi-core in non-developer mode, you can find your qudi-core folder by `python -c "import os, sys; print(os.path.dirname(sys.executable)+'\Lib\site-packages\qudi')"`
+- Create a new empty project in Pycharm. Don't open any source code yet.
 
-To run Qudi via Pycharm you have to configure the right Python environment.
+To run Qudi via Pycharm you have to configure the right Python environment as a project interpreter.
 - In Pycharm, navigate to 'File'->'Settings'->'Project:qudi'->'Project interpreter'
 - If the correct environment ist not listed yet, you can add it via the "+" button. If you followed the qudi-core installation incstructions, the environment should be named `qudi-env`.
 - You can find the path to the environment by `python -c "import os, sys; print(os.path.dirname(sys.executable))"`
 - Choose the correct environment, like shown on the screenshot.
 <img src="https://user-images.githubusercontent.com/5861249/176209579-3175f422-e940-4a58-98e1-821a85211de3.png" alt="drawing" width="700"/>
+
+Now we open the code in Pycharm.
+- Add both the qudi-core and qudi-iqo-modules folders by 'File'->'Open..'. After selecting their respective folders you choose the 'Attach' option in the dialogue to have seperate locations open in the same project. If you did install qudi-core in non-developer mode, you can find your qudi-core folder by `python -c "import os, sys; print(os.path.dirname(sys.executable)+'\Lib\site-packages\qudi')"`
+
+
 - Now open the file `qudi-core\src\qudi\runnable.py` in Pycharm. If the environment is recognized correctly to Pycharm, you can run qudi via 'Run'->'Run runnable.py'.
 <img src="https://user-images.githubusercontent.com/5861249/178508718-0c141a2a-03ce-49ba-bddb-80a593ea4b25.png" alt="drawing" width="500"/>
 
@@ -48,7 +53,7 @@ To run Qudi via Pycharm you have to configure the right Python environment.
 
 ### Switching branches
 Switching to some other development branch is easy, if you installed your modules in dev mode. Just look in the lower right to access Pycharm's branch control and
-checkout the desired branch from remote/origin (that is branches available online, not copies on your local computer).
+'checkout' the desired branch from remote/origin (that is branches available online, not copies on your local computer).
 
 <img src="https://user-images.githubusercontent.com/5861249/178280865-70936ade-f1d4-488f-9979-86ece4cba5cb.png" alt="drawing" width="500"/>
 
@@ -60,7 +65,7 @@ The configuration file specifies all the modules and hardware that are loaded to
 configuration parameters that are set in this file. On your first startup, the qudi manager might be empty.
 As a first step, it is instructive to load the default [_dummy_ configuration](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/default.cfg) that we provide with qudi-iqo-modules. It allows to have a look at the available toolchains and modules
 without the need to attach real hardware. 
-- Copy the default.cfg into your user data folder, eg. to `C:\Users\quantumguy\qudi\config`. We strongly discourage to store any configuration (except the default.cfg) in the source folder of qudi.
+- Copy the default.cfg (from qudi-iqo-modules\src\qudi\default.cfg) into your user data folder, eg. to `C:\Users\quantumguy\qudi\config`. We strongly discourage to store any configuration (except the default.cfg) in the source folder of qudi.
 - Start qudi, and then load (via File -> Load configuration) the default config that you just copied.
 - Currently, we provide the following toolchains:
     - [Time series](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_timeseries.md) (/_slow counting_)
@@ -90,7 +95,7 @@ As an IQO member, we strongly advise to store your configuration in [qudi-iqo-co
 - Commit your file by right clicking on it in Pycharm -> Git -> Commit
 - Push your change online by Git -> Push
 
-Whenever you make changes to your configuration, you should create such an commit and make it available online. All configurations are accessible for iqo members only.
+Whenever you make changes to your configuration, you should create such an commit and make it available online. All configurations in this repo are visible to iqo members only.
 
 ### Remote
 
