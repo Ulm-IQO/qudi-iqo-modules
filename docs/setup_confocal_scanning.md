@@ -185,5 +185,6 @@ docstring of every module's python file. In the list above, a direct link for ev
 
 # Configuration hints:
 - The scanning gui's `optimizer_plot_dimensions` ConfigOption allows to specify the optimizer's scanning behavior. The default setting `[2,1]` enables one 2D and one 1D optimization step. You may set to eg. `[2,2,2]` to have three two-dimensionsal scans done for optimzation. In the gui (Settings/Optimizer Settings), this will change the list of possible optimizer sequences.  
+- The maximum scanning frequency is given by the bandwidth of your Piezo controller (check the datasheet). It might make sense to put an even smaller limit into your config, since scanning at the hardware limit might introduce artifacts/offsets to your confocal scan.
 
 # Todo this readme:
