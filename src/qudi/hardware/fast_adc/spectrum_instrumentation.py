@@ -29,6 +29,7 @@ from pyspcm import *
 from spcm_tools import *
 
 from qudi.core.configoption import ConfigOption
+from qudi.util.mutex import Mutex
 from qudi.interface.fast_counter_interface import FastCounterInterface
 from qudi.hardware.fast_adc.si_dataclass import *
 
@@ -71,6 +72,10 @@ class Card_command():
         self.error_check = False
 
     def start_all(self):
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START | M2CMD_CARD_ENABLETRIGGER
+                            | M2CMD_DATA_STARTDMA)
+
+    def start_all_with_extradma(self):
         spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START | M2CMD_CARD_ENABLETRIGGER
                             | M2CMD_DATA_STARTDMA | M2CMD_EXTRA_STARTDMA)
 
@@ -324,7 +329,6 @@ class SpectrumInstrumentation(FastCounterInterface):
         clk_reference_Hz: 10e6
         trig_mode: 'EXT'
         trig_level_mV: 1000
-        gated: True
         initial_buffer_size_S: 1e9
         repetitions: 0
         row_data_save: False
@@ -367,7 +371,6 @@ class SpectrumInstrumentation(FastCounterInterface):
     _trig_mode = ConfigOption('trig_mode', 'EXT', missing='warn')
     _trig_level_mV = ConfigOption('trig_level_mV', '1000', missing='warn')
 
-    _gated = ConfigOption('gated', False, missing='warn')
     _init_buf_size_S = ConfigOption('initial_buffer_size_S', 1e9, missing='warn')
     _reps = ConfigOption('repetitions', 0, missing='nothing')
 
@@ -386,29 +389,11 @@ class SpectrumInstrumentation(FastCounterInterface):
         self._card_on = False
         self._internal_status = CardStatus.idle
 
-    def _load_settings_from_config_file(self):
-        self.cs.ai_range_mV = int(self._ai_range_mV)
-        self.cs.ai_offset_mV = int(self._ai_offset_mV)
-        self.cs.ai_term = self._ai_term
-        self.cs.ai_coupling = self._ai_coupling
-        self.cs.acq_mode = self._acq_mode
-        self.cs.acq_HW_avg_num = int(self._acq_HW_avg_num)
-        self.cs.acq_pre_trigs_S = int(self._acq_pre_trigs_S)
-        self.cs.acq_post_trigs_S = int(self._acq_post_trigs_S)
-        self.cs.buf_notify_size_B = int(self._buf_notify_size_B)
-        self.cs.clk_ref_Hz = int(self._clk_ref_Hz)
-        self.cs.trig_mode = self._trig_mode
-        self.cs.trig_level_mV = int(self._trig_level_mV)
-
-        self.ms.gated = self._gated
-        self.ms.init_buf_size_S = int(self._init_buf_size_S)
-        self.ms.reps = self._reps
-        self.ms.assign_data_bit(self.cs.acq_mode)
-
     def on_activate(self):
         """
         Open the card by activation of the module
         """
+        self._check_gated()
 
         if self._gated == True:
             self.cs = Card_settings_gated()
@@ -434,6 +419,32 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         if self.cs.card == None:
             self.log.info('No card found')
+
+    def _check_gated(self):
+        if 'GATE' in self._acq_mode:
+            self._gated = True
+        else:
+            self._gated = False
+
+    def _load_settings_from_config_file(self):
+        self.cs.ai_range_mV = int(self._ai_range_mV)
+        self.cs.ai_offset_mV = int(self._ai_offset_mV)
+        self.cs.ai_term = self._ai_term
+        self.cs.ai_coupling = self._ai_coupling
+        self.cs.acq_mode = self._acq_mode
+        self.cs.acq_HW_avg_num = int(self._acq_HW_avg_num)
+        self.cs.acq_pre_trigs_S = int(self._acq_pre_trigs_S)
+        self.cs.acq_post_trigs_S = int(self._acq_post_trigs_S)
+        self.cs.buf_notify_size_B = int(self._buf_notify_size_B)
+        self.cs.clk_ref_Hz = int(self._clk_ref_Hz)
+        self.cs.trig_mode = self._trig_mode
+        self.cs.trig_level_mV = int(self._trig_level_mV)
+
+        self.ms.gated = self._gated
+        self.ms.init_buf_size_S = int(self._init_buf_size_S)
+        self.ms.reps = self._reps
+        self.ms.assign_data_bit(self.cs.acq_mode)
+
 
     def on_deactivate(self):
         """
@@ -510,7 +521,11 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         if self._internal_status == CardStatus.idle:
             self.pl.init_measure_params()
-            self.ccmd.start_all()
+            if self.ms.gated:
+                self.ccmd.start_all_with_extradma()
+            else:
+                self.ccmd.start_all()
+
             self.ccmd.wait_DMA()
             if self.ms.gated == True:
                 self.pl.cp.tscmd.wait_extra_dma()
@@ -548,9 +563,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         If the hardware does not support these features, the values should be None
         """
-        #self.pl.fetch_on = True
         avg_data, avg_num = self.pl.fetch_data_trace()
-        #self.pl.fetch_on = False
         info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.pl.start_time}
 
         return avg_data, info_dict
@@ -1218,7 +1231,8 @@ class Process_commander:
         self._gated = ms.gated
         self._reps_per_buf = ms.reps_per_buf
         self._seq_size_B = ms.seq_size_B
-        self._ts_seq_size_B = ms.ts_seq_size_B
+        if self._gated:
+            self._ts_seq_size_B = ms.ts_seq_size_B
 
     def command_process(self):
         trig_reps = self.cp.dcmd.get_trig_reps()
@@ -1279,12 +1293,12 @@ class Process_loop(Process_commander):
     '''
     This is the main data process loop class.
     '''
+    threadlock = Mutex()
 
     def init_measure_params(self):
         self.cp.dcmd.init_dp_params()
         self.start_time = time.time()
         self.loop_on = True
-        self.fetch_on = False
 
     def start_data_process(self):
         self.data_proc_th = threading.Thread(target=self.start_data_process_loop)
@@ -1300,33 +1314,21 @@ class Process_loop(Process_commander):
     def start_data_process_loop(self):
 
         while self.loop_on == True:
-            if self.fetch_on == False:
+            with self.threadlock:
                 self.command_process()
-            elif self.fetch_on == True:
-                print('fetching')
-                time.sleep(1e-3)
-            else:
-                print('error on loop')
 
         return
 
     def start_data_process_loop_n(self, n):
 
         while self.dp.avg_num <= n:
-            if self.fetch_on == False:
+            with self.threadlock:
                 self.command_process()
-            elif self.fetch_on == True:
-                print('fetching')
-                time.sleep(1)
-
-            else:
-                print('error on loop')
 
         return
 
     def fetch_data_trace(self):
-        self.fetch_on = True
-        avg_data, avg_num = self.dp.return_avg_data()
-        self.fetch_on = False
+        with self.threadlock:
+            avg_data, avg_num = self.dp.return_avg_data()
 
         return avg_data, avg_num
