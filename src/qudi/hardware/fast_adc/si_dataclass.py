@@ -214,7 +214,7 @@ class PulseDataMulti(PulseDataSingle):
         return self.rep_no[n], self.pulse_no, self.data[n]
 
     def avgdata(self):
-        return self.rep, self.data.mean(axis=0)
+        return self.data.mean(axis=0)
 
     def reshape_2d_by_rep(self):
         len = int(self.data_len / self.rep)
