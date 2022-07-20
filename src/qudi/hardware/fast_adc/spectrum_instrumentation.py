@@ -842,7 +842,6 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
         self._acq_mode = cs.acq_mode
         self._acq_HW_avg_num = cs.acq_HW_avg_num
         self._acq_pre_trigs_S = cs.acq_pre_trigs_S
-        self._acq_loops = cs.acq_loops
         self._buf_notify_size_B = cs.buf_notify_size_B
         self._clk_samplerate_Hz = int(cs.clk_samplerate_Hz)
         self._clk_ref_Hz = int(cs.clk_ref_Hz)
@@ -858,6 +857,7 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
     def load_dynamic_cfg_params(self, cs, ms):
         self._acq_post_trigs_S = cs.acq_post_trigs_S
         self._acq_seg_size_S = cs.acq_seg_size_S
+        self._acq_loops = cs.acq_loops
         self._buf_size_B = cs.buf_size_B
         self._acq_seq_size_S = ms.seq_size_S
         if self._gated == True:
@@ -1132,7 +1132,8 @@ class Data_process_ungated():
 
     def get_new_avg_data(self):
         self.new_avg = AvgData()
-        self.new_avg.num, self.new_avg.data = self.dc_new.avgdata()
+        self.new_avg.num = self.dc_new.rep
+        self.new_avg.data = self.dc_new.avgdata()
 
     def update_avg_data(self):
         self.avg.update(self.new_avg)
@@ -1321,7 +1322,7 @@ class Process_loop(Process_commander):
 
     def start_data_process_loop_n(self, n):
 
-        while self.dp.avg_num <= n:
+        while self.dp.avg.num <= n:
             with self.threadlock:
                 self.command_process()
 
