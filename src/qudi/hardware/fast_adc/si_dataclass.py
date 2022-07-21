@@ -92,8 +92,8 @@ class Measurement_settings:
     reps: int = 0
     #Given by the measurement
     binwidth_s: float = 0
-    record_length_s: float =0
-    number_of_gates:int = 1
+    record_length_s: float = 0
+    number_of_gates: int = 1
     #Calculated
     seg_size_S: int = 0
     seq_size_S: int = 0
