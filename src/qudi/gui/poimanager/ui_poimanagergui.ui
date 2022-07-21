@@ -1181,22 +1181,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>poi_tools_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>poi_ToolBar</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>384</x>
-     <y>41</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>poi_ToolBar</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>poi_tools_view_Action</receiver>
@@ -1225,22 +1209,6 @@
     <hint type="destinationlabel">
      <x>343</x>
      <y>409</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>roi_management_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>roi_management_ToolBar</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>45</x>
-     <y>41</y>
     </hint>
    </hints>
   </connection>

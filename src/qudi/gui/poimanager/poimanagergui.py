@@ -541,6 +541,10 @@ class PoiManagerGui(GuiBase):
             lambda: self._mw.auto_find_POIs_Action.setVisible(self._mw.auto_pois_view_Action.isChecked()))
         self._mw.sample_shift_view_Action.triggered.connect(
             lambda: self._mw.sample_shift_dockWidget.setVisible(self._mw.sample_shift_view_Action.isChecked()))
+        self._mw.roi_management_view_Action.triggered.connect(
+            lambda: self._mw.roi_management_ToolBar.setVisible(self._mw.roi_management_view_Action.isChecked()))
+        self._mw.poi_tools_view_Action.triggered.connect(
+            lambda: self._mw.poi_ToolBar.setVisible(self._mw.poi_tools_view_Action.isChecked()))
         return
 
     def __disconnect_internal_signals(self):
@@ -558,6 +562,8 @@ class PoiManagerGui(GuiBase):
         self._mw.poi_tracker_view_Action.triggered.disconnect()
         self._mw.auto_pois_view_Action.triggered.disconnect()
         self._mw.sample_shift_view_Action.triggered.disconnect()
+        self._mw.roi_management_view_Action.triggered.disconnect()
+        self._mw.poi_tools_view_Action.triggered.disconnect()
         return
 
     def show(self):
