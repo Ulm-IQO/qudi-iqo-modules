@@ -26,6 +26,7 @@ import pyqtgraph as pg
 import re
 
 from qudi.core.connector import Connector
+from qudi.core.configoption import ConfigOption
 from qudi.util.units import ScaledFloat
 from qudi.util.helpers import natural_sort
 from qudi.core.module import GuiBase
@@ -249,12 +250,17 @@ class PoiManagerGui(GuiBase):
 
     poi_manager_gui:
         module.Class: 'poimanager.poimanagergui.PoiManagerGui'
+        options:
+            data_scan_axes: xy  #optional, default: xy
         connect:
             poi_manager_logic: 'poi_manager_logic'
     """
 
     # declare connectors
     _poi_manager_logic = Connector(name='poi_manager_logic', interface='PoiManagerLogic')
+
+    # config options
+    _data_scan_axes = ConfigOption(name='data_scan_axes', default=('x', 'y'), converter=tuple)
 
     # declare signals
     sigTrackPeriodChanged = QtCore.Signal(float)
@@ -454,7 +460,7 @@ class PoiManagerGui(GuiBase):
         self._mw.refind_poi_Action.triggered.connect(
             self._poi_manager_logic().optimise_poi_position, QtCore.Qt.QueuedConnection)
         self._mw.get_confocal_image_PushButton.clicked.connect(
-            lambda: self._poi_manager_logic().set_scan_image(True), QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().set_scan_image(True, self._data_scan_axes), QtCore.Qt.QueuedConnection)
         self._mw.set_poi_PushButton.clicked.connect(
             self._poi_manager_logic().add_poi, QtCore.Qt.QueuedConnection)
         self._mw.delete_last_pos_Button.clicked.connect(
