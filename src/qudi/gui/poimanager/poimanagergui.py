@@ -294,7 +294,7 @@ class PoiManagerGui(GuiBase):
 
         self._mw = PoiManagerMainWindow()
         # Configuring the dock widgets.
-        self.restore_dockwidgets_default()
+        self._restore_default_view()
 
         # Add validator to LineEdits
         self._mw.roi_name_LineEdit.setValidator(NameValidator())
@@ -339,8 +339,7 @@ class PoiManagerGui(GuiBase):
         self._mw.close()
 
     @QtCore.Slot()
-    def restore_dockwidgets_default(self):
-        self._mw.centralwidget.hide()
+    def _restore_default_view(self):
         self._mw.setDockNestingEnabled(True)
 
         self._mw.roi_map_dockWidget.setFloating(False)
@@ -528,7 +527,7 @@ class PoiManagerGui(GuiBase):
         self._mw.load_roi_Action.triggered.connect(self.load_roi)
         self._mw.blink_correction_view_Action.triggered.connect(self.toggle_blink_correction)
         self._mw.poi_selector_Action.toggled.connect(self.toggle_poi_selector)
-        self._mw.restore_default_view_Action.triggered.connect(self.restore_dockwidgets_default)
+        self._mw.restore_default_view_Action.triggered.connect(self._restore_default_view)
         return
 
     def __disconnect_internal_signals(self):
@@ -551,7 +550,9 @@ class PoiManagerGui(GuiBase):
 
     @QtCore.Slot(bool)
     def toggle_blink_correction(self, is_active):
-        self._mw.roi_image.activate_blink_correction(is_active)
+        self._mw.blink_correction_view_Action.setChecked(False)
+        self.log.error("Blink correction is currently not implemented.")
+        #self._mw.roi_image.activate_blink_correction(is_active)
         return
 
     @QtCore.Slot(bool)
