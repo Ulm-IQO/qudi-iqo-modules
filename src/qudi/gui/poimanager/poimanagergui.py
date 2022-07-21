@@ -294,7 +294,7 @@ class PoiManagerGui(GuiBase):
 
         self._mw = PoiManagerMainWindow()
         # Configuring the dock widgets.
-        self._restore_default_view()
+        self.restore_default_view()
 
         # Add validator to LineEdits
         self._mw.roi_name_LineEdit.setValidator(NameValidator())
@@ -339,7 +339,7 @@ class PoiManagerGui(GuiBase):
         self._mw.close()
 
     @QtCore.Slot()
-    def _restore_default_view(self):
+    def restore_default_view(self):
         self._mw.setDockNestingEnabled(True)
 
         self._mw.roi_map_dockWidget.setFloating(False)
@@ -349,6 +349,7 @@ class PoiManagerGui(GuiBase):
         self._mw.sample_shift_dockWidget.setFloating(False)
 
         self._mw.roi_map_dockWidget.show()
+        self._mw.roi_image.show()
         self._mw.auto_pois_dockWidget.show()
         self._mw.poi_editor_dockWidget.show()
         self._mw.poi_tracker_dockWidget.show()
@@ -527,7 +528,19 @@ class PoiManagerGui(GuiBase):
         self._mw.load_roi_Action.triggered.connect(self.load_roi)
         self._mw.blink_correction_view_Action.triggered.connect(self.toggle_blink_correction)
         self._mw.poi_selector_Action.toggled.connect(self.toggle_poi_selector)
-        self._mw.restore_default_view_Action.triggered.connect(self._restore_default_view)
+        self._mw.restore_default_view_Action.triggered.connect(self.restore_default_view)
+        self._mw.roi_map_view_Action.triggered.connect(
+            lambda: self.toggle_roi_map(self._mw.roi_map_view_Action.isChecked()))
+        self._mw.poi_editor_view_Action.triggered.connect(
+            lambda: self._mw.poi_editor_dockWidget.setVisible(self._mw.poi_editor_view_Action.isChecked()))
+        self._mw.poi_tracker_view_Action.triggered.connect(
+            lambda: self._mw.poi_tracker_dockWidget.setVisible(self._mw.poi_tracker_view_Action.isChecked()))
+        self._mw.auto_pois_view_Action.triggered.connect(
+            lambda: self._mw.auto_pois_dockWidget.setVisible(self._mw.auto_pois_view_Action.isChecked()))
+        self._mw.auto_pois_view_Action.triggered.connect(
+            lambda: self._mw.auto_find_POIs_Action.setVisible(self._mw.auto_pois_view_Action.isChecked()))
+        self._mw.sample_shift_view_Action.triggered.connect(
+            lambda: self._mw.sample_shift_dockWidget.setVisible(self._mw.sample_shift_view_Action.isChecked()))
         return
 
     def __disconnect_internal_signals(self):
@@ -540,6 +553,11 @@ class PoiManagerGui(GuiBase):
         self._mw.blink_correction_view_Action.triggered.disconnect()
         self._mw.poi_selector_Action.toggled.disconnect()
         self._mw.restore_default_view_Action.triggered.disconnect()
+        self._mw.roi_map_view_Action.triggered.disconnect()
+        self._mw.poi_editor_view_Action.triggered.disconnect()
+        self._mw.poi_tracker_view_Action.triggered.disconnect()
+        self._mw.auto_pois_view_Action.triggered.disconnect()
+        self._mw.sample_shift_view_Action.triggered.disconnect()
         return
 
     def show(self):
@@ -569,6 +587,17 @@ class PoiManagerGui(GuiBase):
                 self._mw.roi_image.sigMouseClicked.disconnect()
                 self._mw.roi_image.setCursor(QtCore.Qt.ArrowCursor)
         self.__poi_selector_active = is_active
+        return
+
+    @QtCore.Slot(bool)
+    def toggle_roi_map(self, is_visible):
+        # Something is messing up the appearance of the roi_image if the order of toggling is changed.
+        if is_visible:
+            self._mw.roi_map_dockWidget.setVisible(True)
+            self._mw.roi_image.setVisible(True)
+        else:
+            self._mw.roi_image.setVisible(False)
+            self._mw.roi_map_dockWidget.setVisible(False)
         return
 
     @QtCore.Slot(object, QtCore.QPointF)
