@@ -120,8 +120,8 @@ class Card_command():
         self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_STOPDMA)
 
     @check_card_error
-    def wait_DMA(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_WAITREADY)
+    def wait_dma(self):
+        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_WAITDMA)
 
 
 class Data_buffer_command(Card_command):
@@ -270,6 +270,9 @@ class Ts_buffer_command():
         self._error = spcm_dwGetParam_i64(self._card, SPC_TS_AVAIL_USER_LEN, byref(c_ts_avaiil_user_len))
         self.ts_avail_user_len_B = c_ts_avaiil_user_len.value
         return self.ts_avail_user_len_B
+
+    def get_ts_avail_user_reps(self):
+        return int(self.get_ts_avail_user_len_B() / 64)
 
     def get_ts_avail_user_pos_B(self):
         c_ts_avaiil_user_pos = c_int64(0)
@@ -526,7 +529,7 @@ class SpectrumInstrumentation(FastCounterInterface):
             else:
                 self.ccmd.start_all()
 
-            self.ccmd.wait_DMA()
+            self.ccmd.wait_dma()
             if self.ms.gated == True:
                 self.pl.cp.tscmd.wait_extra_dma()
 
@@ -572,7 +575,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         if self._internal_status == CardStatus.running:
             self.log.info('card stopped')
             self.pl.stop_data_process()
-            self.ccmd.disable_trigger()
+            self.pl.cp.trigger_enabled = self.ccmd.disable_trigger()
             self.ccmd.stop_dma()
             self.ccmd.card_stop()
 
@@ -595,7 +598,6 @@ class SpectrumInstrumentation(FastCounterInterface):
         self._internal_status = CardStatus.paused
         self.log.info('Measurement paused')
         return
-
 
     def continue_measure(self):
         """ Continues the current measurement.
@@ -624,6 +626,9 @@ class SpectrumInstrumentation(FastCounterInterface):
         @return float: current length of a single bin in seconds (seconds/bin)
         """
         return self.ms.binwidth_s
+
+    def _status(self):
+        self.pl.cp.dcmd.check_dp_status()
 
 
 class Configure_acquistion_mode():
@@ -1189,8 +1194,10 @@ class Card_process():
             return
         else:
             if trigger_on == True:
+                print('trigger on!!')
                 self.trigger_enabled = self.dcmd.enable_trigger()
             elif trigger_on == False:
+                print('trigger off!!')
                 self.trigger_enabled = self.dcmd.disable_trigger()
 
     def wait_new_trigger(self, wait_trig_on):
@@ -1213,6 +1220,7 @@ class Process_commander:
     '''
     This class commands the process dependent on the unprocessed data.
     '''
+    buf_ratio = 0.1
 
     def init_process(self, cs, ms):
         self._input_settings_to_dpc(ms)
@@ -1239,16 +1247,18 @@ class Process_commander:
         trig_reps = self.cp.dcmd.get_trig_reps()
         unprocessed_reps = trig_reps - self.dp.avg.num
         if trig_reps == 0 or unprocessed_reps == 0:
+            print('wait for trigger')
             self.trigger_on = True
             self.wait_trigger_on = True
             self.data_process_on = False
 
-        elif unprocessed_reps < 2 * self._reps_per_buf:
+        elif unprocessed_reps < self.buf_ratio * self._reps_per_buf:
             self.trigger_on = True
             self.wait_trigger_on = False
             self.data_process_on = True
 
-        elif unprocessed_reps >= 2 * self._reps_per_buf:
+        elif unprocessed_reps >= self.buf_ratio * self._reps_per_buf:
+            print('trigger off')
             self.trigger_on = False
             self.wait_trigger_on = False
             self.data_process_on = True
@@ -1259,13 +1269,9 @@ class Process_commander:
 
     def _process_data(self, data_process_on):
         if data_process_on == True:
-            curr_avail_reps = self.cp.dcmd.get_avail_user_reps()
-            if curr_avail_reps == 0:
-                return
-
-            self.dp.create_dc_new()
-
+            curr_avail_reps = self._get_curr_avail_reps()
             user_pos_B = self.cp.dcmd.get_avail_user_pos_B()
+            self.dp.create_dc_new()
             self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
             if self.dp.dc_new.rep == 0:
                 return
@@ -1278,6 +1284,23 @@ class Process_commander:
             if self._gated == True:
                 self._fetch_ts(curr_avail_reps)
 
+    def _get_curr_avail_reps(self):
+        curr_avail_reps = self.cp.dcmd.get_avail_user_reps()
+        if curr_avail_reps == 0:
+            print('wait dma')
+            self.cp.dcmd.wait_dma()
+            return 0
+
+        if self._gated:
+            curr_ts_avail_reps = self.cp.tscmd.get_ts_avail_user_reps()
+            if curr_ts_avail_reps == 0:
+                print('wait extra dma')
+                self.cp.tscmd.wait_extra_dma()
+                return 0
+
+            curr_avail_reps = min(curr_avail_reps, curr_ts_avail_reps)
+
+        return curr_avail_reps
 
     def _average_data(self, curr_avail_reps):
         self.dp.get_new_avg_data()
@@ -1289,6 +1312,33 @@ class Process_commander:
         self.dp.fetch_ts_data_to_dc(ts_user_pos_B, curr_avail_reps)
         self.cp.tscmd.set_ts_avail_card_len_B(curr_avail_reps * self._ts_seq_size_B)
 
+    def check_dp_status(self):
+        status = self.cp.dcmd.get_status()
+        avail_user_pos_B = self.cp.dcmd.get_avail_user_pos_B()
+        buf_pos_pct = int(100 * avail_user_pos_B /self.dp.cs.buf_size_B)
+        avail_user_len_B = self.cp.dcmd.get_avail_user_len_B()
+        avail_user_reps = self.cp.dcmd.get_avail_user_reps()
+        trig_reps = self.cp.dcmd.get_trig_reps()
+        print("Stat:{0:04x}h Pos:{1:010}B / Buf {2}B ({3}%) Avail:{4:010}B "
+              "Processed:{5:010}B :\n "
+              "Avail:{6} Avg:{7} / Trig:{8} \n".format(status,
+                                                       avail_user_pos_B,
+                                                       self.dp.cs.buf_size_B,
+                                                       buf_pos_pct,
+                                                       avail_user_len_B,
+                                                       self.cp.dcmd.processed_data_B,
+                                                       avail_user_reps,
+                                                       self.dp.avg.num,
+                                                       trig_reps)
+              )
+
+    def check_ts_status(self):
+        ts_avail_user_pos_B = self.cp.tscmd.get_ts_avail_user_pos_B()
+        ts_avail_user_len_B = self.cp.tscmd.get_ts_avail_user_len_B()
+        ts_avail_reps = int(ts_avail_user_len_B / 32)
+        print('ts Pos:{}B Avail:{}B {}reps '.format(ts_avail_user_pos_B,
+                                                    ts_avail_user_len_B,
+                                                    ts_avail_reps))
 
 class Process_loop(Process_commander):
     '''
@@ -1317,6 +1367,8 @@ class Process_loop(Process_commander):
         while self.loop_on == True:
             with self.threadlock:
                 self.command_process()
+                self.check_dp_status()
+                self.check_ts_status()
 
         return
 
