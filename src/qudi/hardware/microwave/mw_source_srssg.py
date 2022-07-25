@@ -21,7 +21,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
-import pyvisa as visa
+try:
+    import visa
+except ImportError:
+    import pyvisa as visa
 import time
 import numpy as np
 

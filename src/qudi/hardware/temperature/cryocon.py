@@ -24,7 +24,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-import pyvisa as visa
+try:
+    import visa
+except ImportError:
+    import pyvisa as visa
 from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption
 import numpy as np

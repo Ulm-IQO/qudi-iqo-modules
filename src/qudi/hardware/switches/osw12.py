@@ -20,7 +20,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import pyvisa as visa
+try:
+    import visa
+except ImportError:
+    import pyvisa as visa
 import time
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex

@@ -23,7 +23,10 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import time
-import pyvisa as visa
+try:
+    import visa
+except ImportError:
+    import pyvisa as visa
 import numpy as np
 from ftplib import FTP
 from collections import OrderedDict
