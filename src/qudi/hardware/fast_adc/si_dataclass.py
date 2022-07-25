@@ -32,6 +32,7 @@ class Card_settings:
     This dataclass contains parameters input to the card.
     '''
     card: typing.Any = ''
+    ai_ch: str = 'CH0'
     ai_range_mV: int = 1000
     ai_offset_mV: int = 0
     ai_term: str = ''
