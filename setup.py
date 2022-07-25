@@ -15,7 +15,7 @@ unix_dep = [
     'numpy',
     'pyqtgraph',
     'PySide2',
-    'PyVisa',
+    'PyVisa>=1.12.0',
     'scipy',
     'zaber_motion'
 ]
@@ -31,7 +31,7 @@ windows_dep = [
     'numpy>=1.21.3',
     'pyqtgraph>=0.12.3',
     'PySide2>=5.15.2',
-    'PyVisa>=1.11.3',
+    'PyVisa>=1.12.0',
     'scipy>=1.7.1',
     'zaber_motion>=2.9'
 ]
