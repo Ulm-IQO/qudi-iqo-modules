@@ -320,6 +320,7 @@ class SpectrumInstrumentation(FastCounterInterface):
     Config example:
     si:
         module.Class: 'fast_adc.spectrum_instrumentation.SpectrumInstrumentationTest'
+        ai_ch: CH0
         ai_range_mV: 2000
         ai_offset_mV: 0
         ai_termination: '50Ohm'
@@ -360,6 +361,7 @@ class SpectrumInstrumentation(FastCounterInterface):
     _modtype = 'SpectrumCard'
     _modclass = 'hardware'
 
+    _ai_ch = ConfigOption('ai_ch', 'CH0', missing='nothing')
     _ai_range_mV = ConfigOption('ai_range_mV', 1000, missing='warn')
     _ai_offset_mV = ConfigOption('ai_offset_mV', 0, missing='warn')
     _ai_term = ConfigOption('ai_termination', '50Ohm', missing='warn')
@@ -430,6 +432,7 @@ class SpectrumInstrumentation(FastCounterInterface):
             self._gated = False
 
     def _load_settings_from_config_file(self):
+        self.cs.ai_ch = self._ai_ch
         self.cs.ai_range_mV = int(self._ai_range_mV)
         self.cs.ai_offset_mV = int(self._ai_offset_mV)
         self.cs.ai_term = self._ai_term
@@ -840,6 +843,7 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
         self._card = cs.card
 
         self._c_buf_ptr = ms.return_c_buf_ptr()
+        self._ai_ch = cs.ai_ch
         self._ai_range_mV = cs.ai_range_mV
         self._ai_offset_mV =cs.ai_offset_mV
         self._ai_term = cs.ai_term
@@ -885,10 +889,11 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
 
     @check_card_error
     def set_analog_input_conditions(self, card):
+        ai_ch_dict ={'CH0': CHANNEL0, 'CH1':CHANNEL1}
         ai_term_dict = {'1Mohm':0, '50Ohm':1}
         ai_coupling_dict = {'DC':0, 'AC':1}
         spcm_dwSetParam_i32(card, SPC_TIMEOUT, 5000)
-        spcm_dwSetParam_i32(card, SPC_CHENABLE, CHANNEL0)
+        spcm_dwSetParam_i32(card, SPC_CHENABLE, ai_ch_dict[self._ai_ch])
         spcm_dwSetParam_i32(card, SPC_AMP0, self._ai_range_mV) # +- 10 V
         spcm_dwSetParam_i32(card, SPC_OFFS0, self._ai_offset_mV)
         spcm_dwSetParam_i32(card, SPC_50OHM0, ai_term_dict[self._ai_term]) # A "1"("0") sets the 50(1M) ohm termination
@@ -1271,10 +1276,11 @@ class Process_commander:
         if data_process_on == True:
             curr_avail_reps = self._get_curr_avail_reps()
             user_pos_B = self.cp.dcmd.get_avail_user_pos_B()
+            if curr_avail_reps == 0:
+                return
+
             self.dp.create_dc_new()
             self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
-            if self.dp.dc_new.rep == 0:
-                return
 
             if self.row_data_save == True:
                 self.dp.stack_new_data()
