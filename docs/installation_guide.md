@@ -105,6 +105,16 @@ Please find the instruction to configure the [server](https://github.com/Ulm-IQO
 
 ## Jupyter notebooks/ measurement scripts
 
+Qudi runs a IPython kernel that can be accessed from a jupyter notebook. In this way you can write your own measurements
+scripts that employ qudi modules just from their configured names (like in the qudi manager.)
+
+- Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
+- Change to the folder where you store your jupyter notebooks. `cd C:\Users\quantumguy\qudi\notebooks`
+- Type `jupyter notebook` to start the notebook server
+- Open a browser and navigate to http://localhost:8888/
+
+
+
 ### Transcribing scripts from qudi v0.1
 Ipython in Qudi (either in Manager or jupyter notebook) is running
 now in its own process. The communication between QuDi and the
