@@ -1117,22 +1117,6 @@
  <resources/>
  <connections>
   <connection>
-   <sender>poi_editor_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>poi_editor_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>103</x>
-     <y>599</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>poi_editor_dockWidget</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>poi_editor_view_Action</receiver>
@@ -1145,22 +1129,6 @@
     <hint type="destinationlabel">
      <x>-1</x>
      <y>-1</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>roi_map_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>roi_map_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>353</x>
-     <y>225</y>
     </hint>
    </hints>
   </connection>
@@ -1181,22 +1149,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>poi_tracker_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>poi_tracker_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>297</x>
-     <y>599</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>poi_tracker_dockWidget</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>poi_tracker_view_Action</receiver>
@@ -1213,22 +1165,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>sample_shift_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>sample_shift_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>547</x>
-     <y>599</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>sample_shift_dockWidget</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>sample_shift_view_Action</receiver>
@@ -1241,22 +1177,6 @@
     <hint type="destinationlabel">
      <x>-1</x>
      <y>-1</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>poi_tools_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>poi_ToolBar</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>384</x>
-     <y>41</y>
     </hint>
    </hints>
   </connection>
@@ -1293,22 +1213,6 @@
    </hints>
   </connection>
   <connection>
-   <sender>roi_management_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>roi_management_ToolBar</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>45</x>
-     <y>41</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
    <sender>roi_management_ToolBar</sender>
    <signal>visibilityChanged(bool)</signal>
    <receiver>roi_management_view_Action</receiver>
@@ -1317,38 +1221,6 @@
     <hint type="sourcelabel">
      <x>45</x>
      <y>41</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>auto_pois_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>auto_pois_dockWidget</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
-    </hint>
-    <hint type="destinationlabel">
-     <x>863</x>
-     <y>264</y>
-    </hint>
-   </hints>
-  </connection>
-  <connection>
-   <sender>auto_pois_view_Action</sender>
-   <signal>triggered(bool)</signal>
-   <receiver>auto_find_POIs_Action</receiver>
-   <slot>setVisible(bool)</slot>
-   <hints>
-    <hint type="sourcelabel">
-     <x>-1</x>
-     <y>-1</y>
     </hint>
     <hint type="destinationlabel">
      <x>-1</x>

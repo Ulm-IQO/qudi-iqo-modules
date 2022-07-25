@@ -172,6 +172,7 @@ class ScanningOptimizeLogic(LogicBase):
 
         settings = cp.deepcopy(settings)
         hw_axes = self._scan_logic().scanner_axes
+        sig_channels = self._scan_logic().scanner_channels
 
         def check_valid(settings, key):
             is_valid = True  # non present key -> valid
@@ -198,6 +199,9 @@ class ScanningOptimizeLogic(LogicBase):
                 if key == 'scan_frequency':
                     settings['scan_frequency'] = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
                                                   in hw_axes.values()}
+                if key == 'data_channel':
+                    settings['data_channel'] = list(sig_channels.keys())[0]
+
 
         # scan_sequence check, only sensibel if plot dimensions (eg. from confocal gui) are available
         if 'scan_sequence' in settings and plot_dimensions:

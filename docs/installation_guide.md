@@ -18,7 +18,7 @@ Follow the [qudi-core installation](https://ulm-iqo.github.io/qudi-core/setup/in
 The last step in the qudi-core installation instructions briefly explains setting up the measurement modules. More detailedly, this is how you install the qudi-iqo-modules in dev mode. In this way, you can easily change code in the measurement toolchains.
 
 - Make sure you have a working git installation and that you can run the  `git` command from your console.
-- Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
+- Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro), the same environment you used to install the core.
 - Navigate to the folder you want the modules to install to, eg.
   `cd C:/Software`
 - Clone the iqo-modules via `git clone https://github.com/Ulm-IQO/qudi-iqo-modules.git`. This will create a new folder `C:/Software/qudi-iqo-modules`. Do not copy/move this folder around after finishing the installation!
@@ -32,10 +32,12 @@ It is possible to run qudi just from the command line. To this end, just type `q
 Having the code as a project in the Pycharm IDE allows to easily navigate and run the qudi code.
 - Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
 - Create a new empty project in Pycharm. Don't open any source code yet.
+- for the interpreter to use see the paragraph below 
+- for the folders locations of your pycharm project: add the qudi-core and qudi-iqo-modules folders to it by 'File'->'Open..'. A pop up window will ask you how to open the project, press the 'Attach' option. If you did install qudi-core in non-developer mode, you can find your qudi-core folder by `python -c "import os, sys; print(os.path.dirname(sys.executable)+'\Lib\site-packages\qudi')"`
 
 To run Qudi via Pycharm you have to configure the right Python environment as a project interpreter.
 - In Pycharm, navigate to 'File'->'Settings'->'Project:qudi'->'Project interpreter'
-- If the correct environment ist not listed yet, you can add it via the "+" button. If you followed the qudi-core installation incstructions, the environment should be named `qudi-env`.
+- If the correct environment ist not listed yet, you can add it via the "+" button. If you followed the qudi-core installation incstructions, the environment should be named `qudi-env` (or whatever name you give it during the core installation).
 - You can find the path to the environment by `python -c "import os, sys; print(os.path.dirname(sys.executable))"`
 - Choose the correct environment, like shown on the screenshot.
   <img src="https://user-images.githubusercontent.com/5861249/176209579-3175f422-e940-4a58-98e1-821a85211de3.png" alt="drawing" width="700"/>
@@ -50,6 +52,7 @@ Now we open the code in Pycharm.
 
 - To enable debug output displayed in the qudi manager, navigate to 'Run'->'Edit configurations' and add the flag `-d' in the line 'Parameters'
 
+- working directory?
 
 ### Switching branches
 Switching to some other development branch is easy, if you installed your modules in dev mode. Just look in the lower right to access Pycharm's branch control and
@@ -59,7 +62,7 @@ Switching to some other development branch is easy, if you installed your module
 
 Now you will have a local copy of this branch in which you can create commits and push these online.
 
-## Qudi configuration
+## qudi Configuration file
 
 The configuration file specifies all the modules and hardware that are loaded to qudi. Additionally, many modules come with
 configuration parameters that are set in this file. On your first startup, the qudi manager might be empty.

@@ -856,11 +856,11 @@ class PoiManagerLogic(LogicBase):
             return
 
     @QtCore.Slot(bool)
-    def set_scan_image(self, emit_change=True):
+    def set_scan_image(self, emit_change=True, scan_axes=None):
         """ Get the current xy scan data and set as scan_image of ROI. """
         with self._thread_lock:
 
-            scan_data = self._data_logic().get_current_scan_data()
+            scan_data = self._data_logic().get_current_scan_data(scan_axes)
             if scan_data:
                 self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
                                          scan_data.scan_range)
