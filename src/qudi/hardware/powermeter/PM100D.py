@@ -19,7 +19,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-import visa
+import pyvisa as visa
 
 from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption

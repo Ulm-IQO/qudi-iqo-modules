@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import time
-import visa
+import pyvisa as visa
 import numpy as np
 from ftplib import FTP
 from lxml import etree as ET

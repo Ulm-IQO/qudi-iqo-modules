@@ -19,7 +19,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import visa
+import pyvisa as visa
 from qudi.core.configoption import ConfigOption
 from qudi.interface.simple_laser_interface import SimpleLaserInterface
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState

@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
-import visa
+import pyvisa as visa
 import time
 import numpy as np
 

@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption
-import visa
+import pyvisa as visa
 
 
 class CTC100(Base):

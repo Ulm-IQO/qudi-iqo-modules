@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-import visa
+import pyvisa as visa
 from collections import OrderedDict
 
 from qudi.core.module import Base
