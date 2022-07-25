@@ -47,6 +47,7 @@ Now we open the code in Pycharm.
 
 
 - Now open the file `qudi-core\src\qudi\runnable.py` in Pycharm. If the environment is recognized correctly to Pycharm, you can run qudi via 'Run'->'Run runnable.py'.
+(You can also have this option by right clicking on the file in the project explorer.)
   <img src="https://user-images.githubusercontent.com/5861249/178508718-0c141a2a-03ce-49ba-bddb-80a593ea4b25.png" alt="drawing" width="500"/>
 
 
