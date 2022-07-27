@@ -44,12 +44,13 @@ class FiniteSamplingInputDummy(FiniteSamplingInputInterface):
 
     finite_sampling_input_dummy:
         module.Class: 'dummy.finite_sampling_input_dummy.FiniteSamplingInputDummy'
-        simulation_mode: 'ODMR'
-        sample_rate_limits: [1, 1e6]  # optional, default [1, 1e6]
-        frame_size_limits: [1, 1e9]  # optional, default [1, 1e9]
-        channel_units:
-            'APD counts': 'c/s'
-            'Photodiode': 'V'
+        options:
+            simulation_mode: 'ODMR'
+            sample_rate_limits: [1, 1e6]  # optional, default [1, 1e6]
+            frame_size_limits: [1, 1e9]  # optional, default [1, 1e9]
+            channel_units:
+                'APD counts': 'c/s'
+                'Photodiode': 'V'
     """
 
     _sample_rate_limits = ConfigOption(name='sample_rate_limits', default=(1, 1e6))

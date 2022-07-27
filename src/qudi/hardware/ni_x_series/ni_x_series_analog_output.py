@@ -41,24 +41,24 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
     nicard_63XX_ao:
         module.Class: 'ni_x_series.ni_x_series_in_streamer.NIXSeriesAnalogOutput'
         device_name: 'Dev1'
-
-        setpoint_channels:
-            ao0:
-                unit: 'V'
-                limits: [-10.0, 10.0]
-                keep_value: True
-            ao1:
-                unit: 'V'
-                limits: [-10.0, 10.0]
-                keep_value: True
-            ao2:
-                unit: 'V'
-                limits: [-10.0, 10.0]
-                keep_value: True
-            ao3:
-                unit: 'V'
-                limits: [-10.0, 10.0]   
-                keep_value: True         
+        options:
+            setpoint_channels:
+                ao0:
+                    unit: 'V'
+                    limits: [-10.0, 10.0]
+                    keep_value: True
+                ao1:
+                    unit: 'V'
+                    limits: [-10.0, 10.0]
+                    keep_value: True
+                ao2:
+                    unit: 'V'
+                    limits: [-10.0, 10.0]
+                    keep_value: True
+                ao3:
+                    unit: 'V'
+                    limits: [-10.0, 10.0]
+                    keep_value: True
     """
     _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
     # FIXME if dtype in config its interpreted as a string

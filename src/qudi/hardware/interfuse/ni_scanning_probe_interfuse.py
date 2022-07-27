@@ -46,31 +46,32 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         connect:
             scan_hardware: 'ni_finite_sampling_io'
             analog_output: 'ni_ao'
-        ni_channel_mapping:
-            x: 'ao0'
-            y: 'ao1'
-            z: 'ao2'
-            APD1: 'PFI8'
-            APD2: 'PFI9'
-            AI0: 'ai0'
-        position_ranges: # in m
-            x: [-100e-6, 100e-6]
-            y: [0, 200e-6]
-            z: [-100e-6, 100e-6]
-        frequency_ranges: #Aka values written/retrieved per second; Check with connected HW for sensible constraints.
-            x: [1, 5000]
-            y: [1, 5000]
-            z: [1, 1000]
-        resolution_ranges:
-            x: [1, 10000]
-            y: [1, 10000]
-            z: [2, 1000]
-        input_channel_units:
-            APD1: 'c/s'
-            APD2: 'c/s'
-            AI0: 'V'
-        backwards_line_resolution: 50 # optional
-        move_velocity: 400e-6 #m/s; This speed is used for scanner movements and avoids jumps from position to position.
+        options:
+            ni_channel_mapping:
+                x: 'ao0'
+                y: 'ao1'
+                z: 'ao2'
+                APD1: 'PFI8'
+                APD2: 'PFI9'
+                AI0: 'ai0'
+            position_ranges: # in m
+                x: [-100e-6, 100e-6]
+                y: [0, 200e-6]
+                z: [-100e-6, 100e-6]
+            frequency_ranges: #Aka values written/retrieved per second; Check with connected HW for sensible constraints.
+                x: [1, 5000]
+                y: [1, 5000]
+                z: [1, 1000]
+            resolution_ranges:
+                x: [1, 10000]
+                y: [1, 10000]
+                z: [2, 1000]
+            input_channel_units:
+                APD1: 'c/s'
+                APD2: 'c/s'
+                AI0: 'V'
+            backwards_line_resolution: 50 # optional
+            move_velocity: 400e-6 #m/s; This speed is used for scanner movements and avoids jumps from position to position.
     """
 
     # TODO What about channels which are not "calibrated" to 'm', e.g. just use 'V'?

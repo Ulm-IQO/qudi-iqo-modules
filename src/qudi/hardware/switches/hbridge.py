@@ -38,15 +38,16 @@ class HBridge(SwitchInterface):
 
     h_bridge_switch:
         module.Class: 'switches.hbridge.HBridge'
-        interface: 'ASRL1::INSTR'
-        name: 'HBridge Switch'  # optional
-        switch_time: 0.5  # optional
-        remember_states: False  # optional
-        switches:               # optional
-            One: ['Spectrometer', 'APD']
-            Two: ['Spectrometer', 'APD']
-            Three: ['Spectrometer', 'APD']
-            Four: ['Spectrometer', 'APD']
+        options:
+            interface: 'ASRL1::INSTR'
+            name: 'HBridge Switch'  # optional
+            switch_time: 0.5  # optional
+            remember_states: False  # optional
+            switches:               # optional
+                One: ['Spectrometer', 'APD']
+                Two: ['Spectrometer', 'APD']
+                Three: ['Spectrometer', 'APD']
+                Four: ['Spectrometer', 'APD']
     """
 
     # ConfigOptions

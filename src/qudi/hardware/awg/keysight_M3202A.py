@@ -50,7 +50,8 @@ class M3202A(PulserInterface):
 
     keysight_m3202a:
         module.Class: 'awg.keysight_M3202A.M3202A'
-        awg_serial: 0000000000 # here the serial number of current AWG
+        options:
+            awg_serial: 0000000000 # here the serial number of current AWG
 
     """
 

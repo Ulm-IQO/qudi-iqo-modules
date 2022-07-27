@@ -54,6 +54,9 @@ class WavemeterLogWindow(QtWidgets.QMainWindow):
 class WavemeterLogGui(GuiBase):
     """
     This GUI is for PLE measurements, reading out a wavemeter
+
+    Todo: Example config for copy-paste:
+
     """
     # declare connectors
     wavemeterloggerlogic = Connector(interface='WavemeterLoggerLogic')

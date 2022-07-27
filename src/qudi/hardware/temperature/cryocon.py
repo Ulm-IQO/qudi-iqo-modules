@@ -53,8 +53,9 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
 
     cryocon:
         module.Class: 'temperature.cryocon.Cryocon'
-        ip_address: '192.168.1.222'
-        main_channel: 'B'
+        fitlogic
+            ip_address: '192.168.1.222'
+            main_channel: 'B'
 
     """
 
