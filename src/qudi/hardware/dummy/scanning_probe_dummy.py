@@ -37,23 +37,24 @@ class ScanningProbeDummy(ScanningProbeInterface):
 
     scanning_probe_dummy:
         module.Class: 'scanning_probe_dummy.ScanningProbeDummy'
-        spot_density: 4e6           # in 1/m², optional
-        position_ranges:
-            x: [0, 200e-6]
-            y: [0, 200e-6]
-            z: [-100e-6, 100e-6]
-        frequency_ranges:
-            x: [1, 5000]
-            y: [1, 5000]
-            z: [1, 1000]
-        resolution_ranges:
-            x: [1, 10000]
-            y: [1, 10000]
-            z: [2, 1000]
-        position_accuracy:
-            x: 10e-9
-            y: 10e-9
-            z: 50e-9
+        options:
+            spot_density: 4e6           # in 1/m², optional
+            position_ranges:
+                x: [0, 200e-6]
+                y: [0, 200e-6]
+                z: [-100e-6, 100e-6]
+            frequency_ranges:
+                x: [1, 5000]
+                y: [1, 5000]
+                z: [1, 1000]
+            resolution_ranges:
+                x: [1, 10000]
+                y: [1, 10000]
+                z: [2, 1000]
+            position_accuracy:
+                x: 10e-9
+                y: 10e-9
+                z: 50e-9
     """
     # TODO Bool indicators deprecated; Change in scanning probe toolchain
 

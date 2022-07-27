@@ -40,15 +40,19 @@ warnings.warn("This module has not been fully tested on the new qudi core and mi
 
 class PM100D(ProcessValueInterface):
     """ Hardware module for Thorlabs PM100D powermeter.
-    Example config :
+
+    Example config for copy-paste:
+
     powermeter:
         module.Class: 'powermeter.PM100D.PM100D'
-        address: 'USB0::0x1313::0x8078::P0013645::INSTR'
-        process_value_channels:
-            Power:
-                unit: 'W'
-                limits: [0, 0.5]
-                dtype: float
+        options:
+            address: 'USB0::0x1313::0x8078::P0013645::INSTR'
+            process_value_channels:
+                Power:
+                    unit: 'W'
+                    limits: [0, 0.5]
+                    dtype: float
+
     This module needs the ThorlabsPM100 package from PyPi, this package is not included in the environment
     To add install it, type :
     pip install ThorlabsPM100

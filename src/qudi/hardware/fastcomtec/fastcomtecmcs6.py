@@ -166,10 +166,11 @@ class FastComtec(FastCounterInterface):
 
     fastcomtec_mcs6:
         module.Class: 'fastcomtec.fastcomtecmcs6.FastComtec'
-        gated: False
-        trigger_safety: 400e-9
-        aom_delay: 390e-9
-        minimal_binwidth: 0.2e-9
+        options:
+            gated: False
+            trigger_safety: 400e-9
+            aom_delay: 390e-9
+            minimal_binwidth: 0.2e-9
 
     """
 

@@ -28,6 +28,8 @@ from qudi.core.connector import Connector
 class SwitchCombinerInterfuse(SwitchInterface):
     """ Methods to control slow (mechanical) laser switching devices.
     This interfuse in particular combines two switches into one.
+
+    Todo: write Example config for copy-paste:
     """
 
     # connectors for the switches to be combined

@@ -62,9 +62,10 @@ class SequenceGeneratorLogic(LogicBase):
 
     sequence_generator_logic:
         module.Class: 'pulsed.sequence_generator_logic.SequenceGeneratorLogic'
-        #additional_predefined_methods_path: # optional
-        #additional_sampling_functions_path: # optional
-        #assets_storage_path: # optional
+        # options:
+        #     additional_predefined_methods_path: # optional
+        #     additional_sampling_functions_path: # optional
+        #     assets_storage_path: # optional
         connect:
             pulsegenerator: 'pulser_dummy'
     """

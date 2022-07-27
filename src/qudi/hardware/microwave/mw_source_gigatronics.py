@@ -40,8 +40,9 @@ class MicrowaveGigatronics(MicrowaveInterface):
 
     mw_source_gigatronics:
         module.Class: 'microwave.mw_source_gigatronics.MicrowaveGigatronics'
-        visa_address: 'GPIB0::12::INSTR'
-        comm_timeout: 10  # in seconds, optional
+        options:
+            visa_address: 'GPIB0::12::INSTR'
+            comm_timeout: 10  # in seconds, optional
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')

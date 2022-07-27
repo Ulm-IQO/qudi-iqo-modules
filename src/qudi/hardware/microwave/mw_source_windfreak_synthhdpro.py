@@ -35,9 +35,10 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
 
     mw_source_synthhd:
         module.Class: 'microwave.mw_source_windfreak_synthhdpro.MicrowaveSynthHDPro'
-        serial_port: 'COM3'
-        comm_timeout: 10  # in seconds
-        output_channel: 0  # either 0 or 1
+        options:
+            serial_port: 'COM3'
+            comm_timeout: 10  # in seconds
+            output_channel: 0  # either 0 or 1
     """
 
     _serial_port = ConfigOption('serial_port', missing='error')

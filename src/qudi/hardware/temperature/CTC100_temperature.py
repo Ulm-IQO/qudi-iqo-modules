@@ -39,8 +39,9 @@ class CTC100(Base):
 
     tempcontroller_ctc100:
         module.Class: 'temperature.CTC100_temperature.CTC100'
-        interface: 'ASRL1::INSTR'
-        fitlogic: 'fitlogic' # name of the fitlogic module, see default config
+        options:
+            interface: 'ASRL1::INSTR'
+            fitlogic: 'fitlogic' # name of the fitlogic module, see default config
 
     """
 

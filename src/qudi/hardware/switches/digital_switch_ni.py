@@ -36,13 +36,14 @@ class DigitalSwitchNI(SwitchInterface):
 
     digital_switch_ni:
         module.Class: 'switches.digital_switch_ni.DigitalSwitchNI'
-        channel: '/Dev1/port0/line30:31'  # optional
-        name: 'My Switch Hardware Name'  # optional
-        switch_time: 0.1
-        remember_states: True
-        switches:                       # optional
-            One: ['Low', 'High']
-            Two: ['Off', 'On']
+        options:
+            channel: '/Dev1/port0/line30:31'  # optional
+            name: 'My Switch Hardware Name'  # optional
+            switch_time: 0.1
+            remember_states: True
+            switches:                       # optional
+                One: ['Low', 'High']
+                Two: ['Off', 'On']
     """
     # Channels of the NI Card to be used for switching.
     # Can either be a single channel or multiple lines.

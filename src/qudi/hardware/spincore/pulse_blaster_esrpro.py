@@ -66,13 +66,14 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         pulseblaster:
             module.Class: 'spincore.pulse_blaster_esrpro.PulseBlasterESRPRO'
-            clock_frequency: 500e6 # in Hz
-            min_instr_len: 5    # number of clock cycles for minimal instruction
-            debug_mode: False   # optional, to set the debug mode on or off.
-            use_smart_pulse_creation: False # optinal, default is false, try to
-                                            # optimize the memory used on the device.
-            #library_file: 'spinapi64.dll'  # optional, name of the library file
-                                            # or  whole path to the file
+            options:
+                clock_frequency: 500e6 # in Hz
+                min_instr_len: 5    # number of clock cycles for minimal instruction
+                debug_mode: False   # optional, to set the debug mode on or off.
+                use_smart_pulse_creation: False # optinal, default is false, try to
+                                                # optimize the memory used on the device.
+                #library_file: 'spinapi64.dll'  # optional, name of the library file
+                                                # or  whole path to the file
 
     Remark to the config values:
         library_file: if the library does not lay in the default directory of

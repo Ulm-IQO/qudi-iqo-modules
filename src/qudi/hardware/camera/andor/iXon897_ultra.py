@@ -108,13 +108,14 @@ class IxonUltra(CameraInterface):
 
     andor_ultra_camera:
         module.Class: 'camera.andor.iXon897_ultra.IxonUltra'
-        dll_location: 'C:\\camera\\andor.dll' # path to library file
-        default_exposure: 1.0
-        default_read_mode: 'IMAGE'
-        default_temperature: -70
-        default_cooler_on: True
-        default_acquisition_mode: 'SINGLE_SCAN'
-        default_trigger_mode: 'INTERNAL'
+        options:
+            dll_location: 'C:\\camera\\andor.dll' # path to library file
+            default_exposure: 1.0
+            default_read_mode: 'IMAGE'
+            default_temperature: -70
+            default_cooler_on: True
+            default_acquisition_mode: 'SINGLE_SCAN'
+            default_trigger_mode: 'INTERNAL'
 
     """
 

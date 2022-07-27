@@ -28,6 +28,16 @@ from qudi.util import uic
 
 
 class NVCalculatorGui(GuiBase):
+    """
+    GUI module to use with the nv_calculator_logic.
+
+    Example config for copy-paste:
+    nv_calculator_gui:
+        module.Class: 'nv_calculator.nv_calculatorgui.NVCalculatorGui'
+        connect:
+            nv_calculatorlogic: 'nv_calculator_logic'
+
+    """
     _modclass = 'NVCalculatorGui'
     _modtype = 'gui'
     ## declare connectors

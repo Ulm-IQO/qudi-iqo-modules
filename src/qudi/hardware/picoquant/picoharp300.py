@@ -93,8 +93,9 @@ class PicoHarp300(FastCounterInterface):
 
     fastcounter_picoharp300:
         module.Class: 'picoquant.picoharp300.PicoHarp300'
-        deviceID: 0 # a device index from 0 to 7.
-        mode: 0 # 0: histogram mode, 2: T2 mode, 3: T3 mode
+        options:
+            deviceID: 0 # a device index from 0 to 7.
+            mode: 0 # 0: histogram mode, 2: T2 mode, 3: T3 mode
         
     """
 

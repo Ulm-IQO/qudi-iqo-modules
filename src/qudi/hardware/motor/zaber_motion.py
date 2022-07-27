@@ -44,33 +44,34 @@ class ZaberStage(MotorInterface):
 
     zaber_motor:
         module.Class: 'motor.zaber_motion.ZaberStage'
-        axis_labels: [x, y]
-        port: 'COM3'
-        axes:
-            x:
-                serial_num: 00000000
-                backlash_correction: False
-                backlash_offset: 50e-6
-                wait_until_done: False
-                constraints:
-                    pos_min: 0
-                    pos_max: 200e-3
-                    vel_min: 1.0e-3
-                    vel_max: 10.0e-2
-                    #acc_min: 4.0e-2
-                    #acc_max: 20.0e-1
-            y:
-                serial_num: 00000001
-                backlash_correction: False
-                backlash_offset: 50e-6
-                wait_until_done: False
-                constraints:
-                    pos_min: None
-                    #pos_max: 200e-3
-                    #vel_min: 1.0e-3
-                    #vel_max: 10.0e-2
-                    #acc_min: 4.0e-2
-                    #acc_max: 20.0e-1
+        options:
+            axis_labels: [x, y]
+            port: 'COM3'
+            axes:
+                x:
+                    serial_num: 00000000
+                    backlash_correction: False
+                    backlash_offset: 50e-6
+                    wait_until_done: False
+                    constraints:
+                        pos_min: 0
+                        pos_max: 200e-3
+                        vel_min: 1.0e-3
+                        vel_max: 10.0e-2
+                        #acc_min: 4.0e-2
+                        #acc_max: 20.0e-1
+                y:
+                    serial_num: 00000001
+                    backlash_correction: False
+                    backlash_offset: 50e-6
+                    wait_until_done: False
+                    constraints:
+                        pos_min: None
+                        #pos_max: 200e-3
+                        #vel_min: 1.0e-3
+                        #vel_max: 10.0e-2
+                        #acc_min: 4.0e-2
+                        #acc_max: 20.0e-1
 
     """
 

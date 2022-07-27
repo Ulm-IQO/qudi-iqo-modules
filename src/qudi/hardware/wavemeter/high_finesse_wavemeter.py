@@ -83,7 +83,8 @@ class HighFinesseWavemeter(WavemeterInterface):
 
     high_finesse_wavemeter:
         module.Class: 'high_finesse_wavemeter.HighFinesseWavemeter'
-        measurement_timing: 10.0 # in seconds
+        fitlogic
+            measurement_timing: 10.0 # in seconds
 
     """
 

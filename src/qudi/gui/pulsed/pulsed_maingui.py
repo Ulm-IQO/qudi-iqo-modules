@@ -141,7 +141,17 @@ class PredefinedMethodsConfigDialog(QtWidgets.QDialog):
 
 
 class PulsedMeasurementGui(GuiBase):
-    """ This is the main GUI Class for pulsed measurements. """
+    """
+    This is the main GUI Class for pulsed measurements.
+
+    Example config for copy-paste:
+
+    pulsed_gui:
+        module.Class: 'pulsed.pulsed_maingui.PulsedMeasurementGui'
+        connect:
+            pulsedmasterlogic: 'pulsed_master_logic'
+
+    """
     ## declare connectors
     pulsedmasterlogic = Connector(interface='PulsedMasterLogic')
 

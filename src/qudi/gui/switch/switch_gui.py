@@ -41,7 +41,7 @@ class StateColorScheme(IntEnum):
 
 
 class SwitchMainWindow(QtWidgets.QMainWindow):
-    """ Main Window for the SwitchGui module """
+    """Main Window for the SwitchGui module"""
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -89,7 +89,11 @@ class SwitchMainWindow(QtWidgets.QMainWindow):
 
 
 class SwitchGui(GuiBase):
-    """ A graphical interface to switch a hardware by hand.
+    """
+    A graphical interface to switch a hardware by hand.
+
+    Todo: Example config for copy-paste:
+
     """
 
     # declare connectors

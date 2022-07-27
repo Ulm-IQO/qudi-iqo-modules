@@ -41,14 +41,15 @@ class MicrowaveSmiq(MicrowaveInterface):
 
     mw_source_smiq:
         module.Class: 'microwave.mw_source_smiq.MicrowaveSmiq'
-        visa_address: 'GPIB0::28::INSTR'
-        comm_timeout: 10000  # in milliseconds
-        visa_baud_rate: null  # optional
-        rising_edge_trigger: True  # optional
-        frequency_min: null  # optional, in Hz
-        frequency_max: null  # optional, in Hz
-        power_min: null  # optional, in dBm
-        power_max: null  # optional, in dBm
+        options:
+            visa_address: 'GPIB0::28::INSTR'
+            comm_timeout: 10000  # in milliseconds
+            visa_baud_rate: null  # optional
+            rising_edge_trigger: True  # optional
+            frequency_min: null  # optional, in Hz
+            frequency_max: null  # optional, in Hz
+            power_min: null  # optional, in dBm
+            power_max: null  # optional, in dBm
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')

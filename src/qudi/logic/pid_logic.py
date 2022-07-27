@@ -41,7 +41,8 @@ class PIDLogic(Base):
 
     pidlogic:
         module.Class: 'pid_logic.PIDLogic'
-        timestep: 0.1
+        options:
+            timestep: 0.1
         connect:
             controller: 'softpid'
             savelogic: 'savelogic'

@@ -46,19 +46,20 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
     Example config for copy-paste:
 
     ni_finite_sampling_input:
-        module.Class: 'ni_x_series_finite_sampling_input.NIXSeriesFiniteSamplingInput'
-        device_name: 'Dev1'
-        digital_channel_units:  # optional
-            'PFI15': 'c/s'
-        analog_channel_units:  # optional
-            'ai0': 'V'
-            'ai1': 'V'
-        # external_sample_clock_source: 'PFI0'  # optional
-        # external_sample_clock_frequency: 1000  # optional
-        adc_voltage_range: [-10, 10]  # optional, default [-10, 10]
-        max_channel_samples_buffer: 10000000  # optional, default 10000000
-        read_write_timeout: 10  # optional, default 10
-        sample_clock_output: '/Dev1/PFI20'  # optional
+        module.Class: 'ni_x_series.ni_x_series_finite_sampling_input.NIXSeriesFiniteSamplingInput'
+        options:
+            device_name: 'Dev1'
+            digital_channel_units:  # optional
+                'PFI15': 'c/s'
+            analog_channel_units:  # optional
+                'ai0': 'V'
+                'ai1': 'V'
+            # external_sample_clock_source: 'PFI0'  # optional
+            # external_sample_clock_frequency: 1000  # optional
+            adc_voltage_range: [-10, 10]  # optional, default [-10, 10]
+            max_channel_samples_buffer: 10000000  # optional, default 10000000
+            read_write_timeout: 10  # optional, default 10
+            sample_clock_output: '/Dev1/PFI20'  # optional
 
     """
 
@@ -570,7 +571,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         # Set up digital counting tasks
         for i, chnl in enumerate(digital_channels):
             chnl_name = '/{0}/{1}'.format(self._device_name, chnl)
-            task_name = 'PeriodCounter_{0}'.format(chnl)
+            task_name = 'PeriodCounterInput_{0}'.format(chnl)
             # Try to find available counter
             for ctr in self.__all_counters:
                 ctr_name = '/{0}/{1}'.format(self._device_name, ctr)

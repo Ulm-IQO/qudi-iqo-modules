@@ -155,10 +155,11 @@ class FastComtec(FastCounterInterface):
 
     fastcomtec_p7887:
         module.Class: 'fastcomtec.fastcomtecp7887.FastComtec'
-        gated: False
-        trigger_safety: 200e-9
-        aom_delay: 400e-9
-        minimal_binwidth: 0.25e-9
+        options:
+            gated: False
+            trigger_safety: 200e-9
+            aom_delay: 400e-9
+            minimal_binwidth: 0.25e-9
 
     """
 

@@ -41,8 +41,9 @@ class MicrowaveSRSSG(MicrowaveInterface):
 
     mw_source_srssg:
         module.Class: 'microwave.mw_source_srssg.MicrowaveSRSSG'
-        visa_address: 'GPIB0::12::INSTR'
-        comm_timeout: 10
+        options:
+            visa_address: 'GPIB0::12::INSTR'
+            comm_timeout: 10
 
     """
 

@@ -44,10 +44,11 @@ class OSW12(SwitchInterface):
 
     fibered_switch:
         module.Class: 'switches.osw12.OSW12'
-        interface: 'ASRL1::INSTR'
-        name: 'MEMS Fiber-Optic Switch'  # optional
-        switch_name: 'Detection'  # optional
-        switch_states: ['Off', 'On']  # optional
+        options:
+            interface: 'ASRL1::INSTR'
+            name: 'MEMS Fiber-Optic Switch'  # optional
+            switch_name: 'Detection'  # optional
+            switch_states: ['Off', 'On']  # optional
     """
 
     # ConfigOptions to give the single switch and its states custom names

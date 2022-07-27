@@ -34,11 +34,12 @@ class CameraDummy(CameraInterface):
 
     camera_dummy:
         module.Class: 'camera.camera_dummy.CameraDummy'
-        support_live: True
-        camera_name: 'Dummy camera'
-        resolution: (1280, 720)
-        exposure: 0.1
-        gain: 1.0
+        options:
+            support_live: True
+            camera_name: 'Dummy camera'
+            resolution: (1280, 720)
+            exposure: 0.1
+            gain: 1.0
     """
 
     _support_live = ConfigOption('support_live', True)

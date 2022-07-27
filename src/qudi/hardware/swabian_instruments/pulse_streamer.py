@@ -35,12 +35,13 @@ class PulseStreamer(PulserInterface):
 
     pulsestreamer:
         module.Class: 'swabian_instruments.pulse_streamer.PulseStreamer'
-        pulsestreamer_ip: '192.168.1.100'
-        #pulsed_file_dir: 'C:\\Software\\pulsed_files'
-        laser_channel: 0
-        uw_x_channel: 1
-        use_external_clock: False
-        external_clock_option: 0
+        options:
+            pulsestreamer_ip: '192.168.1.100'
+            #pulsed_file_dir: 'C:\\Software\\pulsed_files'
+            laser_channel: 0
+            uw_x_channel: 1
+            use_external_clock: False
+            external_clock_option: 0
     """
 
     _pulsestreamer_ip = ConfigOption('pulsestreamer_ip', '192.168.1.100', missing='warn')

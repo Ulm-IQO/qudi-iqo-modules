@@ -44,16 +44,17 @@ class FastCounterFPGAQO(FastCounterInterface):
 
     fpga_qo:
         module.Class: 'fpga_fastcounter.fast_counter_fpga_qo.FastCounterFPGAQO'
-        fpgacounter_serial: '143400058N'
-        fpga_type: 'XEM6310_LX150'
-        #threshV_ch1: 0.5   # optional, threshold voltage for detection
-        #threshV_ch2: 0.5   # optional, threshold voltage for detection
-        #threshV_ch3: 0.5   # optional, threshold voltage for detection
-        #threshV_ch4: 0.5   # optional, threshold voltage for detection
-        #threshV_ch5: 0.5   # optional, threshold voltage for detection
-        #threshV_ch6: 0.5   # optional, threshold voltage for detection
-        #threshV_ch7: 0.5   # optional, threshold voltage for detection
-        #threshV_ch8: 0.5   # optional, threshold voltage for detection
+        options:
+            fpgacounter_serial: '143400058N'
+            fpga_type: 'XEM6310_LX150'
+            #threshV_ch1: 0.5   # optional, threshold voltage for detection
+            #threshV_ch2: 0.5   # optional, threshold voltage for detection
+            #threshV_ch3: 0.5   # optional, threshold voltage for detection
+            #threshV_ch4: 0.5   # optional, threshold voltage for detection
+            #threshV_ch5: 0.5   # optional, threshold voltage for detection
+            #threshV_ch6: 0.5   # optional, threshold voltage for detection
+            #threshV_ch7: 0.5   # optional, threshold voltage for detection
+            #threshV_ch8: 0.5   # optional, threshold voltage for detection
     """
 
     _serial = ConfigOption('fpga_serial', missing='error')

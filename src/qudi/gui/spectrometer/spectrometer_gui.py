@@ -38,6 +38,10 @@ except NameError:
 
 
 class SpectrometerGui(GuiBase):
+    """
+    Todo: Documentation
+    """
+
     # declare connectors
     _spectrometer_logic = Connector(name='spectrometer_logic', interface='SpectrometerLogic')
 

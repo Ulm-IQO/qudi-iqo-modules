@@ -63,8 +63,9 @@ class HydraHarp400(FastCounterInterface):
 
     fastcounter_hydraharp400:
         module.Class: 'picoquant.hydraharp400.hydraharp400.HydraHarp400'
-        deviceID: 0 # a device index from 0 to 7.
-        mode: 0 # 0: histogram mode, 2: T2 mode, 3: T3 mode, 8: continuous mode
+        options:
+            deviceID: 0 # a device index from 0 to 7.
+            mode: 0 # 0: histogram mode, 2: T2 mode, 3: T3 mode, 8: continuous mode
         
     """
     _modclass = 'HydraHarp400'

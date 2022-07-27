@@ -51,7 +51,8 @@ class ScanningDataLogic(LogicBase):
     
     scanning_data_logic:
         module.Class: 'scanning_data_logic.ScanningDataLogic'
-        max_history_length: 50
+        options:
+            max_history_length: 50
         connect:
             scan_logic: scanning_probe_logic
     

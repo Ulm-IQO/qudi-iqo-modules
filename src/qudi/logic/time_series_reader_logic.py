@@ -40,8 +40,9 @@ class TimeSeriesReaderLogic(LogicBase):
 
     time_series_reader_logic:
         module.Class: 'time_series_reader_logic.TimeSeriesReaderLogic'
-        max_frame_rate: 10  # optional (10Hz by default)
-        calc_digital_freq: True  # optional (True by default)
+        options:
+            max_frame_rate: 10  # optional (10Hz by default)
+            calc_digital_freq: True  # optional (True by default)
         connect:
             _streamer_con: <streamer_name>
             _savelogic_con: <save_logic_name>

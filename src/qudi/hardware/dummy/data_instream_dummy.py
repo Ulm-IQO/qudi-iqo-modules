@@ -38,22 +38,23 @@ class InStreamDummy(DataInStreamInterface):
 
     instream_dummy:
         module.Class: 'data_instream_dummy.InStreamDummy'
-        digital_channels:  # optional, must provide at least one digital or analog channel
-            - 'digital 1'
-            - 'digital 2'
-            - 'digital 3'
-        analog_channels:  # optional, must provide at least one digital or analog channel
-            - 'analog 1'
-            - 'analog 2'
-        digital_event_rates:  # optional, must have as many entries as digital_channels or just one
-            - 1000
-            - 10000
-            - 100000
-        # digital_event_rates: 100000
-        analog_amplitudes:  # optional, must have as many entries as analog_channels or just one
-            - 5
-            - 10
-        # analog_amplitudes: 10  # optional (10V by default)
+        options:
+            digital_channels:  # optional, must provide at least one digital or analog channel
+                - 'digital 1'
+                - 'digital 2'
+                - 'digital 3'
+            analog_channels:  # optional, must provide at least one digital or analog channel
+                - 'analog 1'
+                - 'analog 2'
+            digital_event_rates:  # optional, must have as many entries as digital_channels or just one
+                - 1000
+                - 10000
+                - 100000
+            # digital_event_rates: 100000
+            analog_amplitudes:  # optional, must have as many entries as analog_channels or just one
+                - 5
+                - 10
+            # analog_amplitudes: 10  # optional (10V by default)
     """
     # config options
     _digital_channels = ConfigOption(name='digital_channels', default=tuple(), missing='nothing')

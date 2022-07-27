@@ -29,7 +29,12 @@ from .main_window import TaskMainWindow
 
 class TaskRunnerGui(GuiBase):
     """
-    TODO: Document
+    GUI module to be used in conjunction with taskrunner logic.
+
+    task_runner_gui:
+        module.Class: 'taskrunner.task_runner_gui.TaskRunnerGui'
+        connect:
+            task_runner: 'task_runner_logic'
     """
 
     # declare connectors

@@ -37,6 +37,8 @@ warnings.warn("This module has not been tested on the new qudi core and might no
 class SoftPIDController(GenericLogic, PIDControllerInterface):
     """
     Control a process via software PID.
+
+    Todo: Example config for copy-paste:
     """
 
     # declare connectors

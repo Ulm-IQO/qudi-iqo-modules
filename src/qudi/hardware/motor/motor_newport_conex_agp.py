@@ -41,9 +41,10 @@ class MotorNewportConexAGP(MotorInterface):
 
     newport_conex_agp:
         module.Class: 'motor.motor_newport_conex_agp.MotorNewportConexAGP'
-        com_port: 'COM1'
-        controller_address: 1
-        axis_label: 'phi'
+        options:
+            com_port: 'COM1'
+            controller_address: 1
+            axis_label: 'phi'
 
     """
 

@@ -48,8 +48,9 @@ class OkFpgaPulser(PulserInterface):
 
     fpga_pulser_ok:
         module.Class: 'fpga_fastcounter.fast_pulser_qo.OkFpgaPulser'
-        fpga_serial: '143400058N'
-        fpga_type: 'XEM6310_LX150'
+        options:
+            fpga_serial: '143400058N'
+            fpga_type: 'XEM6310_LX150'
 
     """
     _fpga_serial = ConfigOption(name='fpga_serial', missing='error')

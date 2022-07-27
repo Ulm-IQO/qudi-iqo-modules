@@ -43,20 +43,21 @@ class HardwareSwitchFpga(SwitchInterface):
 
     fpga_switch:
         module.Class: 'switches.ok_fpga.ok_s6_switch.HardwareSwitchFpga'
-        fpga_serial: '143400058N'
-        fpga_type: 'XEM6310_LX45'  # optional
-        path_to_bitfile: <file path>  # optional
-        name: 'OpalKelly FPGA Switch'  # optional
-        remember_states: True  # optional
-        switches:               # optional
-            B14: ['Off', 'On']
-            B16: ['Off', 'On']
-            B12: ['Off', 'On']
-             C7: ['Off', 'On']
-            D15: ['Off', 'On']
-            D10: ['Off', 'On']
-             D9: ['Off', 'On']
-            D11: ['Off', 'On']
+        options:
+            fpga_serial: '143400058N'
+            fpga_type: 'XEM6310_LX45'  # optional
+            path_to_bitfile: <file path>  # optional
+            name: 'OpalKelly FPGA Switch'  # optional
+            remember_states: True  # optional
+            switches:               # optional
+                B14: ['Off', 'On']
+                B16: ['Off', 'On']
+                B12: ['Off', 'On']
+                 C7: ['Off', 'On']
+                D15: ['Off', 'On']
+                D10: ['Off', 'On']
+                 D9: ['Off', 'On']
+                D11: ['Off', 'On']
     """
 
     # config options

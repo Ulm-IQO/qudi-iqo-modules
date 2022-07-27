@@ -31,9 +31,18 @@ from qudi.core.configoption import ConfigOption
 
 
 class TaskRunnerLogic(LogicBase):
-    """ This module keeps a collection of available ModuleTask subclasses (defined by config) and
+    """
+    This module keeps a collection of available ModuleTask subclasses (defined by config) and
     respective initialized instances that can be run.
     Handles module connections to tasks and allows monitoring of task states and results.
+
+    Example config for copy-paste:
+
+    task_runner_logic:
+        module.Class: 'taskrunner.TaskRunnerLogic'
+        options:
+            module_tasks: {}
+
     """
 
     _module_task_configs = ConfigOption(name='module_tasks', default=dict(), missing='warn')

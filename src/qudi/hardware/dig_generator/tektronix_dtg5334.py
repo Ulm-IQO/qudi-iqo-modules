@@ -39,7 +39,8 @@ class DTG5334(PulserInterface):
 
     pulser_dtg:
         module.Class: 'dtg.dtg5334.DTG5334'
-        visa_address: 'GPIB0::12::INSTR'
+        options:
+            visa_address: 'GPIB0::12::INSTR'
 
     """
 

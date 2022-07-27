@@ -39,6 +39,14 @@ from qudi.interface.scanning_probe_interface import ScanData
 class ScanningOptimizeLogic(LogicBase):
     """
     ToDo: Write documentation
+
+    Example config for copy-paste:
+
+    scanning_optimize_logic:
+        module.Class: 'scanning_optimize_logic.ScanningOptimizeLogic'
+        connect:
+            scan_logic: scanning_probe_logic
+
     """
 
     # declare connectors

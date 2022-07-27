@@ -36,6 +36,18 @@ class ScanningProbeLogic(LogicBase):
     This is the Logic class for 1D/2D SPM measurements.
     Scanning in this context means moving something along 1 or 2 dimensions and collecting data from
     possibly multiple sources at each position.
+
+    Example config for copy-paste:
+
+    scanning_probe_logic:
+        module.Class: 'scanning_probe_logic.ScanningProbeLogic'
+        options:
+            max_history_length: 20
+            max_scan_update_interval: 2
+            position_update_interval: 1
+        connect:
+            scanner: scanner_dummy
+
     """
 
     # declare connectors

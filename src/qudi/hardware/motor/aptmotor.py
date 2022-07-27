@@ -774,57 +774,60 @@ class APTStage(MotorInterface):
         which has the key 'constraints'.
 
     For example, a config file entry for a single-axis rotating half-wave-plate stage would look like:
+    Example config for copy-paste
 
     hwp_motor:
         module.Class: 'motor.aptmotor.APTStage'
-        dll_path:\ 'C:\Program Files\Thorlabs\'
-        axis_labels:
-            - phi
-        phi:
-            hw_type: 'TDC001'
-            serial_num: 27500136
-            pitch: 17.87
-            unit: 'degree'
-            constraints:
-                pos_min: -360
-                pos_max: 720
-                vel_min: 1.0
-                vel_max: 10.0
-                acc_min: 4.0
-                acc_max: 10.0
+        options:
+            dll_path:\ 'C:\Program Files\Thorlabs\'
+            axis_labels:
+                - phi
+            phi:
+                hw_type: 'TDC001'
+                serial_num: 27500136
+                pitch: 17.87
+                unit: 'degree'
+                constraints:
+                    pos_min: -360
+                    pos_max: 720
+                    vel_min: 1.0
+                    vel_max: 10.0
+                    acc_min: 4.0
+                    acc_max: 10.0
 
     A config file entry for a linear xy-axis stage would look like:
 
     hwp_motor:
         module.Class: 'motor.aptmotor.APTStage'
-        dll_path: 'C:\\Program Files\\Thorlabs\\'
-        axis_labels:
-            - x
-            - y
-        x:
-            hw_type: 'TDC001'
-            serial_num: 00000000
-            pitch:  1
-            unit: 'm'
-            constraints:
-                pos_min: 0
-                pos_max: 2
-                vel_min: 1.0
-                vel_max: 10.0
-                acc_min: 4.0
-                acc_max: 10.0
-        y:
-            hw_type: 'TDC001'
-            serial_num: 00000001
-            pitch: 1
-            unit: 'm'
-            constraints:
-                pos_min: -1
-                pos_max: 1
-                vel_min: 1.0
-                vel_max: 10.0
-                acc_min: 4.0
-                acc_max: 10.0
+        options:
+            dll_path: 'C:\\Program Files\\Thorlabs\\'
+            axis_labels:
+                - x
+                - y
+            x:
+                hw_type: 'TDC001'
+                serial_num: 00000000
+                pitch:  1
+                unit: 'm'
+                constraints:
+                    pos_min: 0
+                    pos_max: 2
+                    vel_min: 1.0
+                    vel_max: 10.0
+                    acc_min: 4.0
+                    acc_max: 10.0
+            y:
+                hw_type: 'TDC001'
+                serial_num: 00000001
+                pitch: 1
+                unit: 'm'
+                constraints:
+                    pos_min: -1
+                    pos_max: 1
+                    vel_min: 1.0
+                    vel_max: 10.0
+                    acc_min: 4.0
+                    acc_max: 10.0
 
     """
 

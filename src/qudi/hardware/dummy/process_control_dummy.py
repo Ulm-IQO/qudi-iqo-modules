@@ -37,26 +37,27 @@ class ProcessControlDummy(ProcessSetpointInterface, ProcessValueInterface):
 
     process_control_dummy:
         module.Class: 'dummy.process_control_dummy.ProcessControlDummy'
-        process_value_channels:
-            Temperature:
-                unit: 'K'
-                limits: [0, .inf]
-                dtype: float
-            Voltage:
-                unit: 'V'
-                limits: [-10.0, 10.0]
-                dtype: float
-        setpoint_channels:
-            Power:
-                unit: 'dBm'
-                limits: [-120.0, 30.0]
-                dtype: float
-            Frequency:
-                unit: 'Hz'
-                limits: [100.0e3, 20.0e9]
-                dtype: float
+        options:
+            process_value_channels:
+                Temperature:
+                    unit: 'K'
+                    limits: [0, .inf]
+                    dtype: float
+                Voltage:
+                    unit: 'V'
+                    limits: [-10.0, 10.0]
+                    dtype: float
+            setpoint_channels:
+                Power:
+                    unit: 'dBm'
+                    limits: [-120.0, 30.0]
+                    dtype: float
+                Frequency:
+                    unit: 'Hz'
+                    limits: [100.0e3, 20.0e9]
+                    dtype: float
 
-                # FIXME Channel dtype is interpreted as a string, if specified in config.
+                    # FIXME Channel dtype is interpreted as a string, if specified in config.
     """
 
     _setpoint_channels = ConfigOption(

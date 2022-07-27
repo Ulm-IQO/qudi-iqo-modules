@@ -75,7 +75,8 @@ class WavemeterDummy(WavemeterInterface):
 
     temp_tsys:
         module.Class: 'wavemeter_dummy.WavemeterDummy'
-        measurement_timing: 10.0
+        options:
+            measurement_timing: 10.0
 
     """
     # config opts
