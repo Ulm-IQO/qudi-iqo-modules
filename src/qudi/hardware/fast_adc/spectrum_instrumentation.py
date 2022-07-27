@@ -1358,7 +1358,7 @@ class Process_commander:
     def check_ts_status(self):
         ts_avail_user_pos_B = self.cp.tscmd.get_ts_avail_user_pos_B()
         ts_avail_user_len_B = self.cp.tscmd.get_ts_avail_user_len_B()
-        ts_avail_reps = int(ts_avail_user_len_B / 32)
+        ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.number_of_gates)
         print('ts Pos:{}B Avail:{}B {}reps '.format(ts_avail_user_pos_B,
                                                     ts_avail_user_len_B,
                                                     ts_avail_reps))
@@ -1386,12 +1386,15 @@ class Process_loop(Process_commander):
         self.data_proc_th.join()
 
     def start_data_process_loop(self):
+        t_0 = time.time()
+        self.t_p = 0
 
         while self.loop_on == True:
             with self.threadlock:
                 self.command_process()
                 self.check_dp_status()
                 self.check_ts_status()
+                self.t_p = self.process_speed(t_0, self.t_p)
 
         return
 
@@ -1408,3 +1411,18 @@ class Process_loop(Process_commander):
             avg_data, avg_num = self.dp.return_avg_data()
 
         return avg_data, avg_num
+
+    def process_speed(self, t_0, t_p):
+        t_c = time.time() - t_0
+        t_d = t_c - t_p
+        try:
+            if self.dp.avg.num == 0 or self.dp.new_avg == 0:
+                return 0
+        except :
+            return 0
+        ps_t = self.dp.avg.num * self.dp.ms.seq_size_B / t_c * 1e-6
+        ps_c = self.dp.new_avg.num * self.dp.ms.seq_size_B / t_d * 1e-6
+        print('total_process_speed {:.3g}MB/s'.format(ps_t))
+        print('current_process_speed {:.3g}MB/s'.format(ps_c))
+        return t_c
+
