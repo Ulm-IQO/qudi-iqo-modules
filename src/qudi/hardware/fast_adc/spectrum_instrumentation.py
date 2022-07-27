@@ -320,7 +320,7 @@ class SpectrumInstrumentation(FastCounterInterface):
     Config example:
     si:
         module.Class: 'fast_adc.spectrum_instrumentation.SpectrumInstrumentationTest'
-        ai_ch: CH0
+        ai_ch: 'CH0'
         ai_range_mV: 2000
         ai_offset_mV: 0
         ai_termination: '50Ohm'
@@ -715,7 +715,7 @@ class Configure_acquistion_mode():
         return
 
     @check_card_error
-    def _mode_FIFO_AVERAGE(self, card, post_trigs_S, seg_size_S, loops=0):#,HW_avg_num):
+    def _mode_FIFO_AVERAGE(self, card, post_trigs_S, seg_size_S, loops, HW_avg_num):
         max_post_trigs_S = 127984
 
         spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_FIFO_AVERAGE)
@@ -890,15 +890,32 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
     @check_card_error
     def set_analog_input_conditions(self, card):
         ai_ch_dict ={'CH0': CHANNEL0, 'CH1':CHANNEL1}
-        ai_term_dict = {'1Mohm':0, '50Ohm':1}
-        ai_coupling_dict = {'DC':0, 'AC':1}
         spcm_dwSetParam_i32(card, SPC_TIMEOUT, 5000)
         spcm_dwSetParam_i32(card, SPC_CHENABLE, ai_ch_dict[self._ai_ch])
+        if 'CH0' in self._ai_ch:
+            self._set_ch0(card)
+        elif 'CH1' in self._ai_ch:
+            self._set_ch1(card)
+
+        return
+
+    def _set_ch0(self, card):
+        ai_term_dict = {'1MOhm':0, '50Ohm':1}
+        ai_coupling_dict = {'DC':0, 'AC':1}
         spcm_dwSetParam_i32(card, SPC_AMP0, self._ai_range_mV) # +- 10 V
         spcm_dwSetParam_i32(card, SPC_OFFS0, self._ai_offset_mV)
         spcm_dwSetParam_i32(card, SPC_50OHM0, ai_term_dict[self._ai_term]) # A "1"("0") sets the 50(1M) ohm termination
         self._error = spcm_dwSetParam_i32(card, SPC_ACDC0, ai_coupling_dict[self._ai_coupling])  # A "0"("1") sets he DC(AC)coupling
-        return
+
+    def _set_ch1(self, card):
+        ai_term_dict = {'1MOhm':0, '50Ohm':1}
+        ai_coupling_dict = {'DC':0, 'AC':1}
+        spcm_dwSetParam_i32(card, SPC_AMP1, self._ai_range_mV) # +- 10 V
+        spcm_dwSetParam_i32(card, SPC_OFFS1, self._ai_offset_mV)
+        spcm_dwSetParam_i32(card, SPC_50OHM1, ai_term_dict[self._ai_term]) # A "1"("0") sets the 50(1M) ohm termination
+        self._error = spcm_dwSetParam_i32(card, SPC_ACDC1, ai_coupling_dict[self._ai_coupling])  # A "0"("1") sets he DC(AC)coupling
+
+
 
     @check_card_error
     def set_sampling_clock(self, card):
