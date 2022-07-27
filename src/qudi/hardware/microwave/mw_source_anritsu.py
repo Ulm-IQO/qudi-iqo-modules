@@ -42,9 +42,10 @@ class MicrowaveAnritsu(MicrowaveInterface):
 
     mw_source_anritsu:
         module.Class: 'microwave.mw_source_anritsu.MicrowaveAnritsu'
-        gpib_address: 'GPIB0::12::INSTR'
-        gpib_timeout: 10  # in seconds, optional
-        rising_edge_trigger: True  # optional
+        options:
+            gpib_address: 'GPIB0::12::INSTR'
+            gpib_timeout: 10  # in seconds, optional
+            rising_edge_trigger: True  # optional
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')
