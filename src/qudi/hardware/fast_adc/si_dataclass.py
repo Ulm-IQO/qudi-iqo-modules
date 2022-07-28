@@ -157,6 +157,8 @@ class Measurement_settings_gated(Measurement_settings):
     gate_length_S: int = 0
     gate_length_rounded_S: int = 0
     gate_end_alignment_S: int = 16
+    parted_pulse_acquisition: bool = False
+
 
     def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
         self.gate_length_S = int(np.ceil(self.record_length_s / self.binwidth_s))
@@ -165,7 +167,10 @@ class Measurement_settings_gated(Measurement_settings):
         self.seq_size_S = self.seg_size_S * self.number_of_gates
         self.ts_seq_size_S = self.ts_seg_size_S * self.number_of_gates
         self.ts_seq_size_B = self.ts_seg_size_B * self.number_of_gates
-
+        if self.parted_pulse_acquisition:
+            self.seq_size_S = 2 * self.seq_size_S
+            self.ts_seq_size_S = 2 * self.ts_seq_size_S
+            self.ts_seq_size_B = 2 * self.ts_seq_size_B
 
     def calc_actual_length_s(self):
         self.actual_length_s = self.seg_size_S * self.binwidth_s

@@ -135,6 +135,7 @@ class Data_buffer_command(Card_command):
         self._card = card
         self._seq_size_B = ms.seq_size_B
         self._no_of_gates = ms.number_of_gates
+        self._parted_pulse_acquisition = ms.parted_pulse_acquisition
         self.init_dp_params()
 
     def init_dp_params(self):
@@ -216,7 +217,11 @@ class Data_buffer_command(Card_command):
 
     def get_trig_reps(self):
         trig_counter = self.get_trig_counter()
-        return int(trig_counter / self._no_of_gates)
+        if self._parted_pulse_acquisition:
+            trig_reps = int(trig_counter / self._no_of_gates / 2)
+        else:
+            trig_reps = int(trig_counter / self._no_of_gates)
+        return trig_reps
 
 
     @check_card_error
@@ -378,6 +383,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     _init_buf_size_S = ConfigOption('initial_buffer_size_S', 1e9, missing='warn')
     _reps = ConfigOption('repetitions', 0, missing='nothing')
+    _parted_pulse_acquisition = ConfigOption('parted_pulse_acquisition', False, missing='nothing')
 
     _check_buffer = False
     _row_data_save = ConfigOption('row_data_save', True, missing='nothing')
@@ -449,6 +455,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.ms.gated = self._gated
         self.ms.init_buf_size_S = int(self._init_buf_size_S)
         self.ms.reps = self._reps
+        self.ms.parted_pulse_acquisition = self._parted_pulse_acquisition
         self.ms.assign_data_bit(self.cs.acq_mode)
 
 
@@ -1358,7 +1365,11 @@ class Process_commander:
     def check_ts_status(self):
         ts_avail_user_pos_B = self.cp.tscmd.get_ts_avail_user_pos_B()
         ts_avail_user_len_B = self.cp.tscmd.get_ts_avail_user_len_B()
-        ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.number_of_gates)
+        if self.dp.ms.parted_pulse_acquisition:
+            ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.number_of_gates / 2)
+        else:
+            ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.number_of_gates)
+
         print('ts Pos:{}B Avail:{}B {}reps '.format(ts_avail_user_pos_B,
                                                     ts_avail_user_len_B,
                                                     ts_avail_reps))
@@ -1385,26 +1396,26 @@ class Process_loop(Process_commander):
         self.loop_on = False
         self.data_proc_th.join()
 
-    def start_data_process_loop(self):
-
-        while self.loop_on == True:
-            with self.threadlock:
-                self.command_process()
-
-        return
-
     # def start_data_process_loop(self):
-    #     t_0 = time.time()
-    #     self.t_p = 0
     #
     #     while self.loop_on == True:
     #         with self.threadlock:
     #             self.command_process()
-    #             self.check_dp_status()
-    #             self.check_ts_status()
-    #             self.t_p = self.process_speed(t_0, self.t_p)
     #
     #     return
+
+    def start_data_process_loop(self):
+        t_0 = time.time()
+        self.t_p = 0
+
+        while self.loop_on == True:
+            with self.threadlock:
+                self.command_process()
+                self.check_dp_status()
+                self.check_ts_status()
+                self.t_p = self.process_speed(t_0, self.t_p)
+
+        return
 
     def start_data_process_loop_n(self, n):
 
