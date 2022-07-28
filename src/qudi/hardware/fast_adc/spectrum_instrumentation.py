@@ -271,8 +271,8 @@ class Ts_buffer_command():
         self.ts_avail_user_len_B = c_ts_avaiil_user_len.value
         return self.ts_avail_user_len_B
 
-    def get_ts_avail_user_reps(self):
-        return int(self.get_ts_avail_user_len_B() / 64)
+    def get_ts_avail_user_reps(self, ts_seq_size_B):
+        return int(self.get_ts_avail_user_len_B() / ts_seq_size_B)
 
     def get_ts_avail_user_pos_B(self):
         c_ts_avaiil_user_pos = c_int64(0)
@@ -1315,7 +1315,7 @@ class Process_commander:
             return 0
 
         if self._gated:
-            curr_ts_avail_reps = self.cp.tscmd.get_ts_avail_user_reps()
+            curr_ts_avail_reps = self.cp.tscmd.get_ts_avail_user_reps(self.dp.ms.ts_seq_size_B)
             if curr_ts_avail_reps == 0:
                 print('wait extra dma')
                 self.cp.tscmd.wait_extra_dma()
@@ -1386,17 +1386,25 @@ class Process_loop(Process_commander):
         self.data_proc_th.join()
 
     def start_data_process_loop(self):
-        t_0 = time.time()
-        self.t_p = 0
 
         while self.loop_on == True:
             with self.threadlock:
                 self.command_process()
-                self.check_dp_status()
-                self.check_ts_status()
-                self.t_p = self.process_speed(t_0, self.t_p)
 
         return
+
+    # def start_data_process_loop(self):
+    #     t_0 = time.time()
+    #     self.t_p = 0
+    #
+    #     while self.loop_on == True:
+    #         with self.threadlock:
+    #             self.command_process()
+    #             self.check_dp_status()
+    #             self.check_ts_status()
+    #             self.t_p = self.process_speed(t_0, self.t_p)
+    #
+    #     return
 
     def start_data_process_loop_n(self, n):
 

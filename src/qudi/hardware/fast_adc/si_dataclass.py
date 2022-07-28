@@ -142,7 +142,7 @@ class Measurement_settings:
             pass
 
     def calc_buf_params(self):
-        self.reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
+        self.reps_per_buf = 46875#int(self.init_buf_size_S / self.seq_size_S)
         self.seq_size_B = self.seq_size_S * self.get_data_bytes_B()
 
 @dataclass()
@@ -150,7 +150,9 @@ class Measurement_settings_gated(Measurement_settings):
     c_ts_buf_ptr:  typing.Any = c_void_p()
     ts_data_bits: int = 64
     ts_data_bytes_B: int = 8
-    ts_seq_size_S: int = 4 #rise + null + fall + null
+    ts_seg_size_S: int = 4 #rise + null + fall + null
+    ts_seg_size_B: int = 32
+    ts_seq_size_S: int = 8
     ts_seq_size_B: int = 32
     gate_length_S: int = 0
     gate_length_rounded_S: int = 0
@@ -161,6 +163,9 @@ class Measurement_settings_gated(Measurement_settings):
         self.gate_length_rounded_S = int(np.ceil(self.gate_length_S / 16) * 16)
         self.seg_size_S = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
         self.seq_size_S = self.seg_size_S * self.number_of_gates
+        self.ts_seq_size_S = self.ts_seg_size_S * self.number_of_gates
+        self.ts_seq_size_B = self.ts_seg_size_B * self.number_of_gates
+
 
     def calc_actual_length_s(self):
         self.actual_length_s = self.seg_size_S * self.binwidth_s
