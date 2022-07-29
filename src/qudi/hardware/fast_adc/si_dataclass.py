@@ -59,6 +59,8 @@ class Card_settings:
             self.acq_loops = ms.reps
         else:
             self.acq_loops = ms.reps * ms.number_of_gates
+            if ms.parted_pulse_acquisition:
+                self.acq_loops = 2 * self.acq_loops
 
 
     def calc_samplerate_Hz(self, binwidth_s):
@@ -142,7 +144,7 @@ class Measurement_settings:
             pass
 
     def calc_buf_params(self):
-        self.reps_per_buf = 46875#int(self.init_buf_size_S / self.seq_size_S)
+        self.reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
         self.seq_size_B = self.seq_size_S * self.get_data_bytes_B()
 
 @dataclass()
