@@ -26,7 +26,6 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
-#from logic.generic_logic import GenericLogic
 from qudi.core.module import Base
 from qtpy import QtCore
 
@@ -45,13 +44,11 @@ class PIDLogic(Base):
             timestep: 0.1
         connect:
             controller: 'softpid'
-            savelogic: 'savelogic'
 
     """
 
     # declare connectors
     controller = Connector(interface='PIDControllerInterface')
-    savelogic = Connector(interface='SaveLogic')
 
     # status vars
     bufferLength = StatusVar('bufferlength', 1000)
@@ -72,7 +69,6 @@ class PIDLogic(Base):
         """ Initialisation performed during activation of the module.
         """
         self._controller = self.controller()
-        self._save_logic = self.savelogic()
 
         self.history = np.zeros([3, self.bufferLength])
         self.savingState = False

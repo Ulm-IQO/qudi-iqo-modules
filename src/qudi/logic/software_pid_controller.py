@@ -24,7 +24,6 @@ from qtpy import QtCore
 from qudi.util.mutex import Mutex
 import numpy as np
 
-from qudi.core.module import Base
 from qudi.interface.pid_controller_interface import PIDControllerInterface
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -34,7 +33,7 @@ import warnings
 warnings.warn("This module has not been tested on the new qudi core and might not work properly/at all."
                          "Use it with caution and if possible contribute to its rework, please.")
 
-class SoftPIDController(GenericLogic, PIDControllerInterface):
+class SoftPIDController(PIDControllerInterface):
     """
     Control a process via software PID.
 
@@ -42,8 +41,8 @@ class SoftPIDController(GenericLogic, PIDControllerInterface):
     """
 
     # declare connectors
-    process = Connector(interface='ProcessInterface')
-    control = Connector(interface='ProcessControlInterface')
+    process = Connector(name='process_value', interface='ProcessValueInterface')
+    control = Connector(name='setpoint', interface='ProcessSetpointInterface')
 
     # config opt
     timestep = ConfigOption(default=100)

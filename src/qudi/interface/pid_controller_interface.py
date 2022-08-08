@@ -19,11 +19,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from qudi.core.interface import abstract_interface_method
-from qudi.core.meta import InterfaceMetaclass
+from abc import abstractmethod
+from qudi.core.module import Base
 
 
-class PIDControllerInterface(metaclass=InterfaceMetaclass):
+class PIDControllerInterface(Base):
     """ This interface is used to control a PID device.
 
     From Wikipedia : https://en.wikipedia.org/wiki/PID_controller
@@ -38,7 +38,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
 
     """
 
-    @abstract_interface_method
+    @abstractmethod
     def get_kp(self):
         """ Get the coefficient associated with the proportional term
 
@@ -46,7 +46,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
          """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def set_kp(self, kp):
         """ Set the coefficient associated with the proportional term
 
@@ -54,7 +54,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
          """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_ki(self):
         """ Get the coefficient associated with the integral term
 
@@ -62,7 +62,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
          """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def set_ki(self, ki):
         """ Set the coefficient associated with the integral term
 
@@ -70,7 +70,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
          """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_kd(self):
         """ Get the coefficient associated with the derivative term
 
@@ -78,7 +78,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
          """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def set_kd(self, kd):
         """ Set the coefficient associated with the derivative term
 
@@ -86,7 +86,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
          """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_setpoint(self):
         """ Get the setpoint value of the hardware device
 
@@ -94,7 +94,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
          """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def set_setpoint(self, setpoint):
         """ Set the setpoint value of the hardware device
 
@@ -102,7 +102,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_manual_value(self):
         """ Get the manual value, used if the device is disabled
 
@@ -110,7 +110,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def set_manual_value(self, manualvalue):
         """ Set the manual value, used if the device is disabled
 
@@ -118,7 +118,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_enabled(self):
         """ Get if the PID is enabled (True) or if it is disabled (False) and the manual value is used
 
@@ -126,7 +126,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def set_enabled(self, enabled):
         """ Set if the PID is enabled (True) or if it is disabled (False) and the manual value is used
 
@@ -134,7 +134,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_control_limits(self):
         """ Get the current limits of the control value as a tuple
 
@@ -142,7 +142,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def set_control_limits(self, limits):
         """ Set the current limits of the control value as a tuple
 
@@ -152,7 +152,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_process_value(self):
         """ Get the current process value read
 
@@ -160,7 +160,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_control_value(self):
         """ Get the current control value read
 
@@ -168,7 +168,7 @@ class PIDControllerInterface(metaclass=InterfaceMetaclass):
         """
         pass
 
-    @abstract_interface_method
+    @abstractmethod
     def get_extra(self):
         """ Get the P, I and D terms computed bu the hardware if available
 

@@ -25,7 +25,7 @@ import os
 import pyqtgraph as pg
 
 from qudi.core.connector import Connector
-from qudi.gui.colordefs import QudiPalettePale as palette
+from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.core.module import GuiBase
 from qtpy import QtCore
 from qtpy import QtWidgets
@@ -49,12 +49,12 @@ class PIDMainWindow(QtWidgets.QMainWindow):
         self.show()
 
 
-class PIDGui(GUIBase):
+class PIDGui(GuiBase):
     """ FIXME: Please document
     """
 
     # declare connectors
-    pidlogic = Connector(interface='PIDLogic')
+    pidlogic = Connector(name='pid_logic', interface='PIDLogic')
 
     sigStart = QtCore.Signal()
     sigStop = QtCore.Signal()
