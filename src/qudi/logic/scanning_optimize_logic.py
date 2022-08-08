@@ -337,6 +337,7 @@ class ScanningOptimizeLogic(LogicBase):
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
             elif data is not None:
+
                 if data.scan_dimension == 1:
                     x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
                     opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
@@ -352,7 +353,6 @@ class ScanningOptimizeLogic(LogicBase):
                         data.data[self._data_channel].ravel()
                     )
 
-
                 position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
                 if fit_data is not None:
                     new_pos = self._scan_logic().set_target_position(position_update)
@@ -366,6 +366,7 @@ class ScanningOptimizeLogic(LogicBase):
 
                 # Abort optimize if fit failed
                 if fit_data is None:
+                    self.log.warning("Stopping optimization due to failed fit.")
                     self.stop_optimize()
                     return
 
@@ -405,8 +406,8 @@ class ScanningOptimizeLogic(LogicBase):
             y_min, y_max = xy[1].min(), xy[1].max()
             x_middle = (x_max - x_min) / 2 + x_min
             y_middle = (y_max - y_min) / 2 + y_min
-            self.log.exception('2D Gaussian fit unsuccessful. Aborting optimization sequence.')
-            return (x_middle, y_middle), None
+            self.log.exception('2D Gaussian fit unsuccessful.')
+            return (x_middle, y_middle), None, None
 
         return (fit_result.best_values['center_x'],
                 fit_result.best_values['center_y']), fit_result.best_fit.reshape(xy[0].shape), fit_result
@@ -419,8 +420,8 @@ class ScanningOptimizeLogic(LogicBase):
         except:
             x_min, x_max = x.min(), x.max()
             middle = (x_max - x_min) / 2 + x_min
-            self.log.exception('1D Gaussian fit unsuccessful. Aborting optimization sequence.')
-            return middle, None
+            self.log.exception('1D Gaussian fit unsuccessful.')
+            return (middle,), None, None
 
         return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
 
