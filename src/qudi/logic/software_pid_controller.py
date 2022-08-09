@@ -45,6 +45,8 @@ class SoftPIDController(PIDControllerInterface):
     control = Connector(name='setpoint', interface='ProcessSetpointInterface')
 
     # config opt
+    process_value_channel = ConfigOption(default='A')
+    setpoint_channel = ConfigOption(default='A')
     timestep = ConfigOption(default=100)
 
     # status vars
@@ -54,7 +56,7 @@ class SoftPIDController(PIDControllerInterface):
     setpoint = StatusVar(default=273.15)
     manualvalue = StatusVar(default=0)
 
-    sigNewValue = QtCore.Signal(float)
+    sigNewValue = QtCore.Signal(float, str)
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -78,14 +80,14 @@ class SoftPIDController(PIDControllerInterface):
         self._control = self.control()
 
         self.previousdelta = 0
-        self.cv = self._control.get_control_value()
+        self.cv = self._control.get_setpoint(self.setpoint_channel)
 
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(True)
         self.timer.setInterval(self.timestep)
 
         self.timer.timeout.connect(self._calcNextStep, QtCore.Qt.QueuedConnection)
-        self.sigNewValue.connect(self._control.set_control_value)
+        self.sigNewValue.connect(self._control.set_setpoint)
 
         self.history = np.zeros([3, 5])
         self.savingState = False
@@ -107,7 +109,7 @@ class SoftPIDController(PIDControllerInterface):
              The D term is NOT low-pass filtered.
              This function should be called once every TS seconds.
         """
-        self.pv = self._process.get_process_value()
+        self.pv = self._process.get_process_value(self.process_value_channel)
 
         if self.countdown > 0:
             self.countdown -= 1
@@ -130,7 +132,7 @@ class SoftPIDController(PIDControllerInterface):
             self.previousdelta = delta
 
             ## limit contol output to maximum permissible limits
-            limits = self._control.get_control_limit()
+            limits = self.get_control_limits()
             if self.cv > limits[1]:
                 self.cv = limits[1]
             if self.cv < limits[0]:
@@ -140,15 +142,15 @@ class SoftPIDController(PIDControllerInterface):
             self.history[0, -1] = self.pv
             self.history[1, -1] = self.cv
             self.history[2, -1] = self.setpoint
-            self.sigNewValue.emit(self.cv)
+            self.sigNewValue.emit(self.cv, self.setpoint_channel)
         else:
             self.cv = self.manualvalue
-            limits = self._control.get_control_limit()
+            limits = self.get_control_limits()
             if self.cv > limits[1]:
                 self.cv = limits[1]
             if self.cv < limits[0]:
                 self.cv = limits[0]
-            self.sigNewValue.emit(self.cv)
+            self.sigNewValue.emit(self.cv, self.setpoint_channel)
 
         self.timer.start(self.timestep)
 
@@ -251,7 +253,7 @@ class SoftPIDController(PIDControllerInterface):
             @param float manualvalue: control value for manual mode of controller
         """
         self.manualvalue = manualvalue
-        limits = self._control.get_control_limit()
+        limits = self.get_control_limits()
         if self.manualvalue > limits[1]:
             self.manualvalue = limits[1]
         if self.manualvalue < limits[0]:
@@ -279,7 +281,9 @@ class SoftPIDController(PIDControllerInterface):
 
             @return list(float): (minimum, maximum) values of the control actuator
         """
-        return self._control.get_control_limit()
+        constraints = self._control.constraints
+        limits = constraints.channel_limits[self.setpoint_channel]
+        return limits
 
     def set_control_limits(self, limits):
         """ Set the minimum and maximum value of the control actuator.
