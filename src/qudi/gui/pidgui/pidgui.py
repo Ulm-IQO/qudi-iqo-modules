@@ -49,7 +49,15 @@ class PIDMainWindow(QtWidgets.QMainWindow):
 
 
 class PIDGui(GuiBase):
-    """ FIXME: Please document
+    """ Gui module to monitor and control a PID process
+
+    Example config:
+
+    pid_gui:
+        module.Class: 'pidgui.pidgui.PIDGui'
+        connect:
+            pid_logic: pid_logic
+
     """
 
     # declare connectors

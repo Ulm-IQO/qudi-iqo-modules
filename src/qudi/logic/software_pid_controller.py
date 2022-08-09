@@ -35,18 +35,31 @@ warnings.warn("This module has not been tested on the new qudi core and might no
 
 class SoftPIDController(PIDControllerInterface):
     """
-    Control a process via software PID.
+    Logic module to control a process via software PID.
 
-    Todo: Example config for copy-paste:
+    Example config:
+
+    softpid:
+        module.Class: 'software_pid_controller.SoftPIDController'
+        options:
+            process_value_channel: 'Power'
+            setpoint_channel: 'Speed'
+            # PID control value update interval (ms)
+            timestep: 100
+        connect:
+            process_value: process_value_dummy
+            setpoint: process_setpoint_dummy
     """
 
     # declare connectors
     process = Connector(name='process_value', interface='ProcessValueInterface')
     control = Connector(name='setpoint', interface='ProcessSetpointInterface')
 
-    # config opt
+    # config options
+    # channels to use for process and setpoint devices
     process_value_channel = ConfigOption(default='A')
     setpoint_channel = ConfigOption(default='A')
+    # timestep on which the PID updates
     timestep = ConfigOption(default=100)
 
     # status vars
@@ -120,6 +133,7 @@ class SoftPIDController(PIDControllerInterface):
             self.integrated = 0
             self.enable = True
 
+        # if PID enabled, calculate the next control value
         if self.enable:
             delta = self.setpoint - self.pv
             self.integrated += delta
@@ -143,6 +157,8 @@ class SoftPIDController(PIDControllerInterface):
             self.history[1, -1] = self.cv
             self.history[2, -1] = self.setpoint
             self.sigNewValue.emit(self.cv, self.setpoint_channel)
+
+        # if PID disabled, just use the manual control value
         else:
             self.cv = self.manual_value
             limits = self.get_control_limits()

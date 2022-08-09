@@ -38,12 +38,13 @@ class PIDLogic(Base):
 
     Example config:
 
-    pidlogic:
+    pid_logic:
         module.Class: 'pid_logic.PIDLogic'
-        options:
-            timestep: 0.1
         connect:
             controller: 'softpid'
+        options:
+            # interval at which the logging updates (s)
+            timestep: 0.1
 
     """
 
