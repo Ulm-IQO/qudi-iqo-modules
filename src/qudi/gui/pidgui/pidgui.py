@@ -25,11 +25,10 @@ import os
 import pyqtgraph as pg
 
 from qudi.core.connector import Connector
+import qudi.util.uic as uic
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.core.module import GuiBase
-from qtpy import QtCore
-from qtpy import QtWidgets
-from qtpy import uic
+from PySide2 import QtCore, QtWidgets
 
 import warnings
 warnings.warn("This module has not been tested on the new qudi core and might not work properly/at all."

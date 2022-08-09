@@ -649,7 +649,7 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
   <customwidget>
    <class>ScienDSpinBox</class>
    <extends>QDoubleSpinBox</extends>
-   <header>qtwidgets.scientific_spinbox.h</header>
+   <header>qudi.util.widgets.scientific_spinbox</header>
   </customwidget>
  </customwidgets>
  <resources/>
