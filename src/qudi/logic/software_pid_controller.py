@@ -54,7 +54,7 @@ class SoftPIDController(PIDControllerInterface):
     kI = StatusVar(default=1)
     kD = StatusVar(default=1)
     setpoint = StatusVar(default=273.15)
-    manualvalue = StatusVar(default=0)
+    manual_value = StatusVar(default=0)
 
     sigNewValue = QtCore.Signal(float, str)
 
@@ -65,9 +65,9 @@ class SoftPIDController(PIDControllerInterface):
 
         # checking for the right configuration
         for key in config.keys():
-            self.log.debug('{0}: {1}'.format(key,config[key]))
+            self.log.debug('{0}: {1}'.format(key, config[key]))
 
-        #number of lines in the matrix plot
+        # number of lines in the matrix plot
         self.NumberOfSecondsLog = 100
         self.threadlock = Mutex()
 
@@ -79,7 +79,7 @@ class SoftPIDController(PIDControllerInterface):
         self._process = self.process()
         self._control = self.control()
 
-        self.previousdelta = 0
+        self.previous_delta = 0
         self.cv = self._control.get_setpoint(self.setpoint_channel)
 
         self.timer = QtCore.QTimer()
@@ -105,15 +105,15 @@ class SoftPIDController(PIDControllerInterface):
     def _calcNextStep(self):
         """ This function implements the Takahashi Type C PID
             controller: the P and D term are no longer dependent
-             on the set-point, only on PV (which is Thlt).
-             The D term is NOT low-pass filtered.
-             This function should be called once every TS seconds.
+            on the set-point, only on PV (which is Thlt).
+            The D term is NOT low-pass filtered.
+            This function should be called once every TS seconds.
         """
         self.pv = self._process.get_process_value(self.process_value_channel)
 
         if self.countdown > 0:
             self.countdown -= 1
-            self.previousdelta = self.setpoint - self.pv
+            self.previous_delta = self.setpoint - self.pv
             print('Countdown: ', self.countdown)
         elif self.countdown == 0:
             self.countdown = -1
@@ -123,15 +123,15 @@ class SoftPIDController(PIDControllerInterface):
         if self.enable:
             delta = self.setpoint - self.pv
             self.integrated += delta
-            ## Calculate PID controller:
+            # calculate PID controller:
             self.P = self.kP * delta
             self.I = self.kI * self.timestep * self.integrated
-            self.D = self.kD / self.timestep * (delta - self.previousdelta)
+            self.D = self.kD / self.timestep * (delta - self.previous_delta)
 
             self.cv += self.P + self.I + self.D
-            self.previousdelta = delta
+            self.previous_delta = delta
 
-            ## limit contol output to maximum permissible limits
+            # limit control output to maximum permissible limits
             limits = self.get_control_limits()
             if self.cv > limits[1]:
                 self.cv = limits[1]
@@ -144,7 +144,7 @@ class SoftPIDController(PIDControllerInterface):
             self.history[2, -1] = self.setpoint
             self.sigNewValue.emit(self.cv, self.setpoint_channel)
         else:
-            self.cv = self.manualvalue
+            self.cv = self.manual_value
             limits = self.get_control_limits()
             if self.cv > limits[1]:
                 self.cv = limits[1]
@@ -194,7 +194,7 @@ class SoftPIDController(PIDControllerInterface):
     def set_kp(self, kp):
         """ Set the proportional constant of the PID controller.
 
-            @prarm float kp: proportional constant of PID controller
+            @param float kp: proportional constant of PID controller
         """
         self.kP = kp
 
@@ -245,24 +245,24 @@ class SoftPIDController(PIDControllerInterface):
 
             @return float: control value for manual mode
         """
-        return self.manualvalue
+        return self.manual_value
 
-    def set_manual_value(self, manualvalue):
+    def set_manual_value(self, manual_value):
         """ Set the control value for manual mode.
 
-            @param float manualvalue: control value for manual mode of controller
+            @param float manual_value: control value for manual mode of controller
         """
-        self.manualvalue = manualvalue
+        self.manual_value = manual_value
         limits = self.get_control_limits()
-        if self.manualvalue > limits[1]:
-            self.manualvalue = limits[1]
-        if self.manualvalue < limits[0]:
-            self.manualvalue = limits[0]
+        if self.manual_value > limits[1]:
+            self.manual_value = limits[1]
+        if self.manual_value < limits[0]:
+            self.manual_value = limits[0]
 
     def get_enabled(self):
         """ See if the PID controller is controlling a process.
 
-            @return bool: whether the PID controller is preparing to or conreolling a process
+            @return bool: whether the PID controller is preparing to or controlling a process
         """
         return self.enable or self.countdown >= 0
 
@@ -311,7 +311,7 @@ class SoftPIDController(PIDControllerInterface):
     def get_extra(self):
         """ Extra information about the controller state.
 
-            @return dict: extra informatin about internal controller state
+            @return dict: extra information about internal controller state
 
             Do not depend on the output of this function, not every field
             exists for every PID controller.

@@ -148,7 +148,7 @@ class PIDLogic(Base):
     def set_kp(self, kp):
         """ Set the proportional constant of the PID controller.
 
-            @prarm float kp: proportional constant of PID controller
+            @param float kp: proportional constant of PID controller
         """
         return self._controller.set_kp(kp)
 
@@ -201,17 +201,17 @@ class PIDLogic(Base):
         """
         return self._controller.get_manual_value()
 
-    def set_manual_value(self, manualvalue):
+    def set_manual_value(self, manual_value):
         """ Set the control value for manual mode.
 
-            @param float manualvalue: control value for manual mode of controller
+            @param float manual_value: control value for manual mode of controller
         """
-        return self._controller.set_manual_value(manualvalue)
+        return self._controller.set_manual_value(manual_value)
 
     def get_enabled(self):
         """ See if the PID controller is controlling a process.
 
-            @return bool: whether the PID controller is preparing to or conreolling a process
+            @return bool: whether the PID controller is preparing to or controlling a process
         """
         return self.enabled
 

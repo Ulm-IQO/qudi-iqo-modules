@@ -33,7 +33,7 @@ class PIDControllerInterface(Base):
     between a desired setpoint (SP) and a measured process variable (PV) and applies a correction based on proportional,
     integral, and derivative terms (denoted P, I, and D respectively), hence the name.
 
-    If the device is enabled, the control value is computed by the the PID system of the hardware. If the device is
+    If the device is enabled, the control value is computed by the PID system of the hardware. If the device is
     disabled, the control value is set by the manual value.
 
     """
@@ -111,10 +111,10 @@ class PIDControllerInterface(Base):
         pass
 
     @abstractmethod
-    def set_manual_value(self, manualvalue):
+    def set_manual_value(self, manual_value):
         """ Set the manual value, used if the device is disabled
 
-        @param (float) manualvalue: The new manual value
+        @param (float) manual_value: The new manual value
         """
         pass
 
@@ -130,7 +130,7 @@ class PIDControllerInterface(Base):
     def set_enabled(self, enabled):
         """ Set if the PID is enabled (True) or if it is disabled (False) and the manual value is used
 
-        @param (bool) enabled: True to enabled, False otherwise
+        @param (bool) enabled: True if enabled, False otherwise
         """
         pass
 
@@ -170,7 +170,7 @@ class PIDControllerInterface(Base):
 
     @abstractmethod
     def get_extra(self):
-        """ Get the P, I and D terms computed bu the hardware if available
+        """ Get the P, I and D terms computed by the hardware if available
 
          @return dict(): A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
          """

@@ -144,7 +144,7 @@ class PIDGui(GuiBase):
         self.updateViews()
         self.plot1.vb.sigResized.connect(self.updateViews)
 
-        # setting the x axis length correctly
+        # setting the x-axis length correctly
         self._pw.setXRange(0, self._pid_logic.getBufferLength() * self._pid_logic.timestep)
 
         #####################
