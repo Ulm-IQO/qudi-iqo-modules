@@ -285,7 +285,7 @@ class QDPlotLogic(LogicBase):
                     if label is not None:
                         self.log.warning(f'length of label is {len(label)} '
                                          f'but needs to be the number of data sets ({len(x)}).')
-                    label = ['Dataset ' + i for i in list(range(len(x)))]
+                    label = ['Dataset ' + str(i) for i in range(len(x))]
                 if clear_old:
                     self._x_data[plot_index] = list(x)
                     self._y_data[plot_index] = list(y)
@@ -385,7 +385,7 @@ class QDPlotLogic(LogicBase):
                     tabbed_result = '\n  No Fit'
                 else:
                     tabbed_result = '\n  '.join(self._fit_container.formatted_result(fit_result).split('\n')[:-1])
-                result += 'data_set {0}:\n  {1}\n'.format(data_set, tabbed_result)
+                result += '{0}:\n  {1}\n'.format(self._data_labels[plot_index][data_set], tabbed_result)
 
             # convert list to np.ndarray to make handling it much more efficient
             fit_data = np.array(fit_data)

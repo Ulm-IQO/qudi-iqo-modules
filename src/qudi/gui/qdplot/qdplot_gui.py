@@ -375,7 +375,6 @@ class QDPlotterGui(GuiBase):
 
         dockwidget = self._plot_dockwidgets[plot_index]
         dockwidget.plot_widget.clear()
-        legend = dockwidget.plot_widget.addLegend()
 
         self._pen_colors[plot_index] = cycle(self._pen_color_list)
         self._plot_curves[plot_index] = list()
@@ -394,11 +393,6 @@ class QDPlotterGui(GuiBase):
             self._plot_curves[plot_index][-1].setData(x=xd, y=yd)
             self._fit_curves[plot_index].append(dockwidget.plot_widget.plot())
             self._fit_curves[plot_index][-1].setPen('r')
-
-        if len(x_data) > 1:
-            legend.setVisible(True)
-        else:
-            legend.setVisible(False)
 
     @QtCore.Slot(int)
     @QtCore.Slot(int, dict)
