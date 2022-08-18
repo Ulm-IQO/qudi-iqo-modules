@@ -50,7 +50,7 @@ class QDPlotLogic(LogicBase):
             fit_logic: 'fitlogic'
         default_plot_number: 3
     """
-    sigPlotDataUpdated = QtCore.Signal(int, list, list, bool)
+    sigPlotDataUpdated = QtCore.Signal(int, list, list, list)
     sigPlotParamsUpdated = QtCore.Signal(int, dict)
     sigPlotNumberChanged = QtCore.Signal(int)
     sigFitUpdated = QtCore.Signal(int, np.ndarray, str, str)
@@ -72,7 +72,6 @@ class QDPlotLogic(LogicBase):
         # locking for thread safety
         self.threadlock = RecursiveMutex()
 
-        self._clear_old = list()
         self._x_limits = list()
         self._y_limits = list()
         self._x_label = list()
@@ -81,6 +80,7 @@ class QDPlotLogic(LogicBase):
         self._y_unit = list()
         self._x_data = list()
         self._y_data = list()
+        self._data_labels = list()
 
         self._fit_data = list()
         self._fit_results = list()
@@ -101,7 +101,6 @@ class QDPlotLogic(LogicBase):
 
         # self._fit_logic = self.fit_logic()
 
-        self._clear_old = list()
         self._x_limits = list()
         self._y_limits = list()
         self._x_label = list()
@@ -110,6 +109,7 @@ class QDPlotLogic(LogicBase):
         self._y_unit = list()
         self._x_data = list()
         self._y_data = list()
+        self._data_labels = list()
         self._fit_data = list()
         self._fit_results = list()
         self._fit_method = list()
@@ -146,12 +146,11 @@ class QDPlotLogic(LogicBase):
     @property
     def number_of_plots(self):
         with self.threadlock:
-            return len(self._clear_old)
+            return len(self._x_label)
 
     @QtCore.Slot()
     def add_plot(self):
         with self.threadlock:
-            self._clear_old.append(True)
             self._x_limits.append([-0.5, 0.5])
             self._y_limits.append([-0.5, 0.5])
             self._x_label.append('X')
@@ -160,6 +159,7 @@ class QDPlotLogic(LogicBase):
             self._y_unit.append('a.u.')
             self._x_data.append([np.zeros(1)])
             self._y_data.append([np.zeros(1)])
+            self._data_labels.append(['Dataset 1'])
             self._fit_data.append(None)
             self._fit_results.append(None)
             self._fit_method.append('No Fit')
@@ -169,18 +169,18 @@ class QDPlotLogic(LogicBase):
             self.sigPlotDataUpdated.emit(plot_index,
                                          self._x_data[plot_index],
                                          self._y_data[plot_index],
-                                         self._clear_old[plot_index])
+                                         self._data_labels[plot_index])
             if self._fit_method[plot_index] != 'No Fit':
                 self.sigFitUpdated.emit(plot_index,
                                         self._fit_data[plot_index],
                                         self._fit_results[plot_index],
                                         self._fit_method[plot_index])
-            params = {'x_label': self._x_label[plot_index],
-                      'y_label': self._y_label[plot_index],
-                      'x_unit': self._x_unit[plot_index],
-                      'y_unit': self._y_unit[plot_index],
-                      'x_limits': self._x_limits[plot_index],
-                      'y_limits': self._y_limits[plot_index]}
+            params = {'x_label'    : self._x_label[plot_index],
+                      'y_label'    : self._y_label[plot_index],
+                      'x_unit'     : self._x_unit[plot_index],
+                      'y_unit'     : self._y_unit[plot_index],
+                      'x_limits'   : self._x_limits[plot_index],
+                      'y_limits'   : self._y_limits[plot_index]}
             self.sigPlotParamsUpdated.emit(plot_index, params)
 
     @QtCore.Slot()
@@ -191,7 +191,6 @@ class QDPlotLogic(LogicBase):
                 plot_index = -1
             elif not (0 <= plot_index < self.number_of_plots):
                 raise IndexError('Plot index {0:d} out of bounds.'.format(plot_index))
-            del self._clear_old[plot_index]
             del self._x_limits[plot_index]
             del self._y_limits[plot_index]
             del self._x_label[plot_index]
@@ -200,6 +199,7 @@ class QDPlotLogic(LogicBase):
             del self._y_unit[plot_index]
             del self._x_data[plot_index]
             del self._y_data[plot_index]
+            del self._data_labels[plot_index]
             del self._fit_data[plot_index]
             del self._fit_results[plot_index]
             del self._fit_method[plot_index]
@@ -207,14 +207,14 @@ class QDPlotLogic(LogicBase):
 
             update_range = (-1,) if plot_index == -1 else range(plot_index, self.number_of_plots)
             for i in update_range:
-                self.sigPlotDataUpdated.emit(i, self._x_data[i], self._y_data[i], self._clear_old[i])
+                self.sigPlotDataUpdated.emit(i, self._x_data[i], self._y_data[i], self._data_labels[i])
                 self.sigFitUpdated.emit(i, self._fit_data[i], self._fit_results[i], self._fit_method[i])
-                params = {'x_label': self._x_label[i],
-                          'y_label': self._y_label[i],
-                          'x_unit': self._x_unit[i],
-                          'y_unit': self._y_unit[i],
-                          'x_limits': self._x_limits[i],
-                          'y_limits': self._y_limits[i]}
+                params = {'x_label'    : self._x_label[i],
+                          'y_label'    : self._y_label[i],
+                          'x_unit'     : self._x_unit[i],
+                          'y_unit'     : self._y_unit[i],
+                          'x_limits'   : self._x_limits[i],
+                          'y_limits'   : self._y_limits[i]}
                 self.sigPlotParamsUpdated.emit(i, params)
 
     @QtCore.Slot(int)
@@ -256,11 +256,12 @@ class QDPlotLogic(LogicBase):
                            ''.format(plot_index))
             return [np.zeros(0)]
 
-    def set_data(self, x=None, y=None, clear_old=True, plot_index=0, adjust_scale=True):
+    def set_data(self, x=None, y=None, label=None, clear_old=True, plot_index=0, adjust_scale=True):
         """ Set the data to plot
 
         @param np.ndarray or list of np.ndarrays x: data of independents variable(s)
         @param np.ndarray or list of np.ndarrays y: data of dependent variable(s)
+        @param string or list of strings label: label of the added data set
         @param bool clear_old: clear old plots in GUI if True
         @param int plot_index: index of the plot in the range from 0 to 2
         @param bool adjust_scale: Whether auto-scale should be performed after adding data or not.
@@ -278,14 +279,38 @@ class QDPlotLogic(LogicBase):
                     'or add_plot() first.'.format(plot_index))
                 return -1
 
-            self._clear_old[plot_index] = clear_old
             # check if input is only an array (single plot) or a list of arrays (one or several plots)
             if isinstance(x[0], np.ndarray):  # if x is an array, type(x[0]) is a np.float
-                self._x_data[plot_index] = list(x)
-                self._y_data[plot_index] = list(y)
+                if label is None or len(label) != len(x):
+                    if label is not None:
+                        self.log.warning(f'length of label is {len(label)} '
+                                         f'but needs to be the number of data sets ({len(x)}).')
+                    label = ['Dataset ' + str(i) for i in range(len(x))]
+                if clear_old:
+                    self._x_data[plot_index] = list(x)
+                    self._y_data[plot_index] = list(y)
+                    self._data_labels[plot_index] = list(label)
+                else:
+                    self._x_data[plot_index].extend(list(x))
+                    self._y_data[plot_index].extend(list(y))
+                    self._data_labels[plot_index].extend(list(label))
             else:
-                self._x_data[plot_index] = [x]
-                self._y_data[plot_index] = [y]
+                if clear_old:
+                    self._x_data[plot_index] = [x]
+                    self._y_data[plot_index] = [y]
+                else:
+                    self._x_data[plot_index].append(x)
+                    self._y_data[plot_index].append(y)
+
+                if label is None or not isinstance(label, str):
+                    if label is not None:
+                        self.log.warning(f'label is {label} '
+                                         f'but needs to be a single string as name of the data set.')
+                    label = 'Dataset ' + str(len(self._x_data[plot_index]))
+                if clear_old:
+                    self._data_labels[plot_index] = [label]
+                else:
+                    self._data_labels[plot_index].append(label)
 
             # reset fit for this plot
             self._fit_data[plot_index] = None
@@ -299,10 +324,10 @@ class QDPlotLogic(LogicBase):
             self.sigPlotDataUpdated.emit(plot_index,
                                          self._x_data[plot_index],
                                          self._y_data[plot_index],
-                                         clear_old)
+                                         self._data_labels[plot_index])
             self.sigPlotParamsUpdated.emit(plot_index,
-                                           {'x_limits': self._x_limits[plot_index],
-                                            'y_limits': self._y_limits[plot_index]})
+                                           {'x_limits'   : self._x_limits[plot_index],
+                                            'y_limits'   : self._y_limits[plot_index]})
             if adjust_scale:
                 self.update_auto_range(plot_index, True, True)
             return 0
@@ -360,7 +385,7 @@ class QDPlotLogic(LogicBase):
                     tabbed_result = '\n  No Fit'
                 else:
                     tabbed_result = '\n  '.join(self._fit_container.formatted_result(fit_result).split('\n')[:-1])
-                result += 'data_set {0}:\n  {1}\n'.format(data_set, tabbed_result)
+                result += '{0}:\n  {1}\n'.format(self._data_labels[plot_index][data_set], tabbed_result)
 
             # convert list to np.ndarray to make handling it much more efficient
             fit_data = np.array(fit_data)
@@ -400,6 +425,7 @@ class QDPlotLogic(LogicBase):
             parameters['user-selected y-label'] = self._y_label[plot_index]
             parameters['user-selected x-unit'] = self._x_unit[plot_index]
             parameters['user-selected y-unit'] = self._y_unit[plot_index]
+            parameters['user-selected data-labels'] = self._data_labels[plot_index]
 
             # If there is a postfix then add separating underscore
             if postfix == '':
@@ -419,7 +445,8 @@ class QDPlotLogic(LogicBase):
                 ax1.plot(self._x_data[plot_index][data_set],
                          self._y_data[plot_index][data_set],
                          linestyle=':',
-                         linewidth=1)
+                         linewidth=1,
+                         label=self._data_labels[plot_index][data_set])
 
                 if self._fit_data[plot_index] is not None:
                     ax1.plot(self._fit_data[plot_index][data_set][0],
@@ -427,7 +454,7 @@ class QDPlotLogic(LogicBase):
                              color='r',
                              marker='None',
                              linewidth=1.5,
-                             label='fit')
+                             label='fit ' + self._data_labels[plot_index][data_set])
 
             # Do not include fit parameter if there is no fit calculated.
             if self._fit_data[plot_index] is not None:
@@ -480,6 +507,7 @@ class QDPlotLogic(LogicBase):
 
             ax1.set_xlim(self._x_limits[plot_index])
             ax1.set_ylim(self._y_limits[plot_index])
+            ax1.legend()
 
             fig.tight_layout()
 
@@ -642,6 +670,17 @@ class QDPlotLogic(LogicBase):
             self._y_label[plot_index] = str(value)
             self.sigPlotParamsUpdated.emit(plot_index, {'y_label': self._y_label[plot_index]})
 
+    def get_data_labels(self, plot_index=0):
+        """ Get the data set labels.
+
+        @param int plot_index: index of the plot in the range from 0 to 2
+        @return list(str): current labels of the data sets
+        """
+        with self.threadlock:
+            if not (0 <= plot_index < self.number_of_plots):
+                raise IndexError('Plot index {0:d} out of bounds.'.format(plot_index))
+            return self._data_labels[plot_index]
+
     def get_units(self, plot_index=0):
         with self.threadlock:
             return self.get_x_unit(plot_index), self.get_y_unit(plot_index)
@@ -696,17 +735,6 @@ class QDPlotLogic(LogicBase):
                 raise IndexError('Plot index {0:d} out of bounds.'.format(plot_index))
             self._y_unit[plot_index] = str(value)
             self.sigPlotParamsUpdated.emit(plot_index, {'y_unit': self._y_unit[plot_index]})
-
-    def clear_old_data(self, plot_index=0):
-        """ Get the information, if the previous plots in the windows are kept or not
-
-        @param int plot_index: index of the plot in the range from 0 to 2
-        @return bool: are the plots currently in the GUI kept or not
-        """
-        with self.threadlock:
-            if not (0 <= plot_index < self.number_of_plots):
-                raise IndexError('Plot index {0:d} out of bounds.'.format(plot_index))
-            return self._clear_old[plot_index]
 
     @QtCore.Slot(int, dict)
     def update_plot_parameters(self, plot_index, params):

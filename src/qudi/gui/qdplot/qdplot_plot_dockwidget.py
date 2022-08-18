@@ -132,6 +132,7 @@ class PlotDockWidget(AdvancedDockWidget):
                                                     'left': CustomAxis(orientation='left')})
         self.plot_widget.getAxis('bottom').nudge = 0
         self.plot_widget.getAxis('left').nudge = 0
+        self.plot_widget.addLegend()
 
         plot_display_layout.addWidget(self.plot_widget, 1, 0, 1, -1, QtCore.Qt.AlignHCenter)
         self.plot_widget.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.MinimumExpanding)
