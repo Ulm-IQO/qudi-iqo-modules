@@ -27,6 +27,7 @@ import pyqtgraph as pg
 from qudi.core.connector import Connector
 import qudi.util.uic as uic
 from qudi.util.colordefs import QudiPalettePale as palette
+from qudi.util.units import create_formatted_output
 from qudi.core.module import GuiBase
 from PySide2 import QtCore, QtWidgets
 
@@ -93,6 +94,10 @@ class PIDGui(GuiBase):
         self._mw.setDockNestingEnabled(True)
 
         # Plot labels.
+        self.process_value_unit = self._pid_logic.process_value_unit()
+        self.control_value_unit = self._pid_logic.control_value_unit()
+        control_value_limits = self._pid_logic.get_control_limits()
+
         self._pw = self._mw.trace_PlotWidget
 
         self.plot1 = self._pw.plotItem
@@ -101,12 +106,12 @@ class PIDGui(GuiBase):
             '<font color={0}>Process Value</font> and <font color={1}>Setpoint</font>'.format(
                 palette.c1.name(),
                 palette.c2.name()),
-             units='unit')
+            units=self.process_value_unit)
         self.plot1.setLabel('bottom', 'Time', units='s')
         self.plot1.showAxis('right')
         self.plot1.getAxis('right').setLabel(
             'Control Value',
-            units='unit',
+            units=self.control_value_unit,
             color=palette.c3.name())
 
         self.plot2 = pg.ViewBox()
@@ -156,6 +161,11 @@ class PIDGui(GuiBase):
         self._pw.setXRange(0, self._pid_logic.getBufferLength() * self._pid_logic.timestep)
 
         #####################
+        # set units and range if applicable
+        self._mw.setpointDoubleSpinBox.setSuffix(self.process_value_unit)
+        self._mw.manualDoubleSpinBox.setRange(*control_value_limits)
+        self._mw.manualDoubleSpinBox.setSuffix(self.control_value_unit)
+
         # Setting default parameters
         self._mw.P_DoubleSpinBox.setValue(self._pid_logic.get_kp())
         self._mw.I_DoubleSpinBox.setValue(self._pid_logic.get_ki())
@@ -208,18 +218,21 @@ class PIDGui(GuiBase):
         """
 
         if self._pid_logic.get_enabled():
-            self._mw.process_value_Label.setText(
-                '<font color={0}>{1:,.3f}</font>'.format(
-                palette.c1.name(),
-                self._pid_logic.history[0, -1]))
-            self._mw.control_value_Label.setText(
-                '<font color={0}>{1:,.3f}</font>'.format(
-                palette.c3.name(),
-                self._pid_logic.history[1, -1]))
-            self._mw.setpoint_value_Label.setText(
-                '<font color={0}>{1:,.3f}</font>'.format(
-                palette.c2.name(),
-                self._pid_logic.history[2, -1]))
+            # format display values with unit
+            pv = create_formatted_output({'Process': {'value': self._pid_logic.get_pv(),
+                                                      'unit': self.process_value_unit}})
+            pv = pv.split(': ')[1]
+            cv = create_formatted_output({'Control': {'value': self._pid_logic.get_cv(),
+                                                      'unit': self.control_value_unit}})
+            cv = cv.split(': ')[1]
+            sp = create_formatted_output({'Setpoint': {'value': self._pid_logic.get_setpoint(),
+                                                       'unit': self.process_value_unit}})
+            sp = sp.split(': ')[1]
+
+            self._mw.process_value_Label.setText(f'<font color={palette.c1.name()}>{pv}</font>')
+            self._mw.control_value_Label.setText(f'<font color={palette.c3.name()}>{cv}</font>')
+            self._mw.setpoint_value_Label.setText(f'<font color={palette.c2.name()}>{sp}</font>')
+
             extra = self._pid_logic._controller.get_extra()
             if 'P' in extra:
                 self._mw.labelkP.setText('{0:,.6f}'.format(extra['P']))

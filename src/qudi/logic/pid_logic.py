@@ -249,9 +249,21 @@ class PIDLogic(Base):
         """
         return self.history[0, -1]
 
+    @property
+    def process_value_unit(self):
+        """ read-only property for the unit of the process value
+        """
+        return self._controller.process_value_unit
+
     def get_cv(self):
         """ Get current control output value.
 
             @return float: control output value
         """
         return self.history[1, -1]
+
+    @property
+    def control_value_unit(self):
+        """ read-only property for the unit of the control value
+        """
+        return self._controller.control_value_unit

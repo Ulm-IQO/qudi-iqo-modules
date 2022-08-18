@@ -317,12 +317,26 @@ class SoftPIDController(PIDControllerInterface):
         """
         return self.cv
 
+    def control_value_unit(self):
+        """ read-only property for the unit of the control value
+        """
+        constraints = self._control.constraints
+        unit = constraints.channel_units[self.setpoint_channel]
+        return unit
+
     def get_process_value(self):
         """ Get current process input value.
 
             @return float: current process input value
         """
         return self.pv
+
+    def process_value_unit(self):
+        """ read-only property for the unit of the process value
+        """
+        constraints = self._process.constraints
+        unit = constraints.channel_units[self.process_value_channel]
+        return unit
 
     def get_extra(self):
         """ Extra information about the controller state.

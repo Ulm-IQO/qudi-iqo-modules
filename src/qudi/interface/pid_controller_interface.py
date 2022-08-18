@@ -160,11 +160,25 @@ class PIDControllerInterface(Base):
         """
         pass
 
+    @property
+    @abstractmethod
+    def process_value_unit(self) -> str:
+        """ read-only property for the unit of the process value
+        """
+        pass
+
     @abstractmethod
     def get_control_value(self):
         """ Get the current control value read
 
         @return (float): The current control value
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def control_value_unit(self) -> str:
+        """ read-only property for the unit of the control value
         """
         pass
 
