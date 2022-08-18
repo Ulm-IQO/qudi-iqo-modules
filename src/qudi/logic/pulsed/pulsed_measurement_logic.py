@@ -1352,6 +1352,9 @@ class PulsedMeasurementLogic(LogicBase):
     # FIXME: Revise everything below
 
     ############################################################################
+    def _get_metadata(self):
+        return self._collect_status_variables(skip_unavailable=True)
+
     def _get_raw_metadata(self):
         return {'bin width (s)'               : self.__fast_counter_binwidth,
                 'record length (s)'           : self.__fast_counter_record_length,
@@ -1452,8 +1455,11 @@ class PulsedMeasurementLogic(LogicBase):
                                                                     tag,
                                                                     '_raw_timetrace')
         # Save data to file
-        data_storage.save_data(self.raw_data.astype('int64')[:, np.newaxis],
-                               metadata=self._get_raw_metadata(),
+        mes = self._snapshot_state()
+        meta = mes._get_metadata()
+
+        data_storage.save_data(mes.raw_data.astype('int64')[:, np.newaxis],
+                               metadata=meta,
                                nametag=nametag,
                                filename=save_filename,
                                timestamp=timestamp,
