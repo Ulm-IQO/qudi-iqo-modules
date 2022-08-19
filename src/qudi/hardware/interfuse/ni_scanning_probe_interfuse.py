@@ -305,6 +305,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._prepare_movement(position, velocity=velocity)
 
         self.__start_ao_write_timer()
+        self.log.debug("Move finished, returning target.")
 
         return self.get_target()
 
@@ -371,7 +372,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 first_scan_position = {ax: pos[0] for ax, pos
                                        in zip(self.scan_settings['axes'], self.scan_settings['range'])}
-
+                self.log.debug(f"Locking module to start scan")
                 self.module_state.lock()
                 self._move_to_and_start_scan(first_scan_position)
                 self.__read_pos = 0
@@ -634,22 +635,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             raise NotImplementedError('Ni Scan arrays could not be initialized for given ScanData dimension')
 
-    def __start_ao_write_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__ni_ao_write_timer.start()
-
-    def __stop_ao_write_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
-                                            'stop',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__ni_ao_write_timer.stop()
-
     def __ao_write_loop(self):
         try:
             with self._thread_lock:
@@ -699,7 +684,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._prepare_movement(position, scan_start_indicator=True)
 
         self.__start_ao_write_timer()
-        self.log.debug('Started ao write timer')
+
 
     def _prepare_movement(self, position, velocity=None, scan_start_indicator=False):
         """
@@ -708,71 +693,119 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # FIXME When position is changed real fast one gets the QT warnings
         #  QObject::killTimer: Timers cannot be stopped from another thread
         #  QObject::startTimer: Timers cannot be started from another thread
+        self.log.debug(f"Preparing move...")
+        try:
+            self.__stop_ao_write_timer()
+            self.log.debug("ao timer stopped")
 
-        self.__stop_ao_write_timer()
+            if not self._ni_ao().is_active:
+                self._ni_ao().set_activity_state(True)
+                self.log.debug(f"AO activated")
 
-        if not self._ni_ao().is_active:
-            self._ni_ao().set_activity_state(True)
-
-        self.__start_ao_runout_timer()
+            self.__start_ao_runout_timer()
+            # todo: hung up optimizer somewhere above this line
+            self.log.debug(f"runout timer started")
+        except:
+            self.log.exception()
 
         with self._thread_lock:
-            start_pos = self.get_position()
-            constr = self.get_constraints()
+            self.log.debug(f"Calculating move")
+            try:
+                start_pos = self.get_position()
+                constr = self.get_constraints()
 
-            for axis, pos in position.items():
-                in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
-                if not in_range_flag:
-                    position[axis] = float(constr.axes[axis].clip_value(position[axis]))
-                    self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
-                                     f'for axis {axis}. Value clipped to {position[axis]}')
+                for axis, pos in position.items():
+                    in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
+                    if not in_range_flag:
+                        position[axis] = float(constr.axes[axis].clip_value(position[axis]))
+                        self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
+                                         f'for axis {axis}. Value clipped to {position[axis]}')
 
-                # TODO Adapt interface to use "in_range"?
-                self._target_pos[axis] = position[axis]
+                    # TODO Adapt interface to use "in_range"?
+                    self._target_pos[axis] = position[axis]
 
-            dist = np.sqrt(np.sum([(position[axis] - start_pos[axis]) ** 2 for axis in position]))
+                dist = np.sqrt(np.sum([(position[axis] - start_pos[axis]) ** 2 for axis in position]))
 
-            # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
-            if velocity is not None and velocity <= self.__max_move_velocity:
-                velocity = velocity
-            elif velocity is not None and velocity > self.__max_move_velocity:
-                self.log.warning(f'Requested velocity is exceeding the maximum velocity of {self.__max_move_velocity} '
-                                 f'm/s. Move will be done at maximum velocity')
-                velocity = self.__max_move_velocity
-            else:
-                velocity = self.__max_move_velocity
+                self.log.debug(f"Target: {position}, start: {start_pos}")
 
-            self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
-            granularity = velocity * self.__ni_ao_write_timer.interval() * 1e-3
+                # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
+                if velocity is not None and velocity <= self.__max_move_velocity:
+                    velocity = velocity
+                elif velocity is not None and velocity > self.__max_move_velocity:
+                    self.log.warning(f'Requested velocity is exceeding the maximum velocity of {self.__max_move_velocity} '
+                                     f'm/s. Move will be done at maximum velocity')
+                    velocity = self.__max_move_velocity
+                else:
+                    velocity = self.__max_move_velocity
 
-            self.__write_queue = {axis: np.linspace(start_pos[axis],
-                                                    position[axis],
-                                                    max(2, np.ceil(dist / granularity).astype('int'))
-                                                    )[1:]  # Since start_pos is already taken
-                                  for axis in position}
-            # TODO Keep other axis constant?
-            # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
+                self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+                granularity = velocity * self.__ni_ao_write_timer.interval() * 1e-3
 
-            self._scan_start_indicator = scan_start_indicator
+                self.__write_queue = {axis: np.linspace(start_pos[axis],
+                                                        position[axis],
+                                                        max(2, np.ceil(dist / granularity).astype('int'))
+                                                        )[1:]  # Since start_pos is already taken
+                                      for axis in position}
+                # TODO Keep other axis constant?
+                # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
+
+                self._scan_start_indicator = scan_start_indicator
+            except:
+                self.log.exception()
+
 
             self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
                            f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
 
+    def __start_ao_write_timer(self):
+        self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        try:
+            self.log.debug("Starting AO write timer...")
+            if self.thread() is not QtCore.QThread.currentThread():
+                QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
+                                                'start',
+                                                QtCore.Qt.BlockingQueuedConnection)
+            else:
+                self.__ni_ao_write_timer.start()
+            self.log.debug("Done")
+        except Exception as e:
+            print(f"{str(e)}")
+
+    def __stop_ao_write_timer(self):
+        self.log.debug(f"ao stop write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        try:
+            if self.thread() is not QtCore.QThread.currentThread():
+                QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
+                                                'stop',
+                                                QtCore.Qt.BlockingQueuedConnection)
+            else:
+                self.__ni_ao_write_timer.stop()
+        except Exception as e:
+            print(f"{str(e)}")
+
     def __start_ao_runout_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__ni_ao_runout_timer.start()
+        self.log.debug(f"ao start runout timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        try:
+            if self.thread() is not QtCore.QThread.currentThread():
+                QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
+                                                'start',
+                                                QtCore.Qt.BlockingQueuedConnection)
+            else:
+                self.__ni_ao_runout_timer.start()
+        except Exception as e:
+            print(f"{str(e)}")
 
     def __stop_ao_runout_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
-                                            'stop',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__ni_ao_runout_timer.stop()
+        self.log.debug(f"ao stop runout timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        try:
+            if self.thread() is not QtCore.QThread.currentThread():
+                QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
+                                                'stop',
+                                                QtCore.Qt.BlockingQueuedConnection)
+            else:
+                self.__ni_ao_runout_timer.stop()
+        except Exception as e:
+            print(f"{str(e)}")
 
     def __deactivate_ao(self):
         if not all([values.size == 0 for values in self.__write_queue.values()]):
