@@ -311,9 +311,8 @@ class TimeSeriesGui(GuiBase):
 
         vis_settings = self.visible_settings
         curr_ch = self._mw.curr_value_comboBox.currentText()
-        curr_ch_idx = self._mw.curr_value_comboBox.findText(curr_ch)
 
-        view_settings['current_channel_idx'] = curr_ch_idx
+        view_settings['current_channel'] = curr_ch
         view_settings.update(vis_settings)
 
         return view_settings
@@ -378,7 +377,8 @@ class TimeSeriesGui(GuiBase):
 
         # Set 'current channel' text box
         try:
-            self.current_value_channel = self._view_settings['current_channel_idx']
+            index = self._mw.curr_value_comboBox.findText(self._view_settings['current_channel'])
+            self.current_value_channel = index if not index < 0 else 0
         except (IndexError, KeyError):
             self.current_value_channel = 0
 
@@ -468,15 +468,16 @@ class TimeSeriesGui(GuiBase):
         av_channels = tuple(ch for ch, w in self._csd_widgets.items() if
                             w['checkbox2'].isChecked() and ch in channels)
         # Update combobox
-        old_index, old_value = self.current_value_channel
+        _, old_value = self.current_value_channel
         self._mw.curr_value_comboBox.clear()
         self._mw.curr_value_comboBox.addItem('None')
         self._mw.curr_value_comboBox.addItems(['average {0}'.format(ch) for ch in av_channels])
         self._mw.curr_value_comboBox.addItems(channels)
-        if old_index < 0:
-            self.current_value_channel = 0
+        index = self._mw.curr_value_comboBox.findText(old_value)
+        if index < 0:
+            self._mw.curr_value_comboBox.setCurrentIndex(0)
         else:
-            self.current_value_channel = old_index
+            self._mw.curr_value_comboBox.setCurrentIndex(index)
 
         # Update plot widget axes
         ch_list = self._time_series_logic.active_channels
