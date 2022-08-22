@@ -1,21 +1,21 @@
 # -*- coding: utf-8 -*-
 
 """
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
@@ -488,15 +488,18 @@ class BlockEditor(QtWidgets.QTableView):
         self.setItemDelegateForColumn(
             1, ScienDSpinBoxItemDelegate(self, increment_item_dict, self.model().incrementRole))
 
+        self.setItemDelegateForColumn(
+            2, CheckBoxItemDelegate(self, self.model().laserRole))
+
         # If any digital channels are present, set item delegate (custom multi-CheckBox widget)
         # for digital channels column.
         if len(self.model().digital_channels) > 0:
             chnl_labels = natural_sort(chnl.split('d_ch')[1] for chnl in self.model().digital_channels)
             self.setItemDelegateForColumn(
-                2, MultipleCheckboxItemDelegate(self, chnl_labels, self.model().digitalStateRole))
-            offset_index = 3  # to indicate which column comes next.
+                3, MultipleCheckboxItemDelegate(self, chnl_labels, self.model().digitalStateRole))
+            offset_index = 4  # to indicate which column comes next.
         else:
-            offset_index = 2  # to indicate which column comes next.
+            offset_index = 3  # to indicate which column comes next.
 
         # loop through all analog channels and set two item delegates for each channel.
         # First a ComboBox delegate for the analog shape column and second a custom

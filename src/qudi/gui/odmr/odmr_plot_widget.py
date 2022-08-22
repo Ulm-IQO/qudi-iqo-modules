@@ -3,21 +3,21 @@
 """
 This file contains a custom QWidget subclass to be used in the ODMR GUI module.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 __all__ = ('OdmrPlotWidget',)
@@ -25,8 +25,8 @@ __all__ = ('OdmrPlotWidget',)
 import pyqtgraph as pg
 from PySide2 import QtCore, QtWidgets
 
-from qudi.util.widgets.scan_2d_widget import ScanImageItem
-from qudi.util.widgets.colorbar import ColorBarWidget, ColorBarMode
+from qudi.util.widgets.plotting.plot_item import DataImageItem
+from qudi.util.widgets.plotting.colorbar import ColorBarWidget
 from qudi.util.colordefs import QudiPalettePale as palette
 
 
@@ -66,7 +66,7 @@ class OdmrPlotWidget(QtWidgets.QWidget):
         # Create matrix plot
         self._image_widget = pg.PlotWidget()
         self._image_widget.getPlotItem().setContentsMargins(0, 1, 5, 2)
-        self._image_item = ScanImageItem()
+        self._image_item = DataImageItem()
         self._image_widget.addItem(self._image_item)
         self._image_widget.setMinimumWidth(100)
         self._image_widget.setMinimumHeight(100)
@@ -82,10 +82,10 @@ class OdmrPlotWidget(QtWidgets.QWidget):
         self._colorbar = ColorBarWidget()
         self._colorbar.set_label(text='Signal', unit='P')
         self._colorbar.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
-        if self._colorbar.mode is ColorBarMode.PERCENTILE:
-            self._image_item.percentiles = self._colorbar.percentiles
+        if self._colorbar.mode is ColorBarWidget.ColorBarMode.PERCENTILE:
+            self._image_item.set_percentiles(self._colorbar.percentiles)
         else:
-            self._image_item.percentiles = None
+            self._image_item.set_percentiles(None)
         self._colorbar.sigModeChanged.connect(self._colorbar_mode_changed)
         self._colorbar.sigLimitsChanged.connect(self._colorbar_limits_changed)
         self._colorbar.sigPercentilesChanged.connect(self._colorbar_percentiles_changed)
@@ -107,7 +107,7 @@ class OdmrPlotWidget(QtWidgets.QWidget):
         if data is None:
             self._image_item.clear()
         else:
-            if self._colorbar.mode is ColorBarMode.PERCENTILE:
+            if self._colorbar.mode is ColorBarWidget.ColorBarMode.PERCENTILE:
                 self._image_item.set_image(image=data, autoLevels=False)
                 levels = self._image_item.levels
                 if levels is not None:
@@ -135,19 +135,19 @@ class OdmrPlotWidget(QtWidgets.QWidget):
 
     @QtCore.Slot(object)
     def _colorbar_mode_changed(self, mode):
-        if mode is ColorBarMode.PERCENTILE:
+        if mode is ColorBarWidget.ColorBarMode.PERCENTILE:
             self._colorbar_percentiles_changed(self._colorbar.percentiles)
         else:
             self._colorbar_limits_changed(self._colorbar.limits)
 
     @QtCore.Slot(tuple)
     def _colorbar_limits_changed(self, limits):
-        self._image_item.percentiles = None
+        self._image_item.set_percentiles(None)
         self._image_item.setLevels(limits)
 
     @QtCore.Slot(tuple)
     def _colorbar_percentiles_changed(self, percentiles):
-        self._image_item.percentiles = percentiles
+        self._image_item.set_percentiles(percentiles)
         levels = self._image_item.levels
         if levels is not None:
             self._colorbar.set_limits(*levels)

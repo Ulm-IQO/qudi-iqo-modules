@@ -2,21 +2,21 @@
 """
 This file contains the Qudi logic class that captures and processes fluorescence spectra.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 from PySide2 import QtCore
@@ -59,12 +59,13 @@ class SpectrometerLogic(LogicBase):
     _differential_spectrum = StatusVar(name='differential_spectrum', default=False)
     _fit_region = StatusVar(name='fit_region', default=[0, 1])
     _axis_type_frequency = StatusVar(name='axis_type_frequency', default=False)
+    max_repetitions = StatusVar(name='max_repetitions', default=0)
 
     _fit_config = StatusVar(name='fit_config', default=dict())
 
     # Internal signals
     _sig_get_spectrum = QtCore.Signal(bool, bool, bool)
-    _sig_get_background = QtCore.Signal(bool, bool, bool)
+    _sig_get_background = QtCore.Signal(bool, bool)
 
     # External signals eg for GUI module
     sig_data_updated = QtCore.Signal()
@@ -165,7 +166,8 @@ class SpectrometerLogic(LogicBase):
                 self._spectrum[1] = None
         self.sig_data_updated.emit()
 
-        if self._constant_acquisition and not self._stop_acquisition:
+        if self._constant_acquisition and not self._stop_acquisition \
+                and (not self.max_repetitions or self._repetitions_spectrum < self.max_repetitions):
             return self.run_get_spectrum(reset=False)
         self._acquisition_running = False
         self.fit_region = self._fit_region
@@ -175,7 +177,7 @@ class SpectrometerLogic(LogicBase):
     def run_get_background(self, constant_acquisition=None, reset=True):
         if constant_acquisition is not None:
             self.constant_acquisition = bool(constant_acquisition)
-        self._sig_get_background.emit(self._constant_acquisition, self._differential_spectrum, reset)
+        self._sig_get_background.emit(self._constant_acquisition, reset)
 
     def get_background(self, constant_acquisition=None, reset=True):
         if constant_acquisition is not None:
@@ -202,7 +204,8 @@ class SpectrometerLogic(LogicBase):
             self._repetitions_background += 1
         self.sig_data_updated.emit()
 
-        if self._constant_acquisition and not self._stop_acquisition:
+        if self._constant_acquisition and not self._stop_acquisition\
+                and (not self.max_repetitions or self._repetitions_background < self.max_repetitions):
             return self.run_get_background(reset=False)
         self._acquisition_running = False
         self.sig_state_updated.emit()
@@ -305,9 +308,9 @@ class SpectrometerLogic(LogicBase):
 
         # write experimental parameters
         parameters = {'acquisition repetitions': self.repetitions,
-                      'differential_spectrum': self.differential_spectrum,
-                      'background_correction': self.background_correction,
-                      'constant_acquisition': self.constant_acquisition}
+                      'differential_spectrum'  : self.differential_spectrum,
+                      'background_correction'  : self.background_correction,
+                      'constant_acquisition'   : self.constant_acquisition}
         if self.fit_method != 'No Fit' and self.fit_results is not None:
             parameters['fit_method'] = self.fit_method
             parameters['fit_results'] = self.fit_results.params

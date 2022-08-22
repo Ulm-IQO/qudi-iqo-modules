@@ -4,21 +4,21 @@
 ToDo: Document
 This file contains a dummy hardware module for the
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 from abc import abstractmethod
@@ -196,7 +196,7 @@ class FiniteSamplingIOConstraints:
     """ A container to hold all constraints for finite IO sampling devices.
     """
     def __init__(self, supported_output_modes, input_channel_units, output_channel_units,
-                 frame_size_limits, sample_rate_limits):
+                 frame_size_limits, sample_rate_limits, output_channel_limits, input_channel_limits):
         assert len(sample_rate_limits) == 2, 'Sample rate limits must be iterable of length 2'
         assert len(frame_size_limits) == 2, 'Frame size limits must be iterable of length 2'
         assert all(lim > 0 for lim in sample_rate_limits), 'Sample rate limits must be > 0'
@@ -213,12 +213,24 @@ class FiniteSamplingIOConstraints:
             'Channel units must be strings'
         assert all(isinstance(mode, SamplingOutputMode) for mode in supported_output_modes)
 
+        assert all(len(lim) == 2 for lim in output_channel_limits.values()),\
+            'Output channel limits need to be of length 2'
+        assert output_channel_units.keys() == output_channel_limits.keys(),\
+            'Keys in output channel limits and units do not match'
+
+        assert all(len(lim) == 2 for lim in input_channel_limits.values()),\
+            'Output channel limits need to be of length 2'
+        assert input_channel_units.keys() == input_channel_limits.keys(),\
+            f'Keys in input channel limits ({input_channel_units.keys()}) and units ({input_channel_units.keys()}) do not match'
+
         self._supported_output_modes = frozenset(supported_output_modes)
         self._sample_rate_limits = (float(min(sample_rate_limits)), float(max(sample_rate_limits)))
         self._frame_size_limits = (int(round(min(frame_size_limits))),
                                    int(round(max(frame_size_limits))))
         self._output_channel_units = output_channel_units.copy()
+        self._output_channel_limits = {key: tuple(val) for key, val in output_channel_limits.items()}
         self._input_channel_units = input_channel_units.copy()
+        self._input_channel_limits = {key: tuple(val) for key, val in input_channel_limits.items()}
 
     @property
     def supported_output_modes(self):
@@ -229,8 +241,16 @@ class FiniteSamplingIOConstraints:
         return self._output_channel_units.copy()
 
     @property
+    def output_channel_limits(self):
+        return self._output_channel_limits.copy()
+
+    @property
     def input_channel_units(self):
         return self._input_channel_units.copy()
+
+    @property
+    def input_channel_limits(self):
+        return self._input_channel_limits.copy()
 
     @property
     def output_channel_names(self):

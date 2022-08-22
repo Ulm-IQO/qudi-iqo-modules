@@ -2,30 +2,33 @@
 """
 This module contains a GUI for operating the spectrometer camera logic module.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
 from PySide2 import QtCore, QtWidgets, QtGui
+import datetime
+
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
-from qudi.util.widgets.scan_2d_widget import ImageWidget
+from qudi.util.widgets.plotting.image_widget import ImageWidget
+from qudi.util.datastorage import TextDataStorage
 from qudi.util.paths import get_artwork_dir
-from .camera_settings_dialog import CameraSettingsDialog
+from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
 
 
 class CameraMainWindow(QtWidgets.QMainWindow):
@@ -68,7 +71,7 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         # Create central widget
         self.image_widget = ImageWidget()
         # FIXME: The camera hardware is currently transposing the image leading to this dirty hack
-        self.image_widget._image_item.setOpts(False, axisOrder='row-major')
+        self.image_widget.image_item.setOpts(False, axisOrder='row-major')
         self.setCentralWidget(self.image_widget)
 
 
@@ -184,21 +187,22 @@ class CameraGui(GuiBase):
         self._mw.image_widget.set_image(frame_data)
 
     def _save_frame(self):
-        """ Run the save routine from the logic to save the xy confocal data."""
-        print('save clicked')
-        # cb_range = self.get_xy_cb_range()
-        #
-        # # Percentile range is None, unless the percentile scaling is selected in GUI.
-        # pcile_range = None
-        # if not self._mw.xy_cb_manual_RadioButton.isChecked():
-        #     low_centile = self._mw.xy_cb_low_percentile_DoubleSpinBox.value()
-        #     high_centile = self._mw.xy_cb_high_percentile_DoubleSpinBox.value()
-        #     pcile_range = [low_centile, high_centile]
-        #
-        # self._camera_logic().save_xy_data(colorscale_range=cb_range, percentile_range=pcile_range)
-        #
-        # # TODO: find a way to produce raw image in savelogic.  For now it is saved here.
-        # filepath = self._save_logic.get_path_for_module(module_name='Confocal')
-        # filename = filepath + os.sep + time.strftime('%Y%m%d-%H%M-%S_confocal_xy_scan_raw_pixel_image')
-        #
-        # self._image.save(filename + '_raw.png')
+        logic = self._camera_logic()
+        ds = TextDataStorage(root_dir=self.module_default_data_dir)
+        timestamp = datetime.datetime.now()
+        tag = logic.create_tag(timestamp)
+
+        parameters = {}
+        parameters['gain'] = logic.get_gain()
+        parameters['exposure'] = logic.get_exposure()
+
+        data = logic.last_frame
+        if data is not None:
+            file_path, _, _ = ds.save_data(data, metadata=parameters, nametag=tag,
+                                       timestamp=timestamp, column_headers='Image (columns is X, rows is Y)')
+            figure = logic.draw_2d_image(data, cbar_range=None)
+            ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
+        else:
+            self.log.error('No Data acquired. Nothing to save.')
+        return
+

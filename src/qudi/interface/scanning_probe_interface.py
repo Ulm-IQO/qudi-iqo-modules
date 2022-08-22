@@ -3,21 +3,21 @@
 """
 This module contains the Qudi interface file for scanning probe hardware.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 
 import datetime
@@ -50,7 +50,7 @@ class ScanningProbeInterface(Base):
     def configure_scan(self, settings):
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
 
-        @param ScanSettings settings: ScanSettings instance holding all parameters
+        @param ScanSettings settings: ScanSettings instance holding all parameters # TODO update me!
 
         @return (bool, ScanSettings): Failure indicator (fail=True),
                                       altered ScanSettings instance (same as "settings")
@@ -138,7 +138,7 @@ class ScanData:
     """
 
     def __init__(self, channels, scan_axes, scan_range, scan_resolution, scan_frequency,
-                 position_feedback_axes=None):
+                 target_at_start=None, position_feedback_axes=None):
         """
 
         @param ScannerChannel[] channels: ScannerChannel objects involved in this scan
@@ -146,6 +146,7 @@ class ScanData:
         @param float[][2] scan_range: inclusive range for each scan axis
         @param int[] scan_resolution: planned number of points for each scan axis
         @param float scan_frequency: Scan pixel frequency of the fast axis
+        @param dict target_at_start: optional, save scanner target (all axes) at beginning of scan
         @param ScannerAxis[] position_feedback_axes: optional, axes for which to acquire position
                                                      feedback during the scan.
         """
@@ -182,6 +183,7 @@ class ScanData:
         self._scan_resolution = tuple(int(res) for res in scan_resolution)
         self._scan_frequency = float(scan_frequency)
         self._channels = tuple(channels)
+
         if position_feedback_axes is None:
             self._position_feedback_axes = None
         else:
@@ -190,7 +192,8 @@ class ScanData:
         self._timestamp = None
         self._data = None
         self._position_data = None
-        # TODO: Automatic interpolation onto rectangular grid needs to be implemented
+        self._target_at_start = target_at_start
+        # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
         return
 
     def __copy__(self):
@@ -233,6 +236,14 @@ class ScanData:
     @property
     def scan_frequency(self):
         return self._scan_frequency
+
+    @property
+    def scanner_target_at_start(self):
+        return self._target_at_start
+
+    @scanner_target_at_start.setter
+    def scanner_target_at_start(self, target_dict):
+        self._target_at_start = target_dict
 
     @property
     def channels(self):
@@ -542,13 +553,13 @@ class ScanConstraints:
         return self._channels.copy()
 
     @property
-    def backscan_configurable(self):
+    def backscan_configurable(self):  # TODO Incorporate in gui/logic toolchain?
         return self._backscan_configurable
 
     @property
-    def has_position_feedback(self):
+    def has_position_feedback(self):  # TODO Incorporate in gui/logic toolchain?
         return self._has_position_feedback
 
     @property
-    def square_px_only(self):
+    def square_px_only(self):  # TODO Incorporate in gui/logic toolchain?
         return self._square_px_only
