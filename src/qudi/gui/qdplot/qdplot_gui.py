@@ -359,8 +359,8 @@ class QDPlotterGui(GuiBase):
             self._mw.resizeDocks(
                 self._plot_dockwidgets, [1] * len(self._plot_dockwidgets), QtCore.Qt.Horizontal)
 
-    @QtCore.Slot(int, list, list, bool)
-    def update_data(self, plot_index, x_data=None, y_data=None, clear_old=None):
+    @QtCore.Slot(int, list, list, list)
+    def update_data(self, plot_index, x_data=None, y_data=None, data_labels=None):
         """ Function creates empty plots, grabs the data and sends it to them. """
         if not (0 <= plot_index < len(self._plot_dockwidgets)):
             self.log.warning('Tried to update plot with invalid index {0:d}'.format(plot_index))
@@ -370,14 +370,13 @@ class QDPlotterGui(GuiBase):
             x_data = self._plot_logic.get_x_data(plot_index)
         if y_data is None:
             y_data = self._plot_logic.get_y_data(plot_index)
-        if clear_old is None:
-            clear_old = self._plot_logic.clear_old_data(plot_index)
+        if data_labels is None:
+            data_labels = self._plot_logic.get_data_labels(plot_index)
 
         dockwidget = self._plot_dockwidgets[plot_index]
-        if clear_old:
-            dockwidget.plot_widget.clear()
-            self._pen_colors[plot_index] = cycle(self._pen_color_list)
+        dockwidget.plot_widget.clear()
 
+        self._pen_colors[plot_index] = cycle(self._pen_color_list)
         self._plot_curves[plot_index] = list()
         self._fit_curves[plot_index] = list()
 
@@ -388,7 +387,9 @@ class QDPlotterGui(GuiBase):
                 pen=mkColor(pen_color),
                 symbol='d',
                 symbolSize=6,
-                symbolBrush=mkColor(pen_color)))
+                symbolBrush=mkColor(pen_color),
+                name=data_labels[line]
+            ))
             self._plot_curves[plot_index][-1].setData(x=xd, y=yd)
             self._fit_curves[plot_index].append(dockwidget.plot_widget.plot())
             self._fit_curves[plot_index][-1].setPen('r')
