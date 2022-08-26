@@ -22,9 +22,9 @@ If not, see <https://www.gnu.org/licenses/>.
 
 
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 import time
 import numpy as np
 

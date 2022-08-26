@@ -24,9 +24,9 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import time
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 import numpy as np
 from ftplib import FTP
 from lxml import etree as ET

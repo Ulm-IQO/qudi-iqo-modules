@@ -22,9 +22,9 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 from collections import OrderedDict
 
 from qudi.core.module import Base

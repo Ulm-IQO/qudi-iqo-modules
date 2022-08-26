@@ -20,9 +20,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 from qudi.core.configoption import ConfigOption
 from qudi.interface.simple_laser_interface import SimpleLaserInterface
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState

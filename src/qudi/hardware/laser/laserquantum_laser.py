@@ -20,9 +20,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 from enum import Enum
 
 from qudi.core.configoption import ConfigOption
