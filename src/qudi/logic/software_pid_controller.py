@@ -29,9 +29,6 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 
-import warnings
-warnings.warn("This module has not been tested on the new qudi core and might not work properly/at all."
-                         "Use it with caution and if possible contribute to its rework, please.")
 
 class SoftPIDController(PIDControllerInterface):
     """
@@ -87,8 +84,6 @@ class SoftPIDController(PIDControllerInterface):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self.log.warning("This module has not been tested on the new qudi core and might not work properly/at all."
-                         "Use it with caution and if possible contribute to its rework, please.")
         self._process = self.process()
         self._control = self.control()
 

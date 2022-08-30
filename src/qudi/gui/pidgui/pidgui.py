@@ -31,9 +31,6 @@ from qudi.util.units import create_formatted_output
 from qudi.core.module import GuiBase
 from PySide2 import QtCore, QtWidgets
 
-import warnings
-warnings.warn("This module has not been tested on the new qudi core and might not work properly/at all."
-                         "Use it with caution and if possible contribute to its rework, please.")
 
 class PIDMainWindow(QtWidgets.QMainWindow):
     """ Create the Main Window based on the *.ui file. """
@@ -80,8 +77,6 @@ class PIDGui(GuiBase):
         """ Definition and initialisation of the GUI plus staring the measurement.
 
         """
-        self.log.warning("This module has not been tested on the new qudi core and might not work properly/at all."
-                         "Use it with caution and if possible contribute to its rework, please.")
         self._pid_logic = self.pidlogic()
 
         #####################

@@ -29,9 +29,6 @@ from qudi.util.mutex import Mutex
 from qudi.core.module import Base
 from qtpy import QtCore
 
-import warnings
-warnings.warn("This module has not been tested on the new qudi core and might not work properly/at all."
-                         "Use it with caution and if possible contribute to its rework, please.")
 
 class PIDLogic(Base):
     """ Logic module to monitor and control a PID process
