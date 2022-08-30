@@ -288,8 +288,12 @@ class SoftPIDController(PIDControllerInterface):
             @param bool enabled: desired state of PID controller
         """
         if enabled and not self.enable and self.countdown == -1:
+            self._process.set_activity_state(enabled)
+            self._control.set_activity_state(enabled)
             self.startLoop()
         if not enabled and self.enable:
+            self._process.set_activity_state(enabled)
+            self._control.set_activity_state(enabled)
             self.stopLoop()
 
     def get_control_limits(self):
