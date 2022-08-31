@@ -49,7 +49,7 @@ class PIDLogic(Base):
     controller = Connector(interface='PIDControllerInterface')
 
     # status vars
-    bufferLength = StatusVar('bufferlength', 1000)
+    buffer_length = StatusVar('buffer_length', 1000)
     timestep = ConfigOption('timestep', 100e-3)  # timestep in seconds
 
     # signals
@@ -68,35 +68,35 @@ class PIDLogic(Base):
         """
         self._controller = self.controller()
 
-        self.history = np.zeros([3, self.bufferLength])
-        self.savingState = False
+        self.history = np.zeros([3, self.buffer_length])
+        self.saving_state = False
         self.enabled = False
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(True)
         self.timer.setInterval(self.timestep * 1000)  # in ms
-        self.timer.timeout.connect(self.loop)
+        self.timer.timeout.connect(self._loop)
 
     def on_deactivate(self):
         """ Perform required deactivation. """
         pass
 
-    def getBufferLength(self):
+    def get_buffer_length(self):
         """ Get the current data buffer length.
         """
-        return self.bufferLength
+        return self.buffer_length
 
-    def startLoop(self):
+    def _start_loop(self):
         """ Start the data recording loop.
         """
         self.enabled = True
         self.timer.start(self.timestep * 1000)  # in ms
 
-    def stopLoop(self):
+    def _stop_loop(self):
         """ Stop the data recording loop.
         """
         self.enabled = False
 
-    def loop(self):
+    def _loop(self):
         """ Execute step in the data recording loop: save one of each control and process values
         """
         self.history = np.roll(self.history, -1, axis=1)
@@ -107,34 +107,34 @@ class PIDLogic(Base):
         if self.enabled:
             self.timer.start(self.timestep * 1000)  # in ms
 
-    def getSavingState(self):
+    def get_saving_state(self):
         """ Return whether we are saving data
 
             @return bool: whether we are saving data right now
         """
-        return self.savingState
+        return self.saving_state
 
-    def startSaving(self):
+    def start_saving(self):
         """ Start saving data.
 
             Function does nothing right now.
         """
         pass
 
-    def saveData(self):
+    def save_data(self):
         """ Stop saving data and write data to file.
 
             Function does nothing right now.
         """
         pass
 
-    def setBufferLength(self, newBufferLength):
+    def set_buffer_length(self, new_buffer_length):
         """ Change buffer length to new value.
 
-            @param int newBufferLength: new buffer length
+            @param int new_buffer_length: new buffer length
         """
-        self.bufferLength = newBufferLength
-        self.history = np.zeros([3, self.bufferLength])
+        self.buffer_length = new_buffer_length
+        self.history = np.zeros([3, self.buffer_length])
 
     def get_kp(self):
         """ Return the proportional constant.
@@ -219,9 +219,9 @@ class PIDLogic(Base):
             @param bool enabled: desired state of PID controller
         """
         if enabled and not self.enabled:
-            self.startLoop()
+            self._start_loop()
         if not enabled and self.enabled:
-            self.stopLoop()
+            self._stop_loop()
 
     def get_control_limits(self):
         """ Get the minimum and maximum value of the control actuator.

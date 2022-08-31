@@ -101,11 +101,11 @@ class SoftPIDController(PIDControllerInterface):
         self.timer.setSingleShot(True)
         self.timer.setInterval(self.timestep)
 
-        self.timer.timeout.connect(self._calcNextStep, QtCore.Qt.QueuedConnection)
+        self.timer.timeout.connect(self._calc_next_step, QtCore.Qt.QueuedConnection)
         self.sigNewValue.connect(self._control.set_setpoint)
 
         self.history = np.zeros([3, 5])
-        self.savingState = False
+        self.saving_state = False
         self.enable = False
         self.integrated = 0
         self.countdown = 2
@@ -118,7 +118,7 @@ class SoftPIDController(PIDControllerInterface):
         self._process.set_activity_state(False)
         self._control.set_activity_state(False)
 
-    def _calcNextStep(self):
+    def _calc_next_step(self):
         """ This function implements the Takahashi Type C PID
             controller: the P and D term are no longer dependent
             on the set-point, only on PV (which is Thlt).
@@ -181,30 +181,30 @@ class SoftPIDController(PIDControllerInterface):
 
         self.timer.start(self.timestep)
 
-    def startLoop(self):
+    def _start_loop(self):
         """ Start the control loop. """
         self.countdown = 2
 
-    def stopLoop(self):
+    def _stop_loop(self):
         """ Stop the control loop. """
         self.countdown = -1
         self.enable = False
 
-    def getSavingState(self):
+    def get_saving_state(self):
         """ Find out if we are keeping data for saving later.
 
             @return bool: whether module is saving process and control data
         """
-        return self.savingState
+        return self.saving_state
 
-    def startSaving(self):
+    def start_saving(self):
         """ Start saving process and control data.
 
             Does not do anything right now.
         """
         pass
 
-    def saveData(self):
+    def save_data(self):
         """ Write process and control data to file.
 
             Does not do anything right now.
@@ -299,9 +299,9 @@ class SoftPIDController(PIDControllerInterface):
             @param bool enabled: desired state of PID controller
         """
         if enabled and not self.enable and self.countdown == -1:
-            self.startLoop()
+            self._start_loop()
         if not enabled and self.enable:
-            self.stopLoop()
+            self._stop_loop()
 
     def get_control_limits(self):
         """ Get the minimum and maximum value of the control actuator.
