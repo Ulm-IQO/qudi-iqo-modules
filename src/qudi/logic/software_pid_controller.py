@@ -92,6 +92,7 @@ class SoftPIDController(PIDControllerInterface):
         self.countdown = None
         self.previous_delta = None
         self.cv = None
+        self.P, self.I, self.D = 0, 0, 0
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -116,7 +117,7 @@ class SoftPIDController(PIDControllerInterface):
         self.saving_state = False
         self.enable = False
         self.integrated = 0
-        self.countdown = 2
+        self.countdown = -1
 
         self.timer.start(self.timestep)
 
@@ -142,7 +143,6 @@ class SoftPIDController(PIDControllerInterface):
                 self.previous_delta = 1 - pv_normalized
             else:
                 self.previous_delta = self.setpoint - self.pv
-            print('Countdown: ', self.countdown)
         elif self.countdown == 0:
             self.countdown = -1
             self.integrated = 0
