@@ -181,10 +181,10 @@ class PIDGui(GuiBase):
         self._mw.D_DoubleSpinBox.setValue(self._pid_logic.get_kd())
         self._mw.setpointDoubleSpinBox.setValue(self._pid_logic.get_setpoint())
         self._mw.manualDoubleSpinBox.setValue(self._pid_logic.get_manual_value())
-        self._mw.pidEnabledCheckBox.setChecked(self._pid_logic._controller.get_enabled())
+        self._mw.pidEnabledCheckBox.setChecked(self._pid_logic.get_enabled())
 
         # make correct button state
-        self._mw.start_control_Action.setChecked(self._pid_logic.get_enabled())
+        self._mw.start_control_Action.setChecked(self._pid_logic.is_recording)
 
         #####################
         # Connecting user interactions
@@ -202,10 +202,9 @@ class PIDGui(GuiBase):
         # Connect the default view action
         self._mw.restore_default_view_Action.triggered.connect(self._restore_default_view)
 
-        #####################
-        # starting the physical measurement
-        self.sigStart.connect(self._pid_logic._start_loop)
-        self.sigStop.connect(self._pid_logic._stop_loop)
+        # starting and stopping the data recording loop: setpoint, process value and control value
+        self.sigStart.connect(self._pid_logic.start_loop)
+        self.sigStop.connect(self._pid_logic.stop_loop)
 
         self._pid_logic.sigUpdateDisplay.connect(self._update_data)
 
@@ -226,7 +225,7 @@ class PIDGui(GuiBase):
         """ The function that grabs the data and sends it to the plot.
         """
 
-        if self._pid_logic.get_enabled():
+        if self._pid_logic.is_recording:
             # format display values with unit
             pv = create_formatted_output({'Process': {'value': self._pid_logic.get_pv(),
                                                       'unit': self.process_value_unit}})
@@ -267,7 +266,7 @@ class PIDGui(GuiBase):
         else:
             self._mw.record_control_Action.setText('Start Saving Data')
 
-        if self._pid_logic.get_enabled():
+        if self._pid_logic.is_recording:
             self._mw.start_control_Action.setText('Stop')
         else:
             self._mw.start_control_Action.setText('Start')
@@ -284,7 +283,7 @@ class PIDGui(GuiBase):
     def _start_clicked(self):
         """ Handling the Start button to stop and restart the counter.
         """
-        if self._pid_logic.get_enabled():
+        if self._pid_logic.is_recording:
             self._mw.start_control_Action.setText('Start')
             self.sigStop.emit()
         else:
@@ -332,4 +331,4 @@ class PIDGui(GuiBase):
         self._pid_logic.set_manual_value(self._mw.manualDoubleSpinBox.value())
 
     def _pid_enabled_changed(self, state):
-        self._pid_logic._controller.set_enabled(state)
+        self._pid_logic.set_enabled(state)

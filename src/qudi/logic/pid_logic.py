@@ -67,7 +67,7 @@ class PIDLogic(Base):
         self._controller = None
         self.history = None
         self.saving_state = False
-        self.enabled = False
+        self._is_recording = False
         self.timer = None
 
     def on_activate(self):
@@ -77,7 +77,6 @@ class PIDLogic(Base):
 
         self.history = np.zeros([3, self.buffer_length])
         self.saving_state = False
-        self.enabled = False
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(True)
         self.timer.setInterval(self.timestep * 1000)  # in ms
@@ -92,16 +91,24 @@ class PIDLogic(Base):
         """
         return self.buffer_length
 
-    def _start_loop(self):
-        """ Start the data recording loop.
+    @property
+    def is_recording(self):
+        """ See if the logic is recording values
+            @return bool: whether the recording loop is active
         """
-        self.enabled = True
-        self.timer.start(self.timestep * 1000)  # in ms
+        return self._is_recording
 
-    def _stop_loop(self):
-        """ Stop the data recording loop.
+    def start_loop(self):
+        """ Start the data recording loop. Not identical to enabling the PID controller.
         """
-        self.enabled = False
+        self._is_recording = True
+        self.timer.start()
+
+    def stop_loop(self):
+        """ Stop the data recording loop. Not identical to disabling the PID controller.
+        """
+        self._is_recording = False
+        self.timer.stop()
 
     def _loop(self):
         """ Execute step in the data recording loop: save one of each control and process values
@@ -111,8 +118,8 @@ class PIDLogic(Base):
         self.history[1, -1] = self._controller.get_control_value()
         self.history[2, -1] = self._controller.get_setpoint()
         self.sigUpdateDisplay.emit()
-        if self.enabled:
-            self.timer.start(self.timestep * 1000)  # in ms
+        if self._is_recording:
+            self.timer.start()
 
     def get_saving_state(self):
         """ Return whether we are saving data
@@ -218,17 +225,14 @@ class PIDLogic(Base):
 
             @return bool: whether the PID controller is preparing to or controlling a process
         """
-        return self.enabled
+        return self._controller.get_enabled()
 
     def set_enabled(self, enabled):
         """ Set the state of the PID controller.
 
             @param bool enabled: desired state of PID controller
         """
-        if enabled and not self.enabled:
-            self._start_loop()
-        if not enabled and self.enabled:
-            self._stop_loop()
+        self._controller.set_enabled(enabled)
 
     def get_control_limits(self):
         """ Get the minimum and maximum value of the control actuator.
