@@ -21,7 +21,6 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from qtpy import QtCore
-from qudi.util.mutex import Mutex
 import numpy as np
 
 from qudi.interface.pid_controller_interface import PIDControllerInterface
@@ -80,10 +79,6 @@ class SoftPIDController(PIDControllerInterface):
         # checking for the right configuration
         for key in config.keys():
             self.log.debug('{0}: {1}'.format(key, config[key]))
-
-        # number of lines in the matrix plot
-        self.NumberOfSecondsLog = 100
-        self.threadlock = Mutex()
 
         # initialize attributes
         self._process = None
@@ -202,27 +197,6 @@ class SoftPIDController(PIDControllerInterface):
         """ Stop the control loop. """
         self.countdown = -1
         self.enable = False
-
-    def get_saving_state(self):
-        """ Find out if we are keeping data for saving later.
-
-            @return bool: whether module is saving process and control data
-        """
-        return self.saving_state
-
-    def start_saving(self):
-        """ Start saving process and control data.
-
-            Does not do anything right now.
-        """
-        pass
-
-    def save_data(self):
-        """ Write process and control data to file.
-
-            Does not do anything right now.
-        """
-        pass
 
     def get_kp(self):
         """ Return the proportional constant.
