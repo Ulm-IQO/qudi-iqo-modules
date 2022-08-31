@@ -87,6 +87,9 @@ class SoftPIDController(PIDControllerInterface):
         self._process = self.process()
         self._control = self.control()
 
+        self._process.set_activity_state(True)
+        self._control.set_activity_state(True)
+
         self.previous_delta = 0
         self.cv = self._control.get_setpoint(self.setpoint_channel)
 
@@ -108,7 +111,8 @@ class SoftPIDController(PIDControllerInterface):
     def on_deactivate(self):
         """ Perform required deactivation.
         """
-        pass
+        self._process.set_activity_state(False)
+        self._control.set_activity_state(False)
 
     def _calcNextStep(self):
         """ This function implements the Takahashi Type C PID
@@ -283,12 +287,8 @@ class SoftPIDController(PIDControllerInterface):
             @param bool enabled: desired state of PID controller
         """
         if enabled and not self.enable and self.countdown == -1:
-            self._process.set_activity_state(enabled)
-            self._control.set_activity_state(enabled)
             self.startLoop()
         if not enabled and self.enable:
-            self._process.set_activity_state(enabled)
-            self._control.set_activity_state(enabled)
             self.stopLoop()
 
     def get_control_limits(self):
