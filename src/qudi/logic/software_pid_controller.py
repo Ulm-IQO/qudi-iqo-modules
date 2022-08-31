@@ -43,6 +43,8 @@ class SoftPIDController(PIDControllerInterface):
             setpoint_channel: 'Speed'
             # PID control value update interval (ms)
             timestep: 100
+            # normalize process value to setpoint
+            normalize: False
         connect:
             process_value: process_value_dummy
             setpoint: process_setpoint_dummy
@@ -58,6 +60,8 @@ class SoftPIDController(PIDControllerInterface):
     setpoint_channel = ConfigOption(default='A')
     # timestep on which the PID updates
     timestep = ConfigOption(default=100)
+    # normalize process value to setpoint
+    _normalize = ConfigOption(name='normalize', default=False)
 
     # status vars
     kP = StatusVar(default=1)
@@ -125,7 +129,11 @@ class SoftPIDController(PIDControllerInterface):
 
         if self.countdown > 0:
             self.countdown -= 1
-            self.previous_delta = self.setpoint - self.pv
+            if self._normalize:
+                pv_normalized = self.pv / self.setpoint
+                self.previous_delta = 1 - pv_normalized
+            else:
+                self.previous_delta = self.setpoint - self.pv
             print('Countdown: ', self.countdown)
         elif self.countdown == 0:
             self.countdown = -1
@@ -134,7 +142,11 @@ class SoftPIDController(PIDControllerInterface):
 
         # if PID enabled, calculate the next control value
         if self.enable:
-            delta = self.setpoint - self.pv
+            if self._normalize:
+                pv_normalized = self.pv / self.setpoint
+                delta = 1 - pv_normalized
+            else:
+                delta = self.setpoint - self.pv
             self.integrated += delta
             # calculate PID controller:
             self.P = self.kP * delta
