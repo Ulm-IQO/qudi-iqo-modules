@@ -59,9 +59,16 @@ class PIDLogic(Base):
         super().__init__(config=config, **kwargs)
         self.log.debug('The following configuration was found.')
 
-        #number of lines in the matrix plot
+        # number of lines in the matrix plot
         self.NumberOfSecondsLog = 100
         self.threadlock = Mutex()
+
+        # initialize attributes
+        self._controller = None
+        self.history = None
+        self.saving_state = False
+        self.enabled = False
+        self.timer = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.

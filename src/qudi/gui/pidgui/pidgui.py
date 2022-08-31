@@ -73,6 +73,20 @@ class PIDGui(GuiBase):
         for key in config.keys():
             self.log.info('{0}: {1}'.format(key,config[key]))
 
+        # initialize attributes
+        self._pid_logic = None
+        self._mw = None
+        self._pw = None
+
+        self.process_value_unit = None
+        self.control_value_unit = None
+
+        self.plot1 = None
+        self.plot2 = None
+        self._curve1 = None
+        self._curve2 = None
+        self._curve3 = None
+
     def on_activate(self):
         """ Definition and initialisation of the GUI plus staring the measurement.
 

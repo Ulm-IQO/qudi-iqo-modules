@@ -85,6 +85,19 @@ class SoftPIDController(PIDControllerInterface):
         self.NumberOfSecondsLog = 100
         self.threadlock = Mutex()
 
+        # initialize attributes
+        self._process = None
+        self._control = None
+        self.timer = None
+
+        self.history = None
+        self.saving_state = False
+        self.enable = False
+        self.integrated = None
+        self.countdown = None
+        self.previous_delta = None
+        self.cv = None
+
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
