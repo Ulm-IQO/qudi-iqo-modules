@@ -41,8 +41,6 @@ class QDPlotMainWindow(QtWidgets.QMainWindow):
         self.setTabPosition(QtCore.Qt.LeftDockWidgetArea, QtWidgets.QTabWidget.North)
         self.setTabPosition(QtCore.Qt.RightDockWidgetArea, QtWidgets.QTabWidget.North)
 
-        self.resize(900, 600)
-
         # Create QActions
         icon_path = os.path.join(get_artwork_dir(), 'icons')
 
