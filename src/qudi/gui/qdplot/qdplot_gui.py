@@ -185,7 +185,6 @@ class QDPlotterGui(GuiBase):
         self._fit_config_dialog.close()
         self._mw.close()
 
-    @QtCore.Slot(int)
     def update_number_of_plots(self, count):
         """ Adjust number of QDockWidgets to current number of plots. Does NO initialization of the
         contents.
