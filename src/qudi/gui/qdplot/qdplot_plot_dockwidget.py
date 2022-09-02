@@ -22,10 +22,12 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ['PlotDockWidget', 'QDPlotWidget']
 
+import os
 from pyqtgraph import AxisItem, SignalProxy
-from PySide2 import QtWidgets, QtCore
+from PySide2 import QtWidgets, QtCore, QtGui
 from typing import Optional, Tuple
 
+from qudi.util.paths import get_artwork_dir
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
 from qudi.util.widgets.fitting import FitWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
@@ -162,12 +164,18 @@ class PlotControlWidget(QtWidgets.QWidget):
         layout = QtWidgets.QHBoxLayout()
         self.setLayout(layout)
 
-        self.save_button = QtWidgets.QPushButton('Save')
-        self.save_button.setMinimumWidth(70)
-        self.remove_button = QtWidgets.QPushButton('Remove')
-        self.remove_button.setMinimumWidth(70)
-        self.show_editor_checkbox = QtWidgets.QCheckBox('Show Editor')
-        self.show_fit_checkbox = QtWidgets.QCheckBox('Show Fit')
+        icons_path = os.path.join(get_artwork_dir(), 'icons')
+
+        self.save_button = QtWidgets.QPushButton(
+            icon=QtGui.QIcon(os.path.join(icons_path, 'document-save')),
+            text='Save'
+        )
+        self.remove_button = QtWidgets.QPushButton(
+            icon=QtGui.QIcon(os.path.join(icons_path, 'edit-delete')),
+            text='Remove'
+        )
+        self.show_editor_checkbox = QtWidgets.QCheckBox('Editor')
+        self.show_fit_checkbox = QtWidgets.QCheckBox('Fit')
 
         layout.addWidget(self.save_button)
         layout.addStretch()
