@@ -679,6 +679,10 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     @property
+    def last_measurement_asset(self):
+        pass
+
+    @property
     def sampling_information(self):
         return self._sampling_information
 
@@ -1377,6 +1381,9 @@ class PulsedMeasurementLogic(LogicBase):
                 'analysis parameters'         : self.analysis_settings,
                 'extraction parameters'       : self.extraction_settings,
                 'fast counter settings'       : self.fast_counter_settings}
+            # ,
+            #     # todo: save sequence belonging to signal, not last uploaded one
+            #     'waveform parameters': self.sampling_information['generation_parameters']
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
@@ -1442,6 +1449,15 @@ class PulsedMeasurementLogic(LogicBase):
 
         # get and initialize data storage object. Daily sub-directory behaviour is already
         # included in self.module_default_data_dir.
+
+        # metadata = self._get_metadata()
+        tag = tag + '_' if tag else ''
+
+        timestamp = datetime.datetime.now()  # todo saving_dir
+        (year, month, day) = (timestamp.strftime("%Y"), timestamp.strftime("%m"), timestamp.strftime("%d"))
+        str1 = "D:\Data"
+        my_string = str1 + str1[2] + year + str1[2] + month + str1[2] + year + month + day + str1[2] + "Pulsed"
+        data_dir = my_string
         data_storage = storage_cls(root_dir=data_dir)
 
         ###############
@@ -1452,13 +1468,13 @@ class PulsedMeasurementLogic(LogicBase):
                                                                     tag,
                                                                     '_raw_timetrace')
         # Save data to file
-        data_storage.save_data(self.raw_data.astype('int64')[:, np.newaxis],
+        data_storage.save_data(self.raw_data.astype('int64'),
                                metadata=self._get_raw_metadata(),
                                nametag=nametag,
                                filename=save_filename,
                                timestamp=timestamp,
                                notes=notes,
-                               column_headers='Signal (counts)')
+                               column_headers='Signal (counts)')              #[:, np.newaxis] originally after astype()
 
         ###########################
         # Save extracted laser data
