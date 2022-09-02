@@ -47,9 +47,10 @@ class QDPlotterGui(GuiBase):
 
     qdplotter:
         module.Class: 'qdplotter.qdplotter_gui.QDPlotterGui'
-        pen_color_list: [[100, 100, 100], 'c', 'm', 'g']
         connect:
             qdplot_logic: 'qdplotlogic'
+        options:
+            pen_color_list: [[100, 100, 100], 'c', 'm', 'g']
     """
 
     sigPlotParametersChanged = QtCore.Signal(int, dict)
