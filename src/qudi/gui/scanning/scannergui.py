@@ -81,7 +81,10 @@ class SaveDialog(QtWidgets.QDialog):
 
 
 class ScannerGui(GuiBase):
-    """ Main Confocal Class for xy and depth scans.
+    """Main Confocal Class for xy and depth scans.
+
+    Todo: Example config for copy-paste:
+
     """
 
     # declare connectors

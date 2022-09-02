@@ -45,9 +45,10 @@ class MicrowaveAgilent(MicrowaveInterface):
 
     mw_source_agilent:
         module.Class: 'microwave.mw_source_agilent.MicrowaveAgilent'
-        visa_address: USB0::10::INSTR  # PyVisa compatible resource name
-        comm_timeout: 5  # in seconds, optional
-        rising_edge_trigger: True  # optional
+        options:
+            visa_address: USB0::10::INSTR  # PyVisa compatible resource name
+            comm_timeout: 5  # in seconds, optional
+            rising_edge_trigger: True  # optional
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')

@@ -35,8 +35,9 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
     millennia_laser:
         module.Class: 'laser.millennia_ev_laser.MillenniaeVLaser'
-        interface: 'ASRL1::INSTR'
-        maxpower: 25 # in Watt
+        options:
+            interface: 'ASRL1::INSTR'
+            maxpower: 25 # in Watt
 
     """
 

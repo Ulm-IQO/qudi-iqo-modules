@@ -40,10 +40,11 @@ class MicrowaveSmbv(MicrowaveInterface):
 
     mw_source_smbv:
         module.Class: 'microwave.mw_source_smbv.MicrowaveSmbv'
-        visa_address: 'GPIB0::12::INSTR'
-        comm_timeout: 10  # in seconds, optional
-        rising_edge_trigger: True  # optional
-        max_power: null  # optional
+        options:
+            visa_address: 'GPIB0::12::INSTR'
+            comm_timeout: 10  # in seconds, optional
+            rising_edge_trigger: True  # optional
+            max_power: null  # optional
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')

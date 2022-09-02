@@ -31,9 +31,10 @@ from qudi.interface.process_control_interface import ProcessControlInterface
 class E3631A(Base, ProcessControlInterface):
     """ Hardware module for power supply Keysight E3631A.
 
-    Example config :
-        voltage_generator:
-            module.Class: 'power_supply.Keysight_E3631A.E3631A'
+    Example config for copy-paste:
+    voltage_generator:
+        module.Class: 'power_supply.Keysight_E3631A.E3631A'
+        options:
             address: 'ASRL9::INSTR'
 
     """

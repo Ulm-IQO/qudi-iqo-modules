@@ -47,8 +47,8 @@ class QDPlotLogic(LogicBase):
 
     qdplotlogic:
         module.Class: 'qdplot_logic.QDPlotLogic'
-            fit_logic: 'fitlogic'
-        default_plot_number: 3
+        options:
+            default_plot_number: 3
     """
     sigPlotDataUpdated = QtCore.Signal(int, list, list, list)
     sigPlotParamsUpdated = QtCore.Signal(int, dict)

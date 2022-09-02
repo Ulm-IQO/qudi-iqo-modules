@@ -67,7 +67,8 @@ class TimeSeriesGui(GuiBase):
 
     time_series_gui:
         module.Class: 'time_series.time_series_gui.TimeSeriesGui'
-        use_antialias: True  # optional, set to False if you encounter performance issues
+        options:
+            use_antialias: True  # optional, set to False if you encounter performance issues
         connect:
             _time_series_logic_con: <TimeSeriesReaderLogic_name>
     """
