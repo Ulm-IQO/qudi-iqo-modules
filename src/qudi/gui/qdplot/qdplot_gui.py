@@ -54,7 +54,7 @@ class QDPlotterGui(GuiBase):
     """
 
     sigPlotParametersChanged = QtCore.Signal(int, dict)
-    sigAutoRangeClicked = QtCore.Signal(int, bool, bool)
+    sigAutoRangeClicked = QtCore.Signal(bool, bool, int)
     sigDoFit = QtCore.Signal(str, int)
     sigRemovePlotClicked = QtCore.Signal(int)
 
@@ -136,7 +136,7 @@ class QDPlotterGui(GuiBase):
         # Connect signal to logic
         self.sigPlotParametersChanged.connect(logic.update_plot_parameters,
                                               QtCore.Qt.QueuedConnection)
-        self.sigAutoRangeClicked.connect(logic.update_auto_range, QtCore.Qt.QueuedConnection)
+        self.sigAutoRangeClicked.connect(logic.set_auto_limits, QtCore.Qt.QueuedConnection)
         self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
         self.sigRemovePlotClicked.connect(logic.remove_plot, QtCore.Qt.QueuedConnection)
 
@@ -207,7 +207,7 @@ class QDPlotterGui(GuiBase):
         added_plots = False
         while count > len(self._plot_dockwidgets):
             index = len(self._plot_dockwidgets)
-            dockwidget = PlotDockWidget(fit_container=self._qdplot_logic().fit_container,
+            dockwidget = PlotDockWidget(fit_container=self._qdplot_logic().fit_containers[index],
                                         plot_number=index + 1)
             self._plot_dockwidgets.append(dockwidget)
             self._pen_colors.append(cycle(self._pen_color_list))
@@ -230,7 +230,7 @@ class QDPlotterGui(GuiBase):
         widget.sigUnitsChanged.connect(
             lambda x, y: self.sigPlotParametersChanged.emit(index, {'x_unit': x, 'y_unit': y})
         )
-        widget.sigAutoRangeClicked.connect(lambda x, y: self.sigAutoRangeClicked.emit(index, x, y))
+        widget.sigAutoRangeClicked.connect(lambda x, y: self.sigAutoRangeClicked.emit(x, y, index))
         widget.sigSaveClicked.connect(functools.partial(self._save_clicked, index))
         widget.sigRemoveClicked.connect(lambda: self.sigRemovePlotClicked.emit(index))
         widget.sigFitClicked.connect(functools.partial(self._fit_clicked, index))
@@ -331,32 +331,32 @@ class QDPlotterGui(GuiBase):
             self._mw.resizeDocks(
                 self._plot_dockwidgets, [1] * len(self._plot_dockwidgets), QtCore.Qt.Horizontal)
 
-    def update_data(self, plot_index, x_data=None, y_data=None, data_labels=None):
+    def update_data(self, plot_index: int, data=None, data_labels=None) -> None:
         """ Function creates empty plots, grabs the data and sends it to them. """
-        if not (0 <= plot_index < len(self._plot_dockwidgets)):
+        try:
+            widget = self._plot_dockwidgets[plot_index].widget()
+        except IndexError:
             self.log.warning('Tried to update plot with invalid index {0:d}'.format(plot_index))
             return
 
         logic = self._qdplot_logic()
-        if x_data is None:
-            x_data = logic.get_x_data(plot_index)
-        if y_data is None:
-            y_data = logic.get_y_data(plot_index)
+        if data is None:
+            data = logic.get_data(plot_index)
         if data_labels is None:
             data_labels = logic.get_data_labels(plot_index)
 
-        widget = self._plot_dockwidgets[plot_index].widget()
         widget.plot_widget.clear()
 
         self._pen_colors[plot_index] = cycle(self._pen_color_list)
         self._plot_curves[plot_index] = list()
         self._fit_curves[plot_index] = list()
 
-        for line, xd in enumerate(x_data):
-            yd = y_data[line]
+        for line, (x_data, y_data) in enumerate(data):
             pen_color = next(self._pen_colors[plot_index])
             self._plot_curves[plot_index].append(
                 widget.plot_widget.plot(
+                    x=x_data,
+                    y=y_data,
                     pen=mkColor(pen_color),
                     symbol='d',
                     symbolSize=6,
@@ -364,7 +364,6 @@ class QDPlotterGui(GuiBase):
                     name=data_labels[line]
                 )
             )
-            self._plot_curves[plot_index][-1].setData(x=xd, y=yd)
             self._fit_curves[plot_index].append(widget.plot_widget.plot())
             self._fit_curves[plot_index][-1].setPen('r')
 
@@ -404,30 +403,33 @@ class QDPlotterGui(GuiBase):
         """ Triggers the fit to be done. Attention, this runs in the GUI thread. """
         self.sigDoFit.emit(fit_function, plot_index)
 
-    def update_fit_data(self, plot_index, fit_data=None, formatted_fitresult=None, fit_method=None):
-        """ Function that handles the fit results received from the logic via a signal.
-
-        @param int plot_index: index of the plot the fit was performed for in the range for 0 to 2
-        @param 3-dimensional np.ndarray fit_data: the fit data in a 2-d array for each data set
-        @param str formatted_fitresult: string containing the parameters already formatted
-        @param str fit_method: the fit_method used
-        """
+    def update_fit_data(self,
+                        plot_index: int,
+                        fit_config: str = None,
+                        fit_results: list = None
+                        ) -> None:
+        """ Function that handles the fit results received from the logic via a signal """
         widget = self._plot_dockwidgets[plot_index].widget()
 
-        if fit_data is None or formatted_fitresult is None or fit_method is None:
-            fit_data, formatted_fitresult, fit_method = self._qdplot_logic().get_fit_data(plot_index)
+        if fit_config is None or fit_results is None:
+            fit_data, _, fit_config = self._qdplot_logic().get_fit_data(plot_index)
+        else:
+            try:
+                fit_data = [result.high_res_best_fit for result in fit_results]
+            except AttributeError:
+                fit_data = list()
 
-        if not fit_method:
-            fit_method = 'No Fit'
+        if not fit_config:
+            fit_config = 'No Fit'
 
         widget.toggle_fit(True)
 
-        if fit_method == 'No Fit':
+        if fit_config == 'No Fit':
             for index, curve in enumerate(self._fit_curves[plot_index]):
                 if curve in widget.plot_widget.items():
                     widget.plot_widget.removeItem(curve)
         else:
-            widget.fit_widget.result_label.setText(formatted_fitresult)
+            # widget.fit_widget.result_label.setText(formatted_fitresult)
             for index, curve in enumerate(self._fit_curves[plot_index]):
                 if curve not in widget.plot_widget.items():
                     widget.plot_widget.addItem(curve)
