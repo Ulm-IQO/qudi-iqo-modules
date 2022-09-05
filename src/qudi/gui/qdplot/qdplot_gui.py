@@ -132,7 +132,6 @@ class QDPlotterGui(GuiBase):
             self.update_data(index)
             self.update_fit_data(index)
             self.update_plot_parameters(index)
-        self.restore_view()
 
         # Connect signal to logic
         self.sigPlotParametersChanged.connect(logic.update_plot_parameters,
@@ -148,6 +147,8 @@ class QDPlotterGui(GuiBase):
         logic.sigFitUpdated.connect(self.update_fit_data, QtCore.Qt.QueuedConnection)
 
         self.show()
+        # Must happen AFTER show()
+        self.restore_view()
 
     def show(self):
         """ Make window visible and put it above all other windows. """
@@ -203,6 +204,7 @@ class QDPlotterGui(GuiBase):
             del self._pen_colors[-1]
 
         # Add dock widgets if plot count increased
+        added_plots = False
         while count > len(self._plot_dockwidgets):
             index = len(self._plot_dockwidgets)
             dockwidget = PlotDockWidget(fit_container=self._qdplot_logic().fit_container,
@@ -212,6 +214,9 @@ class QDPlotterGui(GuiBase):
             self._plot_curves.append(list())
             self._fit_curves.append(list())
             self._connect_plot_signals(index)
+            added_plots = True
+
+        if added_plots:
             self.restore_view()
 
     def _connect_plot_signals(self, index):
@@ -297,6 +302,10 @@ class QDPlotterGui(GuiBase):
                 self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
                 if i > 0:
                     self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
+                try:
+                    self._plot_dockwidgets[0].raise_()
+                except IndexError:
+                    pass
             elif alignment == 'arc':
                 mod = i % 3
                 if mod == 0:
