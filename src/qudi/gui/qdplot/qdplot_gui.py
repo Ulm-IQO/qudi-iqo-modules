@@ -422,14 +422,12 @@ class QDPlotterGui(GuiBase):
         if not fit_config:
             fit_config = 'No Fit'
 
-        widget.toggle_fit(True)
-
         if fit_config == 'No Fit':
             for index, curve in enumerate(self._fit_curves[plot_index]):
                 if curve in widget.plot_widget.items():
                     widget.plot_widget.removeItem(curve)
         else:
-            # widget.fit_widget.result_label.setText(formatted_fitresult)
+            widget.toggle_fit(True)
             for index, curve in enumerate(self._fit_curves[plot_index]):
                 if curve not in widget.plot_widget.items():
                     widget.plot_widget.addItem(curve)

@@ -190,10 +190,11 @@ class QDPlotFitContainer(FitContainer):
     fit on each of them
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, plot_config: QDPlotConfig, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._last_fit_results = list()
+        self._plot_config = plot_config
 
     @property
     def last_fits(self):
@@ -223,20 +224,17 @@ class QDPlotFitContainer(FitContainer):
         self.sigLastFitResultChanged.emit(self._last_fit_config, self._last_fit_results)
         return self._last_fit_config, self._last_fit_results.copy()
 
-    @staticmethod
-    def formatted_result(fit_result, parameters_units=None):
+    def formatted_result(self, fit_result, parameters_units=None):
         try:
-            return '\n'.join(
-                FitContainer.formatted_result(result, parameters_units) for result in fit_result
-            )
+            result_str = ''
+            for ii, result in enumerate(fit_result):
+                single_result_str = FitContainer.formatted_result(result, parameters_units)
+                if single_result_str:
+                    tabbed_result = '\n  '.join(single_result_str.split('\n'))
+                    result_str += f'{self._plot_config.data_labels[ii]}:\n  {tabbed_result}\n'
+            return result_str
         except TypeError:
             return FitContainer.formatted_result(fit_result, parameters_units)
-        # if fit_config == 'No Fit':
-        #     tabbed_result = '\n  No Fit'
-        # else:
-        #     tabbed_result = '\n  '.join(
-        #         self._fit_container.formatted_result(fit_result).split('\n')[:-1])
-        # result += '{0}:\n  {1}\n'.format(self._data_labels[plot_index][data_set], tabbed_result)
 
 
 class QDPlotLogic(LogicBase):
@@ -323,10 +321,12 @@ class QDPlotLogic(LogicBase):
     def add_plot(self) -> None:
         with self.threadlock:
             plot_index = self.number_of_plots
-            self._fit_containers.append(QDPlotFitContainer(parent=self,
-                                                           config_model=self._fit_config_model))
+
             plot_config = QDPlotConfig()
             self._plot_configs.append(plot_config)
+            self._fit_containers.append(QDPlotFitContainer(parent=self,
+                                                           plot_config=plot_config,
+                                                           config_model=self._fit_config_model))
 
             self.sigPlotNumberChanged.emit(self.number_of_plots)
             self.sigPlotDataUpdated.emit(plot_index, plot_config.data, plot_config.data_labels)
