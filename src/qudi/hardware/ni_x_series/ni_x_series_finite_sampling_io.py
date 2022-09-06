@@ -661,11 +661,11 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 # if number_of_samples > self.samples_in_buffer:
                 #     self.log.debug(f'Waiting for samples to become available since requested {number_of_samples} are more then '
                 #                    f'the {self.samples_in_buffer} in the buffer')
-                while number_of_samples > self.samples_in_buffer:
+                while samples_to_read > self.samples_in_buffer:
                     if time.time() - request_time < 1.1 * self.frame_size / self.sample_rate:  # TODO Is this timeout ok?
                         time.sleep(0.05)
                     else:
-                        raise TimeoutError(f'Acquiring {number_of_samples} samples took longer then the whole frame')
+                        raise TimeoutError(f'Acquiring {samples_to_read} samples took longer then the whole frame')
 
             data = dict()
 
