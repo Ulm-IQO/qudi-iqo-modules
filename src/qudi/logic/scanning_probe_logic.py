@@ -314,95 +314,116 @@ class ScanningProbeLogic(LogicBase):
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
 
+    def _update_scan_settings(self, scan_axes, settings):
+        for ax_index, ax in enumerate(scan_axes):
+            # Update scan ranges if needed
+            new = tuple(settings['range'][ax_index])
+            if self._scan_ranges[ax] != new:
+                self._scan_ranges[ax] = new
+                self.sigScanSettingsChanged.emit({'range': {ax: self._scan_ranges[ax]}})
+
+            # Update scan resolution if needed
+            new = int(settings['resolution'][ax_index])
+            if self._scan_resolution[ax] != new:
+                self._scan_resolution[ax] = new
+                self.sigScanSettingsChanged.emit(
+                    {'resolution': {ax: self._scan_resolution[ax]}}
+                )
+
+        # Update scan frequency if needed
+        new = float(settings['frequency'])
+        if self._scan_frequency[scan_axes[0]] != new:
+            self._scan_frequency[scan_axes[0]] = new
+            self.sigScanSettingsChanged.emit({'frequency': {scan_axes[0]: new}})
+
     def start_scan(self, scan_axes, caller_id=None):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            try:
+                if self.module_state() != 'idle':
+                    self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
+                    return 0
+
+                scan_axes = tuple(scan_axes)
+                self._curr_caller_id = self.module_uuid if caller_id is None else caller_id
+
+                self.module_state.lock()
+                self.log.debug("Locking scaning_probe_logic for scan start")
+
+                settings = {'axes': scan_axes,
+                            'range': tuple(self._scan_ranges[ax] for ax in scan_axes),
+                            'resolution': tuple(self._scan_resolution[ax] for ax in scan_axes),
+                            'frequency': self._scan_frequency[scan_axes[0]]}
+                fail, new_settings = self._scanner().configure_scan(settings)
+
+                if fail:
+                    self.module_state.unlock()
+                    self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
+                    self.log.error(f"Couldn't configure scan: {settings}")
+                    return -1
+
+                self.log.debug(f"Configuring new scan {settings}")
+                self._update_scan_settings(scan_axes, new_settings)
+                #self.log.debug("Applied new scan settings")
+
+                # Calculate poll time to check for scan completion. Use line scan time estimate.
+                line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
+                self.__scan_poll_interval = max(self._min_poll_interval,
+                                                line_points / self._scan_frequency[scan_axes[0]])
+                self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
+                self.log.debug("Scanner intervall set, ready to start scan on hw.")
+
+                # todo: optimizer hung up at start_scan
+                if self._scanner().start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
+                    self.module_state.unlock()
+                    self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
+                    self.log.error("Couldn't start scan.")
+                    return -1
+
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
+                self.log.debug("Scan timer starting...")
+                self.__start_timer()
                 return 0
-
-            scan_axes = tuple(scan_axes)
-            self._curr_caller_id = self.module_uuid if caller_id is None else caller_id
-
-            self.module_state.lock()
-
-            settings = {'axes': scan_axes,
-                        'range': tuple(self._scan_ranges[ax] for ax in scan_axes),
-                        'resolution': tuple(self._scan_resolution[ax] for ax in scan_axes),
-                        'frequency': self._scan_frequency[scan_axes[0]]}
-            fail, new_settings = self._scanner().configure_scan(settings)
-            if fail:
-                self.module_state.unlock()
-                self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
-                return -1
-
-            for ax_index, ax in enumerate(scan_axes):
-                # Update scan ranges if needed
-                new = tuple(new_settings['range'][ax_index])
-                if self._scan_ranges[ax] != new:
-                    self._scan_ranges[ax] = new
-                    self.sigScanSettingsChanged.emit({'range': {ax: self._scan_ranges[ax]}})
-
-                # Update scan resolution if needed
-                new = int(new_settings['resolution'][ax_index])
-                if self._scan_resolution[ax] != new:
-                    self._scan_resolution[ax] = new
-                    self.sigScanSettingsChanged.emit(
-                        {'resolution': {ax: self._scan_resolution[ax]}}
-                    )
-
-            # Update scan frequency if needed
-            new = float(new_settings['frequency'])
-            if self._scan_frequency[scan_axes[0]] != new:
-                self._scan_frequency[scan_axes[0]] = new
-                self.sigScanSettingsChanged.emit({'frequency': {scan_axes[0]: new}})
-
-            # Calculate poll time to check for scan completion. Use line scan time estimate.
-            line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
-            self.__scan_poll_interval = max(self._min_poll_interval,
-                                            line_points / self._scan_frequency[scan_axes[0]])
-            self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
-
-            if self._scanner().start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
-                self.module_state.unlock()
-                self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
-                return -1
-
-            self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
-            self.__start_timer()
-            return 0
+            except:
+                self.log.exception()
 
     def stop_scan(self):
         with self._thread_lock:
-            if self.module_state() == 'idle':
-                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
-                return 0
+            try:
+                if self.module_state() == 'idle':
+                    self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+                    return 0
 
-            self.__stop_timer()
+                self.log.debug(f"Stopping scan, caller id {self._curr_caller_id}")
+                self.__stop_timer()
 
-            err = self._scanner().stop_scan() if self._scanner().module_state() != 'idle' else 0
+                err = self._scanner().stop_scan() if self._scanner().module_state() != 'idle' else 0
 
-            self.module_state.unlock()
+                self.module_state.unlock()
 
-            if self.scan_settings['save_to_history']:
-                # module_uuid signals data-ready to data logic
-                self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
-            else:
-                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+                if self.scan_settings['save_to_history']:
+                    # module_uuid signals data-ready to data logic
+                    self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
+                else:
+                    self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
 
-            return err
+                return err
+            except:
+                self.log.exception()
 
     def __scan_poll_loop(self):
         with self._thread_lock:
             try:
                 if self.module_state() == 'idle':
+                    self.log.debug("Stopping scan, because scan probe logic idle")
                     return
 
                 if self._scanner().module_state() == 'idle':
+                    self.log.debug("Stopping scan, because scanner idle")
                     self.stop_scan()
                     return
                 # TODO Added the following line as a quick test; Maybe look at it with more caution if correct
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
-
+                self.log.debug("Next scan timer started")
                 # Queue next call to this slot
                 self.__scan_poll_timer.start()
             except TimeoutError:
