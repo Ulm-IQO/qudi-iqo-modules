@@ -209,15 +209,11 @@ class QDPlotFitContainer(FitContainer):
         self.blockSignals(True)
         try:
             for x_data, y_data in plot_config.data:
-                # # only fit if the is enough data to actually do the fit
-                # if len(x_data) < 2 or len(y_data) < 2 or min(x_data) == max(x_data):
-                #     self.log.warning(
-                #         'The data you are trying to fit does not contain enough points for a fit.')
-                #     return (plot_index,
-                #             np.zeros(shape=(len(self._x_data[plot_index]), 2, 10)),
-                #             'results',
-                #             self.fit_container.current_fit)
-                results.append(self.fit_data(fit_config=fit_config, x=x_data, data=y_data)[1])
+                # only fit if the is enough data to actually do the fit
+                if (len(x_data) < 2) or (len(y_data) < 2) or (np.min(x_data) == np.max(x_data)):
+                    results.append(None)
+                else:
+                    results.append(self.fit_data(fit_config=fit_config, x=x_data, data=y_data)[1])
         finally:
             self.blockSignals(False)
         self._last_fit_results = results
@@ -461,7 +457,7 @@ class QDPlotLogic(LogicBase):
     def do_fit(self,
                fit_config: str,
                plot_index: Optional[int] = None
-               ) -> Tuple[int, np.ndarray, str, str]:
+               ) -> Tuple[int, List[Union[None, np.ndarray]], str, str]:
         """ Get the data of the x-axis being plotted.
         
         @param str fit_config: name of the fit_method, this needs to match the methods in
@@ -475,7 +471,7 @@ class QDPlotLogic(LogicBase):
     def _do_fit(self,
                 fit_config: str,
                 plot_index: Optional[int] = None
-                ) -> Tuple[int, np.ndarray, str, str]:
+                ) -> Tuple[int, List[Union[None, np.ndarray]], str, str]:
         """ Get the data of the x-axis being plotted.
 
         @param str fit_config: name of the fit_method, this needs to match the methods in
@@ -509,17 +505,16 @@ class QDPlotLogic(LogicBase):
         fit_data, result_str, fit_config = self._get_fit_data(plot_index)
         return plot_index, fit_data, result_str, fit_config
 
-    def get_fit_data(self, plot_index: int) -> Tuple[np.ndarray, str, str]:
+    def get_fit_data(self, plot_index: int) -> Tuple[List[Union[None, np.ndarray]], str, str]:
         with self.threadlock:
             return self._get_fit_data(plot_index)
 
-    def _get_fit_data(self, plot_index: int) -> Tuple[np.ndarray, str, str]:
+    def _get_fit_data(self, plot_index: int) -> Tuple[List[Union[None, np.ndarray]], str, str]:
         fit_container = self._fit_containers[plot_index]
         fit_config, fit_results = fit_container.last_fits
-        fit_data = np.array(
-            [np.empty(0) if result is None else np.array(result.high_res_best_fit) for result in
-             fit_results]
-        )
+        fit_data = [
+            None if result is None else np.array(result.high_res_best_fit) for result in fit_results
+        ]
         result_str = fit_container.formatted_result(fit_results)
         return fit_data, result_str, fit_config
 
@@ -569,8 +564,8 @@ class QDPlotLogic(LogicBase):
                          label=plot_config.data_labels[data_set])
                 if fit_data is not None:
                     try:
-                        ax1.plot(fit_data[plot_index][0],
-                                 fit_data[plot_index][1],
+                        ax1.plot(fit_data[data_set][0],
+                                 fit_data[data_set][1],
                                  color='r',
                                  marker='None',
                                  linewidth=1.5,

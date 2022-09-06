@@ -415,7 +415,9 @@ class QDPlotterGui(GuiBase):
             fit_data, _, fit_config = self._qdplot_logic().get_fit_data(plot_index)
         else:
             try:
-                fit_data = [result.high_res_best_fit for result in fit_results]
+                fit_data = [
+                    None if result is None else result.high_res_best_fit for result in fit_results
+                ]
             except AttributeError:
                 fit_data = list()
 
@@ -429,6 +431,10 @@ class QDPlotterGui(GuiBase):
         else:
             widget.toggle_fit(True)
             for index, curve in enumerate(self._fit_curves[plot_index]):
-                if curve not in widget.plot_widget.items():
-                    widget.plot_widget.addItem(curve)
-                curve.setData(x=fit_data[index][0], y=fit_data[index][1])
+                data = fit_data[index]
+                if data:
+                    if curve not in widget.plot_widget.items():
+                        widget.plot_widget.addItem(curve)
+                    curve.setData(x=data[0], y=data[1])
+                elif curve in widget.plot_widget.items():
+                    widget.plot_widget.removeItem(curve)
