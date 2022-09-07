@@ -256,7 +256,7 @@ class QDPlotLogic(LogicBase):
 
     _default_plot_number = ConfigOption(name='default_plot_number', default=3)
 
-    _fit_configs = StatusVar(name='fit_configs', default=None)
+    _fit_config_model = StatusVar(name='fit_configs', default=list())
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -267,17 +267,12 @@ class QDPlotLogic(LogicBase):
         self._plot_configs = list()
         self._fit_containers = list()
 
-        self._fit_config_model = None
-
     def on_activate(self):
         """ Initialisation performed during activation of the module. """
         # Sanity-check ConfigOptions
         if not isinstance(self._default_plot_number, int) or self._default_plot_number < 1:
             self.log.warning('Invalid number of plots encountered in config. Falling back to 1.')
             self._default_plot_number = 1
-
-        self._fit_config_model = FitConfigurationsModel(parent=self)
-        self._fit_config_model.load_configs(self._fit_configs)
 
         self._fit_containers = list()
         self._plot_configs = list()
@@ -289,18 +284,16 @@ class QDPlotLogic(LogicBase):
         for i in reversed(range(self.number_of_plots)):
             self.remove_plot(i)
 
-    @_fit_configs.representer
-    def __repr_fit_configs(self, value):
-        configs = self.fit_config_model.dump_configs()
-        if len(configs) < 1:
-            configs = None
-        return configs
+    @staticmethod
+    @_fit_config_model.representer
+    def __repr_fit_configs(value: FitConfigurationsModel) -> List[Dict[str, Any]]:
+        return value.dump_configs()
 
-    @_fit_configs.constructor
-    def __constr_fit_configs(self, value):
-        if not value:
-            return dict()
-        return value
+    @_fit_config_model.constructor
+    def __constr_fit_configs(self, value: Sequence[Mapping[str, Any]]) -> FitConfigurationsModel:
+        model = FitConfigurationsModel(parent=self)
+        model.load_configs(value)
+        return model
 
     @property
     def fit_config_model(self):
@@ -308,95 +301,114 @@ class QDPlotLogic(LogicBase):
 
     @property
     def fit_containers(self):
-        return self._fit_containers
+        return self._fit_containers.copy()
 
     @property
     def number_of_plots(self) -> int:
         return len(self._plot_configs)
 
+    def get_plot_config(self, plot_index: int) -> QDPlotConfig:
+        """ Returns a copy of the actual QDPlotConfig corresponding to the given plot_index """
+        with self.threadlock:
+            plot_config = self._get_plot_config(plot_index)
+            return QDPlotConfig(**plot_config.to_dict())
+
+    def _get_plot_config(self, plot_index: int) -> QDPlotConfig:
+        try:
+            plot_config = self._plot_configs[plot_index]
+        except IndexError:
+            plot_config = None
+        if plot_config is None:
+            raise IndexError(f'Plot index {plot_index:d} out of bounds. To add a new plot, '
+                             f'call set_number_of_plots(int) or add_plot() first.')
+        return plot_config
+
     def add_plot(self) -> None:
         with self.threadlock:
-            plot_index = self.number_of_plots
+            return self._add_plot()
 
-            plot_config = QDPlotConfig()
-            self._plot_configs.append(plot_config)
-            self._fit_containers.append(QDPlotFitContainer(parent=self,
-                                                           plot_config=plot_config,
-                                                           config_model=self._fit_config_model))
+    def _add_plot(self) -> None:
+        plot_index = self.number_of_plots
 
-            self.sigPlotNumberChanged.emit(self.number_of_plots)
-            self.sigPlotDataUpdated.emit(plot_index, plot_config.data, plot_config.data_labels)
-            self.sigPlotParamsUpdated.emit(plot_index,
-                                           {'x_label' : plot_config.labels[0],
-                                            'y_label' : plot_config.labels[1],
-                                            'x_unit'  : plot_config.units[0],
-                                            'y_unit'  : plot_config.units[1],
-                                            'x_limits': plot_config.limits[0],
-                                            'y_limits': plot_config.limits[1]})
+        plot_config = QDPlotConfig()
+        self._plot_configs.append(plot_config)
+        self._fit_containers.append(QDPlotFitContainer(parent=self,
+                                                       plot_config=plot_config,
+                                                       config_model=self._fit_config_model))
 
-    def remove_plot(self, plot_index: Optional[int] = None) -> None:
+        self.sigPlotNumberChanged.emit(self.number_of_plots)
+        self.sigPlotDataUpdated.emit(plot_index, plot_config.data, plot_config.data_labels)
+        self.sigPlotParamsUpdated.emit(plot_index,
+                                       {'x_label' : plot_config.labels[0],
+                                        'y_label' : plot_config.labels[1],
+                                        'x_unit'  : plot_config.units[0],
+                                        'y_unit'  : plot_config.units[1],
+                                        'x_limits': plot_config.limits[0],
+                                        'y_limits': plot_config.limits[1]})
+
+    def remove_plot(self, plot_index: int) -> None:
         with self.threadlock:
-            if plot_index is None:
-                plot_index = -1
+            return self._remove_plot(plot_index)
 
-            invalid_start_index = self.number_of_plots - len(self._plot_configs[plot_index:])
+    def _remove_plot(self, plot_index: int) -> None:
+        invalid_start_index = self.number_of_plots - len(self._plot_configs[plot_index:])
 
-            del self._plot_configs[plot_index]
-            del self._fit_containers[plot_index]
+        del self._plot_configs[plot_index]
+        del self._fit_containers[plot_index]
 
-            self.sigPlotNumberChanged.emit(self.number_of_plots)
+        self.sigPlotNumberChanged.emit(self.number_of_plots)
 
-            for index in range(invalid_start_index, self.number_of_plots):
-                self.sigPlotDataUpdated.emit(index,
-                                             self._plot_configs[index].data,
-                                             self._plot_configs[index].data_labels)
-                self.sigFitUpdated.emit(index, *self._fit_containers[index].last_fits)
-                self.sigPlotParamsUpdated.emit(plot_index,
-                                               {'x_label' : self._plot_configs[index].labels[0],
-                                                'y_label' : self._plot_configs[index].labels[1],
-                                                'x_unit'  : self._plot_configs[index].units[0],
-                                                'y_unit'  : self._plot_configs[index].units[1],
-                                                'x_limits': self._plot_configs[index].limits[0],
-                                                'y_limits': self._plot_configs[index].limits[1]})
+        for index in range(invalid_start_index, self.number_of_plots):
+            self.sigPlotDataUpdated.emit(index,
+                                         self._plot_configs[index].data,
+                                         self._plot_configs[index].data_labels)
+            self.sigFitUpdated.emit(index, *self._fit_containers[index].last_fits)
+            self.sigPlotParamsUpdated.emit(plot_index,
+                                           {'x_label' : self._plot_configs[index].labels[0],
+                                            'y_label' : self._plot_configs[index].labels[1],
+                                            'x_unit'  : self._plot_configs[index].units[0],
+                                            'y_unit'  : self._plot_configs[index].units[1],
+                                            'x_limits': self._plot_configs[index].limits[0],
+                                            'y_limits': self._plot_configs[index].limits[1]})
 
-    def set_number_of_plots(self, plt_count: int) -> None:
-        if not is_integer(plt_count):
+    def set_number_of_plots(self, plot_count: int) -> None:
+        if not is_integer(plot_count):
             raise TypeError('number_of_plots must be integer')
-        if plt_count < 1:
+        if plot_count < 1:
             raise ValueError('number_of_plots must be >= 1')
         with self.threadlock:
-            while self.number_of_plots < plt_count:
-                self.add_plot()
-            while self.number_of_plots > plt_count:
-                self.remove_plot()
+            return self._set_number_of_plots(plot_count)
 
-    def get_data(self, plot_index: Optional[int] = None) -> List[np.ndarray]:
-        if plot_index is None:
-            plot_index = 0
+    def _set_number_of_plots(self, plot_count: int) -> None:
+        while self.number_of_plots < plot_count:
+            self.add_plot()
+        while self.number_of_plots > plot_count:
+            self.remove_plot()
+
+    def get_data(self, plot_index: int) -> List[np.ndarray]:
         with self.threadlock:
-            return self._plot_configs[plot_index].data
+            return self._get_data(plot_index)
 
-    def get_x_data(self, plot_index: Optional[int] = None) -> List[np.ndarray]:
+    def _get_data(self, plot_index: int) -> List[np.ndarray]:
+        return self._get_plot_config(plot_index).data
+
+    def get_x_data(self, plot_index: int) -> List[np.ndarray]:
         """ Get the data of the x-axis being plotted """
-        if plot_index is None:
-            plot_index = 0
         with self.threadlock:
-            return [data[0] for data in self._plot_configs[plot_index].data]
+            return [data for (data, _) in self._get_data(plot_index)]
 
     def get_y_data(self, plot_index: Optional[int] = None) -> List[np.ndarray]:
         """ Get the data of the y-axis being plotted """
-        if plot_index is None:
-            plot_index = 0
         with self.threadlock:
-            return [data[1] for data in self._plot_configs[plot_index].data]
+            return [data for (_, data) in self._get_data(plot_index)]
 
     def set_data(self,
+                 plot_index: int,
                  x: Union[Sequence[Sequence[float]], Sequence[float]],
                  y: Union[Sequence[Sequence[float]], Sequence[float]],
                  label: Optional[Union[str, Sequence[str]]] = None,
-                 clear_old: Optional[bool] = None,
-                 plot_index: Optional[int] = None,
-                 adjust_scale: Optional[bool] = None
+                 clear_old: Optional[bool] = True,
+                 adjust_scale: Optional[bool] = True
                  ) -> None:
         """ Set the data to plot
 
@@ -407,44 +419,36 @@ class QDPlotLogic(LogicBase):
         @param int plot_index: index of the plot in the range from 0 to 2
         @param bool adjust_scale: Whether auto-scale should be performed after adding data or not.
         """
-        if clear_old is None:
-            clear_old = True
-        if adjust_scale is None:
-            adjust_scale = True
-        if plot_index is None:
-            plot_index = 0
-        x = np.asarray(x)
-        y = np.asarray(y)
-        if x.shape != y.shape:
-            raise ValueError('x- and y-data must have same size and dimensions')
         # check if input is only an array (single plot) or a list of arrays (multiple plots)
-        if x.ndim == 1:
+        try:
+            len(x[0])
+        except TypeError:
             x = [x]
+        try:
+            len(y[0])
+        except TypeError:
             y = [y]
-        if isinstance(label, str):
-            label = [label]
-        elif label is None:
+        if label is None:
             label = [None] * len(x)
-        elif len(label) != len(x):
-            raise ValueError('Must provide as many data labels as x-y datasets or None')
-        with self.threadlock:
-            try:
-                plot_config = self._plot_configs[plot_index]
-            except IndexError:
-                plot_config = None
-            if plot_config is None:
-                raise IndexError(f'Plot index {plot_index:d} out of bounds. To add a new plot, '
-                                 f'call set_number_of_plots(int) or add_plot() first.')
+        elif isinstance(label, str):
+            label = [label]
 
+        if not (len(x) == len(y) == len(label)):
+            raise ValueError(f'Number of x ({len(x)}) and y ({len(y)}) datasets as well as '
+                             f'optional labels does not match')
+        if not all(len(x_arr) == len(y[ii]) for ii, x_arr in enumerate(x)):
+            raise ValueError('Each set of x- and y-data arrays must have matching length')
+
+        with self.threadlock:
             # Update data in selected QDPlotConfig
+            plot_config = self._get_plot_config(plot_index)
             if clear_old:
                 plot_config.clear_data()
+                # reset fits for this plot
+                self._do_fit('No Fit', plot_index)
+                self.sigFitUpdated.emit(plot_index, *self._fit_containers[plot_index].last_fits)
             for ii, x_data in enumerate(x):
                 plot_config.add_data(data=[x_data, y[ii]], label=label[ii])
-
-            # reset fit for this plot
-            self._do_fit('No Fit', plot_index)
-            # self._fit_containers[plot_index].fit_plot_config('No Fit', plot_config)
 
             self.sigPlotDataUpdated.emit(plot_index,
                                          plot_config.data,
@@ -452,82 +456,54 @@ class QDPlotLogic(LogicBase):
 
             # automatically set the correct range if requested
             if adjust_scale:
-                self._set_auto_limits(True, True, plot_index)
+                self._set_auto_limits(plot_index, True, True)
 
-    def do_fit(self,
-               fit_config: str,
-               plot_index: Optional[int] = None
-               ) -> Tuple[int, List[Union[None, np.ndarray]], str, str]:
-        """ Get the data of the x-axis being plotted.
-        
-        @param str fit_config: name of the fit_method, this needs to match the methods in
-                               fit_container.
-        @param int plot_index: index of the plot in the range from 0 to 2
-        @return int plot_index, 3D np.ndarray fit_data, str result, str fit_method: result of fit
+    def do_fit(self, plot_index: int, fit_config: str) -> List[Union[None, _ModelResult]]:
+        """ Perform desired fit on data of given plot_index.
+
+        @param int plot_index: index of the plot
+        @param str fit_config: name of the fit. Must match a fit configuration in fit_config_model.
         """
         with self.threadlock:
-            return self._do_fit(fit_config=fit_config, plot_index=plot_index)
+            valid_fit_configs = self._fit_config_model.configuration_names
+            if (fit_config != 'No Fit') and (fit_config not in valid_fit_configs):
+                raise ValueError(f'Unknown fit configuration "{fit_config}" encountered. '
+                                 f'Options are: {valid_fit_configs}')
+            return self._do_fit(plot_index, fit_config)
 
-    def _do_fit(self,
-                fit_config: str,
-                plot_index: Optional[int] = None
-                ) -> Tuple[int, List[Union[None, np.ndarray]], str, str]:
-        """ Get the data of the x-axis being plotted.
-
-        @param str fit_config: name of the fit_method, this needs to match the methods in
-                               fit_container.
-        @param int plot_index: index of the plot in the range from 0 to 2
-        @return int plot_index, 3D np.ndarray fit_data, str result, str fit_method: result of fit
-        """
-        if plot_index is None:
-            plot_index = 0
-        valid_fit_configs = self._fit_config_model.configuration_names
-        if (fit_config != 'No Fit') and (fit_config not in valid_fit_configs):
-            raise ValueError(f'Unknown fit configuration "{fit_config}" encountered. '
-                             f'Options are: {valid_fit_configs}')
-        try:
-            plot_config = self._plot_configs[plot_index]
-        except IndexError:
-            plot_config = None
-        if plot_config is None:
-            raise IndexError(f'Plot index {plot_index:d} out of bounds. '
-                             f'Unable to perform data fit.')
-
+    def _do_fit(self, plot_index: int, fit_config: str) -> List[Union[None, _ModelResult]]:
+        plot_config = self._get_plot_config(plot_index)
+        fit_container = self._fit_containers[plot_index]
         # do one fit for each data set in the plot
-        fit_config, fit_results = self._fit_containers[plot_index].fit_plot_config(
-            fit_config=fit_config,
-            plot_config=plot_config
-        )
-
+        fit_config, fit_results = fit_container.fit_plot_config(fit_config=fit_config,
+                                                                plot_config=plot_config)
         self.sigFitUpdated.emit(plot_index, fit_config, fit_results)
+        return fit_results
 
-        # Legacy return values
-        fit_data, result_str, fit_config = self._get_fit_data(plot_index)
-        return plot_index, fit_data, result_str, fit_config
-
-    def get_fit_data(self, plot_index: int) -> Tuple[List[Union[None, np.ndarray]], str, str]:
+    def get_fit_results(self,
+                        plot_index: int
+                        ) -> Tuple[List[Union[None, _ModelResult]], List[Union[None, np.ndarray]], str, str]:
         with self.threadlock:
-            return self._get_fit_data(plot_index)
+            return self._get_fit_results(plot_index)
 
-    def _get_fit_data(self, plot_index: int) -> Tuple[List[Union[None, np.ndarray]], str, str]:
+    def _get_fit_results(self,
+                         plot_index: int
+                         ) -> Tuple[List[Union[None, _ModelResult]], List[Union[None, np.ndarray]], str, str]:
         fit_container = self._fit_containers[plot_index]
         fit_config, fit_results = fit_container.last_fits
         fit_data = [
             None if result is None else np.array(result.high_res_best_fit) for result in fit_results
         ]
         result_str = fit_container.formatted_result(fit_results)
-        return fit_data, result_str, fit_config
+        return fit_results, fit_data, result_str, fit_config
 
-    def save_data(self, postfix: Optional[str] = None, plot_index: Optional[int] = None) -> None:
+    def save_data(self, plot_index: int, postfix: Optional[str] = None) -> None:
         """ Save the data to a file.
 
-        @param str postfix: an additional tag, which will be added to the filename upon save
-        @param int plot_index: index of the plot in the range for 0 to 2
+        @param int plot_index: index of the plot
+        @param str postfix: optional, an additional tag added to the generic filename
         """
-        if postfix is None:
-            postfix = ''
-        if plot_index is None:
-            plot_index = 0
+        # FIXME:
         with self.threadlock:
             try:
                 plot_config = self._plot_configs[plot_index]
@@ -652,96 +628,68 @@ class QDPlotLogic(LogicBase):
             self.log.debug('Data saved to:\n{0}'.format(file_path))
 
     def get_limits(self,
-                   plot_index: Optional[int] = None
+                   plot_index: int
                    ) -> Tuple[Union[None, Tuple[float, float]], Union[None, Tuple[float, float]]]:
-        if plot_index is None:
-            plot_index = 0
         with self.threadlock:
-            return self._plot_configs[plot_index].limits
+            return self._get_limits(plot_index)
+
+    def _get_limits(self,
+                    plot_index: int
+                    ) -> Tuple[Union[None, Tuple[float, float]], Union[None, Tuple[float, float]]]:
+        return self._get_plot_config(plot_index).limits
 
     def set_limits(self,
+                   plot_index: int,
                    limits: Tuple[Union[None, Tuple[float, float]], Union[None, Tuple[float, float]]] = None,
-                   plot_index: Optional[int] = None
                    ) -> None:
         with self.threadlock:
-            return self._set_limits(limits=limits, plot_index=plot_index)
+            return self._set_limits(plot_index, limits)
 
     def _set_limits(self,
+                    plot_index: int,
                     limits: Tuple[Union[None, Tuple[float, float]], Union[None, Tuple[float, float]]] = None,
-                    plot_index: Optional[int] = None
                     ) -> None:
-        if plot_index is None:
-            plot_index = 0
         if limits is None:
             limits = [None, None]
-        plot_config = self._plot_configs[plot_index]
+        plot_config = self._get_plot_config(plot_index)
         old_limits = plot_config.limits
         plot_config.set_limits(*limits)
-        new_limits = plot_config.limits
-        update_dict = dict()
-        if new_limits[0] != old_limits[0]:
-            update_dict['x_limits'] = new_limits[0]
-        if new_limits[1] != old_limits[1]:
-            update_dict['y_limits'] = new_limits[1]
-        if update_dict:
-            self.sigPlotParamsUpdated.emit(plot_index, update_dict)
+        if plot_config.limits != old_limits:
+            self.sigPlotConfigUpdated.emit(plot_index, plot_config)
 
-    def get_x_limits(self, plot_index: Optional[int] = None) -> Union[None, Tuple[float, float]]:
-        """ Get the limits of the x-axis being plotted.
-
-        @param int plot_index: index of the plot in the range from 0 to 2
-        @return 2-element list: limits of the x-axis e.g. as [0, 1]
-        """
+    def get_x_limits(self, plot_index: int) -> Union[None, Tuple[float, float]]:
+        """ Get the limits of the x-axis being plotted """
         return self.get_limits(plot_index)[0]
 
-    def set_x_limits(self, limits: Tuple[float, float], plot_index: Optional[int] = None) -> None:
-        """Set the x_limits, to match the data (default) or to a specified new range
-
-        @param float limits: 2-element list containing min and max x-values
-        @param int plot_index: index of the plot in the range for 0 to 2
-        """
-        return self.set_limits(limits=(limits, None), plot_index=plot_index)
+    def set_x_limits(self, plot_index: int, limits: Tuple[float, float]) -> None:
+        """ Set the x_limits to a specified new range """
+        return self.set_limits(plot_index, (limits, None))
 
     def get_y_limits(self, plot_index):
-        """ Get the limits of the y-axis being plotted.
-
-        @param int plot_index: index of the plot in the range from 0 to 2
-        @return 2-element list: limits of the y-axis e.g. as [0, 1]
-        """
+        """ Get the limits of the y-axis being plotted """
         return self.get_limits(plot_index)[1]
 
     def set_y_limits(self, limits: Tuple[float, float], plot_index: Optional[int] = None) -> None:
-        """Set the y_limits, to match the data (default) or to a specified new range
-
-        @param float limits: 2-element list containing min and max y-values
-        @param int plot_index: index of the plot in the range for 0 to 2
-        """
-        return self.set_limits(limits=(None, limits), plot_index=plot_index)
+        """Set the y_limits to a specified new range """
+        return self.set_limits(plot_index, (None, limits))
 
     def set_auto_limits(self,
+                        plot_index: int,
                         x: Optional[bool] = None,
-                        y: Optional[bool] = None,
-                        plot_index: Optional[int] = None
+                        y: Optional[bool] = None
                         ) -> None:
         with self.threadlock:
-            return self._set_auto_limits(x, y, plot_index)
+            return self._set_auto_limits(plot_index, x, y)
 
     def _set_auto_limits(self,
+                         plot_index: int,
                          x: Optional[bool] = None,
-                         y: Optional[bool] = None,
-                         plot_index: Optional[int] = None
+                         y: Optional[bool] = None
                          ) -> None:
-        if plot_index is None:
-            plot_index = 0
-        plot_config = self._plot_configs[plot_index]
+        plot_config = self._get_plot_config(plot_index)
         plot_config.set_auto_limits(x, y)
-        update_dict = dict()
-        if x:
-            update_dict['x_limits'] = plot_config.limits[0]
-        if y:
-            update_dict['y_limits'] = plot_config.limits[1]
-        if update_dict:
-            self.sigPlotParamsUpdated.emit(plot_index, update_dict)
+        if (x is True) or (y is True):
+            self.sigPlotConfigUpdated.emit(plot_index, plot_config)
 
     def get_labels(self, plot_index: Optional[int] = None) -> Tuple[str, str]:
         if plot_index is None:
