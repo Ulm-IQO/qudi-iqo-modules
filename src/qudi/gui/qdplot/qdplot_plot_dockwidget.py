@@ -79,7 +79,7 @@ class PlotEditorWidget(QtWidgets.QGroupBox):
     """
 
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None) -> None:
-        super().__init__('Plot Control', parent=parent)
+        super().__init__('Plot Editor', parent=parent)
 
         layout = QtWidgets.QGridLayout()
         self.setLayout(layout)
@@ -118,7 +118,7 @@ class PlotEditorWidget(QtWidgets.QGroupBox):
         row = 0
         layout.addWidget(label_label, row, 1)
         layout.addWidget(unit_label, row, 2)
-        layout.addWidget(range_label, row, 4, 1, 3)
+        layout.addWidget(range_label, row, 4, 1, 2)
         row += 1
         layout.addWidget(x_label, row, 0)
         layout.addWidget(self.x_label_lineEdit, row, 1)
