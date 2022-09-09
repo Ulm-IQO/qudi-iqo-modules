@@ -761,51 +761,51 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except:
             self.log.exception()
 
-        with self._thread_lock:  # todo this thread lock seems to cause race conditoin
-            self.log.debug(f"Calculating move")
-            try:
-                start_pos = self.get_position()
-                constr = self.get_constraints()
+        #with self._thread_lock:  # todo this threadlock seems to cause race conditoin
+        self.log.debug(f"Calculating move")
+        try:
+            start_pos = self.get_position()
+            constr = self.get_constraints()
 
-                for axis, pos in position.items():
-                    in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
-                    if not in_range_flag:
-                        position[axis] = float(constr.axes[axis].clip_value(position[axis]))
-                        self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
-                                         f'for axis {axis}. Value clipped to {position[axis]}')
+            for axis, pos in position.items():
+                in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
+                if not in_range_flag:
+                    position[axis] = float(constr.axes[axis].clip_value(position[axis]))
+                    self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
+                                     f'for axis {axis}. Value clipped to {position[axis]}')
 
-                    # TODO Adapt interface to use "in_range"?
-                    self._target_pos[axis] = position[axis]
+                # TODO Adapt interface to use "in_range"?
+                self._target_pos[axis] = position[axis]
 
-                dist = np.sqrt(np.sum([(position[axis] - start_pos[axis]) ** 2 for axis in position]))
+            dist = np.sqrt(np.sum([(position[axis] - start_pos[axis]) ** 2 for axis in position]))
 
-                self.log.debug(f"Target: {position}, start: {start_pos}")
+            self.log.debug(f"Target: {position}, start: {start_pos}")
 
-                # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
-                if velocity is not None and velocity <= self.__max_move_velocity:
-                    velocity = velocity
-                elif velocity is not None and velocity > self.__max_move_velocity:
-                    self.log.warning(f'Requested velocity is exceeding the maximum velocity of {self.__max_move_velocity} '
-                                     f'm/s. Move will be done at maximum velocity')
-                    velocity = self.__max_move_velocity
-                else:
-                    velocity = self.__max_move_velocity
+            # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
+            if velocity is not None and velocity <= self.__max_move_velocity:
+                velocity = velocity
+            elif velocity is not None and velocity > self.__max_move_velocity:
+                self.log.warning(f'Requested velocity is exceeding the maximum velocity of {self.__max_move_velocity} '
+                                 f'm/s. Move will be done at maximum velocity')
+                velocity = self.__max_move_velocity
+            else:
+                velocity = self.__max_move_velocity
 
-                self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
-                granularity = velocity * self.__ni_ao_write_timer.interval() * 1e-3
+            self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+            granularity = velocity * self.__ni_ao_write_timer.interval() * 1e-3
 
-                self.__write_queue = {axis: np.linspace(start_pos[axis],
-                                                        position[axis],
-                                                        max(2, np.ceil(dist / granularity).astype('int'))
-                                                        )[1:]  # Since start_pos is already taken
-                                      for axis in position}
-                self.log.debug(f"Prepared write queue: {self.__write_queue}")
-                # TODO Keep other axis constant?
-                # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
+            self.__write_queue = {axis: np.linspace(start_pos[axis],
+                                                    position[axis],
+                                                    max(2, np.ceil(dist / granularity).astype('int'))
+                                                    )[1:]  # Since start_pos is already taken
+                                  for axis in position}
+            self.log.debug(f"Prepared write queue: {self.__write_queue}")
+            # TODO Keep other axis constant?
+            # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
-                self._scan_start_indicator = scan_start_indicator
-            except:
-                self.log.exception()
+            self._scan_start_indicator = scan_start_indicator
+        except:
+            self.log.exception()
 
 
                 self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
