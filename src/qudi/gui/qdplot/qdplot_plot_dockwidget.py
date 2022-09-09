@@ -20,12 +20,12 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['PlotDockWidget', 'QDPlotWidget']
+__all__ = ['PlotDockWidget', 'QDPlotWidget', 'PlotEditorWidget', 'PlotControlWidget']
 
 import os
 from pyqtgraph import AxisItem, SignalProxy
 from PySide2 import QtWidgets, QtCore, QtGui
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict, Union
 
 from qudi.util.paths import get_artwork_dir
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
@@ -189,9 +189,7 @@ class QDPlotWidget(QtWidgets.QWidget):
     """
     """
 
-    sigLimitsChanged = QtCore.Signal(tuple, tuple)   # x_limits, y_limits
-    sigLabelsChanged = QtCore.Signal(str, str)       # x_label, y_label
-    sigUnitsChanged = QtCore.Signal(str, str)        # x_unit, y_unit
+    sigSettingsChanged = QtCore.Signal(dict)         # settings
     sigAutoRangeClicked = QtCore.Signal(bool, bool)  # x_axis, y_axis
     sigFitClicked = QtCore.Signal(str)               # fit_function_name
     sigSaveClicked = QtCore.Signal()
@@ -206,6 +204,7 @@ class QDPlotWidget(QtWidgets.QWidget):
         self.setLayout(layout)
 
         self.plot_widget = LabelNudgeDataSelectionPlotWidget()
+        self.plot_widget.enableAutoRange(axis='xy', enable=False)  # disable auto-range
         self.fit_widget = FitWidget(fit_container=fit_container)
         self.control_widget = PlotControlWidget()
         self.editor_widget = PlotEditorWidget()
@@ -230,14 +229,14 @@ class QDPlotWidget(QtWidgets.QWidget):
         self.control_widget.show_editor_checkbox.toggled[bool].connect(
             self.editor_widget.setVisible
         )
-        self.editor_widget.x_label_lineEdit.editingFinished.connect(self.__emit_labels_changed)
-        self.editor_widget.y_label_lineEdit.editingFinished.connect(self.__emit_labels_changed)
-        self.editor_widget.x_unit_lineEdit.editingFinished.connect(self.__emit_units_changed)
-        self.editor_widget.y_unit_lineEdit.editingFinished.connect(self.__emit_units_changed)
-        self.editor_widget.x_lower_limit_spinBox.valueChanged.connect(self.__emit_limits_changed)
-        self.editor_widget.x_upper_limit_spinBox.valueChanged.connect(self.__emit_limits_changed)
-        self.editor_widget.y_lower_limit_spinBox.valueChanged.connect(self.__emit_limits_changed)
-        self.editor_widget.y_upper_limit_spinBox.valueChanged.connect(self.__emit_limits_changed)
+        self.editor_widget.x_label_lineEdit.editingFinished.connect(self.__settings_changed)
+        self.editor_widget.y_label_lineEdit.editingFinished.connect(self.__settings_changed)
+        self.editor_widget.x_unit_lineEdit.editingFinished.connect(self.__settings_changed)
+        self.editor_widget.y_unit_lineEdit.editingFinished.connect(self.__settings_changed)
+        self.editor_widget.x_lower_limit_spinBox.valueChanged.connect(self.__settings_changed)
+        self.editor_widget.x_upper_limit_spinBox.valueChanged.connect(self.__settings_changed)
+        self.editor_widget.y_lower_limit_spinBox.valueChanged.connect(self.__settings_changed)
+        self.editor_widget.y_upper_limit_spinBox.valueChanged.connect(self.__settings_changed)
         self.editor_widget.x_auto_button.clicked.connect(
             lambda: self.sigAutoRangeClicked.emit(True, False)
         )
@@ -273,6 +272,13 @@ class QDPlotWidget(QtWidgets.QWidget):
         editor = self.editor_widget
         return (editor.x_lower_limit_spinBox.value(), editor.x_upper_limit_spinBox.value()),\
                (editor.y_lower_limit_spinBox.value(), editor.y_upper_limit_spinBox.value())
+
+    @property
+    def settings(self
+                 ) -> Dict[str, Union[Tuple[str, str], Tuple[Tuple[float, float], Tuple[float, float]]]]:
+        return {'labels': self.labels,
+                'units' : self.units,
+                'limits': self.limits}
 
     def set_labels(self, x_label: Optional[str] = None, y_label: Optional[str] = None) -> None:
         if x_label is not None:
@@ -316,8 +322,7 @@ class QDPlotWidget(QtWidgets.QWidget):
             self.set_y_limits(y_limits)
 
     def set_x_limits(self, limits: Tuple[float, float]) -> None:
-        limits = sorted(limits)
-
+        self.__set_x_limits_spinboxes(limits)
         # Pyqtgraph signal proxy behaves differently from version 0.12.0 on
         try:
             with self.__limits_signal_proxy.block():
@@ -328,19 +333,9 @@ class QDPlotWidget(QtWidgets.QWidget):
                 self.plot_widget.setXRange(*limits, padding=0)
             finally:
                 self.__limits_signal_proxy.block = False
-
-        self.editor_widget.x_lower_limit_spinBox.blockSignals(True)
-        self.editor_widget.x_upper_limit_spinBox.blockSignals(True)
-        try:
-            self.editor_widget.x_lower_limit_spinBox.setValue(limits[0])
-            self.editor_widget.x_upper_limit_spinBox.setValue(limits[1])
-        finally:
-            self.editor_widget.x_lower_limit_spinBox.blockSignals(False)
-            self.editor_widget.x_upper_limit_spinBox.blockSignals(False)
 
     def set_y_limits(self, limits: Tuple[float, float]) -> None:
-        limits = sorted(limits)
-
+        self.__set_y_limits_spinboxes(limits)
         # Pyqtgraph signal proxy behaves differently from version 0.12.0 on
         try:
             with self.__limits_signal_proxy.block():
@@ -351,33 +346,23 @@ class QDPlotWidget(QtWidgets.QWidget):
                 self.plot_widget.setYRange(*limits, padding=0)
             finally:
                 self.__limits_signal_proxy.block = False
-
-        self.editor_widget.y_lower_limit_spinBox.blockSignals(True)
-        self.editor_widget.y_upper_limit_spinBox.blockSignals(True)
-        try:
-            self.editor_widget.y_lower_limit_spinBox.setValue(limits[0])
-            self.editor_widget.y_upper_limit_spinBox.setValue(limits[1])
-        finally:
-            self.editor_widget.y_lower_limit_spinBox.blockSignals(False)
-            self.editor_widget.y_upper_limit_spinBox.blockSignals(False)
 
     def __plot_limits_changed(self,
                               limits: Tuple[Tuple[float, float], Tuple[float, float]]
                               ) -> None:
-        item_ctrl = self.plot_widget.getPlotItem().ctrl
-        # Do nothing if axes are logarithmic or if FFT is shown
-        if item_ctrl.logXCheck.isChecked() or item_ctrl.logYCheck.isChecked() or item_ctrl.fftCheck.isChecked():
-            return
-        self.sigLimitsChanged.emit(*limits)
+        try:
+            item_ctrl = self.plot_widget.getPlotItem().ctrl
+            # Do nothing if axes are logarithmic or if FFT is shown
+            if item_ctrl.logXCheck.isChecked() or item_ctrl.logYCheck.isChecked() or item_ctrl.fftCheck.isChecked():
+                return
+            self.__set_x_limits_spinboxes(limits[0])
+            self.__set_y_limits_spinboxes(limits[1])
+            self.__settings_changed()
+        except RuntimeError:
+            pass
 
-    def __emit_labels_changed(self) -> None:
-        self.sigLabelsChanged.emit(*self.labels)
-
-    def __emit_units_changed(self) -> None:
-        self.sigUnitsChanged.emit(*self.units)
-
-    def __emit_limits_changed(self) -> None:
-        self.sigLimitsChanged.emit(*self.limits)
+    def __settings_changed(self) -> None:
+        self.sigSettingsChanged.emit(self.settings)
 
     def __save_clicked(self) -> None:
         self.__limits_signal_proxy.flush()
@@ -386,6 +371,28 @@ class QDPlotWidget(QtWidgets.QWidget):
     def __remove_clicked(self) -> None:
         self.__limits_signal_proxy.flush()
         self.sigRemoveClicked.emit()
+
+    def __set_x_limits_spinboxes(self, limits: Tuple[float, float]) -> None:
+        x_min, x_max = sorted(limits)
+        self.editor_widget.x_lower_limit_spinBox.blockSignals(True)
+        self.editor_widget.x_upper_limit_spinBox.blockSignals(True)
+        try:
+            self.editor_widget.x_lower_limit_spinBox.setValue(x_min)
+            self.editor_widget.x_upper_limit_spinBox.setValue(x_max)
+        finally:
+            self.editor_widget.x_lower_limit_spinBox.blockSignals(False)
+            self.editor_widget.x_upper_limit_spinBox.blockSignals(False)
+
+    def __set_y_limits_spinboxes(self, limits: Tuple[float, float]) -> None:
+        y_min, y_max = sorted(limits)
+        self.editor_widget.y_lower_limit_spinBox.blockSignals(True)
+        self.editor_widget.y_upper_limit_spinBox.blockSignals(True)
+        try:
+            self.editor_widget.y_lower_limit_spinBox.setValue(y_min)
+            self.editor_widget.y_upper_limit_spinBox.setValue(y_max)
+        finally:
+            self.editor_widget.y_lower_limit_spinBox.blockSignals(False)
+            self.editor_widget.y_upper_limit_spinBox.blockSignals(False)
 
 
 class PlotDockWidget(AdvancedDockWidget):

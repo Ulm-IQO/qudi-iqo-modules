@@ -18,15 +18,16 @@ See the GNU Lesser General Public License for more details.
 
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
-
-Completely reworked by Kay Jahnke, May 2020
 """
 
-import functools
+__all__ = ['PlotAlignment', 'QDPlotterGui']
+
 import numpy as np
+from enum import Enum
 from itertools import cycle
-from qtpy import QtCore
-from pyqtgraph import SignalProxy, mkColor
+from PySide2 import QtCore
+from pyqtgraph import mkColor
+from typing import Optional, Mapping, Sequence, Union, Tuple, Any
 
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -34,8 +35,15 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.module import GuiBase
 
 from qudi.util.widgets.fitting import FitConfigurationDialog
-from .qdplot_main_window import QDPlotMainWindow
-from .qdplot_plot_dockwidget import PlotDockWidget
+from qudi.util.colordefs import QudiPalette
+from qudi.gui.qdplot.qdplot_main_window import QDPlotMainWindow
+from qudi.gui.qdplot.qdplot_plot_dockwidget import PlotDockWidget
+
+
+class PlotAlignment(Enum):
+    tabbed = 0
+    side_by_side = 1
+    arc = 2
 
 
 class QDPlotterGui(GuiBase):
@@ -53,52 +61,59 @@ class QDPlotterGui(GuiBase):
             pen_color_list: [[100, 100, 100], 'c', 'm', 'g']
     """
 
-    sigPlotParametersChanged = QtCore.Signal(int, dict)
-    sigAutoRangeClicked = QtCore.Signal(bool, bool, int)
-    sigDoFit = QtCore.Signal(str, int)
-    sigRemovePlotClicked = QtCore.Signal(int)
+    sigPlotConfigChanged = QtCore.Signal(int, dict)       # plot_index, parameters
+    sigAutoRangeClicked = QtCore.Signal(int, bool, bool)  # plot_index, scale_x, scale_y
+    sigDoFit = QtCore.Signal(int, str)                    # plot_index, fit_config_name
+    sigRemovePlotClicked = QtCore.Signal(int)             # plot_index
 
     # declare connectors
     _qdplot_logic = Connector(interface='QDPlotLogic', name='qdplot_logic')
+
     # declare config options
-    _pen_color_list = ConfigOption(name='pen_color_list', default=['b', 'y', 'm', 'g'])
+    _default_pen_color_list = ConfigOption(name='pen_color_list', default=None)
+
     # declare status variables
     _widget_alignment = StatusVar(name='widget_alignment', default='tabbed')
 
-    _allowed_colors = {'b', 'g', 'r', 'c', 'm', 'y', 'k', 'w'}
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self._mw = None
         self._fit_config_dialog = None
 
+        self._pen_color_list = list()
+
         self._plot_dockwidgets = list()
-        self._pen_colors = list()
+        self._color_cyclers = list()
         self._plot_curves = list()
         self._fit_curves = list()
-        self._pg_signal_proxys = list()
 
     def on_activate(self):
         """ Definition and initialisation of the GUI.
         """
-        if not isinstance(self._pen_color_list, (list, tuple)) or len(self._pen_color_list) < 1:
+        try:
+            if self._default_pen_color_list is not None:
+                self._default_pen_color_list = list(self._default_pen_color_list)
+                if len(self._default_pen_color_list) < 1:
+                    self.log.warning('ConfigOption pen_color_list is empty. '
+                                     'Falling back to qudi default palette.')
+                    self._default_pen_color_list = None
+        except TypeError:
             self.log.warning(
-                'The ConfigOption pen_color_list needs to be a list of strings but was "{0}".'
-                ' Will use the following pen colors as default: {1}.'
-                ''.format(self._pen_color_list, ['b', 'y', 'm', 'g']))
-            self._pen_color_list = ['b', 'y', 'm', 'g']
-        else:
-            self._pen_color_list = list(self._pen_color_list)
+                f'ConfigOption pen_color_list needs to be an iterable of color definitions. '
+                f'Got a non-iterable type instead ({type(self._default_pen_color_list)}) and '
+                f'falling back to qudi default palette.'
+            )
+            self._default_pen_color_list = None
 
-        for index, color in enumerate(self._pen_color_list):
-            if (isinstance(color, (list, tuple)) and len(color) == 3) or \
-                    (isinstance(color, str) and color in self._allowed_colors):
-                pass
-            else:
-                self.log.warning('The color was "{0}" but needs to be from this list: {1} '
-                                 'or a 3 element tuple with values from 0 to 255 for RGB.'
-                                 ' Setting color to "b".'.format(color, self._allowed_colors))
-                self._pen_color_list[index] = 'b'
+        try:
+            self.pen_color_list = self._default_pen_color_list
+        except:
+            self.log.warning(
+                'The ConfigOption pen_color_list needs to be a list of items accepted by '
+                'pyqtgraph.mkColor(). Falling back to qudi default palette'
+            )
+            self.pen_color_list = None
 
         # Use the inherited class 'QDPlotMainWindow' to create the GUI window
         self._mw = QDPlotMainWindow()
@@ -110,41 +125,31 @@ class QDPlotterGui(GuiBase):
 
         # Connect the main window restore view actions
         self._mw.action_show_fit_configuration.triggered.connect(self._fit_config_dialog.show)
+        self._mw.action_restore_tabbed_view.triggered.connect(self.restore_tabbed_view)
+        self._mw.action_restore_side_by_side_view.triggered.connect(self.restore_side_by_side_view)
+        self._mw.action_restore_arced_view.triggered.connect(self.restore_arc_view)
+        self._mw.action_save_all.triggered.connect(logic.save_all_data, QtCore.Qt.DirectConnection)
         self._mw.action_new_plot.triggered.connect(logic.add_plot, QtCore.Qt.QueuedConnection)
-        self._mw.action_restore_tabbed_view.triggered.connect(self.restore_tabbed_view,
-                                                              QtCore.Qt.QueuedConnection)
-        self._mw.action_restore_side_by_side_view.triggered.connect(self.restore_side_by_side_view,
-                                                                    QtCore.Qt.QueuedConnection)
-        self._mw.action_restore_arced_view.triggered.connect(self.restore_arc_view,
-                                                             QtCore.Qt.QueuedConnection)
-        self._mw.action_save_all.triggered.connect(self._save_all_clicked,
-                                                   QtCore.Qt.QueuedConnection)
 
         # Initialize dock widgets
         self._plot_dockwidgets = list()
-        self._pen_colors = list()
+        self._color_cyclers = list()
         self._plot_curves = list()
         self._fit_curves = list()
-        self.update_number_of_plots(logic.number_of_plots)
-
-        # Update all plot parameters and data from logic
-        for index, _ in enumerate(self._plot_dockwidgets):
-            self.update_data(index)
-            self.update_fit_data(index)
-            self.update_plot_parameters(index)
+        self._init_plots(logic.plot_count)
 
         # Connect signal to logic
-        self.sigPlotParametersChanged.connect(logic.update_plot_parameters,
-                                              QtCore.Qt.QueuedConnection)
+        self.sigPlotConfigChanged.connect(logic.set_plot_config, QtCore.Qt.QueuedConnection)
         self.sigAutoRangeClicked.connect(logic.set_auto_limits, QtCore.Qt.QueuedConnection)
         self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
         self.sigRemovePlotClicked.connect(logic.remove_plot, QtCore.Qt.QueuedConnection)
 
         # Connect signals from logic
-        logic.sigPlotDataUpdated.connect(self.update_data, QtCore.Qt.QueuedConnection)
-        logic.sigPlotParamsUpdated.connect(self.update_plot_parameters, QtCore.Qt.QueuedConnection)
-        logic.sigPlotNumberChanged.connect(self.update_number_of_plots, QtCore.Qt.QueuedConnection)
-        logic.sigFitUpdated.connect(self.update_fit_data, QtCore.Qt.QueuedConnection)
+        logic.sigPlotDataChanged.connect(self._update_data, QtCore.Qt.QueuedConnection)
+        logic.sigPlotConfigChanged.connect(self._update_plot_config, QtCore.Qt.QueuedConnection)
+        logic.sigPlotAdded.connect(self._plot_added, QtCore.Qt.QueuedConnection)
+        logic.sigPlotRemoved.connect(self._plot_removed, QtCore.Qt.QueuedConnection)
+        logic.sigFitChanged.connect(self._update_fit_data, QtCore.Qt.QueuedConnection)
 
         self.show()
         # Must happen AFTER show()
@@ -169,261 +174,310 @@ class QDPlotterGui(GuiBase):
         self._mw.action_save_all.triggered.disconnect()
 
         # Disconnect signal to logic
-        self.sigPlotParametersChanged.disconnect()
+        self.sigPlotConfigChanged.disconnect()
         self.sigAutoRangeClicked.disconnect()
         self.sigDoFit.disconnect()
         self.sigRemovePlotClicked.disconnect()
 
         # Disconnect signals from logic
         logic = self._qdplot_logic()
-        logic.sigPlotDataUpdated.disconnect(self.update_data)
-        logic.sigPlotParamsUpdated.disconnect(self.update_plot_parameters)
-        logic.sigPlotNumberChanged.disconnect(self.update_number_of_plots)
-        logic.sigFitUpdated.disconnect(self.update_fit_data)
+        logic.sigPlotDataChanged.disconnect(self._update_data)
+        logic.sigPlotConfigChanged.disconnect(self._update_plot_config)
+        logic.sigPlotAdded.disconnect(self._plot_added)
+        logic.sigPlotRemoved.disconnect(self._plot_removed)
+        logic.sigFitChanged.disconnect(self._update_fit_data)
 
         # disconnect GUI elements
-        self.update_number_of_plots(0)
+        self._clear_plots()
 
         self._fit_config_dialog.close()
         self._mw.close()
 
-    def update_number_of_plots(self, count):
-        """ Adjust number of QDockWidgets to current number of plots. Does NO initialization of the
-        contents.
+        self._fit_config_dialog = None
+        self._mw = None
 
-        @param int count: Number of plots to display.
-        """
-        # Remove dock widgets if plot count decreased
-        while count < len(self._plot_dockwidgets):
-            index = len(self._plot_dockwidgets) - 1
-            self._disconnect_plot_signals(index)
-            dockwidget = self._plot_dockwidgets.pop(-1)
-            dockwidget.setParent(None)
-            del self._plot_curves[-1]
-            del self._fit_curves[-1]
-            del self._pen_colors[-1]
+    @staticmethod
+    @_widget_alignment.representer
+    def __repr_widget_alignment(value: PlotAlignment) -> str:
+        return value.name
 
-        # Add dock widgets if plot count increased
-        added_plots = False
-        while count > len(self._plot_dockwidgets):
-            index = len(self._plot_dockwidgets)
-            dockwidget = PlotDockWidget(fit_container=self._qdplot_logic().fit_containers[index],
-                                        plot_number=index + 1)
-            self._plot_dockwidgets.append(dockwidget)
-            self._pen_colors.append(cycle(self._pen_color_list))
-            self._plot_curves.append(list())
-            self._fit_curves.append(list())
-            self._connect_plot_signals(index)
-            added_plots = True
-
-        if added_plots:
-            self.restore_view()
-
-    def _connect_plot_signals(self, index):
-        widget = self._plot_dockwidgets[index].widget()
-        widget.sigLimitsChanged.connect(
-            lambda x, y: self.sigPlotParametersChanged.emit(index, {'x_limits': x, 'y_limits': y})
-        )
-        widget.sigLabelsChanged.connect(
-            lambda x, y: self.sigPlotParametersChanged.emit(index, {'x_label': x, 'y_label': y})
-        )
-        widget.sigUnitsChanged.connect(
-            lambda x, y: self.sigPlotParametersChanged.emit(index, {'x_unit': x, 'y_unit': y})
-        )
-        widget.sigAutoRangeClicked.connect(lambda x, y: self.sigAutoRangeClicked.emit(x, y, index))
-        widget.sigSaveClicked.connect(functools.partial(self._save_clicked, index))
-        widget.sigRemoveClicked.connect(lambda: self.sigRemovePlotClicked.emit(index))
-        widget.sigFitClicked.connect(functools.partial(self._fit_clicked, index))
-
-    def _disconnect_plot_signals(self, index):
-        widget = self._plot_dockwidgets[index].widget()
-        widget.sigLimitsChanged.disconnect()
-        widget.sigLabelsChanged.disconnect()
-        widget.sigUnitsChanged.disconnect()
-        widget.sigAutoRangeClicked.disconnect()
-        widget.sigSaveClicked.disconnect()
-        widget.sigRemoveClicked.disconnect()
-        widget.sigFitClicked.disconnect()
+    @staticmethod
+    @_widget_alignment.constructor
+    def __constr_widget_alignment(value: str) -> PlotAlignment:
+        try:
+            return PlotAlignment[value]
+        except KeyError:
+            return PlotAlignment(0)
 
     @property
     def pen_color_list(self):
         return self._pen_color_list.copy()
 
     @pen_color_list.setter
-    def pen_color_list(self, value):
-        if not isinstance(value, (list, tuple)) or len(value) < 1:
-            self.log.warning(
-                'The parameter pen_color_list needs to be a list of strings but was "{0}".'
-                ' Will use the following old pen colors: {1}.'
-                ''.format(value, self._pen_color_list))
-            return
-        for index, color in enumerate(self._pen_color_list):
-            if (isinstance(color, (list, tuple)) and len(color) == 3) or \
-                    (isinstance(color, str) and color in self._allowed_colors):
-                pass
+    def pen_color_list(self,
+                       colors: Union[None, Sequence[str], Sequence[Tuple[int, int, int]]]
+                       ) -> None:
+        if (colors is None) or (len(colors) < 1):
+            if self._default_pen_color_list is None:
+                self._pen_color_list = [QudiPalette.c1,
+                                        QudiPalette.c2,
+                                        QudiPalette.c3,
+                                        QudiPalette.c4,
+                                        QudiPalette.c5,
+                                        QudiPalette.c6]
             else:
-                self.log.warning('The color was "{0}" but needs to be from this list: {1} '
-                                 'or a 3 element tuple with values from 0 to 255 for RGB.'
-                                 ''.format(color, self._allowed_colors))
-                return
+                self._pen_color_list = self._default_pen_color_list.copy()
         else:
-            self._pen_color_list = list(value)
+            self._pen_color_list = [mkColor(c) for c in colors]
+
+    def _clear_plots(self) -> None:
+        while len(self._plot_dockwidgets) > 0:
+            self._plot_removed(-1)
+
+    def _init_plots(self, plot_count: int) -> None:
+        while len(self._plot_dockwidgets) < plot_count:
+            self._plot_added()
+
+    ##########################
+    # GUI callback slots below
+    ##########################
 
     def restore_side_by_side_view(self):
         """ Restore the arrangement of DockWidgets to the default """
-        self.restore_view(alignment='side_by_side')
-
-    def restore_arc_view(self):
-        """ Restore the arrangement of DockWidgets to the default """
-        self.restore_view(alignment='arc')
-
-    def restore_tabbed_view(self):
-        """ Restore the arrangement of DockWidgets to the default """
-        self.restore_view(alignment='tabbed')
-
-    def restore_view(self, alignment=None):
-        """ Restore the arrangement of DockWidgets to the default """
-
-        if alignment is None:
-            alignment = self._widget_alignment
-        if alignment not in ('side_by_side', 'arc', 'tabbed'):
-            alignment = 'tabbed'
-        self._widget_alignment = alignment
-
+        self._widget_alignment = PlotAlignment.side_by_side
         self._mw.setDockNestingEnabled(True)
-
-        for i, dockwidget in enumerate(self._plot_dockwidgets):
+        for ii, dockwidget in enumerate(self._plot_dockwidgets):
             widget = dockwidget.widget()
             widget.toggle_fit(False)
             widget.toggle_editor(False)
             dockwidget.show()
             dockwidget.setFloating(False)
-            if alignment == 'tabbed':
+            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+        self._mw.resizeDocks(self._plot_dockwidgets,
+                             [1] * len(self._plot_dockwidgets),
+                             QtCore.Qt.Horizontal)
+
+    def restore_arc_view(self):
+        """ Restore the arrangement of DockWidgets to the default """
+        self._widget_alignment = PlotAlignment.arc
+        self._mw.setDockNestingEnabled(True)
+        for ii, dockwidget in enumerate(self._plot_dockwidgets):
+            widget = dockwidget.widget()
+            widget.toggle_fit(False)
+            widget.toggle_editor(False)
+            dockwidget.show()
+            dockwidget.setFloating(False)
+            mod = ii % 3
+            if mod == 0:
                 self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
-                if i > 0:
+                if ii > 2:
                     self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
-                try:
-                    self._plot_dockwidgets[0].raise_()
-                except IndexError:
-                    pass
-            elif alignment == 'arc':
-                mod = i % 3
-                if mod == 0:
-                    self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
-                    if i > 2:
-                        self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
-                elif mod == 1:
-                    self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dockwidget)
-                    if i > 2:
-                        self._mw.tabifyDockWidget(self._plot_dockwidgets[1], dockwidget)
-                elif mod == 2:
-                    self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dockwidget)
-                    if i > 2:
-                        self._mw.tabifyDockWidget(self._plot_dockwidgets[2], dockwidget)
-            elif alignment == 'side_by_side':
-                self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
-        if alignment == 'arc':
-            if len(self._plot_dockwidgets) > 2:
-                self._mw.resizeDocks([self._plot_dockwidgets[1], self._plot_dockwidgets[2]],
-                                     [1, 1],
-                                     QtCore.Qt.Horizontal)
-        elif alignment == 'side_by_side':
-            self._mw.resizeDocks(
-                self._plot_dockwidgets, [1] * len(self._plot_dockwidgets), QtCore.Qt.Horizontal)
-
-    def update_data(self, plot_index: int, data=None, data_labels=None) -> None:
-        """ Function creates empty plots, grabs the data and sends it to them. """
+            elif mod == 1:
+                self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dockwidget)
+                if ii > 2:
+                    self._mw.tabifyDockWidget(self._plot_dockwidgets[1], dockwidget)
+            elif mod == 2:
+                self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dockwidget)
+                if ii > 2:
+                    self._mw.tabifyDockWidget(self._plot_dockwidgets[2], dockwidget)
         try:
-            widget = self._plot_dockwidgets[plot_index].widget()
+            resize_docks = [self._plot_dockwidgets[1], self._plot_dockwidgets[2]]
         except IndexError:
-            self.log.warning('Tried to update plot with invalid index {0:d}'.format(plot_index))
-            return
+            pass
+        else:
+            self._mw.resizeDocks(resize_docks, [1, 1], QtCore.Qt.Horizontal)
 
+    def restore_tabbed_view(self):
+        """ Restore the arrangement of DockWidgets to the default """
+        self._widget_alignment = PlotAlignment.tabbed
+        self._mw.setDockNestingEnabled(True)
+        for ii, dockwidget in enumerate(self._plot_dockwidgets):
+            widget = dockwidget.widget()
+            widget.toggle_fit(False)
+            widget.toggle_editor(False)
+            dockwidget.show()
+            dockwidget.setFloating(False)
+            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+            if ii > 0:
+                self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
+        try:
+            self._plot_dockwidgets[0].raise_()
+        except IndexError:
+            pass
+
+    def restore_view(self, alignment: Optional[Union[str, int, PlotAlignment]] = None):
+        """ Restore the arrangement of DockWidgets to the default """
+        if alignment is None:
+            alignment = self._widget_alignment
+        elif isinstance(alignment, str):
+            try:
+                alignment = PlotAlignment[alignment]
+            except KeyError as err:
+                raise ValueError(f'Invalid view alignment specifier "{alignment}"') from err
+        elif isinstance(alignment, int):
+            alignment = PlotAlignment(alignment)
+        else:
+            alignment = PlotAlignment(alignment.value)
+
+        if not isinstance(alignment, PlotAlignment):
+            raise TypeError('plot view alignment must be PlotAlignment Enum or valid name str')
+
+        if alignment == PlotAlignment.tabbed:
+            return self.restore_tabbed_view()
+        elif alignment == PlotAlignment.arc:
+            return self.restore_arc_view()
+        elif alignment == PlotAlignment.side_by_side:
+            return self.restore_side_by_side_view()
+
+    def _plot_settings_changed(self, settings: Mapping[str, Any]) -> None:
+        plot_index = self.__get_sender_plot_index()
+        if plot_index is not None:
+            self.sigPlotConfigChanged.emit(plot_index, settings)
+
+    def _auto_range_clicked(self, x: Optional[bool] = None, y: Optional[bool] = None) -> None:
+        plot_index = self.__get_sender_plot_index()
+        if plot_index is not None:
+            self.sigAutoRangeClicked.emit(plot_index, x, y)
+
+    def _save_clicked(self) -> None:
+        plot_index = self.__get_sender_plot_index()
+        if plot_index is not None:
+            self._qdplot_logic().save_data(plot_index)
+
+    def _remove_clicked(self) -> None:
+        plot_index = self.__get_sender_plot_index()
+        if plot_index is not None:
+            self.sigRemovePlotClicked.emit(plot_index)
+
+    def _fit_clicked(self, fit_config: str) -> None:
+        plot_index = self.__get_sender_plot_index()
+        if plot_index is not None:
+            self.sigDoFit.emit(plot_index, fit_config)
+
+    ##########################
+    # Logic update slots below
+    ##########################
+
+    def _plot_added(self) -> None:
+        index = len(self._plot_dockwidgets)
+        dockwidget = PlotDockWidget(fit_container=self._qdplot_logic().fit_containers[index],
+                                    plot_number=index + 1)
+        self._plot_dockwidgets.append(dockwidget)
+        self._color_cyclers.append(cycle(self._pen_color_list))
+        self._plot_curves.append(list())
+        self._fit_curves.append(list())
+
+        widget = dockwidget.widget()
+        widget.sigSettingsChanged.connect(self._plot_settings_changed)
+        widget.sigAutoRangeClicked.connect(self._auto_range_clicked)
+        widget.sigSaveClicked.connect(self._save_clicked)
+        widget.sigRemoveClicked.connect(self._remove_clicked)
+        widget.sigFitClicked.connect(self._fit_clicked)
+
+        # Update infos from logic
+        self._update_data(index)
+        self._update_fit_data(index)
+        self._update_plot_config(index)
+
+        self.restore_view()
+
+    def _plot_removed(self, plot_index: int) -> None:
+        try:
+            dockwidget = self._plot_dockwidgets.pop(plot_index)
+            del self._plot_curves[plot_index]
+            del self._fit_curves[plot_index]
+            del self._color_cyclers[plot_index]
+        except IndexError:
+            return
+        dockwidget.close()
+        dockwidget.setParent(None)
+        widget = dockwidget.widget()
+        widget.sigSettingsChanged.disconnect()
+        widget.sigAutoRangeClicked.disconnect()
+        widget.sigSaveClicked.disconnect()
+        widget.sigRemoveClicked.disconnect()
+        widget.sigFitClicked.disconnect()
+        # Update dockwidget titles for higher indices
+        trailing_dockwidgets = self._plot_dockwidgets[plot_index:]
+        start_index = len(self._plot_dockwidgets) - len(trailing_dockwidgets) + 1
+        for ii, dockwidget in enumerate(trailing_dockwidgets, start_index):
+            dockwidget.setWindowTitle(f'Plot {ii:d}')
+
+    def _update_data(self,
+                     plot_index: int,
+                     data: Optional[Sequence[Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]]] = None,
+                     data_labels: Optional[Sequence[str]] = None
+                     ) -> None:
+        """ Function creates empty plots, grabs the data and sends it to them. """
+        widget = self._plot_dockwidgets[plot_index].widget()
         logic = self._qdplot_logic()
         if data is None:
             data = logic.get_data(plot_index)
         if data_labels is None:
             data_labels = logic.get_data_labels(plot_index)
+        if len(data_labels) != len(data):
+            raise ValueError(f'Number of datasets ({len(data)}) and data labels '
+                             f'({len(data_labels)}) does not match ')
 
-        widget.plot_widget.clear()
+        color_cycler = cycle(self._pen_color_list)
+        plot_curves = list()
+        fit_curves = list()
 
-        self._pen_colors[plot_index] = cycle(self._pen_color_list)
-        self._plot_curves[plot_index] = list()
-        self._fit_curves[plot_index] = list()
-
-        for line, (x_data, y_data) in enumerate(data):
-            pen_color = next(self._pen_colors[plot_index])
-            self._plot_curves[plot_index].append(
-                widget.plot_widget.plot(
-                    x=x_data,
-                    y=y_data,
-                    pen=mkColor(pen_color),
-                    symbol='d',
-                    symbolSize=6,
-                    symbolBrush=mkColor(pen_color),
-                    name=data_labels[line]
+        try:
+            widget.plot_widget.clear()
+            for ii, (x_data, y_data) in enumerate(data):
+                pen_color = next(color_cycler)
+                plot_curves.append(
+                    widget.plot_widget.plot(x=x_data,
+                                            y=y_data,
+                                            pen=pen_color,
+                                            symbol='d',
+                                            symbolSize=6,
+                                            symbolBrush=pen_color,
+                                            name=data_labels[ii])
                 )
-            )
-            self._fit_curves[plot_index].append(widget.plot_widget.plot())
-            self._fit_curves[plot_index][-1].setPen('r')
+                fit_curves.append(widget.plot_widget.plot())
+                fit_curves[-1].setPen('r')
+        finally:
+            self._color_cyclers[plot_index] = color_cycler
+            self._plot_curves[plot_index] = plot_curves
+            self._fit_curves[plot_index] = fit_curves
 
-    def update_plot_parameters(self, plot_index, params=None):
+    def _update_plot_config(self,
+                            plot_index: int,
+                            config: Optional[Mapping[str, Any]] = None
+                            ) -> None:
         """ Function updated limits, labels and units in the plot and parameter widgets. """
-        if not (0 <= plot_index < len(self._plot_dockwidgets)):
-            self.log.warning('Tried to update plot with invalid index {0:d}'.format(plot_index))
-            return
-
-        logic = self._qdplot_logic()
+        if config is None:
+            config = self._qdplot_logic().get_plot_config(plot_index)
         widget = self._plot_dockwidgets[plot_index].widget()
-        if params is None:
-            params = {'x_label' : logic.get_x_label(plot_index),
-                      'y_label' : logic.get_y_label(plot_index),
-                      'x_unit'  : logic.get_x_unit(plot_index),
-                      'y_unit'  : logic.get_y_unit(plot_index),
-                      'x_limits': logic.get_x_limits(plot_index),
-                      'y_limits': logic.get_y_limits(plot_index)}
-        # Update labels
-        widget.set_labels(x_label=params.get('x_label', None), y_label=params.get('y_label', None))
-        # Update units
-        widget.set_units(x_unit=params.get('x_unit', None), y_unit=params.get('y_unit', None))
-        # Update limits
-        widget.set_limits(x_limits=params.get('x_limits', None),
-                          y_limits=params.get('y_limits', None))
+        widget.blockSignals(True)
+        try:
+            widget.set_labels(*config.get('labels', [None, None]))
+            widget.set_units(*config.get('units', [None, None]))
+            widget.set_limits(*config.get('limits', [None, None]))
+        finally:
+            widget.blockSignals(False)
 
-    def _save_clicked(self, plot_index):
-        """ Handling the save button to save the data into a file. """
-        self._qdplot_logic().save_data(plot_index=plot_index)
-
-    def _save_all_clicked(self):
-        """ Handling the save button to save the data into a file. """
-        for dockwidget in self._plot_dockwidgets:
-            dockwidget.widget().control_widget.save_button.click()
-
-    def _fit_clicked(self, plot_index=0, fit_function='No Fit'):
-        """ Triggers the fit to be done. Attention, this runs in the GUI thread. """
-        self.sigDoFit.emit(fit_function, plot_index)
-
-    def update_fit_data(self,
-                        plot_index: int,
-                        fit_config: str = None,
-                        fit_results: list = None
-                        ) -> None:
+    def _update_fit_data(self,
+                         plot_index: int,
+                         fit_config: str = None,
+                         fit_results: list = None
+                         ) -> None:
         """ Function that handles the fit results received from the logic via a signal """
-        widget = self._plot_dockwidgets[plot_index].widget()
-
         if fit_config is None or fit_results is None:
-            fit_data, _, fit_config = self._qdplot_logic().get_fit_data(plot_index)
-        else:
-            try:
-                fit_data = [
-                    None if result is None else result.high_res_best_fit for result in fit_results
-                ]
-            except AttributeError:
-                fit_data = list()
-
+            fit_config, fit_results = self._qdplot_logic().get_fit_results(plot_index)
         if not fit_config:
             fit_config = 'No Fit'
 
+        try:
+            fit_data = [
+                None if result is None else result.high_res_best_fit for result in fit_results
+            ]
+        except AttributeError:
+            fit_data = [None] * len(fit_results)
+
+        widget = self._plot_dockwidgets[plot_index].widget()
         if fit_config == 'No Fit':
             for index, curve in enumerate(self._fit_curves[plot_index]):
                 if curve in widget.plot_widget.items():
@@ -432,9 +486,22 @@ class QDPlotterGui(GuiBase):
             widget.toggle_fit(True)
             for index, curve in enumerate(self._fit_curves[plot_index]):
                 data = fit_data[index]
-                if data:
+                try:
+                    curve.setData(x=data[0], y=data[1])
                     if curve not in widget.plot_widget.items():
                         widget.plot_widget.addItem(curve)
-                    curve.setData(x=data[0], y=data[1])
-                elif curve in widget.plot_widget.items():
-                    widget.plot_widget.removeItem(curve)
+                except (IndexError, AttributeError, TypeError):
+                    if curve in widget.plot_widget.items():
+                        widget.plot_widget.removeItem(curve)
+
+    def __get_sender_plot_index(self) -> Union[None, int]:
+        try:
+            obj = self.sender()
+            while obj is not None:
+                try:
+                    return self._plot_dockwidgets.index(obj)
+                except ValueError:
+                    obj = obj.parent()
+        except (AttributeError, TypeError):
+            pass
+        return None
