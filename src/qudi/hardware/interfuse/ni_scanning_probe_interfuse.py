@@ -263,8 +263,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                         position_feedback_axes=None
                     )
 
-                except Exception as e:
-                    self.log.error(f'Error while initializing ScanData instance: {e}')
+                except:
+                    self.log.exception("")
                     return True, self.scan_settings
 
                 try:
@@ -281,9 +281,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                     self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
 
-                except Exception as e:
-                    self.log.error(f'Error while configuring Ni fsio hardware: {e}')
-                    return True, self.scan_settings
+                except:
+                    self.log.exception("")
 
                 self._current_scan_resolution = tuple(resolution)
                 self._current_scan_ranges = ranges
@@ -371,7 +370,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.debug(f"Started")
 
         except:
-            self.log.exception()
+            self.log.exception("")
         return 0
 
     def _start_scan(self):
@@ -408,7 +407,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 return 0  # FIXME Bool indicators deprecated
 
             except Exception as e:
-                self.log.error(f'Something failed while starting the scan: {e}')
+                self.log.error("")
                 self.module_state.unlock()
                 return -1
 
@@ -450,8 +449,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self._stored_target_pos = dict()
             return False  # TODO Bool indicators deprecated
 
-        except Exception as e:
-            self.log.error(f'Error occurred while stopping the finite IO frame:\n{e}')
+        except:
+            self.log.error("")
             return True
 
     def get_scan_data(self):
@@ -500,8 +499,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                     # return False, self._scan_data
                     return self._scan_data
 
-            except Exception as e:
-                self.log.error(f'Error occurred while retrieving data {e}, Scan was stopped')
+            except:
+                self.log.exception("")
                 self.stop_scan()  # TODO Delete later?
                 return True, self._scan_data
 
@@ -759,7 +758,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # todo: hung up optimizer somewhere above this line
             self.log.debug(f"runout timer started")
         except:
-            self.log.exception()
+            self.log.exception("")
 
         #with self._thread_lock:  # todo this threadlock seems to cause race conditoin
         self.log.debug(f"Calculating move")
@@ -805,7 +804,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             self._scan_start_indicator = scan_start_indicator
         except:
-            self.log.exception()
+            self.log.exception("")
 
 
                 self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
@@ -822,8 +821,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             else:
                 self.__ni_ao_write_timer.start()
             self.log.debug("Started")
-        except Exception as e:
-            print(f"{str(e)}")
+        except:
+            self.log.exception("")
 
     def __stop_ao_write_timer(self):
         self.log.debug(f"ao stop write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
