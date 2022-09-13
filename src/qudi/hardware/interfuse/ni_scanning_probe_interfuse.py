@@ -373,7 +373,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.exception("")
         return 0
 
-    @QtCore.Slot()
     def _start_scan(self):
         """
 
@@ -411,7 +410,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error("")
             self.module_state.unlock()
             return -1
-
 
     def stop_scan(self):
        #return self._stop_scan()
@@ -811,8 +809,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.exception("")
 
 
-            #    self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
-            #                   f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
+                self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
+                               f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
 
     def __start_ao_write_timer(self):
         self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
