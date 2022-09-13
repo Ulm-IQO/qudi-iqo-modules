@@ -807,8 +807,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.exception("")
 
 
-                self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
-                               f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
+        self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
+                       f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
 
     def __start_ao_write_timer(self):
         self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
