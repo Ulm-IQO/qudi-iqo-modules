@@ -373,6 +373,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.exception("")
         return 0
 
+    @QtCore.Slot()
     def _start_scan(self):
         """
 
