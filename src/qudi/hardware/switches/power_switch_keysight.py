@@ -55,6 +55,9 @@ class PowerSwitch(SwitchInterface):
     _hardware_name = ConfigOption(name='hardware_name', default='power_supply', missing='nothing')
     # if remember_states is True the last state will be restored at reloading of the module
     _remember_states = ConfigOption(name='remember_states', default=False, missing='nothing')
+    # desired output voltage and currents
+    _voltages = ConfigOption(name='voltages', default=[5, 28], missing='warn')
+    _currents = ConfigOption(name='currents', default=[1.3, 4], missing='warn')
     # switch_time to wait after setting the states for the solenoids to react
     _switch_time = ConfigOption(name='switch_time', default=0.5, missing='nothing')
     # name of the serial interface where the hardware is connected.
