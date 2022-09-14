@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Control the Radiant Dyes flip mirror driver through the serial interface.
+Control the Keysight power supply through the USB interface.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -42,6 +42,8 @@ class PowerSwitch(SwitchInterface):
             hardware_name: 'Keysight_Power2'  # optional
             switch_time: 1  # optional
             remember_states: False  # optional
+            voltages: [5, 28]
+            currents: [1.3, 4]
             switches:
                 APD: ['OFF', 'ON']  # optional
                 Amplifier: ['OFF', 'ON']  # optional
@@ -79,13 +81,13 @@ class PowerSwitch(SwitchInterface):
         # Excelitas APD: 5V,1.3A
         self._instrument.write('INST CH1')
         self._instrument.write('OUTP 0')
-        self._instrument.write('VOLT 5')
-        self._instrument.write('CURR 1.3')
+        self._instrument.write('VOLT {}'.format(float(self._voltages[0])))
+        self._instrument.write('CURR {}'.format(float(self._currents[0])))
         # Minicircuits amplifier: 28V, 4A
         self._instrument.write('INST CH2')
         self._instrument.write('OUTP 0')
-        self._instrument.write('VOLT 28')
-        self._instrument.write('CURR 4')
+        self._instrument.write('VOLT {}'.format(float(self._voltages[0])))
+        self._instrument.write('CURR {}'.format(float(self._currents[0])))
 
         # To be safe, power off during activation
         self._states = dict()
