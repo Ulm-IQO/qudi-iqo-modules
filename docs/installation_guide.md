@@ -47,7 +47,9 @@ Now we open the code in Pycharm.
 
 
 - Now navigate in Pycharm to 'Run'->'Edit configuration' and create a new 'Shell script' configuration just as shown below. The '-d' flag enables debug output and is optional.
-  <img src="https://user-images.githubusercontent.com/5861249/178508718-0c141a2a-03ce-49ba-bddb-80a593ea4b25.png" alt="drawing" width="500"/>
+
+  <img src="https://user-images.githubusercontent.com/5861249/190195589-dff2a80e-65f8-43bd-ae1c-cef937c099ce.png" alt="drawing" width="500"/>
+
 
 
 - To enable debug output displayed in the qudi manager, navigate to 'Run'->'Edit configurations' and add the flag `-d' in the line 'Parameters'
