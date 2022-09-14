@@ -86,8 +86,8 @@ class PowerSwitch(SwitchInterface):
         # Minicircuits amplifier: 28V, 4A
         self._instrument.write('INST CH2')
         self._instrument.write('OUTP 0')
-        self._instrument.write('VOLT {}'.format(float(self._voltages[0])))
-        self._instrument.write('CURR {}'.format(float(self._currents[0])))
+        self._instrument.write('VOLT {}'.format(float(self._voltages[1])))
+        self._instrument.write('CURR {}'.format(float(self._currents[1])))
 
         # To be safe, power off during activation
         self._states = dict()
