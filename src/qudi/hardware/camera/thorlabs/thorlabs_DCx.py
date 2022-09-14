@@ -40,9 +40,10 @@ class CameraThorlabs(CameraInterface):
 
     thorlabs_camera:
         module.Class: 'camera.thorlabs.thorlabs_DCx.CameraThorlabs'
-        default_exposure: 0.1
-        default_gain: 1.0
-        id_camera: 0 # if more tha one camera is present
+        options:
+            default_exposure: 0.1
+            default_gain: 1.0
+            id_camera: 0 # if more tha one camera is present
 
     """
 

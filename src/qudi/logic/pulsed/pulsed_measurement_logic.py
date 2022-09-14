@@ -60,9 +60,10 @@ class PulsedMeasurementLogic(LogicBase):
 
     pulsed_measurement_logic:
         module.Class: 'pulsed.pulsed_measurement_logic.PulsedMeasurementLogic'
-        raw_data_save_type: 'text'
-        #additional_extraction_path: # optional
-        #additional_analysis_path:   # optional
+        options:
+            raw_data_save_type: 'text'
+            #additional_extraction_path: # optional
+            #additional_analysis_path:   # optional
         connect:
             fastcounter: 'fast_counter_dummy'
             pulsegenerator: 'pulser_dummy'

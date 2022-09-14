@@ -20,9 +20,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 from enum import Enum
 
 from qudi.core.configoption import ConfigOption
@@ -46,9 +46,10 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
     laserquantum_laser:
         module.Class: 'laser.laserquantum_laser.LaserQuantumLaser'
-        interface: 'ASRL1::INSTR'
-        maxpower: 0.250 # in Watt
-        psu: 'SMD6000'
+        options:
+            interface: 'ASRL1::INSTR'
+            maxpower: 0.250 # in Watt
+            psu: 'SMD6000'
     """
 
     serial_interface = ConfigOption(name='interface', default='ASRL1::INSTR', missing='warn')

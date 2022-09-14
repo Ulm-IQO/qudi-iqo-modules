@@ -24,9 +24,9 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import time
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 import numpy as np
 from ftplib import FTP
 from collections import OrderedDict
@@ -45,13 +45,14 @@ class AWG7k(PulserInterface):
 
     pulser_awg7000:
         module.Class: 'awg.tektronix_awg7k.AWG7k'
-        awg_visa_address: 'TCPIP::10.42.0.211::INSTR'
-        awg_ip_address: '10.42.0.211'
-        timeout: 60
-        # tmp_work_dir: 'C:\\Software\\qudi_pulsed_files' # optional
-        # ftp_root_dir: 'C:\\inetpub\\ftproot' # optional, root directory on AWG device
-        # ftp_login: 'anonymous' # optional, the username for ftp login
-        # ftp_passwd: 'anonymous@' # optional, the password for ftp login
+        options:
+            awg_visa_address: 'TCPIP::10.42.0.211::INSTR'
+            awg_ip_address: '10.42.0.211'
+            timeout: 60
+            # tmp_work_dir: 'C:\\Software\\qudi_pulsed_files' # optional
+            # ftp_root_dir: 'C:\\inetpub\\ftproot' # optional, root directory on AWG device
+            # ftp_login: 'anonymous' # optional, the username for ftp login
+            # ftp_passwd: 'anonymous@' # optional, the password for ftp login
 
     """
 

@@ -22,9 +22,9 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 import numpy as np
 
 from qudi.util.helpers import natural_sort
@@ -39,7 +39,8 @@ class DTG5334(PulserInterface):
 
     pulser_dtg:
         module.Class: 'dtg.dtg5334.DTG5334'
-        visa_address: 'GPIB0::12::INSTR'
+        options:
+            visa_address: 'GPIB0::12::INSTR'
 
     """
 

@@ -21,9 +21,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 try:
-    import visa
-except ImportError:
     import pyvisa as visa
+except ImportError:
+    import visa
 import time
 import numpy as np
 
@@ -41,8 +41,9 @@ class MicrowaveAnritsuMG369x(MicrowaveInterface):
 
     mw_source_anritsu:
         module.Class: 'microwave.mw_source_anritsu_mg369x.MicrowaveAnritsuMG369x'
-        visa_address: 'GPIB0::12::INSTR'
-        comm_timeout: 10  # in seconds
+        options:
+            visa_address: 'GPIB0::12::INSTR'
+            comm_timeout: 10  # in seconds
 
     """
 
