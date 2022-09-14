@@ -28,12 +28,10 @@ The last step in the qudi-core installation instructions briefly explains settin
 Now you qudi-core installation will know about the measurement modules and it's time to set up a proper qudi configuration file.
 
 ## Configure Pycharm
-It is possible to run qudi just from the command line. To this end, just type `qudi` into your console.
+It is possible to run Qudi just from the command line. To this end, just type `qudi` into your console.
 Having the code as a project in the Pycharm IDE allows to easily navigate and run the qudi code.
 - Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
 - Create a new empty project in Pycharm. Don't open any source code yet.
-- for the interpreter to use see the paragraph below 
-- for the folders locations of your pycharm project: add the qudi-core and qudi-iqo-modules folders to it by 'File'->'Open..'. A pop up window will ask you how to open the project, press the 'Attach' option. If you did install qudi-core in non-developer mode, you can find your qudi-core folder by `python -c "import os, sys; print(os.path.dirname(sys.executable)+'\Lib\site-packages\qudi')"`
 
 To run Qudi via Pycharm you have to configure the right Python environment as a project interpreter.
 - In Pycharm, navigate to 'File'->'Settings'->'Project:qudi'->'Project interpreter'
@@ -43,14 +41,14 @@ To run Qudi via Pycharm you have to configure the right Python environment as a 
   <img src="https://user-images.githubusercontent.com/5861249/176209579-3175f422-e940-4a58-98e1-821a85211de3.png" alt="drawing" width="700"/>
 
 Now we open the code in Pycharm.
-- Add the qudi-iqo-modules (and potentially qudi-core) folders by 'File'->'Open..'. After selecting their respective folders you choose the 'Attach' option in the dialogue to have seperate locations open in the same project. If you did install qudi-core in non-developer mode, you can find your qudi-core folder by `python -c "import os, sys; print(os.path.dirname(sys.executable)+'\Lib\site-packages\qudi')"`
+- Add the qudi-iqo-modules (and potentially qudi-core) folder by 'File'->'Open..'. After selecting the folder, a pop up window will ask you how to open the project. Press the 'Attach' option to have seperate locations open in the same project. If you did install qudi-core in non-developer mode, you can find your qudi-core folder by `python -c "import os, sys; print(os.path.dirname(sys.executable)+'\Lib\site-packages\qudi')"`
 
 
 - Now navigate in Pycharm to 'Run'->'Edit configuration' and create a new 'Shell script' configuration just as shown below. The '-d' flag enables debug output and is optional.
 
   <img src="https://user-images.githubusercontent.com/5861249/190195589-dff2a80e-65f8-43bd-ae1c-cef937c099ce.png" alt="drawing" width="500"/>
 
-You may run qudi now from Pycharm via  'Run'->'Run qudi'.
+You may run Qudi now from Pycharm via  'Run'->'Run qudi'.
 
 ### Switching branches
 Switching to some other development branch is easy, if you installed your modules in dev mode. Just look in the lower right to access Pycharm's branch control and
@@ -62,8 +60,8 @@ Now you will have a local copy of this branch in which you can create commits an
 
 ## Qudi configuration 
 
-The configuration file specifies all the modules and hardware that are loaded to qudi. Additionally, many modules come with
-configuration parameters that are set in this file. On your first startup, the qudi manager might be empty.
+The configuration file specifies all the modules and hardware that are loaded to Qudi. Additionally, many modules come with
+configuration parameters that are set in this file. On your first startup, the Qudi manager might be empty.
 As a first step, it is instructive to load the default [_dummy_ configuration](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/default.cfg) that we provide with qudi-iqo-modules. It allows to have a look at the available toolchains and modules
 without the need to attach real hardware. 
 - Copy the default.cfg (from qudi-iqo-modules\src\qudi\default.cfg) into your user data folder, eg. to `C:\Users\quantumguy\qudi\config`. We strongly discourage to store any configuration (except the default.cfg) in the source folder of qudi.
