@@ -50,9 +50,7 @@ Now we open the code in Pycharm.
 
   <img src="https://user-images.githubusercontent.com/5861249/190195589-dff2a80e-65f8-43bd-ae1c-cef937c099ce.png" alt="drawing" width="500"/>
 
-
-
-- To enable debug output displayed in the qudi manager, navigate to 'Run'->'Edit configurations' and add the flag `-d' in the line 'Parameters'
+You may run qudi now from Pycharm via  'Run'->'Run qudi'.
 
 ### Switching branches
 Switching to some other development branch is easy, if you installed your modules in dev mode. Just look in the lower right to access Pycharm's branch control and
