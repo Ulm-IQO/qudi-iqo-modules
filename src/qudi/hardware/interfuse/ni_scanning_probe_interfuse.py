@@ -687,11 +687,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def __ao_write_loop(self):
         try:
             with self._thread_lock:
-                self.log.debug(f'Entering write_loop with queue: {self.__write_queue.items()}')
-
                 new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, values[0])
                                for ax, values in self.__write_queue.items()}
                 self._ni_ao().setpoints = new_voltage
+                self.log.debug(f'Move to {new_voltage}, remaining queue: {self.__write_queue.items()}')
                 self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
 
                 # Adjust the timeout each time to avoid error accumulation
@@ -801,7 +800,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                                     max(2, np.ceil(dist / granularity).astype('int'))
                                                     )[1:]  # Since start_pos is already taken
                                   for axis in position}
-            self.log.debug(f"Prepared write queue: {self.__write_queue}")
+
+            self.log.debug(f"Prepared write queue with n={[len(self.__write_queue[key]) for key in self.__write_queue.keys()]}, "
+                           f" for final_pos: {position}=  {self.__write_queue}")
             # TODO Keep other axis constant?
             # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
