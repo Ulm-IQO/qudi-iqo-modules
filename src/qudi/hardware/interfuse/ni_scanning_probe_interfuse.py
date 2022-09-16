@@ -280,6 +280,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             except:
                 self.log.exception("")
+                return True, self.scan_settings
 
             self._current_scan_resolution = tuple(resolution)
             self._current_scan_ranges = ranges
@@ -538,7 +539,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     @property
     def scan_settings(self):
-        #with self._thread_lock:
+
         settings = {'axes': tuple(self._current_scan_axes),
                     'range': tuple(self._current_scan_ranges),
                     'resolution': tuple(self._current_scan_resolution),
