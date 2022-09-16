@@ -90,9 +90,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     _threaded = True  # Interfuse is by default not threaded.
 
-    sigStartScan = QtCore.Signal()
-    sigStopScan = QtCore.Signal()
-
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
 
@@ -120,10 +117,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._thread_lock_cursor = Mutex()
         self._thread_lock_data = Mutex()
-        # TODO According to @Neverhorst should rather use Mutex, but then scan does not start anymore
-        #self.sigStartScan.connect(self._start_scan, QtCore.Qt.QueuedConnection)
-        #self.sigStopScan.connect(self._stop_scan, QtCore.Qt.QueuedConnection)
-
 
     def on_activate(self):
 
@@ -357,10 +350,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
 
     def start_scan(self):
-        #return self._start_scan()
         try:
-            #self._start_scan()
-            #self.sigStartScan.emit()
 
             self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
 
@@ -421,8 +411,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             return -1
 
     def stop_scan(self):
-       #return self._stop_scan()
-       #self.sigStopScan.emit()
 
        self.log.debug(f"Stop scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
 
