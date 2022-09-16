@@ -109,7 +109,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._target_pos = dict()
         self._stored_target_pos = dict()
-        self._scan_start_indicator = False
+        self._scan_running = False   # todo timo: what is this
 
         self.__ni_ao_write_timer = None
         self.__ni_ao_runout_timer = None
@@ -119,6 +119,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.__read_pos = -1
 
         self._thread_lock = RecursiveMutex()
+        self._thread_lock_data = Mutex()
         # TODO According to @Neverhorst should rather use Mutex, but then scan does not start anymore
         #self.sigStartScan.connect(self._start_scan, QtCore.Qt.QueuedConnection)
         #self.sigStopScan.connect(self._stop_scan, QtCore.Qt.QueuedConnection)
@@ -392,11 +393,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         #with self._thread_lock:
         try:
-
-            self._scan_data.new_scan()
-
-            self._stored_target_pos = self.get_target().copy()
-            self._scan_data.scanner_target_at_start = self._stored_target_pos
+            with self._thread_lock_data:
+                self._scan_data.new_scan()
+                self._stored_target_pos = self.get_target().copy()
+                self._scan_data.scanner_target_at_start = self._stored_target_pos
 
             first_scan_position = {ax: pos[0] for ax, pos
                                    in zip(self.scan_settings['axes'], self.scan_settings['range'])}
@@ -454,20 +454,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error("")
             return True
 
-    def get_scan_data(self):
-        """
-
-        @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
-        #  TODO change interface
-        """
-        # todo: get_scan data ussage for iterating __read_pos seems sketchy
-
-        if not self.is_running or not self._ni_finite_sampling_io().is_running:
-            self.log.debug("Get scan without fetch, since hw not running")
-            return self._scan_data
-
-        #with self._thread_lock:
-
+    def _fetch_data_line(self):
         samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
         samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
         # Potentially we could also use get_buff.. without samples, but that would require some more thought
@@ -477,35 +464,46 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # TODO extract terminal stuff? meaning allow DevX/... notation in config?
 
         try:
-            for ni_ch in samples_dict.keys():
-                input_ch = reverse_routing[ni_ch]
-                line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
+            with self._thread_lock_data:
+                for ni_ch in samples_dict.keys():
+                    input_ch = reverse_routing[ni_ch]
+                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
+
+                    if self._scan_data.scan_dimension == 1:
+                        self._scan_data.data[input_ch] = line_data
+
+                    elif self._scan_data.scan_dimension == 2:
+                        self._scan_data.data[input_ch][:, self.__read_pos] = line_data
+                    else:
+                        self.log.error('Invalid Scan Dimension')
+                        self.stop_scan()  # TODO Should the hw stop itself?
 
                 if self._scan_data.scan_dimension == 1:
-                    self._scan_data.data[input_ch] = line_data
-
+                    self.stop_scan()
+                    # return False, self._scan_data
                 elif self._scan_data.scan_dimension == 2:
-                    self._scan_data.data[input_ch][:, self.__read_pos] = line_data
-                else:
-                    self.log.error('Invalid Scan Dimension')
-                    self.stop_scan()  # TODO Should the hw stop itself?
-                    return None
-
-            if self._scan_data.scan_dimension == 1:
-                self.stop_scan()  # TODO Should the hw stop itself?
-                # return False, self._scan_data
-                return self._scan_data
-            elif self._scan_data.scan_dimension == 2:
-                self.__read_pos += 1
-                if self.__read_pos == self._current_scan_resolution[1]:
-                    self.stop_scan()  # TODO Should the hw stop itself?
-                # return False, self._scan_data
-                return self._scan_data
-
+                    self.__read_pos += 1
+                    if self.__read_pos == self._current_scan_resolution[1]:
+                        self.stop_scan()
+                    # return False, self._scan_data
         except:
             self.log.exception("")
-            self.stop_scan()  # TODO Delete later?
-            return True, self._scan_data
+            self.stop_scan()
+
+
+    def get_scan_data(self):
+        """
+
+        @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
+        #  TODO change interface
+        """
+        # todo: get_scan data ussage for iterating __read_pos seems sketchy
+
+        if not self.is_running or not self._ni_finite_sampling_io().is_running:
+            return self._scan_data
+        else:
+            with self._thread_lock_data:
+                return self._scan_data
 
     def emergency_stop(self):
         """
@@ -684,6 +682,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             raise NotImplementedError('Ni Scan arrays could not be initialized for given ScanData dimension')
 
+    def __adjust_ao_timing(self):
+        # to avoid error accumulation
+        if self._interval_time_stamp is not None:
+            exec_time = time.perf_counter() - self._interval_time_stamp
+            # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
+            dt_new_ms = int(np.round(max(2 * self._default_timer_interval - exec_time*1e3, 1)))
+            self.__ni_ao_write_timer.setInterval(dt_new_ms)
+
+        self._interval_time_stamp = time.perf_counter()
+
+
     def __ao_write_loop(self):
         try:
             with self._thread_lock:
@@ -694,32 +703,36 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self._ni_ao().setpoints = new_voltage
                 self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
 
-                # Adjust the timeout each time to avoid error accumulation
-                if self._interval_time_stamp is not None:
-                    exec_time = time.time() - self._interval_time_stamp
-                    self.__ni_ao_write_timer.setInterval(
-                        max(2 * self._default_timer_interval - exec_time*1e3, 1))
-                    # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
-                    self._interval_time_stamp = time.time()
-                else:
-                    self._interval_time_stamp = time.time()
+                self.__adjust_ao_timing()
 
-                if not all([values.size == 0 for values in self.__write_queue.values()]):
+                if not self._write_queue_empty:
                     self.log.debug(f'Start timer for remaining write queue: {self.__write_queue}')
                     self.__start_ao_write_timer()
-                else:
+                else:  # write_queue_empty
                     self.log.debug('Move done')
+                    if self._scan_running:
+                        # todo timo: sohuld fetch at end of line only. Do we need empty write queue?
+                        self._fetch_data_line()
                     self._interval_time_stamp = None
+                    # todo timo: ugly hard coded write timer
                     self.__ni_ao_write_timer.setInterval(5)
-                    if self._scan_start_indicator:
+
+                    if self._scan_running:
+                        # todo timo: what is happending here? some last frame?
                         try:
                             self._ni_finite_sampling_io().start_buffered_frame()
                         except Exception as e:
                             self.log.error(f'Could not start frame due to {e}, {e.args}')
                             self.module_state.unlock()
-                        self._scan_start_indicator = False
-        except Exception as e:
-            self.log.exception(e)
+                        self._scan_running = False
+        except :
+            self.log.exception("")
+
+    @property
+    def _write_queue_empty(self):
+        # not thread safe!
+        return all([values.size == 0 for values in self.__write_queue.values()])
+
 
     def _abort_movement(self):
         """
@@ -733,15 +746,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._ni_ao().set_activity_state(False)
 
     def _move_to_and_start_scan(self, position):
-        self._prepare_movement(position, scan_start_indicator=True)
-
+        self._prepare_movement(position)
+        self._scan_running = True
         self.__start_ao_write_timer()
 
-
-    #def _prepare_movement(self, position, velocity=None, scan_start_indicator=False):
-
-
-    def _prepare_movement(self, position, velocity=None, scan_start_indicator=False):
+    def _prepare_movement(self, position, velocity=None):
         """
         Clips values of position to allowed range and fills up the write queue
         """
@@ -805,7 +814,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # TODO Keep other axis constant?
             # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
-            self._scan_start_indicator = scan_start_indicator
         except:
             self.log.exception("")
 
@@ -874,7 +882,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             print(f"{str(e)}")
 
     def __deactivate_ao(self):
-        if not all([values.size == 0 for values in self.__write_queue.values()]):
+        if not self._write_queue_empty:
             self.__start_ao_runout_timer()
         else:
             self.log.debug('Freed AO Resources')
