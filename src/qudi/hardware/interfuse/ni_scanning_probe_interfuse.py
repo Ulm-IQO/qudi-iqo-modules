@@ -118,7 +118,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self.__read_pos = -1
 
-        self._thread_lock_cursor = RecursiveMutex()
+        self._thread_lock_cursor = Mutex()
         self._thread_lock_data = Mutex()
         # TODO According to @Neverhorst should rather use Mutex, but then scan does not start anymore
         #self.sigStartScan.connect(self._start_scan, QtCore.Qt.QueuedConnection)
