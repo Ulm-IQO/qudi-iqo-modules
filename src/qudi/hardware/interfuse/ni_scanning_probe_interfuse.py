@@ -451,47 +451,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.exception("")
             return True
 
-    def _fetch_data_line(self):
-        samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
-        # blocking until samples are ready
-        self.log.debug(f"Fetting data, line_idx {self.__read_pos}")
-        samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
-        self.log.debug(f"Samples = {samples_dict}")
-        self.log.debug(f"scanData: {self._scan_data.data}")
-        # Potentially we could also use get_buff.. without samples, but that would require some more thought
-        # while writing to ScanData
-
-        reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
-        # TODO extract terminal stuff? meaning allow DevX/... notation in config?
-
-        try:
-            with self._thread_lock_data:
-                for ni_ch in samples_dict.keys():
-                    input_ch = reverse_routing[ni_ch]
-                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
-
-                    if self._scan_data.scan_dimension == 1:
-                        self._scan_data.data[input_ch] = line_data
-
-                    elif self._scan_data.scan_dimension == 2:
-                        self._scan_data.data[input_ch][:, self.__read_pos] = line_data
-                    else:
-                        self.log.error('Invalid Scan Dimension')
-                        self.stop_scan()  # TODO Should the hw stop itself?
-
-                if self._scan_data.scan_dimension == 1:
-                    self.stop_scan()
-                    # return False, self._scan_data
-                elif self._scan_data.scan_dimension == 2:
-                    self.__read_pos += 1
-                    if self.__read_pos == self._current_scan_resolution[1]:
-                        self.stop_scan()
-                    # return False, self._scan_data
-        except:
-            self.log.exception("")
-            self.stop_scan()
-
-
     def get_scan_data(self):
         """
 
@@ -545,6 +504,51 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                     'resolution': tuple(self._current_scan_resolution),
                     'frequency': self._current_scan_frequency}
         return settings
+
+    @property
+    def _write_queue_empty(self):
+        # not thread safe, call from thread_lock protected block
+        return all([values.size == 0 for values in self.__write_queue.values()])
+
+    def _fetch_data_line(self):
+        samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
+        # blocking until samples are ready
+        self.log.debug(f"Fetting data, line_idx {self.__read_pos}")
+        samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
+        self.log.debug(f"Samples = {samples_dict}")
+        self.log.debug(f"scanData: {self._scan_data.data}")
+        # Potentially we could also use get_buff.. without samples, but that would require some more thought
+        # while writing to ScanData
+
+        reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
+        # TODO extract terminal stuff? meaning allow DevX/... notation in config?
+
+        try:
+            with self._thread_lock_data:
+                for ni_ch in samples_dict.keys():
+                    input_ch = reverse_routing[ni_ch]
+                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
+
+                    if self._scan_data.scan_dimension == 1:
+                        self._scan_data.data[input_ch] = line_data
+
+                    elif self._scan_data.scan_dimension == 2:
+                        self._scan_data.data[input_ch][:, self.__read_pos] = line_data
+                    else:
+                        self.log.error('Invalid Scan Dimension')
+                        self.stop_scan()  # TODO Should the hw stop itself?
+
+                if self._scan_data.scan_dimension == 1:
+                    self.stop_scan()
+                    # return False, self._scan_data
+                elif self._scan_data.scan_dimension == 2:
+                    self.__read_pos += 1
+                    if self.__read_pos == self._current_scan_resolution[1]:
+                        self.stop_scan()
+                    # return False, self._scan_data
+        except:
+            self.log.exception("")
+            self.stop_scan()
 
     def _position_to_voltage(self, axis, positions):
         """
@@ -701,7 +705,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._interval_time_stamp = time.perf_counter()
 
-
     def __ao_cursor_write_loop(self):
         try:
             with self._thread_lock_cursor:
@@ -712,9 +715,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
 
-            self.__adjust_ao_timing()
+                self.__adjust_ao_timing()
 
-            if not self._write_queue_empty:
+            if not self.is_move_running:
                 self.__start_ao_write_timer()
             else:  # write_queue_empty
                 self.log.debug('Cursor move done')
@@ -736,13 +739,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error(f'Could not start frame due to {str(e)}')
             self.module_state.unlock()
         self._start_scan_after_cursor = False
-
-
-    @property
-    def _write_queue_empty(self):
-        # not thread safe!
-        return all([values.size == 0 for values in self.__write_queue.values()])
-
 
     def _abort_cursor_movement(self):
         """
