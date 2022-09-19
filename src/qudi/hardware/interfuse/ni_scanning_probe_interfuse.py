@@ -110,7 +110,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self.__ni_ao_write_timer = None
         self.__ni_ao_runout_timer = None
-        self._default_timer_interval = -1
+        self._default_timer_interval_ms = -1
         self._interval_time_stamp = None
 
         self.__read_pos = -1
@@ -161,8 +161,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # Timer to free resources after pure ni ao
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
         self.__ni_ao_write_timer.setSingleShot(True)
-        self._default_timer_interval = 5  # in ms
-        self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+        self._default_timer_interval_ms = 5  # in ms
+        self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
 
@@ -451,47 +451,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.exception("")
             return True
 
-    def _fetch_data_line(self):
-        samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
-        # blocking until samples are ready
-        self.log.debug(f"Fetting data, line_idx {self.__read_pos}")
-        samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
-        self.log.debug(f"Samples = {samples_dict}")
-        self.log.debug(f"scanData: {self._scan_data.data}")
-        # Potentially we could also use get_buff.. without samples, but that would require some more thought
-        # while writing to ScanData
-
-        reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
-        # TODO extract terminal stuff? meaning allow DevX/... notation in config?
-
-        try:
-            with self._thread_lock_data:
-                for ni_ch in samples_dict.keys():
-                    input_ch = reverse_routing[ni_ch]
-                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
-
-                    if self._scan_data.scan_dimension == 1:
-                        self._scan_data.data[input_ch] = line_data
-
-                    elif self._scan_data.scan_dimension == 2:
-                        self._scan_data.data[input_ch][:, self.__read_pos] = line_data
-                    else:
-                        self.log.error('Invalid Scan Dimension')
-                        self.stop_scan()  # TODO Should the hw stop itself?
-
-                if self._scan_data.scan_dimension == 1:
-                    self.stop_scan()
-                    # return False, self._scan_data
-                elif self._scan_data.scan_dimension == 2:
-                    self.__read_pos += 1
-                    if self.__read_pos == self._current_scan_resolution[1]:
-                        self.stop_scan()
-                    # return False, self._scan_data
-        except:
-            self.log.exception("")
-            self.stop_scan()
-
-
     def get_scan_data(self):
         """
 
@@ -545,6 +504,51 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                     'resolution': tuple(self._current_scan_resolution),
                     'frequency': self._current_scan_frequency}
         return settings
+
+    @property
+    def _write_queue_empty(self):
+        # not thread safe, call from thread_lock protected block
+        return all([values.size == 0 for values in self.__write_queue.values()])
+
+    def _fetch_data_line(self):
+        samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
+        # blocking until samples are ready
+        self.log.debug(f"Fetting data, line_idx {self.__read_pos}")
+        samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
+        self.log.debug(f"Samples = {samples_dict}")
+        self.log.debug(f"scanData: {self._scan_data.data}")
+        # Potentially we could also use get_buff.. without samples, but that would require some more thought
+        # while writing to ScanData
+
+        reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
+        # TODO extract terminal stuff? meaning allow DevX/... notation in config?
+
+        try:
+            with self._thread_lock_data:
+                for ni_ch in samples_dict.keys():
+                    input_ch = reverse_routing[ni_ch]
+                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
+
+                    if self._scan_data.scan_dimension == 1:
+                        self._scan_data.data[input_ch] = line_data
+
+                    elif self._scan_data.scan_dimension == 2:
+                        self._scan_data.data[input_ch][:, self.__read_pos] = line_data
+                    else:
+                        self.log.error('Invalid Scan Dimension')
+                        self.stop_scan()  # TODO Should the hw stop itself?
+
+                if self._scan_data.scan_dimension == 1:
+                    self.stop_scan()
+                    # return False, self._scan_data
+                elif self._scan_data.scan_dimension == 2:
+                    self.__read_pos += 1
+                    if self.__read_pos == self._current_scan_resolution[1]:
+                        self.stop_scan()
+                    # return False, self._scan_data
+        except:
+            self.log.exception("")
+            self.stop_scan()
 
     def _position_to_voltage(self, axis, positions):
         """
@@ -696,11 +700,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if self._interval_time_stamp is not None:
             exec_time = time.perf_counter() - self._interval_time_stamp
             # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
-            dt_new_ms = int(np.round(max(2 * self._default_timer_interval - exec_time*1e3, 1)))
+            dt_new_ms = int(np.round(max(2 * self._default_timer_interval_ms - exec_time * 1e3, 1)))
             self.__ni_ao_write_timer.setInterval(dt_new_ms)
 
         self._interval_time_stamp = time.perf_counter()
-
 
     def __ao_cursor_write_loop(self):
         try:
@@ -712,9 +715,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
 
-            self.__adjust_ao_timing()
+                self.__adjust_ao_timing()
 
-            if not self._write_queue_empty:
+            if self.is_move_running:
                 self.__start_ao_write_timer()
             else:  # write_queue_empty
                 self.log.debug('Cursor move done')
@@ -737,13 +740,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.module_state.unlock()
         self._start_scan_after_cursor = False
 
-
-    @property
-    def _write_queue_empty(self):
-        # not thread safe!
-        return all([values.size == 0 for values in self.__write_queue.values()])
-
-
     def _abort_cursor_movement(self):
         """
         Abort the movement, stop the timer and reset interval, release memory and frees ni_ao resources
@@ -755,7 +751,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         with self._thread_lock_cursor:
             self.__write_queue = dict()
 
-        self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+        self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
         self._ni_ao().set_activity_state(False)
 
     def _move_to_and_start_scan(self, position):
@@ -808,7 +804,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             else:
                 velocity = self.__max_move_velocity
 
-            self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+            self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
             granularity = velocity * self.__ni_ao_write_timer.interval() * 1e-3
 
             with self._thread_lock_cursor:
