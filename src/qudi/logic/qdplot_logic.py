@@ -105,6 +105,8 @@ class QDPlotDataSet:
     """
     """
 
+    _default_padding = 0.05
+
     def __init__(self,
                  data: Optional[Mapping[str, Tuple[np.ndarray, np.ndarray]]] = None,
                  config: Optional[QDPlotConfig] = None
@@ -178,8 +180,8 @@ class QDPlotDataSet:
                 if x_min == x_max:
                     x_lim = (-0.5, 0.5)
                 else:
-                    x_range = x_max - x_min
-                    x_lim = (x_min - 0.5 * x_range, x_max + 0.5 * x_range)
+                    padding = self._default_padding * (x_max - x_min)
+                    x_lim = (x_min - padding, x_max + padding)
         if y:
             try:
                 y_min = min([y_data.min() for _, y_data in self._data.values()])
@@ -190,8 +192,8 @@ class QDPlotDataSet:
                 if y_min == y_max:
                     y_lim = (-0.5, 0.5)
                 else:
-                    y_range = y_max - y_min
-                    y_lim = (y_min - 0.5 * y_range, y_max + 0.5 * y_range)
+                    padding = self._default_padding * (y_max - y_min)
+                    y_lim = (y_min - padding, y_max + padding)
         self._config.set_limits(x_lim, y_lim)
 
 
@@ -311,11 +313,6 @@ class QDPlotLogic(LogicBase):
     @property
     def fit_config_model(self) -> FitConfigurationsModel:
         return self._fit_config_model
-
-    @property
-    def plot_configs(self) -> List[QDPlotConfig]:
-        with self._thread_lock:
-            return [data_set.config for data_set in self._plot_data_sets]
 
     @property
     def plot_count(self) -> int:
