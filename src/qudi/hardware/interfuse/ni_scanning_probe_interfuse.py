@@ -110,7 +110,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self.__ni_ao_write_timer = None
         self.__ni_ao_runout_timer = None
-        self._default_timer_interval = -1
+        self._default_timer_interval_ms = -1
         self._interval_time_stamp = None
 
         self.__read_pos = -1
@@ -161,8 +161,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # Timer to free resources after pure ni ao
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
         self.__ni_ao_write_timer.setSingleShot(True)
-        self._default_timer_interval = 5  # in ms
-        self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+        self._default_timer_interval_ms = 5  # in ms
+        self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
 
@@ -696,7 +696,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if self._interval_time_stamp is not None:
             exec_time = time.perf_counter() - self._interval_time_stamp
             # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
-            dt_new_ms = int(np.round(max(2 * self._default_timer_interval - exec_time*1e3, 1)))
+            dt_new_ms = int(np.round(max(2 * self._default_timer_interval_ms - exec_time * 1e3, 1)))
             self.__ni_ao_write_timer.setInterval(dt_new_ms)
 
         self._interval_time_stamp = time.perf_counter()
@@ -755,7 +755,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         with self._thread_lock_cursor:
             self.__write_queue = dict()
 
-        self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+        self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
         self._ni_ao().set_activity_state(False)
 
     def _move_to_and_start_scan(self, position):
@@ -808,7 +808,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             else:
                 velocity = self.__max_move_velocity
 
-            self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+            self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
             granularity = velocity * self.__ni_ao_write_timer.interval() * 1e-3
 
             with self._thread_lock_cursor:
