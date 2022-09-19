@@ -109,7 +109,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._start_scan_after_cursor = False
 
         self.__ni_ao_write_timer = None
-        self.__ni_ao_runout_timer = None
         self._default_timer_interval_ms = -1
         self._interval_time_stamp = None
 
@@ -166,10 +165,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
 
-        self.__ni_ao_runout_timer = QtCore.QTimer(parent=self)
-        self.__ni_ao_runout_timer.setSingleShot(True)
-        self.__ni_ao_runout_timer.setInterval(1000)
-        self.__ni_ao_runout_timer.timeout.connect(self.__deactivate_ao, QtCore.Qt.QueuedConnection)
 
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
 
@@ -178,7 +173,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         Deactivate the module
         """
         self.__stop_ao_write_timer()
-        self.__stop_ao_runout_timer()
 
         with self._thread_lock_cursor:
             self.__write_queue = dict()
@@ -742,12 +736,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def _abort_cursor_movement(self):
         """
-        Abort the movement, stop the timer and reset interval, release memory and frees ni_ao resources
+        Abort the movement, stop the timer and reset interval, release memory and asynchronisly (via timer) free ni_ao resources.
         """
 
         self.log.debug(f"Aborting cursor move at pos= {self.get_position()}.")
         self.__stop_ao_write_timer()
-        self._stop_cursor_hw()
+        #self._stop_cursor_hw()
         with self._thread_lock_cursor:
             self.__write_queue = dict()
 
@@ -771,7 +765,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.log.debug(f"Preparing move in thread {QtCore.QThread.currentThread()}...")
 
         try:
-            self._abort_cursor_movement()
+            self.__stop_ao_write_timer()   # todo: can we use nicer abort_cursor?
+            #self._abort_cursor_movement()
 
             if not self._ni_ao().is_active:
                 self._ni_ao().set_activity_state(True)
@@ -821,8 +816,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except:
             self.log.exception("")
 
-    def _stop_cursor_hw(self):
-        self.__start_ao_runout_timer()
 
     def __start_ao_write_timer(self):
         #self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
@@ -852,44 +845,5 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except Exception as e:
             print(f"{str(e)}")
 
-    def __start_ao_runout_timer(self):
-        """
-        Continously check if write queue is empty. If so, stop hardware.
-        :return:
-        """
-        self.log.debug(f"ao start runout timer in thread {QtCore.QThread.currentThread()}, module thread.")
-        try:
-            if self.thread() is not QtCore.QThread.currentThread():
-                QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
-                                                'start',
-                                                QtCore.Qt.BlockingQueuedConnection)
-            else:
-                self.__ni_ao_runout_timer.start()
-
-            self.log.debug("Started")
-        except Exception as e:
-            print(f"{str(e)}")
-
-    def __stop_ao_runout_timer(self):
-        self.log.debug(f"ao start runout timer in thread {QtCore.QThread.currentThread()}, module thread.")
-        try:
-            if self.thread() is not QtCore.QThread.currentThread():
-                QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
-                                                'stop',
-                                                QtCore.Qt.BlockingQueuedConnection)
-            else:
-                self.__ni_ao_runout_timer.stop()
-
-            self.log.debug("Stopped")
-        except Exception as e:
-            print(f"{str(e)}")
-
-    def __deactivate_ao(self):
-        if self.is_move_running:
-            # still moving, come back later
-            self.__start_ao_runout_timer()
-        else:
-            self.log.debug('Freed AO Resources')
-            self._ni_ao().set_activity_state(False)
 
 
