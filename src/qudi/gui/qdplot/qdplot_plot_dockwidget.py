@@ -24,7 +24,7 @@ __all__ = ['PlotDockWidget', 'QDPlotWidget', 'PlotEditorWidget', 'PlotControlWid
 
 import os
 from PySide2 import QtWidgets, QtCore, QtGui
-from typing import Optional, Tuple, Dict, Union
+from typing import Optional, Tuple, Dict, Union, List
 
 from qudi.util.paths import get_artwork_dir
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
@@ -91,6 +91,8 @@ class QDPlotWidget(QtWidgets.QWidget):
     sigSaveClicked = QtCore.Signal()
     sigRemoveClicked = QtCore.Signal()
 
+    SelectionMode = InteractiveCurvesWidget.SelectionMode
+
     def __init__(self, *args, fit_container=None, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
@@ -149,6 +151,8 @@ class QDPlotWidget(QtWidgets.QWidget):
         self.add_region_selection = self.curve_widget.add_region_selection
         self.remove_plot = self.curve_widget.remove_plot
         self.remove_fit_plot = self.curve_widget.remove_fit_plot
+        self.clear = self.curve_widget.clear
+        self.clear_fits = self.curve_widget.clear_fits
         self.clear_marker_selections = self.curve_widget.clear_marker_selections
         self.clear_region_selections = self.curve_widget.clear_region_selections
         self.move_marker_selection = self.curve_widget.move_marker_selection
@@ -249,11 +253,9 @@ class QDPlotWidget(QtWidgets.QWidget):
         self.control_widget.track_mouse_checkbox.setChecked(enable)
 
     def __save_clicked(self) -> None:
-        self.__limits_signal_proxy.flush()
         self.sigSaveClicked.emit()
 
     def __remove_clicked(self) -> None:
-        self.__limits_signal_proxy.flush()
         self.sigRemoveClicked.emit()
 
     def __zoom_mode_changed(self) -> None:

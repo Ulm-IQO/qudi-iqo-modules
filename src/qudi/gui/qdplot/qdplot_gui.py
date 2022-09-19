@@ -38,6 +38,7 @@ from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.colordefs import QudiPalette
 from qudi.gui.qdplot.qdplot_main_window import QDPlotMainWindow
 from qudi.gui.qdplot.qdplot_plot_dockwidget import PlotDockWidget
+from qudi.logic.qdplot_logic import QDPlotConfig
 
 
 class PlotAlignment(Enum):
@@ -356,7 +357,7 @@ class QDPlotterGui(GuiBase):
 
     def _plot_added(self) -> None:
         index = len(self._plot_dockwidgets)
-        dockwidget = PlotDockWidget(fit_container=self._qdplot_logic().fit_containers[index],
+        dockwidget = PlotDockWidget(fit_container=self._qdplot_logic().get_fit_container(index),
                                     plot_number=index + 1)
         self._plot_dockwidgets.append(dockwidget)
         self._color_cyclers.append(cycle(self._pen_color_list))
@@ -383,6 +384,7 @@ class QDPlotterGui(GuiBase):
             return
         dockwidget.close()
         dockwidget.setParent(None)
+        dockwidget.deleteLater()
         widget = dockwidget.widget()
         # widget.sigSettingsChanged.disconnect()
         # widget.sigAutoRangeClicked.disconnect()
@@ -397,39 +399,36 @@ class QDPlotterGui(GuiBase):
 
     def _update_data(self,
                      plot_index: int,
-                     data: Optional[Mapping[str, Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]]] = None
+                     data: Optional[Mapping[str, np.ndarray]] = None
                      ) -> None:
         """ Function creates empty plots, grabs the data and sends it to them. """
-        widget = self._plot_dockwidgets[plot_index].widget()
-        logic = self._qdplot_logic()
         if data is None:
-            data = logic.get_data(plot_index)
+            data = self._qdplot_logic().get_data(plot_index)
 
+        widget = self._plot_dockwidgets[plot_index].widget()
         current_plots = set(widget.plot_names)
-        new_plots = set(data).difference(current_plots)
-        remove_plots = current_plots.difference(data)
-
-        for name in remove_plots:
-            widget.remove_plot(name)
-            current_plots.remove(name)
-
-        color_cycler = cycle(self._pen_color_list)
-        for name in current_plots:
-            x, y = data[name]
-            widget.set_data(name, x=x, y=y)
-            next(color_cycler)
+        removed_plots = current_plots.difference(data)
+        # Clear the entire plot and redraw all curves if a curve has been removed
+        if removed_plots:
+            widget.clear()
+            current_plots.clear()
+            color_cycler = cycle(self._pen_color_list)
+        else:
+            color_cycler = self._color_cyclers[plot_index]
 
         try:
-            for name in new_plots:
-                x, y = data[name]
-                color = next(color_cycler)
-                widget.plot(x=x,
-                            y=y,
-                            pen=color,
-                            symbol='d',
-                            symbolSize=6,
-                            symbolBrush=color,
-                            name=name)
+            for name, (x_data, y_data) in data.items():
+                if name in current_plots:
+                    widget.set_data(name, x=x_data, y=y_data)
+                else:
+                    color = next(color_cycler)
+                    widget.plot(x=x_data,
+                                y=y_data,
+                                pen=color,
+                                symbol='d',
+                                symbolSize=6,
+                                symbolBrush=color,
+                                name=name)
         finally:
             self._color_cyclers[plot_index] = color_cycler
 
@@ -441,13 +440,9 @@ class QDPlotterGui(GuiBase):
         if config is None:
             config = self._qdplot_logic().get_plot_config(plot_index)
         widget = self._plot_dockwidgets[plot_index].widget()
-        widget.blockSignals(True)
-        try:
-            widget.set_labels(*config.labels)
-            widget.set_units(*config.units)
-            widget.set_limits(*config.limits)
-        finally:
-            widget.blockSignals(False)
+        widget.set_labels(*config.labels)
+        widget.set_units(*config.units)
+        widget.set_limits(*config.limits)
 
     def _update_fit_data(self,
                          plot_index: int,
@@ -460,29 +455,30 @@ class QDPlotterGui(GuiBase):
         if not fit_config:
             fit_config = 'No Fit'
 
-        try:
-            fit_data = [
-                None if result is None else result.high_res_best_fit for result in fit_results
-            ]
-        except AttributeError:
-            fit_data = [None] * len(fit_results)
-
         widget = self._plot_dockwidgets[plot_index].widget()
+
         if fit_config == 'No Fit':
-            for index, curve in enumerate(self._fit_curves[plot_index]):
-                if curve in widget.plot_widget.items():
-                    widget.plot_widget.removeItem(curve)
+            widget.clear_fits()
         else:
+            try:
+                fit_data = {
+                    name: None if result is None else result.high_res_best_fit for name, result in
+                    fit_results.items()
+                }
+            except AttributeError:
+                fit_data = {name: None for name in fit_results}
+
             widget.toggle_fit(True)
-            for index, curve in enumerate(self._fit_curves[plot_index]):
-                data = fit_data[index]
+            for name, data in fit_data.items():
                 try:
-                    curve.setData(x=data[0], y=data[1])
-                    if curve not in widget.plot_widget.items():
-                        widget.plot_widget.addItem(curve)
-                except (IndexError, AttributeError, TypeError):
-                    if curve in widget.plot_widget.items():
-                        widget.plot_widget.removeItem(curve)
+                    x_data, y_data = data
+                except TypeError:
+                    widget.remove_fit_plot(name)
+                else:
+                    widget.set_fit_data(name=name,
+                                        x=x_data,
+                                        y=y_data,
+                                        pen='r')
 
     def __get_sender_plot_index(self) -> Union[None, int]:
         try:
