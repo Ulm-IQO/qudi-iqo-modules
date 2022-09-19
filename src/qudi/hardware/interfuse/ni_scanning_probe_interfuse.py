@@ -494,7 +494,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     @property
     def is_move_running(self):
         with self._thread_lock_cursor:
-            return self._write_queue_empty
+            return not self._write_queue_empty
 
     @property
     def scan_settings(self):
@@ -717,7 +717,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 self.__adjust_ao_timing()
 
-            if not self.is_move_running:
+            if self.is_move_running:
                 self.__start_ao_write_timer()
             else:  # write_queue_empty
                 self.log.debug('Cursor move done')
@@ -885,7 +885,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             print(f"{str(e)}")
 
     def __deactivate_ao(self):
-        if not self.is_move_running:
+        if self.is_move_running:
             # still moving, come back later
             self.__start_ao_runout_timer()
         else:
