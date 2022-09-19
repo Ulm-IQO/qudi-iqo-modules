@@ -113,6 +113,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._interval_time_stamp = None
 
         self.__read_pos = -1
+        self.__scan_stopped = False
 
         self._thread_lock_cursor = Mutex()
         self._thread_lock_data = Mutex()
@@ -456,11 +457,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             if not self.is_scan_running or not self._ni_finite_sampling_io().is_running:
                 return self._scan_data
             else:
-                # todo timo: fetching really on external get_scan_data call or own loop?
-                self._fetch_data_line()
+                # _stop_scan is called asynchronously. Thus .is_scan_running might be True, even if last data frame
+                # was already fetched. __scan_stopped is set by the polling thread, guaranteed to signal in time.
+                if not self.__scan_stopped:
+                    self._fetch_data_line()
                 return self._scan_data
         except:
-            logger.exception("")
+            self.log.exception("")
 
     def emergency_stop(self):
         """
@@ -501,16 +504,32 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     @property
     def _write_queue_empty(self):
-        # not thread safe, call from thread_lock protected block
+        # not thread safe, call from thread_lock protected code only
         return all([values.size == 0 for values in self.__write_queue.values()])
+
+    def _check_scan_end_reached(self):
+        # not thread safe, call from thread_lock protected code only
+        if self.__scan_stopped:
+            return True
+
+        if self._scan_data.scan_dimension == 1:
+            self.__scan_stopped = True
+            return True
+
+        elif self._scan_data.scan_dimension == 2:
+            if self.__read_pos == self._current_scan_resolution[1]:
+                self.__scan_stopped = True
+                return True
+
+        return False
 
     def _fetch_data_line(self):
         samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
         # blocking until samples are ready
-        self.log.debug(f"Fetting data, line_idx {self.__read_pos}")
+        self.log.debug(f"Fetching data, line_idx {self.__read_pos}")
         samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
-        self.log.debug(f"Samples = {samples_dict}")
-        self.log.debug(f"scanData: {self._scan_data.data}")
+        #self.log.debug(f"Samples = {samples_dict}")
+        #self.log.debug(f"scanData: {self._scan_data.data}")
         # Potentially we could also use get_buff.. without samples, but that would require some more thought
         # while writing to ScanData
 
@@ -532,14 +551,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                         self.log.error('Invalid Scan Dimension')
                         self.stop_scan()  # TODO Should the hw stop itself?
 
-                if self._scan_data.scan_dimension == 1:
-                    self.stop_scan()
-                    # return False, self._scan_data
-                elif self._scan_data.scan_dimension == 2:
+                if self._scan_data.scan_dimension == 2:
                     self.__read_pos += 1
-                    if self.__read_pos == self._current_scan_resolution[1]:
-                        self.stop_scan()
-                    # return False, self._scan_data
+
+                if self._check_scan_end_reached():
+                    self.stop_scan()
+
         except:
             self.log.exception("")
             self.stop_scan()
@@ -732,6 +749,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except Exception as e:
             self.log.error(f'Could not start frame due to {str(e)}')
             self.module_state.unlock()
+
+        self.__scan_stopped = False
         self._start_scan_after_cursor = False
 
     def _abort_cursor_movement(self):
@@ -808,8 +827,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                                         max(2, np.ceil(dist / granularity).astype('int'))
                                                         )[1:]  # Since start_pos is already taken
                                       for axis in position}
-                self.log.debug(f"Prepared write queue with steps {[len(self.__write_queue[key]) for key in self.__write_queue.keys()]}"
-                               f" to target= {position}: {self.__write_queue}")
+                self.log.debug(f"Prepared {[len(self.__write_queue[key]) for key in self.__write_queue.keys()]} write queue steps "
+                               f" to target= {position}.")
+                self.log.debug(f"Write queue: {self.__write_queue}")
             # TODO Keep other axis constant?
             # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
