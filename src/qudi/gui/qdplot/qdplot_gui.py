@@ -24,6 +24,7 @@ __all__ = ['PlotAlignment', 'QDPlotterGui']
 
 import numpy as np
 from enum import Enum
+from functools import partial
 from itertools import cycle
 from PySide2 import QtCore
 from pyqtgraph import mkColor
@@ -62,7 +63,7 @@ class QDPlotterGui(GuiBase):
             qdplot_logic: 'qdplotlogic'
     """
 
-    sigPlotConfigChanged = QtCore.Signal(int, dict)       # plot_index, parameters
+    sigPlotConfigChanged = QtCore.Signal(int, object)       # plot_index, QDPlotConfig
     sigAutoRangeClicked = QtCore.Signal(int, bool, bool)  # plot_index, scale_x, scale_y
     sigDoFit = QtCore.Signal(int, str)                    # plot_index, fit_config_name
     sigRemovePlotClicked = QtCore.Signal(int)             # plot_index
@@ -133,7 +134,6 @@ class QDPlotterGui(GuiBase):
         # Initialize dock widgets
         self._plot_dockwidgets = list()
         self._color_cyclers = list()
-        self._init_plots(logic.plot_count)
 
         # Connect signal to logic
         self.sigPlotConfigChanged.connect(logic.set_plot_config, QtCore.Qt.QueuedConnection)
@@ -148,8 +148,9 @@ class QDPlotterGui(GuiBase):
         logic.sigPlotRemoved.connect(self._plot_removed, QtCore.Qt.QueuedConnection)
         logic.sigFitChanged.connect(self._update_fit_data, QtCore.Qt.QueuedConnection)
 
+        self._init_plots(logic.plot_count)
+
         self.show()
-        # Must happen AFTER show()
         self.restore_view()
 
     def show(self):
@@ -326,30 +327,45 @@ class QDPlotterGui(GuiBase):
         elif alignment == PlotAlignment.side_by_side:
             return self.restore_side_by_side_view()
 
-    def _plot_config_changed(self, config: Mapping[str, Any]) -> None:
-        plot_index = self.__get_sender_plot_index()
-        if plot_index is not None:
-            self.sigPlotConfigChanged.emit(plot_index, config)
+    def _plot_config_changed(self, dockwidget: PlotDockWidget) -> None:
+        try:
+            plot_index = self._plot_dockwidgets.index(dockwidget)
+        except ValueError:
+            return
+        widget = dockwidget.widget()
+        config = QDPlotConfig(labels=widget.labels, units=widget.units, limits=widget.limits)
+        self.sigPlotConfigChanged.emit(plot_index, config)
 
-    def _auto_range_clicked(self, x: Optional[bool] = None, y: Optional[bool] = None) -> None:
-        plot_index = self.__get_sender_plot_index()
-        if plot_index is not None:
-            self.sigAutoRangeClicked.emit(plot_index, x, y)
+    def _auto_range_clicked(self,
+                            dockwidget: PlotDockWidget,
+                            x: Optional[bool] = None,
+                            y: Optional[bool] = None) -> None:
+        try:
+            plot_index = self._plot_dockwidgets.index(dockwidget)
+        except ValueError:
+            return
+        self.sigAutoRangeClicked.emit(plot_index, x, y)
 
-    def _save_clicked(self) -> None:
-        plot_index = self.__get_sender_plot_index()
-        if plot_index is not None:
-            self._qdplot_logic().save_data(plot_index)
+    def _save_clicked(self, dockwidget: PlotDockWidget) -> None:
+        try:
+            plot_index = self._plot_dockwidgets.index(dockwidget)
+        except ValueError:
+            return
+        self._qdplot_logic().save_data(plot_index)
 
-    def _remove_clicked(self) -> None:
-        plot_index = self.__get_sender_plot_index()
-        if plot_index is not None:
-            self.sigRemovePlotClicked.emit(plot_index)
+    def _remove_clicked(self, dockwidget: PlotDockWidget) -> None:
+        try:
+            plot_index = self._plot_dockwidgets.index(dockwidget)
+        except ValueError:
+            return
+        self.sigRemovePlotClicked.emit(plot_index)
 
-    def _fit_clicked(self, fit_config: str) -> None:
-        plot_index = self.__get_sender_plot_index()
-        if plot_index is not None:
-            self.sigDoFit.emit(plot_index, fit_config)
+    def _fit_clicked(self, dockwidget: PlotDockWidget, fit_config: str) -> None:
+        try:
+            plot_index = self._plot_dockwidgets.index(dockwidget)
+        except ValueError:
+            return
+        self.sigDoFit.emit(plot_index, fit_config)
 
     ##########################
     # Logic update slots below
@@ -363,11 +379,11 @@ class QDPlotterGui(GuiBase):
         self._color_cyclers.append(cycle(self._pen_color_list))
 
         widget = dockwidget.widget()
-        # widget.sigSettingsChanged.connect(self._plot_settings_changed)
-        # widget.sigAutoRangeClicked.connect(self._auto_range_clicked)
-        # widget.sigSaveClicked.connect(self._save_clicked)
-        # widget.sigRemoveClicked.connect(self._remove_clicked)
-        # widget.sigFitClicked.connect(self._fit_clicked)
+        widget.sigPlotParametersChanged.connect(partial(self._plot_config_changed, dockwidget))
+        widget.sigAutoLimitsApplied.connect(partial(self._auto_range_clicked, dockwidget))
+        widget.sigSaveClicked.connect(partial(self._save_clicked, dockwidget))
+        widget.sigRemoveClicked.connect(partial(self._remove_clicked, dockwidget))
+        widget.sigFitClicked.connect(partial(self._fit_clicked, dockwidget))
 
         # Update infos from logic
         self._update_data(index)
@@ -386,11 +402,11 @@ class QDPlotterGui(GuiBase):
         dockwidget.setParent(None)
         dockwidget.deleteLater()
         widget = dockwidget.widget()
-        # widget.sigSettingsChanged.disconnect()
-        # widget.sigAutoRangeClicked.disconnect()
-        # widget.sigSaveClicked.disconnect()
-        # widget.sigRemoveClicked.disconnect()
-        # widget.sigFitClicked.disconnect()
+        widget.sigPlotParametersChanged.disconnect()
+        widget.sigAutoLimitsApplied.disconnect()
+        widget.sigSaveClicked.disconnect()
+        widget.sigRemoveClicked.disconnect()
+        widget.sigFitClicked.disconnect()
         # Update dockwidget titles for higher indices
         trailing_dockwidgets = self._plot_dockwidgets[plot_index:]
         start_index = len(self._plot_dockwidgets) - len(trailing_dockwidgets) + 1
@@ -440,9 +456,13 @@ class QDPlotterGui(GuiBase):
         if config is None:
             config = self._qdplot_logic().get_plot_config(plot_index)
         widget = self._plot_dockwidgets[plot_index].widget()
-        widget.set_labels(*config.labels)
-        widget.set_units(*config.units)
-        widget.set_limits(*config.limits)
+        widget.blockSignals(True)
+        try:
+            widget.set_labels(*config.labels)
+            widget.set_units(*config.units)
+            widget.set_limits(*config.limits)
+        finally:
+            widget.blockSignals(False)
 
     def _update_fit_data(self,
                          plot_index: int,
@@ -479,15 +499,3 @@ class QDPlotterGui(GuiBase):
                                         x=x_data,
                                         y=y_data,
                                         pen='r')
-
-    def __get_sender_plot_index(self) -> Union[None, int]:
-        try:
-            obj = self.sender()
-            while obj is not None:
-                try:
-                    return self._plot_dockwidgets.index(obj)
-                except ValueError:
-                    obj = obj.parent()
-        except (AttributeError, TypeError):
-            pass
-        return None

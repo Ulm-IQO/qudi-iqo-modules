@@ -85,8 +85,6 @@ class QDPlotWidget(QtWidgets.QWidget):
     """
     """
 
-    # sigSettingsChanged = QtCore.Signal(dict)         # settings
-    # sigAutoRangeClicked = QtCore.Signal(bool, bool)  # x_axis, y_axis
     sigFitClicked = QtCore.Signal(str)               # fit_function_name
     sigSaveClicked = QtCore.Signal()
     sigRemoveClicked = QtCore.Signal()
@@ -144,9 +142,6 @@ class QDPlotWidget(QtWidgets.QWidget):
         self.set_plot_selection = self.curve_widget.set_plot_selection
         self.set_selection_bounds = self.curve_widget.set_selection_bounds
         self.set_selection_mutable = self.curve_widget.set_selection_mutable
-        self.toggle_plot_editor = self.curve_widget.toggle_plot_editor
-        self.toggle_plot_selector = self.curve_widget.toggle_plot_selector
-        self.toggle_cursor_position = self.curve_widget.toggle_cursor_position
         self.add_marker_selection = self.curve_widget.add_marker_selection
         self.add_region_selection = self.curve_widget.add_region_selection
         self.remove_plot = self.curve_widget.remove_plot
@@ -159,6 +154,11 @@ class QDPlotWidget(QtWidgets.QWidget):
         self.move_region_selection = self.curve_widget.move_region_selection
         self.plot = self.curve_widget.plot
         self.plot_fit = self.curve_widget.plot_fit
+
+        self.toggle_selector(True)
+        self.toggle_fit(True)
+        self.toggle_editor(True)
+        self.toggle_cursor_tracking(True)
 
     @property
     def plot_names(self) -> List[str]:
@@ -239,6 +239,14 @@ class QDPlotWidget(QtWidgets.QWidget):
     @property
     def sigZoomAreaApplied(self) -> QtCore.Signal:
         return self.curve_widget.sigZoomAreaApplied
+
+    @property
+    def sigAutoLimitsApplied(self) -> QtCore.Signal:
+        return self.curve_widget.sigAutoLimitsApplied
+
+    @property
+    def sigPlotParametersChanged(self) -> QtCore.Signal:
+        return self.curve_widget.sigPlotParametersChanged
 
     def toggle_fit(self, show: bool) -> None:
         self.control_widget.show_fit_checkbox.setChecked(show)
