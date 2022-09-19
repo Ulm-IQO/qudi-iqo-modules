@@ -85,8 +85,6 @@ class QDPlotterGui(GuiBase):
 
         self._plot_dockwidgets = list()
         self._color_cyclers = list()
-        self._plot_curves = list()
-        self._fit_curves = list()
 
     def on_activate(self):
         """ Definition and initialisation of the GUI.
@@ -134,8 +132,6 @@ class QDPlotterGui(GuiBase):
         # Initialize dock widgets
         self._plot_dockwidgets = list()
         self._color_cyclers = list()
-        self._plot_curves = list()
-        self._fit_curves = list()
         self._init_plots(logic.plot_count)
 
         # Connect signal to logic
@@ -329,10 +325,10 @@ class QDPlotterGui(GuiBase):
         elif alignment == PlotAlignment.side_by_side:
             return self.restore_side_by_side_view()
 
-    def _plot_settings_changed(self, settings: Mapping[str, Any]) -> None:
+    def _plot_config_changed(self, config: Mapping[str, Any]) -> None:
         plot_index = self.__get_sender_plot_index()
         if plot_index is not None:
-            self.sigPlotConfigChanged.emit(plot_index, settings)
+            self.sigPlotConfigChanged.emit(plot_index, config)
 
     def _auto_range_clicked(self, x: Optional[bool] = None, y: Optional[bool] = None) -> None:
         plot_index = self.__get_sender_plot_index()
@@ -364,15 +360,13 @@ class QDPlotterGui(GuiBase):
                                     plot_number=index + 1)
         self._plot_dockwidgets.append(dockwidget)
         self._color_cyclers.append(cycle(self._pen_color_list))
-        self._plot_curves.append(list())
-        self._fit_curves.append(list())
 
         widget = dockwidget.widget()
-        widget.sigSettingsChanged.connect(self._plot_settings_changed)
-        widget.sigAutoRangeClicked.connect(self._auto_range_clicked)
-        widget.sigSaveClicked.connect(self._save_clicked)
-        widget.sigRemoveClicked.connect(self._remove_clicked)
-        widget.sigFitClicked.connect(self._fit_clicked)
+        # widget.sigSettingsChanged.connect(self._plot_settings_changed)
+        # widget.sigAutoRangeClicked.connect(self._auto_range_clicked)
+        # widget.sigSaveClicked.connect(self._save_clicked)
+        # widget.sigRemoveClicked.connect(self._remove_clicked)
+        # widget.sigFitClicked.connect(self._fit_clicked)
 
         # Update infos from logic
         self._update_data(index)
@@ -384,19 +378,17 @@ class QDPlotterGui(GuiBase):
     def _plot_removed(self, plot_index: int) -> None:
         try:
             dockwidget = self._plot_dockwidgets.pop(plot_index)
-            del self._plot_curves[plot_index]
-            del self._fit_curves[plot_index]
             del self._color_cyclers[plot_index]
         except IndexError:
             return
         dockwidget.close()
         dockwidget.setParent(None)
         widget = dockwidget.widget()
-        widget.sigSettingsChanged.disconnect()
-        widget.sigAutoRangeClicked.disconnect()
-        widget.sigSaveClicked.disconnect()
-        widget.sigRemoveClicked.disconnect()
-        widget.sigFitClicked.disconnect()
+        # widget.sigSettingsChanged.disconnect()
+        # widget.sigAutoRangeClicked.disconnect()
+        # widget.sigSaveClicked.disconnect()
+        # widget.sigRemoveClicked.disconnect()
+        # widget.sigFitClicked.disconnect()
         # Update dockwidget titles for higher indices
         trailing_dockwidgets = self._plot_dockwidgets[plot_index:]
         start_index = len(self._plot_dockwidgets) - len(trailing_dockwidgets) + 1
@@ -405,47 +397,45 @@ class QDPlotterGui(GuiBase):
 
     def _update_data(self,
                      plot_index: int,
-                     data: Optional[Sequence[Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]]] = None,
-                     data_labels: Optional[Sequence[str]] = None
+                     data: Optional[Mapping[str, Union[np.ndarray, Tuple[np.ndarray, np.ndarray]]]] = None
                      ) -> None:
         """ Function creates empty plots, grabs the data and sends it to them. """
         widget = self._plot_dockwidgets[plot_index].widget()
         logic = self._qdplot_logic()
         if data is None:
             data = logic.get_data(plot_index)
-        if data_labels is None:
-            data_labels = logic.get_data_labels(plot_index)
-        if len(data_labels) != len(data):
-            raise ValueError(f'Number of datasets ({len(data)}) and data labels '
-                             f'({len(data_labels)}) does not match ')
+
+        current_plots = set(widget.plot_names)
+        new_plots = set(data).difference(current_plots)
+        remove_plots = current_plots.difference(data)
+
+        for name in remove_plots:
+            widget.remove_plot(name)
+            current_plots.remove(name)
 
         color_cycler = cycle(self._pen_color_list)
-        plot_curves = list()
-        fit_curves = list()
+        for name in current_plots:
+            x, y = data[name]
+            widget.set_data(name, x=x, y=y)
+            next(color_cycler)
 
         try:
-            widget.plot_widget.clear()
-            for ii, (x_data, y_data) in enumerate(data):
-                pen_color = next(color_cycler)
-                plot_curves.append(
-                    widget.plot_widget.plot(x=x_data,
-                                            y=y_data,
-                                            pen=pen_color,
-                                            symbol='d',
-                                            symbolSize=6,
-                                            symbolBrush=pen_color,
-                                            name=data_labels[ii])
-                )
-                fit_curves.append(widget.plot_widget.plot())
-                fit_curves[-1].setPen('r')
+            for name in new_plots:
+                x, y = data[name]
+                color = next(color_cycler)
+                widget.plot(x=x,
+                            y=y,
+                            pen=color,
+                            symbol='d',
+                            symbolSize=6,
+                            symbolBrush=color,
+                            name=name)
         finally:
             self._color_cyclers[plot_index] = color_cycler
-            self._plot_curves[plot_index] = plot_curves
-            self._fit_curves[plot_index] = fit_curves
 
     def _update_plot_config(self,
                             plot_index: int,
-                            config: Optional[Mapping[str, Any]] = None
+                            config: Optional[QDPlotConfig] = None
                             ) -> None:
         """ Function updated limits, labels and units in the plot and parameter widgets. """
         if config is None:
@@ -453,9 +443,9 @@ class QDPlotterGui(GuiBase):
         widget = self._plot_dockwidgets[plot_index].widget()
         widget.blockSignals(True)
         try:
-            widget.set_labels(*config.get('labels', [None, None]))
-            widget.set_units(*config.get('units', [None, None]))
-            widget.set_limits(*config.get('limits', [None, None]))
+            widget.set_labels(*config.labels)
+            widget.set_units(*config.units)
+            widget.set_limits(*config.limits)
         finally:
             widget.blockSignals(False)
 

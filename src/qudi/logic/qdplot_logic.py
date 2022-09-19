@@ -42,36 +42,18 @@ class QDPlotConfig:
     def __init__(self,
                  labels: Optional[Tuple[str]] = None,
                  units: Optional[Tuple[str]] = None,
-                 limits: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None,
-                 data: Optional[Sequence[Tuple[Sequence[float], Sequence[float]]]] = None,
-                 data_labels: Optional[Sequence[str]] = None,
-                 auto_padding: Optional[float] = None
+                 limits: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
                  ) -> None:
+        super().__init__()
         self._labels = ('X', 'Y')
         self._units = ('arb.u.', 'arb.u.')
         self._limits = ((-0.5, 0.5), (-0.5, 0.5))
-        self._data = list()
-        self._data_labels = list()
-        self.auto_padding = 0.02 if auto_padding is None else float(auto_padding)
         if labels is not None:
             self.set_labels(*labels)
         if units is not None:
             self.set_units(*units)
         if limits is not None:
             self.set_limits(*limits)
-        if data is None:
-            self.add_data(data=np.zeros((2, 1)))
-        else:
-            for index, dataset in enumerate(data):
-                try:
-                    label = data_labels[index]
-                except (IndexError, TypeError, AttributeError):
-                    label = None
-                self.add_data(dataset, label=label)
-
-    @property
-    def dataset_count(self) -> int:
-        return len(self._data_labels)
 
     @property
     def labels(self) -> Tuple[str, str]:
@@ -84,21 +66,6 @@ class QDPlotConfig:
     @property
     def limits(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         return self._limits
-
-    @property
-    def data_labels(self) -> List[str]:
-        return self._data_labels.copy()
-
-    @property
-    def data(self) -> List[np.ndarray]:
-        return self._data.copy()
-
-    @property
-    def config(self) -> Dict[str, Any]:
-        return {'labels'     : self.labels,
-                'units'      : self.units,
-                'limits'     : self.limits,
-                'data_labels': self.data_labels}
 
     def set_labels(self, x: Optional[str] = None, y: Optional[str] = None) -> None:
         self._labels = (self._labels[0] if x is None else str(x),
@@ -118,78 +85,114 @@ class QDPlotConfig:
             raise ValueError('x and y limits must be 2-item-tuples (min, max)')
         self._limits = (x, y)
 
-    def set_auto_limits(self, x: Optional[bool] = None, y: Optional[bool] = None) -> None:
-        if self._data:
-            if x:
-                x_min = min(x_data.min() for x_data, _ in self._data)
-                x_max = max(x_data.max() for x_data, _ in self._data)
-                padding = 0.5 if x_min == x_max else self.auto_padding * (x_max - x_min)
-                self.set_limits(x=(x_min - padding, x_max + padding))
-            if y:
-                y_min = min(y_data.min() for _, y_data in self._data)
-                y_max = max(y_data.max() for _, y_data in self._data)
-                padding = 0.5 if y_min == y_max else self.auto_padding * (y_max - y_min)
-                self.set_limits(y=(y_min - padding, y_max + padding))
-
-    def add_data(self,
-                 data: Union[np.ndarray, Tuple[Sequence[float], Sequence[float]]],
-                 label: Optional[str] = None
-                 ) -> None:
-        index = len(self._data)
-        self._data.append(None)
-        self._data_labels.append(f'Dataset {index+1:d}')
-        try:
-            self.set_data(index=index, data=data, label=label)
-        except:
-            self.remove_data(-1)
-            raise
-
-    def remove_data(self, index: int) -> None:
-        del self._data[index]
-        del self._data_labels[index]
-
-    def clear_data(self) -> None:
-        """
-        """
-        try:
-            while True:
-                self.remove_data(-1)
-        except IndexError:
-            pass
-
-    def set_data(self,
-                 index: int,
-                 data: Union[np.ndarray, Tuple[Sequence[float], Sequence[float]]],
-                 label: Optional[str] = None
-                 ) -> None:
-        if len(data[0]) != len(data[1]):
-            raise ValueError('Data must contain x and y array of equal length')
-        if len(data[0]) == 0:
-            return
-        self._data[index] = np.asarray(data)
-        if label is not None:
-            self.set_data_label(index=index, label=label)
-
-    def set_data_label(self, index: int, label: str) -> None:
-        if not isinstance(label, str):
-            raise TypeError('data_label must be str type')
-        self._data_labels[index] = str(label)
-
     def __copy__(self) -> object:
         return self.copy()
 
     def copy(self) -> object:
-        return QDPlotConfig(**self.to_dict())
+        return self.from_dict(self.to_dict())
 
     def to_dict(self) -> Dict[str, Any]:
-        params = self.config
-        params['auto_padding'] = self.auto_padding
-        params['data'] = self.data
-        return params
+        return {'labels': self.labels,
+                'units' : self.units,
+                'limits': self.limits}
 
     @classmethod
     def from_dict(cls, init_dict: Mapping[str, Any]) -> object:
         return cls(**init_dict)
+
+
+class QDPlotDataSet:
+    """
+    """
+
+    def __init__(self,
+                 data: Optional[Mapping[str, Tuple[np.ndarray, np.ndarray]]] = None,
+                 config: Optional[QDPlotConfig] = None
+                 ) -> None:
+        super().__init__()
+        self._data = dict()
+        self._config = config if isinstance(config, QDPlotConfig) else QDPlotConfig()
+
+        self.set_units = self._config.set_units
+        self.set_labels = self._config.set_labels
+        self.set_limits = self._config.set_limits
+
+        if data is not None:
+            for name, arr in data.items():
+                self.add_data(name, arr)
+
+    @property
+    def labels(self) -> Tuple[str, str]:
+        return self._config.labels
+
+    @property
+    def units(self) -> Tuple[str, str]:
+        return self._config.units
+
+    @property
+    def limits(self) -> Tuple[Tuple[float, float], Tuple[float, float]]:
+        return self._config.limits
+
+    @property
+    def data(self) -> Dict[str, np.ndarray]:
+        return self._data.copy()
+
+    @property
+    def config(self) -> QDPlotConfig:
+        return self._config.copy()
+
+    def add_data(self, name: str, data: Tuple[np.ndarray, np.ndarray]) -> None:
+        if name in self._data:
+            raise ValueError(f'data with name tag "{name}" already present in QDPlotDataSet')
+        self._set_data(name, data)
+
+    def remove_data(self, name: str) -> None:
+        if name not in self._data:
+            raise ValueError(f'No data with name tag "{name}" present in QDPlotDataSet')
+        del self._data[name]
+
+    def set_data(self, name: str, data: Tuple[np.ndarray, np.ndarray]) -> None:
+        if name not in self._data:
+            raise ValueError(f'No data with name tag "{name}" present in QDPlotDataSet')
+        self._set_data(name, data)
+
+    def clear_data(self) -> None:
+        self._data.clear()
+
+    def _set_data(self, name: str, data: Tuple[np.ndarray, np.ndarray]) -> None:
+        if len(data) != 2:
+            raise ValueError('Data must be length 2 iterable containing x- and y-data arrays')
+        if len(data[0]) != len(data[1]):
+            raise ValueError('x- and y-data arrays must be of same length')
+        self._data[name] = np.asarray(data)
+
+    def autoscale_limits(self, x: Optional[bool] = None, y: Optional[bool] = None) -> None:
+        x_lim, y_lim = self.limits
+        if x:
+            try:
+                x_min = min([x_data.min() for x_data, _ in self._data.values()])
+                x_max = max([x_data.max() for x_data, _ in self._data.values()])
+            except ValueError:
+                x_lim = (-0.5, 0.5)
+            else:
+                if x_min == x_max:
+                    x_lim = (-0.5, 0.5)
+                else:
+                    x_range = x_max - x_min
+                    x_lim = (x_min - 0.5 * x_range, x_max + 0.5 * x_range)
+        if y:
+            try:
+                y_min = min([y_data.min() for _, y_data in self._data.values()])
+                y_max = max([y_data.max() for _, y_data in self._data.values()])
+            except ValueError:
+                y_lim = (-0.5, 0.5)
+            else:
+                if y_min == y_max:
+                    y_lim = (-0.5, 0.5)
+                else:
+                    y_range = y_max - y_min
+                    y_lim = (y_min - 0.5 * y_range, y_max + 0.5 * y_range)
+        self._config.set_limits(x_lim, y_lim)
 
 
 class QDPlotFitContainer(FitContainer):
@@ -201,7 +204,7 @@ class QDPlotFitContainer(FitContainer):
         super().__init__(*args, **kwargs)
 
         self._last_fit_results = list()
-        self._plot_config = None
+        self._data_set = None
 
     @property
     def last_fits(self):
@@ -210,12 +213,12 @@ class QDPlotFitContainer(FitContainer):
 
     def fit_plot_config(self,
                         fit_config: str,
-                        plot_config: QDPlotConfig
+                        data_set: QDPlotDataSet
                         ) -> Tuple[str, List[_ModelResult]]:
         results = list()
         self.blockSignals(True)
         try:
-            for x_data, y_data in plot_config.data:
+            for x_data, y_data in data_set.data.values():
                 # only fit if the is enough data to actually do the fit
                 if (len(x_data) < 2) or (len(y_data) < 2) or (np.min(x_data) == np.max(x_data)):
                     results.append(None)
@@ -224,18 +227,19 @@ class QDPlotFitContainer(FitContainer):
         finally:
             self.blockSignals(False)
         self._last_fit_results = results
-        self._plot_config = plot_config
+        self._data_set = data_set
         self.sigLastFitResultChanged.emit(self._last_fit_config, self._last_fit_results)
         return self._last_fit_config, self._last_fit_results.copy()
 
     def formatted_result(self, fit_result, parameters_units=None):
         try:
             result_str = ''
+            names = list(self._data_set.data) if self._data_set else list()
             for ii, result in enumerate(fit_result):
                 single_result_str = FitContainer.formatted_result(result, parameters_units)
                 if single_result_str:
                     tabbed_result = '\n  '.join(single_result_str.split('\n'))
-                    result_str += f'{self._plot_config.data_labels[ii]}:\n  {tabbed_result}\n'
+                    result_str += f'{names[ii]}:\n  {tabbed_result}\n'
             return result_str
         except TypeError:
             return FitContainer.formatted_result(fit_result, parameters_units)
@@ -257,8 +261,8 @@ class QDPlotLogic(LogicBase):
         options:
             default_plot_number: 3
     """
-    sigPlotDataChanged = QtCore.Signal(int, list, list)  # plot_index, data_array, data_labels
-    sigPlotConfigChanged = QtCore.Signal(int, dict)  # plot_index, config_dict
+    sigPlotDataChanged = QtCore.Signal(int, dict)  # plot_index, data_dict
+    sigPlotConfigChanged = QtCore.Signal(int, object)  # plot_index, QDPlotConfig
     sigPlotAdded = QtCore.Signal()
     sigPlotRemoved = QtCore.Signal(int)  # plot_index
     sigFitChanged = QtCore.Signal(int, str, list)  # plot_index, fit_name, fit_results
@@ -273,7 +277,7 @@ class QDPlotLogic(LogicBase):
         # locking for thread safety
         self._thread_lock = Mutex()
 
-        self._plot_configs = list()
+        self._plot_data_sets = list()
         self._fit_containers = list()
 
     def on_activate(self):
@@ -284,7 +288,7 @@ class QDPlotLogic(LogicBase):
             self._default_plot_count = 1
 
         self._fit_containers = list()
-        self._plot_configs = list()
+        self._plot_data_sets = list()
 
         self._set_plot_count(self._default_plot_count)
 
@@ -314,36 +318,35 @@ class QDPlotLogic(LogicBase):
             return self._fit_containers.copy()
 
     @property
-    def plot_configs(self) -> List[Dict[str, Any]]:
+    def plot_configs(self) -> List[QDPlotConfig]:
         with self._thread_lock:
-            return [cfg.config for cfg in self._plot_configs]
+            return [data_set.config for data_set in self._plot_data_sets]
 
     @property
     def plot_count(self) -> int:
-        return len(self._plot_configs)
+        return len(self._plot_data_sets)
 
-    def get_plot_config(self, plot_index: int) -> Dict[str, Any]:
+    def get_plot_config(self, plot_index: int) -> QDPlotConfig:
         """ Returns a copy of the actual QDPlotConfig corresponding to the given plot_index """
         with self._thread_lock:
             return self._get_plot_config(plot_index).config
 
-    def _get_plot_config(self, plot_index: int) -> QDPlotConfig:
+    def _get_plot_data_set(self, plot_index: int) -> QDPlotDataSet:
         try:
-            plot_config = self._plot_configs[plot_index]
+            data_set = self._plot_data_sets[plot_index]
         except IndexError:
-            plot_config = None
-        if plot_config is None:
+            data_set = None
+        if data_set is None:
             raise IndexError(f'Plot index {plot_index:d} out of bounds. To add a new plot, '
                              f'call set_plot_count(int) or add_plot() first.')
-        return plot_config
+        return data_set
 
     def add_plot(self) -> None:
         with self._thread_lock:
             self._add_plot()
 
     def _add_plot(self) -> None:
-        plot_config = QDPlotConfig()
-        self._plot_configs.append(plot_config)
+        self._plot_data_sets.append(QDPlotDataSet())
         self._fit_containers.append(
             QDPlotFitContainer(parent=self, config_model=self._fit_config_model)
         )
@@ -354,7 +357,7 @@ class QDPlotLogic(LogicBase):
             self._remove_plot(plot_index)
 
     def _remove_plot(self, plot_index: int) -> None:
-        del self._plot_configs[plot_index]
+        del self._plot_data_sets[plot_index]
         del self._fit_containers[plot_index]
         self.sigPlotRemoved.emit(plot_index)
 
@@ -371,74 +374,40 @@ class QDPlotLogic(LogicBase):
         while self.plot_count > plot_count:
             self._remove_plot()
 
-    def get_data(self, plot_index: int) -> List[np.ndarray]:
+    def get_data(self, plot_index: int) -> Dict[str, np.ndarray]:
         with self._thread_lock:
             return self._get_data(plot_index)
 
-    def _get_data(self, plot_index: int) -> List[np.ndarray]:
-        return self._get_plot_config(plot_index).data
+    def _get_data(self, plot_index: int) -> Dict[str, np.ndarray]:
+        return self._get_plot_data_set(plot_index).data
 
-    def get_x_data(self, plot_index: int) -> List[np.ndarray]:
+    def get_x_data(self, plot_index: int) -> Dict[str, np.ndarray]:
         """ Get the data of the x-axis being plotted """
         with self._thread_lock:
-            return [data for (data, _) in self._get_data(plot_index)]
+            return {name: data for name, (data, _) in self._get_data(plot_index).items()}
 
-    def get_y_data(self, plot_index: Optional[int] = None) -> List[np.ndarray]:
+    def get_y_data(self, plot_index: Optional[int] = None) -> Dict[str, np.ndarray]:
         """ Get the data of the y-axis being plotted """
         with self._thread_lock:
-            return [data for (_, data) in self._get_data(plot_index)]
+            return {name: data for name, (_, data) in self._get_data(plot_index).items()}
 
     def set_data(self,
                  plot_index: int,
-                 x: Union[Sequence[Sequence[float]], Sequence[float]],
-                 y: Union[Sequence[Sequence[float]], Sequence[float]],
-                 label: Optional[Union[str, Sequence[str]]] = None,
+                 data: Mapping[str, Tuple[np.ndarray, np.ndarray]],
                  clear_old: Optional[bool] = True,
                  adjust_scale: Optional[bool] = True
                  ) -> None:
-        """ Set the data to plot
-
-        @param np.ndarray or list of np.ndarrays x: data of independents variable(s)
-        @param np.ndarray or list of np.ndarrays y: data of dependent variable(s)
-        @param string or list of strings label: label of the added data set
-        @param bool clear_old: clear old plots in GUI if True
-        @param int plot_index: index of the plot in the range from 0 to 2
-        @param bool adjust_scale: Whether auto-scale should be performed after adding data or not.
-        """
-        # check if input is only an array (single plot) or a list of arrays (multiple plots)
-        try:
-            len(x[0])
-        except TypeError:
-            x = [x]
-        try:
-            len(y[0])
-        except TypeError:
-            y = [y]
-        if label is None:
-            label = [None] * len(x)
-        elif isinstance(label, str):
-            label = [label]
-
-        if not (len(x) == len(y) == len(label)):
-            raise ValueError(f'Number of x ({len(x)}) and y ({len(y)}) datasets as well as '
-                             f'optional labels does not match')
-        if not all(len(x_arr) == len(y[ii]) for ii, x_arr in enumerate(x)):
-            raise ValueError('Each set of x- and y-data arrays must have matching length')
-
+        """ Set the data to plot """
         with self._thread_lock:
-            # Update data in selected QDPlotConfig
-            plot_config = self._get_plot_config(plot_index)
+            data_set = self._get_plot_data_set(plot_index)
             if clear_old:
-                plot_config.clear_data()
+                data_set.clear_data()
                 # reset fits for this plot
                 self._do_fit(plot_index, 'No Fit')
                 self.sigFitChanged.emit(plot_index, *self._fit_containers[plot_index].last_fits)
-            for ii, x_data in enumerate(x):
-                plot_config.add_data(data=[x_data, y[ii]], label=label[ii])
-
-            self.sigPlotDataChanged.emit(plot_index,
-                                         plot_config.data,
-                                         plot_config.data_labels)
+            for name, arr in data.items():
+                data_set.set_data(name, arr)
+            self.sigPlotDataChanged.emit(plot_index, data_set.data)
 
             # automatically set the correct range if requested
             if adjust_scale:
@@ -458,11 +427,11 @@ class QDPlotLogic(LogicBase):
             return self._do_fit(plot_index, fit_config)
 
     def _do_fit(self, plot_index: int, fit_config: str) -> List[Union[None, _ModelResult]]:
-        plot_config = self._get_plot_config(plot_index)
+        data_set = self._get_plot_data_set(plot_index)
         fit_container = self._fit_containers[plot_index]
         # do one fit for each data set in the plot
         fit_config, fit_results = fit_container.fit_plot_config(fit_config=fit_config,
-                                                                plot_config=plot_config)
+                                                                data_set=data_set)
         self.sigFitChanged.emit(plot_index, fit_config, fit_results)
         return fit_results
 
@@ -473,15 +442,11 @@ class QDPlotLogic(LogicBase):
     def _get_fit_results(self, plot_index: int) -> Tuple[str, List[Union[None, _ModelResult]]]:
         return self._fit_containers[plot_index].last_fits
 
-    def get_limits(self,
-                   plot_index: int
-                   ) -> Tuple[Union[None, Tuple[float, float]], Union[None, Tuple[float, float]]]:
+    def get_limits(self, plot_index: int) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         with self._thread_lock:
             return self._get_limits(plot_index)
 
-    def _get_limits(self,
-                    plot_index: int
-                    ) -> Tuple[Union[None, Tuple[float, float]], Union[None, Tuple[float, float]]]:
+    def _get_limits(self, plot_index: int) -> Tuple[Tuple[float, float], Tuple[float, float]]:
         return self._get_plot_config(plot_index).limits
 
     def set_limits(self,
@@ -497,13 +462,13 @@ class QDPlotLogic(LogicBase):
                     x: Optional[Tuple[float, float]] = None,
                     y: Optional[Tuple[float, float]] = None
                     ) -> None:
-        plot_config = self._get_plot_config(plot_index)
-        old_limits = plot_config.limits
-        plot_config.set_limits(x, y)
-        if plot_config.limits != old_limits:
-            self.sigPlotConfigChanged.emit(plot_index, plot_config.config)
+        data_set = self._get_plot_data_set(plot_index)
+        old_limits = data_set.limits
+        data_set.set_limits(x, y)
+        if data_set.limits != old_limits:
+            self.sigPlotConfigChanged.emit(plot_index, data_set.config)
 
-    def get_x_limits(self, plot_index: int) -> Union[None, Tuple[float, float]]:
+    def get_x_limits(self, plot_index: int) -> Tuple[float, float]:
         """ Get the limits of the x-axis being plotted """
         return self.get_limits(plot_index)[0]
 
@@ -511,7 +476,7 @@ class QDPlotLogic(LogicBase):
         """ Set the x_limits to a specified new range """
         return self.set_limits(plot_index, x=limits)
 
-    def get_y_limits(self, plot_index: int) -> Union[None, Tuple[float, float]]:
+    def get_y_limits(self, plot_index: int) -> Tuple[float, float]:
         """ Get the limits of the y-axis being plotted """
         return self.get_limits(plot_index)[1]
 
@@ -532,17 +497,17 @@ class QDPlotLogic(LogicBase):
                          x: Optional[bool] = None,
                          y: Optional[bool] = None
                          ) -> None:
-        plot_config = self._get_plot_config(plot_index)
-        plot_config.set_auto_limits(x, y)
+        data_set = self._get_plot_data_set(plot_index)
+        data_set.autoscale_limits(x, y)
         if (x is True) or (y is True):
-            self.sigPlotConfigChanged.emit(plot_index, plot_config.config)
+            self.sigPlotConfigChanged.emit(plot_index, data_set.config)
 
     def get_labels(self, plot_index: int) -> Tuple[str, str]:
         with self._thread_lock:
             return self._get_labels(plot_index)
 
     def _get_labels(self, plot_index: int) -> Tuple[str, str]:
-        return self._get_plot_config(plot_index).labels
+        return self._get_plot_data_set(plot_index).labels
 
     def set_labels(self, plot_index: int, x: Optional[str] = None, y: Optional[str] = None) -> None:
         with self._thread_lock:
@@ -553,11 +518,11 @@ class QDPlotLogic(LogicBase):
                     x: Optional[str] = None,
                     y: Optional[str] = None
                     ) -> None:
-        plot_config = self._get_plot_config(plot_index)
-        old_labels = plot_config.labels
-        plot_config.set_labels(x, y)
-        if plot_config.labels != old_labels:
-            self.sigPlotConfigChanged.emit(plot_index, plot_config.config)
+        data_set = self._get_plot_data_set(plot_index)
+        old_labels = data_set.labels
+        data_set.set_labels(x, y)
+        if data_set.labels != old_labels:
+            self.sigPlotConfigChanged.emit(plot_index, data_set.config)
 
     def get_x_label(self, plot_index: int) -> str:
         """ Get the label of the x-axis being plotted """
@@ -581,14 +546,14 @@ class QDPlotLogic(LogicBase):
             return self._get_data_labels(plot_index)
 
     def _get_data_labels(self, plot_index: int) -> List[str]:
-        return self._get_plot_config(plot_index).data_labels
+        return list(self._get_plot_data_set(plot_index).data)
 
     def get_units(self, plot_index: int) -> Tuple[str, str]:
         with self._thread_lock:
             return self._get_units(plot_index)
 
     def _get_units(self, plot_index: int) -> Tuple[str, str]:
-        return self._get_plot_config(plot_index).units
+        return self._get_plot_data_set(plot_index).units
 
     def set_units(self,
                   plot_index: int,
@@ -599,11 +564,11 @@ class QDPlotLogic(LogicBase):
             return self._set_units(plot_index, x, y)
 
     def _set_units(self, plot_index: int, x: Optional[str] = None, y: Optional[str] = None) -> None:
-        plot_config = self._get_plot_config(plot_index)
-        old_units = plot_config.units
-        plot_config.set_units(x, y)
-        if plot_config.units != old_units:
-            self.sigPlotConfigChanged.emit(plot_index, plot_config.config)
+        data_set = self._get_plot_data_set(plot_index)
+        old_units = data_set.units
+        data_set.set_units(x, y)
+        if data_set.units != old_units:
+            self.sigPlotConfigChanged.emit(plot_index, data_set.config)
 
     def get_x_unit(self, plot_index: int) -> str:
         """ Get the unit of the x-axis being plotted """
@@ -621,11 +586,11 @@ class QDPlotLogic(LogicBase):
         """ Set the unit of the y-axis being plotted """
         return self.set_units(plot_index, y=unit)
 
-    def set_plot_config(self, plot_index: int, params: Mapping[str, Any]) -> None:
-        with self._thread_lock:
-            self._set_limits(plot_index, *params.get('limits', [None, None]))
-            self._set_labels(plot_index, *params.get('labels', [None, None]))
-            self._set_units(plot_index, *params.get('units', [None, None]))
+    # def set_plot_config(self, plot_index: int, params: Mapping[str, Any]) -> None:
+    #     with self._thread_lock:
+    #         self._set_limits(plot_index, *params.get('limits', [None, None]))
+    #         self._set_labels(plot_index, *params.get('labels', [None, None]))
+    #         self._set_units(plot_index, *params.get('units', [None, None]))
 
     def save_data(self, plot_index: int, postfix: Optional[str] = None) -> None:
         """ Save data of a single plot to file.
@@ -639,47 +604,48 @@ class QDPlotLogic(LogicBase):
     def _save_data(self, plot_index: int, postfix: Optional[str] = None) -> None:
         """
         """
-        plot_config = self._get_plot_config(plot_index)
+        data_set = self._get_plot_data_set(plot_index)
         fit_container = self._fit_containers[plot_index]
-        if not plot_config.data:
+        if not data_set.data:
             self.log.warning(f'No datasets found in plot with index {plot_index:d}. Save aborted.')
             return
 
         # Set the parameters:
-        parameters = {'x-limits'   : plot_config.limits[0],
-                      'y-limits'   : plot_config.limits[1],
-                      'x-label'    : plot_config.labels[0],
-                      'y-label'    : plot_config.labels[1],
-                      'x-unit'     : plot_config.units[0],
-                      'y-unit'     : plot_config.units[1],
-                      'data-labels': plot_config.data_labels}
+        parameters = {'x-limits'   : data_set.limits[0],
+                      'y-limits'   : data_set.limits[1],
+                      'x-label'    : data_set.labels[0],
+                      'y-label'    : data_set.labels[1],
+                      'x-unit'     : data_set.units[0],
+                      'y-unit'     : data_set.units[1],
+                      'data-labels': list(data_set.data)}
 
         # If there is a postfix then add separating underscore
         file_label = postfix if postfix else 'qdplot'
-        file_label += f'_plot_{self._plot_configs.index(plot_config) + 1:d}'
+        file_label += f'_plot_{self._plot_data_sets.index(data_set) + 1:d}'
 
         # Data labels
-        x_label = f'{plot_config.labels[0]} ({plot_config.units[0]})'
-        y_label = f'{plot_config.labels[1]} ({plot_config.units[1]})'
+        x_label = f'{data_set.labels[0]} ({data_set.units[0]})'
+        y_label = f'{data_set.labels[1]} ({data_set.units[1]})'
 
         # Arrange data to save in a container and save to file
         # Make sure all data arrays have same shape. If this is not the case, you must pad the
         # array to save with NaN values or save each dataset to a separate file.
-        if any(data.shape != plot_config.data[0].shape for data in plot_config.data):
+        data = list(data_set.data.values())
+        if any(arr.shape != data[0].shape for arr in data):
             self.log.warning(f'Datasets with unequal length encountered in plot with index '
                              f'{plot_index:d}. Data to save will be padded with NaN values which '
                              f'is inefficient and tedious to work with. Make sure to use equal '
                              f'length datasets per individual plot.')
-            max_length = max(data.shape[1] for data in plot_config.data)
-            save_data = np.full((plot_config.dataset_count * 2, max_length), np.nan)
-            for data_set, data in enumerate(plot_config.data):
-                offset = data_set * 2
-                save_data[offset:offset + 2, :data.shape[1]] = data
+            max_length = max(arr.shape[1] for arr in data)
+            save_data = np.full((len(data) * 2, max_length), np.nan)
+            for ii, arr in enumerate(data):
+                offset = ii * 2
+                save_data[offset:offset + 2, :arr.shape[1]] = arr
         else:
-            save_data = np.row_stack(plot_config.data)
+            save_data = np.row_stack(data)
 
         header = list()
-        for data_set, _ in enumerate(plot_config.data, 1):
+        for ii, _ in enumerate(data, 1):
             header.append(f'{x_label} set {data_set:d}')
             header.append(f'{y_label} set {data_set:d}')
 
@@ -693,18 +659,18 @@ class QDPlotLogic(LogicBase):
                                        nametag=file_label)
 
         # plot graph and save as image alongside data file
-        fig = self._plot_figure(plot_config, fit_container, x_label, y_label)
+        fig = self._plot_figure(data_set, fit_container, x_label, y_label)
         ds.save_thumbnail(fig, file_path=file_path.rsplit('.', 1)[0])
 
         self.log.debug(f'Data saved to: {file_path}')
 
     def save_all_data(self, postfix: Optional[str] = None) -> None:
         with self._thread_lock:
-            for plot_index, _ in enumerate(self._plot_configs):
+            for plot_index, _ in enumerate(self._plot_data_sets):
                 self._save_data(plot_index, postfix)
 
     @staticmethod
-    def _plot_figure(plot_config: QDPlotConfig,
+    def _plot_figure(data_set: QDPlotDataSet,
                      fit_container: QDPlotFitContainer,
                      x_label: str,
                      y_label: str
@@ -714,20 +680,19 @@ class QDPlotLogic(LogicBase):
         fit_data = [None if result is None else result.high_res_best_fit for result in fit_results]
         fit_result_str = fit_container.formatted_result(fit_results)
         if not fit_data:
-            fit_data = [None] * plot_config.dataset_count
+            fit_data = [None] * len(data_set.data)
 
         fig, ax1 = plt.subplots()
 
-        for data_set, (x_data, y_data) in enumerate(plot_config.data):
-            label = plot_config.data_labels[data_set]
+        for ii, (label, (x_data, y_data)) in enumerate(data_set.data.items()):
             ax1.plot(x_data,
                      y_data,
                      linestyle=':',
                      linewidth=1,
                      label=label)
-            if fit_data[data_set] is not None:
-                ax1.plot(fit_data[data_set][0],
-                         fit_data[data_set][1],
+            if fit_data[ii] is not None:
+                ax1.plot(fit_data[ii][0],
+                         fit_data[ii][1],
                          color='r',
                          marker='None',
                          linewidth=1.5,
@@ -781,8 +746,8 @@ class QDPlotLogic(LogicBase):
         ax1.set_xlabel(x_label)
         ax1.set_ylabel(y_label)
 
-        ax1.set_xlim(plot_config.limits[0])
-        ax1.set_ylim(plot_config.limits[1])
+        ax1.set_xlim(data_set.limits[0])
+        ax1.set_ylim(data_set.limits[1])
         ax1.legend()
 
         fig.tight_layout()
