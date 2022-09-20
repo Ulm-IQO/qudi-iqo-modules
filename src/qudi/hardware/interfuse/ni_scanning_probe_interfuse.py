@@ -447,7 +447,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
         #  TODO change interface
         """
-        # todo: get_scan data ussage for iterating __read_pos seems sketchy
+        # todo: get_scan data ussage for polling hw &iterating __read_pos seems sketchy
+        # => this hw file should implement it's own polling loop and provide updated ._scan_data
+        # when get_scan_data is called
         try:
             if not self.is_scan_running or not self._ni_finite_sampling_io().is_running:
                 return self._scan_data
