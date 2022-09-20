@@ -38,8 +38,8 @@ class SoftPIDController(PIDControllerInterface):
     softpid:
         module.Class: 'software_pid_controller.SoftPIDController'
         options:
-            process_value_channel: 'Power'
-            setpoint_channel: 'Speed'
+            process_value_channel: 'Voltage'
+            setpoint_channel: 'Power'
             # PID control value update interval (ms)
             timestep: 100
             # normalize process value to setpoint
