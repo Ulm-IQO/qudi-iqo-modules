@@ -26,9 +26,10 @@ import numpy as np
 from enum import Enum
 from functools import partial
 from itertools import cycle
-from PySide2 import QtCore
+from PySide2 import QtCore, QtGui
 from pyqtgraph import mkColor
-from typing import Optional, Mapping, Sequence, Union, Tuple, Any
+from typing import Optional, Mapping, Sequence, Union, Tuple, List
+from lmfit.model import ModelResult as _ModelResult
 
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -208,7 +209,7 @@ class QDPlotterGui(GuiBase):
             return PlotAlignment(0)
 
     @property
-    def pen_color_list(self):
+    def pen_color_list(self) -> List[QtGui.QColor]:
         return self._pen_color_list.copy()
 
     @pen_color_list.setter
@@ -240,7 +241,7 @@ class QDPlotterGui(GuiBase):
     # GUI callback slots below
     ##########################
 
-    def restore_side_by_side_view(self):
+    def restore_side_by_side_view(self) -> None:
         """ Restore the arrangement of DockWidgets to the default """
         self._widget_alignment = PlotAlignment.side_by_side
         self._mw.setDockNestingEnabled(True)
@@ -255,7 +256,7 @@ class QDPlotterGui(GuiBase):
                              [1] * len(self._plot_dockwidgets),
                              QtCore.Qt.Horizontal)
 
-    def restore_arc_view(self):
+    def restore_arc_view(self) -> None:
         """ Restore the arrangement of DockWidgets to the default """
         self._widget_alignment = PlotAlignment.arc
         self._mw.setDockNestingEnabled(True)
@@ -285,7 +286,7 @@ class QDPlotterGui(GuiBase):
         else:
             self._mw.resizeDocks(resize_docks, [1, 1], QtCore.Qt.Horizontal)
 
-    def restore_tabbed_view(self):
+    def restore_tabbed_view(self) -> None:
         """ Restore the arrangement of DockWidgets to the default """
         self._widget_alignment = PlotAlignment.tabbed
         self._mw.setDockNestingEnabled(True)
@@ -303,7 +304,7 @@ class QDPlotterGui(GuiBase):
         except IndexError:
             pass
 
-    def restore_view(self, alignment: Optional[Union[str, int, PlotAlignment]] = None):
+    def restore_view(self, alignment: Optional[Union[str, int, PlotAlignment]] = None) -> None:
         """ Restore the arrangement of DockWidgets to the default """
         if alignment is None:
             alignment = self._widget_alignment
@@ -466,8 +467,8 @@ class QDPlotterGui(GuiBase):
 
     def _update_fit_data(self,
                          plot_index: int,
-                         fit_config: str = None,
-                         fit_results: dict = None
+                         fit_config: Optional[str] = None,
+                         fit_results: Optional[Mapping[str, Union[None, _ModelResult]]] = None
                          ) -> None:
         """ Function that handles the fit results received from the logic via a signal """
         if fit_config is None or fit_results is None:
