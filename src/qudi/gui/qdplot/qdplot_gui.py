@@ -467,7 +467,7 @@ class QDPlotterGui(GuiBase):
     def _update_fit_data(self,
                          plot_index: int,
                          fit_config: str = None,
-                         fit_results: list = None
+                         fit_results: dict = None
                          ) -> None:
         """ Function that handles the fit results received from the logic via a signal """
         if fit_config is None or fit_results is None:
