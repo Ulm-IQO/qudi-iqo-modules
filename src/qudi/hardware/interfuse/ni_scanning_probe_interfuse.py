@@ -253,7 +253,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                         scan_frequency=frequency,
                         position_feedback_axes=None
                     )
-                    self.log.debug(f"New scanData created: {self._scan_data.data}")
+                    #self.log.debug(f"New scanData created: {self._scan_data.data}")
 
                 except:
                     self.log.exception("")
@@ -303,7 +303,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._prepare_movement(position, velocity=velocity)
 
         self.__start_ao_write_timer()
-        self.log.debug("Move finished, returning target.")
+        #self.log.debug("Move finished, returning target.")
 
         return self.get_target()
 
@@ -348,14 +348,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def start_scan(self):
         try:
 
-            self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
+            #self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
 
             if self.thread() is not QtCore.QThread.currentThread():
                 QtCore.QMetaObject.invokeMethod(self, '_start_scan',
                                                 QtCore.Qt.BlockingQueuedConnection)
             else:
                 self._start_scan()
-            self.log.debug(f"Scan started in hw thread")
+            #self.log.debug(f"Scan started in hw thread")
 
         except:
             self.log.exception("")
@@ -379,13 +379,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             with self._thread_lock_data:
                 self._scan_data.new_scan()
 
-                self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
+                #self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
                 self._stored_target_pos = self.get_target().copy()
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
 
             # todo: scanning_probe_logic exits when scanner not locked right away
             # should rather ignore/wait until real hw timed scanning starts
-            self.log.debug(f"Locking module to start scan")
+            #self.log.debug(f"Locking module to start scan")
             # lock indicates scanning, not cursor movement
             self.module_state.lock()
 
@@ -403,7 +403,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def stop_scan(self):
 
-       self.log.debug(f"Stop scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
+       #self.log.debug(f"Stop scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
 
        if self.thread() is not QtCore.QThread.currentThread():
            QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
@@ -421,17 +421,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # FIXME Fix the mess of bool indicators, int return values etc in toolchain
         """
         try:
-            self.log.debug("Stopping scan...")
+            #self.log.debug("Stopping scan...")
             if self._ni_ao().is_active:
                 self._abort_cursor_movement()
-                self.log.debug("Move aborted")
+                #self.log.debug("Move aborted")
 
             if self._ni_finite_sampling_io().is_running:
                 self._ni_finite_sampling_io().stop_buffered_frame()
-                self.log.debug("Frame stopped")
+                #self.log.debug("Frame stopped")
 
             self.module_state.unlock()
-            self.log.debug("Module unlocked")
+            #self.log.debug("Module unlocked")
 
             self.move_absolute(self._stored_target_pos)
             self._stored_target_pos = dict()
@@ -521,7 +521,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def _fetch_data_line(self):
         samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
         # blocking until samples are ready
-        self.log.debug(f"Fetching data, line_idx {self.__read_pos}")
+        #self.log.debug(f"Fetching data, line_idx {self.__read_pos}")
         samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
         #self.log.debug(f"Samples = {samples_dict}")
         #self.log.debug(f"scanData: {self._scan_data.data}")
@@ -726,7 +726,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             if self.is_move_running:
                 self.__start_ao_write_timer()
             else:  # write_queue_empty
-                self.log.debug('Cursor move done')
+                #self.log.debug('Cursor move done')
                 self._interval_time_stamp = None
                 self._abort_cursor_movement()
 
@@ -738,7 +738,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def _start_hw_timed_scan(self):
 
-        self.log.debug("Starting hw timed scan")
+        #self.log.debug("Starting hw timed scan")
         try:
             self._ni_finite_sampling_io().start_buffered_frame()
         except Exception as e:
@@ -753,7 +753,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         Abort the movement, stop the timer and reset interval, release memory and asynchronisly (via timer) free ni_ao resources.
         """
 
-        self.log.debug(f"Aborting cursor move at pos= {self.get_position()}.")
+        #self.log.debug(f"Aborting cursor move at pos= {self.get_position()}.")
         self.__stop_ao_write_timer()
         #self._stop_cursor_hw()
         with self._thread_lock_cursor:
@@ -776,7 +776,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # FIXME When position is changed real fast one gets the QT warnings
         #  QObject::killTimer: Timers cannot be stopped from another thread
         #  QObject::startTimer: Timers cannot be started from another thread
-        self.log.debug(f"Preparing move in thread {QtCore.QThread.currentThread()}...")
+        #self.log.debug(f"Preparing move in thread {QtCore.QThread.currentThread()}...")
 
         try:
             self.__stop_ao_write_timer()   # todo: can we use nicer abort_cursor?
@@ -784,7 +784,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             if not self._ni_ao().is_active:
                 self._ni_ao().set_activity_state(True)
-                self.log.debug(f"AO activated")
+                #self.log.debug(f"AO activated")
 
             start_pos = self.get_position()
             constr = self.get_constraints()
@@ -801,7 +801,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             dist = np.sqrt(np.sum([(position[axis] - start_pos[axis]) ** 2 for axis in position]))
 
-            self.log.debug(f"Target: {position}, start: {start_pos}")
+            #self.log.debug(f"Target: {position}, start: {start_pos}")
 
             # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
             if velocity is not None and velocity <= self.__max_move_velocity:
@@ -822,9 +822,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                                         max(2, np.ceil(dist / granularity).astype('int'))
                                                         )[1:]  # Since start_pos is already taken
                                       for axis in position}
-                self.log.debug(f"Prepared {[len(self.__write_queue[key]) for key in self.__write_queue.keys()]} write queue steps "
-                               f" to target= {position}.")
-                self.log.debug(f"Write queue: {self.__write_queue}")
+                #self.log.debug(f"Prepared {[len(self.__write_queue[key]) for key in self.__write_queue.keys()]} write queue steps "
+                #               f" to target= {position}.")
+                #self.log.debug(f"Write queue: {self.__write_queue}")
             # TODO Keep other axis constant?
             # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
@@ -847,7 +847,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.exception("")
 
     def __stop_ao_write_timer(self):
-        self.log.debug(f"ao stop write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        #self.log.debug(f"ao stop write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
         try:
             if self.thread() is not QtCore.QThread.currentThread():
                 QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
@@ -856,7 +856,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             else:
                 self.__ni_ao_write_timer.stop()
 
-            self.log.debug("Stopped")
+            #self.log.debug("Stopped")
         except Exception as e:
             print(f"{str(e)}")
 
