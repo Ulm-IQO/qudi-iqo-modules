@@ -154,14 +154,11 @@ class Scan1DWidget(_BaseScanWidget):
 
     def set_scan_data(self, data: ScanData) -> None:
         # Save reference for channel changes
-        try:
-            update_range = (self._scan_data is None) or (self._scan_data.scan_range != data.scan_range) \
-                            or (self._scan_data.scan_resolution != data.scan_resolution)
-            self._scan_data = data
-            # Set data
-            self._update_scan_data(update_range=update_range)
-        except Exception as e:
-            logger.error(f"Couln't set scan data: {e}")
+        update_range = (self._scan_data is None) or (self._scan_data.scan_range != data.scan_range) \
+                        or (self._scan_data.scan_resolution != data.scan_resolution)
+        self._scan_data = data
+        # Set data
+        self._update_scan_data(update_range=update_range)
 
     @QtCore.Slot(dict)
     def _markers_changed(self, markers) -> None:
