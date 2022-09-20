@@ -378,12 +378,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         try:
             with self._thread_lock_data:
                 self._scan_data.new_scan()
-                # todo: pre fill to avoid weird auto scale behavior in confocal gui
-                # better way??
-                for ni_ch in self._scan_data.channels:
-                    self._scan_data.data[ni_ch][:] = -1
-                    # two values solve weird rescaling of colorbar, but even uglier
-                    # self._scan_data.data[ni_ch][-1] = 0
+
                 self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
                 self._stored_target_pos = self.get_target().copy()
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
