@@ -35,8 +35,9 @@ class SwitchLogic(LogicBase):
 
     switchlogic:
         module.Class: 'switch_logic.SwitchLogic'
-        watchdog_interval: 1  # optional
-        autostart_watchdog: True  # optional
+        options:
+            watchdog_interval: 1  # optional
+            autostart_watchdog: True  # optional
         connect:
             switch: <switch name>
     """

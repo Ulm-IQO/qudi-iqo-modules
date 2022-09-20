@@ -51,29 +51,30 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
     ni_finite_sampling_io:
         module.Class: 'ni_x_series.ni_x_series_finite_sampling_io.NIXSeriesFiniteSamplingIO'
-        device_name: 'Dev1'
-        input_channel_units:
-            PFI8: 'c/s'
-            PFI9: 'c/s'
-            ai0: 'V'
-            ai1: 'V'
-        output_channel_units: # Specify used output channels
-            'ao0': 'V'
-            'ao1': 'V'
-            'ao2': 'V'
-            'ao3': 'V'
-        adc_voltage_ranges:
-            ai0: [-10, 10]  # optional
-            ai1: [-10, 10]  # optional
-        output_voltage_ranges:
-            ao0: [-1.5, 1.5]
-            ao1: [-1.5, 1.5]
-            ao2: [0, 10.0]
-            ao3: [-10.0, 10.0]
-        frame_size_limits: [1, 1e9]  # optional #TODO actual HW constraint?
-        default_output_mode: 'JUMP_LIST' # optional, must be name of SamplingOutputMode
-        read_write_timeout: 10  # optional
-        sample_clock_output: '/Dev1/PFI11' # optional: routing of sample clock to a physical connection
+        options:
+            device_name: 'Dev1'
+            input_channel_units:
+                PFI8: 'c/s'
+                PFI9: 'c/s'
+                ai0: 'V'
+                ai1: 'V'
+            output_channel_units: # Specify used output channels
+                'ao0': 'V'
+                'ao1': 'V'
+                'ao2': 'V'
+                'ao3': 'V'
+            adc_voltage_ranges:
+                ai0: [-10, 10]  # optional
+                ai1: [-10, 10]  # optional
+            output_voltage_ranges:
+                ao0: [-1.5, 1.5]
+                ao1: [-1.5, 1.5]
+                ao2: [0, 10.0]
+                ao3: [-10.0, 10.0]
+            frame_size_limits: [1, 1e9]  # optional #TODO actual HW constraint?
+            default_output_mode: 'JUMP_LIST' # optional, must be name of SamplingOutputMode
+            read_write_timeout: 10  # optional
+            sample_clock_output: '/Dev1/PFI11' # optional: routing of sample clock to a physical connection
 
     """
 
