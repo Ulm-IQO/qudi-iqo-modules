@@ -650,25 +650,23 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'
 
             samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
+            pre_stop = not self.is_running
 
-            if self.is_running:
-                assert samples_to_read <= self._number_of_pending_samples, \
-                    f'Requested samples {samples_to_read} are more than the {self._number_of_pending_samples} ' \
-                    f'pending in frame'
-            else:
-                assert samples_to_read <= self._number_of_pending_samples, \
-                    'Requested samples are more than the pending after premature stop of frame'
+            if not samples_to_read <= self._number_of_pending_samples:
+                self.log.error(f"Requested {samples_to_read} samples, but not enough pending. "
+                               f"Premature stop: {pre_stop}. Returning empty data.")
+                samples_to_read = 0
 
-            if number_of_samples is not None and self.is_running:
+            if samples_to_read > 0 and self.is_running:
                 request_time = time.time()
                 # if number_of_samples > self.samples_in_buffer:
                 #     self.log.debug(f'Waiting for samples to become available since requested {number_of_samples} are more then '
                 #                    f'the {self.samples_in_buffer} in the buffer')
-                while number_of_samples > self.samples_in_buffer:
+                while samples_to_read > self.samples_in_buffer:
                     if time.time() - request_time < 1.1 * self.frame_size / self.sample_rate:  # TODO Is this timeout ok?
                         time.sleep(0.05)
                     else:
-                        raise TimeoutError(f'Acquiring {number_of_samples} samples took longer then the whole frame')
+                        raise TimeoutError(f'Acquiring {samples_to_read} samples took longer then the whole frame')
 
             data = dict()
 
