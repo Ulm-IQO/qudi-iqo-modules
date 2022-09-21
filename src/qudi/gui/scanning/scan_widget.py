@@ -180,10 +180,11 @@ class Scan1DWidget(_BaseScanWidget):
         self._update_scan_data(update_range=False)
 
     def _update_scan_data(self, update_range: bool) -> None:
-        if (self._scan_data is None) or (self._scan_data.data is None):
+        current_channel = self.channel_selection_combobox.currentText()
+        if (self._scan_data is None) or (self._scan_data.data is None) \
+                or (current_channel not in self._scan_data.channels):
             self.plot_item.clear()
         else:
-            current_channel = self.channel_selection_combobox.currentText()
             if update_range:
                 x_data = np.linspace(*self._scan_data.scan_range[0],
                                      self._scan_data.scan_resolution[0])
@@ -306,10 +307,11 @@ class Scan2DWidget(_BaseScanWidget):
         self._update_scan_data()
 
     def _update_scan_data(self) -> None:
-        if (self._scan_data is None) or (self._scan_data.data is None):
+        current_channel = self.channel_selection_combobox.currentText()
+        if (self._scan_data is None) or (self._scan_data.data is None) \
+            or (current_channel not in self._scan_data.channels):
             self.image_widget.set_image(None)
         else:
-            current_channel = self.channel_selection_combobox.currentText()
             self.image_widget.set_image(self._scan_data.data[current_channel])
             self.image_widget.set_image_extent(self._scan_data.scan_range,
                                                adjust_for_px_size=True)
