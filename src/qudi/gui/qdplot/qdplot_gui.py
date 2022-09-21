@@ -64,10 +64,11 @@ class QDPlotterGui(GuiBase):
             qdplot_logic: 'qdplotlogic'
     """
 
-    sigPlotConfigChanged = QtCore.Signal(int, object)       # plot_index, QDPlotConfig
+    sigPlotConfigChanged = QtCore.Signal(int, object)     # plot_index, QDPlotConfig
     sigAutoRangeClicked = QtCore.Signal(int, bool, bool)  # plot_index, scale_x, scale_y
     sigDoFit = QtCore.Signal(int, str)                    # plot_index, fit_config_name
     sigRemovePlotClicked = QtCore.Signal(int)             # plot_index
+    sigSaveData = QtCore.Signal(int, str)                 # plot index, postfix_string
 
     # declare connectors
     _qdplot_logic = Connector(interface='QDPlotLogic', name='qdplot_logic')
@@ -129,7 +130,7 @@ class QDPlotterGui(GuiBase):
         self._mw.action_restore_tabbed_view.triggered.connect(self.restore_tabbed_view)
         self._mw.action_restore_side_by_side_view.triggered.connect(self.restore_side_by_side_view)
         self._mw.action_restore_arced_view.triggered.connect(self.restore_arc_view)
-        self._mw.action_save_all.triggered.connect(logic.save_all_data, QtCore.Qt.DirectConnection)
+        self._mw.action_save_all.triggered.connect(self._save_all_clicked)
         self._mw.action_new_plot.triggered.connect(logic.add_plot, QtCore.Qt.QueuedConnection)
 
         # Initialize dock widgets
@@ -141,6 +142,7 @@ class QDPlotterGui(GuiBase):
         self.sigAutoRangeClicked.connect(logic.set_auto_limits, QtCore.Qt.QueuedConnection)
         self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
         self.sigRemovePlotClicked.connect(logic.remove_plot, QtCore.Qt.QueuedConnection)
+        self.sigSaveData.connect(logic.save_data, QtCore.Qt.BlockingQueuedConnection)
 
         # Connect signals from logic
         logic.sigPlotDataChanged.connect(self._update_data, QtCore.Qt.QueuedConnection)
@@ -348,11 +350,16 @@ class QDPlotterGui(GuiBase):
         self.sigAutoRangeClicked.emit(plot_index, x, y)
 
     def _save_clicked(self, dockwidget: PlotDockWidget) -> None:
+        self._plot_config_changed(dockwidget)
         try:
             plot_index = self._plot_dockwidgets.index(dockwidget)
         except ValueError:
             return
-        self._qdplot_logic().save_data(plot_index)
+        self.sigSaveData.emit(plot_index, '')
+
+    def _save_all_clicked(self) -> None:
+        for dockwidget in self._plot_dockwidgets:
+            self._save_clicked(dockwidget)
 
     def _remove_clicked(self, dockwidget: PlotDockWidget) -> None:
         try:
