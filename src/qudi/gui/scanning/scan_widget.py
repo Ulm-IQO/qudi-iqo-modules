@@ -22,7 +22,6 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ['Scan1DWidget', 'Scan2DWidget']
 
-import os
 import numpy as np
 from typing import Tuple, Union, Sequence
 from PySide2 import QtCore, QtWidgets, QtGui
@@ -30,7 +29,6 @@ from typing import Optional, List
 from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWidget
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
 from qudi.util.widgets.plotting.plot_item import XYPlotItem
-from qudi.util.paths import get_artwork_dir
 from qudi.interface.scanning_probe_interface import ScanData, ScannerAxis, ScannerChannel
 
 
@@ -52,18 +50,18 @@ class _BaseScanWidget(QtWidgets.QWidget):
         self.setLayout(layout)
 
         scan_icon = QtGui.QIcon()
-        scan_icon.addFile(os.path.join(get_artwork_dir(), 'icons', 'start-counter.svg'),
+        scan_icon.addFile(':/icons/start-counter',
                           QtCore.QSize(),
                           QtGui.QIcon.Normal,
                           QtGui.QIcon.Off)
-        scan_icon.addFile(os.path.join(get_artwork_dir(), 'icons', 'stop-counter.svg'),
+        scan_icon.addFile(':/icons/stop-counter',
                           QtCore.QSize(),
                           QtGui.QIcon.Normal,
                           QtGui.QIcon.On)
         self.toggle_scan_button = QtWidgets.QPushButton(scan_icon, 'Toggle Scan')
         self.toggle_scan_button.setCheckable(True)
 
-        save_icon = QtGui.QIcon(os.path.join(get_artwork_dir(), 'icons', 'document-save.svg'))
+        save_icon = QtGui.QIcon(':/icons/document-save')
         self.save_scan_button = QtWidgets.QPushButton(save_icon, '')
         self.save_scan_button.setCheckable(False)
 
