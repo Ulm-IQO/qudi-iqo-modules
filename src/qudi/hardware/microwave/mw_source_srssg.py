@@ -21,7 +21,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 import time
 import numpy as np
 
@@ -38,8 +41,9 @@ class MicrowaveSRSSG(MicrowaveInterface):
 
     mw_source_srssg:
         module.Class: 'microwave.mw_source_srssg.MicrowaveSRSSG'
-        visa_address: 'GPIB0::12::INSTR'
-        comm_timeout: 10
+        options:
+            visa_address: 'GPIB0::12::INSTR'
+            comm_timeout: 10
 
     """
 

@@ -31,12 +31,13 @@ class SwitchDummy(SwitchInterface):
 
     switch_dummy:
         module.Class: 'switches.switch_dummy.SwitchDummy'
-        name: 'First'  # optional
-        remember_states: True  # optional
-        switches:
-            one: ['down', 'up']
-            two: ['down', 'up']
-            three: ['low', 'middle', 'high']
+        options:
+            name: 'First'  # optional
+            remember_states: True  # optional
+            switches:
+                one: ['down', 'up']
+                two: ['down', 'up']
+                three: ['low', 'middle', 'high']
     """
 
     # ConfigOptions

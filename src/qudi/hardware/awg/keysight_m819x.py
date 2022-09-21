@@ -21,7 +21,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import re
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 import os
 import time
 import numpy as np
@@ -2090,12 +2093,13 @@ class AWGM8195A(AWGM819X):
 
           awg8195:
               module.Class: 'awg.keysight_M819x.AWGM8195A'
-              awg_visa_address: 'TCPIP0::localhost::hislip0::INSTR'
-              awg_timeout: 20
-              pulsed_file_dir: 'C:/Software/pulsed_files'               # asset directories should be equal
-              assets_storage_path: 'C:/Software/saved_pulsed_assets'    # to the ones in sequencegeneratorlogic
-              sample_rate_div: 1
-              awg_mode: 'MARK'
+              options:
+                  awg_visa_address: 'TCPIP0::localhost::hislip0::INSTR'
+                  awg_timeout: 20
+                  pulsed_file_dir: 'C:/Software/pulsed_files'               # asset directories should be equal
+                  assets_storage_path: 'C:/Software/saved_pulsed_assets'    # to the ones in sequencegeneratorlogic
+                  sample_rate_div: 1
+                  awg_mode: 'MARK'
       """
 
     awg_mode_cfg = ConfigOption(name='awg_mode', default='MARK', missing='warn')
@@ -2474,12 +2478,13 @@ class AWGM8190A(AWGM819X):
 
         awg8190:
             module.Class: 'awg.keysight_M819x.AWGM8190A'
-            awg_visa_address: 'TCPIP0::localhost::hislip0::INSTR'
-            awg_timeout: 20
-            pulsed_file_dir: 'C:/Software/pulsed_files'               # asset directories should be equal
-            assets_storage_path: 'C:/Software/aved_pulsed_assets'     # to the ones in sequencegeneratorlogic
-            sample_rate_div: 1
-            dac_resolution_bits: 14
+            options:
+                awg_visa_address: 'TCPIP0::localhost::hislip0::INSTR'
+                awg_timeout: 20
+                pulsed_file_dir: 'C:/Software/pulsed_files'               # asset directories should be equal
+                assets_storage_path: 'C:/Software/aved_pulsed_assets'     # to the ones in sequencegeneratorlogic
+                sample_rate_div: 1
+                dac_resolution_bits: 14
     """
 
     _dac_amp_mode = 'direct'    # see manual 1.2 'options'

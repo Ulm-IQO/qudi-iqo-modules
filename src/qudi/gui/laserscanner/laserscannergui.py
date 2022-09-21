@@ -45,7 +45,7 @@ class VoltScanMainWindow(QtWidgets.QMainWindow):
 
 class VoltScanGui(GuiBase):
     """
-
+    Todo: Documentation
     """
     
     # declare connectors

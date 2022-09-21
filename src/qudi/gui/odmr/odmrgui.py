@@ -34,7 +34,14 @@ from qudi.gui.odmr.odmr_settings_dialog import OdmrSettingsDialog
 
 class OdmrGui(GuiBase):
     """
-    This is the GUI Class for ODMR measurements
+    This is the GUI Class for ODMR measurements.
+
+    example config for copy-paste:
+
+    odmr_gui:
+        module.Class: 'odmr.odmrgui.OdmrGui'
+        connect:
+            odmr_logic: 'odmr_logic'
     """
 
     # declare connectors

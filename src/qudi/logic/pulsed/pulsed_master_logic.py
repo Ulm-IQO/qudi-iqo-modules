@@ -46,6 +46,14 @@ class PulsedMasterLogic(LogicBase):
     All calls to sub-module setter functions (PulsedMeasurementLogic and SequenceGeneratorLogic)
     are decoupled from the calling thread via Qt queued connections.
     This ensures a more intuitive and less error prone use of scripting.
+
+    Example config:
+
+    pulsed_master_logic:
+        module.Class: 'pulsed.pulsed_master_logic.PulsedMasterLogic'
+        connect:
+            pulsedmeasurementlogic: 'pulsed_measurement_logic'
+            sequencegeneratorlogic: 'sequence_generator_logic'
     """
 
     # declare connectors
