@@ -26,11 +26,11 @@ import numpy as np
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.configoption import ConfigOption
 from qudi.interface.process_control_interface import ProcessControlConstraints
-from qudi.interface.process_control_interface import ProcessSetpointInterface
-from qudi.interface.process_control_interface import ProcessValueInterface
+from qudi.interface.process_control_interface import ProcessControlInterface
+from qudi.interface.switch_interface import ProcessControlSwitchMixin
 
 
-class ProcessControlDummy(ProcessSetpointInterface, ProcessValueInterface):
+class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
     """ A dummy class to emulate a process control device (setpoints and process values)
 
     Example config for copy-paste:
@@ -89,8 +89,8 @@ class ProcessControlDummy(ProcessSetpointInterface, ProcessValueInterface):
         units.update({ch: d['unit'] for ch, d in self._process_value_channels.items() if 'unit' in d})
         limits = {ch: d['limits'] for ch, d in self._setpoint_channels.items() if 'limits' in d}
         limits.update({ch: d['limits'] for ch, d in self._process_value_channels.items() if 'limits' in d})
-        dtypes = {ch: d['dtype'] for ch, d in self._setpoint_channels.items() if 'dtype' in d}
-        dtypes.update({ch: d['dtype'] for ch, d in self._process_value_channels.items() if 'dtype' in d})
+        dtypes = {ch: eval(d['dtype']) for ch, d in self._setpoint_channels.items() if 'dtype' in d}
+        dtypes.update({ch: eval(d['dtype']) for ch, d in self._process_value_channels.items() if 'dtype' in d})
         self.__constraints = ProcessControlConstraints(
             setpoint_channels=tuple(self._setpoint_channels),
             process_channels=tuple(self._process_value_channels),
