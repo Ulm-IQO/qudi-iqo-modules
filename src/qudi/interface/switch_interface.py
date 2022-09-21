@@ -144,7 +144,7 @@ class ProcessControlSwitchMixin(SwitchInterface):
 
     @property
     def name(self) -> str:
-        return 'ProcessControlSwitch'
+        return self.module_name
 
     @property
     def available_states(self):
