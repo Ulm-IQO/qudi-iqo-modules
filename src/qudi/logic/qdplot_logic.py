@@ -134,7 +134,7 @@ class QDPlotDataSet(MutableMapping):
         return self._data[key]
 
     def __setitem__(self, key: str, value: Tuple[np.ndarray, np.ndarray]) -> None:
-        self.set_data(key, value)
+        self.set_data(value, key)
 
     def __delitem__(self, key: str) -> None:
         del self._data[key]
@@ -148,14 +148,17 @@ class QDPlotDataSet(MutableMapping):
         except KeyError as err:
             raise ValueError(f'No data with name tag "{name}" present in QDPlotDataSet') from err
 
-    def set_data(self, name: str, data: Tuple[np.ndarray, np.ndarray]) -> None:
-        if (not name) or (not isinstance(name, str)):
+    def set_data(self, data: Tuple[np.ndarray, np.ndarray], name: Optional[str] = None) -> str:
+        if name is None:
+            name = self._get_valid_generic_name()
+        elif (not name) or (not isinstance(name, str)):
             raise TypeError('data name must be non-empty str type value')
         if len(data) != 2:
             raise ValueError('Data must be length 2 iterable containing x- and y-data arrays')
         if len(data[0]) != len(data[1]):
             raise ValueError('x- and y-data arrays must be of same length')
         self._data[name] = np.asarray(data)
+        return name
 
     def clear(self) -> None:
         self._data.clear()
@@ -190,6 +193,12 @@ class QDPlotDataSet(MutableMapping):
                     padding = self._default_padding * (y_max - y_min)
                     y_lim = (y_min - padding, y_max + padding)
         self.config.set_limits(x_lim, y_lim)
+
+    def _get_valid_generic_name(self, index: Optional[int] = 1) -> str:
+        name = f'Dataset {index:d}'
+        if name in self._data:
+            return self._get_valid_generic_name(index + 1)
+        return name
 
     def to_dict(self) -> Dict[str, Any]:
         return {'data': self._data.copy(),
@@ -374,10 +383,11 @@ class QDPlotLogic(LogicBase):
 
     def set_data(self,
                  plot_index: int,
-                 data: Mapping[str, Tuple[np.ndarray, np.ndarray]],
-                 clear_old: Optional[bool] = True,
+                 data: Union[Tuple[np.ndarray, np.ndarray], Mapping[str, Tuple[np.ndarray, np.ndarray]]],
+                 name: Optional[str] = None,
+                 clear_old: Optional[bool] = False,
                  adjust_scale: Optional[bool] = True
-                 ) -> None:
+                 ) -> Union[None, str]:
         """ Set the data to plot """
         with self._thread_lock:
             data_set = self._get_plot_data_set(plot_index)
@@ -385,13 +395,20 @@ class QDPlotLogic(LogicBase):
                 data_set.clear()
                 # reset fits for this plot
                 self._do_fit(plot_index, 'No Fit')
-            data_set.update(data)
+            # Either accept single data array and name argument OR
+            # dict with array values and name keys
+            try:
+                for arr_name, arr in data.items():
+                    data_set.set_data(arr, name=arr_name)
+            except (TypeError, AttributeError):
+                name = data_set.set_data(data, name=name)
 
             self.sigPlotDataChanged.emit(plot_index, data_set.copy())
 
             # automatically set the correct range if requested
             if adjust_scale:
                 self._set_auto_limits(plot_index, True, True)
+            return name
 
     def do_fit(self, plot_index: int, fit_config: str) -> Dict[str, Union[None, _ModelResult]]:
         """ Perform desired fit on data of given plot_index.
