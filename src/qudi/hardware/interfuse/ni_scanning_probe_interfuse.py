@@ -107,17 +107,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._target_pos = dict()
         self._stored_target_pos = dict()
-        self._scan_start_indicator = False
+        self._start_scan_after_cursor = False
 
         self.__ni_ao_write_timer = None
-        self.__ni_ao_runout_timer = None
-        self._default_timer_interval = -1
+        self._default_timer_interval_ms = -1
         self._interval_time_stamp = None
 
         self.__read_pos = -1
+        self.__scan_stopped = False
 
-        self._thread_lock = RecursiveMutex()
-        # TODO According to @Neverhorst should rather use Mutex, but then scan does not start anymore
+        self._thread_lock_cursor = Mutex()
+        self._thread_lock_data = Mutex()
 
     def on_activate(self):
 
@@ -162,15 +162,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # Timer to free resources after pure ni ao
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
         self.__ni_ao_write_timer.setSingleShot(True)
-        self._default_timer_interval = 5  # in ms
-        self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+        self._default_timer_interval_ms = 5  # in ms
+        self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
-        self.__ni_ao_write_timer.timeout.connect(self.__ao_write_loop, QtCore.Qt.QueuedConnection)
+        self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
 
-        self.__ni_ao_runout_timer = QtCore.QTimer(parent=self)
-        self.__ni_ao_runout_timer.setSingleShot(True)
-        self.__ni_ao_runout_timer.setInterval(1000)
-        self.__ni_ao_runout_timer.timeout.connect(self.__deactivate_ao, QtCore.Qt.QueuedConnection)
 
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
 
@@ -178,13 +174,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
         Deactivate the module
         """
-        with self._thread_lock:
-            self.__stop_ao_write_timer()
-            self.__stop_ao_runout_timer()
+        self.__stop_ao_write_timer()
+
+        with self._thread_lock_cursor:
             self.__write_queue = dict()
-            self._ni_ao().set_activity_state(False)
-            if self._ni_finite_sampling_io().is_running:
-                self._ni_finite_sampling_io().stop_buffered_frame()
+
+        self._ni_ao().set_activity_state(False)
+        if self._ni_finite_sampling_io().is_running:
+            self._ni_finite_sampling_io().stop_buffered_frame()
 
     def get_constraints(self):
         """ Get hardware constraints/limitations.
@@ -208,46 +205,46 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                       altered ScanSettings instance (same as "settings")
         """
 
-        with self._thread_lock:
-            if self.is_running:
-                self.log.error('Unable to configure scan parameters while scan is running. '
-                               'Stop scanning and try again.')
-                return True, self.scan_settings
 
-            axes = scan_settings.get('axes', self._current_scan_axes)
-            ranges = tuple(
-                (min(r), max(r)) for r in scan_settings.get('range', self._current_scan_ranges)
-            )
-            resolution = scan_settings.get('resolution', self._current_scan_resolution)
-            frequency = float(scan_settings.get('frequency', self._current_scan_frequency))
+        if self.is_scan_running:
+            self.log.error('Unable to configure scan parameters while scan is running. '
+                           'Stop scanning and try again.')
+            return True, self.scan_settings
 
-            if not set(axes).issubset(self._position_ranges):
-                self.log.error('Unknown axes names encountered. Valid axes are: {0}'
-                               ''.format(set(self._position_ranges)))
-                return True, self.scan_settings
+        axes = scan_settings.get('axes', self._current_scan_axes)
+        ranges = tuple(
+            (min(r), max(r)) for r in scan_settings.get('range', self._current_scan_ranges)
+        )
+        resolution = scan_settings.get('resolution', self._current_scan_resolution)
+        frequency = float(scan_settings.get('frequency', self._current_scan_frequency))
 
-            if len(axes) != len(ranges) or len(axes) != len(resolution):
-                self.log.error('"axes", "range" and "resolution" must have same length.')
+        if not set(axes).issubset(self._position_ranges):
+            self.log.error('Unknown axes names encountered. Valid axes are: {0}'
+                           ''.format(set(self._position_ranges)))
+            return True, self.scan_settings
+
+        if len(axes) != len(ranges) or len(axes) != len(resolution):
+            self.log.error('"axes", "range" and "resolution" must have same length.')
+            return True, self.scan_settings
+        for i, ax in enumerate(axes):
+            for axis_constr in self._constraints.axes.values():
+                if ax == axis_constr.name:
+                    break
+            if ranges[i][0] < axis_constr.min_value or ranges[i][1] > axis_constr.max_value:
+                self.log.error('Scan range out of bounds for axis "{0}". Maximum possible range'
+                               ' is: {1}'.format(ax, axis_constr.value_range))
                 return True, self.scan_settings
-            for i, ax in enumerate(axes):
-                for axis_constr in self._constraints.axes.values():
-                    if ax == axis_constr.name:
-                        break
-                if ranges[i][0] < axis_constr.min_value or ranges[i][1] > axis_constr.max_value:
-                    self.log.error('Scan range out of bounds for axis "{0}". Maximum possible range'
-                                   ' is: {1}'.format(ax, axis_constr.value_range))
+            if resolution[i] < axis_constr.min_resolution or resolution[i] > axis_constr.max_resolution:
+                self.log.error('Scan resolution out of bounds for axis "{0}". Maximum possible '
+                               'range is: {1}'.format(ax, axis_constr.resolution_range))
+                return True, self.scan_settings
+            if i == 0:
+                if frequency < axis_constr.min_frequency or frequency > axis_constr.max_frequency:
+                    self.log.error('Scan frequency out of bounds for fast axis "{0}". Maximum '
+                                   'possible range is: {1}'
+                                   ''.format(ax, axis_constr.frequency_range))
                     return True, self.scan_settings
-                if resolution[i] < axis_constr.min_resolution or resolution[i] > axis_constr.max_resolution:
-                    self.log.error('Scan resolution out of bounds for axis "{0}". Maximum possible '
-                                   'range is: {1}'.format(ax, axis_constr.resolution_range))
-                    return True, self.scan_settings
-                if i == 0:
-                    if frequency < axis_constr.min_frequency or frequency > axis_constr.max_frequency:
-                        self.log.error('Scan frequency out of bounds for fast axis "{0}". Maximum '
-                                       'possible range is: {1}'
-                                       ''.format(ax, axis_constr.frequency_range))
-                        return True, self.scan_settings
-
+            with self._thread_lock_data:
                 try:
                     self._scan_data = ScanData(
                         channels=tuple(self._constraints.channels.values()),
@@ -257,35 +254,36 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                         scan_frequency=frequency,
                         position_feedback_axes=None
                     )
+                    #self.log.debug(f"New scanData created: {self._scan_data.data}")
 
-                except Exception as e:
-                    self.log.error(f'Error while initializing ScanData instance: {e}')
+                except:
+                    self.log.exception("")
                     return True, self.scan_settings
 
-                try:
-                    self._ni_finite_sampling_io().set_sample_rate(frequency)
-                    self._ni_finite_sampling_io().set_active_channels(
-                        input_channels=(self._ni_channel_mapping[in_ch] for in_ch in self._input_channel_units),
-                        output_channels=(self._ni_channel_mapping[ax] for ax in axes)
-                        # TODO Use all axes and keep the unused constant? basically just constants in ni scan dict.
-                    )
+            try:
+                self._ni_finite_sampling_io().set_sample_rate(frequency)
+                self._ni_finite_sampling_io().set_active_channels(
+                    input_channels=(self._ni_channel_mapping[in_ch] for in_ch in self._input_channel_units),
+                    output_channels=(self._ni_channel_mapping[ax] for ax in axes)
+                    # TODO Use all axes and keep the unused constant? basically just constants in ni scan dict.
+                )
 
-                    self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
+                self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
 
-                    ni_scan_dict = self._initialize_ni_scan_arrays(self._scan_data)
+                ni_scan_dict = self._initialize_ni_scan_arrays(self._scan_data)
 
-                    self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
+                self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
 
-                except Exception as e:
-                    self.log.error(f'Error while configuring Ni fsio hardware: {e}')
-                    return True, self.scan_settings
+            except:
+                self.log.exception("")
+                return True, self.scan_settings
 
-                self._current_scan_resolution = tuple(resolution)
-                self._current_scan_ranges = ranges
-                self._current_scan_axes = tuple(axes)
-                self._current_scan_frequency = frequency
+            self._current_scan_resolution = tuple(resolution)
+            self._current_scan_ranges = ranges
+            self._current_scan_axes = tuple(axes)
+            self._current_scan_frequency = frequency
 
-                return False, self.scan_settings
+            return False, self.scan_settings
 
     def move_absolute(self, position, velocity=None):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
@@ -295,7 +293,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
 
         # assert not self.is_running, 'Cannot move the scanner while, scan is running'
-        if self.is_running:
+        if self.is_scan_running:
             self.log.error('Cannot move the scanner while, scan is running')
             return self.get_target()
 
@@ -306,6 +304,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._prepare_movement(position, velocity=velocity)
 
         self.__start_ao_write_timer()
+        #self.log.debug("Move finished, returning target.")
 
         return self.get_target()
 
@@ -328,7 +327,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current target position per axis.
         """
-        if self.is_running:
+        if self.is_scan_running:
             return self._stored_target_pos
         else:
             return self._target_pos
@@ -345,11 +344,26 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if not self._ni_ao().is_active:
             self._ni_ao().set_activity_state(True)
 
-        self.__start_ao_runout_timer()
-
         return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
 
     def start_scan(self):
+        try:
+
+            #self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
+
+            if self.thread() is not QtCore.QThread.currentThread():
+                QtCore.QMetaObject.invokeMethod(self, '_start_scan',
+                                                QtCore.Qt.BlockingQueuedConnection)
+            else:
+                self._start_scan()
+            #self.log.debug(f"Scan started in hw thread")
+
+        except:
+            self.log.exception("")
+        return 0
+
+    @QtCore.Slot()
+    def _start_scan(self):
         """
 
         @return (bool): Failure indicator (fail=True)
@@ -358,53 +372,74 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error('Scan Data is None. Scan settings need to be configured before starting')
             return -1
 
-        if self.is_running:
+        if self.is_scan_running:
             self.log.error('Cannot start a scan while scanning probe is already running')
             return -1
 
-        with self._thread_lock:
-            try:
-
+        try:
+            with self._thread_lock_data:
                 self._scan_data.new_scan()
 
+                #self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
                 self._stored_target_pos = self.get_target().copy()
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
 
-                first_scan_position = {ax: pos[0] for ax, pos
-                                       in zip(self.scan_settings['axes'], self.scan_settings['range'])}
+            # todo: scanning_probe_logic exits when scanner not locked right away
+            # should rather ignore/wait until real hw timed scanning starts
+            #self.log.debug(f"Locking module to start scan")
+            # lock indicates scanning, not cursor movement
+            self.module_state.lock()
 
-                self.module_state.lock()
-                self._move_to_and_start_scan(first_scan_position)
-                self.__read_pos = 0
+            first_scan_position = {ax: pos[0] for ax, pos
+                                   in zip(self.scan_settings['axes'], self.scan_settings['range'])}
+            self._move_to_and_start_scan(first_scan_position)
+            self.__read_pos = 0
 
-                return 0  # FIXME Bool indicators deprecated
+            return 0  # FIXME Bool indicators deprecated
 
-            except Exception as e:
-                self.log.error(f'Something failed while starting the scan: {e}')
-                self.module_state.unlock()
-                return -1
+        except Exception as e:
+            self.log.exception("")
+            self.module_state.unlock()
+            return -1
 
     def stop_scan(self):
+
+       #self.log.debug(f"Stop scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
+
+       if self.thread() is not QtCore.QThread.currentThread():
+           QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
+                                           QtCore.Qt.BlockingQueuedConnection)
+       else:
+           self._stop_scan()
+
+       return 0
+
+    @QtCore.Slot()
+    def _stop_scan(self):
         """
 
         @return bool: Failure indicator (fail=True)
         # FIXME Fix the mess of bool indicators, int return values etc in toolchain
         """
         try:
+            #self.log.debug("Stopping scan...")
             if self._ni_ao().is_active:
-                self._abort_movement()
+                self._abort_cursor_movement()
+                #self.log.debug("Move aborted")
 
             if self._ni_finite_sampling_io().is_running:
                 self._ni_finite_sampling_io().stop_buffered_frame()
+                #self.log.debug("Frame stopped")
 
             self.module_state.unlock()
+            #self.log.debug("Module unlocked")
 
             self.move_absolute(self._stored_target_pos)
             self._stored_target_pos = dict()
             return False  # TODO Bool indicators deprecated
 
-        except Exception as e:
-            self.log.error(f'Error occurred while stopping the finite IO frame:\n{e}')
+        except:
+            self.log.exception("")
             return True
 
     def get_scan_data(self):
@@ -413,50 +448,20 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
         #  TODO change interface
         """
-
-        if not self.is_running or not self._ni_finite_sampling_io().is_running:
-            return self._scan_data
-
-        with self._thread_lock:
-
-            samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
-            samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
-            # Potentially we could also use get_buff.. without samples, but that would require some more thought
-            # while writing to ScanData
-
-            reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
-            # TODO extract terminal stuff? meaning allow DevX/... notation in config?
-
-            try:
-                for ni_ch in samples_dict.keys():
-                    input_ch = reverse_routing[ni_ch]
-                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
-
-                    if self._scan_data.scan_dimension == 1:
-                        self._scan_data.data[input_ch] = line_data
-
-                    elif self._scan_data.scan_dimension == 2:
-                        self._scan_data.data[input_ch][:, self.__read_pos] = line_data
-                    else:
-                        self.log.error('Invalid Scan Dimension')
-                        self.stop_scan()  # TODO Should the hw stop itself?
-                        return None
-
-                if self._scan_data.scan_dimension == 1:
-                    self.stop_scan()  # TODO Should the hw stop itself?
-                    # return False, self._scan_data
-                    return self._scan_data
-                elif self._scan_data.scan_dimension == 2:
-                    self.__read_pos += 1
-                    if self.__read_pos == self._current_scan_resolution[1]:
-                        self.stop_scan()  # TODO Should the hw stop itself?
-                    # return False, self._scan_data
-                    return self._scan_data
-
-            except Exception as e:
-                self.log.error(f'Error occurred while retrieving data {e}, Scan was stopped')
-                self.stop_scan()  # TODO Delete later?
-                return True, self._scan_data
+        # todo: get_scan data ussage for polling hw &iterating __read_pos seems sketchy
+        # => this hw file should implement it's own polling loop and provide updated ._scan_data
+        # when get_scan_data is called
+        try:
+            if not self.is_scan_running or not self._ni_finite_sampling_io().is_running:
+                return self._scan_data
+            else:
+                # _stop_scan is called asynchronously. Thus .is_scan_running might be True, even if last data frame
+                # was already fetched. __scan_stopped is set by the polling thread, guaranteed to signal in time.
+                if not self.__scan_stopped:
+                    self._fetch_data_line()
+                return self._scan_data
+        except:
+            self.log.exception("")
 
     def emergency_stop(self):
         """
@@ -469,7 +474,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         pass
 
     @property
-    def is_running(self):
+    def is_scan_running(self):
         """
         Read-only flag indicating the module state.
 
@@ -482,13 +487,77 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             return False
 
     @property
+    def is_move_running(self):
+        with self._thread_lock_cursor:
+            return not self._write_queue_empty
+
+    @property
     def scan_settings(self):
-        with self._thread_lock:
-            settings = {'axes': tuple(self._current_scan_axes),
-                        'range': tuple(self._current_scan_ranges),
-                        'resolution': tuple(self._current_scan_resolution),
-                        'frequency': self._current_scan_frequency}
-            return settings
+
+        settings = {'axes': tuple(self._current_scan_axes),
+                    'range': tuple(self._current_scan_ranges),
+                    'resolution': tuple(self._current_scan_resolution),
+                    'frequency': self._current_scan_frequency}
+        return settings
+
+    @property
+    def _write_queue_empty(self):
+        # not thread safe, call from thread_lock protected code only
+        return all([values.size == 0 for values in self.__write_queue.values()])
+
+    def _check_scan_end_reached(self):
+        # not thread safe, call from thread_lock protected code only
+        if self.__scan_stopped:
+            return True
+
+        if self._scan_data.scan_dimension == 1:
+            self.__scan_stopped = True
+            return True
+
+        elif self._scan_data.scan_dimension == 2:
+            if self.__read_pos == self._current_scan_resolution[1]:
+                self.__scan_stopped = True
+                return True
+
+        return False
+
+    def _fetch_data_line(self):
+        samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
+        # blocking until samples are ready
+        #self.log.debug(f"Fetching data, line_idx {self.__read_pos}")
+        samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
+        #self.log.debug(f"Samples = {samples_dict}")
+        #self.log.debug(f"scanData: {self._scan_data.data}")
+        # Potentially we could also use get_buff.. without samples, but that would require some more thought
+        # while writing to ScanData
+
+        reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
+        # TODO extract terminal stuff? meaning allow DevX/... notation in config?
+
+        try:
+            with self._thread_lock_data:
+                for ni_ch in samples_dict.keys():
+                    input_ch = reverse_routing[ni_ch]
+                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
+
+                    if self._scan_data.scan_dimension == 1:
+                        self._scan_data.data[input_ch] = line_data
+
+                    elif self._scan_data.scan_dimension == 2:
+                        self._scan_data.data[input_ch][:, self.__read_pos] = line_data
+                    else:
+                        self.log.error('Invalid Scan Dimension')
+                        self.stop_scan()  # TODO Should the hw stop itself?
+
+                if self._scan_data.scan_dimension == 2:
+                    self.__read_pos += 1
+
+                if self._check_scan_end_reached():
+                    self.stop_scan()
+
+        except:
+            self.log.exception("")
+            self.stop_scan()
 
     def _position_to_voltage(self, axis, positions):
         """
@@ -635,89 +704,91 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             raise NotImplementedError('Ni Scan arrays could not be initialized for given ScanData dimension')
 
-    def __start_ao_write_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__ni_ao_write_timer.start()
+    def __adjust_ao_timing(self):
+        # to avoid error accumulation
+        if self._interval_time_stamp is not None:
+            exec_time = time.perf_counter() - self._interval_time_stamp
+            # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
+            dt_new_ms = int(np.round(max(2 * self._default_timer_interval_ms - exec_time * 1e3, 1)))
+            self.__ni_ao_write_timer.setInterval(dt_new_ms)
 
-    def __stop_ao_write_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
-                                            'stop',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__ni_ao_write_timer.stop()
+        self._interval_time_stamp = time.perf_counter()
 
-    def __ao_write_loop(self):
+    def __ao_cursor_write_loop(self):
         try:
-            with self._thread_lock:
+            with self._thread_lock_cursor:
                 new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, values[0])
                                for ax, values in self.__write_queue.items()}
                 self._ni_ao().setpoints = new_voltage
+                #self.log.debug(f'Cursor_write_loop setting {new_voltage}. Remaining queue: {self.__write_queue.items()}')
+
                 self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
 
-                # Adjust the timeout each time to avoid error accumulation
-                if self._interval_time_stamp is not None:
-                    exec_time = time.time() - self._interval_time_stamp
-                    self.__ni_ao_write_timer.setInterval(
-                        max(2 * self._default_timer_interval - exec_time*1e3, 1))
-                    # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
-                    self._interval_time_stamp = time.time()
-                else:
-                    self._interval_time_stamp = time.time()
+                self.__adjust_ao_timing()
 
-            if not all([values.size == 0 for values in self.__write_queue.values()]):
+            if self.is_move_running:
                 self.__start_ao_write_timer()
-            else:
-                self.log.debug('Move done')
+            else:  # write_queue_empty
+                #self.log.debug('Cursor move done')
                 self._interval_time_stamp = None
-                self.__ni_ao_write_timer.setInterval(5)
-                if self._scan_start_indicator:
-                    try:
-                        self._ni_finite_sampling_io().start_buffered_frame()
-                    except Exception as e:
-                        self.log.error(f'Could not start frame due to {e}, {e.args}')
-                        self.module_state.unlock()
-                    self._scan_start_indicator = False
-        except Exception as e:
-            self.log.exception(e)
+                self._abort_cursor_movement()
 
-    def _abort_movement(self):
+                if self._start_scan_after_cursor:
+                    self._start_hw_timed_scan()
+
+        except :
+            self.log.exception("")
+
+    def _start_hw_timed_scan(self):
+
+        #self.log.debug("Starting hw timed scan")
+        try:
+            self._ni_finite_sampling_io().start_buffered_frame()
+        except Exception as e:
+            self.log.error(f'Could not start frame due to {str(e)}')
+            self.module_state.unlock()
+
+        self.__scan_stopped = False
+        self._start_scan_after_cursor = False
+
+    def _abort_cursor_movement(self):
         """
-        Abort the movement, stop the timer and reset interval, release memory and frees ni_ao resources
+        Abort the movement, stop the timer and reset interval, release memory and asynchronisly (via timer) free ni_ao resources.
         """
-        with self._thread_lock:
-            self.__stop_ao_write_timer()
-            self.__stop_ao_runout_timer()
+
+        #self.log.debug(f"Aborting cursor move at pos= {self.get_position()}.")
+        self.__stop_ao_write_timer()
+        #self._stop_cursor_hw()
+        with self._thread_lock_cursor:
             self.__write_queue = dict()
-            self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
-            self._ni_ao().set_activity_state(False)
+
+        self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
+        self._ni_ao().set_activity_state(False)
 
     def _move_to_and_start_scan(self, position):
-        self._prepare_movement(position, scan_start_indicator=True)
-
+        self._prepare_movement(position)
+        self._start_scan_after_cursor = True
         self.__start_ao_write_timer()
-        self.log.debug('Started ao write timer')
 
-    def _prepare_movement(self, position, velocity=None, scan_start_indicator=False):
+    def _prepare_movement(self, position, velocity=None):
         """
-        Clips values of position to allowed range and fills up the write queue
+        Clips values of position to allowed range and fills up the write queue.
+        If re-entered from a different thread, clears current write queue and start
+        a new movement.
         """
         # FIXME When position is changed real fast one gets the QT warnings
         #  QObject::killTimer: Timers cannot be stopped from another thread
         #  QObject::startTimer: Timers cannot be started from another thread
+        #self.log.debug(f"Preparing move in thread {QtCore.QThread.currentThread()}...")
 
-        self.__stop_ao_write_timer()
+        try:
+            self.__stop_ao_write_timer()   # todo: can we use nicer abort_cursor?
+            #self._abort_cursor_movement()
 
-        if not self._ni_ao().is_active:
-            self._ni_ao().set_activity_state(True)
+            if not self._ni_ao().is_active:
+                self._ni_ao().set_activity_state(True)
+                #self.log.debug(f"AO activated")
 
-        self.__start_ao_runout_timer()
-
-        with self._thread_lock:
             start_pos = self.get_position()
             constr = self.get_constraints()
 
@@ -733,6 +804,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             dist = np.sqrt(np.sum([(position[axis] - start_pos[axis]) ** 2 for axis in position]))
 
+            #self.log.debug(f"Target: {position}, start: {start_pos}")
+
             # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
             if velocity is not None and velocity <= self.__max_move_velocity:
                 velocity = velocity
@@ -743,43 +816,52 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             else:
                 velocity = self.__max_move_velocity
 
-            self.__ni_ao_write_timer.setInterval(self._default_timer_interval)
+            self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
             granularity = velocity * self.__ni_ao_write_timer.interval() * 1e-3
 
-            self.__write_queue = {axis: np.linspace(start_pos[axis],
-                                                    position[axis],
-                                                    max(2, np.ceil(dist / granularity).astype('int'))
-                                                    )[1:]  # Since start_pos is already taken
-                                  for axis in position}
+            with self._thread_lock_cursor:
+                self.__write_queue = {axis: np.linspace(start_pos[axis],
+                                                        position[axis],
+                                                        max(2, np.ceil(dist / granularity).astype('int'))
+                                                        )[1:]  # Since start_pos is already taken
+                                      for axis in position}
+                #self.log.debug(f"Prepared {[len(self.__write_queue[key]) for key in self.__write_queue.keys()]} write queue steps "
+                #               f" to target= {position}.")
+                #self.log.debug(f"Write queue: {self.__write_queue}")
             # TODO Keep other axis constant?
             # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
-            self._scan_start_indicator = scan_start_indicator
+        except:
+            self.log.exception("")
 
-            self.log.debug(f'Movement prepared to {position} with a distance of {dist*1e6:.6g}um '
-                           f'and {max(2, np.ceil(dist / granularity).astype("int"))} steps')
 
-    def __start_ao_runout_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__ni_ao_runout_timer.start()
+    def __start_ao_write_timer(self):
+        #self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        try:
+            #self.log.debug("Starting AO write timer...")
+            if self.thread() is not QtCore.QThread.currentThread():
+                QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
+                                                'start',
+                                                QtCore.Qt.BlockingQueuedConnection)
+            else:
+                self.__ni_ao_write_timer.start()
+            #self.log.debug("Started")
+        except:
+            self.log.exception("")
 
-    def __stop_ao_runout_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__ni_ao_runout_timer,
-                                            'stop',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__ni_ao_runout_timer.stop()
+    def __stop_ao_write_timer(self):
+        #self.log.debug(f"ao stop write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        try:
+            if self.thread() is not QtCore.QThread.currentThread():
+                QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
+                                                'stop',
+                                                QtCore.Qt.BlockingQueuedConnection)
+            else:
+                self.__ni_ao_write_timer.stop()
 
-    def __deactivate_ao(self):
-        if not all([values.size == 0 for values in self.__write_queue.values()]):
-            self.__start_ao_runout_timer()
-        else:
-            self.log.debug('Freed AO Resources')
-            self._ni_ao().set_activity_state(False)
+            #self.log.debug("Stopped")
+        except Exception as e:
+            print(f"{str(e)}")
+
 
 

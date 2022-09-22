@@ -127,8 +127,8 @@ class QDPlotWidget(QtWidgets.QWidget):
         )
         self.control_widget.x_zoom_checkbox.toggled.connect(self.__zoom_mode_changed)
         self.control_widget.y_zoom_checkbox.toggled.connect(self.__zoom_mode_changed)
-        self.control_widget.save_button.clicked.connect(self.__save_clicked)
-        self.control_widget.remove_button.clicked.connect(self.__remove_clicked)
+        self.control_widget.save_button.clicked.connect(self.sigSaveClicked)
+        self.control_widget.remove_button.clicked.connect(self.sigRemoveClicked)
 
         self.set_rubberband_zoom_selection_mode = self.curve_widget.set_rubberband_zoom_selection_mode
         self.set_data = self.curve_widget.set_data
@@ -259,12 +259,6 @@ class QDPlotWidget(QtWidgets.QWidget):
 
     def toggle_cursor_tracking(self, enable: bool) -> None:
         self.control_widget.track_mouse_checkbox.setChecked(enable)
-
-    def __save_clicked(self) -> None:
-        self.sigSaveClicked.emit()
-
-    def __remove_clicked(self) -> None:
-        self.sigRemoveClicked.emit()
 
     def __zoom_mode_changed(self) -> None:
         x = self.control_widget.x_zoom_checkbox.isChecked()

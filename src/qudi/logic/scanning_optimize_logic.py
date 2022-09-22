@@ -180,6 +180,7 @@ class ScanningOptimizeLogic(LogicBase):
 
         settings = cp.deepcopy(settings)
         hw_axes = self._scan_logic().scanner_axes
+        sig_channels = self._scan_logic().scanner_channels
 
         def check_valid(settings, key):
             is_valid = True  # non present key -> valid
@@ -206,6 +207,9 @@ class ScanningOptimizeLogic(LogicBase):
                 if key == 'scan_frequency':
                     settings['scan_frequency'] = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
                                                   in hw_axes.values()}
+                if key == 'data_channel':
+                    settings['data_channel'] = list(sig_channels.keys())[0]
+
 
         # scan_sequence check, only sensibel if plot dimensions (eg. from confocal gui) are available
         if 'scan_sequence' in settings and plot_dimensions:
@@ -341,37 +345,42 @@ class ScanningOptimizeLogic(LogicBase):
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
             elif data is not None:
-                if data.scan_dimension == 1:
-                    x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
-                    opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
-                        x,
-                        data.data[self._data_channel]
-                    )
-                else:
-                    x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
-                    y = np.linspace(*data.scan_range[1], data.scan_resolution[1])
-                    xy = np.meshgrid(x, y, indexing='ij')
-                    opt_pos, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
-                        xy,
-                        data.data[self._data_channel].ravel()
-                    )
+                try:
+                    if data.scan_dimension == 1:
+                        x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
+                        opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
+                            x,
+                            data.data[self._data_channel]
+                        )
+                    else:
+                        x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
+                        y = np.linspace(*data.scan_range[1], data.scan_resolution[1])
+                        xy = np.meshgrid(x, y, indexing='ij')
+                        opt_pos, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
+                            xy,
+                            data.data[self._data_channel].ravel()
+                        )
 
+                    position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
+                    if fit_data is not None:
+                        new_pos = self._scan_logic().set_target_position(position_update)
+                        for ax in tuple(position_update):
+                            position_update[ax] = new_pos[ax]
 
-                position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
-                if fit_data is not None:
-                    new_pos = self._scan_logic().set_target_position(position_update)
-                    for ax in tuple(position_update):
-                        position_update[ax] = new_pos[ax]
+                        fit_data = {'fit_data':fit_data, 'full_fit_res':fit_res}
 
-                    fit_data = {'fit_data':fit_data, 'full_fit_res':fit_res}
+                    self.log.debug(f"Optimizer issuing position update: {position_update}")
+                    self._optimal_position.update(position_update)
+                    self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
 
-                self._optimal_position.update(position_update)
-                self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
+                    # Abort optimize if fit failed
+                    if fit_data is None:
+                        self.log.warning("Stopping optimization due to failed fit.")
+                        self.stop_optimize()
+                        return
 
-                # Abort optimize if fit failed
-                if fit_data is None:
-                    self.stop_optimize()
-                    return
+                except:
+                    self.log.exception()
 
             self._sequence_index += 1
 
@@ -409,8 +418,8 @@ class ScanningOptimizeLogic(LogicBase):
             y_min, y_max = xy[1].min(), xy[1].max()
             x_middle = (x_max - x_min) / 2 + x_min
             y_middle = (y_max - y_min) / 2 + y_min
-            self.log.exception('2D Gaussian fit unsuccessful. Aborting optimization sequence.')
-            return (x_middle, y_middle), None
+            self.log.exception('2D Gaussian fit unsuccessful.')
+            return (x_middle, y_middle), None, None
 
         return (fit_result.best_values['center_x'],
                 fit_result.best_values['center_y']), fit_result.best_fit.reshape(xy[0].shape), fit_result
@@ -423,8 +432,8 @@ class ScanningOptimizeLogic(LogicBase):
         except:
             x_min, x_max = x.min(), x.max()
             middle = (x_max - x_min) / 2 + x_min
-            self.log.exception('1D Gaussian fit unsuccessful. Aborting optimization sequence.')
-            return middle, None
+            self.log.exception('1D Gaussian fit unsuccessful.')
+            return (middle,), None, None
 
         return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
 
