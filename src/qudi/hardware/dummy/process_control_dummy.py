@@ -27,7 +27,7 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.core.configoption import ConfigOption
 from qudi.interface.process_control_interface import ProcessControlConstraints
 from qudi.interface.process_control_interface import ProcessControlInterface
-from qudi.interface.switch_interface import ProcessControlSwitchMixin
+from qudi.interface.mixins.process_control_switch import ProcessControlSwitchMixin
 
 
 class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):

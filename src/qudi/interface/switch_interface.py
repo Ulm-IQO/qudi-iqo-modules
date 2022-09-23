@@ -18,7 +18,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['SwitchInterface', 'ProcessControlSwitchMixin']
+__all__ = ['SwitchInterface']
 
 from typing import Dict, Mapping, Sequence, Tuple
 from abc import abstractmethod
@@ -133,43 +133,3 @@ class SwitchInterface(Base):
                    switch_dict.values()), 'Switch states must be non-empty strings'
         # Convert state lists to tuples in order to restrict mutation
         return {switch: tuple(states) for switch, states in switch_dict.items()}
-
-
-class ProcessControlSwitchMixin(SwitchInterface):
-    """ Mixin to inherit alongside interfaces contained in qudi.interface.process_control_interface
-    to automatically provide a SwitchInterface for enabling/disabling process control hardware.
-
-    Use like this:
-
-        class MyHardwareModule(ProcessControlSwitchMixin, ProcessControlInterface):
-            ...
-    """
-
-    @property
-    def name(self) -> str:
-        return self.module_name
-
-    @property
-    def available_states(self) -> Dict[str, Tuple[str, ...]]:
-        return {'state': ('disabled', 'active')}
-
-    def get_state(self, switch: str) -> str:
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to query the state for
-        @return str: The current switch state
-        """
-        return self.available_states['state'][int(self.is_active)]
-
-    def set_state(self, switch: str, state: str) -> None:
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to change
-        @param str state: name of the state to set
-        """
-        try:
-            active = bool(self.available_states[switch].index(state))
-        except (KeyError, ValueError) as err:
-            raise ValueError('Invalid switch name or state descriptor') from err
-        self.set_activity_state(active)
-
