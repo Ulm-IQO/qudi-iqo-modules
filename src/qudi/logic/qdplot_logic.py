@@ -549,16 +549,17 @@ class QDPlotLogic(LogicBase):
             data_set.config.set_labels(*config.labels)
             data_set.config.set_limits(*config.limits)
 
-    def save_data(self, plot_index: int, postfix: Optional[str] = None) -> None:
+    def save_data(self, plot_index: int, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> None:
         """ Save data of a single plot to file.
 
         @param int plot_index: index of the plot
         @param str postfix: optional, an additional tag added to the generic filename
+        @param str root_dir: optional, define a deviating folder for the data to be saved into
         """
         with self._thread_lock:
-            return self._save_data(plot_index, postfix)
+            return self._save_data(plot_index, postfix, root_dir)
 
-    def _save_data(self, plot_index: int, postfix: Optional[str] = None) -> None:
+    def _save_data(self, plot_index: int, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> None:
         """
         """
         data_set = self._get_plot_data_set(plot_index)
@@ -606,7 +607,7 @@ class QDPlotLogic(LogicBase):
             header.append(f'{x_label} set {ii:d}')
             header.append(f'{y_label} set {ii:d}')
 
-        ds = TextDataStorage(root_dir=self.module_default_data_dir,
+        ds = TextDataStorage(root_dir=self.module_default_data_dir if root_dir is None else root_dir,
                              column_formats='.15e',
                              include_global_metadata=True)
         file_path, _, _ = ds.save_data(save_data.T,
@@ -620,11 +621,12 @@ class QDPlotLogic(LogicBase):
         ds.save_thumbnail(fig, file_path=file_path.rsplit('.', 1)[0])
 
         self.log.debug(f'Data saved to: {file_path}')
+        return file_path
 
-    def save_all_data(self, postfix: Optional[str] = None) -> None:
+    def save_all_data(self, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> None:
         with self._thread_lock:
             for plot_index, _ in enumerate(self._plot_data_sets):
-                self._save_data(plot_index, postfix)
+                self._save_data(plot_index, postfix, root_dir)
 
     @staticmethod
     def _plot_figure(data_set: QDPlotDataSet,
