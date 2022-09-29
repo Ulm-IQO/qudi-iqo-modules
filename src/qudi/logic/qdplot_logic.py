@@ -549,24 +549,30 @@ class QDPlotLogic(LogicBase):
             data_set.config.set_labels(*config.labels)
             data_set.config.set_limits(*config.limits)
 
-    def save_data(self, plot_index: int, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> None:
+    def save_data(self, plot_index: int, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> str:
         """ Save data of a single plot to file.
 
         @param int plot_index: index of the plot
         @param str postfix: optional, an additional tag added to the generic filename
         @param str root_dir: optional, define a deviating folder for the data to be saved into
+        @return str: file path the data was saved to
         """
         with self._thread_lock:
             return self._save_data(plot_index, postfix, root_dir)
 
-    def _save_data(self, plot_index: int, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> None:
-        """
+    def _save_data(self, plot_index: int, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> str:
+        """ Save data of a single plot to file.
+
+        @param int plot_index: index of the plot
+        @param str postfix: optional, an additional tag added to the generic filename
+        @param str root_dir: optional, define a deviating folder for the data to be saved into
+        @return str: file path the data was saved to
         """
         data_set = self._get_plot_data_set(plot_index)
         fit_container = self._get_fit_container(plot_index)
         if len(data_set) < 1:
             self.log.warning(f'No datasets found in plot with index {plot_index:d}. Save aborted.')
-            return
+            return ''
 
         # Set the parameters:
         parameters = {'x-limits'   : data_set.config.limits[0],
@@ -623,10 +629,18 @@ class QDPlotLogic(LogicBase):
         self.log.debug(f'Data saved to: {file_path}')
         return file_path
 
-    def save_all_data(self, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> None:
+    def save_all_data(self, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> Tuple[str]:
+        """ Save data of all the available plots.
+
+        @param str postfix: optional, an additional tag added to the generic filename
+        @param str root_dir: optional, define a deviating folder for the data to be saved into
+        @return str: list of all the file paths the data was saved to
+        """
         with self._thread_lock:
+            file_path = list()
             for plot_index, _ in enumerate(self._plot_data_sets):
-                self._save_data(plot_index, postfix, root_dir)
+                file_path.append(self._save_data(plot_index, postfix, root_dir))
+        return tuple(file_path)
 
     @staticmethod
     def _plot_figure(data_set: QDPlotDataSet,
