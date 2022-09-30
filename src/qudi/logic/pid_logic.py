@@ -148,6 +148,10 @@ class PIDLogic(Base):
             @param int new_buffer_length: new buffer length
         """
         self.buffer_length = new_buffer_length
+        self.reset_buffer()
+
+    def reset_buffer(self):
+        """ Reset the buffer, clearing out all data. """
         self.history = np.zeros([3, self.buffer_length])
 
     def get_kp(self):

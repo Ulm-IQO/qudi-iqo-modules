@@ -189,6 +189,7 @@ class PIDGui(GuiBase):
         #####################
         # Connecting user interactions
         self._mw.start_control_Action.triggered.connect(self._start_clicked)
+        self._mw.reset_view_Action.triggered.connect(self._reset_clicked)
         self._mw.record_control_Action.triggered.connect(self._save_clicked)
 
         self._mw.P_DoubleSpinBox.editingFinished.connect(self._kp_changed)
@@ -289,6 +290,12 @@ class PIDGui(GuiBase):
         else:
             self._mw.start_control_Action.setText('Stop')
             self.sigStart.emit()
+
+    def _reset_clicked(self):
+        """ Handling the reset view button to reset the plot.
+        """
+        self._pid_logic.reset_buffer()
+        self._update_data()
 
     def _save_clicked(self):
         """ Handling the save button to save the data into a file.
