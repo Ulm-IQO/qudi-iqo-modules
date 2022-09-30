@@ -21,7 +21,7 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 """
 
 __all__ = ['sanitize_device_name', 'ao_channel_names', 'ai_channel_names', 'ao_voltage_range',
-           'ai_voltage_range', 'normalize_channel_name']
+           'ai_voltage_range', 'pfi_channel_names', 'counter_names', 'normalize_channel_name']
 
 import nidaqmx as ni
 from typing import List, Tuple
@@ -61,6 +61,18 @@ def ao_voltage_range(device_name: str) -> Tuple[float, float]:
 def ai_voltage_range(device_name: str) -> Tuple[float, float]:
     """ Extracts available analog input voltage range from device """
     return tuple(ni.system.Device(device_name).ai_voltage_rngs)
+
+
+def pfi_channel_names(device_name: str) -> List[str]:
+    """ Extracts available physical PFI channel names from device """
+    channel_names = ni.system.Device(device_name).terminals
+    return [normalize_channel_name(channel) for channel in channel_names if 'PFI' in channel]
+
+
+def counter_names(device_name: str) -> List[str]:
+    """ Extracts available counter (channel) names from device """
+    channel_names = ni.system.Device(device_name).co_physical_chans.channel_names
+    return [normalize_channel_name(chnl) for chnl in channel_names if 'ctr' in chnl.lower()]
 
 
 def normalize_channel_name(channel_name: str) -> str:
