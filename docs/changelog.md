@@ -14,4 +14,4 @@
 adding minor GUI features.
 
 ### Other
-None
+- Bumped `qudi-core` package minimum version requirement to v1.2.0
