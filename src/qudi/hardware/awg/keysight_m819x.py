@@ -40,8 +40,8 @@ from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, 
 
 class AWGM819X(PulserInterface):
     """
-    A hardware module for AWGs of the Keysight M819X series for generating
-    waveforms and sequences thereof.
+    Abstract base class for AWGs of the Keysight M819X series. For configuring a
+    device, use the non-abstract classes in this file.
     """
 
     _visa_address = ConfigOption(name='awg_visa_address',
