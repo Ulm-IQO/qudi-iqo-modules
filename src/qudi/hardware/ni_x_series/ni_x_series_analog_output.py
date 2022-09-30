@@ -21,6 +21,8 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
+# ToDo: Handle case where zero volts is not a good default value
+
 import nidaqmx as ni
 
 from qudi.util.mutex import Mutex
@@ -43,23 +45,19 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
 
     nicard_63XX_ao:
         module.Class: 'ni_x_series.ni_x_series_in_streamer.NIXSeriesAnalogOutput'
-        device_name: 'Dev1'
         options:
-            setpoint_channels:
+            device_name: 'Dev1'
+            channels:
                 ao0:
-                    unit: 'V'
                     limits: [-10.0, 10.0]
                     keep_value: True
                 ao1:
-                    unit: 'V'
                     limits: [-10.0, 10.0]
                     keep_value: True
                 ao2:
-                    unit: 'V'
                     limits: [-10.0, 10.0]
                     keep_value: True
                 ao3:
-                    unit: 'V'
                     limits: [-10.0, 10.0]
                     keep_value: True
     """
@@ -67,10 +65,10 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
     _channels_config = ConfigOption(
         name='channels',
         default={
-            'ao0': {'limits': (-10.0, 10.0), 'keep_value': False},
-            'ao1': {'limits': (-10.0, 10.0), 'keep_value': False},
-            'ao2': {'limits': (-10.0, 10.0), 'keep_value': False},
-            'ao3': {'limits': (-10.0, 10.0), 'keep_value': False}
+            'ao0': {'limits': (-10.0, 10.0), 'keep_value': True},
+            'ao1': {'limits': (-10.0, 10.0), 'keep_value': True},
+            'ao2': {'limits': (-10.0, 10.0), 'keep_value': True},
+            'ao3': {'limits': (-10.0, 10.0), 'keep_value': True}
         },
         missing='warn'
     )
@@ -133,6 +131,9 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
             limits=limits,
             dtypes={ch: float for ch in self._device_channel_mapping}
         )
+
+        # Sanitize status variables
+        self._sanitize_setpoint_status()
 
     def on_deactivate(self):
         for channel in list(self._ao_task_handles):
@@ -248,3 +249,16 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
 
     def _write_ao_value(self, channel: str, value: float) -> None:
         self._ao_task_handles[channel].write(value)
+
+    def _sanitize_setpoint_status(self) -> None:
+        # Remove obsolete channels and out-of-bounds values
+        for channel, value in list(self._setpoints.items()):
+            try:
+                if not self.constraints.channel_value_in_range(channel, value)[0]:
+                    del self._setpoints[channel]
+            except KeyError:
+                del self._setpoints[channel]
+        # Add missing setpoint channels and set initial value to zero
+        self._setpoints.update(
+            {ch: 0 for ch in self.constraints.setpoint_channels if ch not in self._setpoints}
+        )
