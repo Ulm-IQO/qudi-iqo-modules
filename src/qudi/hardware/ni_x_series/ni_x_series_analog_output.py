@@ -61,7 +61,10 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
                     limits: [-10.0, 10.0]
                     keep_value: True
     """
-    _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
+    _device_name = ConfigOption(name='device_name',
+                                default='Dev1',
+                                missing='warn',
+                                constructor=sanitize_device_name)
     _channels_config = ConfigOption(
         name='channels',
         default={
@@ -88,7 +91,6 @@ class NIXSeriesAnalogOutput(ProcessSetpointInterface):
     def on_activate(self):
         """ Starts up the NI-card and performs sanity checks """
         # Check if device is connected and set device to use
-        self._device_name = sanitize_device_name(self._device_name)
         self._device_channel_mapping = dict()
         self._ao_task_handles = dict()
         self._keep_values = dict()
