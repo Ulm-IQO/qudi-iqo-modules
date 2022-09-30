@@ -20,11 +20,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['PlotDockWidget', 'QDPlotWidget', 'PlotEditorWidget', 'PlotControlWidget']
+__all__ = ['QDPlotDockWidget', 'QDPlotWidget', 'QDPlotControlWidget']
 
 import os
 from PySide2 import QtWidgets, QtCore, QtGui
-from typing import Optional, Tuple, Dict, Union, List
+from typing import Tuple, Dict, Union, List
 
 from qudi.util.paths import get_artwork_dir
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
@@ -32,7 +32,7 @@ from qudi.util.widgets.fitting import FitWidget
 from qudi.util.widgets.plotting.interactive_curve import InteractiveCurvesWidget
 
 
-class PlotControlWidget(QtWidgets.QWidget):
+class QDPlotControlWidget(QtWidgets.QWidget):
     """
     """
     def __init__(self, *args, **kwargs):
@@ -99,7 +99,7 @@ class QDPlotWidget(QtWidgets.QWidget):
 
         self.curve_widget = InteractiveCurvesWidget()
         self.fit_widget = FitWidget(fit_container=fit_container)
-        self.control_widget = PlotControlWidget()
+        self.control_widget = QDPlotControlWidget()
         self.curve_widget.layout().setContentsMargins(0, 0, 0, 0)
         self.control_widget.layout().setContentsMargins(0, 0, 0, 0)
         self.fit_widget.layout().setContentsMargins(0, 0, 0, 0)
@@ -274,7 +274,7 @@ class QDPlotWidget(QtWidgets.QWidget):
         self.curve_widget.set_rubberband_zoom_selection_mode(mode)
 
 
-class PlotDockWidget(AdvancedDockWidget):
+class QDPlotDockWidget(AdvancedDockWidget):
     """
     """
 

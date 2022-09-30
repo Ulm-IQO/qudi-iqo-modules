@@ -38,8 +38,8 @@ from qudi.core.module import GuiBase
 
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.colordefs import QudiPalette
-from qudi.gui.qdplot.qdplot_main_window import QDPlotMainWindow
-from qudi.gui.qdplot.qdplot_plot_dockwidget import PlotDockWidget
+from qudi.gui.qdplot.main_window import QDPlotMainWindow
+from qudi.gui.qdplot.plot_widget import QDPlotDockWidget
 from qudi.logic.qdplot_logic import QDPlotConfig
 
 
@@ -330,7 +330,7 @@ class QDPlotterGui(GuiBase):
         elif alignment == PlotAlignment.side_by_side:
             return self.restore_side_by_side_view()
 
-    def _plot_config_changed(self, dockwidget: PlotDockWidget) -> None:
+    def _plot_config_changed(self, dockwidget: QDPlotDockWidget) -> None:
         try:
             plot_index = self._plot_dockwidgets.index(dockwidget)
         except ValueError:
@@ -340,7 +340,7 @@ class QDPlotterGui(GuiBase):
         self.sigPlotConfigChanged.emit(plot_index, config)
 
     def _auto_range_clicked(self,
-                            dockwidget: PlotDockWidget,
+                            dockwidget: QDPlotDockWidget,
                             x: Optional[bool] = None,
                             y: Optional[bool] = None) -> None:
         try:
@@ -349,7 +349,7 @@ class QDPlotterGui(GuiBase):
             return
         self.sigAutoRangeClicked.emit(plot_index, x, y)
 
-    def _save_clicked(self, dockwidget: PlotDockWidget) -> None:
+    def _save_clicked(self, dockwidget: QDPlotDockWidget) -> None:
         self._plot_config_changed(dockwidget)
         try:
             plot_index = self._plot_dockwidgets.index(dockwidget)
@@ -361,14 +361,14 @@ class QDPlotterGui(GuiBase):
         for dockwidget in self._plot_dockwidgets:
             self._save_clicked(dockwidget)
 
-    def _remove_clicked(self, dockwidget: PlotDockWidget) -> None:
+    def _remove_clicked(self, dockwidget: QDPlotDockWidget) -> None:
         try:
             plot_index = self._plot_dockwidgets.index(dockwidget)
         except ValueError:
             return
         self.sigRemovePlotClicked.emit(plot_index)
 
-    def _fit_clicked(self, dockwidget: PlotDockWidget, fit_config: str) -> None:
+    def _fit_clicked(self, dockwidget: QDPlotDockWidget, fit_config: str) -> None:
         try:
             plot_index = self._plot_dockwidgets.index(dockwidget)
         except ValueError:
@@ -381,8 +381,8 @@ class QDPlotterGui(GuiBase):
 
     def _plot_added(self) -> None:
         index = len(self._plot_dockwidgets)
-        dockwidget = PlotDockWidget(fit_container=self._qdplot_logic().get_fit_container(index),
-                                    plot_number=index + 1)
+        dockwidget = QDPlotDockWidget(fit_container=self._qdplot_logic().get_fit_container(index),
+                                      plot_number=index + 1)
         self._plot_dockwidgets.append(dockwidget)
         self._color_cyclers.append(cycle(self._pen_color_list))
 
