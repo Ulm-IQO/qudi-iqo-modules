@@ -60,7 +60,20 @@ class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
                     dtype: float
     """
 
+    _setpoint_channels = ConfigOption(
+        name='setpoint_channels',
+        default={'Power': {'unit': 'dBm', 'limits': (-120.0, 30.0), 'dtype': float},
+                 'Frequency': {'unit': 'Hz', 'limits': (100.0e3, 20.0e9), 'dtype': float}}
+    )
+    _process_value_channels = ConfigOption(
+        name='process_value_channels',
+        default={'Temperature': {'unit': 'K', 'limits': (0, np.inf), 'dtype': float},
+                 'Voltage': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float}}
+    )
+
     @staticmethod
+    @_process_value_channels.constructor
+    @_setpoint_channels.constructor
     def _construct_channels_config(cfg_opt):
         for channel_cfg in cfg_opt.values():
             dtype_str = channel_cfg.get('dtype', '')
@@ -69,19 +82,6 @@ class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
             elif dtype_str == 'int':
                 channel_cfg['dtype'] = int
         return cfg_opt
-
-    _setpoint_channels = ConfigOption(
-        name='setpoint_channels',
-        default={'Power': {'unit': 'dBm', 'limits': (-120.0, 30.0), 'dtype': float},
-                 'Frequency': {'unit': 'Hz', 'limits': (100.0e3, 20.0e9), 'dtype': float}},
-        constructor=_construct_channels_config
-    )
-    _process_value_channels = ConfigOption(
-        name='process_value_channels',
-        default={'Temperature': {'unit': 'K', 'limits': (0, np.inf), 'dtype': float},
-                 'Voltage': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float}},
-        constructor=_construct_channels_config
-    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
