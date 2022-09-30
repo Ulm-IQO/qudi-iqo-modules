@@ -58,19 +58,29 @@ class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
                     unit: 'Hz'
                     limits: [100.0e3, 20.0e9]
                     dtype: float
-
-                    # FIXME Channel dtype is interpreted as a string, if specified in config.
     """
+
+    @staticmethod
+    def _construct_channels_config(cfg_opt):
+        for channel_cfg in cfg_opt.values():
+            dtype_str = channel_cfg.get('dtype', '')
+            if dtype_str == 'float':
+                channel_cfg['dtype'] = float
+            elif dtype_str == 'int':
+                channel_cfg['dtype'] = int
+        return cfg_opt
 
     _setpoint_channels = ConfigOption(
         name='setpoint_channels',
         default={'Power': {'unit': 'dBm', 'limits': (-120.0, 30.0), 'dtype': float},
-                 'Frequency': {'unit': 'Hz', 'limits': (100.0e3, 20.0e9), 'dtype': float}}
+                 'Frequency': {'unit': 'Hz', 'limits': (100.0e3, 20.0e9), 'dtype': float}},
+        constructor=_construct_channels_config
     )
     _process_value_channels = ConfigOption(
         name='process_value_channels',
         default={'Temperature': {'unit': 'K', 'limits': (0, np.inf), 'dtype': float},
-                 'Voltage': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float}}
+                 'Voltage': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float}},
+        constructor=_construct_channels_config
     )
 
     def __init__(self, *args, **kwargs):
@@ -85,14 +95,20 @@ class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
         """ Initialisation performed during activation of the module.
         """
         units = {ch: d['unit'] for ch, d in self._setpoint_channels.items() if 'unit' in d}
-        units.update({ch: d['unit'] for ch, d in self._process_value_channels.items() if 'unit' in d})
+        units.update(
+            {ch: d['unit'] for ch, d in self._process_value_channels.items() if 'unit' in d}
+        )
         limits = {ch: d['limits'] for ch, d in self._setpoint_channels.items() if 'limits' in d}
-        limits.update({ch: d['limits'] for ch, d in self._process_value_channels.items() if 'limits' in d})
-        dtypes = {ch: eval(d['dtype']) for ch, d in self._setpoint_channels.items() if 'dtype' in d}
-        dtypes.update({ch: eval(d['dtype']) for ch, d in self._process_value_channels.items() if 'dtype' in d})
+        limits.update(
+            {ch: d['limits'] for ch, d in self._process_value_channels.items() if 'limits' in d}
+        )
+        dtypes = {ch: d['dtype'] for ch, d in self._setpoint_channels.items() if 'dtype' in d}
+        dtypes.update(
+            {ch: d['dtype'] for ch, d in self._process_value_channels.items() if 'dtype' in d}
+        )
         self._constraints = ProcessControlConstraints(
-            setpoint_channels=tuple(self._setpoint_channels),
-            process_channels=tuple(self._process_value_channels),
+            setpoint_channels=self._setpoint_channels,
+            process_channels=self._process_value_channels,
             units=units,
             limits=limits,
             dtypes=dtypes
@@ -103,7 +119,7 @@ class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
         self._activity_states = {ch: False for ch in self._constraints.all_channels}
 
     def on_deactivate(self):
-        pass
+        self._activity_states = {ch: False for ch in self.constraints.all_channels}
 
     @property
     def constraints(self) -> ProcessControlConstraints:
