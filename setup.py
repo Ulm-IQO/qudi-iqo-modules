@@ -5,7 +5,7 @@ from setuptools import setup, find_namespace_packages
 
 
 unix_dep = [
-    'qudi-core>=1.1.0',
+    'qudi-core>=1.2.0',
     'entrypoints',
     'fysom',
     'lmfit',
@@ -21,7 +21,7 @@ unix_dep = [
 ]
 
 windows_dep = [
-    'qudi-core>=1.1.0',
+    'qudi-core>=1.2.0',
     'entrypoints>=0.3',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
