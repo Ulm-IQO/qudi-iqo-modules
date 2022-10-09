@@ -91,6 +91,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     _threaded = True  # Interfuse is by default not threaded.
 
+    sigNextDataChunk = QtCore.Signal()
+
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
 
@@ -167,8 +169,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
 
-
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
+
+        self.sigNextDataChunk.connect(self._fetch_data_line, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """
@@ -457,9 +460,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             else:
                 # _stop_scan is called asynchronously. Thus .is_scan_running might be True, even if last data frame
                 # was already fetched. __scan_stopped is set by the polling thread, guaranteed to signal in time.
-                if not self.__scan_stopped:
-                    self._fetch_data_line()
-                return self._scan_data
+                # if not self.__scan_stopped:
+                #     self._fetch_data_line()
+                return self._scan_data.copy()
         except:
             self.log.exception("")
 
@@ -554,6 +557,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 if self._check_scan_end_reached():
                     self.stop_scan()
+                else:
+                    self.sigNextDataChunk.emit()
 
         except:
             self.log.exception("")
@@ -750,6 +755,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self.__scan_stopped = False
         self._start_scan_after_cursor = False
+        self.sigNextDataChunk.emit()
 
     def _abort_cursor_movement(self):
         """
@@ -833,7 +839,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         except:
             self.log.exception("")
-
 
     def __start_ao_write_timer(self):
         #self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
