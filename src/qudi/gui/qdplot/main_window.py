@@ -38,8 +38,6 @@ class QDPlotMainWindow(QtWidgets.QMainWindow):
         self.setTabPosition(QtCore.Qt.LeftDockWidgetArea, QtWidgets.QTabWidget.North)
         self.setTabPosition(QtCore.Qt.RightDockWidgetArea, QtWidgets.QTabWidget.North)
 
-        self.resize(900, 600)
-
         # Create QActions
         icon = QtGui.QIcon(':/icons/application-exit')
         self.action_close = QtWidgets.QAction('Close')
