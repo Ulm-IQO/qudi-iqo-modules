@@ -26,7 +26,6 @@ import os
 from PySide2 import QtWidgets, QtCore, QtGui
 from typing import Tuple, Dict, Union, List
 
-from qudi.util.paths import get_artwork_dir
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
 from qudi.util.widgets.fitting import FitWidget
 from qudi.util.widgets.plotting.interactive_curve import InteractiveCurvesWidget
@@ -38,14 +37,12 @@ class QDPlotControlWidget(QtWidgets.QWidget):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        icons_path = os.path.join(get_artwork_dir(), 'icons')
-
         self.save_button = QtWidgets.QPushButton(
-            icon=QtGui.QIcon(os.path.join(icons_path, 'document-save')),
+            icon=QtGui.QIcon(':/icons/document-save'),
             text='Save'
         )
         self.remove_button = QtWidgets.QPushButton(
-            icon=QtGui.QIcon(os.path.join(icons_path, 'edit-delete')),
+            icon=QtGui.QIcon(':/icons/edit-delete'),
             text='Remove'
         )
         self.show_editor_checkbox = QtWidgets.QCheckBox('Editor')
