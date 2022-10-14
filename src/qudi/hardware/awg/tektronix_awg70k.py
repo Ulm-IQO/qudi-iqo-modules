@@ -32,7 +32,7 @@ from ftplib import FTP
 from lxml import etree as ET
 
 from qudi.core.configoption import ConfigOption
-from qudi.util.paths import get_appdata_dir
+from qudi.util.paths import get_userdata_dir
 from qudi.util.helpers import natural_sort
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
 
@@ -60,9 +60,11 @@ class AWG70K(PulserInterface):
     _visa_address = ConfigOption(name='awg_visa_address', missing='error')
     _ip_address = ConfigOption(name='awg_ip_address', missing='error')
     _visa_timeout = ConfigOption(name='timeout', default=30, missing='nothing')
-    _tmp_work_dir = ConfigOption(name='tmp_work_dir',
-                                 default=os.path.join(get_appdata_dir(True), 'pulsed_files'),
-                                 missing='warn')
+    _tmp_work_dir = ConfigOption(
+        name='tmp_work_dir',
+        default=os.path.join(get_userdata_dir(create_missing=True), 'pulsed_files'),
+        missing='warn'
+    )
     _ftp_dir = ConfigOption(name='ftp_root_dir', default='C:\\inetpub\\ftproot', missing='warn')
     _username = ConfigOption(name='ftp_login', default='anonymous', missing='warn')
     _password = ConfigOption(name='ftp_passwd', default='anonymous@', missing='warn')

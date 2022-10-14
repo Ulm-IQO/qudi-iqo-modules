@@ -34,7 +34,7 @@ from collections import OrderedDict
 from abc import abstractmethod
 
 from qudi.core.configoption import ConfigOption
-from qudi.util.paths import get_appdata_dir
+from qudi.util.paths import get_userdata_dir
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
 
 
@@ -50,12 +50,12 @@ class AWGM819X(PulserInterface):
     _awg_timeout = ConfigOption(name='awg_timeout', default=20, missing='warn')
     _pulsed_file_dir = ConfigOption(
         name='pulsed_file_dir',
-        default=os.path.join(get_appdata_dir(True), 'pulsed_file_dir'),
+        default=os.path.join(get_userdata_dir(create_missing=True), 'pulsed_file_dir'),
         missing='warn'
     )
     _assets_storage_path = ConfigOption(
         name='assets_storage_path',
-        default=os.path.join(get_appdata_dir(True), 'saved_pulsed_assets'),
+        default=os.path.join(get_userdata_dir(create_missing=True), 'saved_pulsed_assets'),
         missing='warn'
     )
     _sample_rate_div = ConfigOption(name='sample_rate_div', default=1, missing='warn')

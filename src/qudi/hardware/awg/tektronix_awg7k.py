@@ -31,7 +31,7 @@ import numpy as np
 from ftplib import FTP
 from collections import OrderedDict
 
-from qudi.core.paths import get_appdata_dir
+from qudi.util.paths import get_userdata_dir
 from qudi.util.helpers import natural_sort
 from qudi.core.configoption import ConfigOption
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
@@ -57,9 +57,11 @@ class AWG7k(PulserInterface):
     """
 
     # config options
-    _tmp_work_dir = ConfigOption(name='tmp_work_dir',
-                                 default=os.path.join(get_appdata_dir(True), 'pulsed_files'),
-                                 missing='warn')
+    _tmp_work_dir = ConfigOption(
+        name='tmp_work_dir',
+        default=os.path.join(get_userdata_dir(create_missing=True), 'pulsed_files'),
+        missing='warn'
+    )
     _visa_address = ConfigOption(name='awg_visa_address', missing='error')
     _ip_address = ConfigOption(name='awg_ip_address', missing='error')
     _ftp_dir = ConfigOption(name='ftp_root_dir', default='C:\\inetpub\\ftproot', missing='warn')

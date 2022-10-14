@@ -28,7 +28,7 @@ from fnmatch import fnmatch
 from collections import OrderedDict
 from socket import socket, AF_INET, SOCK_STREAM
 
-from qudi.util.paths import get_appdata_dir
+from qudi.util.paths import get_userdata_dir
 from qudi.core.configoption import ConfigOption
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
 
@@ -110,7 +110,7 @@ class AWG5002C(PulserInterface):
 
             if not os.path.exists(self._tmp_work_dir):
 
-                homedir = get_appdata_dir()
+                homedir = get_userdata_dir(create_missing=True)
                 self._tmp_work_dir = os.path.join(homedir, 'pulsed_files')
                 self.log.warning('The directory defined in parameter '
                     '"tmp_work_dir" in the config for '
@@ -118,7 +118,7 @@ class AWG5002C(PulserInterface):
                     'The default home directory\n{0}\n will be taken '
                     'instead.'.format(self._tmp_work_dir))
         else:
-            homedir = get_appdata_dir()
+            homedir = get_userdata_dir(create_missing=True)
             self._tmp_work_dir = os.path.join(homedir, 'pulsed_files')
             self.log.warning('No parameter "tmp_work_dir" was specified in the config for '
                              'SequenceGeneratorLogic as directory for the pulsed files!\n'
