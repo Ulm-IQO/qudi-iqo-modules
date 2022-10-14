@@ -167,8 +167,19 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
 
-
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
+
+    def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
+        ni_ao = self._ni_ao()
+        for channel in ni_ao.constraints.setpoint_channels:
+            ni_ao.set_activity_state(channel, enable)
+
+    @property
+    def _ao_setpoint_channels_active(self) -> bool:
+        mapped_channels = set(self._ni_channel_mapping.values())
+        return all(
+            state for ch, state in self._ni_ao().activity_states.items() if ch in mapped_channels
+        )
 
     def on_deactivate(self):
         """
@@ -179,7 +190,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         with self._thread_lock_cursor:
             self.__write_queue = dict()
 
-        self._ni_ao().set_activity_state(False)
+        self._toggle_ao_setpoint_channels(False)
         if self._ni_finite_sampling_io().is_running:
             self._ni_finite_sampling_io().stop_buffered_frame()
 
@@ -341,9 +352,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current position per axis.
         """
-        if not self._ni_ao().is_active:
-            self._ni_ao().set_activity_state(True)
-
+        if not self._ao_setpoint_channels_active:
+            self._toggle_ao_setpoint_channels(True)
         return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
 
     def start_scan(self):
@@ -423,7 +433,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
         try:
             #self.log.debug("Stopping scan...")
-            if self._ni_ao().is_active:
+            if self._ao_setpoint_channels_active:
                 self._abort_cursor_movement()
                 #self.log.debug("Move aborted")
 
@@ -763,7 +773,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.__write_queue = dict()
 
         self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
-        self._ni_ao().set_activity_state(False)
+        self._toggle_ao_setpoint_channels(False)
 
     def _move_to_and_start_scan(self, position):
         self._prepare_movement(position)
@@ -785,8 +795,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.__stop_ao_write_timer()   # todo: can we use nicer abort_cursor?
             #self._abort_cursor_movement()
 
-            if not self._ni_ao().is_active:
-                self._ni_ao().set_activity_state(True)
+            if not self._ao_setpoint_channels_active:
+                self._toggle_ao_setpoint_channels(True)
                 #self.log.debug(f"AO activated")
 
             start_pos = self.get_position()

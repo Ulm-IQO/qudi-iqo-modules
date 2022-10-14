@@ -27,7 +27,7 @@ from qudi.interface.switch_interface import SwitchInterface
 
 class ProcessControlSwitchMixin(SwitchInterface):
     """ Mixin to inherit alongside interfaces contained in qudi.interface.process_control_interface
-    to automatically provide a SwitchInterface for enabling/disabling process control hardware.
+    to automatically provide a SwitchInterface for enabling/disabling process control channels.
 
     Use like this:
 
@@ -41,7 +41,7 @@ class ProcessControlSwitchMixin(SwitchInterface):
 
     @property
     def available_states(self) -> Dict[str, Tuple[str, ...]]:
-        return {'state': ('disabled', 'enabled')}
+        return {ch: ('disabled', 'enabled') for ch in self.constraints.all_channels}
 
     def get_state(self, switch: str) -> str:
         """ Query state of single switch by name
@@ -49,7 +49,7 @@ class ProcessControlSwitchMixin(SwitchInterface):
         @param str switch: name of the switch to query the state for
         @return str: The current switch state
         """
-        return self.available_states['state'][int(self.is_active)]
+        return 'enabled' if self.get_activity_state(switch) else 'disabled'
 
     def set_state(self, switch: str, state: str) -> None:
         """ Query state of single switch by name
@@ -57,8 +57,12 @@ class ProcessControlSwitchMixin(SwitchInterface):
         @param str switch: name of the switch to change
         @param str state: name of the state to set
         """
-        try:
-            active = bool(self.available_states[switch].index(state))
-        except (KeyError, ValueError) as err:
-            raise ValueError('Invalid switch name or state descriptor') from err
-        self.set_activity_state(active)
+        if state == 'enabled':
+            state = True
+        elif state == 'disabled':
+            state = False
+        else:
+            raise ValueError(
+                f'Invalid state descriptor "{state}". Valid states are (\'disabled\', \'enabled\')'
+            )
+        self.set_activity_state(switch, state)
