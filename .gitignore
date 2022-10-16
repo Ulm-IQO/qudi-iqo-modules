@@ -32,3 +32,9 @@
 *.log
 *.log.*
 
+# Qt resource collection files
+/src/qudi/resources/*.qrc
+/qudi/resources/*.qrc
+
+# pip generated files
+/src/qudi_iqo_modules.egg-info/
