@@ -680,10 +680,6 @@ class PulsedMeasurementLogic(LogicBase):
         return
 
     @property
-    def last_measurement_asset(self):
-        pass
-
-    @property
     def sampling_information(self):
         return self._sampling_information
 
