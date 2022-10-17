@@ -51,29 +51,30 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
     ni_finite_sampling_io:
         module.Class: 'ni_x_series.ni_x_series_finite_sampling_io.NIXSeriesFiniteSamplingIO'
-        device_name: 'Dev1'
-        input_channel_units:
-            PFI8: 'c/s'
-            PFI9: 'c/s'
-            ai0: 'V'
-            ai1: 'V'
-        output_channel_units: # Specify used output channels
-            'ao0': 'V'
-            'ao1': 'V'
-            'ao2': 'V'
-            'ao3': 'V'
-        adc_voltage_ranges:
-            ai0: [-10, 10]  # optional
-            ai1: [-10, 10]  # optional
-        output_voltage_ranges:
-            ao0: [-1.5, 1.5]
-            ao1: [-1.5, 1.5]
-            ao2: [0, 10.0]
-            ao3: [-10.0, 10.0]
-        frame_size_limits: [1, 1e9]  # optional #TODO actual HW constraint?
-        default_output_mode: 'JUMP_LIST' # optional, must be name of SamplingOutputMode
-        read_write_timeout: 10  # optional
-        sample_clock_output: '/Dev1/PFI11' # optional: routing of sample clock to a physical connection
+        options:
+            device_name: 'Dev1'
+            input_channel_units:
+                PFI8: 'c/s'
+                PFI9: 'c/s'
+                ai0: 'V'
+                ai1: 'V'
+            output_channel_units: # Specify used output channels
+                'ao0': 'V'
+                'ao1': 'V'
+                'ao2': 'V'
+                'ao3': 'V'
+            adc_voltage_ranges:
+                ai0: [-10, 10]  # optional
+                ai1: [-10, 10]  # optional
+            output_voltage_ranges:
+                ao0: [-1.5, 1.5]
+                ao1: [-1.5, 1.5]
+                ao2: [0, 10.0]
+                ao3: [-10.0, 10.0]
+            frame_size_limits: [1, 1e9]  # optional #TODO actual HW constraint?
+            default_output_mode: 'JUMP_LIST' # optional, must be name of SamplingOutputMode
+            read_write_timeout: 10  # optional
+            sample_clock_output: '/Dev1/PFI11' # optional: routing of sample clock to a physical connection
 
     """
 
@@ -533,28 +534,26 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         with self._thread_lock:
             self._number_of_pending_samples = self.frame_size
 
-        # # set up all tasks
-        if self._init_sample_clock() < 0:
-            self.terminate_all_tasks()
-            self.module_state.unlock()
-            raise NiInitError('Sample clock initialization failed; all tasks terminated')
+            # # set up all tasks
+            if self._init_sample_clock() < 0:
+                self.terminate_all_tasks()
+                self.module_state.unlock()
+                raise NiInitError('Sample clock initialization failed; all tasks terminated')
 
-        if self._init_digital_tasks() < 0:
-            self.terminate_all_tasks()
-            self.module_state.unlock()
-            raise NiInitError('Counter task initialization failed; all tasks terminated')
+            if self._init_digital_tasks() < 0:
+                self.terminate_all_tasks()
+                self.module_state.unlock()
+                raise NiInitError('Counter task initialization failed; all tasks terminated')
 
-        if self._init_analog_in_task() < 0:
-            self.terminate_all_tasks()
-            self.module_state.unlock()
-            raise NiInitError('Analog in task initialization failed; all tasks terminated')
+            if self._init_analog_in_task() < 0:
+                self.terminate_all_tasks()
+                self.module_state.unlock()
+                raise NiInitError('Analog in task initialization failed; all tasks terminated')
 
-        if self._init_analog_out_task() < 0:
-            self.terminate_all_tasks()
-            self.module_state.unlock()
-            raise NiInitError('Analog out task initialization failed; all tasks terminated')
-
-        with self._thread_lock:
+            if self._init_analog_out_task() < 0:
+                self.terminate_all_tasks()
+                self.module_state.unlock()
+                raise NiInitError('Analog out task initialization failed; all tasks terminated')
 
             output_data = np.ndarray((len(self.active_channels[1]), self.frame_size))
 
@@ -599,8 +598,6 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 self.terminate_all_tasks()
                 self.module_state.unlock()
                 raise
-
-            self._tasks_started_successfully = True
 
     def stop_buffered_frame(self):
         """ Will abort the currently running data frame input and output.
@@ -648,40 +645,36 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         @return dict: Sample arrays (values) for each active input channel (keys)
         """
 
-        if self.module_state() == 'locked' and not self._tasks_started_successfully:
-            self.log.warning('Data polled before Ni Tasks could all be setup. Try lowering the poll rate.')
-            return dict.fromkeys(self.active_channels[0], np.array([]))
-
-        if number_of_samples is not None:
-            assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'
-
-        samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
-
-        if self.is_running:
-            assert samples_to_read <= self._number_of_pending_samples, \
-                f'Requested samples {samples_to_read} are more than the {self._number_of_pending_samples} ' \
-                f'pending in frame'
-        else:
-            assert samples_to_read <= self._number_of_pending_samples, \
-                'Requested samples are more than the pending after premature stop of frame'
-
-        if number_of_samples is not None and self.is_running:
-            request_time = time.time()
-            # if number_of_samples > self.samples_in_buffer:
-            #     self.log.debug(f'Waiting for samples to become available since requested {number_of_samples} are more then '
-            #                    f'the {self.samples_in_buffer} in the buffer')
-            while number_of_samples > self.samples_in_buffer:
-                if time.time() - request_time < 1.1 * self.frame_size / self.sample_rate:  # TODO Is this timeout ok?
-                    time.sleep(0.05)
-                else:
-                    raise TimeoutError(f'Acquiring {number_of_samples} samples took longer then the whole frame')
-
-        data = dict()
-
-        if samples_to_read == 0:
-            return dict.fromkeys(self.active_channels[0], np.array([]))
-
         with self._thread_lock:
+            if number_of_samples is not None:
+                assert isinstance(number_of_samples, (int, np.integer)), f'Number of requested samples not integer'
+
+            samples_to_read = number_of_samples if number_of_samples is not None else self.samples_in_buffer
+
+            if self.is_running:
+                assert samples_to_read <= self._number_of_pending_samples, \
+                    f'Requested samples {samples_to_read} are more than the {self._number_of_pending_samples} ' \
+                    f'pending in frame'
+            else:
+                assert samples_to_read <= self._number_of_pending_samples, \
+                    'Requested samples are more than the pending after premature stop of frame'
+
+            if number_of_samples is not None and self.is_running:
+                request_time = time.time()
+                # if number_of_samples > self.samples_in_buffer:
+                #     self.log.debug(f'Waiting for samples to become available since requested {number_of_samples} are more then '
+                #                    f'the {self.samples_in_buffer} in the buffer')
+                while number_of_samples > self.samples_in_buffer:
+                    if time.time() - request_time < 1.1 * self.frame_size / self.sample_rate:  # TODO Is this timeout ok?
+                        time.sleep(0.05)
+                    else:
+                        raise TimeoutError(f'Acquiring {number_of_samples} samples took longer then the whole frame')
+
+            data = dict()
+
+            if samples_to_read == 0:
+                return dict.fromkeys(self.active_channels[0], np.array([]))
+
             if not self.is_running:
                 # When the IO was stopped with samples in buffer, return the ones in
                 if number_of_samples is None:
@@ -753,7 +746,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         @return bool: Finite IO is running (True) or not (False)
         """
         assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
-        if self.module_state() == 'locked' and self._tasks_started_successfully:
+        if self.module_state() == 'locked':
             return True
         else:
             return False
@@ -1192,7 +1185,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 err = -1
 
         self._clk_task_handle = None
-        self._tasks_started_successfully = False
+        #self._tasks_started_successfully = False
         return err
 
     @staticmethod

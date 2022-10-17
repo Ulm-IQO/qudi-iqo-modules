@@ -9,7 +9,7 @@ semiconductor materials.
 
 ## Installation
 For installation instructions please refer to our
-[iqo-modules installation guide](LINK MISSING).
+[iqo-modules installation guide](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/installation_guide.md).
 
 
 ## More information

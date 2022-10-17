@@ -5,16 +5,15 @@ To this end, its written in a very modular way.
 A typical working toolchain consists out of the following qudi modules:
 
 logic:
-- [scanning_data_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_data_logic.py#L44)
+- [scanning_data_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_data_logic.py#L50)
 - scanning_probe_logic
 - scanning_optimize_logic
 
-hardware:
-- analog_output
-- [finite_sampling_input](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_input.py#L48)
-- finite_sampling_io
-- actual scanning device, here NI X-series
-- (in_streamer, optional)
+hardware (here NI X-series):
+- [analog_output](ttps://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_analog_output.py#L39)
+- [finite_sampling_input](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_input.py#L46)
+- [finite_sampling_io](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_io.py#L50)
+- ([in_streamer](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_in_streamer.py#L45), optional)
 
 gui:
 - scannergui
@@ -175,7 +174,7 @@ docstring of every module's python file. In the list above, a direct link for ev
                 device_name: 'Dev1'
                 digital_sources:  # optional
                     - 'PFI8'
-                analog_sources:  # optional
+                #analog_sources:  # optional
                 #   - 'ai0'
                 #   - 'ai1'
                 # external_sample_clock_source: 'PFI0'  # optional
@@ -186,7 +185,6 @@ docstring of every module's python file. In the list above, a direct link for ev
 
 # Configuration hints:
 - The scanning gui's `optimizer_plot_dimensions` ConfigOption allows to specify the optimizer's scanning behavior. The default setting `[2,1]` enables one 2D and one 1D optimization step. You may set to eg. `[2,2,2]` to have three two-dimensionsal scans done for optimzation. In the gui (Settings/Optimizer Settings), this will change the list of possible optimizer sequences.  
+- The maximum scanning frequency is given by the bandwidth of your Piezo controller (check the datasheet). It might make sense to put an even smaller limit into your config, since scanning at the hardware limit might introduce artifacts/offsets to your confocal scan.
 
 # Todo this readme:
-- clean up example config, currently living (here, [in config folder](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/omniscan_dev/src/qudi/config/ni_scanning_testing.cfg), in python files)
-- finish links to python files config docstrings

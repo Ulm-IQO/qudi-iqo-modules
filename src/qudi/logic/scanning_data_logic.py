@@ -51,7 +51,8 @@ class ScanningDataLogic(LogicBase):
     
     scanning_data_logic:
         module.Class: 'scanning_data_logic.ScanningDataLogic'
-        max_history_length: 50
+        options:
+            max_history_length: 50
         connect:
             scan_logic: scanning_probe_logic
     
@@ -145,7 +146,6 @@ class ScanningDataLogic(LogicBase):
         with self._thread_lock:
             return list(self._curr_data_per_scan.copy().values())
 
-    @QtCore.Slot()
     def history_previous(self):
         with self._thread_lock:
             if self._curr_history_index < 1:
@@ -153,18 +153,18 @@ class ScanningDataLogic(LogicBase):
                                  'Already at earliest history entry.')
                 return
 
+            #self.log.debug(f"Hist_prev called, index {self._curr_history_index - 1}")
             return self.restore_from_history(self._curr_history_index - 1)
 
-    @QtCore.Slot()
     def history_next(self):
         with self._thread_lock:
             if self._curr_history_index >= len(self._scan_history) - 1:
                 self.log.warning('Unable to restore next state from scan history. '
                                  'Already at latest history entry.')
                 return
+            #self.log.debug(f"Hist_prev called, index {self._curr_history_index + 1}")
             return self.restore_from_history(self._curr_history_index + 1)
 
-    @QtCore.Slot(int)
     def restore_from_history(self, index):
         with self._thread_lock:
             if self._scan_logic().module_state() != 'idle':
@@ -193,7 +193,6 @@ class ScanningDataLogic(LogicBase):
             self.sigHistoryScanDataRestored.emit(data)
             return
 
-    @QtCore.Slot()
     def _update_scan_state(self, running, data, caller_id):
 
         settings = {
@@ -281,7 +280,6 @@ class ScanningDataLogic(LogicBase):
                         arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
         return fig
 
-    @QtCore.Slot(object, object)
     def save_scan(self, scan_data, color_range=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
