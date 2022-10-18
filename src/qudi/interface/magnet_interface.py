@@ -25,6 +25,7 @@ from qudi.core.module import Base
 from dataclasses import dataclass
 
 class ChannelDataClass:
+    test
 
 
 
