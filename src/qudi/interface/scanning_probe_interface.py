@@ -264,6 +264,12 @@ class ScanData:
     def data(self):
         return self._data
 
+    @data.setter
+    def data(self, data_dict):
+        assert tuple(data_dict.keys()) == self.channels
+        assert all([val.shape == self.scan_resolution for val in data_dict.values()])
+        self._data = data_dict
+
     @property
     def position_data(self):
         return self._position_data
