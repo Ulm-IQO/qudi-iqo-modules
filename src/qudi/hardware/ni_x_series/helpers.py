@@ -54,13 +54,15 @@ def ai_channel_names(device_name: str) -> List[str]:
 
 
 def ao_voltage_range(device_name: str) -> Tuple[float, float]:
-    """ Extracts available analog output voltage range from device """
-    return tuple(ni.system.Device(device_name).ao_voltage_rngs)
+    """ Extracts the biggest available analog output voltage range from device """
+    ao_ranges = ni.system.Device(device_name).ao_voltage_rngs
+    return min(ao_ranges), max(ao_ranges)
 
 
 def ai_voltage_range(device_name: str) -> Tuple[float, float]:
-    """ Extracts available analog input voltage range from device """
-    return tuple(ni.system.Device(device_name).ai_voltage_rngs)
+    """ Extracts the biggest available analog input voltage range from device """
+    ai_ranges = ni.system.Device(device_name).ai_voltage_rngs
+    return min(ai_ranges), max(ai_ranges)
 
 
 def pfi_channel_names(device_name: str) -> List[str]:
