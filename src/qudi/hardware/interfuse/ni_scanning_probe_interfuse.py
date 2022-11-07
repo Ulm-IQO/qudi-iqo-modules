@@ -524,18 +524,20 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         return False
 
     def _fetch_data_chunk(self):
-        # chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
-        chunk_size = 10  # FIXME Don't hard code chunk size? The above does not work with 1D scans. Why?
         try:
-            samples_dict = self._ni_finite_sampling_io().get_buffered_samples(chunk_size)
-        except ValueError:  # ValueError is raised, when more samples are requested then pending or still to get
-            # after HW stopped
-            samples_dict = self._ni_finite_sampling_io().get_buffered_samples()
+            self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
+            #chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
+            chunk_size = 10  # FIXME Don't hard code chunk size? The above does not work with 1D scans. Why?
+            try:
+                samples_dict = self._ni_finite_sampling_io().get_buffered_samples(chunk_size)
+            except ValueError:  # ValueError is raised, when more samples are requested then pending or still to get
+                # after HW stopped
+                samples_dict = self._ni_finite_sampling_io().get_buffered_samples()
 
-        reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
+            reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
 
-        try:
             new_data = {reverse_routing[key]: samples for key, samples in samples_dict.items()}
+
             with self._thread_lock_data:
                 self.raw_data_container.fill_container(new_data)
                 self._scan_data.data = self.raw_data_container.forwards_data()
@@ -736,13 +738,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # self.log.debug("Starting hw timed scan")
         try:
             self._ni_finite_sampling_io().start_buffered_frame()
+            self.sigNextDataChunk.emit()
         except Exception as e:
             self.log.error(f'Could not start frame due to {str(e)}')
             self.module_state.unlock()
 
         self.__scan_stopped = False
         self._start_scan_after_cursor = False
-        self.sigNextDataChunk.emit()
 
     def _abort_cursor_movement(self):
         """
