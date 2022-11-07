@@ -70,7 +70,7 @@ without the need to attach real hardware.
     - [Time series](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_timeseries.md) (/_slow counting_)
     - [Scanning](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_confocal_scanning.md) (/_confocal_)
     - Poi manager 
-    - CW ODMR 
+    - [CW ODMR](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_odmr.md) 
     - Pulsed
     - Camera
     - Switches
