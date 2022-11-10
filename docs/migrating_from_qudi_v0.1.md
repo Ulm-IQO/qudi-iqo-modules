@@ -42,7 +42,7 @@ The configuration for the following modules has changed substantially:
 
     Formely known as confocal. The refined version was rewritten from scratch and supports arbitrary input sources and axis configurations.
 
-- cw odmr
+- [cw odmr](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_odmr.md)
   
   Toolchain has changed but this doesn't affect the configuration a lot. Changes in the cw odmr configuration result from huge restructuring the NI card duties. For cw odmr `ni_x_finite_sampling_input` is required. For the correct configuration please find the example config in the docstring of the `NIXSeriesFiniteSamplingInput` class in qudi\hardware\ni_x_series\ni_x_series_finite_sampling_input.py. All ports need to adapted to your custom setup, of course. You should find the correct ports in your old configuration of the NI card. 
 
