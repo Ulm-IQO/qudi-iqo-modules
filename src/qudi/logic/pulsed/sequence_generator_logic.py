@@ -1151,7 +1151,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.save_block(block)
         for ensemble in ensembles:
             ensemble.sampling_information = dict()
-            ensemble._add_generation_parameters = kwargs_dict
+            ensemble.generation_method_parameters = kwargs_dict
             self.save_ensemble(ensemble)
 
         if self.pulse_generator_constraints.sequence_option == SequenceOption.FORCED and len(sequences) < 1:
@@ -1933,8 +1933,6 @@ class SequenceGeneratorLogic(LogicBase):
             ensemble.sampling_information.update(ensemble_info)
             ensemble.sampling_information['pulse_generator_settings'] = self.pulse_generator_settings
             ensemble.sampling_information['waveforms'] = natural_sort(written_waveforms)
-            if hasattr(ensemble, '_add_generation_parameters'):
-                ensemble.sampling_information['generation_parameters'].update(ensemble._add_generation_parameters)
             self.save_ensemble(ensemble)
 
         self.log.info('Time needed for sampling and writing PulseBlockEnsemble {0} to device: {1} sec'

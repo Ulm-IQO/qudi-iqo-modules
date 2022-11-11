@@ -118,6 +118,7 @@ class PulsedMeasurementLogic(LogicBase):
     _measurement_information = StatusVar(default=dict())
     # Container to store information about the sampled waveform/sequence currently loaded
     _sampling_information = StatusVar(default=dict())
+    _generation_method_parameters = StatusVar(default=dict())
 
     # Data fitting
     _fit_configs = StatusVar(name='fit_configs', default=None)
@@ -689,6 +690,18 @@ class PulsedMeasurementLogic(LogicBase):
             self._sampling_information = info_dict
         else:
             self._sampling_information = dict()
+        return
+
+    @property
+    def generation_method_parameters(self):
+        return self._generation_method_parameters
+
+    @generation_method_parameters.setter
+    def generation_method_parameters(self, info_dict):
+        if isinstance(info_dict, dict):
+            self._generation_method_parameters = info_dict
+        else:
+            self._generation_method_parameters = dict()
         return
 
     @property
@@ -1377,7 +1390,8 @@ class PulsedMeasurementLogic(LogicBase):
                 'extraction parameters'       : self.extraction_settings,
                 'fast counter settings'       : self.fast_counter_settings,
                 # todo: save sequence belonging to signal, not last uploaded one
-                'waveform parameters'       : self.sampling_information['generation_parameters']}
+                'generation parameters'       : self.sampling_information['generation_parameters'],
+                'generation method parameters': self.generation_method_parameters }
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
