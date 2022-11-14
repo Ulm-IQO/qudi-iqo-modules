@@ -380,7 +380,7 @@ class ScanningOptimizeLogic(LogicBase):
                         return
 
                 except:
-                    self.log.exception()
+                    self.log.exception("")
 
             self._sequence_index += 1
 
