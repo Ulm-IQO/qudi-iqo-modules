@@ -32,11 +32,12 @@ from qudi.util.helpers import natural_sort, in_range
 
 from qudi.interface.process_control_interface import ProcessControlConstraints
 from qudi.interface.process_control_interface import ProcessSetpointInterface
+from qudi.interface.mixins.process_control_switch import ProcessControlSwitchMixin
 from qudi.hardware.ni_x_series.helpers import sanitize_device_name, normalize_channel_name
 from qudi.hardware.ni_x_series.helpers import ao_channel_names, ao_voltage_range
 
 
-class NIXSeriesAnalogOutput(ProcessSetpointInterface):
+class NIXSeriesAnalogOutput(ProcessControlSwitchMixin, ProcessSetpointInterface):
     """ A module to output and read back (internally routed) analog voltages
     on an Ni Card in a software timed fashion.
     (only tested with Ni X-Series cards so far)
