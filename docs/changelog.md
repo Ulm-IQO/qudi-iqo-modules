@@ -15,6 +15,8 @@ adding minor GUI features.
 - Added mixin `qudi.interface.mixins.process_control_switch.ProcessControlSwitchMixin` to provide 
 optional default implementation satisfying the `SwitchInterface` for process control hardware 
 modules implementing any of the interfaces contained in `qudi.interface.process_control_interface`
+- Overhaul of PID toolchain: added units support, normalization option, gui reset feature,
+dependency option for `process_control_dummy` to simulate PID control
 
 ### Other
 - Bumped `qudi-core` package minimum version requirement to v1.2.0
