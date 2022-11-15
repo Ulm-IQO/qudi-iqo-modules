@@ -69,7 +69,7 @@ class SoftPIDController(PIDControllerInterface):
     setpoint = StatusVar(default=273.15)
     manual_value = StatusVar(default=0)
 
-    sigNewValue = QtCore.Signal(float, str)
+    sigNewValue = QtCore.Signal(str, float)
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -100,8 +100,8 @@ class SoftPIDController(PIDControllerInterface):
         self._process = self.process()
         self._control = self.control()
 
-        self._process.set_activity_state(True)
-        self._control.set_activity_state(True)
+        self._process.set_activity_state(self.process_value_channel, True)
+        self._control.set_activity_state(self.setpoint_channel, True)
 
         self.previous_delta = 0
         self.cv = self._control.get_setpoint(self.setpoint_channel)
@@ -124,8 +124,8 @@ class SoftPIDController(PIDControllerInterface):
     def on_deactivate(self):
         """ Perform required deactivation.
         """
-        self._process.set_activity_state(False)
-        self._control.set_activity_state(False)
+        self._process.set_activity_state(self.process_value_channel, False)
+        self._control.set_activity_state(self.setpoint_channel, False)
 
     def _calc_next_step(self):
         """ This function implements the Takahashi Type C PID
@@ -175,7 +175,7 @@ class SoftPIDController(PIDControllerInterface):
             self.history[0, -1] = self.pv
             self.history[1, -1] = self.cv
             self.history[2, -1] = self.setpoint
-            self.sigNewValue.emit(self.cv, self.setpoint_channel)
+            self.sigNewValue.emit(self.setpoint_channel, self.cv)
 
         # if PID disabled, just use the manual control value
         else:
@@ -185,7 +185,7 @@ class SoftPIDController(PIDControllerInterface):
                 self.cv = limits[1]
             if self.cv < limits[0]:
                 self.cv = limits[0]
-            self.sigNewValue.emit(self.cv, self.setpoint_channel)
+            self.sigNewValue.emit(self.setpoint_channel, self.cv)
 
         self.timer.start(self.timestep)
 
