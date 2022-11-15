@@ -47,8 +47,8 @@ class PoiMarker(pg.EllipseROI):
     Have a look at:
     http://www.pyqtgraph.org/documentation/graphicsItems/roi.html
     """
-    default_pen = {'color': 'F0F', 'width': 2}
-    select_pen = {'color': 'FFF', 'width': 2}
+    default_pen = {'color': '#F0F', 'width': 2}
+    select_pen = {'color': '#FFF', 'width': 2}
 
     sigPoiSelected = QtCore.Signal(str)
 
