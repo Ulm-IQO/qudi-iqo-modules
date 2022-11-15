@@ -58,11 +58,15 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def move_absolute(self, position, velocity=None):
+    def move_absolute(self, position, velocity=None, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
         Log error and return current target position if something fails or a scan is in progress.
+
+        @parapm bool blocking: If True this call returns only after the final position is reached.
+                               Else the move might be in progress and the calling logic needs to
+                               check whether the move is done.
         """
         pass
 
