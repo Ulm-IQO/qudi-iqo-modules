@@ -61,8 +61,7 @@ class FastCounterFGAPiP3(FastCounterInterface):
             import stuttgart_counter.TimeTagger as tt
             self._tt = tt
         finally:
-            pass
-            # sys.path.remove(self._package_path)
+            sys.path.remove(self._package_path)
         self._tt._Tagger_setSerial(self._fpgacounter_serial)
         bitfilepath = os.path.join(self._package_path, 'stuttgart_counter', 'TimeTaggerController.bit')
         self._tt._Tagger_setBitfilePath(bitfilepath)
