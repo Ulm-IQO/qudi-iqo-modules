@@ -173,6 +173,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
 
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
+        self._t_last_move = time.perf_counter()
 
     def on_deactivate(self):
         """
@@ -305,6 +306,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error('Invalid axes name in position')
             return self.get_target()
 
+        if time.perf_counter() - self.t_last_move < 20e-3:
+            self.log.debug(f"Dropping too fast move to {position}")
+            return self.get_target()
+
         self._prepare_movement(position, velocity=velocity)
 
         self.log.debug(f"Move to target {position}, arming timer...")
@@ -312,6 +317,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if blocking:
             self.__wait_on_move_done()
         self.log.debug(f"Timer started.")
+
+        self.t_last_move = time.perf_counter()
 
         return self.get_target()
 
@@ -738,7 +745,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def __ao_cursor_write_loop(self):
         try:
+            t_start = time.perf_counter()
             with self._thread_lock_cursor:
+
                 new_pos = None
                 if len(self.__write_queue) > 0:
                     new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, values[0])
@@ -762,6 +771,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 if self._start_scan_after_cursor:
                     self._start_hw_timed_scan()
+
+            self.log.debug(f"Write loop took {time.perf_counter() - t_start}")
 
         except:
             self.log.exception("")
@@ -813,7 +824,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         #  QObject::killTimer: Timers cannot be stopped from another thread
         #  QObject::startTimer: Timers cannot be started from another thread
 
-
+        t_start = time.perf_counter()
         try:
             self.log.debug(f"Preparing move in thread {QtCore.QThread.currentThread()}...")
             self._abort_cursor_movement()
@@ -862,6 +873,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # TODO Keep other axis constant?
             # TODO The whole "write_queue" thing is intended to not make to big of jumps in the scanner move ...
 
+            self.log.debug(f"Prep move took {time.perf_counter() - t_start}")
         except:
             self.log.exception("")
 
