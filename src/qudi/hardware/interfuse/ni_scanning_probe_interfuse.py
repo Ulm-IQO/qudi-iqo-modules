@@ -306,7 +306,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error('Invalid axes name in position')
             return self.get_target()
 
-        if time.perf_counter() - self._t_last_move < 20e-3:
+        if 1e3*(time.perf_counter() - self._t_last_move) < 2*self._default_timer_interval_ms:
             self.log.debug(f"Dropping too fast move to {position}")
             return self.get_target()
 
@@ -740,7 +740,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
             dt_new_ms = int(np.round(max(2 * self._default_timer_interval_ms - exec_time * 1e3, 1)))
             self.__ni_ao_write_timer.setInterval(dt_new_ms)
-            self.log.debug(f"write loop cycle took {1e3*exec_time} ms, adjusting interval to {dt_new_ms}")
+            self.log.debug(f"write loop cycle took {1e3*exec_time} ms, adjusting interval to {dt_new_ms} ms")
 
         self._interval_time_stamp = time.perf_counter()
 
@@ -748,6 +748,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         try:
             t_start = time.perf_counter()
             with self._thread_lock_cursor:
+                self.log.debug(f"Write loop obtained thread_lock after after {1e3*(time.perf_counter()-t_start)} ms")
 
                 new_pos = None
                 if len(self.__write_queue) > 0:
@@ -831,6 +832,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self._abort_cursor_movement()
 
             with self._thread_lock_cursor:
+                self.log.debug(f"Prep move obtained thread_lock after {1e3*(time.perf_counter()-t_start)} ms")
 
                 if not self._ni_ao().is_active:
                     self._ni_ao().set_activity_state(True)
