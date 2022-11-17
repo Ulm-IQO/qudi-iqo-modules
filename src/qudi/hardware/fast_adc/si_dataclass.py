@@ -50,6 +50,9 @@ class Card_settings:
     clk_ref_Hz: int = 10e6
     trig_mode: str = ''
     trig_level_mV: int = 1000
+    ts_buf_size_B: int = 0
+    ts_buf_notify_size_B: int = 2048
+
 
 
     def calc_dynamic_cs(self, ms):
@@ -72,14 +75,6 @@ class Card_settings:
 
     def get_buf_size_B(self, seq_size_B, reps_per_buf):
         self.buf_size_B = seq_size_B * reps_per_buf
-
-@dataclass
-class Card_settings_gated(Card_settings):
-    ts_buf_size_B: int = 0
-    ts_buf_notify_size_B: int = 2048
-
-    def get_buf_size_B(self, seq_size_B, reps_per_buf):
-        super().get_buf_size_B(seq_size_B, reps_per_buf)
         self.ts_buf_size_B = 15000000#int(2 * 16 * reps_per_buf)
 
 @dataclass
@@ -104,6 +99,19 @@ class Measurement_settings:
     reps_per_buf: int = 0
     actual_length_s: float = 0
     data_bits: int = 0
+    #Gate
+    c_ts_buf_ptr:  typing.Any = c_void_p()
+    ts_data_bits: int = 64
+    ts_data_bytes_B: int = 8
+    ts_seg_size_S: int = 4 #rise + null + fall + null
+    ts_seg_size_B: int = 32
+    ts_seq_size_S: int = 8
+    ts_seq_size_B: int = 32
+    gate_length_S: int = 0
+    gate_length_rounded_S: int = 0
+    gate_end_alignment_S: int = 16
+    parted_pulse_acquisition: bool = False
+
 
     def return_c_buf_ptr(self):
         return self.c_buf_ptr
@@ -114,11 +122,26 @@ class Measurement_settings:
         self.number_of_gates = number_of_gates
 
     def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
-        self.seg_size_S = seg_size_S
-        self.seq_size_S = self.seg_size_S
+        if not self.gated:
+            self.seg_size_S = seg_size_S
+            self.seq_size_S = self.seg_size_S
+        else:
+            self.gate_length_S = int(np.ceil(self.record_length_s / self.binwidth_s))
+            self.gate_length_rounded_S = int(np.ceil(self.gate_length_S / 16) * 16)
+            self.seg_size_S = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
+            self.seq_size_S = self.seg_size_S * self.number_of_gates
+            self.ts_seq_size_S = self.ts_seg_size_S * self.number_of_gates
+            self.ts_seq_size_B = self.ts_seg_size_B * self.number_of_gates
+            if self.parted_pulse_acquisition:
+                self.seq_size_S = 2 * self.seq_size_S
+                self.ts_seq_size_S = 2 * self.ts_seq_size_S
+                self.ts_seq_size_B = 2 * self.ts_seq_size_B
 
     def calc_actual_length_s(self):
-        self.actual_length_s = self.seq_size_S * self.binwidth_s
+        if not self.gated:
+            self.actual_length_s = self.seq_size_S * self.binwidth_s
+        else:
+            self.actual_length_s = self.seg_size_S * self.binwidth_s
 
     def assign_data_bit(self, acq_mode):
 
@@ -147,36 +170,7 @@ class Measurement_settings:
         self.reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
         self.seq_size_B = self.seq_size_S * self.get_data_bytes_B()
 
-@dataclass()
-class Measurement_settings_gated(Measurement_settings):
-    c_ts_buf_ptr:  typing.Any = c_void_p()
-    ts_data_bits: int = 64
-    ts_data_bytes_B: int = 8
-    ts_seg_size_S: int = 4 #rise + null + fall + null
-    ts_seg_size_B: int = 32
-    ts_seq_size_S: int = 8
-    ts_seq_size_B: int = 32
-    gate_length_S: int = 0
-    gate_length_rounded_S: int = 0
-    gate_end_alignment_S: int = 16
-    parted_pulse_acquisition: bool = False
-
-
-    def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
-        self.gate_length_S = int(np.ceil(self.record_length_s / self.binwidth_s))
-        self.gate_length_rounded_S = int(np.ceil(self.gate_length_S / 16) * 16)
-        self.seg_size_S = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
-        self.seq_size_S = self.seg_size_S * self.number_of_gates
-        self.ts_seq_size_S = self.ts_seg_size_S * self.number_of_gates
-        self.ts_seq_size_B = self.ts_seg_size_B * self.number_of_gates
-        if self.parted_pulse_acquisition:
-            self.seq_size_S = 2 * self.seq_size_S
-            self.ts_seq_size_S = 2 * self.ts_seq_size_S
-            self.ts_seq_size_B = 2 * self.ts_seq_size_B
-
-    def calc_actual_length_s(self):
-        self.actual_length_s = self.seg_size_S * self.binwidth_s
-
+    #Gate
     def get_ts_data_type(self):
         return c_uint64
 
