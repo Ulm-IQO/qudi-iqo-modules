@@ -116,6 +116,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.__ni_ao_write_timer = None
         self._default_timer_interval_ms = -1
         self._interval_time_stamp = None
+        self._write_loop_idx = 1
+        self._write_loop_cum_exec_time = 0
 
         self.__read_pos = -1
         self.__scan_stopped = False
@@ -166,7 +168,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # Timer to free resources after pure ni ao
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
         self.__ni_ao_write_timer.setSingleShot(True)
-        self._default_timer_interval_ms = 5  # in ms
+        self._default_timer_interval_ms = 30  # in ms
         self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
@@ -307,8 +309,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             return self.get_target()
 
         if 1e3*(time.perf_counter() - self._t_last_move) < 2*self._default_timer_interval_ms:
-            self.log.debug(f"Dropping too fast move to {position}")
-            return self.get_target()
+            #self.log.debug(f"Dropping too fast move to {position}")
+            return position
 
         self._prepare_movement(position, velocity=velocity)
 
@@ -736,11 +738,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def __adjust_ao_timing(self):
         # to avoid error accumulation
         if self._interval_time_stamp is not None:
-            exec_time = time.perf_counter() - self._interval_time_stamp
+            _write_loop_exec_time = time.perf_counter() - self._interval_time_stamp
             # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
-            dt_new_ms = int(np.round(max(2 * self._default_timer_interval_ms - exec_time * 1e3, 1)))
+            dt_new_ms = int(np.round(max(2 * self._default_timer_interval_ms - _write_loop_exec_time * 1e3, 1)))
             self.__ni_ao_write_timer.setInterval(dt_new_ms)
-            self.log.debug(f"write loop cycle took {1e3*exec_time} ms, adjusting interval to {dt_new_ms} ms")
+            self.log.debug(f"write loop cycle took {1e3*_write_loop_exec_time} ms, adjusting interval to {dt_new_ms} ms")
+            self._write_loop_idx += 1
+            self._write_loop_cum_exec_time += _write_loop_exec_time
 
         self._interval_time_stamp = time.perf_counter()
 
@@ -748,7 +752,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         try:
             t_start = time.perf_counter()
             with self._thread_lock_cursor:
-                self.log.debug(f"Write loop obtained thread_lock after after {1e3*(time.perf_counter()-t_start)} ms")
+                #self.log.debug(f"Write loop obtained thread_lock after after {1e3*(time.perf_counter()-t_start)} ms")
 
                 new_pos = None
                 if len(self.__write_queue) > 0:
@@ -756,8 +760,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                    for ax, values in self.__write_queue.items()}
                     new_pos = {self._ni_channel_mapping[ax]: values[0]
                                    for ax, values in self.__write_queue.items()}
+                    #self.log.debug(
+                    #    f"Write loop calc new pos after after {1e3 * (time.perf_counter() - t_start)} ms")
                     self._ni_ao().setpoints = new_voltage
+                    self.log.debug(
+                        f"Write loop set nicard after after {1e3 * (time.perf_counter() - t_start)} ms")
                     self.__write_queue = {ax: values[1:] for ax, values in self.__write_queue.items()}
+                    #self.log.debug(
+                    #    f"Write loop new write queue after {1e3 * (time.perf_counter() - t_start)} ms")
 
                 self.log.debug(f'Cursor_write_loop move to {new_pos}. Remaining queue: {self.__write_queue.items()}')
 
@@ -774,7 +784,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 if self._start_scan_after_cursor:
                     self._start_hw_timed_scan()
 
-            self.log.debug(f"Write loop took {time.perf_counter() - t_start}")
+            #self.log.debug(f"Write loop took {time.perf_counter() - t_start}")
 
         except:
             self.log.exception("")
@@ -807,6 +817,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         with self._thread_lock_cursor:
             self.__write_queue = dict()
             self.log.debug("Write queue cleared.")
+
+        mean_exec_time = self._write_loop_cum_exec_time / self._write_loop_idx
+        # target execution time is the default_timer_interval. Movement becomess slaggy if far from target exec time.
+        if 1e3*mean_exec_time > 2*self._default_timer_interval_ms:
+            self.log.warning(f"Write loop execution takes too long ({1e3*mean_exec_time:.2f} ms). Consider increasing"
+                             f" the time_interval= {self._default_timer_interval_ms} ms")
 
         self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
         self._ni_ao().set_activity_state(False)
