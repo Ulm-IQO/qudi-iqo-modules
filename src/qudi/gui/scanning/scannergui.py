@@ -924,8 +924,9 @@ class ScannerGui(GuiBase):
             if scan_range:
                 dx_min = abs(scan_range[0][1] - scan_range[0][0]) * self._min_crosshair_size_fraction
                 dy_min = abs(scan_range[1][1] - scan_range[1][0]) * self._min_crosshair_size_fraction
-                _, width = in_range(width, dx_min, abs(x_max - x_min))
-                _, height = in_range(width, dy_min, abs(y_max - y_min))
+                dxy_min = max([dx_min, dy_min]) # crosshair should be quadratic after clipping
+                _, width = in_range(width, dxy_min, abs(x_max - x_min))
+                _, height = in_range(width, dxy_min, abs(y_max - y_min))
 
             marker_bounds = (
                 (x_min - width / 2, x_max + width / 2),
