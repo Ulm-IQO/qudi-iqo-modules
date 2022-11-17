@@ -420,15 +420,15 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.pl.row_data_save = self._row_data_save
 
         if self._card_on == False:
-            self.cs.card = spcm_hOpen(create_string_buffer(b'/dev/spcm0'))
+            self.card = spcm_hOpen(create_string_buffer(b'/dev/spcm0'))
             self._card_on = True
-            self.ccmd = Card_command(self.cs.card)
+            self.ccmd = Card_command(self.card)
             self.ccmd.error_check = self._ccmd_error_check
 
         else:
             self.log.info('SI card is already on')
 
-        if self.cs.card == None:
+        if self.card == None:
             self.log.info('No card found')
 
     def _check_gated(self):
@@ -463,7 +463,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         Close the card
         """
-        spcm_vClose(self.cs.card)
+        spcm_vClose(self.card)
 
     def get_constraints(self):
 
@@ -491,7 +491,7 @@ class SpectrumInstrumentation(FastCounterInterface):
                     number_of_gates: the number of gated, which are accepted
         """
         self.ccmd.card_reset()
-        self.cfg.load_static_cfg_params(self.cs, self.ms)
+        self.cfg.load_static_cfg_params(self.card, self.cs, self.ms)
 
         self.ms.load_dynamic_params(binwidth_s, record_length_s, number_of_gates)
         self.cs.calc_dynamic_cs(self.ms)
@@ -508,7 +508,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         if self.ms.gated == True:
             self.ms.c_ts_buf_ptr = self.cfg.return_c_ts_buf_ptr()
 
-        self.pl.init_process(self.cs, self.ms)
+        self.pl.init_process(self.card, self.cs, self.ms)
         self.pl.cp.dcmd.error_check = self._dcmd_error_check
 
         return self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates
@@ -844,10 +844,10 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
     This class inherets the configure classes above and configures all the card settings given by the cs(Card_settings).
     '''
 
-    def load_static_cfg_params(self, cs, ms):
+    def load_static_cfg_params(self, card, cs, ms):
 
         self._gated = ms.gated
-        self._card = cs.card
+        self._card = card
 
         self._c_buf_ptr = ms.return_c_buf_ptr()
         self._ai_ch = cs.ai_ch
@@ -1206,17 +1206,17 @@ class Card_process():
     required in the data process.
     '''
 
-    def init_card_process(self, cs, ms):
+    def init_card_process(self, card, cs, ms):
         self._input_settings_to_cp(cs, ms)
-        self._generate_buffer_command()
+        self._generate_buffer_command(card)
 
     def _input_settings_to_cp(self, cs, ms):
         self.cs = cs
         self.ms = ms
 
-    def _generate_buffer_command(self):
-        self.dcmd = Data_buffer_command(self.cs.card, self.ms)
-        self.tscmd = Ts_buffer_command(self.cs.card)
+    def _generate_buffer_command(self, card):
+        self.dcmd = Data_buffer_command(card, self.ms)
+        self.tscmd = Ts_buffer_command(card)
 
     def toggle_trigger(self, trigger_on):
         if trigger_on == self.trigger_enabled:
@@ -1251,11 +1251,11 @@ class Process_commander:
     '''
     buf_ratio = 0.1
 
-    def init_process(self, cs, ms):
+    def init_process(self, card, cs, ms):
         self._input_settings_to_dpc(ms)
         self._create_process_cls()
         self.dp.init_data_process(cs, ms)
-        self.cp.init_card_process(cs, ms)
+        self.cp.init_card_process(card, cs, ms)
 
     def _create_process_cls(self):
         if self._gated == True:
