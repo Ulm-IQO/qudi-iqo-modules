@@ -89,6 +89,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     _frequency_ranges = ConfigOption(name='frequency_ranges', missing='error')
     _resolution_ranges = ConfigOption(name='resolution_ranges', missing='error')
     _input_channel_units = ConfigOption(name='input_channel_units', missing='error')
+    _timer_target_interval_ms = ConfigOption(name='timer_target_interval_ms', default=10, converter=int,
+                                             missing='warn')
 
     __backwards_line_resolution = ConfigOption(name='backwards_line_resolution', default=50)
     __max_move_velocity = ConfigOption(name='maximum_move_velocity', default=400e-6)
@@ -114,7 +116,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._start_scan_after_cursor = False
 
         self.__ni_ao_write_timer = None
-        self._default_timer_interval_ms = -1
         self._interval_time_stamp = None
         self._write_loop_idx = 1
         self._write_loop_cum_exec_time = 0
@@ -168,8 +169,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # Timer to free resources after pure ni ao
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
         self.__ni_ao_write_timer.setSingleShot(True)
-        self._default_timer_interval_ms = 5  # in ms
-        self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
+        self.__ni_ao_write_timer.setInterval(self._timer_target_interval_ms)
         # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
 
@@ -308,7 +308,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error('Invalid axes name in position')
             return self.get_target()
 
-        if 1e3*(time.perf_counter() - self._t_last_move) < 2*self._default_timer_interval_ms:
+        if 1e3*(time.perf_counter() - self._t_last_move) < 2*self._timer_target_interval_ms:
             #self.log.debug(f"Dropping too fast move to {position}")
             return position
 
@@ -330,7 +330,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             while self.is_move_running:
                 self.log.debug(f"Waiting for move to finish. Write queue: {self.__write_queue}")
                 QGuiApplication.processEvents()
-                time.sleep(1e-3*self._default_timer_interval_ms)
+                time.sleep(1e-3*self._timer_target_interval_ms)
 
             delta = np.asarray(list(self.get_position().values())) - np.asarray(list(self.get_target().values()))
             self.log.debug(f"Move_abs finished after {1e3*(time.perf_counter()-t_start)} ms "
@@ -740,9 +740,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if self._interval_time_stamp is not None:
             _write_loop_exec_time = time.perf_counter() - self._interval_time_stamp
             # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
-            dt_new_ms = int(np.round(max(2 * self._default_timer_interval_ms - _write_loop_exec_time * 1e3, 1)))
+            dt_new_ms = int(np.round(max(2 * self._timer_target_interval_ms - _write_loop_exec_time * 1e3, 1)))
             self.__ni_ao_write_timer.setInterval(dt_new_ms)
-            self.log.debug(f"write loop cycle took {1e3*_write_loop_exec_time} ms, adjusting interval to {dt_new_ms} ms")
+            self.log.debug(f"write loop cycle took {1e3*_write_loop_exec_time:.2f} ms "
+                           f"(target= {self._timer_target_interval_ms} ms), adjusting interval to {dt_new_ms} ms")
             self._write_loop_idx += 1
             self._write_loop_cum_exec_time += _write_loop_exec_time
 
@@ -820,11 +821,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         mean_exec_time = self._write_loop_cum_exec_time / self._write_loop_idx
         # target execution time is the default_timer_interval. Movement becomess slaggy if far from target exec time.
-        if 1e3*mean_exec_time > 2*self._default_timer_interval_ms:
+        if 1e3*mean_exec_time > 2*self._timer_target_interval_ms:
             self.log.warning(f"Write loop execution takes too long ({1e3*mean_exec_time:.2f} ms). Consider increasing"
-                             f" the time_interval= {self._default_timer_interval_ms} ms")
+                             f" the time_interval= {self._timer_target_interval_ms} ms")
 
-        self.__ni_ao_write_timer.setInterval(self._default_timer_interval_ms)
+        self.__ni_ao_write_timer.setInterval(self._timer_target_interval_ms)
         self._ni_ao().set_activity_state(False)
 
     def _move_to_and_start_scan(self, position):
