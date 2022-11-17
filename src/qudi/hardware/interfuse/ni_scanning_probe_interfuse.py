@@ -740,7 +740,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
             dt_new_ms = int(np.round(max(2 * self._default_timer_interval_ms - exec_time * 1e3, 1)))
             self.__ni_ao_write_timer.setInterval(dt_new_ms)
-            self.log.debug(f"write loop cycle took {1e3*exec_time} ms, adjusting interval to {dt_new_ms}")
+            self.log.debug(f"write loop cycle took {1e3*exec_time} ms, adjusting interval to {dt_new_ms} ms")
 
         self._interval_time_stamp = time.perf_counter()
 
