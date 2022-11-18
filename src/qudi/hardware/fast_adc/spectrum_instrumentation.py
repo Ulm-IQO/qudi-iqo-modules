@@ -404,14 +404,9 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         Open the card by activation of the module
         """
-        self._check_gated()
 
-        if self._gated == True:
-            self.cs = Card_settings_gated()
-            self.ms = Measurement_settings_gated()
-        else:
-            self.cs = Card_settings()
-            self.ms = Measurement_settings()
+        self.cs = Card_settings()
+        self.ms = Measurement_settings()
 
         self._load_settings_from_config_file()
         self.pl = Process_loop()
@@ -431,11 +426,6 @@ class SpectrumInstrumentation(FastCounterInterface):
         if self.card == None:
             self.log.info('No card found')
 
-    def _check_gated(self):
-        if 'GATE' in self._acq_mode:
-            self._gated = True
-        else:
-            self._gated = False
 
     def _load_settings_from_config_file(self):
         self.cs.ai_ch = self._ai_ch
@@ -452,7 +442,6 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.cs.trig_mode = self._trig_mode
         self.cs.trig_level_mV = int(self._trig_level_mV)
 
-        self.ms.gated = self._gated
         self.ms.init_buf_size_S = int(self._init_buf_size_S)
         self.ms.reps = self._reps
         self.ms.parted_pulse_acquisition = self._parted_pulse_acquisition
@@ -475,7 +464,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         return constraints
 
-    def configure(self, binwidth_s, record_length_s, number_of_gates=0):
+    def configure(self, binwidth_s, record_length_s, number_of_gates=1):
         """
         Configure the card parameters.
         @param float binwidth_s: Length of a single time bin in the time trace
@@ -491,6 +480,7 @@ class SpectrumInstrumentation(FastCounterInterface):
                     number_of_gates: the number of gated, which are accepted
         """
         self.ccmd.card_reset()
+        self.ms.gated = self.cs.gated
         self.cfg.load_static_cfg_params(self.card, self.cs, self.ms)
 
         self.ms.load_dynamic_params(binwidth_s, record_length_s, number_of_gates)
@@ -532,6 +522,12 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         Start the acquistion and data process loop
         """
+        self._start_acquistion()
+        self.pl.start_data_process()
+
+        return 0
+
+    def _start_acquistion(self):
         if self._internal_status == CardStatus.idle:
             self.pl.init_measure_params()
             if self.ms.gated:
@@ -543,19 +539,11 @@ class SpectrumInstrumentation(FastCounterInterface):
             if self.ms.gated == True:
                 self.pl.cp.tscmd.wait_extra_dma()
 
-        if self._internal_status == CardStatus.paused:
+        elif self._internal_status == CardStatus.paused:
             self.ccmd.enable_trigger()
 
         self.pl.cp.trigger_enabled = True
-        self.pl.start_data_process()
-
         self.log.info('Measurement started')
-        self._internal_status = CardStatus.running
-
-
-        return 0
-
-    def _start_card(self):
         self._internal_status = CardStatus.running
 
     def get_data_trace(self):
@@ -584,8 +572,9 @@ class SpectrumInstrumentation(FastCounterInterface):
     def stop_measure(self):
         if self._internal_status == CardStatus.running:
             self.log.info('card stopped')
-            self.pl.stop_data_process()
             self.pl.cp.trigger_enabled = self.ccmd.disable_trigger()
+            if self.pl.loop_on:
+                self.pl.stop_data_process()
             self.ccmd.stop_dma()
             self.ccmd.card_stop()
 
@@ -1139,7 +1128,7 @@ class Data_process_ungated():
         self.df.init_data_fetch()
         self.avg = AvgData()
         self.avg.num = 0
-        self.avg.pulse = ms.number_of_gates
+        self.avg.total_pulse_number = ms.number_of_gates
         self.avg.data = np.empty(ms.seq_size_S)
 
     def _input_settings_to_dp(self, cs, ms):
@@ -1148,13 +1137,19 @@ class Data_process_ungated():
 
     def _generate_data_cls(self):
         self.dc = SeqDataMulti()
-        self.dc.data = np.empty(self.ms.seq_size_S)
+        self.dc.data = np.zeros(self.ms.seq_size_S)
+        self.dc.total_pulse_number = self.ms.number_of_gates
+        self.dc.pule_len = self.ms.seg_size_S
+        self.dc.data_range_mV = self.cs.ai_range_mV
+
+
         self.df = Data_fetch_ungated(self.cs, self.ms)
 
     def create_dc_new(self):
         self.dc_new = SeqDataMulti()
-        self.dc_new.pulse = self.ms.number_of_gates
+        self.dc_new.total_pulse_number = self.ms.number_of_gates
         self.dc_new.pule_len = self.ms.seg_size_S
+        self.dc_new.data_range_mV = self.cs.ai_range_mV
 
     def fetch_data_to_dc(self, user_pos_B, curr_avail_reps):
         self.dc_new.data, self.dc_new.rep = self.df.fetch_data(user_pos_B, curr_avail_reps)
@@ -1183,15 +1178,16 @@ class Data_process_gated(Data_process_ungated):
 
     def _generate_data_cls(self):
         self.dc = SeqDataMultiGated()
-        self.dc.data = np.empty((0, self.ms.seq_size_S), int)
-        self.dc.ts_r = np.empty(0, int)
-        self.dc.ts_f = np.empty(0, int)
+        self.dc.data = np.zeros((0, self.ms.seq_size_S), int)
+        self.dc.ts_r = np.zeros(0, int)
+        self.dc.ts_f = np.zeros(0, int)
         self.df = Data_fetch_gated(self.cs, self.ms)
 
     def create_dc_new(self):
         self.dc_new = SeqDataMultiGated()
-        self.dc_new.pulse = self.ms.number_of_gates
+        self.dc_new.total_pulse_number = self.ms.number_of_gates
         self.dc_new.pule_len = self.ms.seg_size_S
+        self.dc_new.data_range_mV = self.cs.ai_range_mV
 
     def fetch_ts_data_to_dc(self, ts_user_pos_B, curr_avail_reps):
         self.dc_new.ts_r, self.dc_new.ts_f = self.df.fetch_ts_data(ts_user_pos_B, curr_avail_reps)
@@ -1383,9 +1379,10 @@ class Process_loop(Process_commander):
     def init_measure_params(self):
         self.cp.dcmd.init_dp_params()
         self.start_time = time.time()
-        self.loop_on = True
+        self.loop_on = False
 
     def start_data_process(self):
+        self.loop_on = True
         self.data_proc_th = threading.Thread(target=self.start_data_process_loop)
         self.data_proc_th.start()
 

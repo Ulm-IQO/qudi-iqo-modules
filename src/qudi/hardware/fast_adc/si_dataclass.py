@@ -31,7 +31,6 @@ class Card_settings:
     '''
     This dataclass contains parameters input to the card.
     '''
-    card: typing.Any = ''
     ai_ch: str = 'CH0'
     ai_range_mV: int = 1000
     ai_offset_mV: int = 0
@@ -77,6 +76,10 @@ class Card_settings:
         self.buf_size_B = seq_size_B * reps_per_buf
         self.ts_buf_size_B = 15000000#int(2 * 16 * reps_per_buf)
 
+    @property
+    def gated(self):
+        return 'GATE' in self.acq_mode
+
 @dataclass
 class Measurement_settings:
     '''
@@ -111,7 +114,6 @@ class Measurement_settings:
     gate_length_rounded_S: int = 0
     gate_end_alignment_S: int = 16
     parted_pulse_acquisition: bool = False
-
 
     def return_c_buf_ptr(self):
         return self.c_buf_ptr
@@ -181,6 +183,8 @@ class Measurement_settings:
 class CoreData:
     data: np.ndarray = np.array([])
     data_len: int = 0
+    data_range_mV: int = 1000
+    data_bit: int = 16
 
     def __post_init__(self):
         self.set_len()
@@ -196,6 +200,10 @@ class CoreData:
     def reshape_1d(self):
         shape_1d = (self.data_len,)
         return self.data.reshape(shape_1d)
+
+    @property
+    def data_mV(self):
+        return self.data * self.data_range_mV / 2**self.data_bit
 
 @dataclass
 class PulseDataSingle(CoreData):
@@ -231,24 +239,24 @@ class PulseDataMulti(PulseDataSingle):
 
 @dataclass
 class SeqDataSingle(PulseDataSingle):
-    pulse: int = 0
+    total_pulse_number: int = 0
     seq_len: int = 0
 
     def stack_pulse(self, d):
         self.pulse_no = np.hstack((self.pulse_no, d.pulse_no))
         self.data = np.hstack((self.data, d.data))
-        self.pulse = len(self.pulse_no)
+        self.total_pulse_number = len(self.pulse_no)
 
     def reshape_2d_by_pulse(self):
-        len = int(self.data_len / self.pulse)
-        shape_2d = (self.pulse, len)
+        len = int(self.data_len / self.total_pulse_number)
+        shape_2d = (self.total_pulse_number, len)
         return self.data.reshape(shape_2d)
 
 @dataclass
 class SeqDataMulti(PulseDataMulti, SeqDataSingle):
 
     def reshape_3d_multi_seq(self):
-        shape_3d = (self.rep, self.pulse, self.pulse_len)
+        shape_3d = (self.rep, self.total_pulse_number, self.pulse_len)
         return self.data.reshape(shape_3d)
 
     def avgdata(self):
