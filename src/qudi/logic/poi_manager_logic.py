@@ -448,7 +448,7 @@ class PoiManagerLogic(LogicBase):
         self.stop_periodic_refocus()
 
         # Disconnect signals
-        self._optimizelogic().sigOptimizeStateChanged.disconnect()
+        self._optimizelogic().sigOptimizeStateChanged.disconnect(self._optimisation_callback)
         self.__sigStartPeriodicRefocus.disconnect()
         self.__sigStopPeriodicRefocus.disconnect()
         return
