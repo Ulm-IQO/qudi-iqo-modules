@@ -349,7 +349,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except:
             self.log.exception("")
 
-    def move_relative(self, distance, velocity=None):
+    def move_relative(self, distance, velocity=None, blocking=False):
         """ Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 
@@ -358,7 +358,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
         current_position = self.get_position()
         end_pos = {ax: current_position[ax] + distance[ax] for ax in distance}
-        self.move_absolute(end_pos, velocity=velocity)
+        self.move_absolute(end_pos, velocity=velocity, blocking=blocking)
 
         return end_pos
 
