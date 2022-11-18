@@ -1453,13 +1453,15 @@ class PulsedMeasurementLogic(LogicBase):
                                                                     tag,
                                                                     '_raw_timetrace')
         # Save data to file
-        data_storage.save_data(self.raw_data.astype('int64')[:, np.newaxis],
-                               metadata=self._get_raw_metadata(),
-                               nametag=nametag,
-                               filename=save_filename,
-                               timestamp=timestamp,
-                               notes=notes,
-                               column_headers='Signal (counts)')
+        data_storage.save_data(
+            self.raw_data.astype('int64')[:, np.newaxis] if self.raw_data.ndim == 1 else self.raw_data.astype('int64'),
+            metadata=self._get_raw_metadata(),
+            nametag=nametag,
+            filename=save_filename,
+            timestamp=timestamp,
+            notes=notes,
+            column_headers='Signal (counts)'
+        )
 
         ###########################
         # Save extracted laser data
