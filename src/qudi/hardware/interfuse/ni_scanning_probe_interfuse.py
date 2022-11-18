@@ -849,11 +849,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self._abort_cursor_movement()
 
             with self._thread_lock_cursor:
-                self.log.debug(f"Prep move obtained thread_lock after {1e3*(time.perf_counter()-t_start)} ms")
 
-            if not self._ao_setpoint_channels_active:
-                self._toggle_ao_setpoint_channels(True)
-                #self.log.debug(f"AO activated")
+                if not self._ao_setpoint_channels_active:
+                    self._toggle_ao_setpoint_channels(True)
 
                 start_pos = self.get_position()
                 constr = self.get_constraints()
