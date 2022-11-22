@@ -1401,6 +1401,14 @@ class Process_loop(Process_commander):
 
         return
 
+    def start_data_process_n(self, n):
+        self.loop_on = True
+        self.data_proc_th = threading.Thread(target=self.start_data_process_loop_n, args=(n,))
+        self.data_proc_th.start()
+
+        return
+
+
     def stop_data_process(self):
 
         self.loop_on = False
@@ -1429,9 +1437,10 @@ class Process_loop(Process_commander):
 
     def start_data_process_loop_n(self, n):
 
-        while self.dp.avg.num <= n:
+        while self.loop_on == True and self.dp.avg.num < n:
             with self.threadlock:
                 self.command_process()
+                self.check_dp_status()
 
         return
 
