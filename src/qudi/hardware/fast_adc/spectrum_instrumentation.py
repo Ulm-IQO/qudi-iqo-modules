@@ -1137,7 +1137,7 @@ class Data_process_ungated():
 
     def _generate_data_cls(self):
         self.dc = SeqDataMulti()
-        self.dc.data = np.zeros(self.ms.seq_size_S)
+        self.dc.data = np.empty(self.ms.seq_size_S)
         self.dc.total_pulse_number = self.ms.number_of_gates
         self.dc.pule_len = self.ms.seg_size_S
         self.dc.data_range_mV = self.cs.ai_range_mV
@@ -1178,9 +1178,9 @@ class Data_process_gated(Data_process_ungated):
 
     def _generate_data_cls(self):
         self.dc = SeqDataMultiGated()
-        self.dc.data = np.zeros((0, self.ms.seq_size_S), int)
-        self.dc.ts_r = np.zeros(0, int)
-        self.dc.ts_f = np.zeros(0, int)
+        self.dc.data = np.empty((0, self.ms.seq_size_S), int)
+        self.dc.ts_r = np.empty(0, int)
+        self.dc.ts_f = np.empty(0, int)
         self.df = Data_fetch_gated(self.cs, self.ms)
 
     def create_dc_new(self):
@@ -1225,14 +1225,13 @@ class Card_process():
                 print('trigger off!!')
                 self.trigger_enabled = self.dcmd.disable_trigger()
 
-    def wait_new_trigger(self, wait_trig_on):
-        if wait_trig_on == True:
-            prev_trig_counts = self.dcmd.trig_counter
-            curr_trig_counts = self.dcmd.get_trig_counter()
-            if curr_trig_counts == prev_trig_counts:
-                time.sleep(1e-3)
+    def wait_new_trigger(self):
+        prev_trig_counts = self.dcmd.trig_counter
+        curr_trig_counts = self.dcmd.get_trig_counter()
+        if curr_trig_counts == prev_trig_counts:
+            time.sleep(1e-3)
 
-            return curr_trig_counts
+        return curr_trig_counts
 
     def _wait_new_avail_reps(self):
         curr_avail_reps = self.dcmd.get_avail_user_reps()
@@ -1252,6 +1251,7 @@ class Process_commander:
         self._create_process_cls()
         self.dp.init_data_process(cs, ms)
         self.cp.init_card_process(card, cs, ms)
+        self._choose_data_process()
 
     def _create_process_cls(self):
         if self._gated == True:
@@ -1268,65 +1268,78 @@ class Process_commander:
         if self._gated:
             self._ts_seq_size_B = ms.ts_seq_size_B
 
+    def _choose_data_process(self):
+        if self._gated:
+            self._get_curr_avail_reps = self._get_curr_avail_reps_gated
+
+            if self.row_data_save:
+                self._process_data_by_options = self._process_data_gated_saved
+            else:
+                self._process_data_by_options = self._process_data_gated_unsaved
+        else:
+            self._get_curr_avail_reps = self._get_curr_avail_reps_ungated
+
+            if self.row_data_save:
+                self._process_data_by_options = self._process_data_ungated_saved
+            else:
+                self._process_data_by_options = self._process_data_ungated_unsaved
+
     def command_process(self):
         trig_reps = self.cp.dcmd.get_trig_reps()
         unprocessed_reps = trig_reps - self.dp.avg.num
         if trig_reps == 0 or unprocessed_reps == 0:
             print('wait for trigger')
-            self.trigger_on = True
-            self.wait_trigger_on = True
-            self.data_process_on = False
+            self.cp.toggle_trigger(True)
+            self.cp.wait_new_trigger()
 
         elif unprocessed_reps < self.buf_ratio * self._reps_per_buf:
-            self.trigger_on = True
-            self.wait_trigger_on = False
-            self.data_process_on = True
+            self.cp.toggle_trigger(True)
+            self._process_curr_avail_data()
 
         elif unprocessed_reps >= self.buf_ratio * self._reps_per_buf:
             print('trigger off')
-            self.trigger_on = False
-            self.wait_trigger_on = False
-            self.data_process_on = True
+            self.cp.toggle_trigger(False)
+            self._process_curr_avail_data()
 
-        self.cp.toggle_trigger(self.trigger_on)
-        self.cp.wait_new_trigger(self.wait_trigger_on)
-        self._process_data(self.data_process_on)
-
-    def _process_data(self, data_process_on):
-        if data_process_on == True:
-            curr_avail_reps = self._get_curr_avail_reps()
-            user_pos_B = self.cp.dcmd.get_avail_user_pos_B()
-            if curr_avail_reps == 0:
-                return
-
-            self.dp.create_dc_new()
-            self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
-
-            if self.row_data_save == True:
-                self.dp.stack_new_data()
-
-            self._average_data(curr_avail_reps)
-
-            if self._gated == True:
-                self._fetch_ts(curr_avail_reps)
-
-    def _get_curr_avail_reps(self):
-        curr_avail_reps = self.cp.dcmd.get_avail_user_reps()
+    def _process_curr_avail_data(self):
+        curr_avail_reps = self._get_curr_avail_reps()
+        user_pos_B = self.cp.dcmd.get_avail_user_pos_B()
         if curr_avail_reps == 0:
-            print('wait dma')
-            self.cp.dcmd.wait_dma()
-            return 0
+            return
+        self._process_data_by_options(user_pos_B, curr_avail_reps)
 
-        if self._gated:
-            curr_ts_avail_reps = self.cp.tscmd.get_ts_avail_user_reps(self.dp.ms.ts_seq_size_B)
-            if curr_ts_avail_reps == 0:
-                print('wait extra dma')
-                self.cp.tscmd.wait_extra_dma()
-                return 0
+    def _process_data_ungated_unsaved(self, user_pos_B, curr_avail_reps):
+        self.dp.create_dc_new()
+        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
+        self._average_data(curr_avail_reps)
 
-            curr_avail_reps = min(curr_avail_reps, curr_ts_avail_reps)
+    def _process_data_ungated_saved(self, user_pos_B, curr_avail_reps):
+        self.dp.create_dc_new()
+        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
+        self.dp.stack_new_data()
+        self._average_data(curr_avail_reps)
 
-        return curr_avail_reps
+    def _process_data_gated_unsaved(self, user_pos_B, curr_avail_reps):
+        self.dp.create_dc_new()
+        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
+        self._average_data(curr_avail_reps)
+        self._fetch_ts(curr_avail_reps)
+
+    def _process_data_gated_saved(self, user_pos_B, curr_avail_reps):
+        self.dp.create_dc_new()
+        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
+        self.dp.stack_new_data()
+        self._average_data(curr_avail_reps)
+        self._fetch_ts(curr_avail_reps)
+
+    def _get_curr_avail_reps_ungated(self):
+        return self.cp.dcmd.get_avail_user_reps()
+
+    def _get_curr_avail_reps_gated(self):
+        curr_data_avail_reps = self.cp.dcmd.get_avail_user_reps()
+        curr_ts_avail_reps = self.cp.tscmd.get_ts_avail_user_reps(self.dp.ms.ts_seq_size_B)
+        return min(curr_data_avail_reps, curr_ts_avail_reps)
+
 
     def _average_data(self, curr_avail_reps):
         self.dp.get_new_avg_data()
