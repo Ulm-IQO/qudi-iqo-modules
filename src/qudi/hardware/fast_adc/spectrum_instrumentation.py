@@ -136,7 +136,17 @@ class Data_buffer_command(Card_command):
         self._seq_size_B = ms.seq_size_B
         self._no_of_gates = ms.number_of_gates
         self._parted_pulse_acquisition = ms.parted_pulse_acquisition
+        self._assign_get_trig_reps(ms.gated, ms.parted_pulse_acquisition)
         self.init_dp_params()
+
+    def _assign_get_trig_reps(self, gated, parted_pulse_acquistion):
+        if gated:
+            if parted_pulse_acquistion:
+                self.get_trig_reps = self._get_trig_reps_part_gated
+            else:
+                self.get_trig_reps = self._get_trig_reps_gated
+        else:
+            self.get_trig_reps = self._get_trig_reps_ungated
 
     def init_dp_params(self):
         self.status = 0
@@ -215,14 +225,14 @@ class Data_buffer_command(Card_command):
         self.trig_counter = c_trig_counter.value
         return self.trig_counter
 
-    def get_trig_reps(self):
-        trig_counter = self.get_trig_counter()
-        if self._parted_pulse_acquisition:
-            trig_reps = int(trig_counter / self._no_of_gates / 2)
-        else:
-            trig_reps = int(trig_counter / self._no_of_gates)
-        return trig_reps
+    def _get_trig_reps_ungated(self):
+        return int(self.get_trig_counter())
 
+    def _get_trig_reps_gated(self):
+        return int(self.get_trig_counter() / self._no_of_gates)
+
+    def _get_trig_reps_part_gated(self):
+        return int(self.get_trig_counter() / self._no_of_gates / 2)
 
     @check_card_error
     def get_bits_per_sample(self):
@@ -1129,7 +1139,7 @@ class Data_process_ungated():
         self.avg = AvgData()
         self.avg.num = 0
         self.avg.total_pulse_number = ms.number_of_gates
-        self.avg.data = np.empty(ms.seq_size_S)
+        self.avg.data = np.empty((0,ms.seq_size_S))
 
     def _input_settings_to_dp(self, cs, ms):
         self.ms = ms
@@ -1158,6 +1168,10 @@ class Data_process_ungated():
 
     def stack_new_data(self):
         self.dc.stack_rep(self.dc_new)
+
+    def get_initial_avg_data(self):
+        self.avg.num = self.dc_new.rep
+        self.avg.data = self.dc_new.avgdata()
 
     def get_new_avg_data(self):
         self.new_avg = AvgData()
@@ -1228,12 +1242,12 @@ class Card_process():
     def wait_new_trigger(self):
         prev_trig_counts = self.dcmd.trig_counter
         curr_trig_counts = self.dcmd.get_trig_counter()
-        if curr_trig_counts == prev_trig_counts:
-            time.sleep(1e-3)
+        while curr_trig_counts == prev_trig_counts:
+            curr_trig_counts = self.dcmd.get_trig_counter()
 
         return curr_trig_counts
 
-    def _wait_new_avail_reps(self):
+    def wait_new_avail_reps(self):
         curr_avail_reps = self.dcmd.get_avail_user_reps()
         while curr_avail_reps == 0:
             curr_avail_reps = self.dcmd.get_avail_user_reps()
@@ -1284,6 +1298,20 @@ class Process_commander:
             else:
                 self._process_data_by_options = self._process_data_ungated_unsaved
 
+    def initial_process(self):
+        self.cp.wait_new_trigger()
+        usr_pos_B = self.cp.dcmd.get_avail_user_pos_B()
+        curr_avail_reps = self.cp.wait_new_avail_reps()
+        self._process_initial_data(usr_pos_B, curr_avail_reps)
+
+    def _process_initial_data(self, user_pos_B, curr_avail_reps):
+        self.dp.create_dc_new()
+        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
+        self.dp.get_initial_avg_data()
+        self.cp.dcmd.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
+        if self._gated:
+            self._fetch_ts(curr_avail_reps)
+
     def command_process(self):
         trig_reps = self.cp.dcmd.get_trig_reps()
         unprocessed_reps = trig_reps - self.dp.avg.num
@@ -1314,21 +1342,15 @@ class Process_commander:
         self._average_data(curr_avail_reps)
 
     def _process_data_ungated_saved(self, user_pos_B, curr_avail_reps):
-        self.dp.create_dc_new()
-        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
+        self._process_data_ungated_unsaved(user_pos_B, curr_avail_reps)
         self.dp.stack_new_data()
-        self._average_data(curr_avail_reps)
 
     def _process_data_gated_unsaved(self, user_pos_B, curr_avail_reps):
-        self.dp.create_dc_new()
-        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
-        self._average_data(curr_avail_reps)
+        self._process_data_ungated_unsaved(user_pos_B, curr_avail_reps)
         self._fetch_ts(curr_avail_reps)
 
     def _process_data_gated_saved(self, user_pos_B, curr_avail_reps):
-        self.dp.create_dc_new()
-        self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
-        self.dp.stack_new_data()
+        self._process_data_ungated_unsaved(user_pos_B, curr_avail_reps)
         self._average_data(curr_avail_reps)
         self._fetch_ts(curr_avail_reps)
 
@@ -1425,6 +1447,7 @@ class Process_loop(Process_commander):
     def start_data_process_loop(self):
         t_0 = time.time()
         self.t_p = 0
+        self.initial_process()
 
         while self.loop_on == True:
             with self.threadlock:
@@ -1436,6 +1459,7 @@ class Process_loop(Process_commander):
         return
 
     def start_data_process_loop_n(self, n):
+        self.initial_process()
 
         while self.loop_on == True and self.dp.avg.num < n:
             with self.threadlock:
