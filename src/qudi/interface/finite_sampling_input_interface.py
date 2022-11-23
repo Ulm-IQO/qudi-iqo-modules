@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-ToDo: Document
-This file contains a dummy hardware module for the
+Interface for input of data of a certain length at a given sampling rate and data type.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -28,14 +27,14 @@ from qudi.util.helpers import in_range
 
 class FiniteSamplingInputInterface(Base):
     """
-    ToDo: Document
+    Interface for input of data of a certain length at a given sampling rate and data type.
     """
 
     @property
     @abstractmethod
     def constraints(self):
         """
-        ToDo: Document
+        Constraints of the sampling input as specified in the FiniteSamplingInputConstraints class.
         """
         pass
 

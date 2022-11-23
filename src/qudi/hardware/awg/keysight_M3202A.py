@@ -21,25 +21,13 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import ctypes
 import datetime
-import os
 import numpy as np
-from collections import OrderedDict
 from qudi.util.helpers import natural_sort
 from qudi.core.configoption import ConfigOption
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
 
-import sys
-
-if sys.platform == 'win32':
-    sys.path.append(r'C:\Program Files (x86)\Keysight\SD1\Libraries\Python')
-    os.add_dll_directory(r'C:\Program Files\Keysight\SD1\shared')
-elif sys.platform == 'linux':
-    sys.path.append('/usr/local/Keysight/SD1')
-else:
-    raise Exception('Unknown platform, please add path to library.')
-
+# latest SD1 comes wth a pip installable package
 import keysightSD1 as ksd1
 
 
@@ -50,7 +38,8 @@ class M3202A(PulserInterface):
 
     keysight_m3202a:
         module.Class: 'awg.keysight_M3202A.M3202A'
-        awg_serial: 0000000000 # here the serial number of current AWG
+        options:
+            awg_serial: 0000000000 # here the serial number of current AWG
 
     """
 
@@ -142,7 +131,7 @@ class M3202A(PulserInterface):
         constraints.sequence_steps.step = 1
         constraints.sequence_steps.default = 1
 
-        activation_config = OrderedDict()
+        activation_config = dict()
         activation_config['all'] = frozenset({'a_ch1', 'a_ch2', 'a_ch3', 'a_ch4'})
         activation_config['one'] = frozenset({'a_ch1'})
         activation_config['two'] = frozenset({'a_ch1', 'a_ch2'})
@@ -335,7 +324,7 @@ class M3202A(PulserInterface):
 
         @return float: the sample rate returned from the device (in Hz).
         """
-        return self.awg.clockSetFrequency(sample_rate, ksd1.SD)
+        return self.awg.clockSetFrequency(sample_rate)
 
     def get_analog_level(self, amplitude=None, offset=None):
         """ Retrieve the analog amplitude and offset of the provided channels.
@@ -505,8 +494,7 @@ class M3202A(PulserInterface):
                 a_ch, name, wfm_name, np.min(analog_samples[a_ch]), np.max(analog_samples[a_ch])))
 
             self.log.debug('@{} Before new wfm {}'.format(datetime.datetime.now() - tstart, a_ch))
-            wfmid = self._fast_newFromArrayDouble(
-                wfm, ksd1.SD_WaveformTypes.WAVE_ANALOG, analog_samples[a_ch])
+            wfmid = wfm.newFromArrayDouble(ksd1.SD_WaveformTypes.WAVE_ANALOG, analog_samples[a_ch])
             self.log.debug('@{} After new wfm {}'.format(datetime.datetime.now() - tstart, a_ch))
 
             if wfmid < 0:
@@ -691,47 +679,6 @@ class M3202A(PulserInterface):
         """
         return ''
 
-    @staticmethod
-    def _fast_newFromArrayDouble(wfm, waveformType, waveformDataA, waveformDataB=None):
-        """ Reimplement newArrayFromDouble() for numpy arrays for massive speed gains.
-        Original signature:
-        int SD_Wave::newFromArrayDouble(
-            int waveformType, double[] waveformDataA, double[] waveformDataB=0));
-
-        @param object wfm: SD1 waveform object
-        @param object waveformType: SD1 waveform Type
-        @param ndarray waveformDataA: array containing samples
-        @param ndarray waveformDataB: optional array containing samples
-        @return int: id of waveform or error code
-        """
-
-        c_double_p = ctypes.POINTER(ctypes.c_double)
-        if len(waveformDataA) > 0 and (waveformDataB is None or len(waveformDataA) == len(waveformDataB)):
-            if isinstance(waveformDataA, np.ndarray):
-                # print(type(waveformDataA), waveformDataA.dtype)
-                waveform_dataA_C = waveformDataA.ctypes.data_as(c_double_p)
-                length = len(waveformDataA)
-            else:
-                waveform_dataA_C = (ctypes.c_double * len(waveformDataA))(*waveformDataA)
-                length = waveform_dataA_C._length_
-
-            if waveformDataB is None:
-                waveform_dataB_C = ctypes.c_void_p(0)
-            else:
-                if isinstance(waveformDataB, np.ndarray):
-                    waveform_dataB_C = waveformDataB.ctypes.data_as(c_double_p)
-                else:
-                    waveform_dataB_C = (ctypes.c_double * len(waveformDataB))(*waveformDataB)
-            # print('newFromArray DLL', length, type(waveform_dataA_C), type(waveform_dataB_C))
-
-            wfm._SD_Object__handle = wfm._SD_Object__core_dll.SD_Wave_newFromArrayDouble(
-                waveformType, length, waveform_dataA_C, waveform_dataB_C)
-
-            return wfm._SD_Object__handle
-        else:
-            wfm._SD_Object__handle = 0
-            return ksd1.SD_Error.INVALID_VALUE
-
     def set_channel_triggers(self, active_channels, sequence_parameter_list):
         """ Set up triggers and markers according to configuration
 
@@ -739,6 +686,9 @@ class M3202A(PulserInterface):
         @param list sequence_parameter_list: liust with all sequence elements
 
         """
+        # ignore triggers while a sequence part is played back
+        self.awg.setTriggerBehaviourMode(1)
+
         for ch in active_channels:
             if self.chcfg[ch].enable_trigger:
                 trig_err = self.awg.AWGtriggerExternalConfig(

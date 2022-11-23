@@ -55,6 +55,18 @@ def _data_storage_from_cfg_option(cfg_str):
 class PulsedMeasurementLogic(LogicBase):
     """
     This is the Logic class for the control of pulsed measurements.
+
+    Example config:
+
+    pulsed_measurement_logic:
+        module.Class: 'pulsed.pulsed_measurement_logic.PulsedMeasurementLogic'
+        options:
+            raw_data_save_type: 'text'
+            #additional_extraction_path: # optional
+            #additional_analysis_path:   # optional
+        connect:
+            fastcounter: 'fast_counter_dummy'
+            pulsegenerator: 'pulser_dummy'
     """
 
     # declare connectors
@@ -1441,13 +1453,15 @@ class PulsedMeasurementLogic(LogicBase):
                                                                     tag,
                                                                     '_raw_timetrace')
         # Save data to file
-        data_storage.save_data(self.raw_data.astype('int64')[:, np.newaxis],
-                               metadata=self._get_raw_metadata(),
-                               nametag=nametag,
-                               filename=save_filename,
-                               timestamp=timestamp,
-                               notes=notes,
-                               column_headers='Signal (counts)')
+        data_storage.save_data(
+            self.raw_data.astype('int64')[:, np.newaxis] if self.raw_data.ndim == 1 else self.raw_data.astype('int64'),
+            metadata=self._get_raw_metadata(),
+            nametag=nametag,
+            filename=save_filename,
+            timestamp=timestamp,
+            notes=notes,
+            column_headers='Signal (counts)'
+        )
 
         ###########################
         # Save extracted laser data

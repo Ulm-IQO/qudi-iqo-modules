@@ -35,8 +35,9 @@ class FastCounterDummy(FastCounterInterface):
 
     fastcounter_dummy:
         module.Class: 'fast_counter_dummy.FastCounterDummy'
-        gated: False
-        #load_trace: None # path to the saved dummy trace
+        options:
+            gated: False
+            #load_trace: None # path to the saved dummy trace
 
     """
 

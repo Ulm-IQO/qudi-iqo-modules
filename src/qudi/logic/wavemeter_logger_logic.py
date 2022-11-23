@@ -35,7 +35,11 @@ from qudi.util.mutex import Mutex
 
 
 class WavemeterLoggerLogic(Base):
-    """This logic module gathers data from wavemeter and the counter logic.
+    """
+    This logic module gathers data from wavemeter and the counter logic.
+
+    Todo: Example config for copy-paste:
+
     """
 
     sig_data_updated = QtCore.Signal()

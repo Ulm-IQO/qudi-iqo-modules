@@ -42,6 +42,8 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
                                         default={'APD counts': 'c/s', 'Photodiode': 'V'})
     _output_channel_units = ConfigOption(name='output_channel_units',
                                          default={'Frequency': 'Hz', 'Voltage': 'V'})
+    _input_channel_limits = ConfigOption(name='input_channel_limits', default={'APD counts': (0, 1), 'Photodiode': (0,1)})
+    _output_channel_limits = ConfigOption(name='output_channel_limits', default={'Frequency': (0, 1), 'Voltage': (0,1)})
     _default_output_mode = ConfigOption(name='default_output_mode',
                                         default='JUMP_LIST',
                                         constructor=lambda x: SamplingOutputMode[x.upper()])
@@ -72,6 +74,8 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
             supported_output_modes=frozenset(SamplingOutputMode),
             input_channel_units=self._input_channel_units,
             output_channel_units=self._output_channel_units,
+            input_channel_limits=self._input_channel_limits,
+            output_channel_limits=self._output_channel_limits,
             frame_size_limits=self._frame_size_limits,
             sample_rate_limits=self._sample_rate_limits
         )
