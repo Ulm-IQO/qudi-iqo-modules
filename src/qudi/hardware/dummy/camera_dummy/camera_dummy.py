@@ -28,7 +28,7 @@ from qudi.hardware.dummy.camera_dummy.helper_classes \
     import ModelCamera, ImageGenerator, CameraMeasurement, QudiHardwareMapper
 
 from qudi.core.configoption import ConfigOption
-from qudi.interface.scientific_camera_interface import CameraInterface, CameraConstraints
+from qudi.interface.scientific_camera_interface import ScientificCameraInterface, CameraConstraints
 
 from qudi.util.network import netobtain
 
@@ -39,7 +39,7 @@ class OperatingMode(Enum):
     fast_readout = 2
 
 
-class CameraDummy(CameraInterface):
+class CameraDummy(ScientificCameraInterface):
     """ Dummy hardware for camera interface
     """
     # define defaults for the dummy module

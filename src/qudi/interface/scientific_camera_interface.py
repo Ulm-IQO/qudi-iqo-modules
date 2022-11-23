@@ -49,7 +49,7 @@ class CameraConstraints:
         self.operating_modes = ['default', 'high_sensitivity', 'fast_readout']
 
 
-class CameraInterface(Base):
+class ScientificCameraInterface(Base):
     """ This interface is used to manage and visualize a simple camera
     """
     @property
