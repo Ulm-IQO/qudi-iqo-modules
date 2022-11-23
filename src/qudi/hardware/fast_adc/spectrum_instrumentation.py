@@ -1137,7 +1137,7 @@ class Data_process_ungated():
 
     def _generate_data_cls(self):
         self.dc = SeqDataMulti()
-        self.dc.data = np.empty(self.ms.seq_size_S)
+        self.dc.data = np.empty((0,self.ms.seq_size_S), int)
         self.dc.total_pulse_number = self.ms.number_of_gates
         self.dc.pule_len = self.ms.seg_size_S
         self.dc.data_range_mV = self.cs.ai_range_mV
