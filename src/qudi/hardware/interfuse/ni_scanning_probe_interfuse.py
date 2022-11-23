@@ -89,8 +89,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     _frequency_ranges = ConfigOption(name='frequency_ranges', missing='error')
     _resolution_ranges = ConfigOption(name='resolution_ranges', missing='error')
     _input_channel_units = ConfigOption(name='input_channel_units', missing='error')
-    _timer_target_interval_ms = ConfigOption(name='timer_target_interval_ms', default=10, converter=int,
-                                             missing='warn')
 
     __backwards_line_resolution = ConfigOption(name='backwards_line_resolution', default=50)
     __max_move_velocity = ConfigOption(name='maximum_move_velocity', default=400e-6)
@@ -116,6 +114,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._start_scan_after_cursor = False
 
         self.__ni_ao_write_timer = None
+        self._timer_target_interval_ms = None
         self._interval_time_stamp = None
         self._write_loop_idx = 1
         self._write_loop_cum_exec_time = 0
@@ -166,15 +165,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
                                             square_px_only=False)  # TODO incorporate in scanning_probe toolchain
 
-        # Timer to free resources after pure ni ao
-        self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
-        self.__ni_ao_write_timer.setSingleShot(True)
-        self.__ni_ao_write_timer.setInterval(self._timer_target_interval_ms)
-        # TODO HW test if this Delta t works (used in move velo calculation) 1ms was causing issues on simulated Ni.
-        self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
+        self.__init_ao_timer()
 
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
         self._t_last_move = time.perf_counter()
+
 
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
@@ -520,7 +515,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return bool: scanning probe is running (True) or not (False)
         """
-        assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
+        #self.log.debug(f"Module in state: {self.module_state()}")
+        #assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
         if self.module_state() == 'locked':
             return True
         else:
@@ -894,6 +890,38 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except:
             self.log.exception("")
 
+    def __init_ao_timer(self):
+        self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
+
+        self.__ni_ao_write_timer.setSingleShot(True)
+        self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
+
+        # set target value 2x the benchmark value, but not below 2 ms
+        self._timer_target_interval_ms = 5
+        t_ao_loop = self._benchmark_ao_write_loop()
+        self._timer_target_interval_ms = int(np.max([2, 2 * 1e3 * t_ao_loop]))
+        self.log.debug(f"Set ao write loop timer interval to {self._timer_target_interval_ms} ms "
+                       f"after benchmark {1e3*t_ao_loop:.3f} ms")
+
+        self.__ni_ao_write_timer.setInterval(self._timer_target_interval_ms)
+
+    def _benchmark_ao_write_loop(self):
+
+        n_loops = 10
+        position = self.get_position()
+
+        t_loops = []
+        for i in range(n_loops):
+            self._prepare_movement(position)
+            # scanner shouldn't move during benchmark, so use current position as write vale
+            self.__write_queue = {axis: np.asarray([position[axis]]) for axis in position}
+            t_start = time.perf_counter()
+            self.__ao_cursor_write_loop()
+            t_loops.append(time.perf_counter() - t_start)
+
+        t_loop = np.mean(t_loops)
+
+        return t_loop
 
     def __start_ao_write_timer(self):
         #self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
