@@ -112,7 +112,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._sequence_index = 0
         self._optimal_position = dict()
         self._last_scans = list()
-        self._last_fits = List()
+        self._last_fits = list()
 
         self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
         self._scan_logic().sigScanStateChanged.connect(
