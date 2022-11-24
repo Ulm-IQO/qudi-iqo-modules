@@ -1351,7 +1351,7 @@ class Process_commander:
 
     def _process_data_gated_saved(self, user_pos_B, curr_avail_reps):
         self._process_data_ungated_unsaved(user_pos_B, curr_avail_reps)
-        self._average_data(curr_avail_reps)
+        self.dp.stack_new_data()
         self._fetch_ts(curr_avail_reps)
 
     def _get_curr_avail_reps_ungated(self):
@@ -1450,11 +1450,12 @@ class Process_loop(Process_commander):
         self.initial_process()
 
         while self.loop_on == True:
-            with self.threadlock:
-                self.command_process()
-                self.check_dp_status()
-                self.check_ts_status()
-                self.t_p = self.process_speed(t_0, self.t_p)
+#            with self.threadlock:
+            self.command_process()
+            self.check_dp_status()
+            self.check_ts_status()
+            self.t_p = self.process_speed(t_0, self.t_p)
+            time.sleep(1e-3)
 
         return
 
@@ -1464,13 +1465,12 @@ class Process_loop(Process_commander):
         while self.loop_on == True and self.dp.avg.num < n:
             with self.threadlock:
                 self.command_process()
-                self.check_dp_status()
+            self.check_dp_status()
 
         return
 
     def fetch_data_trace(self):
-        with self.threadlock:
-            avg_data, avg_num = self.dp.return_avg_data()
+        avg_data, avg_num = self.dp.return_avg_data()
 
         return avg_data, avg_num
 
