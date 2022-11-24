@@ -541,6 +541,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         if self._internal_status == CardStatus.idle:
             self.pl.init_measure_params()
             if self.ms.gated:
+                self.pl.cp.tscmd.reset_ts_counter()
                 self.ccmd.start_all_with_extradma()
             else:
                 self.ccmd.start_all()
@@ -829,7 +830,7 @@ class Configure_timestamp():
         self.ts_standard_mode(card)
 
     def ts_standard_mode(self, card):
-        spcm_dwSetParam_i32(card, SPC_TIMESTAMP_CMD, SPC_TSMODE_STARTRESET | SPC_TSCNT_INTERNAL | SPC_TSFEAT_NONE)
+        spcm_dwSetParam_i32(card, SPC_TIMESTAMP_CMD, SPC_TSMODE_STANDARD | SPC_TSCNT_INTERNAL | SPC_TSFEAT_NONE)
 
     def ts_internal_clock(self, card):
         spcm_dwSetParam_i32(card, SPC_TIMESTAMP_CMD, SPC_TSCNT_INTERNAL)
@@ -1113,7 +1114,7 @@ class Data_fetch_gated(Data_fetch_ungated):
                                    self.ts_data_bytes_B, self.ts_seq_size_S, self.ms.reps_per_buf * 100)
 
     def fetch_ts_data(self, ts_user_pos_B, curr_avail_reps):
-        ts_row = self.ts_dt.get_new_data(ts_user_pos_B, curr_avail_reps)
+        ts_row = self.ts_dt.get_new_data(ts_user_pos_B, curr_avail_reps).astype(np.uint64)
         ts_r, ts_f = self._get_ts_rf(ts_row)
         return ts_r, ts_f
 
@@ -1193,8 +1194,8 @@ class Data_process_gated(Data_process_ungated):
     def _generate_data_cls(self):
         self.dc = SeqDataMultiGated()
         self.dc.data = np.empty((0, self.ms.seq_size_S), int)
-        self.dc.ts_r = np.empty(0, int)
-        self.dc.ts_f = np.empty(0, int)
+        self.dc.ts_r = np.empty(0, np.uint64)
+        self.dc.ts_f = np.empty(0, np.uint64)
         self.df = Data_fetch_gated(self.cs, self.ms)
 
     def create_dc_new(self):
@@ -1205,6 +1206,9 @@ class Data_process_gated(Data_process_ungated):
 
     def fetch_ts_data_to_dc(self, ts_user_pos_B, curr_avail_reps):
         self.dc_new.ts_r, self.dc_new.ts_f = self.df.fetch_ts_data(ts_user_pos_B, curr_avail_reps)
+
+    def stack_new_ts_data(self):
+        self.dc.stack_rep_gated(self.dc_new)
 
     def return_avg_data(self):
         avg_data_2d = self.avg.reshape_2d_by_pulse()
@@ -1353,6 +1357,8 @@ class Process_commander:
         self._process_data_ungated_unsaved(user_pos_B, curr_avail_reps)
         self.dp.stack_new_data()
         self._fetch_ts(curr_avail_reps)
+        self.dp.stack_new_ts_data()
+
 
     def _get_curr_avail_reps_ungated(self):
         return self.cp.dcmd.get_avail_user_reps()

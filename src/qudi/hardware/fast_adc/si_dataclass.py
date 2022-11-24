@@ -207,8 +207,8 @@ class CoreData:
 
 @dataclass
 class PulseDataSingle(CoreData):
-    rep_no: np.ndarray = np.array([])
-    pulse_no: np.ndarray = np.array([])
+    rep_no: np.ndarray = np.array([], dtype=int)
+    pulse_no: np.ndarray = np.array([], dtype=int)
     pulse_len: int = 0
 
     def add(self, d):
@@ -264,8 +264,8 @@ class SeqDataMulti(PulseDataMulti, SeqDataSingle):
         return self.data.mean(axis=0)
 @dataclass
 class GateData:
-    ts_r: np.ndarray = np.array([])
-    ts_f: np.ndarray = np.array([])
+    ts_r: np.ndarray = np.array([], dtype=np.uint64)
+    ts_f: np.ndarray = np.array([], dtype=np.uint64)
 
     def add_gated(self, d):
         self.ts_r = d.ts_r
@@ -311,7 +311,7 @@ class AvgData(SeqDataSingle):
 
     def update(self, curr_ad):
         avg_data_set = np.vstack((self.data, curr_ad.data))
-        avg_weights = np.array([self.num, curr_ad.num])
+        avg_weights = np.array([self.num, curr_ad.num], dtype=int)
         self.data = np.average(avg_data_set, axis=0, weights=avg_weights)
         self.num += curr_ad.num
         return self.num, self.data
