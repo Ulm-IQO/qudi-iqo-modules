@@ -29,9 +29,8 @@ except ImportError:
     import visa
 import numpy as np
 from ftplib import FTP
-from collections import OrderedDict
 
-from qudi.core.paths import get_appdata_dir
+from qudi.util.paths import get_appdata_dir
 from qudi.util.helpers import natural_sort
 from qudi.core.configoption import ConfigOption
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
@@ -296,7 +295,7 @@ class AWG7k(PulserInterface):
         # the name a_ch<num> and d_ch<num> are generic names, which describe UNAMBIGUOUSLY the
         # channels. Here all possible channel configurations are stated, where only the generic
         # names should be used. The names for the different configurations can be customary chosen.
-        activation_config = OrderedDict()
+        activation_config = dict()
         activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2', 'a_ch2', 'd_ch3', 'd_ch4'})
         # Usage of channel 1 only:
         activation_config['A1_M1_M2'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
