@@ -440,6 +440,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
         try:
             # self.log.debug("Stopping scan...")
+            self._start_scan_after_cursor = False  # Ensure Scan HW is not started after movement
             if self._ao_setpoint_channels_active:
                 self._abort_cursor_movement()
                 # self.log.debug("Move aborted")
