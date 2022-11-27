@@ -116,7 +116,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._default_timer_interval_ms = -1
         self._interval_time_stamp = None
 
-        self.__read_pos = -1
         self.__scan_stopped = False
 
         self._thread_lock_cursor = Mutex()
@@ -412,7 +411,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             first_scan_position = {ax: pos[0] for ax, pos
                                    in zip(self.scan_settings['axes'], self.scan_settings['range'])}
             self._move_to_and_start_scan(first_scan_position)
-            self.__read_pos = 0
 
             return 0  # FIXME Bool indicators deprecated
 
