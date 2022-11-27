@@ -172,6 +172,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
 
+        self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.QueuedConnection)
+
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
         for channel in ni_ao.constraints.setpoint_channels:
@@ -183,8 +185,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         return all(
             state for ch, state in self._ni_ao().activity_states.items() if ch in mapped_channels
         )
-
-        self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """
@@ -537,8 +537,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def _fetch_data_chunk(self):
         try:
             self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
-            #chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
-            chunk_size = 10  # FIXME Don't hard code chunk size? The above does not work with 1D scans. Why?
+            chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
+            # chunk_size = 10  # FIXME Don't hard code chunk size? The above does not work with 1D scans. Why?
             try:
                 samples_dict = self._ni_finite_sampling_io().get_buffered_samples(chunk_size)
             except ValueError:  # ValueError is raised, when more samples are requested then pending or still to get
