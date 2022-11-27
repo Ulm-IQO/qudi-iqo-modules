@@ -270,9 +270,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                         position_feedback_axes=None
                     )
                     self.raw_data_container = RawDataContainer(self._scan_data.channels,
-                                                     resolution[1] if self._scan_data.scan_dimension == 2 else 1,
-                                                     resolution[0],
-                                                     self.__backwards_line_resolution)
+                                                               resolution[
+                                                                   1] if self._scan_data.scan_dimension == 2 else 1,
+                                                               resolution[0],
+                                                               self.__backwards_line_resolution)
                     # self.log.debug(f"New scanData created: {self._scan_data.data}")
 
                 except:
@@ -440,7 +441,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # FIXME Fix the mess of bool indicators, int return values etc in toolchain
         """
         try:
-            #self.log.debug("Stopping scan...")
+            # self.log.debug("Stopping scan...")
             if self._ao_setpoint_channels_active:
                 self._abort_cursor_movement()
                 # self.log.debug("Move aborted")
@@ -466,17 +467,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
         #  TODO change interface
         """
-        # todo: get_scan data ussage for polling hw &iterating __read_pos seems sketchy
-        # => this hw file should implement it's own polling loop and provide updated ._scan_data
-        # when get_scan_data is called
         try:
-            if not self.is_scan_running or not self._ni_finite_sampling_io().is_running:
-                return self._scan_data
-            else:
-                # _stop_scan is called asynchronously. Thus .is_scan_running might be True, even if last data frame
-                # was already fetched. __scan_stopped is set by the polling thread, guaranteed to signal in time.
-                # if not self.__scan_stopped:
-                #     self._fetch_data_line()
+            with self._thread_lock_data:
                 return self._scan_data.copy()
         except:
             self.log.exception("")
@@ -793,7 +785,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             if not self._ao_setpoint_channels_active:
                 self._toggle_ao_setpoint_channels(True)
-                #self.log.debug(f"AO activated")
+                # self.log.debug(f"AO activated")
 
             start_pos = self.get_position()
             constr = self.get_constraints()
@@ -839,7 +831,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         except:
             self.log.exception("")
-
 
     def __start_ao_write_timer(self):
         # self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
