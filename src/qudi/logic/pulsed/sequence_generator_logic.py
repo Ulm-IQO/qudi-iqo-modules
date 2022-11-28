@@ -1151,6 +1151,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.save_block(block)
         for ensemble in ensembles:
             ensemble.sampling_information = dict()
+            ensemble.generation_method_parameters = kwargs_dict
             self.save_ensemble(ensemble)
 
         if self.pulse_generator_constraints.sequence_option == SequenceOption.FORCED and len(sequences) < 1:
