@@ -744,7 +744,7 @@ class ScannerGui(GuiBase):
             data = fit_data['fit_data']
             fit_res = fit_data['full_fit_res']
             if data.ndim == 1:
-                self.optimizer_dockwidget.set_fit_data(scan_axs, y=data)
+                self.optimizer_dockwidget.set_fit_data(scan_axs, x= fit_data['fit_x'], y=data)
                 sig_z = fit_res.params['sigma'].value
                 self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
                                                           scan_axs, sigma=sig_z)

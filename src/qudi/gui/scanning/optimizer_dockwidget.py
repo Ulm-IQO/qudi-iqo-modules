@@ -69,6 +69,7 @@ class OptimizerDockWidget(QtWidgets.QDockWidget):
                 plot1d_widget.set_selection_mutable(False)
                 plot1d_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
                 plot1d_widget.addItem(plot_item)
+                plot1d_widget.addItem(fit_plot_item)
                 plot1d_widget.add_marker_selection((0, 0),
                                                    mode=DataSelectionPlotWidget.SelectionMode.X)
                 self._plot_widgets.append({'widget': plot1d_widget, 'plot_1d': plot_item,

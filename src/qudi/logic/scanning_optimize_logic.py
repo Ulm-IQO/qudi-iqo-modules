@@ -378,7 +378,7 @@ class ScanningOptimizeLogic(LogicBase):
                         for ax in tuple(position_update):
                             position_update[ax] = new_pos[ax]
 
-                        fit_data = {'fit_data': fit_data, 'full_fit_res': fit_res}
+                        fit_data = {'fit_data': fit_data, 'full_fit_res': fit_res, 'fit_x': x}
 
                     self.log.debug(f"Optimizer issuing position update: {position_update}")
                     self._optimal_position.update(position_update)
