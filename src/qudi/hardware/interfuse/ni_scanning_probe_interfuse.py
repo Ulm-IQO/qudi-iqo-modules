@@ -527,11 +527,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def _fetch_data_chunk(self):
         try:
-            self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
-            chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
-            # chunk_size = 10  # FIXME Don't hard code chunk size? The above does not work with 1D scans. Why?
+            # self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
+            # chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
+            chunk_size = 10  # TODO Hardcode or go line by line as commented out above?
+            # Request a minimum of chunk_size samples per loop
             try:
-                samples_dict = self._ni_finite_sampling_io().get_buffered_samples(chunk_size)
+                samples_dict = self._ni_finite_sampling_io().get_buffered_samples(chunk_size) \
+                    if self._ni_finite_sampling_io().samples_in_buffer < chunk_size\
+                    else self._ni_finite_sampling_io().get_buffered_samples()
             except ValueError:  # ValueError is raised, when more samples are requested then pending or still to get
                 # after HW stopped
                 samples_dict = self._ni_finite_sampling_io().get_buffered_samples()
