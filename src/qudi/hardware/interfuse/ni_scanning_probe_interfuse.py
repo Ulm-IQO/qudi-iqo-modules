@@ -167,10 +167,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
                                             square_px_only=False)  # TODO incorporate in scanning_probe toolchain
 
-        self.__init_ao_timer()
+
 
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
         self._t_last_move = time.perf_counter()
+        self.__init_ao_timer()
         self.__t_last_follow = None
 
 
@@ -850,20 +851,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         Abort the movement, stop the timer and reset interval, release memory and asynchronisly (via timer) free ni_ao resources.
         """
 
-        #self.log.debug(f"Aborting cursor move at pos= {self.get_position()}.")
-        self.__stop_ao_write_timer()
-        #self._stop_cursor_hw()
-        with self._thread_lock_cursor:
-            self.__write_queue = dict()
-            #self.log.debug("Write queue cleared.")
-
-        mean_exec_time = self._write_loop_cum_exec_time / self._write_loop_idx
-        # target execution time is the default_timer_interval. Movement becomess slaggy if far from target exec time.
-        if 1e3*mean_exec_time > 2*self._timer_target_interval_ms:
-            self.log.warning(f"Write loop execution takes too long ({1e3*mean_exec_time:.2f} ms). Consider increasing"
-                             f" the time_interval= {self._timer_target_interval_ms} ms")
-
-        self.__ni_ao_write_timer.setInterval(self._timer_target_interval_ms)
+        self.log.debug(f"Aborting move, took {1e3*(time.perf_counter()-self._t_last_move)} ms in total")
         self._toggle_ao_setpoint_channels(False)
 
     def _move_to_and_start_scan(self, position):
@@ -926,11 +914,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         # set target value 2x the benchmark value, but not below 2 ms
         self._timer_target_interval_ms = 5
+        """
         t_ao_loop = self._benchmark_ao_write_loop()
         self._timer_target_interval_ms = int(np.max([2, 2 * 1e3 * t_ao_loop]))
         self.log.debug(f"Set ao write loop timer interval to {self._timer_target_interval_ms} ms "
                        f"after benchmark {1e3*t_ao_loop:.3f} ms")
-
+        """
         self.__ni_ao_write_timer.setInterval(self._timer_target_interval_ms)
 
     def _benchmark_ao_write_loop(self):
