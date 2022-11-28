@@ -25,6 +25,7 @@ import numpy as np
 from PySide2 import QtCore
 import itertools
 import copy as cp
+from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex, Mutex
@@ -32,6 +33,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.fit_models.gaussian import Gaussian2D, Gaussian
+from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 
 from qudi.interface.scanning_probe_interface import ScanData
 
@@ -60,12 +62,26 @@ class ScanningOptimizeLogic(LogicBase):
     _scan_frequency = StatusVar(name='scan_frequency', default=None)
     _scan_range = StatusVar(name='scan_range', default=None)
     _scan_resolution = StatusVar(name='scan_resolution', default=None)
+    _fit_config_model = StatusVar(name='fit_configs', default=list())
 
     # signals
     sigOptimizeStateChanged = QtCore.Signal(bool, dict, object)
     sigOptimizeSettingsChanged = QtCore.Signal(dict)
 
     _sigNextSequenceStep = QtCore.Signal()
+
+    # Fixme: has to be deleted when gui is ready
+    __default_fit_configs = (
+        {'name': 'Gaussian Peak',
+         'model': 'Gaussian',
+         'estimator': 'Peak',
+         'custom_parameters': None},
+        {'name': 'Implantation Spot',
+         'model': 'GaussianImplantationSpot',
+         'estimator': 'Implantation Spot',
+         'custom_parameters': None},
+    )
+    fit_config = 'Implantation Spot'
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -113,7 +129,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._optimal_position = dict()
         self._last_scans = list()
         self._last_fits = list()
-
+        self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
         self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
         self._scan_logic().sigScanStateChanged.connect(
             self._scan_state_changed, QtCore.Qt.QueuedConnection
@@ -126,6 +142,27 @@ class ScanningOptimizeLogic(LogicBase):
         self._sigNextSequenceStep.disconnect()
         self.stop_optimize()
         return
+
+    @staticmethod
+    @_fit_config_model.representer
+    def __repr_fit_configs(value: FitConfigurationsModel) -> List[Dict[str, Any]]:
+        return value.dump_configs()
+
+    @_fit_config_model.constructor
+    def __constr_fit_configs(self, value: Sequence[Mapping[str, Any]]) -> FitConfigurationsModel:
+        model = FitConfigurationsModel(parent=self)
+        #Fixme: has to be solved when gui is ready
+        if value == list():
+           value = self.__default_fit_configs
+        model.load_configs(value)
+        return model
+
+    @property
+    def fit_config_model(self) -> FitConfigurationsModel:
+        return self._fit_config_model
+    def get_fit_container(self) -> FitContainer:
+        with self._thread_lock:
+            return self._fit_container
 
     @property
     def data_channel(self):
@@ -439,10 +476,9 @@ class ScanningOptimizeLogic(LogicBase):
                 fit_result.best_values['center_y']), fit_result.best_fit.reshape(xy[0].shape), fit_result
 
     def _get_pos_from_1d_gauss_fit(self, x, data):
-        model = Gaussian()
-
+        fit_container = self.get_fit_container()
         try:
-            fit_result = model.fit(data, x=x, **model.estimate_peak(data, x))
+            fit_config, fit_result = fit_container.fit_data(fit_config=self.fit_config, x=x, data=data)
         except:
             x_min, x_max = x.min(), x.max()
             middle = (x_max - x_min) / 2 + x_min
