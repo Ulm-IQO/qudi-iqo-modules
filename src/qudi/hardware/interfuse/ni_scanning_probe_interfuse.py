@@ -104,22 +104,15 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._current_scan_resolution = tuple()
 
         self._scan_data = None
-
         self._constraints = None
-
-        self.__write_queue = dict()
 
         self._target_pos = dict()
         self._stored_target_pos = dict()
         self._start_scan_after_cursor = False
 
         self.__ni_ao_write_timer = None
-        self._timer_target_interval_ms = None
         self._min_step_interval = 1e-3
         self._scanner_distance_tol = 1e-9
-        self._interval_time_stamp = None
-        self._write_loop_idx = 1
-        self._write_loop_cum_exec_time = 0
 
         self.__read_pos = -1
         self.__scan_stopped = False
@@ -166,9 +159,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             backscan_configurable=False,  # TODO incorporate in scanning_probe toolchain
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
                                             square_px_only=False)  # TODO incorporate in scanning_probe toolchain
-
-
-
+#
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
         self._t_last_move = time.perf_counter()
         self.__init_ao_timer()
@@ -318,16 +309,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error('Invalid axes name in position')
             return self.get_target()
 
-        #if 1e3*(time.perf_counter() - self._t_last_move) < 2*self._timer_target_interval_ms:
-        #    #self.log.debug(f"Dropping too fast move to {position}")
-        #    return position  # todo remove signal dropping
-
         self._prepare_movement(position, velocity=velocity)
 
         self.__start_ao_write_timer()
         if blocking:
             self.__wait_on_move_done()
-
 
         self._t_last_move = time.perf_counter()
 
@@ -759,27 +745,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             raise NotImplementedError('Ni Scan arrays could not be initialized for given ScanData dimension')
 
-    def __adjust_ao_timing(self):
-        # to avoid error accumulation
-        if self._interval_time_stamp is not None:
-            _write_loop_exec_time = time.perf_counter() - self._interval_time_stamp
-            # Recalculate (default_interval + (default_interval - exec[ms]), but not go below 1ms
-            dt_new_ms = int(np.round(max(2 * self._timer_target_interval_ms - _write_loop_exec_time * 1e3, 1)))
-            self.__ni_ao_write_timer.setInterval(dt_new_ms)
-            self.log.debug(f"write loop cycle took {1e3*_write_loop_exec_time:.2f} ms "
-                           f"(target= {self._timer_target_interval_ms} ms), adjusting interval to {dt_new_ms} ms")
-            self._write_loop_idx += 1
-            self._write_loop_cum_exec_time += _write_loop_exec_time
-
-        self._interval_time_stamp = time.perf_counter()
-
     def __ao_cursor_write_loop(self):
 
-        _sim_hardware_delay = 0
         t_start = time.perf_counter()
-        stop_loop = False
 
         with self._thread_lock_cursor:
+            stop_loop = self._abort_cursor_move
+
             current_pos_vec = self._pos_dict_to_vec(self.get_position())
             target_pos_vec = self._pos_dict_to_vec(self._target_pos)
             connecting_vec = target_pos_vec - current_pos_vec
@@ -799,7 +771,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self.log.debug(f"Write loop duration: {1e3*(time.perf_counter()-self.__t_last_follow)}")
                 self.__t_last_follow = t_start
 
-
                 # Calculate new position to go to
                 max_step_distance = delta_t * self._follow_velocity
 
@@ -814,7 +785,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                for ax, pos in new_pos.items()}
 
                 self._ni_ao().setpoints = new_voltage
-                time.sleep(_sim_hardware_delay)
                 self.log.debug(f'Cursor_write_loop move to {new_pos}, Dist= {distance_to_target} '
                                f'took {1e3*(time.perf_counter()-t_start)} ms.')
 
@@ -824,8 +794,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self.__ni_ao_write_timer.start(int(round(1000 * max(0, self._min_step_interval - t_overhead))))
 
         if stop_loop:
-            self._interval_time_stamp = None
-
             self.log.debug(f'Cursor_write_loop stopping at {current_pos_vec}, dist= {distance_to_target}')
 
             self._abort_cursor_movement()
@@ -852,7 +820,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
 
         self.log.debug(f"Aborting move, took {1e3*(time.perf_counter()-self._t_last_move)} ms in total")
+
+        with self._thread_lock_cursor:
+            self._abort_cursor_move = True
+            self._target_pos = self.get_position()
+
         self._toggle_ao_setpoint_channels(False)
+
 
     def _move_to_and_start_scan(self, position):
         self._prepare_movement(position)
@@ -872,7 +846,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         try:
 
             with self._thread_lock_cursor:
-
+                self._abort_cursor_move = False
                 if not self._ao_setpoint_channels_active:
                     self._toggle_ao_setpoint_channels(True)
 
@@ -915,11 +889,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # set target value 2x the benchmark value, but not below 2 ms
         self._timer_target_interval_ms = 5
         """
+        # not needed anymore to benchmark
         t_ao_loop = self._benchmark_ao_write_loop()
         self._timer_target_interval_ms = int(np.max([2, 2 * 1e3 * t_ao_loop]))
         self.log.debug(f"Set ao write loop timer interval to {self._timer_target_interval_ms} ms "
                        f"after benchmark {1e3*t_ao_loop:.3f} ms")
         """
+
         self.__ni_ao_write_timer.setInterval(self._timer_target_interval_ms)
 
     def _benchmark_ao_write_loop(self):
