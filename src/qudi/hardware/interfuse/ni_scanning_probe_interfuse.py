@@ -109,10 +109,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._target_pos = dict()
         self._stored_target_pos = dict()
         self._start_scan_after_cursor = False
+        self._abort_cursor_move = False
 
         self.__ni_ao_write_timer = None
         self._min_step_interval = 1e-3
-        self._scanner_distance_tol = 1e-9
+        self._scanner_distance_atol = 1e-9
 
         self.__read_pos = -1
         self.__scan_stopped = False
@@ -182,12 +183,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
         Deactivate the module
         """
-        self.__stop_ao_write_timer()
-
-        with self._thread_lock_cursor:
-            self.__write_queue = dict()
-
-        self._toggle_ao_setpoint_channels(False)
+        self._abort_cursor_movement()
         if self._ni_finite_sampling_io().is_running:
             self._ni_finite_sampling_io().stop_buffered_frame()
 
@@ -323,9 +319,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         try:
             t_start = time.perf_counter()
             while self.is_move_running:
-                self.log.debug(f"Waiting for move to finish. Write queue: {self.__write_queue}")
+                self.log.debug(f"Waiting for move to finish.")
                 QGuiApplication.processEvents()
-                time.sleep(1e-3*self._timer_target_interval_ms)
+                time.sleep(self._min_step_interval)
 
             delta = np.asarray(list(self.get_position().values())) - np.asarray(list(self.get_target().values()))
             self.log.debug(f"Move_abs finished after {1e3*(time.perf_counter()-t_start)} ms "
@@ -526,11 +522,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                     'frequency': self._current_scan_frequency}
         return settings
 
-    @property
-    def _write_queue_empty(self):
-        # not thread safe, call from thread_lock protected code only
-        return all([values.size == 0 for values in self.__write_queue.values()])
-
     def _check_scan_end_reached(self):
         # not thread safe, call from thread_lock protected code only
         if self.__scan_stopped:
@@ -613,8 +604,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         return voltage_data
 
     def _pos_dict_to_vec(self, position):
-
-
 
         pos_list = [el[1] for el in sorted(position.items())]
         return np.asarray(pos_list)
@@ -758,7 +747,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             distance_to_target = np.linalg.norm(connecting_vec)
 
             # Terminate follow loop if target is reached
-            if distance_to_target < self._scanner_distance_tol:
+            if distance_to_target < self._scanner_distance_atol:
                 self.__t_last_follow = None
                 stop_loop = True
 
@@ -790,17 +779,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 # Start single-shot timer to call this follow loop again after some wait time
                 t_overhead = time.perf_counter() - t_start
-
                 self.__ni_ao_write_timer.start(int(round(1000 * max(0, self._min_step_interval - t_overhead))))
 
         if stop_loop:
             self.log.debug(f'Cursor_write_loop stopping at {current_pos_vec}, dist= {distance_to_target}')
-
             self._abort_cursor_movement()
 
             if self._start_scan_after_cursor:
                 self._start_hw_timed_scan()
-
 
     def _start_hw_timed_scan(self):
 
@@ -816,13 +802,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def _abort_cursor_movement(self):
         """
-        Abort the movement, stop the timer and reset interval, release memory and asynchronisly (via timer) free ni_ao resources.
+        Abort the movement and release ni_ao resources.
         """
 
-        self.log.debug(f"Aborting move, took {1e3*(time.perf_counter()-self._t_last_move)} ms in total")
+        self.log.debug(f"Aborting move.")
 
         with self._thread_lock_cursor:
             self._abort_cursor_move = True
+            # Save to call _abort_cursor_movement() multiple times, as get_positions() activates ao hardware
             self._target_pos = self.get_position()
 
         self._toggle_ao_setpoint_channels(False)
@@ -885,18 +872,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self.__ni_ao_write_timer.setSingleShot(True)
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
-
-        # set target value 2x the benchmark value, but not below 2 ms
-        self._timer_target_interval_ms = 5
-        """
-        # not needed anymore to benchmark
-        t_ao_loop = self._benchmark_ao_write_loop()
-        self._timer_target_interval_ms = int(np.max([2, 2 * 1e3 * t_ao_loop]))
-        self.log.debug(f"Set ao write loop timer interval to {self._timer_target_interval_ms} ms "
-                       f"after benchmark {1e3*t_ao_loop:.3f} ms")
-        """
-
-        self.__ni_ao_write_timer.setInterval(self._timer_target_interval_ms)
+        self.__ni_ao_write_timer.setInterval(1e3*self._min_step_interval)  # (ms), dynamically calculated during write loop
 
     def _benchmark_ao_write_loop(self):
 
@@ -906,8 +882,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         t_loops = []
         for i in range(n_loops):
             self._prepare_movement(position)
-            # scanner shouldn't move during benchmark, so use current position as write vale
-            self.__write_queue = {axis: np.asarray([position[axis]]) for axis in position}
             t_start = time.perf_counter()
             self.__ao_cursor_write_loop()
             t_loops.append(time.perf_counter() - t_start)
