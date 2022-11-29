@@ -40,7 +40,6 @@ from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
-from qudi.util.helpers import in_range
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
@@ -566,7 +565,6 @@ class ScannerGui(GuiBase):
         else:
             self.scan_2d_dockwidgets.get(axes).raise_()
 
-
     @QtCore.Slot(bool)
     def toggle_cursor_zoom(self, enable):
         if self._mw.action_utility_zoom.isChecked() != enable:
@@ -840,7 +838,6 @@ class ScannerGui(GuiBase):
             self.log.error(f'No scan dockwidget found for scan axes {axes}')
         else:
             dockwidget.scan_widget.set_scan_data(scan_data)
-            self.update_crosshair_sizes()
 
     def _toggle_enable_scan_crosshairs(self, enable):
         for dockwidget in self.scan_2d_dockwidgets.values():
@@ -919,15 +916,6 @@ class ScannerGui(GuiBase):
             height = self._osd.settings['scan_range'][ax[1]]
             x_min, x_max = axes_constr[ax[0]].value_range
             y_min, y_max = axes_constr[ax[1]].value_range
-
-            scan_range = dockwidget.scan_widget.scan_range
-            if scan_range:
-                dx_min = abs(scan_range[0][1] - scan_range[0][0]) * self._min_crosshair_size_fraction
-                dy_min = abs(scan_range[1][1] - scan_range[1][0]) * self._min_crosshair_size_fraction
-                dxy_min = max([dx_min, dy_min]) # crosshair should be quadratic after clipping
-                _, width = in_range(width, dxy_min, abs(x_max - x_min))
-                _, height = in_range(width, dxy_min, abs(y_max - y_min))
-
             marker_bounds = (
                 (x_min - width / 2, x_max + width / 2),
                 (y_min - height / 2, y_max + height / 2)

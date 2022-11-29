@@ -269,12 +269,6 @@ class Scan2DWidget(_BaseScanWidget):
     def marker_bounds(self) -> Union[None, List[Union[None, Tuple[float, float]]]]:
         return self.image_widget.selection_bounds
 
-    @property
-    def scan_range(self):
-        if self._scan_data:
-            return self._scan_data._scan_range
-        return None
-
     def set_marker_bounds(self,
                           bounds: Union[None, List[Union[None, Tuple[float, float]]]]
                           ) -> None:
