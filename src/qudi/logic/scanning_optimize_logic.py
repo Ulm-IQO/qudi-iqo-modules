@@ -653,6 +653,8 @@ class OptimizerScanSequence:
         out_seqs = out_seqs_any_order
         # clean up
         out_seqs = remove_duplicates(out_seqs)
+
+        out_seqs.extend([[axis] for axis in combs_1d])
         if remove_1d_in_2d:
             out_seqs = remove_1d_in_2d_axes_dupl(out_seqs)
 
