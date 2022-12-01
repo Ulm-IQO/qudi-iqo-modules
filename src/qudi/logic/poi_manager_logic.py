@@ -1047,7 +1047,12 @@ class PoiManagerLogic(LogicBase):
                 else:
                     self.__poi_optimization_running = False
                     poi_name = self._optimize_poi_name
-                    new_pos = np.array(list(self._position_update.values()))
+                    # Updating position of all three coordinates, in case not all coordinates
+                    # are updated the old positions are taken
+                    position = self.get_poi_position(poi_name)
+                    new_pos = {'x': position[0], 'y': position[1], 'z': position[2]}
+                    new_pos.update(self._position_update)
+                    new_pos = np.array(list((new_pos.values())))
                     if poi_name in self.poi_names:
                         if self._update_roi_position:
                             self.move_roi_from_poi_position(name=poi_name, position=new_pos)
