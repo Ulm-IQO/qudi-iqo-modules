@@ -319,12 +319,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         try:
             t_start = time.perf_counter()
             while self.is_move_running:
-                self.log.debug(f"Waiting for move to finish.")
                 QGuiApplication.processEvents()
                 time.sleep(self._min_step_interval)
 
             delta = np.asarray(list(self.get_position().values())) - np.asarray(list(self.get_target().values()))
-            self.log.debug(f"Move_abs finished after {1e3*(time.perf_counter()-t_start)} ms "
+            self.log.debug(f"Move_abs finished after waiting {1e3*(time.perf_counter()-t_start)} ms "
                            f"at pos= {self.get_position()}. Target= {self.get_target()}. "
                            f"|Delta|= {np.linalg.norm(delta)}")
         except:
@@ -757,7 +756,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                     self.__t_last_follow = time.perf_counter()
 
                 delta_t = t_start - self.__t_last_follow
-                self.log.debug(f"Write loop duration: {1e3*(time.perf_counter()-self.__t_last_follow)}")
+                self.log.debug(f"Write loop duration: {1e3*(time.perf_counter()-self.__t_last_follow)} ms")
                 self.__t_last_follow = t_start
 
                 # Calculate new position to go to
