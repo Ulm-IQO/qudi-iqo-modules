@@ -95,6 +95,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     _threaded = True  # Interfuse is by default not threaded.
 
+    sigNextDataChunk = QtCore.Signal()
+
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
 
@@ -104,6 +106,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._current_scan_resolution = tuple()
 
         self._scan_data = None
+        self.raw_data_container = None
+
         self._constraints = None
 
         self._target_pos = dict()
@@ -115,7 +119,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._min_step_interval = 1e-3
         self._scanner_distance_atol = 1e-9
 
-        self.__read_pos = -1
         self.__scan_stopped = False
 
         self._thread_lock_cursor = Mutex()
@@ -167,6 +170,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.__t_last_follow = None
 
 
+        self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.QueuedConnection)
+
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
         for channel in ni_ao.constraints.setpoint_channels:
@@ -208,7 +213,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return (bool, ScanSettings): Failure indicator (fail=True),
                                       altered ScanSettings instance (same as "settings")
         """
-
 
         if self.is_scan_running:
             self.log.error('Unable to configure scan parameters while scan is running. '
@@ -258,7 +262,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                         scan_frequency=frequency,
                         position_feedback_axes=None
                     )
-                    #self.log.debug(f"New scanData created: {self._scan_data.data}")
+                    self.raw_data_container = RawDataContainer(self._scan_data.channels,
+                                                               resolution[
+                                                                   1] if self._scan_data.scan_dimension == 2 else 1,
+                                                               resolution[0],
+                                                               self.__backwards_line_resolution)
+                    # self.log.debug(f"New scanData created: {self._scan_data.data}")
 
                 except:
                     self.log.exception("")
@@ -413,7 +422,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             first_scan_position = {ax: pos[0] for ax, pos
                                    in zip(self.scan_settings['axes'], self.scan_settings['range'])}
             self._move_to_and_start_scan(first_scan_position)
-            self.__read_pos = 0
 
             return 0  # FIXME Bool indicators deprecated
 
@@ -424,15 +432,15 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def stop_scan(self):
 
-       #self.log.debug(f"Stop scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
+        # self.log.debug(f"Stop scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
 
-       if self.thread() is not QtCore.QThread.currentThread():
-           QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
-                                           QtCore.Qt.BlockingQueuedConnection)
-       else:
-           self._stop_scan()
+        if self.thread() is not QtCore.QThread.currentThread():
+            QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
+                                            QtCore.Qt.BlockingQueuedConnection)
+        else:
+            self._stop_scan()
 
-       return 0
+        return 0
 
     @QtCore.Slot()
     def _stop_scan(self):
@@ -442,17 +450,18 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # FIXME Fix the mess of bool indicators, int return values etc in toolchain
         """
         try:
-            #self.log.debug("Stopping scan...")
+            # self.log.debug("Stopping scan...")
+            self._start_scan_after_cursor = False  # Ensure Scan HW is not started after movement
             if self._ao_setpoint_channels_active:
                 self._abort_cursor_movement()
-                #self.log.debug("Move aborted")
+                # self.log.debug("Move aborted")
 
             if self._ni_finite_sampling_io().is_running:
                 self._ni_finite_sampling_io().stop_buffered_frame()
-                #self.log.debug("Frame stopped")
+                # self.log.debug("Frame stopped")
 
             self.module_state.unlock()
-            #self.log.debug("Module unlocked")
+            # self.log.debug("Module unlocked")
 
             self.move_absolute(self._stored_target_pos)
             self._stored_target_pos = dict()
@@ -468,18 +477,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
         #  TODO change interface
         """
-        # todo: get_scan data ussage for polling hw &iterating __read_pos seems sketchy
-        # => this hw file should implement it's own polling loop and provide updated ._scan_data
-        # when get_scan_data is called
         try:
-            if not self.is_scan_running or not self._ni_finite_sampling_io().is_running:
-                return self._scan_data
-            else:
-                # _stop_scan is called asynchronously. Thus .is_scan_running might be True, even if last data frame
-                # was already fetched. __scan_stopped is set by the polling thread, guaranteed to signal in time.
-                if not self.__scan_stopped:
-                    self._fetch_data_line()
-                return self._scan_data
+            with self._thread_lock_data:
+                return self._scan_data.copy()
         except:
             self.log.exception("")
 
@@ -526,50 +526,40 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if self.__scan_stopped:
             return True
 
-        if self._scan_data.scan_dimension == 1:
+        if len(self.raw_data_container) == self._ni_finite_sampling_io().frame_size:
             self.__scan_stopped = True
             return True
 
-        elif self._scan_data.scan_dimension == 2:
-            if self.__read_pos == self._current_scan_resolution[1]:
-                self.__scan_stopped = True
-                return True
-
         return False
 
-    def _fetch_data_line(self):
-        samples_per_complete_line = self._current_scan_resolution[0] + self.__backwards_line_resolution
-        # blocking until samples are ready
-        #self.log.debug(f"Fetching data, line_idx {self.__read_pos}")
-        samples_dict = self._ni_finite_sampling_io().get_buffered_samples(samples_per_complete_line)
-        #self.log.debug(f"Samples = {samples_dict}")
-        #self.log.debug(f"scanData: {self._scan_data.data}")
-        # Potentially we could also use get_buff.. without samples, but that would require some more thought
-        # while writing to ScanData
-
-        reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
-        # TODO extract terminal stuff? meaning allow DevX/... notation in config?
-
+    def _fetch_data_chunk(self):
         try:
+            # self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
+            # chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
+            chunk_size = 10  # TODO Hardcode or go line by line as commented out above?
+            # Request a minimum of chunk_size samples per loop
+            try:
+                samples_dict = self._ni_finite_sampling_io().get_buffered_samples(chunk_size) \
+                    if self._ni_finite_sampling_io().samples_in_buffer < chunk_size\
+                    else self._ni_finite_sampling_io().get_buffered_samples()
+            except ValueError:  # ValueError is raised, when more samples are requested then pending or still to get
+                # after HW stopped
+                samples_dict = self._ni_finite_sampling_io().get_buffered_samples()
+
+            reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
+
+            new_data = {reverse_routing[key]: samples for key, samples in samples_dict.items()}
+
             with self._thread_lock_data:
-                for ni_ch in samples_dict.keys():
-                    input_ch = reverse_routing[ni_ch]
-                    line_data = samples_dict[ni_ch][:self._current_scan_resolution[0]]
-
-                    if self._scan_data.scan_dimension == 1:
-                        self._scan_data.data[input_ch] = line_data
-
-                    elif self._scan_data.scan_dimension == 2:
-                        self._scan_data.data[input_ch][:, self.__read_pos] = line_data
-                    else:
-                        self.log.error('Invalid Scan Dimension')
-                        self.stop_scan()  # TODO Should the hw stop itself?
-
-                if self._scan_data.scan_dimension == 2:
-                    self.__read_pos += 1
+                self.raw_data_container.fill_container(new_data)
+                self._scan_data.data = self.raw_data_container.forwards_data()
 
                 if self._check_scan_end_reached():
                     self.stop_scan()
+                elif not self.is_scan_running:
+                    return
+                else:
+                    self.sigNextDataChunk.emit()
 
         except:
             self.log.exception("")
@@ -717,7 +707,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             vertical_return_lines = np.linspace(vertical[:-1], vertical[1:], self.__backwards_line_resolution).T
             # need to extend the vertical lines at the end, as we reach it earlier then for the horizontal axes
             vertical_return_lines = np.concatenate((vertical_return_lines,
-                                                    np.ones((1, self.__backwards_line_resolution))*vertical[-1]
+                                                    np.ones((1, self.__backwards_line_resolution)) * vertical[-1]
                                                     ))
 
             vertical_scan_array = np.concatenate((vertical_lines, vertical_return_lines), axis=1).ravel()
@@ -792,6 +782,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         #self.log.debug("Starting hw timed scan")
         try:
             self._ni_finite_sampling_io().start_buffered_frame()
+            self.sigNextDataChunk.emit()
         except Exception as e:
             self.log.error(f'Could not start frame due to {str(e)}')
             self.module_state.unlock()
@@ -920,4 +911,48 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             print(f"{str(e)}")
 
 
+class RawDataContainer:
 
+    def __init__(self, channel_keys, number_of_scan_lines, forward_line_resolution, backwards_line_resolution):
+        self.forward_line_resolution = forward_line_resolution
+        self.number_of_scan_lines = number_of_scan_lines
+        self.forward_line_resolution = forward_line_resolution
+        self.backwards_line_resolution = backwards_line_resolution
+
+        frame_size = number_of_scan_lines * (forward_line_resolution + backwards_line_resolution)
+        self._raw = {key: np.full(frame_size, np.nan) for key in channel_keys}
+
+    def fill_container(self, samples_dict):
+        # get index of first nan from one element of dict
+        first_nan_idx = len(self)
+        for key, samples in samples_dict.items():
+            self._raw[key][first_nan_idx:first_nan_idx + len(samples)] = samples
+
+    def forwards_data(self):
+        reshaped_2d_dict = dict.fromkeys(self._raw)
+        for key in self._raw:
+            if self.number_of_scan_lines > 1:
+                reshaped_arr = self._raw[key].reshape(self.number_of_scan_lines,
+                                                      self.forward_line_resolution + self.backwards_line_resolution)
+                reshaped_2d_dict[key] = reshaped_arr[:, :self.forward_line_resolution].T
+            elif self.number_of_scan_lines == 1:
+                reshaped_2d_dict[key] = self._raw[key][:self.forward_line_resolution]
+        return reshaped_2d_dict
+
+    def backwards_data(self):
+        reshaped_2d_dict = dict.fromkeys(self._raw)
+        for key in self._raw:
+            if self.number_of_scan_lines > 1:
+                reshaped_arr = self._raw[key].reshape(self.number_of_scan_lines,
+                                                      self.forward_line_resolution + self.backwards_line_resolution)
+                reshaped_2d_dict[key] = reshaped_arr[:, self.forward_line_resolution:].T
+            elif self.number_of_scan_lines == 1:
+                reshaped_2d_dict[key] = self._raw[key][self.forward_line_resolution:]
+
+        return reshaped_2d_dict
+
+    def __len__(self):
+        """
+        returns number of not NaN samples
+        """
+        return np.sum(~np.isnan(next(iter(self._raw.values()))))

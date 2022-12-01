@@ -653,9 +653,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             pre_stop = not self.is_running
 
             if not samples_to_read <= self._number_of_pending_samples:
-                self.log.error(f"Requested {samples_to_read} samples, but not enough pending. "
-                               f"Premature stop: {pre_stop}. Returning empty data.")
-                samples_to_read = 0
+                raise ValueError(f"Requested {samples_to_read} samples, "
+                                 f"but only {self._number_of_pending_samples} enough pending.")
 
             if samples_to_read > 0 and self.is_running:
                 request_time = time.time()
