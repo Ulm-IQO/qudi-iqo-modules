@@ -41,6 +41,13 @@ from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
 from qudi.interface.data_instream_interface import StreamingMode, StreamChannelType, StreamChannel
 
+_CALLBACK = ctypes.WINFUNCTYPE(ctypes.c_int,
+                               ctypes.c_long,
+                               ctypes.c_long,
+                               ctypes.c_long,
+                               ctypes.c_double,
+                               ctypes.c_long)
+
 
 class WavemeterAsInstreamer(DataInStreamInterface):
     """
@@ -198,24 +205,19 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     def _get_callback_ex(self):
         # define the callback function, that should be called by the dll on an event
-        @ctypes.WINFUNCTYPE(ctypes.c_int,
-                            ctypes.c_long,
-                            ctypes.c_long,
-                            ctypes.c_long,
-                            ctypes.c_double,
-                            ctypes.c_long)
         def handle_callback(version, mode, intval, dblval, res1):
             # append measured wavelength with corresponding timestamp to the list
             # (intval for timestamp and dblval for value)
             if mode == wlmConst.cmiWavelength1:
                 print('handle_callback', threading.get_ident())
-                self._new_data_signal.emit(intval, dblval)
+                self._add_data(intval, dblval)
+                # self._new_data_signal.emit(intval, dblval)
             elif mode == wlmConst.cmiTemperature:
                 pass
                 # self.temperature.append((intval, dblval))
             return 0
-
-        return handle_callback
+        self._cb = _CALLBACK(handle_callback)
+        return self._cb
 
     def _add_data(self, time_int, data):
         print('_add_data', threading.get_ident())
