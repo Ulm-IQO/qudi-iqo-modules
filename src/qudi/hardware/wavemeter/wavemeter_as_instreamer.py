@@ -27,8 +27,10 @@ import ctypes  # is a foreign function library for Python. It provides C
 # compatible data types, and allows calling functions in DLLs
 # or shared libraries. It can be used to wrap these libraries
 # in pure Python.
+from PySide2 import QtCore
 import scipy.interpolate as interpolate
 from qudi.hardware.dummy import wlmData  # TODO (not currently used)
+import threading
 
 from qudi.hardware.dummy import wlmConst  # importing.py files of wavemeter
 
@@ -65,6 +67,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             - 10
         # analog_amplitudes: 10  # optional (10V by default)
     """
+
+    _new_data_signal = QtCore.Signal(float, float)
 
     # config options
 
@@ -135,10 +139,13 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._is_running = False
         self._last_read = None
         self._start_time = None
+
+        self._new_data_signal.connect(self._add_data, QtCore.Qt.QueuedConnection)
         return
 
     def on_deactivate(self):  # TODO
         self.stop_stream()
+        self._new_data_signal.disconnect(self._add_data)
 
         self._has_overflown = False
         self._is_running = False
@@ -201,14 +208,232 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             # append measured wavelength with corresponding timestamp to the list
             # (intval for timestamp and dblval for value)
             if mode == wlmConst.cmiWavelength1:
-                with self._lock:
-                    self._wavelength.append((intval, dblval))
+                print('handle_callback', threading.get_ident())
+                self._new_data_signal.emit(intval, dblval)
             elif mode == wlmConst.cmiTemperature:
                 pass
                 # self.temperature.append((intval, dblval))
             return 0
 
         return handle_callback
+
+    def _add_data(self, time_int, data):
+        print('_add_data', threading.get_ident())
+        with self._lock:
+            self._wavelength.append((time_int, data))
+
+    def start_stream(self):
+        """
+        Start the data acquisition and data stream.
+
+        @return int: error code (0: OK, -1: Error)
+        """
+        if self.is_running:
+            self.log.warning('Unable to start input stream. It is already running.')
+            return 0
+
+        print('start_stream', threading.get_ident())
+        # start callback procedure
+        self._wavemeterdll.Instantiate(
+            1,  # long ReasonForCall: 1 = cInstNotification
+            4,  # long MODE: 4 = cNofityInstallCallbackEx
+            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),
+            # long P1: function
+            0)  # long P2: callback thread priority, 0 = standard
+
+        self._init_buffer()
+        self._is_running = True
+        self._start_time = time.perf_counter()
+        self._last_read = self._start_time
+        return 0
+
+    def stop_stream(self):
+        """
+        Stop the data acquisition and data stream.
+
+        @return int: error code (0: OK, -1: Error)
+        """
+        print('stop_stream', threading.get_ident())
+        # end callback procedure
+        self._wavemeterdll.Instantiate(
+            1,  # long ReasonForCall: 1 = cInstNotification
+            1,  # long MODE: 1 = cNotifyRemoveCallback
+            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),
+            0)  # long P2: callback thread priority, 0 = standard
+        self._is_running = False
+        return 0
+
+    @property
+    def wavelength(self):
+        with self._lock:
+            print('wavelength property', threading.get_ident())
+            return self._wavelength.copy()
+
+    def read_data_into_buffer(self, buffer, number_of_samples=None):
+        """
+        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
+        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
+        channels the array must be 2D with the first index corresponding to the channel number and
+        the second index serving as sample index:
+            buffer.shape == (self.number_of_channels, number_of_samples)
+        The numpy array must have the same data type as self.data_type.
+        If number_of_samples is omitted it will be derived from buffer.shape[1]
+
+        This method will not return until all requested samples have been read or a timeout occurs.
+
+        @param numpy.ndarray buffer: The numpy array to write the samples to
+        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
+                                      this number will be derived from buffer axis 1 size.
+
+        @return int: Number of samples read into buffer; negative value indicates error
+                     (e.g. read timeout)
+        """
+        if not self.is_running:
+            self.log.error('Unable to read data. Device is not running.')
+            return -1
+
+        if not isinstance(buffer, np.ndarray) or buffer.dtype != self.__data_type:
+            self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
+                           ''.format(self.__data_type))
+            return -1
+
+        if buffer.ndim == 2:
+            if buffer.shape[0] != self.number_of_channels:
+                self.log.error('Configured number of channels ({0:d}) does not match first '
+                               'dimension of 2D buffer array ({1:d}).'
+                               ''.format(self.number_of_channels, buffer.shape[0]))
+                return -1
+            number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
+            buffer = buffer.flatten()
+        elif buffer.ndim == 1:
+            number_of_samples = (buffer.size // self.number_of_channels) \
+                if number_of_samples is None else number_of_samples
+        else:
+            self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
+            return -1
+
+        if number_of_samples < 1:
+            return 0
+        while self.available_samples < number_of_samples:
+            time.sleep(0.001)
+
+        # Check for buffer overflow
+        if self.available_samples > self.buffer_size:
+            self._has_overflown = True
+
+        previous_read = self._last_read
+        self._last_read = time.perf_counter()
+
+        with self._lock:
+            wavelength_length = len(self._wavelength)
+            wavelength_array = np.array(self._wavelength[:wavelength_length])
+            del self._wavelength[:wavelength_length]
+            
+        arr_interp = interpolate.interp1d(wavelength_array[:, 0], wavelength_array[:, 1])
+        new_timings = np.linspace(wavelength_array[0, 0],
+                                  wavelength_array[0, 0] + self._last_read - previous_read,
+                                  number_of_samples)
+        buffer[:number_of_samples] = arr_interp(new_timings)
+
+        # temperature_array = np.array(self.temperature[:number_of_samples])
+        # del self.temperature[:number_of_samples]
+        # arr_interp = interpolate.interp1d(temperature_array[:, 0], temperature_array[:, 1])
+        # new_timings = np.linspace(temperature_array[0, 0],
+        #                           temperature_array[0, 0] + self._last_read,
+        #                           number_of_samples)
+        # buffer[:number_of_samples] = arr_interp(new_timings)
+
+        return number_of_samples
+
+    def read_available_data_into_buffer(self, buffer):
+        """
+        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
+        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
+        channels the array must be 2D with the first index corresponding to the channel number and
+        the second index serving as sample index:
+            buffer.shape == (self.number_of_channels, number_of_samples)
+        The numpy array must have the same data type as self.data_type.
+
+        This method will read all currently available samples into buffer. If number of available
+        samples exceed buffer size, read only as many samples as fit into the buffer.
+
+        @param numpy.ndarray buffer: The numpy array to write the samples to
+
+        @return int: Number of samples read into buffer; negative value indicates error
+                     (e.g. read timeout)
+        """
+        if not self.is_running:
+            self.log.error('Unable to read data. Device is not running.')
+            return -1
+
+        avail_samples = min(buffer.size // self.number_of_channels, self.available_samples)
+        return self.read_data_into_buffer(buffer=buffer, number_of_samples=avail_samples)
+
+    def read_data(self, number_of_samples=None):
+        """
+        Read data from the stream buffer into a 2D numpy array and return it.
+        The arrays first index corresponds to the channel number and the second index serves as
+        sample index:
+            return_array.shape == (self.number_of_channels, number_of_samples)
+        The numpy arrays data type is the one defined in self.data_type.
+        If number_of_samples is omitted all currently available samples are read from buffer.
+
+        This method will not return until all requested samples have been read or a timeout occurs.
+
+        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
+                                      all available samples are read from buffer.
+
+        @return numpy.ndarray: The read samples
+        """
+        if not self.is_running:
+            self.log.error('Unable to read data. Device is not running.')
+            return np.empty((0, 0), dtype=self.data_type)
+
+        if number_of_samples is None:
+            read_samples = self.read_available_data_into_buffer(self._data_buffer)
+            if read_samples < 0:
+                return np.empty((0, 0), dtype=self.data_type)
+        else:
+            read_samples = self.read_data_into_buffer(self._data_buffer,
+                                                      number_of_samples=number_of_samples)
+            if read_samples != number_of_samples:
+                return np.empty((0, 0), dtype=self.data_type)
+
+        total_samples = self.number_of_channels * read_samples
+        return self._data_buffer[:total_samples].reshape((self.number_of_channels,
+                                                          number_of_samples))
+
+    def read_single_point(self):  # TODO
+        """
+        This method will initiate a single sample read on each configured data channel.
+        In general this sample may not be acquired simultaneous for all channels and timing in
+        general can not be assured. Us this method if you want to have a non-timing-critical
+        snapshot of your current data channel input.
+        May not be available for all devices.
+        The returned 1D numpy array will contain one sample for each channel.
+
+        @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
+                               indicates error.
+        """
+        if not self.is_running:
+            self.log.error('Unable to read data. Device is not running.')
+            return np.empty(0, dtype=self.__data_type)
+
+        data = np.empty(self.number_of_channels, dtype=self.__data_type)
+        analog_x = 2 * np.pi * (self._last_read - self._start_time)
+        self._last_read = time.perf_counter()
+        for i, chnl in enumerate(self.__active_channels):
+            if chnl in self._digital_channels:
+                ch_index = self._digital_channels.index(chnl)
+                events_per_bin = self._digital_event_rates[ch_index] / self.__sample_rate
+                data[i] = np.random.poisson(events_per_bin)
+            else:
+                ch_index = self._analog_channels.index(chnl)
+                amplitude = self._analog_amplitudes[ch_index]
+                noise_level = 0.05 * amplitude
+                noise = noise_level - 2 * noise_level * np.random.rand()
+                data[i] = amplitude * np.sin(analog_x) + noise
+        return data
 
     @property
     def sample_rate(self):
@@ -469,216 +694,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             if use_circular_buffer is not None:
                 self.use_circular_buffer = use_circular_buffer
         return self.all_settings
-
-    def start_stream(self):
-        """
-        Start the data acquisition and data stream.
-
-        @return int: error code (0: OK, -1: Error)
-        """
-        if self.is_running:
-            self.log.warning('Unable to start input stream. It is already running.')
-            return 0
-
-        # start callback procedure
-        self._wavemeterdll.Instantiate(
-            1,  # long ReasonForCall: 1 = cInstNotification
-            4,  # long MODE: 4 = cNofityInstallCallbackEx
-            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),
-            # long P1: function
-            0)  # long P2: callback thread priority, 0 = standard
-
-        self._init_buffer()
-        self._is_running = True
-        self._start_time = time.perf_counter()
-        self._last_read = self._start_time
-        return 0
-
-    def stop_stream(self):
-        """
-        Stop the data acquisition and data stream.
-
-        @return int: error code (0: OK, -1: Error)
-        """
-        # end callback procedure
-        self._wavemeterdll.Instantiate(
-            1,  # long ReasonForCall: 1 = cInstNotification
-            1,  # long MODE: 1 = cNotifyRemoveCallback
-            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),
-            0)  # long P2: callback thread priority, 0 = standard
-        self._is_running = False
-        return 0
-
-    @property
-    def wavelength(self):
-        with self._lock:
-            return self._wavelength
-
-    def read_data_into_buffer(self, buffer, number_of_samples=None):
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
-        If number_of_samples is omitted it will be derived from buffer.shape[1]
-
-        This method will not return until all requested samples have been read or a timeout occurs.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      this number will be derived from buffer axis 1 size.
-
-        @return int: Number of samples read into buffer; negative value indicates error
-                     (e.g. read timeout)
-        """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return -1
-
-        if not isinstance(buffer, np.ndarray) or buffer.dtype != self.__data_type:
-            self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
-                           ''.format(self.__data_type))
-            return -1
-
-        if buffer.ndim == 2:
-            if buffer.shape[0] != self.number_of_channels:
-                self.log.error('Configured number of channels ({0:d}) does not match first '
-                               'dimension of 2D buffer array ({1:d}).'
-                               ''.format(self.number_of_channels, buffer.shape[0]))
-                return -1
-            number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
-            buffer = buffer.flatten()
-        elif buffer.ndim == 1:
-            number_of_samples = (buffer.size // self.number_of_channels) \
-                if number_of_samples is None else number_of_samples
-        else:
-            self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
-            return -1
-
-        if number_of_samples < 1:
-            return 0
-        while self.available_samples < number_of_samples:
-            time.sleep(0.001)
-
-        # Check for buffer overflow
-        if self.available_samples > self.buffer_size:
-            self._has_overflown = True
-
-        previous_read = self._last_read
-        self._last_read = time.perf_counter()
-
-        with self._lock:
-            wavelength_length = len(self._wavelength)
-            wavelength_array = np.array(self._wavelength[:wavelength_length])
-            del self._wavelength[:wavelength_length]
-            
-        arr_interp = interpolate.interp1d(wavelength_array[:, 0], wavelength_array[:, 1])
-        new_timings = np.linspace(wavelength_array[0, 0],
-                                  wavelength_array[0, 0] + self._last_read - previous_read,
-                                  number_of_samples)
-        buffer[:number_of_samples] = arr_interp(new_timings)
-
-        # temperature_array = np.array(self.temperature[:number_of_samples])
-        # del self.temperature[:number_of_samples]
-        # arr_interp = interpolate.interp1d(temperature_array[:, 0], temperature_array[:, 1])
-        # new_timings = np.linspace(temperature_array[0, 0],
-        #                           temperature_array[0, 0] + self._last_read,
-        #                           number_of_samples)
-        # buffer[:number_of_samples] = arr_interp(new_timings)
-
-        return number_of_samples
-
-    def read_available_data_into_buffer(self, buffer):
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
-
-        This method will read all currently available samples into buffer. If number of available
-        samples exceed buffer size, read only as many samples as fit into the buffer.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-
-        @return int: Number of samples read into buffer; negative value indicates error
-                     (e.g. read timeout)
-        """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return -1
-
-        avail_samples = min(buffer.size // self.number_of_channels, self.available_samples)
-        return self.read_data_into_buffer(buffer=buffer, number_of_samples=avail_samples)
-
-    def read_data(self, number_of_samples=None):
-        """
-        Read data from the stream buffer into a 2D numpy array and return it.
-        The arrays first index corresponds to the channel number and the second index serves as
-        sample index:
-            return_array.shape == (self.number_of_channels, number_of_samples)
-        The numpy arrays data type is the one defined in self.data_type.
-        If number_of_samples is omitted all currently available samples are read from buffer.
-
-        This method will not return until all requested samples have been read or a timeout occurs.
-
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      all available samples are read from buffer.
-
-        @return numpy.ndarray: The read samples
-        """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return np.empty((0, 0), dtype=self.data_type)
-
-        if number_of_samples is None:
-            read_samples = self.read_available_data_into_buffer(self._data_buffer)
-            if read_samples < 0:
-                return np.empty((0, 0), dtype=self.data_type)
-        else:
-            read_samples = self.read_data_into_buffer(self._data_buffer,
-                                                      number_of_samples=number_of_samples)
-            if read_samples != number_of_samples:
-                return np.empty((0, 0), dtype=self.data_type)
-
-        total_samples = self.number_of_channels * read_samples
-        return self._data_buffer[:total_samples].reshape((self.number_of_channels,
-                                                          number_of_samples))
-
-    def read_single_point(self):  # TODO
-        """
-        This method will initiate a single sample read on each configured data channel.
-        In general this sample may not be acquired simultaneous for all channels and timing in
-        general can not be assured. Us this method if you want to have a non-timing-critical
-        snapshot of your current data channel input.
-        May not be available for all devices.
-        The returned 1D numpy array will contain one sample for each channel.
-
-        @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
-                               indicates error.
-        """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return np.empty(0, dtype=self.__data_type)
-
-        data = np.empty(self.number_of_channels, dtype=self.__data_type)
-        analog_x = 2 * np.pi * (self._last_read - self._start_time)
-        self._last_read = time.perf_counter()
-        for i, chnl in enumerate(self.__active_channels):
-            if chnl in self._digital_channels:
-                ch_index = self._digital_channels.index(chnl)
-                events_per_bin = self._digital_event_rates[ch_index] / self.__sample_rate
-                data[i] = np.random.poisson(events_per_bin)
-            else:
-                ch_index = self._analog_channels.index(chnl)
-                amplitude = self._analog_amplitudes[ch_index]
-                noise_level = 0.05 * amplitude
-                noise = noise_level - 2 * noise_level * np.random.rand()
-                data[i] = amplitude * np.sin(analog_x) + noise
-        return data
 
     # =============================================================================================
     def _clk_frequency_valid(self, frequency):
