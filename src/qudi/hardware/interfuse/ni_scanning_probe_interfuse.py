@@ -174,6 +174,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
+        self.log.debug(f"Toggling ao output: {enable}")
         for channel in ni_ao.constraints.setpoint_channels:
             ni_ao.set_activity_state(channel, enable)
 
@@ -371,9 +372,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current position per axis.
         """
-        if not self._ao_setpoint_channels_active:
-            self._toggle_ao_setpoint_channels(True)
-        return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
+        with self._thread_lock_cursor:
+            if not self._ao_setpoint_channels_active:
+                self._toggle_ao_setpoint_channels(True)
+            self.log.debug(f"After activating in get_pos: active? {self._ao_setpoint_channels_active}")
+            return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
 
     def start_scan(self):
         try:
@@ -727,10 +730,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         t_start = time.perf_counter()
 
+        current_pos_vec = self._pos_dict_to_vec(self.get_position())
+
         with self._thread_lock_cursor:
             stop_loop = self._abort_cursor_move
 
-            current_pos_vec = self._pos_dict_to_vec(self.get_position())
+
             target_pos_vec = self._pos_dict_to_vec(self._target_pos)
             connecting_vec = target_pos_vec - current_pos_vec
             distance_to_target = np.linalg.norm(connecting_vec)
@@ -797,13 +802,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self.log.debug(f"Aborting move.")
 
+        self._target_pos = self.get_position()
+
         with self._thread_lock_cursor:
             self._abort_cursor_move = True
             # Save to call _abort_cursor_movement() multiple times, as get_positions() activates ao hardware
-            self._target_pos = self.get_position()
-
-        self._toggle_ao_setpoint_channels(False)
-
+            self._toggle_ao_setpoint_channels(False)
 
     def _move_to_and_start_scan(self, position):
         self._prepare_movement(position)
