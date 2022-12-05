@@ -46,7 +46,7 @@ class ThorlabsPowermeter(ProcessValueInterface):
     Example config:
 
     powermeter:
-        module.Class: 'thorlabs_powermeter.ThorlabsPowermeter'
+        module.Class: 'powermeter.thorlabs_powermeter.ThorlabsPowermeter'
         options:
             address: 'USB0::0x1313::0x8078::P0012345::INSTR'
             wavelength: 637.0
