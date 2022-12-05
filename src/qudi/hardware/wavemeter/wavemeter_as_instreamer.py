@@ -23,23 +23,18 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 
 import time
 import numpy as np
-import ctypes  # is a foreign function library for Python. It provides C
-# compatible data types, and allows calling functions in DLLs
-# or shared libraries. It can be used to wrap these libraries
-# in pure Python.
+import ctypes
+
 from PySide2 import QtCore
 import scipy.interpolate as interpolate
-from qudi.hardware.dummy import wlmData  # TODO (not currently used)
-import threading
 
-from qudi.hardware.dummy import wlmConst  # importing.py files of wavemeter
-
-# DLL_PATH = 'C:\Windows\System32\wlmData.dll'
-DLL_PATH = 'wlmData.dll'
-
+import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
 from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
 from qudi.interface.data_instream_interface import StreamingMode, StreamChannelType, StreamChannel
+
+# DLL_PATH = 'C:\Windows\System32\wlmData.dll'
+DLL_PATH = 'wlmData.dll'
 
 _CALLBACK = ctypes.WINFUNCTYPE(ctypes.c_int,
                                ctypes.c_long,
@@ -55,36 +50,18 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     Example config for copy-paste:
 
-    instream_dummy:
-        module.Class: 'data_instream_dummy.InStreamDummy'
-        digital_channels:  # optional, must provide at least one digital or analog channel
-            - 'digital 1'
-            - 'digital 2'
-            - 'digital 3'
-        analog_channels:  # optional, must provide at least one digital or analog channel
-            - 'analog 1'
-            - 'analog 2'
-        digital_event_rates:  # optional, must have as many entries as digital_channels or just one
-            - 1000
-            - 10000
-            - 100000
-        # digital_event_rates: 100000
-        analog_amplitudes:  # optional, must have as many entries as analog_channels or just one
-            - 5
-            - 10
-        # analog_amplitudes: 10  # optional (10V by default)
+    instream_wavemeter:
+        module.Class: 'wavemeter.wavemeter_as_instreamer.WavemeterAsInstreamer'
     """
-
-    _new_data_signal = QtCore.Signal(float, float)
 
     # config options
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._lock = Mutex()
+        self._callback_function = None
         self._wavemeterdll = None
 
-        # TODO
         self._digital_channels = ('wavelength', )#'temperature')
         self._analog_channels = tuple()
         self._digital_event_rates = [1000, 1000, 1000, 1000]
@@ -104,7 +81,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         # Data buffer
         self._data_buffer = np.empty(0, dtype=self.__data_type)
         self._has_overflown = False
-        self._is_running = False
         self._last_read = None
         self._start_time = None
 
@@ -120,7 +96,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         try:
             # imports the spectrometer specific function from dll
             self._wavemeterdll = ctypes.windll.LoadLibrary('wlmData.dll')
-
         except:
             self.log.critical('There is no Wavemeter installed on this Computer.\n'
                               'Please install a High Finesse Wavemeter and try again.')
@@ -143,19 +118,14 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         # Reset data buffer
         self._data_buffer = np.empty(0, dtype=self.__data_type)
         self._has_overflown = False
-        self._is_running = False
         self._last_read = None
         self._start_time = None
-
-        self._new_data_signal.connect(self._add_data, QtCore.Qt.QueuedConnection)
         return
 
     def on_deactivate(self):  # TODO
         self.stop_stream()
-        self._new_data_signal.disconnect(self._add_data)
 
         self._has_overflown = False
-        self._is_running = False
         self._last_read = None
         # Free memory if possible while module is inactive
         self._data_buffer = np.empty(0, dtype=self.__data_type)
@@ -208,21 +178,15 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         def handle_callback(version, mode, intval, dblval, res1):
             # append measured wavelength with corresponding timestamp to the list
             # (intval for timestamp and dblval for value)
-            if mode == wlmConst.cmiWavelength1:
-                print('handle_callback', threading.get_ident())
-                self._add_data(intval, dblval)
-                # self._new_data_signal.emit(intval, dblval)
-            elif mode == wlmConst.cmiTemperature:
-                pass
-                # self.temperature.append((intval, dblval))
+            with self._lock:
+                if mode == high_finesse_constants.cmiWavelength1:
+                    self._wavelength.append((intval, dblval))
+                elif mode == high_finesse_constants.cmiTemperature:
+                    pass
+                    # self.temperature.append((intval, dblval))
             return 0
-        self._cb = _CALLBACK(handle_callback)
-        return self._cb
-
-    def _add_data(self, time_int, data):
-        print('_add_data', threading.get_ident())
-        with self._lock:
-            self._wavelength.append((time_int, data))
+        self._callback_function = _CALLBACK(handle_callback)
+        return self._callback_function
 
     def start_stream(self):
         """
@@ -234,17 +198,15 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.warning('Unable to start input stream. It is already running.')
             return 0
 
-        print('start_stream', threading.get_ident())
         # start callback procedure
         self._wavemeterdll.Instantiate(
-            1,  # long ReasonForCall: 1 = cInstNotification
-            4,  # long MODE: 4 = cNofityInstallCallbackEx
+            high_finesse_constants.cInstNotification,  # long ReasonForCall
+            high_finesse_constants.cNotifyInstallCallbackEx,  # long MODE
             ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),
             # long P1: function
             0)  # long P2: callback thread priority, 0 = standard
 
         self._init_buffer()
-        self._is_running = True
         self._start_time = time.perf_counter()
         self._last_read = self._start_time
         return 0
@@ -255,20 +217,22 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         @return int: error code (0: OK, -1: Error)
         """
-        print('stop_stream', threading.get_ident())
+        if not self.is_running:
+            self.log.warning('Unable to stop input stream as nothing is running.')
+            return 0
+
         # end callback procedure
         self._wavemeterdll.Instantiate(
-            1,  # long ReasonForCall: 1 = cInstNotification
-            1,  # long MODE: 1 = cNotifyRemoveCallback
-            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),
+            high_finesse_constants.cInstNotification,  # long ReasonForCall
+            high_finesse_constants.cNotifyRemoveCallback,  # long MODE
+            ctypes.cast(self._callback_function, ctypes.POINTER(ctypes.c_long)),
             0)  # long P2: callback thread priority, 0 = standard
-        self._is_running = False
+        self._callback_function = None
         return 0
 
     @property
     def wavelength(self):
         with self._lock:
-            print('wavelength property', threading.get_ident())
             return self._wavelength.copy()
 
     def read_data_into_buffer(self, buffer, number_of_samples=None):
@@ -625,7 +589,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         @return bool: Data acquisition is running (True) or not (False)
         """
-        return self._is_running
+        return self._callback_function is not None
 
     @property
     def buffer_overflown(self):
