@@ -219,7 +219,11 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return str: text on power supply display
         """
-        return self.cmd.get_lcd_status()
+        if self.psu in (PSUTypes.SMD12, PSUTypes.SMD6000):
+            return ''
+        else:
+            return self.cmd.get_lcd_status()
+
 
     def get_laser_state(self):
         """ Get laser operation state
