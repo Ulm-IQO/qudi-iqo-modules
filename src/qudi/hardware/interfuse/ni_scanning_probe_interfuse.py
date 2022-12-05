@@ -332,10 +332,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 QGuiApplication.processEvents()
                 time.sleep(self._min_step_interval)
 
-            delta = np.asarray(list(self.get_position().values())) - np.asarray(list(self.get_target().values()))
-            self.log.debug(f"Move_abs finished after waiting {1e3*(time.perf_counter()-t_start)} ms "
-                           f"at pos= {self.get_position()}. Target= {self.get_target()}. "
-                           f"|Delta|= {np.linalg.norm(delta)}")
+            # get_position() shortly after _abort_move() causes thread sync issues
+            #delta = np.asarray(list(self.get_position().values())) - np.asarray(list(self.get_target().values()))
+            self.log.debug(f"Move_abs finished after waiting {1e3*(time.perf_counter()-t_start)} ms ")
+            #               f"at pos= {self.get_position()}. Target= {self.get_target()}. "
+            #               f"|Delta|= {np.linalg.norm(delta)}")
         except:
             self.log.exception("")
 
@@ -372,11 +373,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current position per axis.
         """
-        with self._thread_lock_cursor:
-            if not self._ao_setpoint_channels_active:
-                self._toggle_ao_setpoint_channels(True)
-            self.log.debug(f"After activating in get_pos: active? {self._ao_setpoint_channels_active}")
+        # todo: this seems to deadlock, but is the better solutoin
+        #with self._thread_lock_cursor:
+
+        if not self._ao_setpoint_channels_active:
+            self._toggle_ao_setpoint_channels(True)
+        self.log.debug(f"After activating in get_pos: active? {self._ao_setpoint_channels_active}")
+        try:
             return self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
+        except Exception as e:
+            self.log.warning(f"Getting setpoints from hw failed. Probably some other thread deactivated hw: {str(e)}")
+            return self._target_pos
 
     def start_scan(self):
         try:
