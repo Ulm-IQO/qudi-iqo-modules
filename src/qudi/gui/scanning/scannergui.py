@@ -531,7 +531,8 @@ class ScannerGui(GuiBase):
                 return
             marker_size = tuple(abs(optimizer_range[ax]) for ax in axes)
             marker_bounds = (axes_constr[0].value_range, axes_constr[1].value_range)
-            dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
+            dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr,
+                                        xy_region_min_size_percentile=self._min_crosshair_size_fraction)
             dockwidget.scan_widget.set_marker_size(marker_size)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
             dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range,
