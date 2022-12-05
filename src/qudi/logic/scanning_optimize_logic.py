@@ -80,8 +80,13 @@ class ScanningOptimizeLogic(LogicBase):
          'model': 'GaussianImplantationSpot',
          'estimator': 'Implantation Spot',
          'custom_parameters': None},
+        {'name': 'Gaussian 2D',
+         'model': 'Gaussian2D',
+         'estimator': 'Peak',
+         'custom_parameters': None},
     )
-    fit_config = 'Implantation Spot'
+    fit_config_1D = 'Implantation Spot'
+    fit_config_2D = 'Gaussian 2D'
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -460,10 +465,9 @@ class ScanningOptimizeLogic(LogicBase):
             return err
 
     def _get_pos_from_2d_gauss_fit(self, xy, data):
-        model = Gaussian2D()
-
+        fit_container = self.get_fit_container()
         try:
-            fit_result = model.fit(data, xy=xy, **model.estimate_peak(data, xy))
+            fit_config, fit_result = fit_container.fit_data(fit_config=self.fit_config_2D, x=xy, data=data)
         except:
             x_min, x_max = xy[0].min(), xy[0].max()
             y_min, y_max = xy[1].min(), xy[1].max()
@@ -478,7 +482,7 @@ class ScanningOptimizeLogic(LogicBase):
     def _get_pos_from_1d_gauss_fit(self, x, data):
         fit_container = self.get_fit_container()
         try:
-            fit_config, fit_result = fit_container.fit_data(fit_config=self.fit_config, x=x, data=data)
+            fit_config_1D, fit_result = fit_container.fit_data(fit_config=self.fit_config_1D, x=x, data=data)
         except:
             x_min, x_max = x.min(), x.max()
             middle = (x_max - x_min) / 2 + x_min
