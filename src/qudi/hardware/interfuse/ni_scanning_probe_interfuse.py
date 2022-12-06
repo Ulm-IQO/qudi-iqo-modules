@@ -116,7 +116,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._default_timer_interval_ms = -1
         self._interval_time_stamp = None
 
-        self.__scan_stopped = False
 
         self._thread_lock_cursor = Mutex()
         self._thread_lock_data = Mutex()
@@ -518,17 +517,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # not thread safe, call from thread_lock protected code only
         return all([values.size == 0 for values in self.__write_queue.values()])
 
-    def _check_scan_end_reached(self):
-        # not thread safe, call from thread_lock protected code only
-        if self.__scan_stopped:
-            return True
-
-        if len(self.raw_data_container) == self._ni_finite_sampling_io().frame_size:
-            self.__scan_stopped = True
-            return True
-
-        return False
-
     def _fetch_data_chunk(self):
         try:
             # self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
@@ -551,7 +539,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self.raw_data_container.fill_container(new_data)
                 self._scan_data.data = self.raw_data_container.forwards_data()
 
-                if self._check_scan_end_reached():
+                if self.raw_data_container.is_full:
                     self.stop_scan()
                 elif not self.is_scan_running:
                     return
@@ -752,7 +740,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error(f'Could not start frame due to {str(e)}')
             self.module_state.unlock()
 
-        self.__scan_stopped = False
         self._start_scan_after_cursor = False
 
     def _abort_cursor_movement(self):
@@ -875,12 +862,12 @@ class RawDataContainer:
         self.forward_line_resolution = forward_line_resolution
         self.backwards_line_resolution = backwards_line_resolution
 
-        frame_size = number_of_scan_lines * (forward_line_resolution + backwards_line_resolution)
-        self._raw = {key: np.full(frame_size, np.nan) for key in channel_keys}
+        self.frame_size = number_of_scan_lines * (forward_line_resolution + backwards_line_resolution)
+        self._raw = {key: np.full(self.frame_size, np.nan) for key in channel_keys}
 
     def fill_container(self, samples_dict):
         # get index of first nan from one element of dict
-        first_nan_idx = len(self)
+        first_nan_idx = self.number_of_non_nan_values
         for key, samples in samples_dict.items():
             self._raw[key][first_nan_idx:first_nan_idx + len(samples)] = samples
 
@@ -907,8 +894,15 @@ class RawDataContainer:
 
         return reshaped_2d_dict
 
-    def __len__(self):
+    @property
+    def number_of_non_nan_values(self):
         """
         returns number of not NaN samples
         """
         return np.sum(~np.isnan(next(iter(self._raw.values()))))
+
+    @property
+    def is_full(self):
+        return self.number_of_non_nan_values == self.frame_size
+
+
