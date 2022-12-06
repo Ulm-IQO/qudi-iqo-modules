@@ -170,6 +170,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
 
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
+        self._toggle_ao_setpoint_channels(False)  # And free ao resources after that
 
         self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.QueuedConnection)
 
@@ -463,9 +464,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def get_scan_data(self):
         """
 
-        @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
+        @return (ScanData): ScanData instance used in the scan
         #  TODO change interface
         """
+
+        if self._scan_data is None:
+            raise RuntimeError('ScanData is not yet configured, please call "configure_scan" first')
         try:
             with self._thread_lock_data:
                 return self._scan_data.copy()
