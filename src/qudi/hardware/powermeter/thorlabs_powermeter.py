@@ -67,6 +67,7 @@ class ThorlabsPowermeter(ProcessValueInterface):
         self.dll = None
         self.devSession = c_long()
         self.devSession.value = 0
+        self._device_address = None
 
     def _test_for_error(self, status):
         if status < 0:
@@ -99,32 +100,35 @@ class ThorlabsPowermeter(ProcessValueInterface):
         for i in range(0, device_count.value):
             result = self.dll.TLPM_getRsrcName(self.devSession, c_int(i), resource_name)
             self._test_for_error(result)
-            available_power_meters.append(c_char_p(resource_name.raw).value)
+            available_power_meters.append(c_char_p(resource_name.raw).value.decode())
 
         self.log.info(f'Available power meters: {available_power_meters}')
 
-        # try to connect to power meter
+        # figure out address of powermeter
         if self._address is None:
             try:
                 first = available_power_meters[0]
             except IndexError:
                 self.log.exception('No powermeter available on system.')
-            else:
-                self.log.info(f'Connecting to first available powermeter with address {first}.')
-                address = create_string_buffer(first)
-        else:
-            self.log.info(f'Connecting to powermeter with address {self._address}.')
-            address = create_string_buffer(self._address.encode('utf-8'))
-
-        if address.value in available_power_meters:
-            id_query, reset_device = c_bool(True), c_bool(True)
-            result = self.dll.TLPM_init(address, id_query, reset_device, byref(self.devSession))
-            if self._test_for_error(result):
-                self.log.error('Connection to powermeter was unsuccessful. Try using the Power Meter Driver '
-                               + 'Switcher application to switch your powermeter to the TLPM driver.')
                 raise ValueError
+            else:
+                self.log.info(f'Using first available powermeter with address {first}.')
+                self._device_address = first
         else:
-            raise ValueError(f'No powermeter with address {self._address} found.')
+            if self._address in available_power_meters:
+                self.log.info(f'Using powermeter with address {self._address}.')
+                self._device_address = self._address
+            else:
+                self.log.exception(f'No powermeter with address {self._address} found.')
+                raise ValueError
+
+        # try connecting to the powermeter
+        try:
+            self._init_powermeter()
+        except ValueError as e:
+            self.log.exception('Connection to powermeter was unsuccessful. Try using the Power Meter Driver '
+                               + 'Switcher application to switch your powermeter to the TLPM driver.')
+            raise e
 
         # set wavelength if defined in config
         if self._wavelength is not None:
@@ -145,10 +149,12 @@ class ThorlabsPowermeter(ProcessValueInterface):
             dtypes={self._channel_name: float},
         )
 
+        # close connection since default state is not active
+        self._close_powermeter()
+
     def on_deactivate(self):
         """ Stops the module """
-        result = self.dll.TLPM_close(self.devSession)
-        self._test_for_error(result)
+        self._close_powermeter()
 
     @property
     def process_values(self):
@@ -206,6 +212,18 @@ class ThorlabsPowermeter(ProcessValueInterface):
         if channel != self._channel_name:
             raise AssertionError(f'Invalid channel name. Only valid channel is: {self._channel_name}')
         return self._get_power()
+
+    def _init_powermeter(self):
+        id_query, reset_device = c_bool(True), c_bool(True)
+        address = create_string_buffer(self._device_address.encode('utf-8'))
+        result = self.dll.TLPM_init(address, id_query, reset_device, byref(self.devSession))
+        if self._test_for_error(result):
+            self.log.exception('Connection to powermeter was unsuccessful.')
+            raise ValueError
+
+    def _close_powermeter(self):
+        result = self.dll.TLPM_close(self.devSession)
+        self._test_for_error(result)
 
     def _get_power(self):
         """ Return the power reading from the power meter """
