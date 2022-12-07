@@ -48,11 +48,14 @@ class ThorlabsPowermeter(ProcessValueInterface):
     powermeter:
         module.Class: 'powermeter.thorlabs_powermeter.ThorlabsPowermeter'
         options:
+            # Device address of the powermeter.
+            # If omitted, the module will connect to the first powermeter found on the system.
+            # The module logs an info message with the addresses of all available powermeters upon activation.
             address: 'USB0::0x1313::0x8078::P0012345::INSTR'
             wavelength: 637.0
     """
 
-    _address = ConfigOption('address', missing='error')
+    _address = ConfigOption('address', missing='warn')
     _wavelength = ConfigOption('wavelength', default=None, missing='warn')
 
     def __init__(self, *args, **kwargs):
@@ -101,7 +104,18 @@ class ThorlabsPowermeter(ProcessValueInterface):
         self.log.info(f'Available power meters: {available_power_meters}')
 
         # try to connect to power meter
-        address = create_string_buffer(self._address.encode('utf-8'))
+        if self._address is None:
+            try:
+                first = available_power_meters[0]
+            except IndexError:
+                self.log.exception('No powermeter available on system.')
+            else:
+                self.log.info(f'Connecting to first available powermeter with address {first}.')
+                address = create_string_buffer(first)
+        else:
+            self.log.info(f'Connecting to powermeter with address {self._address}.')
+            address = create_string_buffer(self._address.encode('utf-8'))
+
         if address.value in available_power_meters:
             id_query, reset_device = c_bool(True), c_bool(True)
             result = self.dll.TLPM_init(address, id_query, reset_device, byref(self.devSession))
