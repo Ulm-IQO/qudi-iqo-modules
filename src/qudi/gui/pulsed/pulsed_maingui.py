@@ -3173,6 +3173,7 @@ class PulsedMeasurementGui(GuiBase):
 
         @return:
         """
+        self._sanatize_laser_index()
         laser_index = self._pe.laserpulses_ComboBox.currentIndex()
         show_raw = self._pe.laserpulses_display_raw_CheckBox.isChecked()
         is_gated = len(self.pulsedmasterlogic().raw_data.shape) > 1
@@ -3206,6 +3207,12 @@ class PulsedMeasurementGui(GuiBase):
         def slot():
             self.generate_predefined_clicked(method_name, sample_and_load)
         return slot
+
+    def _sanatize_laser_index(self):
+        laser_index = self._pe.laserpulses_ComboBox.currentIndex()
+        if laser_index not in range(len(self.pulsedmasterlogic().laser_data)):
+            laser_index = 0
+        self._pe.laserpulses_ComboBox.setCurrentIndex(laser_index)
 
     @QtCore.Slot()
     def run_pg_benchmark(self):
