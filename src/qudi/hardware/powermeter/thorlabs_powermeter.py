@@ -73,9 +73,8 @@ class ThorlabsPowermeter(ProcessValueInterface):
         if status < 0:
             msg = create_string_buffer(1024)
             self.dll.TLPM_errorMessage(self.devSession, c_int(status), msg)
-            self.log.error(c_char_p(msg.raw).value)
-            return True
-        return False
+            self.log.exception(c_char_p(msg.raw).value)
+            raise ValueError
 
     def on_activate(self):
         """ Startup the module """
@@ -217,9 +216,11 @@ class ThorlabsPowermeter(ProcessValueInterface):
         id_query, reset_device = c_bool(True), c_bool(True)
         address = create_string_buffer(self._device_address.encode('utf-8'))
         result = self.dll.TLPM_init(address, id_query, reset_device, byref(self.devSession))
-        if self._test_for_error(result):
+        try:
+            self._test_for_error(result)
+        except ValueError as e:
             self.log.exception('Connection to powermeter was unsuccessful.')
-            raise ValueError
+            raise e
 
     def _close_powermeter(self):
         result = self.dll.TLPM_close(self.devSession)
@@ -229,7 +230,11 @@ class ThorlabsPowermeter(ProcessValueInterface):
         """ Return the power reading from the power meter """
         power = c_double()
         result = self.dll.TLPM_measPower(self.devSession, byref(power))
-        self._test_for_error(result)
+        try:
+            self._test_for_error(result)
+        except ValueError as e:
+            self.log.exception('Getting power from powermeter was unsuccessful.')
+            raise e
         return power.value
 
     def _get_wavelength(self):
