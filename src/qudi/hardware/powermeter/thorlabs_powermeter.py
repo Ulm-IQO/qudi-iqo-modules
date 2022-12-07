@@ -64,15 +64,15 @@ class ThorlabsPowermeter(ProcessValueInterface):
         self._constraints = None
         self._is_active = False
 
-        self.dll = None
-        self.devSession = c_long()
-        self.devSession.value = 0
+        self._dll = None
+        self._devSession = c_long()
+        self._devSession.value = 0
         self._device_address = None
 
     def _test_for_error(self, status):
         if status < 0:
             msg = create_string_buffer(1024)
-            self.dll.TLPM_errorMessage(self.devSession, c_int(status), msg)
+            self._dll.TLPM_errorMessage(self._devSession, c_int(status), msg)
             self.log.exception(c_char_p(msg.raw).value)
             raise ValueError
 
@@ -81,23 +81,23 @@ class ThorlabsPowermeter(ProcessValueInterface):
         # load the dll
         try:
             if platform.architecture()[0] == '32bit':
-                self.dll = cdll.LoadLibrary('C:/Program Files (x86)/IVI Foundation/VISA/WinNT/Bin/TLPM_32.dll')
+                self._dll = cdll.LoadLibrary('C:/Program Files (x86)/IVI Foundation/VISA/WinNT/Bin/TLPM_32.dll')
             else:
-                self.dll = cdll.LoadLibrary('C:/Program Files/IVI Foundation/VISA/Win64/Bin/TLPM_64.dll')
+                self._dll = cdll.LoadLibrary('C:/Program Files/IVI Foundation/VISA/Win64/Bin/TLPM_64.dll')
         except FileNotFoundError as e:
-            self.log.error('TLPM DLL not found. Is the Thorlabs Optical Power Monitor software installed?')
+            self.log.error('TLPM _dll not found. Is the Thorlabs Optical Power Monitor software installed?')
             raise e
 
         # get list of available power meters
         device_count = c_uint32()
-        result = self.dll.TLPM_findRsrc(self.devSession, byref(device_count))
+        result = self._dll.TLPM_findRsrc(self._devSession, byref(device_count))
         self._test_for_error(result)
 
         available_power_meters = []
         resource_name = create_string_buffer(1024)
 
         for i in range(0, device_count.value):
-            result = self.dll.TLPM_getRsrcName(self.devSession, c_int(i), resource_name)
+            result = self._dll.TLPM_getRsrcName(self._devSession, c_int(i), resource_name)
             self._test_for_error(result)
             available_power_meters.append(c_char_p(resource_name.raw).value.decode())
 
@@ -135,9 +135,9 @@ class ThorlabsPowermeter(ProcessValueInterface):
 
         # get power range
         min_power, max_power = c_double(), c_double()
-        result = self.dll.TLPM_getPowerRange(self.devSession, MIN_VALUE, byref(min_power))
+        result = self._dll.TLPM_getPowerRange(self._devSession, MIN_VALUE, byref(min_power))
         self._test_for_error(result)
-        result = self.dll.TLPM_getPowerRange(self.devSession, MAX_VALUE, byref(max_power))
+        result = self._dll.TLPM_getPowerRange(self._devSession, MAX_VALUE, byref(max_power))
         self._test_for_error(result)
 
         # set constraints
@@ -221,7 +221,7 @@ class ThorlabsPowermeter(ProcessValueInterface):
     def _init_powermeter(self):
         id_query, reset_device = c_bool(True), c_bool(True)
         address = create_string_buffer(self._device_address.encode('utf-8'))
-        result = self.dll.TLPM_init(address, id_query, reset_device, byref(self.devSession))
+        result = self._dll.TLPM_init(address, id_query, reset_device, byref(self._devSession))
         try:
             self._test_for_error(result)
         except ValueError as e:
@@ -229,13 +229,13 @@ class ThorlabsPowermeter(ProcessValueInterface):
             raise e
 
     def _close_powermeter(self):
-        result = self.dll.TLPM_close(self.devSession)
+        result = self._dll.TLPM_close(self._devSession)
         self._test_for_error(result)
 
     def _get_power(self):
         """ Return the power reading from the power meter """
         power = c_double()
-        result = self.dll.TLPM_measPower(self.devSession, byref(power))
+        result = self._dll.TLPM_measPower(self._devSession, byref(power))
         try:
             self._test_for_error(result)
         except ValueError as e:
@@ -246,7 +246,7 @@ class ThorlabsPowermeter(ProcessValueInterface):
     def _get_wavelength(self):
         """ Return the current measurement wavelength in nanometers """
         wavelength = c_double()
-        result = self.dll.TLPM_getWavelength(self.devSession, SET_VALUE, byref(wavelength))
+        result = self._dll.TLPM_getWavelength(self._devSession, SET_VALUE, byref(wavelength))
         self._test_for_error(result)
         return wavelength.value
 
@@ -254,9 +254,9 @@ class ThorlabsPowermeter(ProcessValueInterface):
         """ Return the measurement wavelength range of the power meter in nanometers """
         wavelength_min = c_double()
         wavelength_max = c_double()
-        result = self.dll.TLPM_getWavelength(self.devSession, MIN_VALUE, byref(wavelength_min))
+        result = self._dll.TLPM_getWavelength(self._devSession, MIN_VALUE, byref(wavelength_min))
         self._test_for_error(result)
-        result = self.dll.TLPM_getWavelength(self.devSession, MAX_VALUE, byref(wavelength_max))
+        result = self._dll.TLPM_getWavelength(self._devSession, MAX_VALUE, byref(wavelength_max))
         self._test_for_error(result)
 
         return wavelength_min.value, wavelength_max.value
@@ -265,7 +265,7 @@ class ThorlabsPowermeter(ProcessValueInterface):
         """ Set the new measurement wavelength in nanometers """
         min_wl, max_wl = self._get_wavelength_range()
         if min_wl <= value <= max_wl:
-            result = self.dll.TLPM_setWavelength(self.devSession, c_double(value))
+            result = self._dll.TLPM_setWavelength(self._devSession, c_double(value))
             self._test_for_error(result)
         else:
             self.log.error(f'Wavelength {value} nm is out of the range {min_wl} to {max_wl} nm.')
