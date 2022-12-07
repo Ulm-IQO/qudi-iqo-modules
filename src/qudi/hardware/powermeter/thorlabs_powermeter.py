@@ -153,7 +153,7 @@ class ThorlabsPowermeter(ProcessValueInterface):
 
     def on_deactivate(self):
         """ Stops the module """
-        self._close_powermeter()
+        self.set_activity_state(self._channel_name, False)
 
     @property
     def process_values(self):
@@ -180,6 +180,10 @@ class ThorlabsPowermeter(ProcessValueInterface):
             raise AssertionError(f'Invalid channel name. Only valid channel is: {self._channel_name}')
         if active != self._is_active:
             self._is_active = active
+            if active:
+                self._init_powermeter()
+            else:
+                self._close_powermeter()
 
     def get_activity_state(self, channel):
         """ Get activity state for given channel.
@@ -210,6 +214,8 @@ class ThorlabsPowermeter(ProcessValueInterface):
         """ Return a measured value """
         if channel != self._channel_name:
             raise AssertionError(f'Invalid channel name. Only valid channel is: {self._channel_name}')
+        if not self.get_activity_state(self._channel_name):
+            raise AssertionError('Channel is not active. Activate first before getting process value.')
         return self._get_power()
 
     def _init_powermeter(self):
