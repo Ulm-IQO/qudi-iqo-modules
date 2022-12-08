@@ -123,7 +123,7 @@ class ThorlabsPowermeter(ProcessValueInterface):
 
         # try connecting to the powermeter
         try:
-            self._init_powermeter()
+            self._init_powermeter(reset=True)
         except ValueError as e:
             self.log.exception('Connection to powermeter was unsuccessful. Try using the Power Meter Driver '
                                + 'Switcher application to switch your powermeter to the TLPM driver.')
@@ -218,8 +218,12 @@ class ThorlabsPowermeter(ProcessValueInterface):
             raise AssertionError('Channel is not active. Activate first before getting process value.')
         return self._get_power()
 
-    def _init_powermeter(self):
-        id_query, reset_device = c_bool(True), c_bool(True)
+    def _init_powermeter(self, reset=False):
+        """
+        Initialize powermeter and open a connection to it.
+        :param reset: whether to reset the powermeter upon connection
+        """
+        id_query, reset_device = c_bool(True), c_bool(reset)
         address = create_string_buffer(self._device_address.encode('utf-8'))
         result = self._dll.TLPM_init(address, id_query, reset_device, byref(self._devSession))
         try:
@@ -229,6 +233,7 @@ class ThorlabsPowermeter(ProcessValueInterface):
             raise e
 
     def _close_powermeter(self):
+        """ Close connection to powermeter. """
         result = self._dll.TLPM_close(self._devSession)
         self._test_for_error(result)
 
