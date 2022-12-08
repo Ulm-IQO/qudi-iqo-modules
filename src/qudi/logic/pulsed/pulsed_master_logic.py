@@ -825,9 +825,11 @@ class PulsedMasterLogic(LogicBase):
         if object_instance is None:
             self.pulsedmeasurementlogic().sampling_information = dict()
             self.pulsedmeasurementlogic().measurement_information = dict()
+            self.pulsedmeasurementlogic().generation_method_parameters =  dict()
         else:
             self.pulsedmeasurementlogic().sampling_information = object_instance.sampling_information
             self.pulsedmeasurementlogic().measurement_information = object_instance.measurement_information
+            self.pulsedmeasurementlogic().generation_method_parameters = object_instance.generation_method_parameters
         return
 
     @QtCore.Slot(object)

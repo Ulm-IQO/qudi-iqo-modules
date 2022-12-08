@@ -119,7 +119,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._min_step_interval = 1e-3
         self._scanner_distance_atol = 1e-9
 
-        self.__scan_stopped = False
 
         self._thread_lock_cursor = Mutex()
         self._thread_lock_data = Mutex()
@@ -165,6 +164,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             square_px_only=False)  # TODO incorporate in scanning_probe toolchain
 #
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
+        self._toggle_ao_setpoint_channels(False)  # And free ao resources after that
         self._t_last_move = time.perf_counter()
         self.__init_ao_timer()
         self.__t_last_follow = None
@@ -174,7 +174,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
-        self.log.debug(f"Toggling ao output: {enable}")
         for channel in ni_ao.constraints.setpoint_channels:
             ni_ao.set_activity_state(channel, enable)
 
@@ -425,7 +424,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             # todo: scanning_probe_logic exits when scanner not locked right away
             # should rather ignore/wait until real hw timed scanning starts
-            self.log.debug(f"Start scan with settings {self.scan_settings}")
+            # self.log.debug(f"Locking module to start scan")
             # lock indicates scanning, not cursor movement
             self.module_state.lock()
 
@@ -484,9 +483,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def get_scan_data(self):
         """
 
-        @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
+        @return (ScanData): ScanData instance used in the scan
         #  TODO change interface
         """
+
+        if self._scan_data is None:
+            raise RuntimeError('ScanData is not yet configured, please call "configure_scan" first')
         try:
             with self._thread_lock_data:
                 return self._scan_data.copy()
@@ -533,14 +535,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def _check_scan_end_reached(self):
         # not thread safe, call from thread_lock protected code only
-        if self.__scan_stopped:
-            return True
-
-        if len(self.raw_data_container) == self._ni_finite_sampling_io().frame_size:
-            self.__scan_stopped = True
-            return True
-
-        return False
+        return self.raw_data_container.is_full
 
     def _fetch_data_chunk(self):
         try:
@@ -799,7 +794,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error(f'Could not start frame due to {str(e)}')
             self.module_state.unlock()
 
-        self.__scan_stopped = False
         self._start_scan_after_cursor = False
 
     def _abort_cursor_movement(self):
@@ -930,12 +924,12 @@ class RawDataContainer:
         self.forward_line_resolution = forward_line_resolution
         self.backwards_line_resolution = backwards_line_resolution
 
-        frame_size = number_of_scan_lines * (forward_line_resolution + backwards_line_resolution)
-        self._raw = {key: np.full(frame_size, np.nan) for key in channel_keys}
+        self.frame_size = number_of_scan_lines * (forward_line_resolution + backwards_line_resolution)
+        self._raw = {key: np.full(self.frame_size, np.nan) for key in channel_keys}
 
     def fill_container(self, samples_dict):
         # get index of first nan from one element of dict
-        first_nan_idx = len(self)
+        first_nan_idx = self.number_of_non_nan_values
         for key, samples in samples_dict.items():
             self._raw[key][first_nan_idx:first_nan_idx + len(samples)] = samples
 
@@ -962,8 +956,15 @@ class RawDataContainer:
 
         return reshaped_2d_dict
 
-    def __len__(self):
+    @property
+    def number_of_non_nan_values(self):
         """
         returns number of not NaN samples
         """
         return np.sum(~np.isnan(next(iter(self._raw.values()))))
+
+    @property
+    def is_full(self):
+        return self.number_of_non_nan_values == self.frame_size
+
+
