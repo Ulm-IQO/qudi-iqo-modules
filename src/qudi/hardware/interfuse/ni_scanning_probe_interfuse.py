@@ -517,6 +517,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # not thread safe, call from thread_lock protected code only
         return all([values.size == 0 for values in self.__write_queue.values()])
 
+    def _check_scan_end_reached(self):
+        # not thread safe, call from thread_lock protected code only
+        return self.raw_data_container.is_full
+
     def _fetch_data_chunk(self):
         try:
             # self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
@@ -539,7 +543,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 self.raw_data_container.fill_container(new_data)
                 self._scan_data.data = self.raw_data_container.forwards_data()
 
-                if self.raw_data_container.is_full:
+                if self._check_scan_end_reached():
                     self.stop_scan()
                 elif not self.is_scan_running:
                     return
