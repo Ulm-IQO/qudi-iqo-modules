@@ -175,7 +175,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
         for channel in ni_ao.constraints.setpoint_channels:
-            self.log.debug(f"Setting channel {channel} off")
+            self.log.debug(f"Setting channel {channel}: {enable}")
             ni_ao.set_activity_state(channel, enable)
 
     @property
@@ -332,8 +332,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         try:
             t_start = time.perf_counter()
             while self.is_move_running:
+                self.log.debug(f"Waiting for move done: {self.is_move_running}, {time.perf_counter()-t_start}")
                 QGuiApplication.processEvents()
                 time.sleep(self._min_step_interval)
+
 
             # get_position() shortly after _abort_move() causes thread sync issues
             #delta = np.asarray(list(self.get_position().values())) - np.asarray(list(self.get_target().values()))
@@ -523,8 +525,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     @property
     def is_move_running(self):
-        with self._thread_lock_cursor:
-            return self.__t_last_follow is not None
+        #with self._thread_lock_cursor:
+        is_locked = self._thread_lock_cursor.acquire(timeout=0.1)
+        if is_locked:
+            running = self.__t_last_follow is not None
+            self._thread_lock_cursor.release()
+            return running
+        else:
+            raise TimeoutError("Coudn't obtain hw lock")
 
     @property
     def scan_settings(self):
@@ -746,7 +754,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
                 # Terminate follow loop if target is reached
                 if distance_to_target < self._scanner_distance_atol:
-                    self.__t_last_follow = None
                     stop_loop = True
 
                 if not stop_loop:
@@ -814,6 +821,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         is_locked = self._thread_lock_cursor.acquire(timeout=0.1)
         if is_locked:
             self._abort_cursor_move = True
+            self.__t_last_follow = None
             self._toggle_ao_setpoint_channels(False)
 
             self._thread_lock_cursor.release()
@@ -824,6 +832,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def _move_to_and_start_scan(self, position):
         self._prepare_movement(position)
         self._start_scan_after_cursor = True
+        self.log.debug("Starting timer to move to scan position")
         self.__start_ao_write_timer()
 
     def _prepare_movement(self, position, velocity=None):
@@ -873,10 +882,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             raise TimeoutError("Couldn't acquire hw lock")
 
+        self.log.debug("Movement prepared")
         # TODO Keep other axis constant?
-
-
-
 
     def __init_ao_timer(self):
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
@@ -913,6 +920,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                                     QtCore.Qt.BlockingQueuedConnection)
                 else:
                     self.__ni_ao_write_timer.start()
+            else:
+                self.log.debug("Dropping timer start, slready running")
 
         except:
             self.log.exception("")
