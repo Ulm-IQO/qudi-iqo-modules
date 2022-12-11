@@ -119,7 +119,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._min_step_interval = 1e-3
         self._scanner_distance_atol = 1e-9
 
-
         self._thread_lock_cursor = Mutex()
         self._thread_lock_data = Mutex()
 
@@ -169,13 +168,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.__init_ao_timer()
         self.__t_last_follow = None
 
-
         self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.QueuedConnection)
 
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
         for channel in ni_ao.constraints.setpoint_channels:
-            self.log.debug(f"Setting channel {channel}: {enable}")
             ni_ao.set_activity_state(channel, enable)
 
     @property
@@ -332,16 +329,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         try:
             t_start = time.perf_counter()
             while self.is_move_running:
-                self.log.debug(f"Waiting for move done: {self.is_move_running}, {time.perf_counter()-t_start}")
+                self.log.debug(f"Waiting for move done: {self.is_move_running}, {1e3*(time.perf_counter()-t_start)} ms")
                 QGuiApplication.processEvents()
                 time.sleep(self._min_step_interval)
 
-
-            # get_position() shortly after _abort_move() causes thread sync issues
-            #delta = np.asarray(list(self.get_position().values())) - np.asarray(list(self.get_target().values()))
             self.log.debug(f"Move_abs finished after waiting {1e3*(time.perf_counter()-t_start)} ms ")
-            #               f"at pos= {self.get_position()}. Target= {self.get_target()}. "
-            #               f"|Delta|= {np.linalg.norm(delta)}")
         except:
             self.log.exception("")
 
@@ -399,6 +391,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except:
             self.log.exception("")
             return -1
+
         return 0
 
     @QtCore.Slot()
@@ -407,38 +400,38 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return (bool): Failure indicator (fail=True)
         """
-        if self._scan_data is None:
-            raise RuntimeError('Scan Data is None. Scan settings need to be configured before starting')
-
-        if self.is_scan_running:
-            raise RuntimeError('Cannot start a scan while scanning probe is already running')
-
         try:
+            if self._scan_data is None:
+                # todo: raising would be better, but from this delegated thread exceptions get lost
+                self.log.error('Scan Data is None. Scan settings need to be configured before starting')
+
+
+            if self.is_scan_running:
+                self.log.error('Cannot start a scan while scanning probe is already running')
+
             with self._thread_lock_data:
                 self._scan_data.new_scan()
-
                 #self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
                 self._stored_target_pos = self.get_target().copy()
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
 
             # todo: scanning_probe_logic exits when scanner not locked right away
             # should rather ignore/wait until real hw timed scanning starts
-            # self.log.debug(f"Locking module to start scan")
-            # lock indicates scanning, not cursor movement
             self.module_state.lock()
 
             first_scan_position = {ax: pos[0] for ax, pos
                                    in zip(self.scan_settings['axes'], self.scan_settings['range'])}
             self._move_to_and_start_scan(first_scan_position)
 
-            return 0  # FIXME Bool indicators deprecated
-
         except Exception as e:
             self.module_state.unlock()
-            raise e
 
 
     def stop_scan(self):
+        """
+        @return bool: Failure indicator (fail=True)
+        # todo: return values as error codes are deprecated
+        """
 
         # self.log.debug(f"Stop scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
         self.log.debug("Stopping scan")
@@ -452,11 +445,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     @QtCore.Slot()
     def _stop_scan(self):
-        """
-
-        @return bool: Failure indicator (fail=True)
-        # FIXME Fix the mess of bool indicators, int return values etc in toolchain
-        """
 
         # self.log.debug("Stopping scan...")
         self._start_scan_after_cursor = False  # Ensure Scan HW is not started after movement
@@ -473,8 +461,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self.move_absolute(self._stored_target_pos)
         self._stored_target_pos = dict()
-
-        return 0  # TODO Bool indicators deprecated
 
     def get_scan_data(self):
         """
@@ -508,6 +494,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return bool: scanning probe is running (True) or not (False)
         """
+        # module state used to indicate hw timed scan running
         #self.log.debug(f"Module in state: {self.module_state()}")
         #assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
         if self.module_state() == 'locked':
@@ -828,8 +815,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         #  QObject::killTimer: Timers cannot be stopped from another thread
         #  QObject::startTimer: Timers cannot be started from another thread
 
-
-        #with self._thread_lock_cursor:
         self.log.debug("Preparing movement")
 
         with self._thread_lock_cursor:
@@ -900,7 +885,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 else:
                     self.__ni_ao_write_timer.start()
             else:
-                self.log.debug("Dropping timer start, slready running")
+                self.log.debug("Dropping timer start, already running")
 
         except:
             self.log.exception("")
