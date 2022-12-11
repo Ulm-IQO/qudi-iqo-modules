@@ -378,20 +378,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current position per axis.
         """
-        # todo: this seems to deadlock, but is the better solutoin
-        #with self._thread_lock_cursor:
-        is_locked = self._thread_lock_cursor.acquire(timeout=0.1)
-
-        if is_locked:
+        with self._thread_lock_cursor:
             if not self._ao_setpoint_channels_active:
                 self._toggle_ao_setpoint_channels(True)
 
             pos = self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
-            self._thread_lock_cursor.release()
             return pos
-
-        else:
-            raise TimeoutError("Couldn't acquire hw lock")
 
     def start_scan(self):
         try:
@@ -525,14 +517,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     @property
     def is_move_running(self):
-        #with self._thread_lock_cursor:
-        is_locked = self._thread_lock_cursor.acquire(timeout=0.1)
-        if is_locked:
+        with self._thread_lock_cursor:
             running = self.__t_last_follow is not None
-            self._thread_lock_cursor.release()
             return running
-        else:
-            raise TimeoutError("Coudn't obtain hw lock")
 
     @property
     def scan_settings(self):
@@ -817,17 +804,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._target_pos = self.get_position()
         self.log.debug(f"Got pos {self._target_pos}")
 
-        #with self._thread_lock_cursor:
-        is_locked = self._thread_lock_cursor.acquire(timeout=0.1)
-        if is_locked:
+        with self._thread_lock_cursor:
+
             self._abort_cursor_move = True
             self.__t_last_follow = None
             self._toggle_ao_setpoint_channels(False)
 
-            self._thread_lock_cursor.release()
             self.log.debug("hw turned off")
-        else:
-            raise TimeoutError("Couldn't acquire hw lock")
 
     def _move_to_and_start_scan(self, position):
         self._prepare_movement(position)
@@ -848,9 +831,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         #with self._thread_lock_cursor:
         self.log.debug("Preparing movement")
-        is_locked = self._thread_lock_cursor.acquire(timeout=0.1)
 
-        if is_locked:
+        with self._thread_lock_cursor:
             self._abort_cursor_move = False
             if not self._ao_setpoint_channels_active:
                 self._toggle_ao_setpoint_channels(True)
@@ -878,9 +860,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                  f'm/s. Move will be done at maximum velocity')
 
             self._follow_velocity = velocity
-            self._thread_lock_cursor.release()
-        else:
-            raise TimeoutError("Couldn't acquire hw lock")
 
         self.log.debug("Movement prepared")
         # TODO Keep other axis constant?
