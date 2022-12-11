@@ -313,7 +313,8 @@ class ScanData:
                             scan_range=self._scan_range,
                             scan_resolution=self._scan_resolution,
                             scan_frequency=self._scan_frequency,
-                            position_feedback_axes=self._position_feedback_axes)
+                            position_feedback_axes=self._position_feedback_axes,
+                            target_at_start=self._target_at_start)
         new_inst._timestamp = self._timestamp
         if self._data is not None:
             new_inst._data = {ch: arr.copy() for ch, arr in self._data.items()}
