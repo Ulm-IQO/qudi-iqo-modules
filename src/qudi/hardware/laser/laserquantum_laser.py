@@ -27,7 +27,6 @@ from qudi.interface.simple_laser_interface import SimpleLaserInterface
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
 from dataclasses import dataclass, asdict
 import re
-import json
 
 class PSUTypes(Enum):
     """ LaserQuantum power supply types.
@@ -257,8 +256,7 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return str: multiple lines of text with information about laser
         """
-        json.dumps(asdict(self.cmd.sys_info))
-        return
+        return str((asdict(self.cmd.sys_info)))
 
 class Visa:
 
