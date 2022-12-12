@@ -17,6 +17,7 @@ adding minor GUI features.
 - Added mixin `qudi.interface.mixins.process_control_switch.ProcessControlSwitchMixin` to provide 
 optional default implementation satisfying the `SwitchInterface` for process control hardware 
 modules implementing any of the interfaces contained in `qudi.interface.process_control_interface`
+- support for Thorlabs power meters using the TLPM driver
 
 ### Other
 - Bumped `qudi-core` package minimum version requirement to v1.2.0
