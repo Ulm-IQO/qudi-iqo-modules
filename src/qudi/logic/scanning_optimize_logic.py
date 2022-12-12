@@ -341,7 +341,7 @@ class ScanningOptimizeLogic(LogicBase):
             if self.module_state() == 'idle':
                 return
 
-            self.log.debug(f"Next opt sequence step {self._sequence_index}")
+            #self.log.debug(f"Next opt sequence step {self._sequence_index}")
 
             if self._scan_logic().toggle_scan(True,
                                               self._scan_sequence[self._sequence_index],
@@ -358,7 +358,7 @@ class ScanningOptimizeLogic(LogicBase):
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
             elif data is not None:
-                self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
+                #self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
 
                 try:
                     if data.scan_dimension == 1:
@@ -377,7 +377,7 @@ class ScanningOptimizeLogic(LogicBase):
                         )
 
                     position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
-                    self.log.debug(f"Optimizer issuing position update: {position_update}")
+                    #self.log.debug(f"Optimizer issuing position update: {position_update}")
                     if fit_data is not None:
                         new_pos = self._scan_logic().set_target_position(position_update, move_blocking=True)
                         for ax in tuple(position_update):
