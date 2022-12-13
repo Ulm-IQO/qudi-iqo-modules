@@ -422,8 +422,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                    in zip(self.scan_settings['axes'], self.scan_settings['range'])}
             self._move_to_and_start_scan(first_scan_position)
 
-        except Exception as e:
+        except Exception:
             self.module_state.unlock()
+            self.log.exception("Starting scan failed: ")
 
 
     def stop_scan(self):
