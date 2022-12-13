@@ -256,6 +256,7 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return str: multiple lines of text with information about laser
         """
+        self.cmd.get_sys_info()
         return str((asdict(self.cmd.sys_info)))
 
 class Visa:
@@ -357,7 +358,7 @@ class QL_common_command(Visa):
         self.sys_info.psu_time = self._extract_num(self.read())
         self.sys_info.laser_time = self._extract_num(self.read())
         self.sys_info.laser_over_1A_time = self._extract_num(self.read())
-        na = self.read()
+        na = self.read() #for empty strings''
 
     def _extract_num(self, string):
         num = re.sub(r'[^\d.]', '', string)
@@ -395,7 +396,10 @@ class QL_SMD_command(QL_common_command):
 
     def get_firmware_version(self):
         if self.psu == PSUTypes.SMD6000:
-            return self.query('VERSION')
+            self.write('VERSION')
+            version = self.read()
+            na = self.read() #output empty string ''
+            return version
         else:
             return self.query('SOFTVER?')
 
