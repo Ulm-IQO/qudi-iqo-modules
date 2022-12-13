@@ -205,13 +205,15 @@ class Scan2DWidget(_BaseScanWidget):
     def __init__(self,
                  axes: Tuple[ScannerAxis, ScannerAxis],
                  channels: Sequence[ScannerChannel],
-                 parent: Optional[QtWidgets.QWidget] = None
+                 parent: Optional[QtWidgets.QWidget] = None,
+                 xy_region_min_size_percentile: Optional[float] = None
                  ) -> None:
         super().__init__(channels, parent=parent)
 
         self.image_widget = RubberbandZoomSelectionImageWidget(allow_tracking_outside_data=True,
                                                                xy_region_selection_crosshair=True,
-                                                               xy_region_selection_handles=False)
+                                                               xy_region_selection_handles=False,
+                                                               xy_region_min_size_percentile=xy_region_min_size_percentile)
         self.image_widget.set_selection_mutable(True)
         self.image_widget.add_region_selection(span=((-0.5, 0.5), (-0.5, 0.5)),
                                                mode=self.image_widget.SelectionMode.XY)
