@@ -20,7 +20,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 import time
 import numpy as np
 
@@ -45,9 +48,10 @@ class MicrowaveSMR(MicrowaveInterface):
 
     mw_source_smr:
         module.Class: 'microwave.mw_source_smr.MicrowaveSMR'
-        visa_address: 'GPIB0::28::INSTR'
-        comm_timeout: 10  # in seconds
-        rising_edge_trigger: True  # optional
+        options:
+            visa_address: 'GPIB0::28::INSTR'
+            comm_timeout: 10  # in seconds
+            rising_edge_trigger: True  # optional
     """
 
     _visa_address = ConfigOption('visa_address', missing='error')

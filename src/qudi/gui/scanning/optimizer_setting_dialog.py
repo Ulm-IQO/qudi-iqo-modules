@@ -22,21 +22,24 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('OptimizerSettingDialog', 'OptimizerSettingWidget', 'OptimizerAxesWidget')
 
+import copy as cp
 from PySide2 import QtCore, QtGui, QtWidgets
-from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
+from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 
 class OptimizerSettingDialog(QtWidgets.QDialog):
     """ User configurable settings for the scanner optimizer logic
     """
 
-    def __init__(self, scanner_axes, scanner_channels):
+    def __init__(self, scanner_axes, scanner_channels, optimizer_dim=[2,1]):
         super().__init__()
         self.setObjectName('optimizer_settings_dialog')
         self.setWindowTitle('Optimizer Settings')
 
         self.settings_widget = OptimizerSettingWidget(scanner_axes=scanner_axes,
-                                                      scanner_channels=scanner_channels)
+                                                      scanner_channels=scanner_channels,
+                                                      optimizer_dim=optimizer_dim)
 
         self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
                                                      QtWidgets.QDialogButtonBox.Cancel |
@@ -64,15 +67,25 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
     """ User configurable settings for the scanner optimizer logic
     """
 
-    def __init__(self, scanner_axes, scanner_channels):
+    def __init__(self, scanner_axes, scanner_channels, optimizer_dim=[2,1]):
         super().__init__()
         self.setObjectName('optimizer_settings_widget')
+
+        self._avail_axes = sorted([ax.name for ax in scanner_axes])
+        self._optimizer_dim = optimizer_dim
+
+        dummy_seq = OptimizerScanSequence(self._avail_axes,
+                                          self._optimizer_dim)
+        self._available_opt_sequences = cp.copy(dummy_seq.available_opt_sequences)
 
         font = QtGui.QFont()
         font.setBold(True)
 
         self.data_channel_combobox = QtWidgets.QComboBox()
         self.data_channel_combobox.addItems(tuple(ch.name for ch in scanner_channels))
+
+        self.optimize_sequence_combobox = QtWidgets.QComboBox()
+        self.optimize_sequence_combobox.addItems(str(seq) for seq in self.available_opt_sequences)
 
         label = QtWidgets.QLabel('Data channel:')
         label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
@@ -84,12 +97,18 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         misc_settings_groupbox.layout().addWidget(self.data_channel_combobox, 0, 1)
         misc_settings_groupbox.layout().setColumnStretch(1, 1)
 
+        label_opt_seq = QtWidgets.QLabel('Sequence:')
+        label_opt_seq.setAlignment(QtCore.Qt.AlignLeft)
+        label_opt_seq.setFont(font)
         self.axes_widget = OptimizerAxesWidget(scanner_axes=scanner_axes)
         self.axes_widget.setObjectName('optimizer_axes_widget')
         scan_settings_groupbox = QtWidgets.QGroupBox('Scan settings')
         scan_settings_groupbox.setFont(font)
-        scan_settings_groupbox.setLayout(QtWidgets.QVBoxLayout())
-        scan_settings_groupbox.layout().addWidget(self.axes_widget)
+        scan_settings_groupbox.setLayout(QtWidgets.QGridLayout())
+
+        scan_settings_groupbox.layout().addWidget(self.axes_widget, 0, 0, 1, -1)
+        scan_settings_groupbox.layout().addWidget(label_opt_seq, 1, 0, 1, 1)
+        scan_settings_groupbox.layout().addWidget(self.optimize_sequence_combobox, 1, 1, 1, 1)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(misc_settings_groupbox)
@@ -99,23 +118,38 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
     @property
     def settings(self):
         return {'data_channel': self.data_channel_combobox.currentText(),
-                'scan_sequence': (('x', 'y'), ('z',)),
+                'scan_sequence': self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()].sequence,
                 'scan_resolution': self.axes_widget.resolution,
                 'scan_range': self.axes_widget.range,
                 'scan_frequency': self.axes_widget.frequency}
 
+    @property
+    def available_opt_sequences(self):
+        return self._available_opt_sequences
+
+
     def change_settings(self, settings):
-        # FIXME: sequence needs to be properly implemented
         if 'data_channel' in settings:
             self.data_channel_combobox.blockSignals(True)
             self.data_channel_combobox.setCurrentText(settings['data_channel'])
             self.data_channel_combobox.blockSignals(False)
+        if 'scan_sequence' in settings:
+            self.optimize_sequence_combobox.blockSignals(True)
+            try:
+                idx_combo = [seq.sequence for seq in self.available_opt_sequences].index(settings['scan_sequence'])
+            except ValueError:
+                idx_combo = 0
+            self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
+
+            self.optimize_sequence_combobox.blockSignals(False)
         if 'scan_range' in settings:
             self.axes_widget.set_range(settings['scan_range'])
         if 'scan_resolution' in settings:
             self.axes_widget.set_resolution(settings['scan_resolution'])
         if 'scan_frequency' in settings:
             self.axes_widget.set_frequency(settings['scan_frequency'])
+
+
 
 
 class OptimizerAxesWidget(QtWidgets.QWidget):

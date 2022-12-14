@@ -19,7 +19,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 from qudi.core.configoption import ConfigOption
 from qudi.interface.simple_laser_interface import SimpleLaserInterface
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
@@ -32,8 +35,9 @@ class MillenniaeVLaser(SimpleLaserInterface):
 
     millennia_laser:
         module.Class: 'laser.millennia_ev_laser.MillenniaeVLaser'
-        interface: 'ASRL1::INSTR'
-        maxpower: 25 # in Watt
+        options:
+            interface: 'ASRL1::INSTR'
+            maxpower: 25 # in Watt
 
     """
 

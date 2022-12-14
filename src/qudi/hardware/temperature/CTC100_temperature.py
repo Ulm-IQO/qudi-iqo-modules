@@ -23,7 +23,10 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 
 
 class CTC100(Base):
@@ -36,8 +39,9 @@ class CTC100(Base):
 
     tempcontroller_ctc100:
         module.Class: 'temperature.CTC100_temperature.CTC100'
-        interface: 'ASRL1::INSTR'
-        fitlogic: 'fitlogic' # name of the fitlogic module, see default config
+        options:
+            interface: 'ASRL1::INSTR'
+            fitlogic: 'fitlogic' # name of the fitlogic module, see default config
 
     """
 

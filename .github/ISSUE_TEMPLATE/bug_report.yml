@@ -17,6 +17,8 @@ body:
       description: What version of our software are you running?
       options:
         - current main
+        - v0.3.0
+        - v0.2.0
         - v0.1.0
     validations:
       required: true
