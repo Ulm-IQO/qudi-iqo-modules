@@ -31,12 +31,13 @@ class ScannerSettingDialog(QtWidgets.QDialog):
     """
     """
 
-    def __init__(self, scanner_axes):
+    def __init__(self, scanner_axes, scanner_constraints):
         super().__init__()
         self.setObjectName('scanner_settings_dialog')
         self.setWindowTitle('Scanner Settings')
 
-        self.settings_widget = ScannerSettingsWidget(scanner_axes=scanner_axes)
+        self.settings_widget = ScannerSettingsWidget(scanner_axes=scanner_axes,
+                                                     scanner_constraints=scanner_constraints)
         self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
                                                      QtWidgets.QDialogButtonBox.Cancel |
                                                      QtWidgets.QDialogButtonBox.Apply,
@@ -58,11 +59,13 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
     """
 
     sigFrequencyChanged = QtCore.Signal(str, float, float)
+    # TODO sigRangeChanged does not exist
 
-    def __init__(self, *args, scanner_axes, **kwargs):
+    def __init__(self, *args, scanner_axes, scanner_constraints, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.axes_widgets = dict()
+        self._backscan_configurable = scanner_constraints._backscan_configurable
 
         font = QtGui.QFont()
         font.setBold(True)
@@ -104,6 +107,11 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
             backward_spinbox.setMinimumSize(75, 0)
             backward_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                            QtWidgets.QSizePolicy.Preferred)
+            if not self._backscan_configurable:
+                backward_spinbox.setRange(0, 1)
+                backward_spinbox.setValue(0.)
+                backward_spinbox.setSuffix('/na')
+                backward_spinbox.setDisabled(True)
 
             # Add to layout
             layout.addWidget(label, index, 0)
@@ -140,8 +148,12 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
 
     @property
     def frequency(self):
+        """
+        :return: dict with
+        """
         return {
-            ax: (widgets['forward_freq_spinbox'].value(), widgets['backward_freq_spinbox'].value())
+            ax: (widgets['forward_freq_spinbox'].value(), widgets['backward_freq_spinbox'].value()
+                if self._backscan_configurable else None)
             for ax, widgets in self.axes_widgets.items()
         }
 
@@ -156,7 +168,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
                 forward_spinbox.setValue(forward)
                 forward_spinbox.blockSignals(False)
                 backward_spinbox.blockSignals(True)
-                backward_spinbox.setValue(backwards)
+                backward_spinbox.setValue(backwards) if self._backscan_configurable else None
                 backward_spinbox.blockSignals(False)
         else:
             forward_spinbox = self.axes_widgets[axis]['forward_freq_spinbox']
@@ -166,7 +178,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
             forward_spinbox.setValue(forward)
             forward_spinbox.blockSignals(False)
             backward_spinbox.blockSignals(True)
-            backward_spinbox.setValue(backwards)
+            backward_spinbox.setValue(backwards) if self._backscan_configurable else None
             backward_spinbox.blockSignals(False)
 
     def __get_axis_forward_callback(self, axis, spinbox):
@@ -178,5 +190,5 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
     def __get_axis_backward_callback(self, axis, spinbox):
         def callback():
             forward_spinbox = self.axes_widgets[axis]['forward_freq_spinbox']
-            self.sigRangeChanged.emit(axis, spinbox.value(), forward_spinbox.value())
+            self.sigFrequencyChanged.emit(axis, spinbox.value(), backward_spinbox.value())
         return callback

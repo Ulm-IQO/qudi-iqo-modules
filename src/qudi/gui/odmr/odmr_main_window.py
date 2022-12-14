@@ -28,7 +28,7 @@ from PySide2 import QtCore, QtWidgets, QtGui
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.paths import get_artwork_dir
 
-from .odmr_plot_widget import OdmrPlotWidget
+from qudi.gui.odmr.odmr_plot_widget import OdmrPlotWidget
 
 
 class OdmrMainWindow(QtWidgets.QMainWindow):

@@ -43,14 +43,15 @@ class AWG5002C(PulserInterface):
 
     pulser_awg5000:
         module.Class: 'awg.tektronix_awg5002c.AWG5002C'
-        awg_ip_address: '10.42.0.211'
-        awg_port: 3000 # the port number as integer
-        timeout: 20
-        # tmp_work_dir: 'C:\\Software\\qudi_pulsed_files' # optional
-        # ftp_root_dir: 'C:\\inetpub\\ftproot' # optional, root directory on AWG device
-        # ftp_login: 'anonymous' # optional, the username for ftp login
-        # ftp_passwd: 'anonymous@' # optional, the password for ftp login
-        # default_sample_rate: 600.0e6 # optional, the default sampling rate
+        options:
+            awg_ip_address: '10.42.0.211'
+            awg_port: 3000 # the port number as integer
+            timeout: 20
+            # tmp_work_dir: 'C:\\Software\\qudi_pulsed_files' # optional
+            # ftp_root_dir: 'C:\\inetpub\\ftproot' # optional, root directory on AWG device
+            # ftp_login: 'anonymous' # optional, the username for ftp login
+            # ftp_passwd: 'anonymous@' # optional, the password for ftp login
+            # default_sample_rate: 600.0e6 # optional, the default sampling rate
     """
 
     # config options

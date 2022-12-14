@@ -18,7 +18,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import time
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 
 from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption
@@ -28,9 +31,10 @@ from qudi.interface.process_control_interface import ProcessControlInterface
 class E3631A(Base, ProcessControlInterface):
     """ Hardware module for power supply Keysight E3631A.
 
-    Example config :
-        voltage_generator:
-            module.Class: 'power_supply.Keysight_E3631A.E3631A'
+    Example config for copy-paste:
+    voltage_generator:
+        module.Class: 'power_supply.Keysight_E3631A.E3631A'
+        options:
             address: 'ASRL9::INSTR'
 
     """
