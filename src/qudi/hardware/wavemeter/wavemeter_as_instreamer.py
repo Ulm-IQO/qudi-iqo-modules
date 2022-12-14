@@ -62,11 +62,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._callback_function = None
         self._wavemeterdll = None
 
-        self._digital_channels = ('wavelength', )#'temperature')
-        self._analog_channels = tuple()
         self._digital_event_rates = [1000, 1000, 1000, 1000]
 
-        self.temperature = []
+        self._temperature = []
         self._wavelength = []
 
         # Internal settings
@@ -113,7 +111,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self.__buffer_size = 1000
         self.__use_circular_buffer = False
         self.__streaming_mode = StreamingMode.CONTINUOUS
-        self.__active_channels = self._digital_channels
+        constr = self.get_constraints()
+        self.__active_channels = (ch.copy() for ch in constr.digital_channels if ch.name)
 
         # Reset data buffer
         self._data_buffer = np.empty(0, dtype=self.__data_type)
@@ -146,12 +145,10 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         """
         # Create constraints
         self._constraints = DataInStreamConstraints()
-        self._constraints.digital_channels = tuple(
-            StreamChannel(name=ch, type=StreamChannelType.DIGITAL, unit='counts') for ch in
-            self._digital_channels)
-        self._constraints.analog_channels = tuple(
-            StreamChannel(name=ch, type=StreamChannelType.ANALOG, unit='V') for ch in
-            self._analog_channels)
+        self._constraints.digital_channels = (
+            StreamChannel(name='wavelength', type=StreamChannelType.DIGITAL, unit='nm'),
+            StreamChannel(name='wavelength_timing', type=StreamChannelType.DIGITAL, unit='s'))
+        self._constraints.analog_channels = tuple()
         self._constraints.analog_sample_rate.min = 1
         self._constraints.analog_sample_rate.max = 2 ** 31 - 1
         self._constraints.analog_sample_rate.step = 1
@@ -182,9 +179,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                 if mode == high_finesse_constants.cmiWavelength1:
                     self._wavelength.append((intval, dblval))
                 elif mode == high_finesse_constants.cmiTemperature:
-                    pass
-                    # self.temperature.append((intval, dblval))
+                    self._temperature.append((intval, dblval))
             return 0
+
         self._callback_function = _CALLBACK(handle_callback)
         return self._callback_function
 
@@ -235,6 +232,23 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         with self._lock:
             return self._wavelength.copy()
 
+    @property
+    def temperature(self):
+        with self._lock:
+            return self._temperature.copy()
+
+    @property
+    def unit(self):
+        return self._unit
+
+    @unit.setter
+    def unit(self, new_unit):
+        if isinstance(new_unit, str):
+            self._unit = str(new_unit)
+        else:
+            raise TypeError('StreamChannel unit property must be str.')
+        return
+
     def read_data_into_buffer(self, buffer, number_of_samples=None):
         """
         Read data from the stream buffer into a 1D/2D numpy array given as parameter.
@@ -280,7 +294,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         if number_of_samples < 1:
             return 0
-        while self.available_samples < number_of_samples:
+        while self.available_samples < number_of_samples or len(self.wavelength) == 0:
+            if not self.is_running:
+                break
             time.sleep(0.001)
 
         # Check for buffer overflow
@@ -291,15 +307,24 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._last_read = time.perf_counter()
 
         with self._lock:
-            wavelength_length = len(self._wavelength)
-            wavelength_array = np.array(self._wavelength[:wavelength_length])
-            del self._wavelength[:wavelength_length]
-            
+            if len(self._wavelength) == 0:
+                return 0
+            if len(self._wavelength) == 1:
+                current_wavelength = self._wavelength[-1]
+                del self._wavelength[-1]
+                buffer[:number_of_samples] = np.ones(number_of_samples) * current_wavelength[-1]
+                buffer[number_of_samples:2 * number_of_samples] = np.ones(number_of_samples) * \
+                                                                  current_wavelength[0]
+                return number_of_samples
+            wavelength_array = np.array(self._wavelength)
+            del self._wavelength[:len(self._wavelength)]
+
         arr_interp = interpolate.interp1d(wavelength_array[:, 0], wavelength_array[:, 1])
         new_timings = np.linspace(wavelength_array[0, 0],
                                   wavelength_array[0, 0] + self._last_read - previous_read,
                                   number_of_samples)
         buffer[:number_of_samples] = arr_interp(new_timings)
+        buffer[number_of_samples:2 * number_of_samples] = new_timings
 
         # temperature_array = np.array(self.temperature[:number_of_samples])
         # del self.temperature[:number_of_samples]
@@ -414,12 +439,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
     def sample_rate(self, rate):
         if self._check_settings_change():
             if not self._clk_frequency_valid(rate):
-                if self._analog_channels:
-                    min_val = self._constraints.combined_sample_rate.min
-                    max_val = self._constraints.combined_sample_rate.max
-                else:
-                    min_val = self._constraints.digital_sample_rate.min
-                    max_val = self._constraints.digital_sample_rate.max
+                min_val = self._constraints.digital_sample_rate.min
+                max_val = self._constraints.digital_sample_rate.max
                 self.log.warning(
                     'Sample rate requested ({0:.3e}Hz) is out of bounds. Please choose '
                     'a value between {1:.3e}Hz and {2:.3e}Hz. Value will be clipped to '
@@ -521,8 +542,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                       and values being the corresponding StreamChannel instances.
         """
         constr = self._constraints
-        return (*(ch.copy() for ch in constr.digital_channels if ch.name in self.__active_channels),
-                *(ch.copy() for ch in constr.analog_channels if ch.name in self.__active_channels))
+        return (ch.copy() for ch in constr.digital_channels if ch.name in self.__active_channels)
 
     @active_channels.setter
     def active_channels(self, channels):
@@ -547,8 +567,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         @return tuple: data channel properties for all available channels with keys being the
                        channel names and values being the corresponding StreamChannel instances.
         """
-        return (*(ch.copy() for ch in self._constraints.digital_channels),
-                *(ch.copy() for ch in self._constraints.analog_channels))
+        return (ch.copy() for ch in self._constraints.digital_channels)
 
     @property
     def available_samples(self):
@@ -663,12 +682,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     # =============================================================================================
     def _clk_frequency_valid(self, frequency):
-        if self._analog_channels:
-            max_rate = self._constraints.combined_sample_rate.max
-            min_rate = self._constraints.combined_sample_rate.min
-        else:
-            max_rate = self._constraints.digital_sample_rate.max
-            min_rate = self._constraints.digital_sample_rate.min
+        max_rate = self._constraints.digital_sample_rate.max
+        min_rate = self._constraints.digital_sample_rate.min
         return min_rate <= frequency <= max_rate
 
     def _init_buffer(self):
