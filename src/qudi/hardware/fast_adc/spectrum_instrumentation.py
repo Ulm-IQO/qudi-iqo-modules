@@ -1303,7 +1303,6 @@ class Process_commander:
                 self._process_data_by_options = self._process_data_ungated_unsaved
 
     def initial_process(self):
-        self.cp.wait_new_trigger()
         usr_pos_B = self.cp.dcmd.get_avail_user_pos_B()
         curr_avail_reps = self.cp.wait_new_avail_reps()
         self._process_initial_data(usr_pos_B, curr_avail_reps)
@@ -1453,6 +1452,7 @@ class Process_loop(Process_commander):
     def start_data_process_loop(self):
         t_0 = time.time()
         self.t_p = 0
+        self.cp.wait_new_trigger()
         self.initial_process()
 
         while self.loop_on == True:
@@ -1466,6 +1466,7 @@ class Process_loop(Process_commander):
         return
 
     def start_data_process_loop_n(self, n):
+        self.cp.wait_new_trigger()
         self.initial_process()
 
         while self.loop_on == True and self.dp.avg.num < n:
