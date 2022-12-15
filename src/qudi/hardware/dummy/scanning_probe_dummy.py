@@ -262,7 +262,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             self._current_scan_frequency = frequency
             return False, self.scan_settings
 
-    def move_absolute(self, position, velocity=None):
+    def move_absolute(self, position, velocity=None, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
@@ -288,7 +288,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 self._current_position.update(position)
             return self._current_position
 
-    def move_relative(self, distance, velocity=None):
+    def move_relative(self, distance, velocity=None, blocking=False):
         """ Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 

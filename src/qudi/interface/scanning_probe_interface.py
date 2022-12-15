@@ -58,22 +58,25 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def move_absolute(self, position, velocity=None):
+    def move_absolute(self, position, velocity=None, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
         Log error and return current target position if something fails or a scan is in progress.
+
+        @param bool blocking: If True this call returns only after the final position is reached.
         """
         pass
 
     @abstractmethod
-    def move_relative(self, distance, velocity=None):
+    def move_relative(self, distance, velocity=None, blocking=False):
         """ Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 
         Log error and return current target position if something fails or a 1D/2D scan is in
         progress.
 
+        @param bool blocking: If True this call returns only after the final position is reached.
 
         """
         pass
@@ -264,6 +267,12 @@ class ScanData:
     def data(self):
         return self._data
 
+    @data.setter
+    def data(self, data_dict):
+        assert tuple(data_dict.keys()) == self.channels
+        assert all([val.shape == self.scan_resolution for val in data_dict.values()])
+        self._data = data_dict
+
     @property
     def position_data(self):
         return self._position_data
@@ -304,7 +313,8 @@ class ScanData:
                             scan_range=self._scan_range,
                             scan_resolution=self._scan_resolution,
                             scan_frequency=self._scan_frequency,
-                            position_feedback_axes=self._position_feedback_axes)
+                            position_feedback_axes=self._position_feedback_axes,
+                            target_at_start=self._target_at_start)
         new_inst._timestamp = self._timestamp
         if self._data is not None:
             new_inst._data = {ch: arr.copy() for ch, arr in self._data.items()}
