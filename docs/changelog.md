@@ -8,7 +8,8 @@
 
 ## Version 0.4.0
 ### Breaking Changes
-- `QDPlotLogic` has changed its public method signatures
+- `QDPlotLogic` has changed its public method signatures 
+- `OkFpgaPulser` now has a mandatory config option pointing towards a directory with the bitfiles necessary.
 
 ### Bugfixes
 - Resolved some issues with QDPlot GUI layouts and improved overall QDPlot GUI code quality
