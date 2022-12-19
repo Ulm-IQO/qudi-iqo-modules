@@ -27,7 +27,7 @@
      <x>0</x>
      <y>0</y>
      <width>833</width>
-     <height>18</height>
+     <height>21</height>
     </rect>
    </property>
    <property name="sizePolicy">
@@ -563,6 +563,7 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
     <bool>false</bool>
    </attribute>
    <addaction name="start_control_Action"/>
+   <addaction name="reset_view_Action"/>
    <addaction name="record_control_Action"/>
   </widget>
   <action name="start_control_Action">
@@ -578,6 +579,21 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
    </property>
    <property name="toolTip">
     <string>Start the counter</string>
+   </property>
+  </action>
+  <action name="reset_view_Action">
+   <property name="checkable">
+    <bool>false</bool>
+   </property>
+   <property name="icon">
+    <iconset>
+     <normaloff>../../artwork/icons/restart-counter.svg</normaloff>../../artwork/icons/start-counter.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Reset view</string>
+   </property>
+   <property name="toolTip">
+    <string>Reset the plot data</string>
    </property>
   </action>
   <action name="record_control_Action">
@@ -649,7 +665,7 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
   <customwidget>
    <class>ScienDSpinBox</class>
    <extends>QDoubleSpinBox</extends>
-   <header>qtwidgets.scientific_spinbox.h</header>
+   <header>qudi.util.widgets.scientific_spinbox</header>
   </customwidget>
  </customwidgets>
  <resources/>

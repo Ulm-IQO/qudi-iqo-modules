@@ -26,35 +26,30 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
-#from logic.generic_logic import GenericLogic
 from qudi.core.module import Base
 from qtpy import QtCore
 
-import warnings
-warnings.warn("This module has not been tested on the new qudi core and might not work properly/at all."
-                         "Use it with caution and if possible contribute to its rework, please.")
 
 class PIDLogic(Base):
     """ Logic module to monitor and control a PID process
 
     Example config:
 
-    pidlogic:
+    pid_logic:
         module.Class: 'pid_logic.PIDLogic'
-        options:
-            timestep: 0.1
         connect:
             controller: 'softpid'
-            savelogic: 'savelogic'
+        options:
+            # interval at which the logging updates (s)
+            timestep: 0.1
 
     """
 
     # declare connectors
     controller = Connector(interface='PIDControllerInterface')
-    savelogic = Connector(interface='SaveLogic')
 
     # status vars
-    bufferLength = StatusVar('bufferlength', 1000)
+    buffer_length = StatusVar('buffer_length', 1000)
     timestep = ConfigOption('timestep', 100e-3)  # timestep in seconds
 
     # signals
@@ -64,45 +59,58 @@ class PIDLogic(Base):
         super().__init__(config=config, **kwargs)
         self.log.debug('The following configuration was found.')
 
-        #number of lines in the matrix plot
+        # number of lines in the matrix plot
         self.NumberOfSecondsLog = 100
         self.threadlock = Mutex()
+
+        # initialize attributes
+        self._controller = None
+        self.history = None
+        self.saving_state = False
+        self._is_recording = False
+        self.timer = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
         self._controller = self.controller()
-        self._save_logic = self.savelogic()
 
-        self.history = np.zeros([3, self.bufferLength])
-        self.savingState = False
-        self.enabled = False
+        self.history = np.zeros([3, self.buffer_length])
+        self.saving_state = False
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(True)
         self.timer.setInterval(self.timestep * 1000)  # in ms
-        self.timer.timeout.connect(self.loop)
+        self.timer.timeout.connect(self._loop)
 
     def on_deactivate(self):
         """ Perform required deactivation. """
         pass
 
-    def getBufferLength(self):
+    def get_buffer_length(self):
         """ Get the current data buffer length.
         """
-        return self.bufferLength
+        return self.buffer_length
 
-    def startLoop(self):
-        """ Start the data recording loop.
+    @property
+    def is_recording(self):
+        """ See if the logic is recording values
+            @return bool: whether the recording loop is active
         """
-        self.enabled = True
-        self.timer.start(self.timestep * 1000)  # in ms
+        return self._is_recording
 
-    def stopLoop(self):
-        """ Stop the data recording loop.
+    def start_loop(self):
+        """ Start the data recording loop. Not identical to enabling the PID controller.
         """
-        self.enabled = False
+        self._is_recording = True
+        self.timer.start()
 
-    def loop(self):
+    def stop_loop(self):
+        """ Stop the data recording loop. Not identical to disabling the PID controller.
+        """
+        self._is_recording = False
+        self.timer.stop()
+
+    def _loop(self):
         """ Execute step in the data recording loop: save one of each control and process values
         """
         self.history = np.roll(self.history, -1, axis=1)
@@ -110,37 +118,41 @@ class PIDLogic(Base):
         self.history[1, -1] = self._controller.get_control_value()
         self.history[2, -1] = self._controller.get_setpoint()
         self.sigUpdateDisplay.emit()
-        if self.enabled:
-            self.timer.start(self.timestep * 1000)  # in ms
+        if self._is_recording:
+            self.timer.start()
 
-    def getSavingState(self):
+    def get_saving_state(self):
         """ Return whether we are saving data
 
             @return bool: whether we are saving data right now
         """
-        return self.savingState
+        return self.saving_state
 
-    def startSaving(self):
+    def start_saving(self):
         """ Start saving data.
 
             Function does nothing right now.
         """
         pass
 
-    def saveData(self):
+    def save_data(self):
         """ Stop saving data and write data to file.
 
             Function does nothing right now.
         """
         pass
 
-    def setBufferLength(self, newBufferLength):
+    def set_buffer_length(self, new_buffer_length):
         """ Change buffer length to new value.
 
-            @param int newBufferLength: new buffer length
+            @param int new_buffer_length: new buffer length
         """
-        self.bufferLength = newBufferLength
-        self.history = np.zeros([3, self.bufferLength])
+        self.buffer_length = new_buffer_length
+        self.reset_buffer()
+
+    def reset_buffer(self):
+        """ Reset the buffer, clearing out all data. """
+        self.history = np.zeros([3, self.buffer_length])
 
     def get_kp(self):
         """ Return the proportional constant.
@@ -152,7 +164,7 @@ class PIDLogic(Base):
     def set_kp(self, kp):
         """ Set the proportional constant of the PID controller.
 
-            @prarm float kp: proportional constant of PID controller
+            @param float kp: proportional constant of PID controller
         """
         return self._controller.set_kp(kp)
 
@@ -205,29 +217,26 @@ class PIDLogic(Base):
         """
         return self._controller.get_manual_value()
 
-    def set_manual_value(self, manualvalue):
+    def set_manual_value(self, manual_value):
         """ Set the control value for manual mode.
 
-            @param float manualvalue: control value for manual mode of controller
+            @param float manual_value: control value for manual mode of controller
         """
-        return self._controller.set_manual_value(manualvalue)
+        return self._controller.set_manual_value(manual_value)
 
     def get_enabled(self):
         """ See if the PID controller is controlling a process.
 
-            @return bool: whether the PID controller is preparing to or conreolling a process
+            @return bool: whether the PID controller is preparing to or controlling a process
         """
-        return self.enabled
+        return self._controller.get_enabled()
 
     def set_enabled(self, enabled):
         """ Set the state of the PID controller.
 
             @param bool enabled: desired state of PID controller
         """
-        if enabled and not self.enabled:
-            self.startLoop()
-        if not enabled and self.enabled:
-            self.stopLoop()
+        self._controller.set_enabled(enabled)
 
     def get_control_limits(self):
         """ Get the minimum and maximum value of the control actuator.
@@ -252,9 +261,21 @@ class PIDLogic(Base):
         """
         return self.history[0, -1]
 
+    @property
+    def process_value_unit(self):
+        """ read-only property for the unit of the process value
+        """
+        return self._controller.process_value_unit
+
     def get_cv(self):
         """ Get current control output value.
 
             @return float: control output value
         """
         return self.history[1, -1]
+
+    @property
+    def control_value_unit(self):
+        """ read-only property for the unit of the control value
+        """
+        return self._controller.control_value_unit
