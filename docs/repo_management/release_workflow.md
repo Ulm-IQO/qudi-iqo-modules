@@ -27,7 +27,7 @@ If you are not the responsible release manager, it should be of no concern for y
 
 ## Performing a release
 
-1. Increment version number in `qudi-iqo-modules/VERSIONS`. This will already trigger a releaste to test.pypi.
+1. Increment version number in `qudi-iqo-modules/VERSIONS`. This will already trigger a release to test.pypi.
 2. Check `qudi-iqo-modules/setup.py` and fix all versions with `==`.
 3. Update `qudi-iqo-modules/docs/changelog.md`. All collected differences in the pre-release section should go to
    a new subsection that's titled according to the new version number. Add a fresh, empty pre-release section.    
@@ -41,5 +41,7 @@ If you are not the responsible release manager, it should be of no concern for y
 6. Iterate the version number in `qudi-iqo-modules/VERSIONS` from release to development. Eg. 1.0.0 to 1.0.1.dev0
 7. Edit `qudi-iqo-modules/.github/ISSUE_TEMPLATE/bug_report.yaml` and add the option to choose the release version
    that you just released.
+8. Edit the Troubleshooting section in `qudi-iqo-modules/docs/installation_guide.md` to point at installing the latest
+   release. Eg. `git checkout tags/v0.4.0`
 
-8. Lean back and get some cold drink. You just released a new qudi-iqo-modules version! 
+9. Lean back and get some cold drink. You just released a new qudi-iqo-modules version! 
