@@ -118,6 +118,7 @@ class PulsedMeasurementLogic(LogicBase):
     _measurement_information = StatusVar(default=dict())
     # Container to store information about the sampled waveform/sequence currently loaded
     _sampling_information = StatusVar(default=dict())
+    _generation_method_parameters = StatusVar(default=dict())
 
     # Data fitting
     _fit_configs = StatusVar(name='fit_configs', default=None)
@@ -689,6 +690,18 @@ class PulsedMeasurementLogic(LogicBase):
             self._sampling_information = info_dict
         else:
             self._sampling_information = dict()
+        return
+
+    @property
+    def generation_method_parameters(self):
+        return self._generation_method_parameters
+
+    @generation_method_parameters.setter
+    def generation_method_parameters(self, info_dict):
+        if isinstance(info_dict, dict):
+            self._generation_method_parameters = info_dict
+        else:
+            self._generation_method_parameters = dict()
         return
 
     @property
@@ -1350,8 +1363,6 @@ class PulsedMeasurementLogic(LogicBase):
         self.sigMeasurementDataUpdated.emit()
         return
 
-    # FIXME: Revise everything below
-
     ############################################################################
     def _get_raw_metadata(self):
         return {'bin width (s)'               : self.__fast_counter_binwidth,
@@ -1377,7 +1388,10 @@ class PulsedMeasurementLogic(LogicBase):
                 'alternating'                 : self._alternating,
                 'analysis parameters'         : self.analysis_settings,
                 'extraction parameters'       : self.extraction_settings,
-                'fast counter settings'       : self.fast_counter_settings}
+                'fast counter settings'       : self.fast_counter_settings,
+                # todo: save sequence belonging to signal, not last uploaded one
+                'generation parameters'       : self.sampling_information['generation_parameters'],
+                'generation method parameters': self.generation_method_parameters }
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
@@ -1453,13 +1467,15 @@ class PulsedMeasurementLogic(LogicBase):
                                                                     tag,
                                                                     '_raw_timetrace')
         # Save data to file
-        data_storage.save_data(self.raw_data.astype('int64')[:, np.newaxis],
-                               metadata=self._get_raw_metadata(),
-                               nametag=nametag,
-                               filename=save_filename,
-                               timestamp=timestamp,
-                               notes=notes,
-                               column_headers='Signal (counts)')
+        data_storage.save_data(
+            self.raw_data.astype('int64')[:, np.newaxis] if self.raw_data.ndim == 1 else self.raw_data.astype('int64'),
+            metadata=self._get_raw_metadata(),
+            nametag=nametag,
+            filename=save_filename,
+            timestamp=timestamp,
+            notes=notes,
+            column_headers='Signal (counts)'
+        )
 
         ###########################
         # Save extracted laser data

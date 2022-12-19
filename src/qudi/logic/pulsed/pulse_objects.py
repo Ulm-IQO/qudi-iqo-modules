@@ -424,7 +424,10 @@ class PulseBlockEnsemble(object):
         # This container needs to be populated by the script creating the PulseBlockEnsemble
         # before saving it. (e.g. in generate methods in PulsedObjectGenerator class)
         self.measurement_information = dict()
-        return
+        # Dictionary container to store parameters (eg. XY8 order) of the function (eg. predefined method) that
+        # generated the pulse block ensemble.
+        self.generation_method_parameters = dict()
+
 
     def __repr__(self):
         repr_str = 'PulseBlockEnsemble(name=\'{0}\', block_list={1}, rotating_frame={2})'.format(
@@ -487,6 +490,7 @@ class PulseBlockEnsemble(object):
         self.block_list[key] = tuple(value)
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def __delitem__(self, key):
@@ -497,6 +501,7 @@ class PulseBlockEnsemble(object):
         del self.block_list[key]
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def pop(self, position=None):
@@ -520,6 +525,7 @@ class PulseBlockEnsemble(object):
 
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return self.block_list.pop(position)
 
     def insert(self, position, element):
@@ -546,6 +552,7 @@ class PulseBlockEnsemble(object):
         self.block_list.insert(position, tuple(element))
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def append(self, element):
@@ -563,12 +570,14 @@ class PulseBlockEnsemble(object):
         del self.block_list[:]
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def reverse(self):
         self.block_list.reverse()
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def get_dict_representation(self):
@@ -578,6 +587,7 @@ class PulseBlockEnsemble(object):
         dict_repr['block_list'] = self.block_list
         dict_repr['sampling_information'] = self.sampling_information
         dict_repr['measurement_information'] = self.measurement_information
+        dict_repr['generation_method_parameters'] = self.generation_method_parameters
         return dict_repr
 
     @staticmethod
@@ -587,6 +597,7 @@ class PulseBlockEnsemble(object):
                                      rotating_frame=ensemble_dict['rotating_frame'])
         new_ens.sampling_information = ensemble_dict['sampling_information']
         new_ens.measurement_information = ensemble_dict['measurement_information']
+        new_ens.generation_method_parameters = ensemble_dict['generation_method_parameters']
         return new_ens
 
 
