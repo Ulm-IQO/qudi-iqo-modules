@@ -160,7 +160,7 @@ class InStreamDummy(DataInStreamInterface):
         )
 
         self.__sample_rate = self._constraints.combined_sample_rate.minimum
-        self.__data_type = np.float64
+        self.__data_type = self._constraints.data_type
         self.__stream_length = 0
         self.__buffer_size = 1000
         self.__use_circular_buffer = False
