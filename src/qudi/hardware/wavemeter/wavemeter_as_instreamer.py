@@ -171,10 +171,28 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         return self._constraints
 
     def _get_callback_ex(self):
-        # define the callback function, that should be called by the dll on an event
+        """
+        Define the callback procedure that should be called by the dll every time a new measurement result
+        is available or any of the wavelength meter's states changes.
+        :return: callback function
+        """
         def handle_callback(version, mode, intval, dblval, res1):
-            # append measured wavelength with corresponding timestamp to the list
-            # (intval for timestamp and dblval for value)
+            """
+            Function called upon wavelength meter state change or if a new measurement result is available.
+            See wavemeter manual section on CallbackProc for details.
+
+            In this implementation, the new wavelength or temperature value
+            is appended to a list together with the current timestamp.
+
+            :param version: Device version number which called the procedure.
+            Only relevant if multiple wavemeter applications are running.
+            :param mode: Indicates which state has changed or what new result is available.
+            :param intval: Contains the time stamp rounded to ms if mode indicates that the new value is in dblval.
+            If not, it contains the new value itself.
+            :param dblval: May contain the new value (e.g. wavelength), depending on mode.
+            :param res1: Mostly meaningless.
+            :return: TODO: remove?
+            """
             with self._lock:
                 if mode == high_finesse_constants.cmiWavelength1:
                     self._wavelength.append((intval, dblval))
@@ -198,9 +216,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         # start callback procedure
         self._wavemeterdll.Instantiate(
             high_finesse_constants.cInstNotification,  # long ReasonForCall
-            high_finesse_constants.cNotifyInstallCallbackEx,  # long MODE
-            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),
-            # long P1: function
+            high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
+            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),  # long P1: function
             0)  # long P2: callback thread priority, 0 = standard
 
         self._init_buffer()
@@ -221,8 +238,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         # end callback procedure
         self._wavemeterdll.Instantiate(
             high_finesse_constants.cInstNotification,  # long ReasonForCall
-            high_finesse_constants.cNotifyRemoveCallback,  # long MODE
-            ctypes.cast(self._callback_function, ctypes.POINTER(ctypes.c_long)),
+            high_finesse_constants.cNotifyRemoveCallback,  # long mode
+            ctypes.cast(self._callback_function, ctypes.POINTER(ctypes.c_long)),  # long P1: function TODO unnecessary?
             0)  # long P2: callback thread priority, 0 = standard
         self._callback_function = None
         return 0
