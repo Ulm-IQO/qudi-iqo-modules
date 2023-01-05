@@ -354,6 +354,12 @@ class PulseBlock(object):
         self.insert(position=len(self.element_list), element=element)
         return
 
+    def append_subblock(self, subblock):
+        for i in range(len(subblock)):
+            self.insert(position=len(self.element_list), element=subblock[i])
+        return
+
+
     def extend(self, iterable):
         for element in iterable:
             self.append(element=element)
@@ -1100,6 +1106,18 @@ class PredefinedGeneratorBase:
     @property
     def rabi_period(self):
         return self.generation_parameters.get('rabi_period')
+
+    @property
+    def double_gate(self):
+        return self.generation_parameters.get('double_gate')
+
+    @property
+    def gate_length1(self):
+        return self.generation_parameters.get('gate_length1')
+
+    @property
+    def gate_length2(self):
+        return self.generation_parameters.get('gate_length2')
 
     @property
     def sample_rate(self):
