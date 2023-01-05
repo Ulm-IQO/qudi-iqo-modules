@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the Qudi hardware dummy for fast counting devices.
+This file contains the data classes for spectrum instrumentation fast counting devices.
 
 Qudi is free software: you can redistribute it and/or modify
 it under the terms of the GNU General Public License as published by
@@ -52,27 +52,51 @@ class Card_settings:
     ts_buf_size_B: int = 0
     ts_buf_notify_size_B: int = 2048
 
-
-
     def calc_dynamic_cs(self, ms):
+        """
+        Calculate the card settings parameter which changes according to the measurement settings.
+
+        @param ms: measurement settings class instance
+        """
         self.calc_samplerate_Hz(ms.binwidth_s)
         if ms.gated == False:
             self.calc_ungated_seg_size_S(ms.binwidth_s, ms.record_length_s)
             self.acq_loops = ms.reps
         else:
             self.acq_loops = ms.reps * ms.number_of_gates
-            if ms.parted_pulse_acquisition:
+            if ms.double_gate_acquisition:
                 self.acq_loops = 2 * self.acq_loops
 
 
     def calc_samplerate_Hz(self, binwidth_s):
+        """
+        Calculate the sampling rate from the given bin width in seconds
+
+        @param float bin_width_s: Length of a single time bin in the time trace
+                                  histogram in seconds.
+        """
         self.clk_samplerate_Hz = int(np.ceil(1 / binwidth_s))
 
     def calc_ungated_seg_size_S(self, binwidth_s, record_length_s):
+        """
+        Calculate the segment size in samples in the ungated mode.
+        The post trigger size is given accordingly.
+
+        @param float bin_width_s: Length of a single time bin in the time trace
+                                  histogram in seconds.
+        @param float record_length_s: Total length of the timetrace in seconds
+        """
+
         self.acq_seg_size_S = int(np.ceil((record_length_s / binwidth_s) / 16) * 16)  # necessary to be multuples of 16
         self.acq_post_trigs_S = int(self.acq_seg_size_S - self.acq_pre_trigs_S)
 
     def get_buf_size_B(self, seq_size_B, reps_per_buf):
+        """
+        Calculate the buffer size in bytes.
+
+        @param int seq_size_B: sequence size in bytes
+        @param int reps_per_buf: Total number of repetitions which can be stored in the given memory
+        """
         self.buf_size_B = seq_size_B * reps_per_buf
         self.ts_buf_size_B = 15000000#int(2 * 16 * reps_per_buf)
 
@@ -113,7 +137,7 @@ class Measurement_settings:
     gate_length_S: int = 0
     gate_length_rounded_S: int = 0
     gate_end_alignment_S: int = 16
-    parted_pulse_acquisition: bool = False
+    double_gate_acquisition: bool = False
 
     def return_c_buf_ptr(self):
         return self.c_buf_ptr
@@ -124,6 +148,17 @@ class Measurement_settings:
         self.number_of_gates = number_of_gates
 
     def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
+        """
+        Calculate the data sizes in samples according to the gate mode.
+        Ungated -> The sequence size is equal to the segment size to be recorded.
+        Single gate -> The segment size amounts to the rounded gate length in addition to the pre and post trigger.
+                       The sequence size amounts to the segment size multiplied by the number of gates.
+        Double gate -> Double of those in the single gate
+
+        @params int pre_trig_S: Length of the pre trigger in samples
+        @params int post_trig_S: Length of the post trigger in samples
+        @params int segment_S: Length of the segment size in samples
+        """
         if not self.gated:
             self.seg_size_S = seg_size_S
             self.seq_size_S = self.seg_size_S
@@ -134,7 +169,7 @@ class Measurement_settings:
             self.seq_size_S = self.seg_size_S * self.number_of_gates
             self.ts_seq_size_S = self.ts_seg_size_S * self.number_of_gates
             self.ts_seq_size_B = self.ts_seg_size_B * self.number_of_gates
-            if self.parted_pulse_acquisition:
+            if self.double_gate_acquisition:
                 self.seq_size_S = 2 * self.seq_size_S
                 self.ts_seq_size_S = 2 * self.ts_seq_size_S
                 self.ts_seq_size_B = 2 * self.ts_seq_size_B
@@ -146,7 +181,6 @@ class Measurement_settings:
             self.actual_length_s = self.seg_size_S * self.binwidth_s
 
     def assign_data_bit(self, acq_mode):
-
         if acq_mode == 'FIFO_AVERAGE':
             self.data_bits = 32
         else:
@@ -169,6 +203,11 @@ class Measurement_settings:
             pass
 
     def calc_buf_params(self):
+        """
+        Calculate the parameters related to the buffer size.
+        The number of repetitions which can be recorded in the buffer is calculated
+        based on the given initial buffer size and the calculated sequence size.
+        """
         self.reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
         self.seq_size_B = self.seq_size_S * self.get_data_bytes_B()
 
@@ -181,6 +220,9 @@ class Measurement_settings:
 
 @dataclass
 class CoreData:
+    """
+    Dataclass for a single data point in the ADC.
+    """
     data: np.ndarray = np.array([])
     data_len: int = 0
     data_range_mV: int = 1000
@@ -207,6 +249,10 @@ class CoreData:
 
 @dataclass
 class PulseDataSingle(CoreData):
+    """
+    Dataclass for a single pulse in the measurement.
+    """
+
     rep_no: np.ndarray = np.array([], dtype=int)
     pulse_no: np.ndarray = np.array([], dtype=int)
     pulse_len: int = 0
@@ -218,6 +264,10 @@ class PulseDataSingle(CoreData):
 
 @dataclass
 class PulseDataMulti(PulseDataSingle):
+    """
+    Dataclass for repeated data of a single pulse.
+    """
+
     rep: int = 1
 
     def stack_rep(self, d):
@@ -239,6 +289,10 @@ class PulseDataMulti(PulseDataSingle):
 
 @dataclass
 class SeqDataSingle(PulseDataSingle):
+    """
+    Dataclass for sequence data consisting of multiple pulses in one of the repetitions.
+    """
+
     total_pulse_number: int = 0
     seq_len: int = 0
 
@@ -254,6 +308,9 @@ class SeqDataSingle(PulseDataSingle):
 
 @dataclass
 class SeqDataMulti(PulseDataMulti, SeqDataSingle):
+    """
+    Dataclass for sequence data consisting of multiple pulses with multiple repetitions.
+    """
 
     def reshape_3d_multi_seq(self):
         shape_3d = (self.rep, self.total_pulse_number, self.pulse_len)
@@ -262,8 +319,13 @@ class SeqDataMulti(PulseDataMulti, SeqDataSingle):
     def avgdata(self):
         self.data = self.reshape_2d_by_rep()
         return self.data.mean(axis=0)
+
 @dataclass
 class GateData:
+    """
+    Dataclass for a single timestamp for the rising and falling edges.
+    """
+
     ts_r: np.ndarray = np.array([], dtype=np.uint64)
     ts_f: np.ndarray = np.array([], dtype=np.uint64)
 
@@ -273,40 +335,65 @@ class GateData:
 
 @dataclass
 class PulseDataSingleGated(PulseDataSingle, GateData):
+    """
+    Dataclass for a single pulse with timestamps in the measurement.
+    """
+
     def add(self, d):
         super().add(d)
         self.add_gated(d)
 
 @dataclass
-class GateDataMulti(PulseDataSingleGated):
+class PulseDataMultiGated(PulseDataSingleGated):
+    """
+    Dataclass for repeated data of a single pulse with timestamps.
+    """
+
     def stack_rep_gated(self, d):
         self.ts_r = np.hstack((self.ts_r, d.ts_r))
         self.ts_f = np.hstack((self.ts_f, d.ts_f))
 
 @dataclass
-class PulseDataMultiGated(PulseDataMulti, GateDataMulti):
+class PulseDataMultiGated(PulseDataMulti, PulseDataMultiGated):
+    """
+    Dataclass for repeated data of a single pulse with timestamps.
+    """
+
     def stack_rep(self, d):
         super().stack_rep(d)
         self.stack_rep_gated(d)
 
 @dataclass
 class SeqGateData(GateData):
+
     def stack_pulse_gated(self, d):
         self.ts_r = np.hstack((self.ts_r, d.ts_r))
         self.ts_f = np.hstack((self.ts_f, d.ts_f))
 
 @dataclass
 class SeqDataSingleGated(SeqDataSingle, SeqGateData):
+    """
+    Dataclass for sequence data consisting of multiple pulses with timestamps in one of the repetitions.
+    """
     def stack_pulse(self, d):
         super().stack_pulse(d)
         self.stack_pulse_gated(d)
 
 @dataclass
 class SeqDataMultiGated(PulseDataMultiGated, SeqDataSingleGated):
+    """
+    Dataclass for sequence data with timestamps
+    consisting of multiple pulses with multiple repetitions.
+    """
+
     pass
 
 @dataclass
 class AvgData(SeqDataSingle):
+    """
+    Dataclass for averaged sequence data consisting of multiple pulses.
+    """
+
     num: int = 0
 
     def update(self, curr_ad):
