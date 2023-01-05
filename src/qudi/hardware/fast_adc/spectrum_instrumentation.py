@@ -139,9 +139,9 @@ class Data_buffer_command(Card_command):
         self._assign_get_trig_reps(ms.gated, ms.double_gate_acquisition)
         self.init_dp_params()
 
-    def _assign_get_trig_reps(self, gated, double_gate_acquistion):
+    def _assign_get_trig_reps(self, gated, double_gate_acquisition):
         if gated:
-            if double_gate_acquistion:
+            if double_gate_acquisition:
                 self.get_trig_reps = self._get_trig_reps_part_gated
             else:
                 self.get_trig_reps = self._get_trig_reps_gated
@@ -323,7 +323,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         'EXT' (External trigger),
         'SW' (Software trigger),
         'CH0' (Channel0 trigger)
-    - acquistion_mode:
+    - acquisition_mode:
         'STD_SINGLE'
         'STD_MULTI'
         'STD_GATE'
@@ -438,6 +438,9 @@ class SpectrumInstrumentation(FastCounterInterface):
 
 
     def _load_settings_from_config_file(self):
+        """
+        Load the settings parameters of the configuration file to the card and measurement settings.
+        """
         self.cs.ai_ch = self._ai_ch
         self.cs.ai_range_mV = int(self._ai_range_mV)
         self.cs.ai_offset_mV = int(self._ai_offset_mV)
@@ -530,14 +533,17 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     def start_measure(self):
         """
-        Start the acquistion and data process loop
+        Start the acquisition and data process loop
         """
-        self._start_acquistion()
+        self._start_acquisition()
         self.pl.start_data_process()
 
         return 0
 
-    def _start_acquistion(self):
+    def _start_acquisition(self):
+        """
+        Start the data acquisition
+        """
         if self._internal_status == CardStatus.idle:
             self.pl.init_measure_params()
             if self.ms.gated:
@@ -581,6 +587,9 @@ class SpectrumInstrumentation(FastCounterInterface):
         return avg_data, info_dict
 
     def stop_measure(self):
+        """
+        Stop the measurement.
+        """
         if self._internal_status == CardStatus.running:
             self.log.info('card stopped')
             self.pl.cp.trigger_enabled = self.ccmd.disable_trigger()
@@ -641,11 +650,23 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.pl.cp.dcmd.check_dp_status()
 
 
-class Configure_acquistion_mode():
+class Configure_acquisition_mode():
     '''
-    This class configures the acquistion mode and input the required parameters accordingly.
+    This class configures the acquisition mode and input the required parameters accordingly.
     '''
-    def set_acquistion_mode(self, card, acq_mode, pre_trigs_S, post_trigs_S, seg_size_S, seq_size_S, loops, HW_avg_num):
+    def set_acquisition_mode(self, card, acq_mode, pre_trigs_S, post_trigs_S, seg_size_S, seq_size_S, loops, HW_avg_num):
+        """
+        Set the acquisition mode.
+
+        @param str card: the handle of the card
+        @param str acq_mode: acquisition mode
+        @param int pre_trig_S: length of the pre triggers in samples
+        @param int post_trig_S: length of the post triggers in samples
+        @param int seg_size_S: length of the segment size in samples
+        @param int seq_size_S: length of the sequence size in samples
+        @param int loops: number of loops
+        @param int HW_avg_num: number of hardware averaging
+        """
 
         if acq_mode == 'STD_SINGLE':
             self._mode_STD_SINGLE(card, post_trigs_S, seg_size_S)
@@ -669,7 +690,7 @@ class Configure_acquistion_mode():
             self._mode_FIFO_AVERAGE(card, post_trigs_S, seg_size_S, loops, HW_avg_num)
 
         else:
-            print('error at acquistion mode')
+            print('error at acquisition mode')
 
     @check_card_error
     def _mode_STD_SINGLE(self, card, post_trigs_S, seg_size_S):
@@ -693,9 +714,7 @@ class Configure_acquistion_mode():
         spcm_dwSetParam_i32(card, SPC_PRETRIGGER, pre_trig_S)
         spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
         self._error = spcm_dwSetParam_i32(card, SPC_MEMSIZE, int(seq_size_S * loops))
-
         return
-
 
     @check_card_error
     def _mode_FIFO_SINGLE(self, card, pre_trigs_S, seg_size_S, loops=1):
@@ -737,6 +756,12 @@ class Configure_trigger():
     This class configures the trigger modes and the input parameters accordingly.
     '''
     def set_trigger(self, card, trig_mode, trig_level_mV):
+        """
+        set the trigger settings.
+        @param str card: the handle of the card
+        @param str trig_mode: trigger mode
+        @param int trig_level_mV: the voltage level for triggering in mV
+        """
         if trig_mode == 'EXT':
             self._trigger_EXT(card, trig_level_mV)
 
@@ -768,23 +793,33 @@ class Configure_trigger():
         spcm_dwSetParam_i32(card, SPC_TRIG_CH0_LEVEL0, trig_level_mV)
         self._error = spcm_dwSetParam_i32(card, SPC_TRIG_CH0_MODE, SPC_TM_POS)
 
-
-
-
-
 class Configure_data_transfer():
     '''
     This class configures the transfer buffer dependent on the buffer type specified in the argument.
     '''
     def configure_data_transfer(self, card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B):
+        """
+        Configure the data transfer buffer
+
+        @param str card: handle of the card
+        @param str buf_type: register of data or timestamp buffer
+        @param c_buf_ptr: ctypes pointer for the buffer
+        @param int buf_size_B: length of the buffer size in bytes
+        @param int buf_notify_size_B: length of the notify size of the buffer in bytes
+
+        @return c_buf_ptr:
+        """
         c_buf_ptr = self.set_buffer(card, c_buf_ptr, buf_size_B)
         self.set_data_transfer(card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B)
         return c_buf_ptr
 
     def set_buffer(self, card, c_buf_ptr, buf_size_B):
+        """
+        Set the continuous buffer if possible. See the documentation for the details.
+        """
         cont_buf_len = self.get_cont_buf_len(card, c_buf_ptr)
         if cont_buf_len > buf_size_B:
-            print('Use continuour buffer')
+            print('Use continuous buffer')
         else:
             c_buf_ptr = pvAllocMemPageAligned(buf_size_B)
             print('User Scatter gather')
@@ -792,11 +827,23 @@ class Configure_data_transfer():
         return c_buf_ptr
 
     def get_cont_buf_len(self, card, c_buf_ptr):
+        """
+        Get length of the continuous buffer set in the card.
+        Check also the Spectrum Control Center.
+
+        @param str card: handle of the card
+        @param c_buf_ptr: ctypes pointer for the buffer
+
+        @return int: length of the available continuous buffer
+        """
         c_cont_buf_len = uint64(0)
         spcm_dwGetContBuf_i64(card, SPCM_BUF_DATA, byref(c_buf_ptr), byref(c_cont_buf_len))
         return c_cont_buf_len.value
 
     def pvAllocMemPageAligned(self, qwBytes):
+        """
+        Taken from the example
+        """
         dwAlignment = 4096
         dwMask = dwAlignment - 1
 
@@ -813,6 +860,16 @@ class Configure_data_transfer():
         return (c_char * qwBytes).from_buffer(pvNonAlignedBuf, dwOffset)
 
     def set_data_transfer(self, card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B):
+        """
+       set the data transfer buffer
+
+        @param str card: handle of the card
+        @param str buf_type: register of data or timestamp buffer
+        @param c_buf_ptr: ctypes pointer for the buffer
+        @param int buf_size_B: length of the buffer size in bytes
+        @param int buf_notify_size_B: length of the notify size of the buffer in bytes
+        """
+
         c_buf_offset = uint64(0)
         c_buf_size_B = uint64(buf_size_B)
         spcm_dwDefTransfer_i64(card, buf_type, SPCM_DIR_CARDTOPC,
@@ -839,12 +896,15 @@ class Configure_timestamp():
         spcm_dwSetParam_i32(card, SPC_TIMESTAMP_CMD, SPC_TSFEAT_NONE)
 
 
-class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_data_transfer, Configure_timestamp):
+class Configure_command(Configure_acquisition_mode, Configure_trigger, Configure_data_transfer, Configure_timestamp):
     '''
     This class inherets the configure classes above and configures all the card settings given by the cs(Card_settings).
     '''
 
     def load_static_cfg_params(self, card, cs, ms):
+        """
+        Load the static parameters for the card configuration from the card and measurement settings.
+        """
 
         self._gated = ms.gated
         self._card = card
@@ -871,6 +931,10 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
 
 
     def load_dynamic_cfg_params(self, cs, ms):
+        """
+        Load the measurement settings dependent parameters for the card configuration
+        from the card and measurement settings.
+        """
         self._acq_post_trigs_S = cs.acq_post_trigs_S
         self._acq_seg_size_S = cs.acq_seg_size_S
         self._acq_loops = cs.acq_loops
@@ -881,9 +945,12 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
 
 
     def configure_all(self):
+        """
+        Collection of all the setting methods.
+        """
 
         self.set_analog_input_conditions(self._card)
-        self.set_acquistion_mode(self._card, self._acq_mode, self._acq_pre_trigs_S, self._acq_post_trigs_S,
+        self.set_acquisition_mode(self._card, self._acq_mode, self._acq_pre_trigs_S, self._acq_post_trigs_S,
                                  self._acq_seg_size_S, self._acq_seq_size_S, self._acq_loops, self._acq_HW_avg_num)
         self.set_sampling_clock(self._card)
         self.set_trigger(self._card, self._trig_mode, self._trig_level_mV)
@@ -922,8 +989,6 @@ class Configure_command(Configure_acquistion_mode, Configure_trigger, Configure_
         spcm_dwSetParam_i32(card, SPC_50OHM1, ai_term_dict[self._ai_term]) # A "1"("0") sets the 50(1M) ohm termination
         self._error = spcm_dwSetParam_i32(card, SPC_ACDC1, ai_coupling_dict[self._ai_coupling])  # A "0"("1") sets he DC(AC)coupling
 
-
-
     @check_card_error
     def set_sampling_clock(self, card):
         spcm_dwSetParam_i32(card, SPC_CLOCKMODE, SPC_CM_INTPLL)
@@ -947,6 +1012,11 @@ class Configure_register_checker():
         self._card = card
 
     def check_cs_registers(self):
+        """
+        Use this method to fetch the card settings stored in the card registers
+        and check them all with csr.
+        """
+
         self.csr = Card_settings()
         self.error_check = True
         self._check_csr_ai()
@@ -1014,6 +1084,7 @@ class Configure_register_checker():
 class Data_transfer:
     '''
     This class can access the data stored in the buffer by specifying the buffer pointer.
+    Refer to 'Buffer handling' in the documentation.
     '''
 
     def __init__(self, c_buf_ptr, data_type, data_bytes_B, seq_size_S, reps_per_buf):
@@ -1025,20 +1096,52 @@ class Data_transfer:
         self.reps_per_buf = reps_per_buf
 
     def _cast_buf_ptr(self, user_pos_B):
+        """
+        Return the pointer of the specified data type at the user position
+
+        @params int user_pos_B: user position in bytes
+
+        @return ctypes pointer
+        """
         c_buffer = cast(addressof(self.c_buf_ptr) + user_pos_B, POINTER(self.data_type))
         return c_buffer
 
     def _asnparray(self, c_buffer, shape):
+        """
+        Create a numpy array from the ctypes pointer with selected shape.
+
+        @param ctypes pointer for the buffer
+
+        @return numpy array
+        """
+
         np_buffer = np.ctypeslib.as_array(c_buffer, shape=shape)
         return np_buffer
 
     def _fetch_from_buf(self, user_pos_B, sample_S):
+        """
+        Fetch given number of samples at the user position.
+
+        @params int user_pos_B: user position in bytes
+        @params int sample_S: number of samples to fetch
+
+        @return numpy array: 1D data
+        """
         shape = (sample_S,)
         c_buffer = self._cast_buf_ptr(user_pos_B)
         np_buffer = self._asnparray(c_buffer, shape)
         return np_buffer
 
     def get_new_data(self, user_pos_B, curr_avail_reps):
+        """
+        Get the currently available new data at the user position
+        dependent on the relative position of the user position in the buffer.
+
+        @params int user_pos_B: user position in bytes
+        @params int curr_avail_reps: the number of currently available repetitions
+
+        @return numpy array
+        """
         rep_end = int(user_pos_B / self.seq_size_B) + curr_avail_reps
 
         if 0 < rep_end <= self.reps_per_buf:
@@ -1053,10 +1156,17 @@ class Data_transfer:
         return np_data
 
     def _fetch_data(self, user_pos_B, curr_avail_reps):
+        """
+        Fetch currently available data at user position in one shot
+        """
         np_data = self._fetch_from_buf(user_pos_B, curr_avail_reps * self.seq_size_S)
         return np_data
 
     def _fetch_data_buf_end(self, user_pos_B, curr_avail_reps):
+        """
+        Fetch currently available data at user position which exceeds the end of the buffer.
+        """
+
         start_rep = int((user_pos_B / self.seq_size_B) + 1)
         reps_tail = self.reps_per_buf - (start_rep - 1)
         reps_head = curr_avail_reps - reps_tail
@@ -1070,7 +1180,7 @@ class Data_transfer:
 
 class Data_fetch_ungated():
     '''
-    This class can fetch the hardware data.
+    This class can simply fetch the hardware data.
     '''
 
     def __init__(self, cs, ms):
@@ -1081,6 +1191,9 @@ class Data_fetch_ungated():
         self.create_data_trsnsfer()
 
     def input_params(self, cs, ms):
+        """
+        Input the parameters used in this class from the card and measurement settings.
+        """
         self.c_buf_ptr = ms.c_buf_ptr
         self.data_type = ms.get_data_type()
         self.data_bytes_B = ms.get_data_bytes_B()
@@ -1088,11 +1201,13 @@ class Data_fetch_ungated():
         self.seq_size_B = self.seq_size_S * self.data_bytes_B
 
     def create_data_trsnsfer(self):
+        """
+        Create the data transfer class for the hardware data.
+        """
         self.hw_dt = Data_transfer(self.c_buf_ptr, self.data_type,
                                    self.data_bytes_B, self.seq_size_S, self.ms.reps_per_buf)
 
     def fetch_data(self, user_pos_B, curr_avail_reps):
-        #user_pos_B = self.dpcmd.get_avail_user_pos_B()
         data = self.hw_dt.get_new_data(user_pos_B, curr_avail_reps)
         rep = curr_avail_reps
         return data, rep
@@ -1119,6 +1234,10 @@ class Data_fetch_gated(Data_fetch_ungated):
         return ts_r, ts_f
 
     def _get_ts_rf(self, ts_row):
+        """
+        Get the timestamps for the rising and falling edges.
+        Refer to 'Timestamps' in the documentation for the timestamp data format.
+        """
         ts_used = ts_row[::2] #odd data is always filled with zero
         ts_r = ts_used[::2]
         ts_f = ts_used[1::2]
@@ -1152,7 +1271,6 @@ class Data_process_ungated():
         self.dc.total_pulse_number = self.ms.number_of_gates
         self.dc.pule_len = self.ms.seg_size_S
         self.dc.data_range_mV = self.cs.ai_range_mV
-
 
         self.df = Data_fetch_ungated(self.cs, self.ms)
 
