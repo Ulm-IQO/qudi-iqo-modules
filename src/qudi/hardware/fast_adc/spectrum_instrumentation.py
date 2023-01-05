@@ -1405,6 +1405,9 @@ class Process_commander:
             self._ts_seq_size_B = ms.ts_seq_size_B
 
     def _choose_data_process(self):
+        """
+        Choose methods for the data process dependent on the gate mode and row data save mode.
+        """
         if self._gated:
             self._get_curr_avail_reps = self._get_curr_avail_reps_gated
 
@@ -1426,6 +1429,9 @@ class Process_commander:
         self._process_initial_data(usr_pos_B, curr_avail_reps)
 
     def _process_initial_data(self, user_pos_B, curr_avail_reps):
+        """
+        Process for the initial data without averaging
+        """
         self.dp.create_dc_new()
         self.dp.fetch_data_to_dc(user_pos_B, curr_avail_reps)
         self.dp.get_initial_avg_data()
@@ -1434,6 +1440,10 @@ class Process_commander:
             self._fetch_ts(curr_avail_reps)
 
     def command_process(self):
+        """
+        Command the main process dependent on the repetitions of unprocessed data.
+        """
+
         trig_reps = self.cp.dcmd.get_trig_reps()
         unprocessed_reps = trig_reps - self.dp.avg.num
         if trig_reps == 0 or unprocessed_reps == 0:
@@ -1476,7 +1486,6 @@ class Process_commander:
         self._fetch_ts(curr_avail_reps)
         self.dp.stack_new_ts_data()
 
-
     def _get_curr_avail_reps_ungated(self):
         return self.cp.dcmd.get_avail_user_reps()
 
@@ -1485,8 +1494,11 @@ class Process_commander:
         curr_ts_avail_reps = self.cp.tscmd.get_ts_avail_user_reps(self.dp.ms.ts_seq_size_B)
         return min(curr_data_avail_reps, curr_ts_avail_reps)
 
-
     def _average_data(self, curr_avail_reps):
+        """
+        Get the new average data and update the main average data.
+        After processing the data, they should be set free.
+        """
         self.dp.get_new_avg_data()
         self.dp.update_avg_data()
         self.cp.dcmd.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
@@ -1540,6 +1552,9 @@ class Process_loop(Process_commander):
         self.loop_on = False
 
     def start_data_process(self):
+        """
+        Start the data process with creating a new thread for it.
+        """
         self.loop_on = True
         self.data_proc_th = threading.Thread(target=self.start_data_process_loop)
         self.data_proc_th.start()
@@ -1547,12 +1562,15 @@ class Process_loop(Process_commander):
         return
 
     def start_data_process_n(self, n):
+        """
+        Start the data process for finite repetitions with creating a new thread for it.
+        """
+
         self.loop_on = True
         self.data_proc_th = threading.Thread(target=self.start_data_process_loop_n, args=(n,))
         self.data_proc_th.start()
 
         return
-
 
     def stop_data_process(self):
 
