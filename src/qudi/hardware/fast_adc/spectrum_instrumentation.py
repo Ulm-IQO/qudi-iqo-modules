@@ -135,13 +135,13 @@ class Data_buffer_command(Card_command):
         self._card = card
         self._seq_size_B = ms.seq_size_B
         self._no_of_gates = ms.number_of_gates
-        self._parted_pulse_acquisition = ms.parted_pulse_acquisition
-        self._assign_get_trig_reps(ms.gated, ms.parted_pulse_acquisition)
+        self._double_gate_acquisition = ms.double_gate_acquisition
+        self._assign_get_trig_reps(ms.gated, ms.double_gate_acquisition)
         self.init_dp_params()
 
-    def _assign_get_trig_reps(self, gated, parted_pulse_acquistion):
+    def _assign_get_trig_reps(self, gated, double_gate_acquistion):
         if gated:
-            if parted_pulse_acquistion:
+            if double_gate_acquistion:
                 self.get_trig_reps = self._get_trig_reps_part_gated
             else:
                 self.get_trig_reps = self._get_trig_reps_gated
@@ -393,7 +393,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     _init_buf_size_S = ConfigOption('initial_buffer_size_S', 1e9, missing='warn')
     _reps = ConfigOption('repetitions', 0, missing='nothing')
-    _parted_pulse_acquisition = ConfigOption('parted_pulse_acquisition', False, missing='nothing')
+    _double_gate_acquisition = ConfigOption('double_gate_acquisition', False, missing='nothing')
 
     _check_buffer = False
     _row_data_save = ConfigOption('row_data_save', True, missing='nothing')
@@ -454,7 +454,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         self.ms.init_buf_size_S = int(self._init_buf_size_S)
         self.ms.reps = self._reps
-        self.ms.parted_pulse_acquisition = self._parted_pulse_acquisition
+        self.ms.double_gate_acquisition = self._double_gate_acquisition
         self.ms.assign_data_bit(self.cs.acq_mode)
 
 
@@ -1401,7 +1401,7 @@ class Process_commander:
     def check_ts_status(self):
         ts_avail_user_pos_B = self.cp.tscmd.get_ts_avail_user_pos_B()
         ts_avail_user_len_B = self.cp.tscmd.get_ts_avail_user_len_B()
-        if self.dp.ms.parted_pulse_acquisition:
+        if self.dp.ms.double_gate_acquisition:
             ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.number_of_gates / 2)
         else:
             ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.number_of_gates)
