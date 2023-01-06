@@ -776,6 +776,8 @@ class Configure_trigger():
 
     @check_card_error
     def _trigger_EXT(self, card, trig_level_mV):
+        spcm_dwSetParam_i32(card, SPC_TRIG_TERM, 0)
+        spcm_dwSetParam_i32(card, SPC_TRIG_EXT0_ACDC, 0)
         spcm_dwSetParam_i32(card, SPC_TRIG_EXT0_MODE, SPC_TM_POS)
         spcm_dwSetParam_i32(card, SPC_TRIG_EXT0_LEVEL0, trig_level_mV)
         spcm_dwSetParam_i32(card, SPC_TRIG_ORMASK, SPC_TMASK_EXT0)
