@@ -102,10 +102,10 @@ class SequenceGeneratorLogic(LogicBase):
                  'laser_length': 3e-6,
                  'laser_delay': 500e-9,
                  'wait_time': 1e-6,
-                 'analog_trigger_voltage': 0.0,
-                 'double_gate': False,
+                 'double_gate': True,
                  'gate_length1': 1e-6,
-                 'gate_length2': 1e-6
+                 'gate_length2': 1e-6,
+                 'analog_trigger_voltage': 0.0
                  }
     )
 
