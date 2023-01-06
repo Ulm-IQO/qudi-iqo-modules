@@ -49,6 +49,9 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         super().__init__(*args, **kwargs)
 
     def generate_readout_subblock(self):
+        """
+        Readout subblock is a collection of laser element, delay element and waiting element.
+        """
         if not self.double_gate:
             readout_subblock = self._generate_normal_readout_subblock()
         else:
@@ -57,7 +60,11 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return readout_subblock
 
     def _generate_normal_readout_subblock(self):
-        self.log.debug('normal readout')
+        """
+        Normal readout consists of laser element, delay element and waiting element
+        for triggered and gated acquisition.
+        For gated acquisition, delay element is used to extend the gate length.
+        """
         laser_element = self._get_laser_gate_element(length=self.laser_length,
                                                      increment=0)
         delay_element = self._get_delay_gate_element()
@@ -71,8 +78,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return readout_subblock
 
     def _generate_partial_gate_readout_subblock(self):
-        self.log.debug('partial gate readout')
-
+        # TODO not selectable
         laser_gate_element = self._get_laser_gate_element(length=self.gate_length1, increment=0)
         laser_element = self._get_laser_element(length=self.laser_length - self.gate_length1, increment=0)
         waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
@@ -85,7 +91,9 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return readout_subblock
 
     def _generate_double_gate_readout_subblock(self):
-        self.log.debug('double gate readout')
+        """
+        Double gate readout gives two gates at the beggining and end of the pulse, respectively.
+        """
         len1_laser_gate1 = self.gate_length1
         len2_laser_ungated = self.laser_length - self.gate_length1 - self.gate_length2
         len3_laser_gate2 = self.gate_length2 - self.laser_delay
