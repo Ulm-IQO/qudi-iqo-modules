@@ -51,43 +51,60 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_readout_subblock(self):
         if not self.double_gate:
             readout_subblock = self._generate_normal_readout_subblock()
-
         else:
-            readout_subblock = self._generate_double_gated_readout_subblock()
+            readout_subblock = self._generate_double_gate_readout_subblock()
 
         return readout_subblock
 
     def _generate_normal_readout_subblock(self):
+        self.log.debug('normal readout')
         laser_element = self._get_laser_gate_element(length=self.laser_length,
                                                      increment=0)
         delay_element = self._get_delay_gate_element()
         waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
 
-        readout_subblock = PulseBlock(name=readout)
+        readout_subblock = PulseBlock(name='readout')
         readout_subblock.append(laser_element)
         readout_subblock.append(delay_element)
         readout_subblock.append(waiting_element)
 
         return readout_subblock
 
-    def _generate_double_gated_readout_subblock(self):
-        ungated_laser_length = self.laser_length - self.gate_length1 - self.gate_length2
-        undelayed_laser_length = self.gate_length2 - self.laser_delay
+    def _generate_partial_gate_readout_subblock(self):
+        self.log.debug('partial gate readout')
 
-        laser_gate_element1 = self._get_laser_gate_element(length=gate_length1, increment=0)
-        laser_element = self._get_laser_element(length=ungated_laser_length, increment=0)
-        laser_gate_element2 = self._get_laser_gate_element(length=undelayed_laser_length, increment=0)
+        laser_gate_element = self._get_laser_gate_element(length=self.gate_length1, increment=0)
+        laser_element = self._get_laser_element(length=self.laser_length - self.gate_length1, increment=0)
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+
+        readout_subblock = PulseBlock(name='readout')
+        readout_subblock.append(laser_gate_element)
+        readout_subblock.append(laser_element)
+        readout_subblock.append(waiting_element)
+
+        return readout_subblock
+
+    def _generate_double_gate_readout_subblock(self):
+        self.log.debug('double gate readout')
+        len1_laser_gate1 = self.gate_length1
+        len2_laser_ungated = self.laser_length - self.gate_length1 - self.gate_length2
+        len3_laser_gate2 = self.gate_length2 - self.laser_delay
+        len4_delay_gate2 = self.laser_delay
+
+        laser_gate_element1 = self._get_laser_gate_element(length=len1_laser_gate1, increment=0)
+        laser_element = self._get_laser_element(length=len2_laser_ungated, increment=0)
+        laser_gate_element2 = self._get_laser_gate_element(length=len3_laser_gate2, increment=0)
         delay_element = self._get_delay_gate_element()
         waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
 
-        readout_subblock = PulseBlock(name=readout)
+        readout_subblock = PulseBlock(name='readout')
         readout_subblock.append(laser_gate_element1)
         readout_subblock.append(laser_element)
         readout_subblock.append(laser_gate_element2)
         readout_subblock.append(delay_element)
         readout_subblock.append(waiting_element)
 
-        return laser_delay_subblock
+        return readout_subblock
 
         ################################################################################################
     #                             Generation methods for waveforms                                 #
