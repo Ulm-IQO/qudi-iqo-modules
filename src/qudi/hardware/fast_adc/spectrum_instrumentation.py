@@ -134,17 +134,13 @@ class Data_buffer_command(Card_command):
     def __init__(self, card, ms):
         self._card = card
         self._seq_size_B = ms.seq_size_B
-        self._no_of_gates = ms.number_of_gates
-        self._double_gate_acquisition = ms.double_gate_acquisition
-        self._assign_get_trig_reps(ms.gated, ms.double_gate_acquisition)
+        self._total_gate = ms.total_gate
+        self._assign_get_trig_reps(ms.gated)
         self.init_dp_params()
 
-    def _assign_get_trig_reps(self, gated, double_gate_acquisition):
+    def _assign_get_trig_reps(self, gated):
         if gated:
-            if double_gate_acquisition:
-                self.get_trig_reps = self._get_trig_reps_part_gated
-            else:
-                self.get_trig_reps = self._get_trig_reps_gated
+            self.get_trig_reps = self._get_trig_reps_gated
         else:
             self.get_trig_reps = self._get_trig_reps_ungated
 
@@ -229,10 +225,7 @@ class Data_buffer_command(Card_command):
         return int(self.get_trig_counter())
 
     def _get_trig_reps_gated(self):
-        return int(self.get_trig_counter() / self._no_of_gates)
-
-    def _get_trig_reps_part_gated(self):
-        return int(self.get_trig_counter() / self._no_of_gates / 2)
+        return int(self.get_trig_counter() / self._total_gate)
 
     @check_card_error
     def get_bits_per_sample(self):
@@ -471,9 +464,8 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         constraints = dict()
 
-        constraints['possible_timebase_list'] = np.array([1, 2, 4, 5, 6, 7, 8, 9, 10, 20, 50, 100, 200, 500, 1e3, 2e3, 5e3, 1e4])
+        constraints['possible_timebase_list'] = np.array([2**i for i in range(18)])
         constraints['hardware_binwidth_list'] = (constraints['possible_timebase_list']) / 250e6 #maximum sampling rate 250 MHz
-#        constraints['hardware_binwidth_list'] = 1
 
         return constraints
 
@@ -497,8 +489,8 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.cfg.load_static_cfg_params(self.card, self.cs, self.ms)
 
         self.ms.load_dynamic_params(binwidth_s, record_length_s, number_of_gates)
+        self.ms.calc_data_size_S(self.cs.acq_pre_trigs_S, self.cs.acq_post_trigs_S)
         self.cs.calc_dynamic_cs(self.ms)
-        self.ms.calc_data_size_S(self.cs.acq_pre_trigs_S, self.cs.acq_post_trigs_S, self.cs.acq_seg_size_S)
         self.ms.calc_buf_params()
         self.ms.calc_actual_length_s()
         self.cs.get_buf_size_B(self.ms.seq_size_B, self.ms.reps_per_buf)
@@ -514,9 +506,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.pl.init_process(self.card, self.cs, self.ms)
         self.pl.cp.dcmd.error_check = self._dcmd_error_check
 
-        return self.ms.binwidth_s, self.ms.record_length_s, self.ms.number_of_gates
-
-#        return self.ms.binwidth_s, self.ms.actual_length_s, self.ms.number_of_gates
+        return self.ms.binwidth_s, self.ms.record_length_s, self.ms.total_pulse
 
     def get_status(self):
         """
@@ -651,37 +641,28 @@ class SpectrumInstrumentation(FastCounterInterface):
 
 
 class Configure_acquisition_mode():
-    '''
-    This class configures the acquisition mode and input the required parameters accordingly.
-    '''
-    def set_acquisition_mode(self, card, acq_mode, pre_trigs_S, post_trigs_S, seg_size_S, seq_size_S, loops, HW_avg_num):
-        """
-        Set the acquisition mode.
 
-        @param str card: the handle of the card
-        @param str acq_mode: acquisition mode
-        @param int pre_trig_S: length of the pre triggers in samples
-        @param int post_trig_S: length of the post triggers in samples
-        @param int seg_size_S: length of the segment size in samples
-        @param int seq_size_S: length of the sequence size in samples
-        @param int loops: number of loops
-        @param int HW_avg_num: number of hardware averaging
-        """
-
+    def set_STD_trigger_mode(self, card, acq_mode, post_trig_S, seg_size_S, mem_size_S):
         if acq_mode == 'STD_SINGLE':
-            self._mode_STD_SINGLE(card, post_trigs_S, seg_size_S)
+            mem_size_S = post_trig_S
+            self._mode_STD_SINGLE(card, post_trigs_S, mem_size_S)
 
         elif acq_mode == 'STD_MULTI':
-            self._mode_STD_MULTI(card, post_trigs_S, seg_size_S, loops)
+            self._mode_STD_MULTI(card, post_trigs_S, seg_size_S, mem_size_S)
 
-        elif acq_mode == 'FIFO_SINGLE':
+        else:
+            raise ValueError('The used acquistion mode is not defined')
+
+    def set_STD_gate_mode(self, card, acq_mode, pre_trigs_S, post_trigs_S, mem_size_S):
+        if acq_mode == 'STD_GATE':
+            self._mode_STD_GATE(card, pre_trigs_S, post_trigs_S, mem_size_S)
+
+        else:
+            raise ValueError('The used acquistion mode is not defined')
+
+    def set_FIFO_trigger_mode(self, card, acq_mode, pre_trigs_S, post_trigs_S, seg_size_S, loops, HW_avg_num=0):
+        if acq_mode == 'FIFO_SINGLE':
             self._mode_FIFO_SINGLE(card, pre_trigs_S, seg_size_S, loops)
-
-        elif acq_mode == 'STD_GATE':
-            self._mode_STD_GATE(card, pre_trigs_S, post_trigs_S, seq_size_S, loops)
-
-        elif acq_mode == 'FIFO_GATE':
-            self._mode_FIFO_GATE(card, pre_trigs_S, post_trigs_S, loops)
 
         elif acq_mode == 'FIFO_MULTI':
             self._mode_FIFO_MULTI(card, post_trigs_S, seg_size_S, loops)
@@ -690,34 +671,74 @@ class Configure_acquisition_mode():
             self._mode_FIFO_AVERAGE(card, post_trigs_S, seg_size_S, loops, HW_avg_num)
 
         else:
-            print('error at acquisition mode')
+            raise ValueError('The used acquistion mode is not defined')
+
+    def set_FIFO_gate_mode(self, card, acq_mode, pre_trigs_S, post_trigs_S, loops):
+
+        if acq_mode == 'FIFO_GATE':
+            self._mode_FIFO_GATE(card, pre_trigs_S, post_trigs_S, loops)
+
+        else:
+            raise ValueError('The used acquistion mode is not defined')
 
     @check_card_error
-    def _mode_STD_SINGLE(self, card, post_trigs_S, seg_size_S):
+    def _mode_STD_SINGLE(self, card, post_trigs_S, memsize_S):
+        """
+        In this mode, pre trigger = memsize - post trigger.
+        @params str card: handle of the card
+        @params int post_trig_S: the number of samples to be recorded after the trigger event has been detected.
+        @params int memsize_S: the total number of samples to be recorded
+        """
         spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_STD_SINGLE)
-        spcm_dwSetParam_i32(card, SPC_MEMSIZE, seg_size_S)
+        spcm_dwSetParam_i32(card, SPC_MEMSIZE, memsize_S)
         self._error = spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
         return
 
     @check_card_error
-    def _mode_STD_MULTI(self, card, post_trigs_S, seg_size_S, loops):
+    def _mode_STD_MULTI(self, card, post_trigs_S, seg_size_S, mem_size_S):
+        """
+        SEGMENTSIZE is the numbe of samples recorded after detection of one trigger
+        including the pre trigger.
+        MEMSIZE defines the total number of samples to be recorded per channel.
+
+        @params str card: handle ofthe card
+        @params int post_trig_S:
+        @params int seg_size_S:
+        @params int reps: The number of repetitions.
+        """
         spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_STD_MULTI)
         spcm_dwSetParam_i32(card, SPC_SEGMENTSIZE, seg_size_S)
-        spcm_dwSetParam_i32(card, SPC_MEMSIZE, int(seg_size_S * loops))
+        spcm_dwSetParam_i32(card, SPC_MEMSIZE, mem_size_S)
         self._error = spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
 
         return
 
     @check_card_error
-    def _mode_STD_GATE(self, card, pre_trig_S, post_trigs_S, seq_size_S, loops):
+    def _mode_STD_GATE(self, card, pre_trigs_S, post_trigs_S, mem_size_S):
+        """
+        @params int pre_trigs_S: the number of samples to be recorded prior to the gate start
+        @params int post_trigs_S: the number of samples to be recorded after the gate end
+        @params int mem_size_S: the total number of samples to be recorded
+        """
         spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_STD_GATE)
-        spcm_dwSetParam_i32(card, SPC_PRETRIGGER, pre_trig_S)
+        spcm_dwSetParam_i32(card, SPC_PRETRIGGER, pre_trigs_S)
         spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
-        self._error = spcm_dwSetParam_i32(card, SPC_MEMSIZE, int(seq_size_S * loops))
+        self._error = spcm_dwSetParam_i32(card, SPC_MEMSIZE, mem_size_S)
         return
 
     @check_card_error
     def _mode_FIFO_SINGLE(self, card, pre_trigs_S, seg_size_S, loops=1):
+        """
+        SEGMENTSIZE is the numbe of samples recorded after detection of one trigger
+        including the pre trigger.
+
+        @params str card: handle ofthe card
+        @params int pre_trigs_S: the number of samples to be recorded prior to the gate start
+        @params int seg_size_S: the numbe of samples recorded after detection of one trigger
+                                including the pre trigger.
+        @params int loops: the total number of loops
+        """
+
         spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_FIFO_SINGLE)
         spcm_dwSetParam_i32(card, SPC_PRETRIGGER, pre_trigs_S)
         spcm_dwSetParam_i32(card, SPC_SEGMENTSIZE, seg_size_S)
@@ -725,18 +746,20 @@ class Configure_acquisition_mode():
         return
 
     @check_card_error
-    def _mode_FIFO_GATE(self, card, pre_trigs_S, post_trigs_S, loops=0):
-        spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_FIFO_GATE)
-        spcm_dwSetParam_i32(card, SPC_PRETRIGGER, pre_trigs_S)
-        spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
-        self._error = spcm_dwSetParam_i32(card, SPC_LOOPS, loops)
-        return
-
-    @check_card_error
     def _mode_FIFO_MULTI(self, card, post_trigs_S, seg_size_S, loops=0):
+        """
+        SEGMENTSIZE is the numbe of samples recorded after detection of one trigger
+        including the pre trigger.
+
+        @params str card: handle ofthe card
+        @params int pre_trigs_S: the number of samples to be recorded after the gate start
+        @params int seg_size_S: the numbe of samples recorded after detection of one trigger
+                                including the pre trigger.
+        @params int loops: the total number of loops
+        """
         spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_FIFO_MULTI)
-        spcm_dwSetParam_i32(card, SPC_SEGMENTSIZE, seg_size_S)
         spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
+        spcm_dwSetParam_i32(card, SPC_SEGMENTSIZE, seg_size_S)
         self._error = spcm_dwSetParam_i32(card, SPC_LOOPS, loops)
         return
 
@@ -746,10 +769,24 @@ class Configure_acquisition_mode():
 
         spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_FIFO_AVERAGE)
         spcm_dwSetParam_i32(card, SPC_AVERAGES, HW_avg_num)
+        spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
         spcm_dwSetParam_i32(card, SPC_SEGMENTSIZE, seg_size_S)
+        self._error = spcm_dwSetParam_i32(card, SPC_LOOPS, loops)
+        return
+
+    @check_card_error
+    def _mode_FIFO_GATE(self, card, pre_trigs_S, post_trigs_S, loops):
+        """
+        @params int pre_trigs_S: the number of samples to be recorded prior to the gate start
+        @params int post_trigs_S: the number of samples to be recorded after the gate end
+        @params int loops: the total number of loops
+        """
+        spcm_dwSetParam_i32(card, SPC_CARDMODE, SPC_REC_FIFO_GATE)
+        spcm_dwSetParam_i32(card, SPC_PRETRIGGER, pre_trigs_S)
         spcm_dwSetParam_i32(card, SPC_POSTTRIGGER, post_trigs_S)
         self._error = spcm_dwSetParam_i32(card, SPC_LOOPS, loops)
         return
+
 
 class Configure_trigger():
     ''''
@@ -921,7 +958,6 @@ class Configure_command(Configure_acquisition_mode, Configure_trigger, Configure
         self._acq_HW_avg_num = cs.acq_HW_avg_num
         self._acq_pre_trigs_S = cs.acq_pre_trigs_S
         self._buf_notify_size_B = cs.buf_notify_size_B
-        self._clk_samplerate_Hz = int(cs.clk_samplerate_Hz)
         self._clk_ref_Hz = int(cs.clk_ref_Hz)
         self._trig_mode = cs.trig_mode
         self._trig_level_mV = cs.trig_level_mV
@@ -937,11 +973,13 @@ class Configure_command(Configure_acquisition_mode, Configure_trigger, Configure
         Load the measurement settings dependent parameters for the card configuration
         from the card and measurement settings.
         """
+        self._clk_samplerate_Hz = int(cs.clk_samplerate_Hz)
         self._acq_post_trigs_S = cs.acq_post_trigs_S
         self._acq_seg_size_S = cs.acq_seg_size_S
         self._acq_loops = cs.acq_loops
         self._buf_size_B = cs.buf_size_B
         self._acq_seq_size_S = ms.seq_size_S
+        self._acq_mem_size_S = cs.acq_mem_size_S
         if self._gated == True:
             self._ts_buf_size_B = cs.ts_buf_size_B
 
@@ -952,8 +990,7 @@ class Configure_command(Configure_acquisition_mode, Configure_trigger, Configure
         """
 
         self.set_analog_input_conditions(self._card)
-        self.set_acquisition_mode(self._card, self._acq_mode, self._acq_pre_trigs_S, self._acq_post_trigs_S,
-                                 self._acq_seg_size_S, self._acq_seq_size_S, self._acq_loops, self._acq_HW_avg_num)
+        self.set_acquisition_mode(self._card)
         self.set_sampling_clock(self._card)
         self.set_trigger(self._card, self._trig_mode, self._trig_level_mV)
         self._c_buf_ptr = self.configure_data_transfer(self._card, SPCM_BUF_DATA, self._c_buf_ptr,
@@ -990,6 +1027,30 @@ class Configure_command(Configure_acquisition_mode, Configure_trigger, Configure
         spcm_dwSetParam_i32(card, SPC_OFFS1, self._ai_offset_mV)
         spcm_dwSetParam_i32(card, SPC_50OHM1, ai_term_dict[self._ai_term]) # A "1"("0") sets the 50(1M) ohm termination
         self._error = spcm_dwSetParam_i32(card, SPC_ACDC1, ai_coupling_dict[self._ai_coupling])  # A "0"("1") sets he DC(AC)coupling
+
+    def set_acquisition_mode(self, card):
+        if 'STD' in self._acq_mode:
+            if 'GATE' in self._acq_mode:
+                self.set_STD_gate_mode(card, self._acq_mode,
+                                       self._acq_pre_trigs_S,self._acq_post_trigs_S,
+                                       self._acq_mem_size_S)
+            else:
+                self.set_STD_trigger_mode(card, self._acq_mode,
+                                          self._acq_post_trigs_S, self._acq_seg_size_S,
+                                          self._acq_mem_size_S)
+
+        elif 'FIFO' in self._acq_mode:
+            if 'GATE' in self._acq_mode:
+                self.set_FIFO_gate_mode(card, self._acq_mode,
+                                        self._acq_pre_trigs_S, self._acq_post_trigs_S,
+                                        self._acq_loops)
+            else:
+                self.set_FIFO_trigger_mode(card, self._acq_mode,
+                                           self._acq_pre_trigs_S, self._acq_post_trigs_S, self._acq_seg_size_S,
+                                           self._acq_loops, self._acq_HW_avg_num)
+
+        else:
+            raise ValueError('The acquisition mode is not proper')
 
     @check_card_error
     def set_sampling_clock(self, card):
@@ -1260,7 +1321,7 @@ class Data_process_ungated():
         self.df.init_data_fetch()
         self.avg = AvgData()
         self.avg.num = 0
-        self.avg.total_pulse_number = ms.number_of_gates
+        self.avg.total_pulse_number = ms.total_pulse
         self.avg.data = np.empty((0,ms.seq_size_S))
 
     def _input_settings_to_dp(self, cs, ms):
@@ -1270,7 +1331,7 @@ class Data_process_ungated():
     def _generate_data_cls(self):
         self.dc = SeqDataMulti()
         self.dc.data = np.empty((0,self.ms.seq_size_S), int)
-        self.dc.total_pulse_number = self.ms.number_of_gates
+        self.dc.total_pulse_number = self.ms.total_pulse
         self.dc.pule_len = self.ms.seg_size_S
         self.dc.data_range_mV = self.cs.ai_range_mV
 
@@ -1278,7 +1339,7 @@ class Data_process_ungated():
 
     def create_dc_new(self):
         self.dc_new = SeqDataMulti()
-        self.dc_new.total_pulse_number = self.ms.number_of_gates
+        self.dc_new.total_pulse_number = self.ms.total_pulse
         self.dc_new.pule_len = self.ms.seg_size_S
         self.dc_new.data_range_mV = self.cs.ai_range_mV
 
@@ -1320,7 +1381,7 @@ class Data_process_gated(Data_process_ungated):
 
     def create_dc_new(self):
         self.dc_new = SeqDataMultiGated()
-        self.dc_new.total_pulse_number = self.ms.number_of_gates
+        self.dc_new.total_pulse_number = self.ms.total_pulse
         self.dc_new.pule_len = self.ms.seg_size_S
         self.dc_new.data_range_mV = self.cs.ai_range_mV
 
@@ -1533,10 +1594,7 @@ class Process_commander:
     def check_ts_status(self):
         ts_avail_user_pos_B = self.cp.tscmd.get_ts_avail_user_pos_B()
         ts_avail_user_len_B = self.cp.tscmd.get_ts_avail_user_len_B()
-        if self.dp.ms.double_gate_acquisition:
-            ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.number_of_gates / 2)
-        else:
-            ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.number_of_gates)
+        ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.total_pulse)
 
         print('ts Pos:{}B Avail:{}B {}reps '.format(ts_avail_user_pos_B,
                                                     ts_avail_user_len_B,
