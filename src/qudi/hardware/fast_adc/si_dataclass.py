@@ -40,8 +40,8 @@ class Card_settings:
     acq_HW_avg_num: int = 1
     acq_pre_trigs_S: int = 16
     acq_post_trigs_S: int = 0 #Dynamic
-    acq_mem_size_S: int = 0 #Dynamic
     acq_seg_size_S:int = 0 #Dynamic
+    acq_mem_size_S: int = 0 #Dynamic
     acq_loops: int = 0
     buf_size_B: int = 0 #Dynamic
     buf_notify_size_B: int = 4096
@@ -58,37 +58,20 @@ class Card_settings:
 
         @param ms: measurement settings class instance
         """
-        self.calc_samplerate_Hz(ms.binwidth_s)
-        if ms.gated == False:
-            self.calc_ungated_seg_size_S(ms.binwidth_s, ms.record_length_s)
-            self.acq_loops = ms.reps
-        else:
-            self.acq_loops = ms.reps * ms.number_of_gates
-            if ms.double_gate_acquisition:
-                self.acq_loops = 2 * self.acq_loops
+        self.clk_samplerate_Hz = int(np.ceil(1 / ms.binwidth_s))
+        self._calc_acq_params(ms.seg_size_S, ms.seq_size_S, ms.reps, ms.total_gate)
 
+    def _calc_acq_params(self, seg_size_S, seq_size_S, reps, total_gate):
+        if 'STD' in self.acq_mode:
+            self.acq_mem_size_S = seq_size_S * reps
+            if not 'GATE' in self.acq_mode:
+                self.acq_post_trigs_S = seg_size_S - self.acq_pre_trigs_S
 
-    def calc_samplerate_Hz(self, binwidth_s):
-        """
-        Calculate the sampling rate from the given bin width in seconds
-
-        @param float bin_width_s: Length of a single time bin in the time trace
-                                  histogram in seconds.
-        """
-        self.clk_samplerate_Hz = int(np.ceil(1 / binwidth_s))
-
-    def calc_ungated_seg_size_S(self, binwidth_s, record_length_s):
-        """
-        Calculate the segment size in samples in the ungated mode.
-        The post trigger size is given accordingly.
-
-        @param float bin_width_s: Length of a single time bin in the time trace
-                                  histogram in seconds.
-        @param float record_length_s: Total length of the timetrace in seconds
-        """
-
-        self.acq_seg_size_S = int(np.ceil((record_length_s / binwidth_s) / 16) * 16)  # necessary to be multuples of 16
-        self.acq_post_trigs_S = int(self.acq_seg_size_S - self.acq_pre_trigs_S)
+        elif 'FIFO' in self.acq_mode:
+            if 'GATE' in self.acq_mode:
+                self.acq_loops = reps * total_gate
+            else:
+                self.acq_loops = reps
 
     def get_buf_size_B(self, seq_size_B, reps_per_buf):
         """
@@ -118,7 +101,8 @@ class Measurement_settings:
     #Given by the measurement
     binwidth_s: float = 0
     record_length_s: float = 0
-    number_of_gates: int = 1
+    total_gate: int = 1
+    total_pulse: int = 1
     #Calculated
     seg_size_S: int = 0
     seq_size_S: int = 0
@@ -145,34 +129,42 @@ class Measurement_settings:
     def load_dynamic_params(self, binwidth_s, record_length_s, number_of_gates):
         self.binwidth_s = binwidth_s
         self.record_length_s = record_length_s
-        self.number_of_gates = number_of_gates
-
-    def calc_data_size_S(self, pre_trigs_S, post_trigs_S, seg_size_S):
-        """
-        Calculate the data sizes in samples according to the gate mode.
-        Ungated -> The sequence size is equal to the segment size to be recorded.
-        Single gate -> The segment size amounts to the rounded gate length in addition to the pre and post trigger.
-                       The sequence size amounts to the segment size multiplied by the number of gates.
-        Double gate -> Double of those in the single gate
-
-        @params int pre_trig_S: Length of the pre trigger in samples
-        @params int post_trig_S: Length of the post trigger in samples
-        @params int segment_S: Length of the segment size in samples
-        """
-        if not self.gated:
-            self.seg_size_S = seg_size_S
-            self.seq_size_S = self.seg_size_S
+        self.total_pulse = number_of_gates
+        if self.double_gate_acquisition:
+            self.total_gate = 2 * self.total_pulse
         else:
-            self.gate_length_S = int(np.ceil(self.record_length_s / self.binwidth_s))
-            self.gate_length_rounded_S = int(np.ceil(self.gate_length_S / 16) * 16)
-            self.seg_size_S = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
-            self.seq_size_S = self.seg_size_S * self.number_of_gates
-            self.ts_seq_size_S = self.ts_seg_size_S * self.number_of_gates
-            self.ts_seq_size_B = self.ts_seg_size_B * self.number_of_gates
-            if self.double_gate_acquisition:
-                self.seq_size_S = 2 * self.seq_size_S
-                self.ts_seq_size_S = 2 * self.ts_seq_size_S
-                self.ts_seq_size_B = 2 * self.ts_seq_size_B
+            self.total_gate = self.total_pulse
+
+    def calc_data_size_S(self, pre_trigs_S, post_trigs_S):
+        if not self.gated:
+            self._calc_triggered_data_size_S()
+        else:
+            self._calc_gated_data_size_S(pre_trigs_S, post_trigs_S)
+
+    def _calc_triggered_data_size_S(self):
+        """
+        defines the data size parameters for the trigger mode.
+        record_length_s is the length of data to be recorded at one trigger in seconds.
+        The sequence size is the length of data to be recorded in samples.
+        The segment size used for the acquisition setting corresponds to the sequence size.
+        """
+        self.seq_size_S = int(np.ceil((self.record_length_s / self.binwidth_s) / 16) * 16)  # necessary to be multuples of 16
+        self.seg_size_S = self.seq_size_S
+
+    def _calc_gated_data_size_S(self, pre_trigs_S, post_trigs_S):
+        """
+        defines the data size parameters for the gate mode.
+        The gate length is given by the input gate length, which is calculated from record_length_s.
+        Note that the actual gate length is rounded by the card specific alignment.
+        seg_size_S is the segment size recorded per gate.
+        seq_size_S is the sequence size per repetition.
+        """
+        self.gate_length_S = int(np.ceil(self.record_length_s / self.binwidth_s))
+        self.gate_length_rounded_S = int(np.ceil(self.gate_length_S / self.gate_end_alignment_S) * self.gate_end_alignment_S)
+        self.seg_size_S = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
+        self.seq_size_S = self.seg_size_S * self.total_gate
+        self.ts_seq_size_S = self.ts_seg_size_S * self.total_gate
+        self.ts_seq_size_B = self.ts_seg_size_B * self.total_gate
 
     def calc_actual_length_s(self):
         if not self.gated:
