@@ -46,17 +46,18 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
     nicard_6343_instreamer:
         module.Class: 'ni_x_series.ni_x_series_in_streamer.NIXSeriesInStreamer'
-        device_name: 'Dev1'
-        digital_sources:  # optional
-            - 'PFI15'
-        analog_sources:  # optional
-            - 'ai0'
-            - 'ai1'
-        # external_sample_clock_source: 'PFI0'  # optional
-        # external_sample_clock_frequency: 1000  # optional
-        adc_voltage_range: [-10, 10]  # optional
-        max_channel_samples_buffer: 10000000  # optional
-        read_write_timeout: 10  # optional
+        options:
+            device_name: 'Dev1'
+            digital_sources:  # optional
+                - 'PFI15'
+            analog_sources:  # optional
+                - 'ai0'
+                - 'ai1'
+            # external_sample_clock_source: 'PFI0'  # optional
+            # external_sample_clock_frequency: 1000  # optional
+            adc_voltage_range: [-10, 10]  # optional
+            max_channel_samples_buffer: 10000000  # optional
+            read_write_timeout: 10  # optional
 
     """
 

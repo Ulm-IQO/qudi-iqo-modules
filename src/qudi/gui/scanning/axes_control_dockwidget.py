@@ -135,10 +135,11 @@ class AxesControlWidget(QtWidgets.QWidget):
             slider = DoubleSlider(QtCore.Qt.Horizontal)
             slider.setObjectName('{0}_position_doubleSlider'.format(ax_name))
             slider.setRange(*axis.value_range)
+            granularity = 2 ** 31 - 1
             if axis.min_step > 0:
-                slider.set_granularity(round((axis.max_value - axis.min_value) / axis.min_step) + 1)
-            else:
-                slider.set_granularity(2**16-1)
+                granularity = min(granularity,
+                                  round((axis.max_value - axis.min_value) / axis.min_step) + 1)
+            slider.set_granularity(granularity)
             slider.setValue(init_pos)
             slider.setMinimumSize(150, 0)
             slider.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
@@ -152,6 +153,7 @@ class AxesControlWidget(QtWidgets.QWidget):
             pos_spinbox.setMinimumSize(75, 0)
             pos_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                       QtWidgets.QSizePolicy.Preferred)
+            pos_spinbox.dynamic_precision = False
 
             # Add to layout
             layout.addWidget(label, index, 0)
@@ -162,6 +164,9 @@ class AxesControlWidget(QtWidgets.QWidget):
             layout.addWidget(pos_spinbox, index, 7)
 
             # Connect signals
+            # TODO "editingFinished" also emits when window gets focus again, so also after alt+tab.
+            #  "valueChanged" was considered as a replacement but is emitted when scrolled or while typing numbers.
+
             res_spinbox.editingFinished.connect(
                 self.__get_axis_resolution_callback(ax_name, res_spinbox)
             )
@@ -190,6 +195,28 @@ class AxesControlWidget(QtWidgets.QWidget):
         self.setLayout(layout)
         self.setMaximumHeight(self.sizeHint().height())
 
+        # set tab order of Widgets
+        res_widgets = [self.axes_widgets[ax]['res_spinbox'] for ax in self.axes]
+        min_spinboxes = [self.axes_widgets[ax]['min_spinbox'] for ax in self.axes]
+        max_spinboxes = [self.axes_widgets[ax]['max_spinbox'] for ax in self.axes]
+        pos_spinboxes = [self.axes_widgets[ax]['pos_spinbox'] for ax in self.axes]
+
+        for idx in range(len(self.axes) - 1):
+            self.setTabOrder(res_widgets[idx], res_widgets[idx + 1])
+
+        self.setTabOrder(res_widgets[-1], min_spinboxes[0])
+
+        for idx in range(len(self.axes) - 1):
+            self.setTabOrder(min_spinboxes[idx], max_spinboxes[idx])
+            self.setTabOrder(max_spinboxes[idx], min_spinboxes[idx + 1])
+
+        self.setTabOrder(min_spinboxes[-1], max_spinboxes[-1])
+
+        self.setTabOrder(max_spinboxes[-1], pos_spinboxes[0])
+
+        for idx in range(len(self.axes) - 1):
+            self.setTabOrder(pos_spinboxes[idx], pos_spinboxes[idx + 1])
+
     @property
     def axes(self):
         return tuple(self.axes_widgets)
@@ -211,7 +238,6 @@ class AxesControlWidget(QtWidgets.QWidget):
         return self.axes_widgets[axis]['res_spinbox'].value()
 
     @QtCore.Slot(dict)
-    @QtCore.Slot(int, str)
     def set_resolution(self, value, axis=None):
         if axis is None or isinstance(value, dict):
             for ax, val in value.items():
@@ -230,7 +256,6 @@ class AxesControlWidget(QtWidgets.QWidget):
         return widget_dict['min_spinbox'].value(), widget_dict['max_spinbox'].value()
 
     @QtCore.Slot(dict)
-    @QtCore.Slot(object, str)
     def set_range(self, value, axis=None):
         if axis is None or isinstance(value, dict):
             for ax, val in value.items():
@@ -258,7 +283,6 @@ class AxesControlWidget(QtWidgets.QWidget):
         return self.axes_widgets[axis]['pos_spinbox'].value()
 
     @QtCore.Slot(dict)
-    @QtCore.Slot(float, str)
     def set_target(self, value, axis=None):
         if axis is None or isinstance(value, dict):
             for ax, val in value.items():

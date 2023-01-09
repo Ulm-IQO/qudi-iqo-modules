@@ -5,7 +5,7 @@ from setuptools import setup, find_namespace_packages
 
 
 unix_dep = [
-    'qudi-core>=1.0.1',
+    'qudi-core>=1.2.0',
     'entrypoints',
     'fysom',
     'lmfit',
@@ -15,12 +15,13 @@ unix_dep = [
     'numpy',
     'pyqtgraph',
     'PySide2',
-    'PyVisa',
+    'PyVisa>=1.12.0',
     'scipy',
+    'zaber_motion'
 ]
 
 windows_dep = [
-    'qudi-core>=1.0.1',
+    'qudi-core>=1.2.0',
     'entrypoints>=0.3',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
@@ -30,8 +31,9 @@ windows_dep = [
     'numpy>=1.21.3',
     'pyqtgraph>=0.12.3',
     'PySide2>=5.15.2',
-    'PyVisa>=1.11.3',
+    'PyVisa>=1.12.0',
     'scipy>=1.7.1',
+    'zaber_motion>=2.9'
 ]
 
 with open('VERSION', 'r') as file:
@@ -46,6 +48,7 @@ setup(
     packages=find_namespace_packages(where='src'),
     package_dir={'': 'src'},
     package_data={''        : ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md', 'VERSION'],
+                  'qudi'    : ['default.cfg'],
                   'qudi.gui': ['*.ui', '*/*.ui'],
                   },
     description='IQO measurement modules collection for qudi',

@@ -19,7 +19,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-import visa
+try:
+    import pyvisa as visa
+except ImportError:
+    import visa
 
 from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption
@@ -31,9 +34,11 @@ class PowerSupply(Base, ProcessControlInterface):
 
     The ProcessControlInterface only controls channel 1 for now.
 
-    Example config :
-        voltage_generator:
-            module.Class: 'power_supply.Teledyne_T3PS3000.PowerSupply'
+    Example config for copy-paste:
+
+    voltage_generator:
+        module.Class: 'power_supply.Teledyne_T3PS3000.PowerSupply'
+        options:
             address: 'ASRL9::INSTR'
             current_max_1: 1
             current_max_2: 0

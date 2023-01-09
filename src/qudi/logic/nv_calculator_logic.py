@@ -31,7 +31,19 @@ from scipy.constants import physical_constants
 
 
 class NVCalculatorLogic(LogicBase):
-    """This is the Logic class for Calculator."""
+    """
+    This is the Logic class for magnetic field calculator for the NV center. It calculates the strength
+    and angle relative to the NV-axis of an external magnetic field.
+
+    Example config for copy-paste:
+
+    nv_calculator_logic:
+        module.Class: 'nv_calculator_logic.NVCalculatorLogic'
+        connect:
+            odmr: 'odmrlogic'
+            pulsed: 'pulsedmeasurementlogic'
+
+    """
     _modclass = 'calculatorlogic'
     _modtype = 'logic'
 
