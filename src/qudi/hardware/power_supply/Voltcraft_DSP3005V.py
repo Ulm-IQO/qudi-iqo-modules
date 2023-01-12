@@ -27,21 +27,24 @@ _Real = Union[int, float]
 
 
 
+
 class Voltcraft3005V(ProcessControlInterface):
 
-#    _visa_address = ConfigOption('visa_address', missing='error')
+    _visa_address = ConfigOption(name='visa_address', missing='warn')
 
     def on_activate(self):
         pass
 
-        # self.rm = pyvisa.ResourceManager()
-        # self.inst = self.rm.open_resource(self._visa_address,
-        #                                   write_termination='\r\n',
-        #                                   read_termination='\r\n',
-        #                                   baud_rate=115200)
-        #
+        self.rm = pyvisa.ResourceManager()
+        self.inst = self.rm.open_resource(self._visa_address,
+                                          write_termination='\r\n',
+                                          read_termination='\r\n',
+                                          baud_rate=115200)
+        self.ctr_mode = 'CURR'
+
 
     def on_deactivate(self):
+        self.inst.close()
         pass
 
 
@@ -52,24 +55,33 @@ class Voltcraft3005V(ProcessControlInterface):
         """ Current activity state.
         State is bool type and refers to active (True) and inactive (False).
         """
-        pass
+        on_off = self.inst.query.('OUTP?')
+        if on_off = 'ON':
+            is_active = True
+        elif on_off = 'OFF':
+            is_active = False
+        else:
+            raise ValueError('Unknown output status')
+
+        return is_active
 
     @is_active.setter
     def is_active(self, active: bool):
         """ Set activity state.
         State is bool type and refers to active (True) and inactive (False).
         """
-        pass
+        on_off = 'ON' if active else 'OFF'
+        self.inst.write('{}'.format(on_off))
 
     @property
     def setpoints(self) -> Dict[str, _Real]:
         """ The current setpoints (values) for all channels (keys) """
-        pass
-
+        return self.get_setpoint()
     @setpoints.setter
     def setpoints(self, values: Mapping[str, _Real]):
         """ Set the setpoints (values) for all channels (keys) at once """
-        pass
+        for k, v in values.items():
+            self.set_setpoint(v, k)
 
     def set_activity_state(self, active: bool) -> None:
         """ Set activity state. State is bool type and refers to active (True) and inactive (False).
@@ -78,27 +90,24 @@ class Voltcraft3005V(ProcessControlInterface):
 
     def set_setpoint(self, value: _Real, channel: str) -> None:
         """ Set new setpoint for a single channel """
-        pass
+        self.inst.write('{} {}'.format(self.ctr_mode, value))
 
     def get_setpoint(self, channel: str) -> _Real:
         """ Get current setpoint for a single channel """
-        pass
+        return {'ch0': int(self.inst.query('{}}?'.format(self.ctr_mode)))}
 
     @property
     def process_values(self) -> Dict[str, _Real]:
         """ Read-Only property returning a snapshot of current process values (values) for all
         channels (keys).
         """
-        pass
+        return {'ch0': self.get_process_value('ch0')}
 
-    def set_activity_state(self, active: bool) -> None:
-        """ Set activity state. State is bool type and refers to active (True) and inactive (False).
-        """
-        pass
 
     def get_process_value(self, channel: str) -> _Real:
         """ Get current process value for a single channel """
-        pass
+        return self.inst.query('MEAS:{}?'.format(self.ctr_mode))
+
 
 
 
