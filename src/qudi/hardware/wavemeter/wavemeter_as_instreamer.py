@@ -112,7 +112,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self.__use_circular_buffer = False
         self.__streaming_mode = StreamingMode.CONTINUOUS
         constr = self.get_constraints()
-        self.__active_channels = (ch.copy() for ch in constr.digital_channels if ch.name)
+        self.__active_channels = (ch.copy() for ch in constr.analog_channels if ch.name)
 
         # Reset data buffer
         self._data_buffer = np.empty(0, dtype=self.__data_type)
@@ -145,10 +145,10 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         """
         # Create constraints
         self._constraints = DataInStreamConstraints()
-        self._constraints.digital_channels = (
-            StreamChannel(name='wavelength', type=StreamChannelType.DIGITAL, unit='nm'),
-            StreamChannel(name='wavelength_timing', type=StreamChannelType.DIGITAL, unit='s'))
-        self._constraints.analog_channels = tuple()
+        self._constraints.digital_channels = tuple()
+        self._constraints.analog_channels = (
+            StreamChannel(name='wavelength', type=StreamChannelType.ANALOG, unit='nm'),
+            StreamChannel(name='wavelength_timing', type=StreamChannelType.ANALOG, unit='s'))
         self._constraints.analog_sample_rate.min = 1
         self._constraints.analog_sample_rate.max = 2 ** 31 - 1
         self._constraints.analog_sample_rate.step = 1
@@ -194,6 +194,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         if self.is_running:
             self.log.warning('Unable to start input stream. It is already running.')
             return 0
+
+        self._wavelength = list()
+        self._temperature = list()
 
         # start callback procedure
         self._wavemeterdll.Instantiate(
@@ -336,7 +339,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         return number_of_samples
 
-    def read_available_data_into_buffer(self, buffer):
+    def read_available_data_into_buffer(self, buffer):  # todo
         """
         Read data from the stream buffer into a 1D/2D numpy array given as parameter.
         In case of a single data channel the numpy array can be either 1D or 2D. In case of more
@@ -357,8 +360,35 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.error('Unable to read data. Device is not running.')
             return -1
 
-        avail_samples = min(buffer.size // self.number_of_channels, self.available_samples)
-        return self.read_data_into_buffer(buffer=buffer, number_of_samples=avail_samples)
+        if not isinstance(buffer, np.ndarray) or buffer.dtype != self.__data_type:
+            self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
+                           ''.format(self.__data_type))
+            return -1
+
+        if buffer.ndim == 2:
+            buffer_size = buffer.shape[1]
+            buffer = buffer.flatten()
+        elif buffer.ndim == 1:
+            buffer_size = (buffer.size // self.number_of_channels)
+        else:
+            self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
+            return -1
+
+        with self._lock:
+            if len(self._wavelength) == 0:
+                return 0
+            if len(self._wavelength) == 1:
+                current_wavelength = self._wavelength[-1]
+                del self._wavelength[-1]
+                buffer[0:1] = current_wavelength[0:1]
+                return 1
+            read_length = len(self._wavelength) \
+                if len(self._wavelength) <= buffer_size else buffer_size
+            wavelength_array = np.array(self._wavelength[:read_length])
+            del self._wavelength[:read_length]
+            buffer[:read_length] = wavelength_array[:, 0]
+            buffer[read_length:2 * read_length] = wavelength_array[:, 1]
+            return read_length
 
     def read_data(self, number_of_samples=None):
         """
@@ -392,7 +422,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         total_samples = self.number_of_channels * read_samples
         return self._data_buffer[:total_samples].reshape((self.number_of_channels,
-                                                          number_of_samples))
+                                                          read_samples))
 
     def read_single_point(self):  # TODO
         """
@@ -542,7 +572,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                       and values being the corresponding StreamChannel instances.
         """
         constr = self._constraints
-        return (ch.copy() for ch in constr.digital_channels if ch.name in self.__active_channels)
+        return [ch.copy() for ch in constr.analog_channels if ch.name in self.__active_channels]
 
     @active_channels.setter
     def active_channels(self, channels):
@@ -567,7 +597,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         @return tuple: data channel properties for all available channels with keys being the
                        channel names and values being the corresponding StreamChannel instances.
         """
-        return (ch.copy() for ch in self._constraints.digital_channels)
+        return (ch.copy() for ch in self._constraints.analog_channels)
 
     @property
     def available_samples(self):
