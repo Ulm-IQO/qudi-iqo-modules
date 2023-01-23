@@ -56,7 +56,7 @@ Compared to the old release v0.1, the following features are currently not avail
 - Magnet control GUI
 - Confocal/Scanning: tilt correction, loop scans, moving arbitrary axis during scan, puase and resume scan  
 - wavemeter toolchain
-- PID Hardware and software (not ported?)
+- Hardware PID. Software PID soon to come (PR in testing)
 
 In case you need these features, please reach out to us to discuss how to move forward.
 We might have already started to port a feature or can assist you in contributing.

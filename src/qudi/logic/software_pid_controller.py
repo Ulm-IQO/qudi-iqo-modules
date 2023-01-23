@@ -21,41 +21,55 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from qtpy import QtCore
-from qudi.util.mutex import Mutex
 import numpy as np
 
-from qudi.core.module import Base
 from qudi.interface.pid_controller_interface import PIDControllerInterface
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 
-import warnings
-warnings.warn("This module has not been tested on the new qudi core and might not work properly/at all."
-                         "Use it with caution and if possible contribute to its rework, please.")
 
-class SoftPIDController(GenericLogic, PIDControllerInterface):
+class SoftPIDController(PIDControllerInterface):
     """
-    Control a process via software PID.
+    Logic module to control a process via software PID.
 
-    Todo: Example config for copy-paste:
+    Example config:
+
+    softpid:
+        module.Class: 'software_pid_controller.SoftPIDController'
+        options:
+            process_value_channel: 'Voltage'
+            setpoint_channel: 'Power'
+            # PID control value update interval (ms)
+            timestep: 100
+            # normalize process value to setpoint
+            normalize: False
+        connect:
+            process_value: process_value_dummy
+            setpoint: process_setpoint_dummy
     """
 
     # declare connectors
-    process = Connector(interface='ProcessInterface')
-    control = Connector(interface='ProcessControlInterface')
+    process = Connector(name='process_value', interface='ProcessValueInterface')
+    control = Connector(name='setpoint', interface='ProcessSetpointInterface')
 
-    # config opt
+    # config options
+    # channels to use for process and setpoint devices
+    process_value_channel = ConfigOption(default='A')
+    setpoint_channel = ConfigOption(default='A')
+    # timestep on which the PID updates
     timestep = ConfigOption(default=100)
+    # normalize process value to setpoint
+    _normalize = ConfigOption(name='normalize', default=False)
 
     # status vars
     kP = StatusVar(default=1)
     kI = StatusVar(default=1)
     kD = StatusVar(default=1)
     setpoint = StatusVar(default=273.15)
-    manualvalue = StatusVar(default=0)
+    manual_value = StatusVar(default=0)
 
-    sigNewValue = QtCore.Signal(float)
+    sigNewValue = QtCore.Signal(str, float)
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -64,74 +78,94 @@ class SoftPIDController(GenericLogic, PIDControllerInterface):
 
         # checking for the right configuration
         for key in config.keys():
-            self.log.debug('{0}: {1}'.format(key,config[key]))
+            self.log.debug('{0}: {1}'.format(key, config[key]))
 
-        #number of lines in the matrix plot
-        self.NumberOfSecondsLog = 100
-        self.threadlock = Mutex()
+        # initialize attributes
+        self._process = None
+        self._control = None
+        self.timer = None
+
+        self.history = None
+        self.saving_state = False
+        self.enable = False
+        self.integrated = None
+        self.countdown = None
+        self.previous_delta = None
+        self.cv = None
+        self.P, self.I, self.D = 0, 0, 0
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self.log.warning("This module has not been tested on the new qudi core and might not work properly/at all."
-                         "Use it with caution and if possible contribute to its rework, please.")
         self._process = self.process()
         self._control = self.control()
 
-        self.previousdelta = 0
-        self.cv = self._control.get_control_value()
+        self._process.set_activity_state(self.process_value_channel, True)
+        self._control.set_activity_state(self.setpoint_channel, True)
+
+        self.previous_delta = 0
+        self.cv = self._control.get_setpoint(self.setpoint_channel)
 
         self.timer = QtCore.QTimer()
         self.timer.setSingleShot(True)
         self.timer.setInterval(self.timestep)
 
-        self.timer.timeout.connect(self._calcNextStep, QtCore.Qt.QueuedConnection)
-        self.sigNewValue.connect(self._control.set_control_value)
+        self.timer.timeout.connect(self._calc_next_step, QtCore.Qt.QueuedConnection)
+        self.sigNewValue.connect(self._control.set_setpoint)
 
         self.history = np.zeros([3, 5])
-        self.savingState = False
+        self.saving_state = False
         self.enable = False
         self.integrated = 0
-        self.countdown = 2
+        self.countdown = -1
 
         self.timer.start(self.timestep)
 
     def on_deactivate(self):
         """ Perform required deactivation.
         """
-        pass
+        self._process.set_activity_state(self.process_value_channel, False)
+        self._control.set_activity_state(self.setpoint_channel, False)
 
-    def _calcNextStep(self):
+    def _calc_next_step(self):
         """ This function implements the Takahashi Type C PID
             controller: the P and D term are no longer dependent
-             on the set-point, only on PV (which is Thlt).
-             The D term is NOT low-pass filtered.
-             This function should be called once every TS seconds.
+            on the set-point, only on PV (which is Thlt).
+            The D term is NOT low-pass filtered.
+            This function should be called once every TS seconds.
         """
-        self.pv = self._process.get_process_value()
+        self.pv = self._process.get_process_value(self.process_value_channel)
 
         if self.countdown > 0:
             self.countdown -= 1
-            self.previousdelta = self.setpoint - self.pv
-            print('Countdown: ', self.countdown)
+            if self._normalize:
+                pv_normalized = self.pv / self.setpoint
+                self.previous_delta = 1 - pv_normalized
+            else:
+                self.previous_delta = self.setpoint - self.pv
         elif self.countdown == 0:
             self.countdown = -1
             self.integrated = 0
             self.enable = True
 
+        # if PID enabled, calculate the next control value
         if self.enable:
-            delta = self.setpoint - self.pv
+            if self._normalize:
+                pv_normalized = self.pv / self.setpoint
+                delta = 1 - pv_normalized
+            else:
+                delta = self.setpoint - self.pv
             self.integrated += delta
-            ## Calculate PID controller:
+            # calculate PID controller:
             self.P = self.kP * delta
             self.I = self.kI * self.timestep * self.integrated
-            self.D = self.kD / self.timestep * (delta - self.previousdelta)
+            self.D = self.kD / self.timestep * (delta - self.previous_delta)
 
             self.cv += self.P + self.I + self.D
-            self.previousdelta = delta
+            self.previous_delta = delta
 
-            ## limit contol output to maximum permissible limits
-            limits = self._control.get_control_limit()
+            # limit control output to maximum permissible limits
+            limits = self.get_control_limits()
             if self.cv > limits[1]:
                 self.cv = limits[1]
             if self.cv < limits[0]:
@@ -141,47 +175,28 @@ class SoftPIDController(GenericLogic, PIDControllerInterface):
             self.history[0, -1] = self.pv
             self.history[1, -1] = self.cv
             self.history[2, -1] = self.setpoint
-            self.sigNewValue.emit(self.cv)
+            self.sigNewValue.emit(self.setpoint_channel, self.cv)
+
+        # if PID disabled, just use the manual control value
         else:
-            self.cv = self.manualvalue
-            limits = self._control.get_control_limit()
+            self.cv = self.manual_value
+            limits = self.get_control_limits()
             if self.cv > limits[1]:
                 self.cv = limits[1]
             if self.cv < limits[0]:
                 self.cv = limits[0]
-            self.sigNewValue.emit(self.cv)
+            self.sigNewValue.emit(self.setpoint_channel, self.cv)
 
         self.timer.start(self.timestep)
 
-    def startLoop(self):
+    def _start_loop(self):
         """ Start the control loop. """
         self.countdown = 2
 
-    def stopLoop(self):
+    def _stop_loop(self):
         """ Stop the control loop. """
         self.countdown = -1
         self.enable = False
-
-    def getSavingState(self):
-        """ Find out if we are keeping data for saving later.
-
-            @return bool: whether module is saving process and control data
-        """
-        return self.savingState
-
-    def startSaving(self):
-        """ Start saving process and control data.
-
-            Does not do anything right now.
-        """
-        pass
-
-    def saveData(self):
-        """ Write process and control data to file.
-
-            Does not do anything right now.
-        """
-        pass
 
     def get_kp(self):
         """ Return the proportional constant.
@@ -193,7 +208,7 @@ class SoftPIDController(GenericLogic, PIDControllerInterface):
     def set_kp(self, kp):
         """ Set the proportional constant of the PID controller.
 
-            @prarm float kp: proportional constant of PID controller
+            @param float kp: proportional constant of PID controller
         """
         self.kP = kp
 
@@ -244,24 +259,24 @@ class SoftPIDController(GenericLogic, PIDControllerInterface):
 
             @return float: control value for manual mode
         """
-        return self.manualvalue
+        return self.manual_value
 
-    def set_manual_value(self, manualvalue):
+    def set_manual_value(self, manual_value):
         """ Set the control value for manual mode.
 
-            @param float manualvalue: control value for manual mode of controller
+            @param float manual_value: control value for manual mode of controller
         """
-        self.manualvalue = manualvalue
-        limits = self._control.get_control_limit()
-        if self.manualvalue > limits[1]:
-            self.manualvalue = limits[1]
-        if self.manualvalue < limits[0]:
-            self.manualvalue = limits[0]
+        self.manual_value = manual_value
+        limits = self.get_control_limits()
+        if self.manual_value > limits[1]:
+            self.manual_value = limits[1]
+        if self.manual_value < limits[0]:
+            self.manual_value = limits[0]
 
     def get_enabled(self):
         """ See if the PID controller is controlling a process.
 
-            @return bool: whether the PID controller is preparing to or conreolling a process
+            @return bool: whether the PID controller is preparing to or controlling a process
         """
         return self.enable or self.countdown >= 0
 
@@ -271,16 +286,18 @@ class SoftPIDController(GenericLogic, PIDControllerInterface):
             @param bool enabled: desired state of PID controller
         """
         if enabled and not self.enable and self.countdown == -1:
-            self.startLoop()
+            self._start_loop()
         if not enabled and self.enable:
-            self.stopLoop()
+            self._stop_loop()
 
     def get_control_limits(self):
         """ Get the minimum and maximum value of the control actuator.
 
             @return list(float): (minimum, maximum) values of the control actuator
         """
-        return self._control.get_control_limit()
+        constraints = self._control.constraints
+        limits = constraints.channel_limits[self.setpoint_channel]
+        return limits
 
     def set_control_limits(self, limits):
         """ Set the minimum and maximum value of the control actuator.
@@ -298,6 +315,13 @@ class SoftPIDController(GenericLogic, PIDControllerInterface):
         """
         return self.cv
 
+    def control_value_unit(self):
+        """ read-only property for the unit of the control value
+        """
+        constraints = self._control.constraints
+        unit = constraints.channel_units[self.setpoint_channel]
+        return unit
+
     def get_process_value(self):
         """ Get current process input value.
 
@@ -305,10 +329,17 @@ class SoftPIDController(GenericLogic, PIDControllerInterface):
         """
         return self.pv
 
+    def process_value_unit(self):
+        """ read-only property for the unit of the process value
+        """
+        constraints = self._process.constraints
+        unit = constraints.channel_units[self.process_value_channel]
+        return unit
+
     def get_extra(self):
         """ Extra information about the controller state.
 
-            @return dict: extra informatin about internal controller state
+            @return dict: extra information about internal controller state
 
             Do not depend on the output of this function, not every field
             exists for every PID controller.

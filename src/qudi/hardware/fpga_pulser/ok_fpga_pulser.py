@@ -26,7 +26,6 @@ import okfrontpanel as ok
 
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.util.paths import get_appdata_dir
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
 
 
@@ -49,11 +48,13 @@ class OkFpgaPulser(PulserInterface):
     fpga_pulser_ok:
         module.Class: 'fpga_fastcounter.fast_pulser_qo.OkFpgaPulser'
         options:
+            path_to_bitfiles_dir: 'C:\\User\\<MyUserName>\\<path\\to\\my\\bitfiles>'
             fpga_serial: '143400058N'
             fpga_type: 'XEM6310_LX150'
 
     """
     _fpga_serial = ConfigOption(name='fpga_serial', missing='error')
+    _path_to_bitfiles_dir = ConfigOption('path_to_bitfiles_dir', missing='error')
     _fpga_type = ConfigOption(name='fpga_type', default='XEM6310_LX150', missing='warn')
 
     __current_waveform = StatusVar(name='current_waveform', default=np.zeros(32, dtype='uint8'))
@@ -355,7 +356,9 @@ class OkFpgaPulser(PulserInterface):
             self.__sample_rate = 950e6
             bitfile_name = 'pulsegen_8chnl_950MHz_{0}.bit'.format(self._fpga_type.split('_')[1])
 
-        bitfile_path = os.path.join(get_appdata_dir(True), 'thirdparty', 'qo_fpga', bitfile_name)
+        bitfile_path = os.path.join(self._path_to_bitfiles_dir, bitfile_name)
+
+        assert os.path.isfile(bitfile_path), f'Could not find bitfile {bitfile_name} in {bitfile_path}'
 
         self.fpga.ConfigureFPGA(bitfile_path)
         self.log.info('FPGA pulse generator configured with {0}'.format(bitfile_path))

@@ -6,34 +6,34 @@ from setuptools import setup, find_namespace_packages
 
 unix_dep = [
     'qudi-core>=1.2.0',
-    'entrypoints',
-    'fysom',
-    'lmfit',
-    'lxml',
-    'matplotlib',
-    'nidaqmx==0.5.7',
-    'numpy',
-    'pyqtgraph',
-    'PySide2',
+    'entrypoints>=0.4',
+    'fysom>=2.1.6',
+    'lmfit>=1.0.3',
+    'lxml>=4.9.1',
+    'matplotlib>=3.6.0',
+    'nidaqmx>=0.5.7',
+    'numpy>=1.23.3',
+    'pyqtgraph>=0.13.1',
+    'PySide2>=5.15.2',
     'PyVisa>=1.12.0',
-    'scipy',
-    'zaber_motion'
+    'scipy>=1.9.1',
+    'zaber_motion>=2.14.6'
 ]
 
 windows_dep = [
     'qudi-core>=1.2.0',
-    'entrypoints>=0.3',
+    'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
-    'lxml>=4.6.3',
-    'matplotlib>=3.4.3',
-    'nidaqmx==0.5.7',
-    'numpy>=1.21.3',
-    'pyqtgraph>=0.12.3',
+    'lxml>=4.9.1',
+    'matplotlib>=3.6.0',
+    'nidaqmx>=0.5.7',
+    'numpy>>=1.23.3',
+    'pyqtgraph>=0.13.1',
     'PySide2>=5.15.2',
     'PyVisa>=1.12.0',
-    'scipy>=1.7.1',
-    'zaber_motion>=2.9'
+    'scipy>=1.9.1',
+    'zaber_motion>=2.14.6'
 ]
 
 with open('VERSION', 'r') as file:
