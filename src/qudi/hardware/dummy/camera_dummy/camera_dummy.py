@@ -331,6 +331,23 @@ class CameraDummy(ScientificCameraInterface):
         self._configure_operating_mode(mode)
         return
 
+    def start_acquisition(self):
+        """
+        Start an acquisition. The acquisition settings
+        will determine if you record a single image, or image sequence.
+        """
+        self._cm.start_measurement()
+        self._acquiring = True
+
+        return
+
+    def stop_acquisition(self):
+        """
+        Stop/abort acquisition
+        """
+        self._cm.measurement_finished(req_stop=True)
+        return
+
     @property
     def acquisition_mode(self):
         """
@@ -355,23 +372,6 @@ class CameraDummy(ScientificCameraInterface):
             self._cam.acquisition_settings = acquisition_setting
         else:
             self.log.error('Invalid acquisition mode.')
-        return
-
-    def start_acquisition(self):
-        """
-        Start an acquisition. The acquisition settings
-        will determine if you record a single image, or image sequence.
-        """
-        self._cm.start_measurement()
-        self._acquiring = True
-
-        return
-
-    def stop_acquisition(self):
-        """
-        Stop/abort acquisition
-        """
-        self._cm.measurement_finished(req_stop=True)
         return
 
     def get_images(self, image_num):

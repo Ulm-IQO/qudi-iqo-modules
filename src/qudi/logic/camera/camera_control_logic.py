@@ -36,7 +36,7 @@ class CameraControlLogic(LogicBase):
     Control a camera.
     """
     # declare connectors
-    _camera = Connector(name='camera', interface='CameraInterface')
+    _camera = Connector(name='camera', interface='ScientificCameraInterface')
     # declare config options
     _minimum_exposure_time = ConfigOption(name='minimum_exposure_time',
                                           default=0.05,

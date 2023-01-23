@@ -50,7 +50,8 @@ class CameraConstraints:
 
 
 class ScientificCameraInterface(Base):
-    """ This interface is used to manage and visualize a simple camera
+    """ This interface is used to define the basic functionality
+        of a scientific camera
     """
     @property
     @abstractmethod
@@ -93,7 +94,9 @@ class ScientificCameraInterface(Base):
     @abstractmethod
     def exposures(self):
         """
-        Set the ring of exposures
+        Set the ring of exposures.
+        The concept of exposures is somewhat generalized in this interface.
+        Exposures is a list of values that are cycled through from image to image.
 
         @param list exposures: list of exposure values
         """
