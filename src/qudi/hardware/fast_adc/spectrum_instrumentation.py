@@ -62,6 +62,15 @@ def check_card_error(func):
 
     return wrapper
 
+def benchmark(func):
+    def wrapper(self, *args, **kwargs):
+        time0 = time.time()
+        ret = func(self, *args, **kwargs)
+        print('{} took {}s'.format(func.__name__, time.time()-time0))
+        return ret
+    return wrapper
+
+
 class Card_command():
     '''
     This class contains the methods which wrap the commands to control the SI card.
@@ -368,6 +377,8 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     _modtype = 'SpectrumCard'
     _modclass = 'hardware'
+    _threaded = True
+    _threadlock = Mutex()
 
     _ai_ch = ConfigOption('ai_ch', 'CH0', missing='nothing')
     _ai_range_mV = ConfigOption('ai_range_mV', 1000, missing='warn')
@@ -392,6 +403,8 @@ class SpectrumInstrumentation(FastCounterInterface):
     _row_data_save = ConfigOption('row_data_save', True, missing='nothing')
     _path_for_buffer_check = ConfigOption('path_for_buffer_check', 'C:',missing='nothing')
     _reps_for_buffer_check = ConfigOption('repititions_for_buffer_check', 1, missing='nothing')
+
+    _timer = ConfigOption('_timer', 'logic', missing='nothing')
 
     _cfg_error_check = False
     _ccmd_error_check = False
@@ -493,7 +506,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.cs.calc_dynamic_cs(self.ms)
         self.ms.calc_buf_params()
         self.ms.calc_actual_length_s()
-        self.cs.get_buf_size_B(self.ms.seq_size_B, self.ms.reps_per_buf)
+        self.cs.get_buf_size_B(self.ms.seq_size_B, self.ms.reps_per_buf, self.ms.total_pulse)
 
         self.cfg.load_dynamic_cfg_params(self.cs, self.ms)
 
@@ -521,12 +534,15 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         return self._internal_status
 
+    @benchmark
     def start_measure(self):
         """
         Start the acquisition and data process loop
         """
         self._start_acquisition()
-        self.pl.start_data_process()
+        self.pl.loop_on = True
+        if self._timer == 'hardware':
+            self.pl.start_data_process_loop()
 
         return 0
 
@@ -542,9 +558,6 @@ class SpectrumInstrumentation(FastCounterInterface):
             else:
                 self.ccmd.start_all()
 
-            self.ccmd.wait_dma()
-            if self.ms.gated == True:
-                self.pl.cp.tscmd.wait_extra_dma()
 
         elif self._internal_status == CardStatus.paused:
             self.ccmd.enable_trigger()
@@ -571,7 +584,17 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         If the hardware does not support these features, the values should be None
         """
-        avg_data, avg_num = self.pl.fetch_data_trace()
+        if self._timer == 'logic':
+            self.pl.check_dp_status()
+            self.pl.check_ts_status()
+            if self.pl.dp.avg.num != 0:
+                for i in range(2):
+                    self.pl.command_process()
+            else:
+                self.pl.initial_process()
+
+        with self._threadlock:
+            avg_data, avg_num = self.pl.fetch_data_trace()
         info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.pl.start_time}
 
         return avg_data, info_dict
@@ -1443,7 +1466,7 @@ class Process_commander:
     '''
     This class commands the process dependent on the unprocessed data.
     '''
-    buf_ratio = 0.1
+    buf_ratio = 1
 
     def init_process(self, card, cs, ms):
         self._input_settings_to_dpc(ms)
@@ -1595,10 +1618,12 @@ class Process_commander:
         ts_avail_user_pos_B = self.cp.tscmd.get_ts_avail_user_pos_B()
         ts_avail_user_len_B = self.cp.tscmd.get_ts_avail_user_len_B()
         ts_avail_reps = int(ts_avail_user_len_B / 32 / self.dp.ms.total_pulse)
-
-        print('ts Pos:{}B Avail:{}B {}reps '.format(ts_avail_user_pos_B,
-                                                    ts_avail_user_len_B,
-                                                    ts_avail_reps))
+        ts_buf_pos_pct = int(100 * ts_avail_user_pos_B /self.dp.cs.ts_buf_size_B)
+        print('ts Pos:{}B / Buf {}B({}%) Avail:{}B {}reps '.format(ts_avail_user_pos_B,
+                                                              self.dp.cs.ts_buf_size_B,
+                                                              ts_buf_pos_pct,
+                                                              ts_avail_user_len_B,
+                                                              ts_avail_reps))
 
 class Process_loop(Process_commander):
     '''
@@ -1633,9 +1658,9 @@ class Process_loop(Process_commander):
         return
 
     def stop_data_process(self):
-
-        self.loop_on = False
-        self.data_proc_th.join()
+        with self.threadlock:
+            self.loop_on = False
+#        self.data_proc_th.join()
 
     # def start_data_process_loop(self):
     #

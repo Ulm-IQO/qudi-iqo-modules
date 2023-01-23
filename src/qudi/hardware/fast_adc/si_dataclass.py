@@ -59,6 +59,7 @@ class Card_settings:
         @param ms: measurement settings class instance
         """
         self.clk_samplerate_Hz = int(np.ceil(1 / ms.binwidth_s))
+
         self._calc_acq_params(ms.seg_size_S, ms.seq_size_S, ms.reps, ms.total_gate)
 
     def _calc_acq_params(self, seg_size_S, seq_size_S, reps, total_gate):
@@ -71,9 +72,11 @@ class Card_settings:
             if 'GATE' in self.acq_mode:
                 self.acq_loops = reps * total_gate
             else:
+                self.acq_seg_size_S = seg_size_S
+                self.acq_post_trigs_S = self.acq_seg_size_S - self.acq_pre_trigs_S
                 self.acq_loops = reps
 
-    def get_buf_size_B(self, seq_size_B, reps_per_buf):
+    def get_buf_size_B(self, seq_size_B, reps_per_buf, total_pulse=1):
         """
         Calculate the buffer size in bytes.
 
@@ -81,7 +84,7 @@ class Card_settings:
         @param int reps_per_buf: Total number of repetitions which can be stored in the given memory
         """
         self.buf_size_B = seq_size_B * reps_per_buf
-        self.ts_buf_size_B = 15000000#int(2 * 16 * reps_per_buf)
+        self.ts_buf_size_B = int(2 * 16 * total_pulse * reps_per_buf)
 
     @property
     def gated(self):
@@ -200,8 +203,11 @@ class Measurement_settings:
         The number of repetitions which can be recorded in the buffer is calculated
         based on the given initial buffer size and the calculated sequence size.
         """
-        self.reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
-        self.seq_size_B = self.seq_size_S * self.get_data_bytes_B()
+        try:
+            self.reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
+            self.seq_size_B = self.seq_size_S * self.get_data_bytes_B()
+        except:
+            pass
 
     #Gate
     def get_ts_data_type(self):
