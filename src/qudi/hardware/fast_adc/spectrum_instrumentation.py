@@ -934,9 +934,13 @@ class Configure_data_transfer():
 
         c_buf_offset = uint64(0)
         c_buf_size_B = uint64(buf_size_B)
-        spcm_dwDefTransfer_i64(card, buf_type, SPCM_DIR_CARDTOPC,
-                               buf_notify_size_B, byref(c_buf_ptr),
-                               c_buf_offset, c_buf_size_B
+        spcm_dwDefTransfer_i64(card,
+                               buf_type,
+                               SPCM_DIR_CARDTOPC,
+                               buf_notify_size_B,
+                               byref(c_buf_ptr),
+                               c_buf_offset,
+                               c_buf_size_B
                                )
         return
 
@@ -1252,10 +1256,15 @@ class Data_transfer:
         """
         Fetch currently available data at user position which exceeds the end of the buffer.
         """
-
-        start_rep = int((user_pos_B / self.seq_size_B) + 1)
-        reps_tail = self.reps_per_buf - (start_rep - 1)
+        processed_rep = int((user_pos_B / self.seq_size_B))
+        reps_tail = self.reps_per_buf - processed_rep
         reps_head = curr_avail_reps - reps_tail
+        print('user_pos_B {} curr_avail_reps {} start_rep {} reps_tail {} reps_head {}'.format(user_pos_B,
+                                                                               curr_avail_reps,
+                                                                               processed_rep,
+                                                                               reps_tail,
+                                                                               reps_head))
+
 
         np_data_tail = self._fetch_data(user_pos_B, reps_tail)
         np_data_head = self._fetch_data(0, reps_head)
@@ -1312,7 +1321,7 @@ class Data_fetch_gated(Data_fetch_ungated):
     def create_data_trsnsfer(self):
         super().create_data_trsnsfer()
         self.ts_dt = Data_transfer(self.c_ts_buf_ptr, self.ts_data_type,
-                                   self.ts_data_bytes_B, self.ts_seq_size_S, self.ms.reps_per_buf * 100)
+                                   self.ts_data_bytes_B, self.ts_seq_size_S, self.ms.reps_per_buf)
 
     def fetch_ts_data(self, ts_user_pos_B, curr_avail_reps):
         ts_row = self.ts_dt.get_new_data(ts_user_pos_B, curr_avail_reps).astype(np.uint64)
@@ -1603,7 +1612,7 @@ class Process_commander:
         trig_reps = self.cp.dcmd.get_trig_reps()
         print("Stat:{0:04x}h Pos:{1:010}B / Buf {2}B ({3}%) Avail:{4:010}B "
               "Processed:{5:010}B :\n "
-              "Avail:{6} Avg:{7} / Trig:{8} \n".format(status,
+              "Avail:{6} Avg:{7} / Trig:{8} (Unprocessed:{9})\n".format(status,
                                                        avail_user_pos_B,
                                                        self.dp.cs.buf_size_B,
                                                        buf_pos_pct,
@@ -1611,7 +1620,8 @@ class Process_commander:
                                                        self.cp.dcmd.processed_data_B,
                                                        avail_user_reps,
                                                        self.dp.avg.num,
-                                                       trig_reps)
+                                                       trig_reps,
+                                                       trig_reps - self.dp.avg.num)
               )
 
     def check_ts_status(self):
