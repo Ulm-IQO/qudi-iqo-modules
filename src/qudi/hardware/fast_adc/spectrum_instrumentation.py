@@ -123,11 +123,7 @@ class SpectrumInstrumentation(FastCounterInterface):
     _reps = ConfigOption('repetitions', 0, missing='nothing')
     _double_gate_acquisition = ConfigOption('double_gate_acquisition', False, missing='nothing')
 
-    _check_buffer = False
     _row_data_save = ConfigOption('row_data_save', True, missing='nothing')
-    _path_for_buffer_check = ConfigOption('path_for_buffer_check', 'C:',missing='nothing')
-    _reps_for_buffer_check = ConfigOption('repititions_for_buffer_check', 1, missing='nothing')
-
     _timer = ConfigOption('_timer', 'logic', missing='nothing')
 
     _cfg_error_check = False
@@ -258,7 +254,6 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         return self._internal_status
 
-    @benchmark
     def start_measure(self):
         """
         Start the acquisition and data process loop
@@ -309,11 +304,10 @@ class SpectrumInstrumentation(FastCounterInterface):
         If the hardware does not support these features, the values should be None
         """
         if self._timer == 'logic':
-            self.pl.check_dp_status()
-            self.pl.check_ts_status()
+            # self.pl.check_dp_status()
+            # self.pl.check_ts_status()
             if self.pl.dp.avg.num != 0:
-                for i in range(2):
-                    self.pl.command_process()
+                self.pl.command_process()
             else:
                 self.pl.initial_process()
 
@@ -475,12 +469,6 @@ class Data_transfer:
         processed_rep = int((user_pos_B / self.seq_size_B))
         reps_tail = self.reps_per_buf - processed_rep
         reps_head = curr_avail_reps - reps_tail
-        print('user_pos_B {} curr_avail_reps {} start_rep {} reps_tail {} reps_head {}'.format(user_pos_B,
-                                                                               curr_avail_reps,
-                                                                               processed_rep,
-                                                                               reps_tail,
-                                                                               reps_head))
-
 
         np_data_tail = self._fetch_data(user_pos_B, reps_tail)
         np_data_head = self._fetch_data(0, reps_head)
@@ -896,8 +884,8 @@ class Process_loop(Process_commander):
 
         while self.loop_on == True:
             self.command_process()
-            self.check_dp_status()
-            self.check_ts_status()
+            # self.check_dp_status()
+            # self.check_ts_status()
             self.t_p = self.process_speed(t_0, self.t_p)
 
         return

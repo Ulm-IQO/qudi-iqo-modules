@@ -521,7 +521,7 @@ class Configure_data_transfer():
             print('Use continuous buffer')
         else:
             c_buf_ptr = pvAllocMemPageAligned(buf_size_B)
-            print('User Scatter gather')
+#            print('User Scatter gather')
 
         return c_buf_ptr
 
