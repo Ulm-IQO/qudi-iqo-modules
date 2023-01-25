@@ -554,7 +554,7 @@ class TimeSeriesGui(GuiBase):
             ch_type = self._time_series_logic.active_channel_types[chnl]
             ch_unit = self._time_series_logic.active_channel_units[chnl]
             if ch_type == StreamChannelType.ANALOG:
-                self._mw.curr_value_Label.setText('{0:.3f} {1}'.format(val, ch_unit))
+                self._mw.curr_value_Label.setText('{0:.6f} {1}'.format(val, ch_unit))
             else:
                 self._mw.curr_value_Label.setText('{0:,d} {1}'.format(int(round(val)), ch_unit))
         return 0
