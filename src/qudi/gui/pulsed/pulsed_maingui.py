@@ -156,6 +156,7 @@ class PredefinedMethodsAdvancedOptionsDialog(QtWidgets.QDialog):
         """
         Call the parameters from the StatusVar in the logic.
         """
+        self.gate_type_comboBox.addItems(self._pmal().sequencegeneratorlogic()._pog.gate_options)
         self.update_advanced_generation_parameters(self._pmal().sequencegeneratorlogic().advanced_generation_parameters)
         return
 
@@ -171,13 +172,13 @@ class PredefinedMethodsAdvancedOptionsDialog(QtWidgets.QDialog):
         return
 
     def connect_signals(self):
-        self.double_gate_checkBox.stateChanged.connect(self.apply_advanced_generation_parameters)
+        self.gate_type_comboBox.currentIndexChanged.connect(self.apply_advanced_generation_parameters)
         self.gate_length1_ScienDSpinBox.editingFinished.connect(self.apply_advanced_generation_parameters)
         self.gate_length2_ScienDSpinBox.editingFinished.connect(self.apply_advanced_generation_parameters)
         return
 
     def disconnect_signals(self):
-        self.double_gate_checkBox.stateChanged.disconnect()
+        self.gate_type_comboBox.currentIndexChanged.disconnect()
         self.gate_length1_ScienDSpinBox.editingFinished.disconnect()
         self.gate_length2_ScienDSpinBox.editingFinished.disconnect()
         return
@@ -188,7 +189,7 @@ class PredefinedMethodsAdvancedOptionsDialog(QtWidgets.QDialog):
         apply the gui parameters to those in the logic.
         """
         stg_dict = dict()
-        stg_dict['double_gate'] = self.double_gate_checkBox.isChecked()
+        stg_dict['gate_type'] = self.gate_type_comboBox.currentText()
         stg_dict['gate_length1'] = self.gate_length1_ScienDSpinBox.value()
         stg_dict['gate_length2'] = self.gate_length2_ScienDSpinBox.value()
         self._pmal().sequencegeneratorlogic().set_advanced_generation_parameters(stg_dict)
@@ -199,14 +200,14 @@ class PredefinedMethodsAdvancedOptionsDialog(QtWidgets.QDialog):
         update the gui parameters with those in the logic(e.g. StatusVars).
         """
         self._toggle_block_signals(True)
-        self.double_gate_checkBox.setChecked(settings_dict['double_gate'])
+        self.gate_type_comboBox.setCurrentText(settings_dict['gate_type'])
         self.gate_length1_ScienDSpinBox.setValue(settings_dict['gate_length1'])
         self.gate_length2_ScienDSpinBox.setValue(settings_dict['gate_length2'])
         self._toggle_block_signals(False)
         return
 
     def _toggle_block_signals(self, bool):
-        self.double_gate_checkBox.blockSignals(bool)
+        self.gate_type_comboBox.blockSignals(bool)
         self.gate_length1_ScienDSpinBox.blockSignals(bool)
         self.gate_length2_ScienDSpinBox.blockSignals(bool)
         return

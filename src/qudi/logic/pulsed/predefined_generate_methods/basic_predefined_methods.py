@@ -52,10 +52,15 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Readout subblock is a collection of laser element, delay element and waiting element.
         """
-        if not self.double_gate:
+        if 'normal' in self.gate_type:
             readout_subblock = self._generate_normal_readout_subblock()
-        else:
+        elif 'partial' in self.gate_type:
+            readout_subblock = self._generate_partial_gate_readout_subblock()
+        elif 'double' in self.gate_type:
             readout_subblock = self._generate_double_gate_readout_subblock()
+        else:
+            self.log.warning('unknown gate type. Normal gate is used instead.')
+            readout_subblock = self._generate_normal_readout_subblock()
 
         return readout_subblock
 
@@ -78,10 +83,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return readout_subblock
 
     def _generate_partial_gate_readout_subblock(self):
-        # TODO not selectable
+        """
+        Only the beggining of the pulse is partially gated.
+        If the laser delay time is given, it is added to the waiting time.
+        """
         laser_gate_element = self._get_laser_gate_element(length=self.gate_length1, increment=0)
         laser_element = self._get_laser_element(length=self.laser_length - self.gate_length1, increment=0)
-        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+        waiting_element = self._get_idle_element(length=self.laser_delay + self.wait_time, increment=0)
 
         readout_subblock = PulseBlock(name='readout')
         readout_subblock.append(laser_gate_element)

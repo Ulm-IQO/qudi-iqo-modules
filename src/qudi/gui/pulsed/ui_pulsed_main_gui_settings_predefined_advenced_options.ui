@@ -46,22 +46,15 @@
        </widget>
       </item>
       <item row="2" column="0">
-       <layout class="QGridLayout" name="gridLayout_6">
+       <layout class="QGridLayout" name="gridLayout">
         <item row="0" column="0">
-         <widget class="QLabel" name="double_gate_label">
+         <widget class="QLabel" name="gate_type_label">
           <property name="text">
-           <string>double_gate</string>
+           <string>gate_type</string>
           </property>
          </widget>
         </item>
        </layout>
-      </item>
-      <item row="2" column="1">
-       <widget class="QCheckBox" name="double_gate_checkBox">
-        <property name="text">
-         <string/>
-        </property>
-       </widget>
       </item>
       <item row="3" column="3">
        <widget class="ScienDSpinBox" name="gate_length2_ScienDSpinBox">
@@ -72,10 +65,10 @@
          <number>3</number>
         </property>
         <property name="maximum">
-         <double>1.000000000000000</double>
+         <double>1000.000000000000000</double>
         </property>
         <property name="singleStep">
-         <double>0.000001000000000</double>
+         <double>1.000000000000000</double>
         </property>
        </widget>
       </item>
@@ -88,12 +81,15 @@
          <number>3</number>
         </property>
         <property name="maximum">
-         <double>1.000000000000000</double>
+         <double>1000.000000000000000</double>
         </property>
         <property name="singleStep">
-         <double>0.000001000000000</double>
+         <double>1.000000000000000</double>
         </property>
        </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QComboBox" name="gate_type_comboBox"/>
       </item>
      </layout>
     </widget>

@@ -107,7 +107,7 @@ class SequenceGeneratorLogic(LogicBase):
     )
 
     _advanced_generation_parameters = StatusVar(
-        default={'double_gate': False,
+        default={'gate_type': 'normal',
                  'gate_length1': 1e-6,
                  'gate_length2': 1e-6
                  }

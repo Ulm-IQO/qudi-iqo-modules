@@ -1004,6 +1004,7 @@ class PredefinedGeneratorBase:
     qudi module (e.g. self.log.error(...)).
     Also provides helper methods to simplify sequence/ensemble generation.
     """
+    gate_options = ['normal', 'partial', 'double']
 
     def __init__(self, sequencegeneratorlogic):
         # Keep protected reference to the SequenceGeneratorLogic
@@ -1113,8 +1114,8 @@ class PredefinedGeneratorBase:
         return self.generation_parameters.get('rabi_period')
 
     @property
-    def double_gate(self):
-        return self.generation_parameters.get('double_gate')
+    def gate_type(self):
+        return self.generation_parameters.get('gate_type')
 
     @property
     def gate_length1(self):
