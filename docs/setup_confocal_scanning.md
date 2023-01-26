@@ -6,17 +6,17 @@ A typical working toolchain consists out of the following qudi modules:
 
 logic:
 - [scanning_data_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_data_logic.py#L50)
-- scanning_probe_logic
-- scanning_optimize_logic
+- [scanning_probe_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_probe_logic.py#L33)
+- [scanning_optimize_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_optimize_logic.py#L33)
 
 hardware (here NI X-series):
-- [analog_output](ttps://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_analog_output.py#L39)
+- [analog_output](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_analog_output.py#L39)
 - [finite_sampling_input](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_input.py#L46)
 - [finite_sampling_io](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_io.py#L50)
 - ([in_streamer](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_in_streamer.py#L45), optional)
 
 gui:
-- scannergui
+- [scannergui](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/gui/scanning/scannergui.py#L83)
 
 # Example config
 
@@ -151,19 +151,18 @@ docstring of every module's python file. In the list above, a direct link for ev
             module.Class: 'ni_x_series.ni_x_series_analog_output.NIXSeriesAnalogOutput'
             options:
                 device_name: 'Dev1'
-        
-                setpoint_channels:
+                channels:
                     ao0:
-                        unit: 'V'
-                        limits: [-10, 10]
+                        limits: [-10.0, 10.0]
                         keep_value: True
                     ao1:
-                        unit: 'V'
-                        limits: [-10, 10]
+                        limits: [-10.0, 10.0]
                         keep_value: True
                     ao2:
-                        unit: 'V'
-                        limits: [-10, 10]
+                        limits: [-10.0, 10.0]
+                        keep_value: True
+                    ao3:
+                        limits: [-10.0, 10.0]
                         keep_value: True
 
         
