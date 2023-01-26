@@ -153,7 +153,10 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
         # loop over all laser pulses and analyze them
         for ii, laser_arr in enumerate(laser_data):
             # calculate the mean of the data in the signal window
-            signal = laser_arr[signal_start_bin:signal_end_bin].mean()
+            try:
+                signal = laser_arr[signal_start_bin:signal_end_bin].mean()
+            except:
+                print('ii = {} laser_arr = {}'.format(ii, laser_arr))
             signal_sum = laser_arr[signal_start_bin:signal_end_bin].sum()
             signal_error = np.sqrt(signal_sum) / (signal_end_bin - signal_start_bin)
 

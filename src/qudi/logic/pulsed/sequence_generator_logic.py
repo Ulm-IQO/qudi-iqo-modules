@@ -102,10 +102,14 @@ class SequenceGeneratorLogic(LogicBase):
                  'laser_length': 3e-6,
                  'laser_delay': 500e-9,
                  'wait_time': 1e-6,
-                 'double_gate': True,
-                 'gate_length1': 1e-6,
-                 'gate_length2': 1e-6,
                  'analog_trigger_voltage': 0.0
+                 }
+    )
+
+    _advanced_generation_parameters = StatusVar(
+        default={'double_gate': False,
+                 'gate_length1': 1e-6,
+                 'gate_length2': 1e-6
                  }
     )
 
@@ -666,6 +670,16 @@ class SequenceGeneratorLogic(LogicBase):
         return
 
     @property
+    def advanced_generation_parameters(self):
+        return self._advanced_generation_parameters.copy()
+
+    @advanced_generation_parameters.setter
+    def advanced_generation_parameters(self, advanced_settings_dict):
+        if isinstance(advanced_settings_dict, dict):
+            self.set_advanced_generation_parameters(advanced_settings_dict)
+        return
+
+    @property
     def saved_pulse_blocks(self):
         return self._saved_pulse_blocks
 
@@ -741,6 +755,10 @@ class SequenceGeneratorLogic(LogicBase):
 
         self.sigSamplingSettingsUpdated.emit(self.generation_parameters)
         return self.generation_parameters
+
+    def set_advanced_generation_parameters(self, advanced_settings_dict):
+        self._advanced_generation_parameters.update(advanced_settings_dict)
+        return self._advanced_generation_parameters
 
     def save_block(self, block):
         """ Saves a PulseBlock instance

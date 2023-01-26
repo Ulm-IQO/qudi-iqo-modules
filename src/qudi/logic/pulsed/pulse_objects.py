@@ -1039,7 +1039,12 @@ class PredefinedGeneratorBase:
 
     @property
     def generation_parameters(self):
-        return self.__sequencegeneratorlogic.generation_parameters
+        """
+        Sum up the generation parameters defined in the sequence generator logic
+        """
+        generation_parameters = self.__sequencegeneratorlogic.generation_parameters
+        generation_parameters.update(self.__sequencegeneratorlogic.advanced_generation_parameters)
+        return generation_parameters
 
     @property
     def pulse_generator_constraints(self):
