@@ -31,6 +31,6 @@ modules implementing any of the interfaces contained in `qudi.interface.process_
 dependency option for `process_control_dummy` to simulate PID control
 - support for Thorlabs power meters using the TLPM driver
 - pulsed toolchain: generation parameters of sequence saved as meta data
-
+- Support for spectrum instrumentation ADC as fastcounter hardware
 ### Other
 - Bumped `qudi-core` package minimum version requirement to v1.2.0
