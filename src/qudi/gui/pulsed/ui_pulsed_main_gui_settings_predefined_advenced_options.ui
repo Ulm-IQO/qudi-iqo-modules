@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Pulse Generator Settings</string>
+   <string>Predefined Methods Advanced Options</string>
   </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
