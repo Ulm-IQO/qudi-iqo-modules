@@ -48,7 +48,81 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    ################################################################################################
+    def generate_readout_subblock(self):
+        """
+        Readout subblock is a collection of laser element, delay element and waiting element.
+        """
+        if 'normal' in self.gate_type:
+            readout_subblock = self._generate_normal_readout_subblock()
+        elif 'partial' in self.gate_type:
+            readout_subblock = self._generate_partial_gate_readout_subblock()
+        elif 'double' in self.gate_type:
+            readout_subblock = self._generate_double_gate_readout_subblock()
+        else:
+            self.log.warning('unknown gate type. Normal gate is used instead.')
+            readout_subblock = self._generate_normal_readout_subblock()
+
+        return readout_subblock
+
+    def _generate_normal_readout_subblock(self):
+        """
+        Normal readout consists of laser element, delay element and waiting element
+        for triggered and gated acquisition.
+        For gated acquisition, delay element is used to extend the gate length.
+        """
+        laser_element = self._get_laser_gate_element(length=self.laser_length,
+                                                     increment=0)
+        delay_element = self._get_delay_gate_element()
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+
+        readout_subblock = PulseBlock(name='readout')
+        readout_subblock.append(laser_element)
+        readout_subblock.append(delay_element)
+        readout_subblock.append(waiting_element)
+
+        return readout_subblock
+
+    def _generate_partial_gate_readout_subblock(self):
+        """
+        Only the beggining of the pulse is partially gated.
+        If the laser delay time is given, it is added to the waiting time.
+        """
+        laser_gate_element = self._get_laser_gate_element(length=self.gate_length1, increment=0)
+        laser_element = self._get_laser_element(length=self.laser_length - self.gate_length1, increment=0)
+        waiting_element = self._get_idle_element(length=self.laser_delay + self.wait_time, increment=0)
+
+        readout_subblock = PulseBlock(name='readout')
+        readout_subblock.append(laser_gate_element)
+        readout_subblock.append(laser_element)
+        readout_subblock.append(waiting_element)
+
+        return readout_subblock
+
+    def _generate_double_gate_readout_subblock(self):
+        """
+        Double gate readout gives two gates at the beggining and end of the pulse, respectively.
+        """
+        len1_laser_gate1 = self.gate_length1
+        len2_laser_ungated = self.laser_length - self.gate_length1 - self.gate_length2
+        len3_laser_gate2 = self.gate_length2 - self.laser_delay
+        len4_delay_gate2 = self.laser_delay
+
+        laser_gate_element1 = self._get_laser_gate_element(length=len1_laser_gate1, increment=0)
+        laser_element = self._get_laser_element(length=len2_laser_ungated, increment=0)
+        laser_gate_element2 = self._get_laser_gate_element(length=len3_laser_gate2, increment=0)
+        delay_element = self._get_delay_gate_element()
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+
+        readout_subblock = PulseBlock(name='readout')
+        readout_subblock.append(laser_gate_element1)
+        readout_subblock.append(laser_element)
+        readout_subblock.append(laser_gate_element2)
+        readout_subblock.append(delay_element)
+        readout_subblock.append(waiting_element)
+
+        return readout_subblock
+
+        ################################################################################################
     #                             Generation methods for waveforms                                 #
     ################################################################################################
     def generate_laser_on(self, name='laser_on', length=3.0e-6):
@@ -207,16 +281,12 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                           phase=0)
         waiting_element = self._get_idle_element(length=self.wait_time,
                                                  increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
-                                                     increment=0)
-        delay_element = self._get_delay_gate_element()
+        readout_subblock = self.generate_readout_subblock()
 
         # Create block and append to created_blocks list
         rabi_block = PulseBlock(name=name)
         rabi_block.append(mw_element)
-        rabi_block.append(laser_element)
-        rabi_block.append(delay_element)
-        rabi_block.append(waiting_element)
+        rabi_block.append_subblock(readout_subblock)
         created_blocks.append(rabi_block)
 
         # Create block ensemble
@@ -252,12 +322,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # Create frequency array
         freq_array = freq_start + np.arange(num_of_points) * freq_step
 
-        # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time,
-                                                 increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
-                                                     increment=0)
-        delay_element = self._get_delay_gate_element()
+        readout_subblock = self.generate_readout_subblock()
 
         # Create block and append to created_blocks list
         pulsedodmr_block = PulseBlock(name=name)
@@ -268,9 +333,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                               freq=mw_freq,
                                               phase=0)
             pulsedodmr_block.append(mw_element)
-            pulsedodmr_block.append(laser_element)
-            pulsedodmr_block.append(delay_element)
-            pulsedodmr_block.append(waiting_element)
+            pulsedodmr_block.append_subblock(readout_subblock)
         created_blocks.append(pulsedodmr_block)
 
         # Create block ensemble
@@ -308,11 +371,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         tau_pspacing_start = self.tau_2_pulse_spacing(tau_start)
 
         # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time,
-                                                 increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
-                                                     increment=0)
-        delay_element = self._get_delay_gate_element()
         pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
                                               increment=0,
                                               amp=self.microwave_amplitude,
@@ -333,21 +391,19 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                                    phase=0)
         tau_element = self._get_idle_element(length=tau_pspacing_start, increment=tau_step)
 
+        readout_subblock = self.generate_readout_subblock()
+
         # Create block and append to created_blocks list
         ramsey_block = PulseBlock(name=name)
         ramsey_block.append(pihalf_element)
         ramsey_block.append(tau_element)
         ramsey_block.append(pihalf_element)
-        ramsey_block.append(laser_element)
-        ramsey_block.append(delay_element)
-        ramsey_block.append(waiting_element)
+        ramsey_block.append_subblock(readout_subblock)
         if alternating:
             ramsey_block.append(pihalf_element)
             ramsey_block.append(tau_element)
             ramsey_block.append(pi3half_element)
-            ramsey_block.append(laser_element)
-            ramsey_block.append(delay_element)
-            ramsey_block.append(waiting_element)
+            ramsey_block.append_subblock(readout_subblock)
         created_blocks.append(ramsey_block)
 
         # Create block ensemble
@@ -386,11 +442,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             tau_array = tau_list
         tau_pspacing_array = self.tau_2_pulse_spacing(tau_array)
 
-        waiting_element = self._get_idle_element(length=self.wait_time,
-                                                 increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
-                                                     increment=0)
-        delay_element = self._get_delay_gate_element()
         # get pihalf element
         pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
                                               increment=0,
@@ -411,6 +462,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                                        amp=self.microwave_amplitude,
                                                        freq=self.microwave_frequency,
                                                        phase=0)
+        readout_subblock = self.generate_readout_subblock()
 
         # Create block and append to created_blocks list
         ramsey_block = PulseBlock(name=name)
@@ -420,17 +472,13 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             ramsey_block.append(tau_element)
             ramsey_block.append(tau_element)
             ramsey_block.append(pihalf_element)
-            ramsey_block.append(laser_element)
-            ramsey_block.append(delay_element)
-            ramsey_block.append(waiting_element)
+            ramsey_block.append_subblock(readout_subblock)
 
             if alternating:
                 ramsey_block.append(pihalf_element)
                 ramsey_block.append(tau_element)
                 ramsey_block.append(pi3half_element)
-                ramsey_block.append(laser_element)
-                ramsey_block.append(delay_element)
-                ramsey_block.append(waiting_element)
+                ramsey_block.append_subblock(readout_subblock)
 
         created_blocks.append(ramsey_block)
 
@@ -499,6 +547,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                                    phase=0)
         tau_element = self._get_idle_element(length=tau_pspacing_start, increment=tau_step)
 
+        readout_subblock = self.generate_readout_subblock()
+
         # Create block and append to created_blocks list
         hahn_block = PulseBlock(name=name)
         hahn_block.append(pihalf_element)
@@ -506,18 +556,14 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         hahn_block.append(pi_element)
         hahn_block.append(tau_element)
         hahn_block.append(pihalf_element)
-        hahn_block.append(laser_element)
-        hahn_block.append(delay_element)
-        hahn_block.append(waiting_element)
+        hahn_block.append_subblock(readout_subblock)
         if alternating:
             hahn_block.append(pihalf_element)
             hahn_block.append(tau_element)
             hahn_block.append(pi_element)
             hahn_block.append(tau_element)
             hahn_block.append(pi3half_element)
-            hahn_block.append(laser_element)
-            hahn_block.append(delay_element)
-            hahn_block.append(waiting_element)
+            hahn_block.append_subblock(readout_subblock)
         created_blocks.append(hahn_block)
 
         # Create block ensemble
@@ -561,11 +607,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         tau_pspacing_array = self.tau_2_pulse_spacing(tau_array)
 
         # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time,
-                                                 increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
-                                                     increment=0)
-        delay_element = self._get_delay_gate_element()
         pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
                                               increment=0,
                                               amp=self.microwave_amplitude,
@@ -589,6 +630,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                                    amp=self.microwave_amplitude,
                                                    freq=self.microwave_frequency,
                                                    phase=0)
+        readout_subblock = self.generate_readout_subblock()
 
         # Create block and append to created_blocks list
         hahn_block = PulseBlock(name=name)
@@ -599,18 +641,14 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             hahn_block.append(pi_element)
             hahn_block.append(tau_element)
             hahn_block.append(pihalf_element)
-            hahn_block.append(laser_element)
-            hahn_block.append(delay_element)
-            hahn_block.append(waiting_element)
+            hahn_block.append_subblock(readout_subblock)
             if alternating:
                 hahn_block.append(pihalf_element)
                 hahn_block.append(tau_element)
                 hahn_block.append(pi_element)
                 hahn_block.append(tau_element)
                 hahn_block.append(pi3half_element)
-                hahn_block.append(laser_element)
-                hahn_block.append(delay_element)
-                hahn_block.append(waiting_element)
+                hahn_block.append_subblock(readout_subblock)
         created_blocks.append(hahn_block)
 
         # Create block ensemble
@@ -660,17 +698,16 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                               phase=0)
 
         tau_element = self._get_idle_element(length=tau_start, increment=tau_step)
+
+        readout_subblock = self.generate_readout_subblock()
+
         t1_block = PulseBlock(name=name)
         t1_block.append(tau_element)
-        t1_block.append(laser_element)
-        t1_block.append(delay_element)
-        t1_block.append(waiting_element)
+        t1_block.append_subblock(readout_subblock)
         if alternating:
             t1_block.append(pi_element)
             t1_block.append(tau_element)
-            t1_block.append(laser_element)
-            t1_block.append(delay_element)
-            t1_block.append(waiting_element)
+            t1_block.append_subblock(readout_subblock)
         created_blocks.append(t1_block)
 
         # Create block ensemble
@@ -711,30 +748,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             tau_array = np.geomspace(tau_start, tau_end, num_of_points)
 
         # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time,
-                                                 increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length,
-                                                     increment=0)
-        delay_element = self._get_delay_gate_element()
         if alternating:  # get pi element
             pi_element = self._get_mw_element(length=self.rabi_period / 2,
                                               increment=0,
                                               amp=self.microwave_amplitude,
                                               freq=self.microwave_frequency,
                                               phase=0)
+
+        readout_subblock = self.generate_readout_subblock()
+
         t1_block = PulseBlock(name=name)
         for tau in tau_array:
             tau_element = self._get_idle_element(length=tau, increment=0.0)
             t1_block.append(tau_element)
-            t1_block.append(laser_element)
-            t1_block.append(delay_element)
-            t1_block.append(waiting_element)
+            t1_block.append_subblock(readout_subblock)
             if alternating:
                 t1_block.append(pi_element)
                 t1_block.append(tau_element)
-                t1_block.append(laser_element)
-                t1_block.append(delay_element)
-                t1_block.append(waiting_element)
+                t1_block.append_subblock(readout_subblock)
         created_blocks.append(t1_block)
 
         # Create block ensemble
@@ -771,9 +802,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         amp_array = amp_start + np.arange(num_of_points) * amp_step
 
         # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
-        delay_element = self._get_delay_gate_element()
         pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
                                               increment=0,
                                               amp=self.microwave_amplitude,
@@ -793,6 +821,8 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                                    freq=self.microwave_frequency,
                                                    phase=0)
 
+        readout_subblock = self.generate_readout_subblock()
+
         # Create block and append to created_blocks list
         hhamp_block = PulseBlock(name=name)
         for sl_amp in amp_array:
@@ -804,16 +834,12 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             hhamp_block.append(pihalf_element)
             hhamp_block.append(sl_element)
             hhamp_block.append(pihalf_element)
-            hhamp_block.append(laser_element)
-            hhamp_block.append(delay_element)
-            hhamp_block.append(waiting_element)
+            hhamp_block.append_subblock(readout_subblock)
 
             hhamp_block.append(pi3half_element)
             hhamp_block.append(sl_element)
             hhamp_block.append(pihalf_element)
-            hhamp_block.append(laser_element)
-            hhamp_block.append(delay_element)
-            hhamp_block.append(waiting_element)
+            hhamp_block.append_subblock(readout_subblock)
         created_blocks.append(hhamp_block)
 
         # Create block ensemble
@@ -850,9 +876,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         tau_array = tau_start + np.arange(num_of_points) * tau_step
 
         # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
-        delay_element = self._get_delay_gate_element()
         pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
                                               increment=0,
                                               amp=self.microwave_amplitude,
@@ -877,21 +900,19 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                           freq=self.microwave_frequency,
                                           phase=90)
 
+        readout_subblock = self.generate_readout_subblock()
+
         # Create block and append to created_blocks list
         hhtau_block = PulseBlock(name=name)
         hhtau_block.append(pihalf_element)
         hhtau_block.append(sl_element)
         hhtau_block.append(pihalf_element)
-        hhtau_block.append(laser_element)
-        hhtau_block.append(delay_element)
-        hhtau_block.append(waiting_element)
+        hhtau_block.append_subblock(readout_subblock)
 
         hhtau_block.append(pi3half_element)
         hhtau_block.append(sl_element)
         hhtau_block.append(pihalf_element)
-        hhtau_block.append(laser_element)
-        hhtau_block.append(delay_element)
-        hhtau_block.append(waiting_element)
+        hhtau_block.append_subblock(readout_subblock)
         created_blocks.append(hhtau_block)
 
         # Create block ensemble
@@ -928,9 +949,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         steps_array = np.arange(2 * polarization_steps)
 
         # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
-        delay_element = self._get_delay_gate_element()
         pihalf_element = self._get_mw_element(length=self.rabi_period / 4,
                                               increment=0,
                                               amp=self.microwave_amplitude,
@@ -955,14 +973,14 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                           freq=self.microwave_frequency,
                                           phase=90)
 
+        readout_subblock = self.generate_readout_subblock()
+
         # Create block for "up"-polarization and append to created_blocks list
         up_block = PulseBlock(name=name + '_up')
         up_block.append(pihalf_element)
         up_block.append(sl_element)
         up_block.append(pihalf_element)
-        up_block.append(laser_element)
-        up_block.append(delay_element)
-        up_block.append(waiting_element)
+        up_block.append_subblock(readout_subblock)
         created_blocks.append(up_block)
 
         # Create block for "down"-polarization and append to created_blocks list
@@ -970,9 +988,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         down_block.append(pi3half_element)
         down_block.append(sl_element)
         down_block.append(pi3half_element)
-        down_block.append(laser_element)
-        down_block.append(delay_element)
-        down_block.append(waiting_element)
+        down_block.append_subblock(readout_subblock)
         created_blocks.append(down_block)
 
         # Create block ensemble
@@ -1118,10 +1134,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles = list()
         created_sequences = list()
 
-        # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
-        delay_element = self._get_delay_gate_element()
+        readout_subblock = self.generate_readout_subblock()
 
         # Create block and append to created_blocks list
         chirpedodmr_block = PulseBlock(name=name)
@@ -1144,9 +1157,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                                                      + freq_overlap),
                                                           phase=0)
             chirpedodmr_block.append(mw_element)
-            chirpedodmr_block.append(laser_element)
-            chirpedodmr_block.append(delay_element)
-            chirpedodmr_block.append(waiting_element)
+            chirpedodmr_block.append_subblock(readout_subblock)
         created_blocks.append(chirpedodmr_block)
 
         # Create block ensemble
@@ -1245,10 +1256,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles = list()
         created_sequences = list()
 
-        # create the elements
-        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
-        laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
-        delay_element = self._get_delay_gate_element()
+        readout_subblock = self.generate_readout_subblock()
 
         # Create block and append to created_blocks list
         chirpedodmr_block = PulseBlock(name=name)
@@ -1272,9 +1280,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                                       phase=0,
                                                       truncation_ratio=truncation_ratio)
             chirpedodmr_block.append(mw_element)
-            chirpedodmr_block.append(laser_element)
-            chirpedodmr_block.append(delay_element)
-            chirpedodmr_block.append(waiting_element)
+            chirpedodmr_block.append_subblock(readout_subblock)
         created_blocks.append(chirpedodmr_block)
 
         # Create block ensemble

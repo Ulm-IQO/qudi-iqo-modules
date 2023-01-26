@@ -354,6 +354,12 @@ class PulseBlock(object):
         self.insert(position=len(self.element_list), element=element)
         return
 
+    def append_subblock(self, subblock):
+        for i in range(len(subblock)):
+            self.insert(position=len(self.element_list), element=subblock[i])
+        return
+
+
     def extend(self, iterable):
         for element in iterable:
             self.append(element=element)
@@ -998,6 +1004,7 @@ class PredefinedGeneratorBase:
     qudi module (e.g. self.log.error(...)).
     Also provides helper methods to simplify sequence/ensemble generation.
     """
+    gate_options = ['normal', 'partial', 'double']
 
     def __init__(self, sequencegeneratorlogic):
         # Keep protected reference to the SequenceGeneratorLogic
@@ -1105,6 +1112,18 @@ class PredefinedGeneratorBase:
     @property
     def rabi_period(self):
         return self.generation_parameters.get('rabi_period')
+
+    @property
+    def gate_type(self):
+        return self.generation_parameters.get('gate_type')
+
+    @property
+    def gate_length1(self):
+        return self.generation_parameters.get('gate_length1')
+
+    @property
+    def gate_length2(self):
+        return self.generation_parameters.get('gate_length2')
 
     @property
     def sample_rate(self):
