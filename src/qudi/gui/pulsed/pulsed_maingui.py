@@ -139,6 +139,77 @@ class PredefinedMethodsConfigDialog(QtWidgets.QDialog):
 
         uic.loadUi(ui_file, self)
 
+class PredefinedMethodsAdvancedOptionsDialog(QtWidgets.QDialog):
+    def __init__(self, pulsedmasterlogic):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, 'ui_pulsed_main_gui_settings_predefined_advenced_options.ui')
+
+        # Load it
+        super().__init__()
+
+        uic.loadUi(ui_file, self)
+
+        self._pmal = pulsedmasterlogic
+
+    def activate(self):
+        """
+        Call the parameters from the StatusVar in the logic.
+        """
+        self.update_advanced_generation_parameters(self._pmal().sequencegeneratorlogic().advanced_generation_parameters)
+        return
+
+    def deactivate(self):
+        self.close()
+        return
+
+    def show(self):
+        """
+        pop up the settings dialog.
+        """
+        self.exec_()
+        return
+
+    def connect_signals(self):
+        self.double_gate_checkBox.stateChanged.connect(self.apply_advanced_generation_parameters)
+        self.gate_length1_ScienDSpinBox.editingFinished.connect(self.apply_advanced_generation_parameters)
+        self.gate_length2_ScienDSpinBox.editingFinished.connect(self.apply_advanced_generation_parameters)
+        return
+
+    def disconnect_signals(self):
+        self.double_gate_checkBox.stateChanged.disconnect()
+        self.gate_length1_ScienDSpinBox.editingFinished.disconnect()
+        self.gate_length2_ScienDSpinBox.editingFinished.disconnect()
+        return
+
+    @QtCore.Slot()
+    def apply_advanced_generation_parameters(self):
+        """
+        apply the gui parameters to those in the logic.
+        """
+        stg_dict = dict()
+        stg_dict['double_gate'] = self.double_gate_checkBox.isChecked()
+        stg_dict['gate_length1'] = self.gate_length1_ScienDSpinBox.value()
+        stg_dict['gate_length2'] = self.gate_length2_ScienDSpinBox.value()
+        self._pmal().sequencegeneratorlogic().set_advanced_generation_parameters(stg_dict)
+        return
+
+    def update_advanced_generation_parameters(self, settings_dict):
+        """
+        update the gui parameters with those in the logic(e.g. StatusVars).
+        """
+        self._toggle_block_signals(True)
+        self.double_gate_checkBox.setChecked(settings_dict['double_gate'])
+        self.gate_length1_ScienDSpinBox.setValue(settings_dict['gate_length1'])
+        self.gate_length2_ScienDSpinBox.setValue(settings_dict['gate_length2'])
+        self._toggle_block_signals(False)
+        return
+
+    def _toggle_block_signals(self, bool):
+        self.double_gate_checkBox.blockSignals(bool)
+        self.gate_length1_ScienDSpinBox.blockSignals(bool)
+        self.gate_length2_ScienDSpinBox.blockSignals(bool)
+        return
 
 class PulsedMeasurementGui(GuiBase):
     """
@@ -192,6 +263,7 @@ class PulsedMeasurementGui(GuiBase):
         self._as = AnalysisSettingDialog()
         self._pgs = GeneratorSettingDialog()
         self._pm_cfg = PredefinedMethodsConfigDialog()
+        self._pm_adv = PredefinedMethodsAdvancedOptionsDialog(self.pulsedmasterlogic)
         self._fcd = FitConfigurationDialog(
             parent=self._mw,
             fit_config_model=self.pulsedmasterlogic().fit_config_model
@@ -212,6 +284,7 @@ class PulsedMeasurementGui(GuiBase):
         self._activate_sequence_generator_ui()
         self._activate_analysis_settings_ui()
         self._activate_predefined_methods_settings_ui()
+        self._pm_adv.activate()
 
         self._connect_main_window_signals()
         self._connect_analysis_tab_signals()
@@ -221,6 +294,7 @@ class PulsedMeasurementGui(GuiBase):
         self._connect_sequence_generator_tab_signals()
         self._connect_dialog_signals()
         self._connect_logic_signals()
+        self._pm_adv.connect_signals()
 
         self.sigPulseGeneratorSettingsUpdated.connect(
             self.pulsedmasterlogic().refresh_pulse_generator_settings,
@@ -261,6 +335,7 @@ class PulsedMeasurementGui(GuiBase):
         This deactivation disconnects all the graphic modules, which were
         connected in the initUI method.
         """
+        self._pm_adv.deactivate()
         self._deactivate_predefined_methods_settings_ui()
         self._deactivate_analysis_settings_ui()
         self._deactivate_generator_settings_ui()
@@ -299,6 +374,7 @@ class PulsedMeasurementGui(GuiBase):
         # Connect main window actions and toolbar
         self._mw.action_Predefined_Methods_Config.triggered.connect(
             self.show_predefined_methods_config)
+        self._mw.action_Predefined_Methods_Advanced_Options.triggered.connect(self._pm_adv.show)
         self._mw.pulser_on_off_PushButton.clicked.connect(self.pulser_on_off_clicked)
         self._mw.clear_device_PushButton.clicked.connect(self.clear_pulser_clicked)
         self._mw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
@@ -1666,6 +1742,8 @@ class PulsedMeasurementGui(GuiBase):
         self._pg.gen_syncchannel_ComboBox.blockSignals(False)
         self._pg.gen_gatechannel_ComboBox.blockSignals(False)
         return
+
+
 
     @QtCore.Slot()
     def block_add_last_clicked(self):

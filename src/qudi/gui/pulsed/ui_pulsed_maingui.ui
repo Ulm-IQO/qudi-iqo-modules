@@ -58,6 +58,7 @@
      <string>Se&amp;ttings</string>
     </property>
     <addaction name="action_Predefined_Methods_Config"/>
+    <addaction name="action_Predefined_Methods_Advanced_Options"/>
     <addaction name="separator"/>
     <addaction name="action_Settings_Analysis"/>
     <addaction name="action_FitSettings"/>
@@ -225,6 +226,15 @@
    </property>
    <property name="shortcut">
     <string>Ctrl+Shift+S</string>
+   </property>
+  </action>
+  <action name="action_Predefined_Methods_Advanced_Options">
+   <property name="icon">
+    <iconset>
+     <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/configure.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/configure.svg</iconset>
+   </property>
+   <property name="text">
+    <string>Predefined Methods Advanced options</string>
    </property>
   </action>
  </widget>
