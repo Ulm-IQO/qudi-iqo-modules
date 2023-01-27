@@ -334,6 +334,9 @@ class ScanningProbeDummy(ScanningProbeInterface):
                         self._current_position.items()}
             return position
 
+    def _init_scan_grid(self, x_values, y_values):
+        return np.meshgrid(x_values, y_values, indexing='ij')
+
     def start_scan(self):
         """
         @return:
@@ -365,7 +368,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                        self._current_scan_resolution[1])
             else:
                 y_values = np.linspace(self._current_position['y'], self._current_position['y'], 1)
-            xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
+            xy_grid = self._init_scan_grid(y_values, y_values)
 
             include_dist = self._spot_size_dist[0] + 5 * self._spot_size_dist[1]
             self._scan_image = np.random.uniform(0, 2e4, self._current_scan_resolution)
@@ -526,6 +529,12 @@ class TiltScanningProbeDummy(TiltCorrectionMixin, ScanningProbeDummy):
 
     def configure_scan(self, scan_settings):
         return super().configure_scan(scan_settings)
+
+    def _init_scan_grid(self, x_values, y_values):
+        grid = np.meshgrid(2*x_values, y_values, indexing='ij')
+        print(f"Transforming grid: {grid}")
+
+        return grid
 
     def move_absolute(self, position, velocity=None, blocking=False):
         return super().move_absolute(position, velocity, blocking)
