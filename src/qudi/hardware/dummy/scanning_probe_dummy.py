@@ -27,7 +27,36 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData
 from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
+from qudi.core.module import Base
 
+
+class LinearTransformation(object):
+    def __init__(self):
+        pass
+    def transform_to(self, coord):
+        # this is a stub function
+        return {key: 0.5*val for key, val in coord.items()}
+
+    def transform_from(self, coord):
+        # this is a stub function
+        return {key: 2*val for key, val in coord.items()}
+
+
+class TiltCorrectionMixin(Base):
+
+    def __init__(self, *args, **kwargs):
+        self.coord_transform = LinearTransformation()
+        super().__init__(*args, **kwargs)
+
+    def get_target(self):
+        print("Getting target from uncorrected hw")
+        target = super().get_target()
+        print(f"uncorrected {target} type {type(target)}")
+
+        target_cor = self.coord_transform.transform_from(target)
+        print(f"corrected {target_cor}")
+
+        return target_cor
 
 class ScanningProbeDummy(ScanningProbeInterface):
     """
@@ -519,3 +548,22 @@ class ScanningProbeDummy(ScanningProbeInterface):
         y_prime = y - y0
         return offset + amp * np.exp(
             -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
+
+
+class TiltScanningProbeDummy(TiltCorrectionMixin, ScanningProbeDummy):
+
+    def configure_scan(self, scan_settings):
+        return super().configure_scan(scan_settings)
+
+    def move_absolute(self, position, velocity=None, blocking=False):
+        return super().move_absolute(position, velocity, blocking)
+
+    def get_target(self):
+        print("----\nCallin corrected hw")
+        return super().get_target()
+
+    def get_position(self):
+        return super().get_position()
+
+
+
