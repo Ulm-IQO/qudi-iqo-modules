@@ -129,34 +129,38 @@ class InStreamDummy(DataInStreamInterface):
                                            enumerate(self._analog_channels, 1)]
 
         # Create constraints
-        self._constraints = DataInStreamConstraints()
-        self._constraints.digital_channels = tuple(
-            StreamChannel(name=ch, type=StreamChannelType.DIGITAL, unit='counts') for ch in
-            self._digital_channels)
-        self._constraints.analog_channels = tuple(
-            StreamChannel(name=ch, type=StreamChannelType.ANALOG, unit='V') for ch in
-            self._analog_channels)
-        self._constraints.analog_sample_rate.min = 1
-        self._constraints.analog_sample_rate.max = 2**31-1
-        self._constraints.analog_sample_rate.step = 1
-        self._constraints.analog_sample_rate.unit = 'Hz'
-        self._constraints.digital_sample_rate.min = 1
-        self._constraints.digital_sample_rate.max = 2**31-1
-        self._constraints.digital_sample_rate.step = 1
-        self._constraints.digital_sample_rate.unit = 'Hz'
-        self._constraints.combined_sample_rate = self._constraints.analog_sample_rate
+        self._constraints = DataInStreamConstraints(
+            digital_channels=tuple(
+                StreamChannel(name=ch, type=StreamChannelType.DIGITAL, unit='counts') for ch in
+                self._digital_channels
+            ),
+            analog_channels=tuple(
+                StreamChannel(name=ch, type=StreamChannelType.ANALOG, unit='V') for ch in
+                self._analog_channels
+            ),
+            analog_sample_rate={'default'    : 1,
+                                'bounds'     : (1, 2 ** 31 - 1),
+                                'increment'  : 1,
+                                'enforce_int': True},
+            digital_sample_rate={'default'    : 1,
+                                 'bounds'     : (1, 2 ** 31 - 1),
+                                 'increment'  : 1,
+                                 'enforce_int': True},
+            combined_sample_rate={'default'    : 1,
+                                  'bounds'     : (1, 2 ** 31 - 1),
+                                  'increment'  : 1,
+                                  'enforce_int': True},
+            read_block_size={'default'    : 1,
+                             'bounds'     : (1, 1_000_000),
+                             'increment'  : 1,
+                             'enforce_int': True},
+            streaming_modes=(StreamingMode.CONTINUOUS,),  # TODO: Implement FINITE streaming mode
+            data_type=np.float64,
+            allow_circular_buffer=True
+        )
 
-        self._constraints.read_block_size.min = 1
-        self._constraints.read_block_size.max = 1000000
-        self._constraints.read_block_size.step = 1
-
-        # TODO: Implement FINITE streaming mode
-        self._constraints.streaming_modes = (StreamingMode.CONTINUOUS,)  # , StreamingMode.FINITE)
-        self._constraints.data_type = np.float64
-        self._constraints.allow_circular_buffer = True
-
-        self.__sample_rate = self._constraints.combined_sample_rate.min
-        self.__data_type = np.float64
+        self.__sample_rate = self._constraints.combined_sample_rate.minimum
+        self.__data_type = self._constraints.data_type
         self.__stream_length = 0
         self.__buffer_size = 1000
         self.__use_circular_buffer = False
@@ -195,11 +199,11 @@ class InStreamDummy(DataInStreamInterface):
         if self._check_settings_change():
             if not self._clk_frequency_valid(rate):
                 if self._analog_channels:
-                    min_val = self._constraints.combined_sample_rate.min
-                    max_val = self._constraints.combined_sample_rate.max
+                    min_val = self._constraints.combined_sample_rate.minimum
+                    max_val = self._constraints.combined_sample_rate.maximum
                 else:
-                    min_val = self._constraints.digital_sample_rate.min
-                    max_val = self._constraints.digital_sample_rate.max
+                    min_val = self._constraints.digital_sample_rate.minimum
+                    max_val = self._constraints.digital_sample_rate.maximum
                 self.log.warning(
                     'Sample rate requested ({0:.3e}Hz) is out of bounds. Please choose '
                     'a value between {1:.3e}Hz and {2:.3e}Hz. Value will be clipped to '
@@ -642,11 +646,11 @@ class InStreamDummy(DataInStreamInterface):
     # =============================================================================================
     def _clk_frequency_valid(self, frequency):
         if self._analog_channels:
-            max_rate = self._constraints.combined_sample_rate.max
-            min_rate = self._constraints.combined_sample_rate.min
+            max_rate = self._constraints.combined_sample_rate.maximum
+            min_rate = self._constraints.combined_sample_rate.minimum
         else:
-            max_rate = self._constraints.digital_sample_rate.max
-            min_rate = self._constraints.digital_sample_rate.min
+            max_rate = self._constraints.digital_sample_rate.maximum
+            min_rate = self._constraints.digital_sample_rate.minimum
         return min_rate <= frequency <= max_rate
 
     def _init_buffer(self):
