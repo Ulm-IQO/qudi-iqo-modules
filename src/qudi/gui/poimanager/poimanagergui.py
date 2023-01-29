@@ -471,7 +471,7 @@ class PoiManagerGui(GuiBase):
             self._poi_manager_logic().set_poi_anchor_from_position, QtCore.Qt.QueuedConnection)
         self._mw.delete_poi_PushButton.clicked.connect(
             self._poi_manager_logic().delete_poi, QtCore.Qt.QueuedConnection)
-        self._mw.active_poi_ComboBox.activated[str].connect(
+        self._mw.active_poi_ComboBox.currentTextChanged.connect(
             self._poi_manager_logic().set_active_poi, QtCore.Qt.QueuedConnection)
         self._mw.goto_poi_after_update_checkBox.stateChanged.connect(
             self._poi_manager_logic().set_move_scanner_after_optimise, QtCore.Qt.QueuedConnection)
