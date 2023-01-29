@@ -50,18 +50,18 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         icon = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
         icon.addFile(os.path.join(icon_path, 'stop-counter'),
                      state=QtGui.QIcon.On)
-        self.action_toggle_measurement = QtWidgets.QAction('Toggle Measurement')
+        self.action_toggle_measurement = QtGui.QAction('Toggle Measurement')
         self.action_toggle_measurement.setCheckable(True)
         self.action_toggle_measurement.setIcon(icon)
         self.action_toggle_measurement.setToolTip('Start/Stop ODMR scan measurement')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'restart-counter'))
-        self.action_resume_measurement = QtWidgets.QAction('Resume Measurement')
+        self.action_resume_measurement = QtGui.QAction('Resume Measurement')
         self.action_resume_measurement.setIcon(icon)
         self.action_resume_measurement.setToolTip('Resume ODMR scan measurement')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'document-save'))
-        self.action_save_measurement = QtWidgets.QAction('Save Measurement')
+        self.action_save_measurement = QtGui.QAction('Save Measurement')
         self.action_save_measurement.setIcon(icon)
         self.action_save_measurement.setToolTip(
             'Save ODMR scan measurement.\n'
@@ -69,31 +69,31 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         )
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'dialog-warning'))
-        self.action_toggle_cw = QtWidgets.QAction('Toggle CW')
+        self.action_toggle_cw = QtGui.QAction('Toggle CW')
         self.action_toggle_cw.setCheckable(True)
         self.action_toggle_cw.setIcon(icon)
         self.action_toggle_cw.setToolTip('Toggle continuous microwave output.\n'
                                          'WARNING: Ensure RF network can handle CW power.')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
-        self.action_close = QtWidgets.QAction('Close')
+        self.action_close = QtGui.QAction('Close')
         self.action_close.setIcon(icon)
 
-        self.action_show_cw_controls = QtWidgets.QAction('Show CW Controls')
+        self.action_show_cw_controls = QtGui.QAction('Show CW Controls')
         self.action_show_cw_controls.setCheckable(True)
         self.action_show_cw_controls.setChecked(True)
         self.action_show_cw_controls.setToolTip('Show/Hide CW controls')
 
-        self.action_restore_default_view = QtWidgets.QAction('Restore Default')
+        self.action_restore_default_view = QtGui.QAction('Restore Default')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
-        self.action_show_odmr_settings = QtWidgets.QAction('ODMR Settings')
+        self.action_show_odmr_settings = QtGui.QAction('ODMR Settings')
         self.action_show_odmr_settings.setToolTip(
             'Open a dialog to edit ODMR settings that are not very frequently used.'
         )
         self.action_show_odmr_settings.setIcon(icon)
 
-        self.action_show_fit_configuration = QtWidgets.QAction('Fit Configuration')
+        self.action_show_fit_configuration = QtGui.QAction('Fit Configuration')
         self.action_show_fit_configuration.setToolTip(
             'Open a dialog to edit data fitting configurations available to ODMR.'
         )

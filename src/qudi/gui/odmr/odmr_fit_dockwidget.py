@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('OdmrFitDockWidget',)
 
+from PySide6 import QtWidgets
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
 from qudi.util.widgets.fitting import FitWidget
 
@@ -33,7 +34,7 @@ class OdmrFitDockWidget(AdvancedDockWidget):
     def __init__(self, *args, fit_container=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle('ODMR Fit')
-        self.setFeatures(self.DockWidgetFloatable | self.DockWidgetMovable)
+        self.setFeatures(QtWidgets.QDockWidget.DockWidgetFloatable | QtWidgets.QDockWidget.DockWidgetMovable)
 
         self.fit_widget = FitWidget(fit_container=fit_container)
         self.setWidget(self.fit_widget)

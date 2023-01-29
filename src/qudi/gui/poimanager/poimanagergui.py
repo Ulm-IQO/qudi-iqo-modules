@@ -201,19 +201,19 @@ class NameValidator(QtGui.QValidator):
         # Return intermediate status when empty string is passed
         if not string:
             if self._empty_allowed:
-                return self.Acceptable, '', position
+                return QtGui.QValidator.Acceptable, '', position
             else:
-                return self.Intermediate, string, position
+                return QtGui.QValidator.Intermediate, string, position
 
         match = self.name_re.match(string)
         if not match:
-            return self.Invalid, '', position
+            return QtGui.QValidator.Invalid, '', position
 
         matched = match.group()
         if matched == string:
-            return self.Acceptable, string, position
+            return QtGui.QValidator.Acceptable, string, position
 
-        return self.Invalid, matched, position
+        return QtGui.QValidator.Invalid, matched, position
 
     def fixup(self, text):
         match = self.name_re.search(text)

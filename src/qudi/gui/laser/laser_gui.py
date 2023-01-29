@@ -52,34 +52,34 @@ class LaserMainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.extra_info_label)
         layout.addWidget(extra_info_button_box)
         self.extra_info_dialog.setLayout(layout)
-        layout.setSizeConstraint(layout.SetFixedSize)
+        layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
 
         # create menu bar and actions
         menu_bar = QtWidgets.QMenuBar(self)
         self.setMenuBar(menu_bar)
 
         menu = menu_bar.addMenu('File')
-        self.action_close = QtWidgets.QAction('Close')
+        self.action_close = QtGui.QAction('Close')
         path = os.path.join(get_artwork_dir(), 'icons', 'application-exit')
         self.action_close.setIcon(QtGui.QIcon(path))
         self.action_close.triggered.connect(self.close)
         menu.addAction(self.action_close)
 
         menu = menu_bar.addMenu('View')
-        self.action_view_controls = QtWidgets.QAction('Show Controls')
+        self.action_view_controls = QtGui.QAction('Show Controls')
         self.action_view_controls.setCheckable(True)
         self.action_view_controls.setChecked(True)
         menu.addAction(self.action_view_controls)
-        self.action_view_output_graph = QtWidgets.QAction('Show Output Graph')
+        self.action_view_output_graph = QtGui.QAction('Show Output Graph')
         self.action_view_output_graph.setCheckable(True)
         self.action_view_output_graph.setChecked(True)
         menu.addAction(self.action_view_output_graph)
-        self.action_view_temperature_graph = QtWidgets.QAction('Show Temperature Graph')
+        self.action_view_temperature_graph = QtGui.QAction('Show Temperature Graph')
         self.action_view_temperature_graph.setCheckable(True)
         self.action_view_temperature_graph.setChecked(True)
         menu.addAction(self.action_view_temperature_graph)
         menu.addSeparator()
-        self.action_view_default = QtWidgets.QAction('Restore Default')
+        self.action_view_default = QtGui.QAction('Restore Default')
         menu.addAction(self.action_view_default)
 
         # Create status bar
@@ -187,7 +187,6 @@ class LaserGui(GuiBase):
         self.control_dock_widget.current_spinbox.setSuffix(logic.current_unit)
 
         self.output_graph_dock_widget = LaserOutputDockWidget()
-        self.output_graph_dock_widget.setFeatures(QtWidgets.QDockWidget.AllDockWidgetFeatures)
         self.output_graph_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
         self._mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.output_graph_dock_widget)
         self.output_graph_dock_widget.visibilityChanged.connect(
@@ -204,7 +203,6 @@ class LaserGui(GuiBase):
         self.temperature_graph_dock_widget = LaserTemperatureDockWidget(
             curve_names=tuple(logic.temperatures)
         )
-        self.temperature_graph_dock_widget.setFeatures(QtWidgets.QDockWidget.AllDockWidgetFeatures)
         self.temperature_graph_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
         self._mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.temperature_graph_dock_widget)
         self.temperature_graph_dock_widget.visibilityChanged.connect(

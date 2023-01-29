@@ -72,4 +72,4 @@ class SettingsDialog(QtWidgets.QDialog):
         # Add internal signals
         buttonbox.accepted.connect(self.accept)
         buttonbox.rejected.connect(self.reject)
-        buttonbox.button(buttonbox.Apply).clicked.connect(self.accepted)
+        buttonbox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.accepted)

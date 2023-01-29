@@ -69,37 +69,37 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
 
         # Create QActions
         close_icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
-        self.action_close = QtWidgets.QAction(icon=close_icon, text='Close Window', parent=self)
+        self.action_close = QtGui.QAction(icon=close_icon, text='Close Window', parent=self)
 
         restore_icon = QtGui.QIcon(os.path.join(icon_path, 'view-refresh'))
-        self.action_restore_view = QtWidgets.QAction(icon=restore_icon, text='Restore', parent=self)
+        self.action_restore_view = QtGui.QAction(icon=restore_icon, text='Restore', parent=self)
         self.action_restore_view.setToolTip('Restore the view to the default.')
 
         spec_setting_icon = QtGui.QIcon(os.path.join(icon_path, 'utilities-terminal'))
-        self.action_spectrometer_settings = QtWidgets.QAction(icon=spec_setting_icon,
+        self.action_spectrometer_settings = QtGui.QAction(icon=spec_setting_icon,
                                                               text='Show Spectrometer Settings',
                                                               parent=self)
         self.action_spectrometer_settings.setToolTip('Show the Spectrometer Settings.')
 
         fit_settings_icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
-        self.action_show_fit_settings = QtWidgets.QAction(icon=fit_settings_icon,
+        self.action_show_fit_settings = QtGui.QAction(icon=fit_settings_icon,
                                                           text='Show Fit Settings',
                                                           parent=self)
         self.action_show_fit_settings.setToolTip('Show the Fit Settings.')
 
         save_spec_icon = QtGui.QIcon(os.path.join(icon_path, 'document-save'))
-        self.action_save_spectrum = QtWidgets.QAction(icon=save_spec_icon,
+        self.action_save_spectrum = QtGui.QAction(icon=save_spec_icon,
                                                       text='Save Spectrum',
                                                       parent=self)
         self.action_save_spectrum.setToolTip('Save the currently shown spectrum.')
 
         save_back_icon = QtGui.QIcon(os.path.join(icon_path, 'document-save'))
-        self.action_save_background = QtWidgets.QAction(icon=save_back_icon,
+        self.action_save_background = QtGui.QAction(icon=save_back_icon,
                                                         text='Save Background',
                                                         parent=self)
         self.action_save_background.setToolTip('Save the current background spectrum.')
 
-        self.action_show_data = QtWidgets.QAction(text='Show Data', parent=self)
+        self.action_show_data = QtGui.QAction(text='Show Data', parent=self)
         self.action_show_data.setToolTip('Show/Hide spectrometer data plot and analysis dock.')
         self.action_show_data.setCheckable(True)
         self.action_show_data.setChecked(True)
