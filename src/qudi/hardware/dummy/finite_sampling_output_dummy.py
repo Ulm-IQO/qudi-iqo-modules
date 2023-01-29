@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 import numpy as np
-from PySide2.QtCore import QTimer
+from PySide6.QtCore import QTimer
 from qudi.interface.finite_sampling_output_interface import FiniteSamplingOutputInterface
 from qudi.interface.finite_sampling_output_interface import FiniteSamplingOutputConstraints
 from qudi.util.mutex import RecursiveMutex

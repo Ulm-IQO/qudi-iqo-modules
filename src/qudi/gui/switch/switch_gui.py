@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from enum import IntEnum
-from PySide2 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar

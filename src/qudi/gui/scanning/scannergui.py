@@ -25,7 +25,7 @@ import numpy as np
 import copy as cp
 from typing import Union, Tuple
 from functools import partial
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 import qudi.util.uic as uic
 from qudi.core.connector import Connector

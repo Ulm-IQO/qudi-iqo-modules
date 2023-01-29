@@ -29,7 +29,7 @@ import qudi.util.uic as uic
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.units import create_formatted_output
 from qudi.core.module import GuiBase
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 
 class PIDMainWindow(QtWidgets.QMainWindow):

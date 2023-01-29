@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('AxesControlDockWidget', 'AxesControlWidget')
 
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.widgets.slider import DoubleSlider
 

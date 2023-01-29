@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 
 import numpy as np
-from PySide2 import QtCore
+from PySide6 import QtCore
 import itertools
 import copy as cp
 

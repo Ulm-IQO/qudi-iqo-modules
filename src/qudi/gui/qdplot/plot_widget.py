@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ['QDPlotDockWidget', 'QDPlotWidget', 'QDPlotControlWidget']
 
 import os
-from PySide2 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui
 from typing import Tuple, Dict, Union, List
 
 from qudi.util.paths import get_artwork_dir

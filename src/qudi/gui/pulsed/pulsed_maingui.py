@@ -35,7 +35,7 @@ from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.core.module import GuiBase
 from qudi.util import uic
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 

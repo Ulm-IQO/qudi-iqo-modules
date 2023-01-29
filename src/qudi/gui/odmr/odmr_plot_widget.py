@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('OdmrPlotWidget',)
 
 import pyqtgraph as pg
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from qudi.util.widgets.plotting.plot_item import DataImageItem
 from qudi.util.widgets.plotting.colorbar import ColorBarWidget

@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.core.connector import Connector
 from qudi.core.module import LogicBase

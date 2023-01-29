@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import pyqtgraph as pg
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from qudi.core.statusvariable import StatusVar
 from qudi.util.uic import loadUi
