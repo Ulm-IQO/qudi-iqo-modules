@@ -31,7 +31,8 @@ import numpy as np
 
 from qudi.core.configoption import ConfigOption
 
-from qudi.interface.camera_interface import CameraInterface, ScientificCameraInterface
+from qudi.interface.camera_interface import CameraInterface
+from qudi.interface.scientific_camera_interface import ScientificCameraInterface
 
 
 class ReadMode(Enum):
@@ -49,11 +50,13 @@ class AcquisitionMode(Enum):
     FAST_KINETICS = 4
     RUN_TILL_ABORT = 5
 
+class OperatingMode(Enum):
+    default = 0
+    scientific_single_image = 1
 
 class OutputAmplifier(Enum):
     EM = 0
     CONVENTIONAL = 1
-
 
 class TriggerMode(Enum):
     INTERNAL = 0
@@ -210,10 +213,12 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
     _support_live = True
     _current_max_exposure = 0.1
 
+    _operating_mode = OperatingMode.default
+
     def on_activate(self):
         """ Initialisation performed during activation of the module.
          """
-        self.__exposures = [self._default_exposure]
+        self._exposures = [self._default_exposure]
         self.dll = cdll.LoadLibrary(self._dll_location)
         self.dll.Initialize()
         self._width, self._height = self._get_detector()
@@ -240,6 +245,10 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         self.stop_acquisition()
         self._close_shutter()
         self._shut_down()
+
+    @property
+    def constraints(self):
+        return
 
     def get_name(self):
         """ Retrieve an identifier of the camera that the GUI can print
@@ -283,39 +292,62 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
 
     @property
     def exposures(self):
-        return self.__exposures
+        return self._exposures
 
     @exposures.setter
     def exposures(self, exposures):
-        self.__exposures = exposures
+        self._exposures = exposures
         return
 
     @property
     def sensitivity(self):
-        return
+        return self._get_preamp_gain(self._preamp_gain_index) * self._em_gain
 
     @sensitivity.setter
     def sensitivity(self, sens):
+        fun = getattr(self, self._amp_setter_fun)
+        fun(sens)
         return
 
     @property
     def readout_time(self):
-        return
-
-    @readout_time.setter
-    def readout_time(self, rt):
-        return
+        return self._get_acquisition_timings()[2]
 
     @property
     def sensor_area_settings(self):
-        return
+        return {'binning': (self._hbin, self._vbin),
+                'crop': {(self._hstart, self._hend), (self._vstart, self._vend)}}
 
     @sensor_area_settings.setter
-    def sensor_area_settings(self):
+    def sensor_area_settings(self, area_settings):
+        hbin, vbin = area_settings['binning']
+        hsettings, vsettings = area_settings['crop']
+        hstart, hend = hsettings
+        vstart, vend = vsettings
+        self._set_image(hbin, vbin, hstart, hend, vstart, vend)
         return
 
     @property
-    def bit_depth
+    def bit_depth(self):
+        return 16
+
+    @property
+    def pixel_unit(self):
+        #TODO implement this function properly
+        """
+
+        """
+        return "Counts"
+
+    @property
+    def operating_mode(self):
+        return self._operating_mode
+
+    @operating_mode.setter
+    def operating_mode(self, mode):
+        self._operating_mode = getattr(OperatingMode, mode)
+        self._configure_operating_mode(mode)
+        return
 
     def support_live_acquisition(self):
         """ Return whether or not the camera can take care of live acquisition
@@ -623,69 +655,31 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
             return False
         else:
             return True
-        # read images as soon as they are acquired and check if list has correct size
-        images = []
-        acq_images = []
-        while len(images) < length:
-            first, last = self._get_number_new_images()
-            if (first < last) | (first == last == length):
-                if acq_images:
-                    low_bound = min(first, min(acq_images))
-                else:
-                    low_bound = first
-                for i in range(low_bound, last + 1):
-                    if i not in acq_images:
-                        img = self._get_images(i, i, 1)
-                        acq_images.append(i)
-                        images.append(img)
 
-        # the first frequency has two triggers, therefore remove one image
-        # del images[0:3]
-        # b1 = self.stop_acquisition()
-        return True, np.array(images).transpose()
+    @property
+    def acquisition_mode(self):
+        return self._acquisition_mode
 
-    def count_odmr2(self, length):
-        # the advantage of this count mode is that it is making less
-        # calls to the camera
-        # first wait expected amount of time
-        exp_meas_time = (length + 2) * self._exposure
-        time.sleep(exp_meas_time)
-        # read images as soon as they are acquired and check if list has correct size
-        image_dim = self._height * self._width
-        images = np.zeros((length + 2, image_dim))
-        ind = 0
-        loop_counter = 0
-        while loop_counter < length + 2:
-            # don't save the first two images
-            first, last = self._get_number_new_images()
-            n_scans = self._no_of_scans(first, last)
-            loop_counter += n_scans
-            # there should at least be an image available to read out
-            if n_scans > 0:
-                if loop_counter >= length + 2:
-                    # only read out as many images as needed
-                    old_count = loop_counter - n_scans
-                    to_add = length + 2 - old_count
-                    fresh_images = self._get_images(first, first + to_add - 1, to_add)
-                    fresh_images = np.reshape(fresh_images, (to_add, image_dim))
-                else:
-                    # self.log.warning('in normal case')
-                    fresh_images = self._get_images(first, last, n_scans)
-                    fresh_images = np.reshape(fresh_images, (n_scans, image_dim))
-                images[ind: ind + fresh_images.shape[0]] = fresh_images
-                ind += fresh_images.shape[0]
-        # the first frequency has two triggers, therefore remove one image
-        images_final = images[2:]
-        b1 = self.stop_acquisition()
-        return b1, images_final.transpose()
-
-    def start_acquisition(self):
-        error_msg = self._start_acquisition()
-        if error_msg != 'DRV_SUCCESS':
-            self.log.warning('could not start the acquisition: {}'.format(error_msg))
-            return False
+    @acquisition_mode.setter
+    def acquisition_mode(self, mode):
+        if hasattr(AcquisitionMode, mode):
+            self._acquisition_mode = mode
+            self._set_acquisition_mode()
         else:
-            return True
+            self.log.warning('Requested acquisition mode is not available')
+        return
+
+    def get_images(self, image_num):
+        return
+
+    @property
+    def shutter_state(self):
+        return
+
+    @property
+    def shutter_speed(self):
+        return
+
 
     def get_down_time(self):
         _, acc_cycle_time, _ = self._get_acquisition_timings()
@@ -697,6 +691,28 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         return [i for i in map(lambda x: 'px {0}'.format(x), range(num_px))]
 
 # non interface functions regarding camera interface
+    def _configure_operating_mode(self, mode):
+        if mode == OperatingMode.default.name:
+            self.log.info('operationg mode set to >> default <<')
+            self._set_trigger_mode('INTERNAL')
+            self._cam.amp = {'preamp': 4.0}
+            self._set_frame_transfer(False)
+            self._amp_setter_fun = self._set_preamp_gain
+
+        elif mode == OperatingMode.scientific_single_image.name:
+            self.log.info('operationg mode set to >> fast_readout <<')
+            self._set_trigger_mode('INTERNAL')
+            self._cam.amp = {'preamp': 4.0, 'EM': 100.0}
+            self._set_frame_transfer(True)
+            self._amp_setter_fun = self._set_emccd_gain
+        #TODO implement mode for capturing sequences with scientific cameras
+        else:
+            self.log.error('operating mode {}'.format(mode))
+        
+        #TODO there could be a change of constraints depending on the settings
+        # self._update_constraints()
+
+
     def _abort_acquisition(self):
         error_code = self.dll.AbortAcquisition()
         return ERROR_DICT[error_code]
@@ -1716,478 +1732,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
 
         return image_array
 
-    def _get_c_images(self, first_img, last_img, n_scans):
-        """
-        Same as _get_images just it returns the c array
-        :param first_img:
-        :param last_img:
-        :param n_scans:
-        :return:
-        """
-        width = self._width
-        height = self._height
-
-        # first_img, last_img = self._get_number_new_images()
-        # n_scans = last_img - first_img
-        dim = width * height * n_scans
-
-        dim = int(dim)
-        image_array = np.zeros(dim)
-        cimage_array = c_int * dim
-        cimage = cimage_array()
-
-        first_img = c_long(first_img)
-        last_img = c_long(last_img)
-        size = c_ulong(width * height)
-        val_first = c_long()
-        val_last = c_long()
-        error_code = self.dll.GetImages(first_img, last_img, pointer(cimage),
-                                        size, byref(val_first), byref(val_last))
-
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('Couldn\'t retrieve an image. {0}'.format(ERROR_DICT[error_code]))
-            return -1
-        else:
-            return cimage
-
     # functions returning information about the camera used. (e.g. shift speed etc.)
-
-    def _get_number_ad_channels(self):
-        """
-        Returns number of AD channels available
-        @return int: channels availabe
-        """
-        return 1
-
-    def _get_number_amp(self):
-        """
-        Returns number of output amplifier
-        @return int: Number of amplifiers available
-        """
-        n_amps = c_int()
-        error_code = self.dll.GetNumberAmp(byref(n_amps))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query numper of amplifiers: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-        return n_amps.value
-
-    def _get_number_preamp_gains(self):
-        """
-        Number of gain settings available for the pre amplifier
-
-        @return int: Number of gains available
-        """
-        n_gains = c_int()
-        self.dll.GetNumberPreAmpGains(byref(n_gains))
-        return n_gains.value
-
-    def _get_preamp_gain(self, index):
-        """
-        Function returning the gain value corresponding to a given index
-        @param: int index:
-        @return: float gain: Gain factor to the index
-        """
-        index = c_int(index)
-        gain = c_float()
-        self.dll.GetPreAmpGain(index, byref(gain))
-        return gain.value
-
-    def _get_bit_depth(self):
-        """
-        This function will retrieve the size in bits of the dynamic range for any available AD
-        channel.
-
-        @return: int depth: bit depth
-        """
-        depth = c_int()
-        error_code = self.dll.GetBitDepth(c_int(0), byref(depth))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query bit depth timings: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-
-        return depth.value
-
-    def _get_number_hs_speeds(self, typ):
-        """
-        As your Andor SDK system is capable of operating at more than one horizontal shift speed
-        this function will return the actual number of speeds available.
-
-        @param: str typ: allowed values: 'EM': electron multiplication
-                                         'CONVENTIONAL': conventional amplifier
-
-        @return: int speeds: number of speeds available
-        """
-        typ = getattr(OutputAmplifier, typ).value
-        channel, typ, speeds = c_int(self._get_number_ad_channels() - 1), c_int(typ), c_int()
-        error_code = self.dll.GetNumberHSSpeeds(channel, typ, byref(speeds))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query number of horizontal shift speeds'
-                             ' timings: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-
-        return speeds.value
-
-    def _get_hs_speed(self, typ, index):
-        """
-        Return horizontal shift speed for given AD channel, amplifier configuration.
-
-        @param: str typ: allowed values: 'EM': electron multiplication
-                                         'CONVENTIONAL': conventional amplifier
-                int index: specifies the speed for a given index out of the available once
-                           returned by '_get_number_hs_speeds'
-
-        @return float speed:  speed in MHz
-        """
-        typ = getattr(OutputAmplifier, typ).value
-        channel, typ, index = c_int(self._get_number_ad_channels() - 1), c_int(typ), c_int(index)
-        speed = c_float()
-        error_code = self.dll.GetHSSpeed(channel, typ, index, byref(speed))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query horizontal shift speed: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-
-        return speed.value
-
-    def _get_available_hs_speeds(self, typ):
-        """
-        Convenience function returning the available horizontal readout speeds
-        @param: str typ: allowed values: 'EM': electron multiplication
-                                         'CONVENTIONAL': conventional amplifier
-        @return list hs_speeds: available horizontal readout speeds in MHz
-        """
-        hs_freqs = [self._get_hs_speed(typ, i) for i in range(self._get_number_hs_speeds(typ))]
-        return hs_freqs
-
-    def _get_number_vs_speeds(self):
-        """
-        Returns number of vertical shift speeds available
-        @return:
-        """
-        speeds = c_int()
-        error_code = self.dll.GetNumberVSSpeeds(byref(speeds))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query number of vertical shift speeds: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-        return speeds.value
-
-    def _get_vs_speed(self, index):
-        """
-        Return current vertical shift speed corresponding to the index provided
-        @param: int index: Out of 0:N-1. N can be retrieved using function '_get_number_vs_speeds'
-        @return: float speed: Vertical Shift speed in MHz
-        """
-        index = c_int(index)
-        speed = c_float()
-        error_code = self.dll.GetVSSpeed(index, byref(speed))
-
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query current vertical shift speed: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-
-        return speed.value
-
-    def _get_available_vs_speeds(self):
-        """
-        Convenience function returning the available vertical shift frequencies
-        @param: int typ: allowed values: 0: electron multiplication
-                                         1: conventional
-        @return list hs_speeds: available horizontal readout speeds in MHz
-        """
-        vs_freqs = [self._get_vs_speed(i) for i in range(self._get_number_vs_speeds())]
-        return vs_freqs
-
-    def _get_fastest_recommended_vs_speed(self):
-        """
-        Returns fastest vertical shift speed at the current vertical clock voltage
-        @return: tuple (int_val, float_val): index of the vertical shift speed and value corresponding to the index in
-                 MHz per pixel shift
-        """
-        index = c_int()
-        speed = c_float()
-        error_code = self.dll.GetFastestRecommendedVSSpeed(byref(index), byref(speed))
-
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query fastest recommended vertical shift'
-                             ' speed: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-
-        return index.value, speed.value
-
-    def _get_camera_serialnumber(self):
-        """
-        Gives serial number
-        @return: int number: The serial number of the camera
-        """
-        number = c_int()
-        error_code = self.dll.GetCameraSerialNumber(byref(number))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query camera serial number'
-                             ' speed: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-        return number.value
-
-    def _get_shiftspeed_dict(self, ori, amp=0, decimals=2):
-        """
-        Returns shift speeds like so: {id: freq (MHz)}, id is a the number corresponding to the shift
-        speed when setting the shift speed with andors function like SetHSSpeed or SetVSSpeed
-        ori: str 'hor' | 'ver'
-        amp: int 0: return available shiftspeeds with EM amplifier
-                 1: return availabe shiiftspeeds with conventional amplifier
-                 _: error
-        verbose: bool
-
-        """
-        if ori == 'hor':
-            shift_speeds_hor = {}
-            for ii, speed in enumerate(self._get_available_hs_speeds(amp)):
-                shift_speeds_hor[ii] = np.round(speed, decimals=decimals)
-            if self._verbose:
-                self.log.debug('shift speeds horizontal (index, speed (MHz)): {0}'.format(shift_speeds_hor))
-            return shift_speeds_hor
-
-        elif ori == 'ver':
-            shift_speeds_ver = {}
-            for ii, speed in enumerate(self._get_available_vs_speeds()):
-                shift_speeds_ver[ii] = np.round(speed, decimals=decimals)
-            if self._verbose:
-                self.log.debug('shift speeds vertical (index, speed (MHz)): {0}'.format(shift_speeds_ver))
-            return shift_speeds_ver
-        else:
-            self.log.warning('no correct identifier for the shiftspeed given')
-            return -1
-
-    def _get_head_model(self):
-        name = c_char_p()
-        error_code = self.dll.GetHeadModel(byref(name))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query sensitivity: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-        return name
-
-    def _get_qe(self, wave_length):
-        qe = c_float()
-        wave_length = c_float(wave_length)
-        sensor = self._get_head_model()
-        error_code = self.dll.GetQE(byref(sensor), wave_length, c_uint(0), byref(qe))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query sensitivity: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-
-        return qe.value
-
-    def _get_sensitivity(self):
-        """
-        This function returns the sensitivity of the camera given the current settings
-        @return: float sensitivity: if return value is larger than 0 operation is ok otherwise error.
-        """
-        amp = getattr(self._output_amplifier).value
-        channel = c_int(amp)
-        index = c_int(self._horizontal_readout_index)
-        amplifier = c_int(self._output_amplifier)
-        pa = c_int(self._preamp_gain_index)
-        sensitivity = c_float()
-        error_code = self.dll.GetSensitivity(channel, index, amplifier, pa, byref(sensitivity))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query sensitivity: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-        return sensitivity.value
-
-    def _get_emccd_gain(self):
-        """
-        Returns the current gain setting. The meaning of the value returned depends on the EM
-        Gain mode.
-        @return: int gain: current EM gain setting
-        """
-        gain = c_int()
-        error_code = self.dll.GetEMCCDGain(byref(gain))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query EMCCD gain: {0}'.format(ERROR_DICT[error_code]))
-        return gain.value
-
-    def _get_em_gain_range(self):
-        """
-        Returns the minimum and maximum values of the current selected EM Gain mode and
-        temperature of the sensor.
-        @return: tuple (int low, int high): min and max value that can be set for the current em gain mode
-        """
-        c_low, c_high = c_int(), c_int()
-        error_code = self.dll.GetEMGainRange(byref(c_low), byref(c_high))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query EMCCD gain range: {0}'.format(ERROR_DICT[error_code]))
-        return c_low.value, c_high.value
-
-    def _get_capabilities(self):
-        pass
-
-    def _get_number_ring_exposure_times(self):
-        """
-        Return the number of ring exposures currently set
-        @return: int: number of exposures set
-        """
-
-        num_times = c_int()
-        error_code = self.dll.GetNumberRingExposureTimes(byref(num_times))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query the number of exposures: {0}'.format(ERROR_DICT[error_code]))
-        return num_times.value
-
-    def _get_adjusted_ring_exposure_times(self, times):
-        """
-
-        @param times: number of exposure times set in ring of exposures
-        @return: the actual exposure times used by the camera
-        """
-        actual_exposures = (c_float * times)()
-        c_times = c_int(times)
-        error_code = self.dll.GetAdjustedRingExposureTimes(c_times, pointer(actual_exposures))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query the ring of exposure times: {0}'.format(ERROR_DICT[error_code]))
-        rtrn_array = np.array([val for val in actual_exposures])
-
-        return rtrn_array
-
-    def _get_ring_exposure_range(self):
-        """
-        Get minimum and maximum exposure time
-        @return: (float min, float max): Minimum and maximum exposure time
-        """
-        fpmin, fpmax = c_float(), c_float()
-        error_code = self.dll.GetRingExposureRange(byref(fpmin), byref(fpmax))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query the minimum and maximum exposure time: {0}'.format(ERROR_DICT[error_code]))
-
-        return fpmin.value, fpmax.value
-    # Unstable
-    def _is_pre_amp_gain_available(self, amplifier, index, preamp):
-        """
-        This function checks that the AD channel exists, and that the amplifier, speed and gain
-        are available for the AD channel.
-        @params: int amplifier: value corresponding to the output amplifier used
-                 int index: channel speed index ?
-                 int preamp: index of the pre amp gain desired
-        @return:
-        """
-        amplifier, index, preamp, status = c_int(amplifier), c_int(index), c_int(preamp), c_int()
-        error_code = self.dll.IsPreAmpGainAvailable(amplifier, index, preamp, byref(status))
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('unable to query if preamp gain is available'
-                             ' speed: {0}'.format(ERROR_DICT[error_code]))
-            return -1
-        return status.value
-
-    def _is_trigger_mode_available(self, mode):
-        """
-        This function checks if the hardware and current settings permit the use of the specified
-        trigger mode.
-
-        Available Trigger modes:
-            INTERNAL
-            EXTERNAL
-            EXTERNAL_START
-            EXTERNAL_EXPOSURE
-            SOFTWARE_TRIGGER
-            EXTERNAL_CHARGE_SHIFTING
-
-        @param str mode: the trigger mode to query
-        @return: str err_msg: information if trigger mode is available or not
-        """
-        if hasattr(TriggerMode, mode):
-            n_mode = getattr(TriggerMode, mode).value
-            n_mode = c_int(n_mode)
-            error_code = self.dll.IsTriggerModeAvailable(n_mode)
-
-        return ERROR_DICT[error_code]
-
-    def _is_amplifier_available(self, amp):
-        """
-        This function checks if the hardware and current settings permit the use of the specified
-        amplifier.
-
-        @param: str amp: 'EM' or 'CONVENTIONAL'
-        @return str msg:  DRV_SUCCESS, DRV_NOT_INITIALIZED, DRV_INVALID_AMPLIFIER
-        """
-        if hasattr(OutputAmplifier, amp):
-            n_amp = getattr(OutputAmplifier, amp).value
-            n_amp = c_int(n_amp)
-        error_code = self.dll.IsAmplifierAvailable(n_amp)
-
-        return ERROR_DICT[error_code]
-
-    #TODO: function is working but not sure what to make of the output
-    def _post_process_count_convert(self, input_image, num_images, mode):
-        """
-        @param input_image:
-        @param num_images:
-        @param baseline:
-        @param int mode: 1 - electrons / 2 - photons
-        @return:
-        """
-        sensitivity = c_float(self._get_sensitivity())
-        baseline = c_int(self._baseline)
-        mode = c_int(mode)
-        nv_peak_emission_nm = 670
-        qe = c_float(self._get_qe(nv_peak_emission_nm))
-        height = c_int(self._height)
-        width = c_int(self._width)
-        # initialize output image
-        dim = self._height * self._width * num_images
-        c_out_image_array = c_int * dim
-        c_out_image = c_out_image_array()
-        em_gain = c_int(self._get_emccd_gain())
-
-        output_buffer_size = c_int(self._width * self._height * num_images)
-
-        error_code = self.dll.PostProcessCountConvert(input_image, c_out_image, output_buffer_size,
-                                                      num_images, baseline, mode, em_gain, qe, sensitivity,
-                                                      height, width)
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('Could not convert the counts:{}'.format(ERROR_DICT[error_code]))
-
-        image_array = np.zeros(dim)
-        for i in range(len(c_out_image)):
-            # could be problematic for 'FVB' or 'SINGLE_TRACK' readmode
-            image_array[i] = c_out_image[i]
-
-        return image_array
-
-
-# helper function
-    def _check_gain_value(self, val):
-        """
-        Helper function to tell if a given EM gain setting is
-        available.
-        @param val: gain value to be set
-        @return: {0: ok, -1: error}
-        """
-        if self._em_gain_mode == 0:
-            if val in range(0, 256):
-                return 0
-            else:
-                return -1
-        elif self._em_gain_mode == 1:
-            if val in range(0, 4096):
-                return 0
-            else:
-                return -1
-        elif self._em_gain_mode == 2:
-            # could not find restrictions from Andors side
-            return 0
-        elif self._em_gain_mode == 3:
-            # could not find restrictions from Andors side
-            return 0
-        else:
-            self.log.error('em gain mode not set')
-            return -1
-
-    def inital_camera_setup(self):
-        self._set_output_amplifier('EM')
-        self._set_emccd_gain(3)
-        self._set_image(4, 4, 1, 512, 1, 512)
-        self._set_temperature(-70)
-        self._set_cooler(True)
-        self._open_shutter()
-
-
 # helper function
     def _check_gain_value(self, val):
         """
