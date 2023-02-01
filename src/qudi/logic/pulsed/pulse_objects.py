@@ -1559,7 +1559,6 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
         # create an instance of each class and put them in a temporary list
         generator_instances = [cls(sequencegeneratorlogic) for cls in generator_classes]
-        self._generator_instances = generator_instances
 
         # add references to all generate methods in each instance to a dict
         self.__populate_method_dict(instance_list=generator_instances)
@@ -1574,17 +1573,6 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
     @property
     def predefined_method_parameters(self):
         return self._generate_method_parameters.copy()
-
-    def _repopulate_methods(self):
-        if not self._generator_instances:
-            raise RuntimeError("Before repopulating, PulseObjectGenerator needs to be initialied once.")
-        # add references to all generate methods in each instance to a dict
-        self.__populate_method_dict(instance_list=self._generator_instances)
-
-        # populate parameters dictionary from generate method signatures
-        self.__populate_parameter_dict()
-
-        self.log.debug(f"Repopulating loaded methods in {self._generator_instances}")
 
     def __import_external_generators(self, path):
         """ Helper method to import all modules from given directory path.
