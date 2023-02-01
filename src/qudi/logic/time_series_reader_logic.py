@@ -336,14 +336,14 @@ class TimeSeriesReaderLogic(LogicBase):
                                    '(received: {0:d}).'.format(new_val))
                 else:
                     if self.has_active_analog_channels and self.has_active_digital_channels:
-                        min_val = constraints.combined_sample_rate.min
-                        max_val = constraints.combined_sample_rate.max
+                        min_val = constraints.combined_sample_rate.minimum
+                        max_val = constraints.combined_sample_rate.maximum
                     elif self.has_active_analog_channels:
-                        min_val = constraints.analog_sample_rate.min
-                        max_val = constraints.analog_sample_rate.max
+                        min_val = constraints.analog_sample_rate.minimum
+                        max_val = constraints.analog_sample_rate.maximum
                     else:
-                        min_val = constraints.digital_sample_rate.min
-                        max_val = constraints.digital_sample_rate.max
+                        min_val = constraints.digital_sample_rate.minimum
+                        max_val = constraints.digital_sample_rate.maximum
                     if not (min_val <= (new_val * data_rate) <= max_val):
                         if 'data_rate' in settings_dict:
                             self._oversampling_factor = new_val
@@ -385,14 +385,14 @@ class TimeSeriesReaderLogic(LogicBase):
                     self.log.error('Data rate must be float value > 0.')
                 else:
                     if self.has_active_analog_channels and self.has_active_digital_channels:
-                        min_val = constraints.combined_sample_rate.min
-                        max_val = constraints.combined_sample_rate.max
+                        min_val = constraints.combined_sample_rate.minimum
+                        max_val = constraints.combined_sample_rate.maximum
                     elif self.has_active_analog_channels:
-                        min_val = constraints.analog_sample_rate.min
-                        max_val = constraints.analog_sample_rate.max
+                        min_val = constraints.analog_sample_rate.minimum
+                        max_val = constraints.analog_sample_rate.maximum
                     else:
-                        min_val = constraints.digital_sample_rate.min
-                        max_val = constraints.digital_sample_rate.max
+                        min_val = constraints.digital_sample_rate.minimum
+                        max_val = constraints.digital_sample_rate.maximum
                     sample_rate = new_val * self.oversampling_factor
                     if not (min_val <= sample_rate <= max_val):
                         self.log.warning('Data rate to set ({0:.3e}Hz) would cause sampling rate '

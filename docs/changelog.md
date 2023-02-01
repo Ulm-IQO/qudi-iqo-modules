@@ -2,9 +2,17 @@
 
 ## Pre-Release
 ### Breaking Changes
+None
+
 ### Bugfixes
+None
+
 ### New Features
+None
+
 ### Other
+- Bumped `qudi-core` package minimum version requirement to v1.3.0
+- Got rid of deprecated `qudi.core.interface` module usage
 
 ## Version 0.4.0
 ### Breaking Changes
