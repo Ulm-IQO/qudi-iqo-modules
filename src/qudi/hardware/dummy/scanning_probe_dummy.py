@@ -27,7 +27,6 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData
 from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
-from qudi.hardware.interfuse.scanning_tilt_correction import TiltCorrectionMixin
 
 
 class ScanningProbeDummy(ScanningProbeInterface):
@@ -334,9 +333,6 @@ class ScanningProbeDummy(ScanningProbeInterface):
                         self._current_position.items()}
             return position
 
-    def _init_scan_grid(self, x_values, y_values):
-        return np.meshgrid(x_values, y_values, indexing='ij')
-
     def start_scan(self):
         """
         @return:
@@ -368,7 +364,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                        self._current_scan_resolution[1])
             else:
                 y_values = np.linspace(self._current_position['y'], self._current_position['y'], 1)
-            xy_grid = self._init_scan_grid(y_values, y_values)
+            xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
 
             include_dist = self._spot_size_dist[0] + 5 * self._spot_size_dist[1]
             self._scan_image = np.random.uniform(0, 2e4, self._current_scan_resolution)
@@ -523,28 +519,3 @@ class ScanningProbeDummy(ScanningProbeInterface):
         y_prime = y - y0
         return offset + amp * np.exp(
             -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
-
-
-class TiltScanningProbeDummy(TiltCorrectionMixin, ScanningProbeDummy):
-
-    def configure_scan(self, scan_settings):
-        return super().configure_scan(scan_settings)
-
-    def _init_scan_grid(self, x_values, y_values):
-        grid = np.meshgrid(2*x_values, y_values, indexing='ij')
-        print(f"Transforming grid: {grid}")
-
-        return grid
-
-    def move_absolute(self, position, velocity=None, blocking=False):
-        return super().move_absolute(position, velocity, blocking)
-
-    def get_target(self):
-        print("----\nCallin corrected hw")
-        return super().get_target()
-
-    def get_position(self):
-        return super().get_position()
-
-
-
