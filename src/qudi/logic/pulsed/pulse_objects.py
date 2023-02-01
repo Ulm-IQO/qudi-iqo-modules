@@ -1642,7 +1642,34 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         @return bool: True if obj is a valid generator class, False otherwise
         """
         if inspect.isclass(obj):
-            return PredefinedGeneratorBase in obj.__bases__ and len(obj.__bases__) == 1
+            return PredefinedGeneratorBase in obj.__bases__# and len(obj.__bases__) == 1
         return False
 
+    def activate_plugins(self):
+        [gen.activate_plugin() for gen in self._generator_instances if hasattr(gen, 'activate_plugin')]
 
+
+class PredefinedGeneratorPlugin():
+    """
+    PredefinedGeneratorPlugin is a PredefinedGenerator with addtional powers.
+    - It may manipulse the sequence generation parameters from it's code
+    - It can run code after the PulseObjectGenerator in order to manipulate all loaded predefined methods.
+    """
+    def activate_plugin(self):
+        # allow plugins to invoke code after the PulseObjectGenerator is fully initialized
+        pass
+
+    @property
+    def generation_parameters(self):
+        # allow access to protected generation parameters. Use with care
+        return self._PredefinedGeneratorBase__sequencegeneratorlogic.generation_parameters
+
+    @generation_parameters.setter
+    def generation_parameters(self, param_dict):
+        """
+        Update the generation paramters with a given dict.
+        Allows access to protected generation parameters. Use with care.
+        """
+        gen_params = self.generation_parameters
+        gen_params.update(param_dict)
+        self._PredefinedGeneratorBase__sequencegeneratorlogic.generation_parameters = gen_params
