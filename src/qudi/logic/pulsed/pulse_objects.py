@@ -26,6 +26,7 @@ import sys
 import inspect
 import importlib
 import numpy as np
+from enum import Enum, EnumMeta
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
 from qudi.util.helpers import natural_sort, iter_modules_recursive
@@ -1558,6 +1559,7 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
         # create an instance of each class and put them in a temporary list
         generator_instances = [cls(sequencegeneratorlogic) for cls in generator_classes]
+        self._generator_instances = generator_instances
 
         # add references to all generate methods in each instance to a dict
         self.__populate_method_dict(instance_list=generator_instances)
@@ -1572,6 +1574,17 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
     @property
     def predefined_method_parameters(self):
         return self._generate_method_parameters.copy()
+
+    def _repopulate_methods(self):
+        if not self._generator_instances:
+            raise RuntimeError("Before repopulating, PulseObjectGenerator needs to be initialied once.")
+        # add references to all generate methods in each instance to a dict
+        self.__populate_method_dict(instance_list=self._generator_instances)
+
+        # populate parameters dictionary from generate method signatures
+        self.__populate_parameter_dict()
+
+        self.log.debug(f"Repopulating loaded methods in {self._generator_instances}")
 
     def __import_external_generators(self, path):
         """ Helper method to import all modules from given directory path.
@@ -1643,3 +1656,39 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         if inspect.isclass(obj):
             return PredefinedGeneratorBase in obj.__bases__ and len(obj.__bases__) == 1
         return False
+
+
+class PulseEnvelopeTypeMeta(EnumMeta):
+    # hide special enum types containing '_'
+    def __iter__(self):
+        for x in super().__iter__():
+            if not '_' in x.value:
+                yield x
+
+class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
+
+    rectangle = 'rectangle'
+    parabola = 'parabola'
+    optimal = 'optimal'
+    from_gen_settings = '_from_gen_settings'
+
+    def __init__(self, *args):
+        self._parameters = self.default_parameters
+
+    @property
+    def default_parameters(self):
+        defaults = {'rectangle': {},
+                    'parabola': {'order_P' : 1},
+                    'optimal': {},
+                    '_from_gen_settings': {}}
+
+        return defaults[self.value]
+
+    @property
+    def parameters(self):
+        return self._parameters
+
+    @parameters.setter
+    def parameters(self, param_dict):
+        self._parameters = param_dict
+
