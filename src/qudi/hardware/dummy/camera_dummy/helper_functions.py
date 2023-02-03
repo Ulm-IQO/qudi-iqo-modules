@@ -194,7 +194,7 @@ def valid_acquisition_setting(setting):
     @return:
     """
     seq_runs, images_per_rep = setting
-    if isnatnum(images_per_rep) and isnatnumom1(seq_runs):
+    if isnatnumom1(seq_runs) and isnatnumom1(images_per_rep):
         return True
     else:
         return False
