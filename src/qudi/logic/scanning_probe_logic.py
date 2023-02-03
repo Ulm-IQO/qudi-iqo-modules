@@ -26,6 +26,7 @@ import numpy as np
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
+from qudi.util.linear_transform import LinearTransformation # lives in branch qudi-core:coord-transforma
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
@@ -325,6 +326,24 @@ class ScanningProbeLogic(LogicBase):
             if start:
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
+
+    def toggle_tilt_correction(self, enable=True):
+        # todo: this function should be general for n axes depending on config of self._scan_axes
+        # todo: should do a sensible rotation
+
+        coord_transform = LinearTransformation(dimensions=len(self.scanner_axes))
+        func = coord_transform.rotate
+        if enable:
+            self._scanner().set_coordinate_transform(func)
+        else:
+            self._scanner().set_coordinate_transform(None)
+
+    def configure_tilt_correction(self, matrix=None, support_vecs=None):
+        # todo: should calculate the needed transformation from either
+        #  1. a) single support vector defining z plane
+        #     b) 3 more support vectors defining a set of planes
+        #  2. a reotation matrix
+        pass
 
     def _update_scan_settings(self, scan_axes, settings):
         for ax_index, ax in enumerate(scan_axes):

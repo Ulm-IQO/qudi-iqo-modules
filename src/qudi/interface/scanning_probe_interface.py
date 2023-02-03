@@ -44,6 +44,20 @@ class ScanningProbeInterface(Base):
         if transform_func is not None:
             raise ValueError('Coordinate transformation not supported by scanning hardware.')
 
+    @property
+    def supports_coordinate_transform(self):
+        # todo: this should be part of the scanconstraints
+        # however this function is general for every scanner, but can't live
+        # in ScanContraints, as no handle to set_coordinate_transform
+        flag = False
+        try:
+            self.set_coordinate_transform(lambda x, inverse:  x)
+            self.set_coordinate_transform(None)
+            flag = True
+        except ValueError:
+            pass
+        return flag
+
     @abstractmethod
     def get_constraints(self):
         """ Get hardware constraints/limitations.
@@ -567,6 +581,7 @@ class ScanConstraints:
         self._backscan_configurable = bool(backscan_configurable)
         self._has_position_feedback = bool(has_position_feedback)
         self._square_px_only = bool(square_px_only)
+        # todo: do we need this in the ScanContraints or is in scan interface enough?
         self._allow_coordinate_transform = bool(allow_coordinate_transform)
 
     @property
