@@ -43,7 +43,7 @@ class ModelCamera:
                                      'horizontal': 60e6},
                  acquisition_mode_state='Single Image',
                  trigger_mode_state='Internal',
-                 exposures=[0.2],
+                 ring_of_exposures=[0.2],
                  shutter_state=True,
                  shutter_speed_state=0.05,
                  pixel_unit_state='Counts',
@@ -56,7 +56,7 @@ class ModelCamera:
         self._readout_freq_state = readout_freq_state
         self._acquisition_mode_state = acquisition_mode_state
         self._trigger_mode_state = trigger_mode_state
-        self._exposures = exposures
+        self._ring_of_exposures = ring_of_exposures
         self._shutter_state = shutter_state
         self._shutter_speed_state = shutter_speed_state
         self._pixel_unit_state = pixel_unit_state
@@ -224,13 +224,13 @@ class ModelCamera:
         return
 
     @property
-    def exposures(self):
-        return self._exposures
+    def ring_of_exposures(self):
+        return self._ring_of_exposures
 
-    @exposures.setter
-    def exposures(self, exposures):
+    @ring_of_exposures.setter
+    def ring_of_exposures(self, exposures):
         if valid_exposures(exposures, self._exposure_range, self._num_exposures):
-            self._exposures = exposures
+            self._ring_of_exposures = exposures
         else:
             logger.error('Not valid list of exposures.')
         return
@@ -296,10 +296,10 @@ class ImageGenerator:
         return image
 
     def image_generator(self, num_images):
-        num_exposures = len(self._cam.exposures)
+        num_exposures = len(self._cam.ring_of_exposures)
         for ii in range(num_images):
             cur_exposure_ind = ii % num_exposures
-            yield self.image_generation(self._cam.exposures[cur_exposure_ind])
+            yield self.image_generation(self._cam.ring_of_exposures[cur_exposure_ind])
 
     def total_gain(self):
         amp_dict = self._cam.amp
@@ -403,19 +403,19 @@ class CameraMeasurement:
         seq_runs, images_per_rep = acquisition_settings
 
         # query the necessary values from the camera
-        exposures = self._cam.exposures
+        ring_of_exposures = self._cam.ring_of_exposures
         crop, binning = self._cam.crop, self._cam.binning
         readout_freq, ft = self._cam.readout_freq, self._cam.frame_transfer
         hrfq = readout_freq['horizontal']
         vrfq = readout_freq['vertical']
         readout_time = calc_readout_time(crop, binning, hrfq, vrfq, ft)
         if isnatnum(seq_runs) and isnatnum(images_per_rep):
-            num_exposures = len(exposures)
+            num_exposures = len(ring_of_exposures)
             time_for_run = 0.0
             for i in range(images_per_rep):
                 run_ind = i % num_exposures
                 # for each image give the correct exposure time
-                time_for_run += exposures[run_ind] + readout_time
+                time_for_run += ring_of_exposures[run_ind] + readout_time
             return seq_runs * time_for_run
         else:
             return -1

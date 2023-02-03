@@ -45,14 +45,13 @@ class CameraControlLogic(LogicBase):
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
         self._thread_lock = RecursiveMutex()
-        self._exposure = -1
-        self._gain = -1
         self._last_frame = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        camera_constraints = self._camera().constraints
+        self.ring_of_exposures
+        self.responsitivity
 
     def on_deactivate(self):
         """ Perform required deactivation. """
@@ -88,23 +87,43 @@ class CameraControlLogic(LogicBase):
         return self._camera().state
 
     @property
-    def exposures(self):
-        return self._camera().exposures
+    def ring_of_exposures(self):
+        return self._camera().ring_of_exposures
 
-    @exposures.setter
-    def exposures(self, exposures):
+    @ring_of_exposures.setter
+    def ring_of_exposures(self, exposures):
         camera_constraints = self._camera().constraints
         with self._thread_lock:
             # first check the constraints
-            max_exposure_dur = camera_constraints.exposures['max']
+            max_exposure_dur = camera_constraints.ring_of_exposures['max']
             if np.any(exposures > max_exposure_dur):
                 self.log.warning("A required exposure duration was larger than the maximum allowed exposure duration")
                 return 
-            elif len(exposures) > camera_constraints.exposures['max_num_of_exposure_times']:
+            elif len(exposures) > camera_constraints.ring_of_exposures['max_num_of_exposure_times']:
                 self.log.warning("The number of exposures to set was larger than allowed")
                 return
             else:
-                self._camera().exposures = exposures
+                self._camera().ring_of_exposures = exposures
+        return
+
+    @property
+    def responsitivity(self):
+        return self._camera().responsitivity
+
+    @responsitivity.setter
+    def responsitivity(self, responsitivity):
+        with self._thread_lock:
+            # check the constraints:
+            max_responsitivity = camera_constraints.responsitivity['max']
+            min_responsitivity = camera_constraints.responsitivity['min']
+            if np.any(responsitivity > max_responsitivity):
+                self.log.warning("The required responsitivity was larger than the maximum allowed responsitivity")
+                return
+            elif np.any(responsitivity < min_responsitivity):
+                self.log.warning("The required responsitivity was larger than the minimum allowed responsitivity")
+                return
+            else:
+                self._camera().responsitivity = responsitivity
         return
 
     @property

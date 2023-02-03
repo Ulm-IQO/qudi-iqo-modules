@@ -35,7 +35,7 @@ from qudi.util.network import netobtain
 
 class OperatingMode(Enum):
     default = 0
-    high_sensitivity = 1
+    high_responsitivity = 1
     fast_readout = 2
 
 
@@ -79,7 +79,7 @@ class CameraDummy(ScientificCameraInterface):
                                 readout_freq_state={'horizontal': 1e6, 'vertical': 0.5e6},
                                 acquisition_mode_state=self._acquisition_settings,
                                 trigger_mode_state='Internal',
-                                exposures=[0.2],
+                                ring_of_exposures=[0.2],
                                 shutter_state=self._shutter,
                                 shutter_speed_state=self._shutter_speed,
                                 pixel_unit_state='Counts',
@@ -95,8 +95,8 @@ class CameraDummy(ScientificCameraInterface):
         size_of_image = n_pxls * self._cam.bit_depth
         self._constraints.max_images = self._cam.available_internal_memory // size_of_image
         self._constraints.pixel_units = self._cam.available_pixel_units
-        self._constraints.exposures = self._cam.available_exposure_times
-        self._constraints.exposures['max_num_of_exposure_times'] = self._cam.available_number_of_exposures
+        self._constraints.ring_of_exposures = self._cam.available_exposure_times
+        self._constraints.ring_of_exposures['max_num_of_exposure_times'] = self._cam.available_number_of_exposures
         shutter_states = self._cam.available_shutter_states
         shutter_speeds = self._cam.available_shutter_speeds
         self._constraints.shutter = {'states': shutter_states,
@@ -122,7 +122,7 @@ class CameraDummy(ScientificCameraInterface):
                                                        qudi_fields, hw_kwargs=hw_kwargs,
                                                        qudi_kwargs=qudi_kwargs)
 
-        # TODO Add mapper for the sensitivity
+        # TODO Add mapper for the responsitivity
         hw_transform, qudi_transform = gains_hw_transform, gains_hw_transform
 
         # if any of these change, also the readout_time_mapper needs to be updated.
@@ -134,7 +134,7 @@ class CameraDummy(ScientificCameraInterface):
         qudi_kwargs = {'var_amp': 'preamp'}
 
 
-        self._sensitivity_mapper = QudiHardwareMapper(self._cam, hw_transform,
+        self._responsitivity_mapper = QudiHardwareMapper(self._cam, hw_transform,
                                                        qudi_transform, hardware_fields,
                                                        qudi_fields, hw_kwargs=hw_kwargs,
                                                        qudi_kwargs=qudi_kwargs)
@@ -191,45 +191,45 @@ class CameraDummy(ScientificCameraInterface):
         return self._cm.measurement_finished()
 
     @property
-    def exposures(self):
+    def ring_of_exposures(self):
         """ Get the exposure time in seconds
 
             @return float exposure time
         """
-        return self._cam.exposures
+        return self._cam.ring_of_exposures
 
-    @exposures.setter
-    def exposures(self, exposures):
+    @ring_of_exposures.setter
+    def ring_of_exposures(self, exposures):
         """ Set the list of exposures
 
         @param float exposure: desired new exposure time
         """
         # TODO Think of something better here (ValueError could really be anything)
         try:
-            self._cam.exposures = exposures
+            self._cam.ring_of_exposures = exposures
         except ValueError:
-            self._cam.exposures = netobtain(exposures)
+            self._cam.ring_of_exposures = netobtain(exposures)
         return
 
     @property
-    def sensitivity(self):
-        sensitivity = 1.0
+    def responsitivity(self):
+        responsitivity = 1.0
         for amp in self._cam.amp:
-            sensitivity *= self._cam.amp[amp]
+            responsitivity *= self._cam.amp[amp]
 
-        return sensitivity
+        return responsitivity
 
-    @sensitivity.setter
-    def sensitivity(self, sensitivity):
-        el_pos = element_pos(sensitivity, self.constraints.sensitivity)
+    @responsitivity.setter
+    def responsitivity(self, responsitivity):
+        el_pos = element_pos(responsitivity, self.constraints.responsitivity)
         if el_pos:
-            var_amp = self._sensitivity_mapper.qudi_kwargs['var_amp']
+            var_amp = self._responsitivity_mapper.qudi_kwargs['var_amp']
             red_amp = red_dictionary(self._cam.amp, var_amp)
             gain_besides_var_amp = gain_from_amp_chain(red_amp)
-            new_gain = sensitivity / gain_besides_var_amp
+            new_gain = responsitivity / gain_besides_var_amp
             self._cam.amp = {var_amp: new_gain}
         else:
-            self.log.error(outside_constraints('sensitivity'))
+            self.log.error(outside_constraints('responsitivity'))
         return
 
     @property
@@ -383,7 +383,7 @@ class CameraDummy(ScientificCameraInterface):
         """
         # check how many images have been acquired
         run_time = self._cm.run_time()
-        acquired_images = num_images_from_measurement_time(self.exposures,
+        acquired_images = num_images_from_measurement_time(self.ring_of_exposures,
                                                            run_time,
                                                            self.readout_time)
         new_images = list()
@@ -443,21 +443,21 @@ class CameraDummy(ScientificCameraInterface):
             self._cam.trigger_mode = 'Software'
             self._cam.amp = {'preamp': 4.0}
             self._cam.frame_transfer = False
-            # when changing sensitivity, which amplifier gain should be changed?
+            # when changing responsitivity, which amplifier gain should be changed?
             self._readout_time_mapper.hardware_kwargs['amp'] = 'preamp'
-            self._sensitivity_mapper.hardware_kwargs['var_amp'] = 'preamp'
-            self._sensitivity_mapper.qudi_kwargs['var_amp'] = 'preamp'
+            self._responsitivity_mapper.hardware_kwargs['var_amp'] = 'preamp'
+            self._responsitivity_mapper.qudi_kwargs['var_amp'] = 'preamp'
 
-        elif mode == OperatingMode.high_sensitivity.name:
-            self.log.info('operationg mode set to >> high_sensitivity <<')
+        elif mode == OperatingMode.high_responsitivity.name:
+            self.log.info('operationg mode set to >> high_responsitivity <<')
             self._cam.trigger_mode = 'Internal'
             self._cam.amp = {'preamp': 4.0, 'EM': 100.0}
             self._cam.frame_transfer = False
             # readout time
             self._readout_time_mapper.hardware_kwargs['amp'] = 'EM'
-            # sensitivity
-            self._sensitivity_mapper.hardware_kwargs['var_amp'] = 'EM'
-            self._sensitivity_mapper.qudi_kwargs['var_amp'] = 'EM'
+            # responsitivity
+            self._responsitivity_mapper.hardware_kwargs['var_amp'] = 'EM'
+            self._responsitivity_mapper.qudi_kwargs['var_amp'] = 'EM'
 
         elif mode == OperatingMode.fast_readout.name:
             self.log.info('operationg mode set to >> fast_readout <<')
@@ -466,9 +466,9 @@ class CameraDummy(ScientificCameraInterface):
             self._cam.frame_transfer = False
             # readout time
             self._readout_time_mapper.hardware_kwargs['amp'] = 'EM'
-            # sensitivity
-            self._sensitivity_mapper.hardware_kwargs['var_amp'] = 'EM'
-            self._sensitivity_mapper.qudi_kwargs['var_amp'] = 'EM'
+            # responsitivity
+            self._responsitivity_mapper.hardware_kwargs['var_amp'] = 'EM'
+            self._responsitivity_mapper.qudi_kwargs['var_amp'] = 'EM'
             self._cam.trigger_mode = 'Internal'
             self._cam.frame_transfer = True
         else:
@@ -488,10 +488,10 @@ class CameraDummy(ScientificCameraInterface):
         qudi_set = set(self._readout_time_mapper.qudi_transform(hw_settings))
         self._constraints.readout_times = qudi_set
 
-        # sensitvity
-        # hw_settings = self._sensitivity_mapper.hardware_transform(self._cam.available_amplifiers)
-        qudi_set = set(self._sensitivity_mapper.hardware_transform(self._cam.available_amplifiers))
-        self._constraints.sensitivity = qudi_set
+        # responsitvity
+        # hw_settings = self._responsitivity_mapper.hardware_transform(self._cam.available_amplifiers)
+        qudi_set = set(self._responsitivity_mapper.hardware_transform(self._cam.available_amplifiers))
+        self._constraints.responsitivity = qudi_set
 
         return
 

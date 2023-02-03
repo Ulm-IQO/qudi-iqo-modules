@@ -36,11 +36,11 @@ class CameraConstraints:
         # internal memory of camera or local pc.
         self.max_images = 10000
         self.pixel_units = ['Counts', 'Electrons', 'Photons']
-        self.exposures = {'min': 0.001, 'max': 1.0, 'num': 10}
+        self.ring_of_exposures = {'min': 0.001, 'max': 1.0, 'num': 10}
 
         # readout settings
         self.readout_times = [10.0e-3, 20.0e-3, 30.0e-3]
-        self.sensitivity = {'min': 1.0, 'max': 100.0, 'step': 0.1}
+        self.responsitivity = {'min': 1.0, 'max': 100.0, 'step': 0.1}
 
         # external capabilities
         self.shutter = {'states': [True, False], 'speed': {'min': 0.02, 'max': 1.0, 'step': 0.01, 'unit': 's'}}
@@ -92,7 +92,7 @@ class ScientificCameraInterface(Base):
 
     @property
     @abstractmethod
-    def exposures(self):
+    def ring_of_exposures(self):
         """
         Set the ring of exposures.
         The concept of exposures is somewhat generalized in this interface.
@@ -104,9 +104,9 @@ class ScientificCameraInterface(Base):
 
     @property
     @abstractmethod
-    def sensitivity(self):
+    def responsitivity(self):
         """
-        Set the sensitivity of the camera.
+        Set the responsitivity (input/output gain) of the camera.
         @return:
         """
         pass

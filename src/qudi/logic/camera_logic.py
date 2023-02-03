@@ -37,11 +37,7 @@ class CameraLogic(LogicBase):
     """
 
     # declare connectors
-    _camera = Connector(name='camera', interface='CameraInterface')
-    # declare config options
-    _minimum_exposure_time = ConfigOption(name='minimum_exposure_time',
-                                          default=0.05,
-                                          missing='warn')
+    _camera_control_logic = Connector(name='camera_control_logic', interface='CameraControlLogic')
 
     # signals
     sigFrameChanged = QtCore.Signal(object)
@@ -58,10 +54,6 @@ class CameraLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        camera = self._camera()
-        self._exposure = camera.get_exposure()
-        self._gain = camera.get_gain()
-
         self.__timer = QtCore.QTimer()
         self.__timer.setSingleShot(True)
         self.__timer.timeout.connect(self.__acquire_video_frame)
@@ -76,35 +68,23 @@ class CameraLogic(LogicBase):
     def last_frame(self):
         return self._last_frame
 
-    def set_exposure(self, time):
-        """ Set exposure time of camera """
-        with self._thread_lock:
-            if self.module_state() == 'idle':
-                camera = self._camera()
-                camera.set_exposure(time)
-                self._exposure = camera.get_exposure()
-            else:
-                self.log.error('Unable to set exposure time. Acquisition still in progress.')
+    @property
+    def responsitivity(self):
+        return self._camera_control_logic().responsitivity
 
-    def get_exposure(self):
-        """ Get exposure of hardware """
-        with self._thread_lock:
-            self._exposure = self._camera().get_exposure()
-            return self._exposure
+    @responsitivity.setter
+    def responsitivity(self, responsitivity):
+        self._camera_control_logic().responsitivity = responsitivity
 
-    def set_gain(self, gain):
-        with self._thread_lock:
-            if self.module_state() == 'idle':
-                camera = self._camera()
-                camera.set_gain(gain)
-                self._gain = camera.get_gain()
-            else:
-                self.log.error('Unable to set gain. Acquisition still in progress.')
+    @property
+    def ring_of_exposures(self):
+        return self._camera_control_logic().ring_of_exposures
 
-    def get_gain(self):
+    @ring_of_exposures.setter
+    def ring_of_exposures(self, ring_of_exposures):
         with self._thread_lock:
-            self._gain = self._camera().get_gain()
-            return self._gain
+            self._camera_control_logic().ring_of_exposures = ring_of_exposures
+        return
 
     def capture_frame(self):
         """
