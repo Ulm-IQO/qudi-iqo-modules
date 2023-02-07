@@ -559,32 +559,21 @@ class PulserConstraints:
     def __init__(self):
         # sample rate, i.e. the time base of the pulser
         self.sample_rate = ScalarConstraint(default=1, bounds=(0.1, 1e9))
-        self.sample_rate.unit = 'Hz'
         # The peak-to-peak amplitude and voltage offset of the analog channels
         self.a_ch_amplitude = ScalarConstraint(default=0, bounds=(0, 0))
-        self.a_ch_amplitude.unit = 'Vpp'
         self.a_ch_offset = ScalarConstraint(default=0, bounds=(0, 0))
-        self.a_ch_offset.unit = 'V'
         # Low and high voltage level of the digital channels
         self.d_ch_low = ScalarConstraint(default=0, bounds=(0, 0))
-        self.d_ch_low.unit = 'V'
         self.d_ch_high = ScalarConstraint(default=0, bounds=(0, 0))
-        self.d_ch_high.unit = 'V'
         # length of the created waveform in samples
         self.waveform_length = ScalarConstraint(default=1, bounds=(1, 1))
-        self.waveform_length.unit = 'Samples'
         # number of waveforms/sequences to put in a single asset (sequence mode)
         self.waveform_num = ScalarConstraint(default=0, bounds=(0, 0))
-        self.waveform_num.unit = '#'
         self.sequence_num = ScalarConstraint(default=0, bounds=(0, 0))
-        self.sequence_num.unit = '#'
         self.subsequence_num = ScalarConstraint(default=0, bounds=(0, 0))
-        self.subsequence_num.unit = '#'
         # Sequence parameters
         self.sequence_steps = ScalarConstraint(default=0, bounds=(0, 0))
-        self.sequence_steps.unit = '#'
         self.repetitions = ScalarConstraint(default=0, bounds=(0, 0))
-        self.repetitions.unit = '#'
         self.event_triggers = list()
         self.flags = list()
 
