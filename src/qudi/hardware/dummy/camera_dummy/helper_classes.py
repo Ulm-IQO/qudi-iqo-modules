@@ -360,9 +360,9 @@ class CameraMeasurement:
         """
         Reset the relevant parameters of the measurement
         """
+        self._measurement_running = True
         self._measurement_start = time.time()
         self._measurement_time = 0.0
-        self._measurement_running = True
         self._readout_images = 0
 
     def measurement_finished(self, req_stop=False):
@@ -409,7 +409,9 @@ class CameraMeasurement:
         hrfq = readout_freq['horizontal']
         vrfq = readout_freq['vertical']
         readout_time = calc_readout_time(crop, binning, hrfq, vrfq, ft)
-        if isnatnum(seq_runs) and isnatnum(images_per_rep):
+        if isnatnumom1(seq_runs) and isnatnumom1(images_per_rep):
+            seq_runs = abs(seq_runs)
+            images_per_rep = abs(images_per_rep)
             num_exposures = len(ring_of_exposures)
             time_for_run = 0.0
             for i in range(images_per_rep):

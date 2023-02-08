@@ -82,7 +82,6 @@ class CameraGui(GuiBase):
     Todo: Example config for copy-paste:
 
     """
-
     _camera_logic = Connector(name='camera_logic', interface='CameraLogic')
 
     sigStartStopVideoToggled = QtCore.Signal(bool)
@@ -122,8 +121,8 @@ class CameraGui(GuiBase):
         self._mw.action_show_settings.triggered.connect(lambda: self._settings_dialog.exec_())
         self._mw.action_save_frame.triggered.connect(self._save_frame)
         # connect update signals from logic
-        logic.sigFrameChanged.connect(self._update_frame)
         logic.sigAcquisitionFinished.connect(self._acquisition_finished)
+        logic.sigFrameChanged.connect(self._update_frame)
         # connect GUI signals to logic slots
         self.sigStartStopVideoToggled.connect(logic.toggle_video)
         self.sigCaptureFrameTriggered.connect(logic.capture_frame)
@@ -136,8 +135,7 @@ class CameraGui(GuiBase):
         # disconnect all signals
         self.sigCaptureFrameTriggered.disconnect()
         self.sigStartStopVideoToggled.disconnect()
-        logic.sigAcquisitionFinished.disconnect(self._acquisition_finished)
-        logic.sigUpdateDisplay.disconnect(self._update_frame)
+        logic.sigAcquisitionFinished.disconnect()
         self._mw.action_save_frame.triggered.disconnect()
         self._mw.action_show_settings.triggered.disconnect()
         self._mw.action_capture_frame.triggered.disconnect()
@@ -154,14 +152,14 @@ class CameraGui(GuiBase):
     def _update_settings(self):
         """ Write new settings from the gui to the file. """
         logic = self._camera_logic()
-        logic.set_exposure(self._settings_dialog.exposure_spinbox.value())
-        logic.set_gain(self._settings_dialog.gain_spinbox.value())
+        logic.ring_of_exposures = [self._settings_dialog.exposure_spinbox.value()]
+        logic.responsitivity = self._settings_dialog.gain_spinbox.value()
 
     def _keep_former_settings(self):
         """ Keep the old settings and restores them in the gui. """
         logic = self._camera_logic()
-        self._settings_dialog.exposure_spinbox.setValue(logic.get_exposure())
-        self._settings_dialog.gain_spinbox.setValue(logic.get_gain())
+        self._settings_dialog.exposure_spinbox.setValue(logic.ring_of_exposures[0])
+        self._settings_dialog.gain_spinbox.setValue(logic.responsitivity)
 
     def _capture_frame_clicked(self):
         self._mw.action_start_video.setDisabled(True)
@@ -197,8 +195,8 @@ class CameraGui(GuiBase):
         tag = logic.create_tag(timestamp)
 
         parameters = {}
-        parameters['gain'] = logic.get_gain()
-        parameters['exposure'] = logic.get_exposure()
+        parameters['responsitivity'] = logic.responsitivity
+        parameters['exposure'] = logic.ring_of_exposures
 
         data = logic.last_frame
         if data is not None:

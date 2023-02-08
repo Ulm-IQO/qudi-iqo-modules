@@ -48,11 +48,15 @@ class CameraConstraints:
         # operating modes
         self.operating_modes = ['default', 'high_sensitivity', 'fast_readout']
 
+        # image acquisition modes
+        self.acquisition_modes = {'image': False, 'video': False, 'image_burst': False, 'image_burst_sequence': False}
+
 
 class ScientificCameraInterface(Base):
     """ This interface is used to define the basic functionality
         of a scientific camera
     """
+
     @property
     @abstractmethod
     def constraints(self):
@@ -214,6 +218,3 @@ class ScientificCameraInterface(Base):
         @return:
         """
         pass
-
-
-

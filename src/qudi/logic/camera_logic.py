@@ -20,13 +20,9 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import datetime
-import numpy as np
 import matplotlib.pyplot as plt
-import matplotlib as mpl
 from PySide2 import QtCore
 from qudi.core.connector import Connector
-from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.module import LogicBase
 
@@ -45,28 +41,40 @@ class CameraLogic(LogicBase):
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
-        self.__timer = None
         self._thread_lock = RecursiveMutex()
-        self._exposure = -1
-        self._gain = -1
         self._last_frame = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self.__timer = QtCore.QTimer()
-        self.__timer.setSingleShot(True)
-        self.__timer.timeout.connect(self.__acquire_video_frame)
+        self.last_frame = None
+        self._camera_control_logic().sigDataReceived.connect(self.frame_change)
+        self._camera_control_logic().sigAcquisitionFinished.connect(self._acquisition_finished)
 
     def on_deactivate(self):
         """ Perform required deactivation. """
-        self.__timer.stop()
-        self.__timer.timeout.disconnect()
-        self.__timer = None
+        if self.module_state() == 'locked':
+            self.module_state.unlock()
+
+        self._camera_control_logic().sigDataReceived.disconnect()
+        self._camera_control_logic().sigAcquisitionFinished.disconnect()
+
+    def frame_change(self, data):
+        """ Method that indicates that new data for the frame has been received by camera control"""
+        self.last_frame = data
+        self.sigFrameChanged.emit(data)
+
+    def _acquisition_finished(self):
+        self.module_state.unlock()
+        self.sigAcquisitionFinished.emit()
 
     @property
     def last_frame(self):
         return self._last_frame
+
+    @last_frame.setter
+    def last_frame(self, frame):
+        self._last_frame = frame
 
     @property
     def responsitivity(self):
@@ -92,57 +100,35 @@ class CameraLogic(LogicBase):
         with self._thread_lock:
             if self.module_state() == 'idle':
                 self.module_state.lock()
-                camera = self._camera()
-                camera.start_single_acquisition()
-                self._last_frame = camera.get_acquired_data()
-                self.module_state.unlock()
-                self.sigFrameChanged.emit(self._last_frame)
-                self.sigAcquisitionFinished.emit()
+                self._camera_control_logic().start_single_image_acquisition()
             else:
                 self.log.error('Unable to capture single frame. Acquisition still in progress.')
 
     def toggle_video(self, start):
         if start:
-            self._start_video()
-        else:
-            self._stop_video()
-
-    def _start_video(self):
-        """ Start the data recording loop.
-        """
-        with self._thread_lock:
-            if self.module_state() == 'idle':
-                self.module_state.lock()
-                exposure = max(self._exposure, self._minimum_exposure_time)
-                camera = self._camera()
-                if camera.support_live_acquisition():
-                    camera.start_live_acquisition()
+            with self._thread_lock:
+                if self.module_state() == 'idle':
+                    self.module_state.lock()
+                    self._camera_control_logic().acquire_live_video()
                 else:
-                    camera.start_single_acquisition()
-                self.__timer.start(1000 * exposure)
-            else:
-                self.log.error('Unable to start video acquisition. Acquisition still in progress.')
-
-    def _stop_video(self):
-        """ Stop the data recording loop.
-        """
-        with self._thread_lock:
-            if self.module_state() == 'locked':
-                self.__timer.stop()
-                self._camera().stop_acquisition()
-                self.module_state.unlock()
-                self.sigAcquisitionFinished.emit()
+                    self.log.error('Unable to start video acquisition. Acquisition still in progress.')
+        else:
+            with self._thread_lock:
+                if self.module_state() == 'locked':
+                    self._camera_control_logic().stop_requested = True
+                    self.sigAcquisitionFinished.emit()
+                    self.module_state.unlock()
 
     def __acquire_video_frame(self):
         """ Execute step in the data recording loop: save one of each control and process values
         """
+        self.log.error("deprecated method called")
         with self._thread_lock:
             camera = self._camera()
             self._last_frame = camera.get_acquired_data()
             self.sigFrameChanged.emit(self._last_frame)
             if self.module_state() == 'locked':
                 exposure = max(self._exposure, self._minimum_exposure_time)
-                self.__timer.start(1000 * exposure)
                 if not camera.support_live_acquisition():
                     camera.start_single_acquisition()  # the hardware has to check it's not busy
 

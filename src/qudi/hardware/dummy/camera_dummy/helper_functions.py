@@ -1,4 +1,3 @@
-import copy
 import numpy as np
 from qudi.core.logger import get_logger
 

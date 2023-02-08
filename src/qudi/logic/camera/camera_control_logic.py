@@ -20,10 +20,7 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-import datetime
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib as mpl
 from PySide2 import QtCore
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -37,26 +34,220 @@ class CameraControlLogic(LogicBase):
     """
     # declare connectors
     _camera = Connector(name='camera', interface='ScientificCameraInterface')
+    
     # declare config options
-    _minimum_exposure_time = ConfigOption(name='minimum_exposure_time',
-                                          default=0.05,
+    
+    # the software timer puffer is a puffer time in ms that is added to the 
+    # exposure time and readout time of the camera to get rid of inconsistencies
+    # in QTimer, causing it to finish early and thus collecting data too early
+    # This timer can be set individually, depending on the speed and consistency of your PC
+    _software_timer_puffer = ConfigOption(name='software_timer_puffer',
+                                          default=0,
                                           missing='warn')
+    
+    # Signal that is emitted upon receiving new data from the hardware
+    sigDataReceived = QtCore.Signal(object)
+    sigAcquisitionFinished = QtCore.Signal()
+
+    # internal timer signals to start and stop the QTimer readout loop
+    sigStartInternalTimerVideo = QtCore.Signal()
+    sigStopInternalTimerVideo = QtCore.Signal()
+    
+    sigStartInternalTimerImage = QtCore.Signal()
+    sigStopInternalTimerImage = QtCore.Signal()
+
+    _received_data = None
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
         self._thread_lock = RecursiveMutex()
         self._last_frame = None
+        self._stop_requested = True
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self.ring_of_exposures
-        self.responsitivity
+        # Initialize the software timer for the readout and acquisition loops for video acquisition
+        self.__video_software_timer = QtCore.QTimer()
+        self.__video_software_timer.setSingleShot(True)
+        self.__video_software_timer.setInterval(self.software_timer_interval())
+
+        # Initialize the software timer for readout of a single image
+        self.__image_software_timer = QtCore.QTimer()
+        self.__image_software_timer.setSingleShot(True)
+        self.__image_software_timer.setInterval(self.software_timer_interval())
+
+
+        # connect the signals to the correct functions
+        # connect the timer timeout to the video acquisition loop
+        self.__video_software_timer.timeout.connect(self.software_controlled_acquisition_loop)
+        self.__image_software_timer.timeout.connect(self.acquire_single_image)
+
+        # connect the timer's start stop signals
+        self.sigStartInternalTimerVideo.connect(self.__video_software_timer.start)
+        self.sigStopInternalTimerVideo.connect(self.__video_software_timer.stop)
+        self.sigStartInternalTimerImage.connect(self.__image_software_timer.start)
+        self.sigStopInternalTimerImage.connect(self.__image_software_timer.stop)
 
     def on_deactivate(self):
         """ Perform required deactivation. """
+        # stop any ongoing acquisition
         if self.module_state() == 'locked':
-            self.stop_acquisition()
+            self.stop_data_acquisition()
+            self.module_state.unlock()
+        
+        # disconnect all signals
+        self.__video_software_timer.timeout.disconnect()
+        self.sigStartInternalTimerVideo.disconnect()
+        self.sigStopInternalTimerVideo.disconnect()
+        
+        # clear the stored frame data
+        self._last_frame = None
+
+    def start_single_image_acquisition(self):
+        """
+        Method for acquiring a single image from the hardware
+        """
+        # check whether an acquisition is already running
+        if self.module_state() == 'idle':
+            # lock the module
+            self.module_state.lock()
+            self._camera().acquisition_mode = (1,1)
+            # tell the camera to start the acquisition
+            self._camera().start_acquisition()
+            # start the timer for the acquisition readout
+            self.sigStartInternalTimerImage.emit()
+        else:
+            self.log.error('Unable to capture single frame. Acquisition still in progress.')
+
+    def acquire_single_image(self):
+        """
+        Method that receives the single image data
+        """
+        self.receive_single_frame()
+        self.sigDataReceived.emit(self.last_frame)
+        self.sigAcquisitionFinished.emit()
+        self.module_state.unlock()
+    
+    def acquire_live_video(self):
+        """
+        Method to acquire a live video.
+        The hardware is told to record a single image.
+        This is repeated upon receiving the signal of an internal software timer
+        """
+        if self.module_state() == 'idle':
+            # lock the module
+            self.module_state.lock()
+            # reset the stop request
+            self.stop_requested = False
+            # set the camera's acquisition mode
+            self._camera().acquisition_mode = (1,-1)
+            # set timer to the correct interval
+            # this is the set exposure time + the readout time of the camera
+            self.__video_software_timer.setInterval(self.software_timer_interval())
+            # start the acquisition of the hardware
+            self._camera().start_acquisition()
+            # start the timer
+            self.sigStartInternalTimerVideo.emit()
+        else:
+            self.log.error('Unable to capture single frame. Acquisition still in progress.')
+
+    def acquire_image_sequence(self):
+        pass
+
+    def software_controlled_acquisition_loop(self):
+        """
+        Method to query data from the hardware by utilizing an internal software-controlled timer
+        of this logic module.
+        """
+        # check whether an acquisition is running, else do nothing
+        if self.module_state() == "locked":
+            # check whether a stop was requested
+            if self.stop_requested:
+                self.sigStopInternalTimerVideo.emit()
+                # emit the acquisition finished signal
+                self.sigAcquisitionFinished.emit()
+                # quit the loop and unlock the module
+                self.module_state.unlock()
+                return
+            # collect image data from the hardware
+            self.receive_single_frame()
+            self.sigDataReceived.emit(self.last_frame)
+            # start the acquisition of an image
+            self._camera().start_acquisition()
+            # restart the timer
+            self.sigStartInternalTimerVideo.emit()
+
+    def start_data_acquisition(self):
+        """
+        Start the acquisition of data.
+        """
+        with self._thread_lock:
+            if self.module_state() == 'idle':
+                # check whether the acquisition mode is supported
+                # lock the module
+                self.module_state.lock()
+                #single image acquisition
+                if self.acquisition_mode == (1,1):
+                    # tell the hardware to start the acquisition
+                    self._camera().start_acquisition()
+                # live video acquisition
+                if self.acquisition_mode == (1,-1):
+                    self.stop_requested = False
+                    self.live_video_acquisition()
+                # if no condition is met, abort the measurement start and unlock the module
+                else:
+                    self.module_state.unlock()
+            else:
+                self.log.error('Unable to capture single frame. Acquisition still in progress.')
+
+    def stop_data_acquisition(self):
+        """Stop the acquisition of data"""
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                # tell the hardware to stop the acquisition
+                self._camera().stop_acquisition()
+                # unlock the module after acquisition
+                self.module_state.unlock()
+            else:
+                self.log.error("Can not stop measurement. No measurement running.")
+
+    def software_timer_interval(self):
+        """
+        Method to calculate the software timer interval for the current measurement
+        in milliseconds
+
+        returns:
+            int, interval of the software timer in milliseconds
+        """
+        # the timer interval consists of the length of exposure for a single image
+        # the readout dead time of the camera and a puffer that takes care of the
+        # QTimer sometimes finishing early and thus causing readout errors
+        return int(1000 * (self.ring_of_exposures[0] \
+                           + self._camera().readout_time)
+                   + self._software_timer_puffer)
+
+    def receive_single_frame(self):
+        self.last_frame = self._camera().get_images(1)[0]
+
+    def capture_burst_frames(self):
+        pass
+
+    @property
+    def last_frame(self):
+        return self._last_frame
+
+    @last_frame.setter
+    def last_frame(self, data):
+        self._last_frame = data
+
+    @property
+    def stop_requested(self):
+        return self._stop_requested
+    
+    @stop_requested.setter
+    def stop_requested(self, switch: bool):
+        self._stop_requested = switch
 
     @property
     def camera_constraints(self):
@@ -97,10 +288,10 @@ class CameraControlLogic(LogicBase):
             # first check the constraints
             max_exposure_dur = camera_constraints.ring_of_exposures['max']
             if np.any(exposures > max_exposure_dur):
-                self.log.warning("A required exposure duration was larger than the maximum allowed exposure duration")
+                self.log.warn("A required exposure duration was larger than the maximum allowed exposure duration")
                 return 
             elif len(exposures) > camera_constraints.ring_of_exposures['max_num_of_exposure_times']:
-                self.log.warning("The number of exposures to set was larger than allowed")
+                self.log.warn("The number of exposures to set was larger than allowed")
                 return
             else:
                 self._camera().ring_of_exposures = exposures
@@ -117,10 +308,10 @@ class CameraControlLogic(LogicBase):
             max_responsitivity = camera_constraints.responsitivity['max']
             min_responsitivity = camera_constraints.responsitivity['min']
             if np.any(responsitivity > max_responsitivity):
-                self.log.warning("The required responsitivity was larger than the maximum allowed responsitivity")
+                self.log.warn("The required responsitivity was larger than the maximum allowed responsitivity")
                 return
             elif np.any(responsitivity < min_responsitivity):
-                self.log.warning("The required responsitivity was larger than the minimum allowed responsitivity")
+                self.log.warn("The required responsitivity was larger than the minimum allowed responsitivity")
                 return
             else:
                 self._camera().responsitivity = responsitivity
@@ -158,5 +349,11 @@ class CameraControlLogic(LogicBase):
         else:
             self.log.error("The camera does not support setting the bit depth.")
 
-    def stop_acquisition(self):
-        return self._camera().stop_acquisition()
+    @property
+    def acquisition_mode(self):
+        return self._camera().acquisition_mode
+
+    @acquisition_mode.setter
+    def acquisition_mode(self,mode):
+        self._camera().acquisition_mode = mode
+

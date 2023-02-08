@@ -20,7 +20,6 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-import time
 from enum import Enum
 
 from qudi.hardware.dummy.camera_dummy.helper_functions import *
@@ -56,7 +55,6 @@ class CameraDummy(ScientificCameraInterface):
         # capabilities of the camera, in actual hardware many of these attributes should
         # be obtained by querying the camera on startup
         # state of the 'Camera'
-        self._acquiring = False
         self._measurement_start = 0.0
         self._num_sequences = 2
         self._num_images = 5
@@ -101,6 +99,7 @@ class CameraDummy(ScientificCameraInterface):
         shutter_speeds = self._cam.available_shutter_speeds
         self._constraints.shutter = {'states': shutter_states,
                                      'speed': shutter_speeds}
+        self._constraints.acquisition_modes = {'image': True, 'video': True, 'image_burst': True, 'image_burst_sequence': True}
         # now to the tricky constraints. They are derived quantities of the
         # hardware.
 
@@ -189,6 +188,17 @@ class CameraDummy(ScientificCameraInterface):
         @return bool: ready ?
         """
         return self._cm.measurement_finished()
+
+    @property
+    def measurement_running(self):
+        """ Is the camera ready for an acquisition ?
+        @return bool: ready ?
+        """
+        return self._cm.measurement_finished()
+
+    @measurement_running.setter
+    def measurement_running(self, status):
+        self._cm._measurement_running = status
 
     @property
     def ring_of_exposures(self):
@@ -337,9 +347,6 @@ class CameraDummy(ScientificCameraInterface):
         will determine if you record a single image, or image sequence.
         """
         self._cm.start_measurement()
-        self._acquiring = True
-
-        return
 
     def stop_acquisition(self):
         """
@@ -352,7 +359,7 @@ class CameraDummy(ScientificCameraInterface):
     def acquisition_mode(self):
         """
         Get the acquisition mode of the camera
-        @return: string acquisition mode of the camera
+        @return: tuple, denoting the acquisition mode of the camera
         """
         return self._cam.acquisition_settings
 
@@ -389,14 +396,13 @@ class CameraDummy(ScientificCameraInterface):
         new_images = list()
         max_images = acquired_images - self._cm.readout_images
         if image_num <= max_images:
-            print('getting the generator')
+            # self.log.info('getting the generator')
             generator = self._ig.image_generator(image_num)
-            print('creating a list')
+            # self.log.info('creating a list')
             new_images = list(generator)
             self._cm.readout_images += image_num
         else:
             self.log.error('Not enough images have been recorded or already been read out.')
-        print('returning the array')
         return np.array(new_images)
 
     @property
