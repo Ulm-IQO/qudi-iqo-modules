@@ -26,6 +26,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.module import LogicBase
+from qudi.util.uic import module_from_spec
 
 
 class CameraControlLogic(LogicBase):
@@ -44,7 +45,13 @@ class CameraControlLogic(LogicBase):
     _software_timer_puffer = ConfigOption(name='software_timer_puffer',
                                           default=0,
                                           missing='warn')
-    
+   
+    # maximum number of images that can be stored in the memory of the PC at once
+    # TODO let this number be changed in the GUI as well
+    _max_image_num = ConfigOption(name='max_image_num',
+                                  default=1,
+                                  missing='warn')
+
     # Signal that is emitted upon receiving new data from the hardware
     sigDataReceived = QtCore.Signal(object)
     sigAcquisitionFinished = QtCore.Signal()
@@ -63,6 +70,7 @@ class CameraControlLogic(LogicBase):
         self._thread_lock = RecursiveMutex()
         self._last_frame = None
         self._stop_requested = True
+        self.expected_image_num = 1
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -76,7 +84,6 @@ class CameraControlLogic(LogicBase):
         self.__image_software_timer = QtCore.QTimer()
         self.__image_software_timer.setSingleShot(True)
         self.__image_software_timer.setInterval(self.software_timer_interval())
-
 
         # connect the signals to the correct functions
         # connect the timer timeout to the video acquisition loop
@@ -110,9 +117,15 @@ class CameraControlLogic(LogicBase):
         """
         # check whether an acquisition is already running
         if self.module_state() == 'idle':
+            # set the number of expected images, received from the hardware
+            self.expected_image_num = 1
             # lock the module
             self.module_state.lock()
-            self._camera().acquisition_mode = (1,1)
+            # set the correct acquisition mode
+            self._camera().acquisition_mode = (1, 1)
+            # set timer to the correct interval
+            # this is the set exposure time + the readout time of the camera
+            self.__image_software_timer.setInterval(self.software_timer_interval())
             # tell the camera to start the acquisition
             self._camera().start_acquisition()
             # start the timer for the acquisition readout
@@ -129,7 +142,7 @@ class CameraControlLogic(LogicBase):
         self.sigAcquisitionFinished.emit()
         self.module_state.unlock()
     
-    def acquire_live_video(self):
+    def start_software_timed_video(self):
         """
         Method to acquire a live video.
         The hardware is told to record a single image.
@@ -138,6 +151,8 @@ class CameraControlLogic(LogicBase):
         if self.module_state() == 'idle':
             # lock the module
             self.module_state.lock()
+            # set the number of expected images, received from the hardware
+            self.expected_image_num = 1
             # reset the stop request
             self.stop_requested = False
             # set the camera's acquisition mode
@@ -152,8 +167,42 @@ class CameraControlLogic(LogicBase):
         else:
             self.log.error('Unable to capture single frame. Acquisition still in progress.')
 
-    def acquire_image_sequence(self):
-        pass
+    def start_image_sequence(self):
+        """
+        Method that starts the hardware timed acquisition of an image sequence
+        of length m.
+        """
+        if self.module_state() == 'idle':
+            # lock the module
+            self.module_state.lock()
+            # reset the stop request
+            self.stop_requested = False
+            ####
+            ###
+            ##
+            ##
+            #
+            #
+            #
+            ##
+            #
+            # test with 5 images
+            self.expected_image_num = 5
+            # set the camera's acquisition mode
+            self._camera().acquisition_mode = (1, self.expected_image_num)
+            # set timer to the correct interval
+            # this is the set exposure time + the readout time of the camera
+            self.__image_software_timer.setInterval(self.software_timer_interval())
+            # tell the camera to start the acquisition
+            self._camera().start_acquisition()
+            # start the timer for the acquisition readout
+            self.sigStartInternalTimerImage.emit()
+        else:
+            self.log.error('Unable to capture single frame. Acquisition still in progress.')
+
+    
+    def start_n_image_sequences(self):
+        self.log.warn("camera_control: start_n_image_sequences (not implemented)")
 
     def software_controlled_acquisition_loop(self):
         """
@@ -177,7 +226,10 @@ class CameraControlLogic(LogicBase):
             self._camera().start_acquisition()
             # restart the timer
             self.sigStartInternalTimerVideo.emit()
-
+    
+    def start_hardware_timed_video(self):
+        self.log.warn("camera_control: start_n_image_sequences (not implemented)")
+    
     def start_data_acquisition(self):
         """
         Start the acquisition of data.
@@ -224,14 +276,53 @@ class CameraControlLogic(LogicBase):
         # the readout dead time of the camera and a puffer that takes care of the
         # QTimer sometimes finishing early and thus causing readout errors
         return int(1000 * (self.ring_of_exposures[0] \
-                           + self._camera().readout_time)
+                           + self._camera().readout_time) \
+                        * self.expected_image_num
                    + self._software_timer_puffer)
 
     def receive_single_frame(self):
-        self.last_frame = self._camera().get_images(1)[0]
+        self.last_frame = self._camera().get_images(self.expected_image_num)
 
-    def capture_burst_frames(self):
-        pass
+    def request_stop(self):
+        """
+        Method to send a stop request of the current measurement
+        to the hardware and this logic module's timer.
+        """
+        if self.module_state() == 'locked':
+            # set the stop_requested flag
+            self.stop_requested = True
+            # emit the internal Timer stop signal if the timers are running
+            if self.__video_software_timer.isActive():
+                self.sigStopInternalTimerVideo.emit()
+            if self.__image_software_timer.isActive():
+                self.sigStopInternalTimerImage.emit()
+            # tell the camera to stop acquiring
+            self._camera().stop_acquisition()
+            # unlock the module
+            self.module_state.unlock()
+
+        # emit the acquisition finished signal
+        self.sigAcquisitionFinished.emit()
+
+    @property
+    def max_image_num(self):
+        return self._max_image_num
+
+    @max_image_num.setter
+    def max_image_num(self, num):
+        self._max_image_num = num
+    
+    @property
+    def expected_image_num(self):
+        return self._expected_image_num
+
+    @expected_image_num.setter
+    def expected_image_num(self, num):
+        if num > self.max_image_num:
+            self.log.warn("Number of images that should be stored in PC's memory is greater than the maximum allowed number of images.")
+            return
+        self._expected_image_num = num
+
 
     @property
     def last_frame(self):
@@ -356,4 +447,12 @@ class CameraControlLogic(LogicBase):
     @acquisition_mode.setter
     def acquisition_mode(self,mode):
         self._camera().acquisition_mode = mode
+
+    @property
+    def available_acquisition_modes(self):
+        """
+        Getter method of the available acquisition modes
+        of the camera
+        """
+        return self._camera().available_acquisition_modes
 
