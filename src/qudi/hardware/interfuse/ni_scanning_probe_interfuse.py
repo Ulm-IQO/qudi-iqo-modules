@@ -933,5 +933,9 @@ class NiScanningProbeInterfuseCorrected(CoordinateTransformMixin, NiScanningProb
 
 
     def _initialize_ni_scan_arrays(self, scan_data):
-        # todo
+        # todo: complete pseudo code below
+        #vectors = super()._initialize_ni_scan_arrays()
+        #vectors_transormed = self.coordinate_transform(vectors)
+        #return vectors_transormed
+
         pass

@@ -526,31 +526,18 @@ class ScanningProbeDummy(ScanningProbeInterface):
 
 class ScanningProbeDummyCorrected(CoordinateTransformMixin, ScanningProbeDummy):
 
-    def set_coordinate_transform(self, transform_func):
-        # todo: if set with a transform_func, this dummy should
-        #   transform the scan grid below
-
-        if transform_func == 'debug':
-            transform_func = self.__func_debug_transform()
-            self.log.info("Set test functions for coord transform")
-
-        super().set_coordinate_transform(transform_func)
-
     def _init_scan_grid(self, x_values, y_values):
         # todo: this is demonstration only, not really a transformation
-        grid = np.meshgrid(2 * x_values, y_values, indexing='ij')
+
+        vectors = {'x': x_values, 'y': y_values, 'z': np.zeros(len(x_values))}
+        vectors_tilted = self.coordinate_transform(vectors)
+
+        grid = np.meshgrid(vectors_tilted['x'], vectors_tilted['y'], indexing='ij')
         print(f"Transforming grid: {grid}")
 
         return grid
 
-    def __func_debug_transform(self):
-        def transform_to(coord, inverse=False):
-            # this is a stub function
-            if inverse:
-                return {key: 0.5 * val for key, val in coord.items()}
-            else:
-                return {key: 2 * val for key, val in coord.items()}
-        return transform_to
+
 
 
 
