@@ -1297,20 +1297,17 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         constraints.sample_rate.min = self._clock_freq
         constraints.sample_rate.max = self._clock_freq
         constraints.step = 0.0
-        constraints.unit = 'Hz'
 
         constraints.d_ch_low.min = 0.0
         constraints.d_ch_low.max = 0.0
         constraints.d_ch_low.step = 0.0
         constraints.d_ch_low.default = 0.0
-        constraints.d_ch_low.unit = 'V'
 
         # it is a LVTTL standard with 3.3V as the logical one
         constraints.d_ch_high.min = 3.3
         constraints.d_ch_high.max = 3.3
         constraints.d_ch_high.step = 3.3
         constraints.d_ch_high.default = 3.3
-        constraints.d_ch_high.unit = 'V'
 
         # Minimum instruction time in clock cycles specified in the config,
         # translates for 6 clock cycles to 12ns at 500MHz.
