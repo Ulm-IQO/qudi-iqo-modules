@@ -82,7 +82,7 @@ class PulsedMeasurementLogic(LogicBase):
     # todo: doesn't warn if checker not satisfied
     _default_data_storage_cls = ConfigOption(name='default_data_storage_type',
                                              default='text',
-                                             converter=_data_storage_from_cfg_option)
+                                             constructor=_data_storage_from_cfg_option)
     _save_thumbnails = ConfigOption(name='save_thumbnails', default=True)
 
     # status variables

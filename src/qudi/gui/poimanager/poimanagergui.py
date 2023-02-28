@@ -260,7 +260,9 @@ class PoiManagerGui(GuiBase):
     _poi_manager_logic = Connector(name='poi_manager_logic', interface='PoiManagerLogic')
 
     # config options
-    _data_scan_axes = ConfigOption(name='data_scan_axes', default=('x', 'y'), converter=tuple)
+    _data_scan_axes = ConfigOption(name='data_scan_axes',
+                                   default=('x', 'y'),
+                                   constructor=lambda x: tuple(x))
 
     # declare signals
     sigTrackPeriodChanged = QtCore.Signal(float)
