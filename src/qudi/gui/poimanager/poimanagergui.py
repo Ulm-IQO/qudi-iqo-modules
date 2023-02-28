@@ -271,8 +271,8 @@ class PoiManagerGui(GuiBase):
     sigRoiNameChanged = QtCore.Signal(str)
     sigAddPoiByClick = QtCore.Signal(np.ndarray)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._mw = None             # QMainWindow handle
         self.x_shift_plot = None    # pyqtgraph PlotDataItem for ROI history plot
@@ -282,7 +282,6 @@ class PoiManagerGui(GuiBase):
         self._markers = dict()      # dict to hold handles for the POI markers
 
         self.__poi_selector_active = False  # Flag indicating if the poi selector is active
-        return
 
     def on_activate(self):
         """
