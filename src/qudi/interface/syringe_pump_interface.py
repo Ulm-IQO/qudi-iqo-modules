@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the Qudi hardware interface for pulsing devices.
+This file contains the Qudi hardware interface for syringe pumps.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -29,7 +29,7 @@ class SyringePumpInterface(Base):
     """
     Interface class to define the abstract controls and communication with syringe pump devices.
     
-    A syringe pump device can infuse or withdraw a liquid or a gas to or from an experiment
+    A syringe pump device can infuse or withdraw a liquid or gas to or from an experiment
     by retracting or extending the plunger of the syringe.
     
     """
