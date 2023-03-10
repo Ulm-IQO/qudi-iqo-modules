@@ -3,9 +3,27 @@ import numpy as np
 
 #####Dataclass#####
 @dataclass
-class Dataclass:
-    timetrace: np.ndarray = np.array([], dtype=int)
+class TimeSeriesDataclass:
     data: np.ndarray = np.array([], dtype=float)
+
+@dataclass
+class TimeTagDataclass:
+    data: np.ndarray = np.array([], dtype=float)
+    hist:
+    rise_edge:
+    fall_edge:
+    MN: int=5
+
+    def get_histogram(self, time_tag):
+        count_hist, bin_edges= np.histogram(time_tag, max(time_tag))
+        return count_hist
+    def get_histogram_N(self, time_tag, N):
+        count_hist, bin_edges= np.histogram(time_tag, bins=N, range=(1,N))
+        return  count_hist
+
+    def get_start_count(self):
+        count_hist = self.get_histogram()
+        return np.where(count_hist[1:] > len(self.data) / self.MN) #TODO what is MN?
 
 
 @dataclass
