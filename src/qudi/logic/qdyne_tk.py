@@ -1,13 +1,39 @@
 import numpy as np
 
-class Extraction:
+
+class DirectEstimator:
     def __init__(self):
+        self.count_length = 2000
+        self.start_count = 0
+        self.stop_count = self.start_count + self.count_length
+        self.count_threshold = 90000
         return
+    def photon_count(self, time_tag, start_count, stop_count, count_threshold=90000):
+        counts_time_trace = []
+        counts_time_trace_append = counts_time_trace.append
+        photon_counts = 0
+        for i in range(len(time_tag)):  # count and filter the photons here
+            if time_tag[i] != 0 and time_tag[i] < count_threshold:
+                if start_count < time_tag[i] < stop_count:
+                    photon_counts = photon_counts + 1
+            else:
+                counts_time_trace_append(photon_counts)
+                photon_counts = 0
+        return counts_time_trace
+    def weighted_photon_count(self, time_tag, weight, start_count, stop_count, count_threshold=90000):
+        counts_time_trace = []
+        counts_time_trace_append = counts_time_trace.append
+        photon_counts = 0
+        for i in range(len(time_tag)):  # count and filter the photons here
+            if time_tag[i] != 0 and time_tag[i] < count_threshold:
+                if start_count < time_tag[i] < stop_count:
+                    photon_counts = photon_counts + weight[i]
+            else:
+                counts_time_trace_append(photon_counts)
+                photon_counts = 0
+        return counts_time_trace
 
-    def
-
-
-class Analysis:
+class FourierAnalysis:
 
     def input_settings(self):
         self._range_around_peak =
@@ -16,10 +42,11 @@ class Analysis:
         self._cut_time_trace =
         self._sequence_length =
 
-    def do_fft(self, time_trace, n_fft, cut_time_trace, padding_param):
+    def do_fft(self, time_trace=None, cut_time_trace=False, padding_param=0):
         """
         @return ft: complex ndarray
         """
+        n_fft = len(time_trace)
         input_time_trace = self._get_fft_input_time_trace(time_trace, cut_time_trace, n_fft)
         n_point = self._get_fft_n_point(padding_param, n_fft)
         ft = np.fft.fft(input_time_trace, n_point)
@@ -57,7 +84,7 @@ class Analysis:
         get the normalized power sepctrum density
         """
         psd = np.square(ft)
-        norm_psd = psd / (len(psd))^2
+        norm_psd = psd / (len(psd))**2
         return norm_psd
 
     def get_half_norm_psd(self, ft):
