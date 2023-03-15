@@ -218,7 +218,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         @return int: error code (0: OK, -1: Error)
         """
         if not self.is_running:
-            self.log.warning('Unable to stop input stream as nothing is running.')
+            self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
             return 0
 
         # end callback procedure
@@ -297,7 +297,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         if number_of_samples < 1:
             return 0
-        while self.available_samples < number_of_samples or len(self.wavelength) == 0:
+        while len(self.wavelength) == 0: #or self.available_samples < number_of_samples
             if not self.is_running:
                 break
             time.sleep(0.001)
@@ -339,7 +339,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         return number_of_samples
 
-    def read_available_data_into_buffer(self, buffer):  # todo
+    def read_available_data_into_buffer(self, buffer):
         """
         Read data from the stream buffer into a 1D/2D numpy array given as parameter.
         In case of a single data channel the numpy array can be either 1D or 2D. In case of more
