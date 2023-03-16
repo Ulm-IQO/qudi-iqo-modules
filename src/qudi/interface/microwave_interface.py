@@ -45,9 +45,9 @@ class MicrowaveInterface(Base):
     @abstractmethod
     def is_scanning(self):
         """Read-Only boolean flag indicating if a scan is running at the moment. Can be used
-        together with module_state() to determine if the currently running microwave output is a
+        together with module_state to determine if the currently running microwave output is a
         scan or CW.
-        Should return False if module_state() is 'idle'.
+        Should return False if module_state is ModuleState.IDLE.
 
         @return bool: Flag indicating if a scan is running (True) or not (False)
         """

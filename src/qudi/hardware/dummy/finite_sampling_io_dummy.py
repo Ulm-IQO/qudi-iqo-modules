@@ -28,6 +28,7 @@ from qudi.interface.finite_sampling_io_interface import FiniteSamplingIOConstrai
 from qudi.hardware.dummy.finite_sampling_input_dummy import SimulationMode
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.util.enums import SamplingOutputMode
 
 
@@ -128,7 +129,7 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
     @property
     def samples_in_buffer(self):
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 elapsed_time = time.time() - self.__start_time
                 self.__elapsed_samples = min(self._frame_size,
                                              int(elapsed_time * self._sample_rate))
@@ -139,7 +140,7 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
     def set_output_mode(self, mode):
         assert self._constraints.output_mode_supported(mode), f'Invalid output mode "{mode}"'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set output mode. Sampling IO in progress.'
             if mode != self._output_mode:
                 self._output_mode = mode
@@ -152,7 +153,7 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
             f'Sample rate "{sample_rate}Hz" to set is out of ' \
             f'bounds {self._constraints.sample_rate_limits}'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set sample rate. Sampling IO in progress.'
             self._sample_rate = sample_rate
 
@@ -164,7 +165,7 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
         assert output_chnl_set.issubset(self._constraints.output_channel_names), \
             'Invalid output channels encountered to set active'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set active channels. Sampling IO in progress.'
             self._active_input_channels = input_chnl_set
             self._active_output_channels = output_chnl_set
@@ -174,7 +175,7 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
         assert self._constraints.frame_size_in_range(samples)[0], \
             f'frame size "{samples}" to set is out of bounds {self._constraints.frame_size_limits}'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set frame size. Sampling IO in progress.'
             if samples != self._frame_size:
                 self._frame_size = samples
@@ -199,7 +200,7 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
                 assert all(d[-1] == frame_size for d in data.values()), \
                     'Frame data arrays for all channels must be of equal length.'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set frame data. Sampling IO in progress.'
             if data is None:
                 self._set_frame_size(0)
@@ -213,12 +214,12 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
 
     def start_buffered_frame(self):
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to start sampling IO. Already in progress.'
             assert isinstance(self._simulation_mode, SimulationMode), 'Invalid simulation mode'
             assert self.__frame_buffer is not None, \
                 'Unable to start sampling IO. No frame data has been set for output'
-            self.module_state.lock()
+            self._lock_module()
 
             # ToDo: discriminate between different types of data
             if self._simulation_mode is SimulationMode.ODMR:
@@ -232,7 +233,7 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
 
     def stop_buffered_frame(self):
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 elapsed_time = time.time() - self.__start_time
                 self.__elapsed_samples = min(self._frame_size,
                                              int(elapsed_time * self._sample_rate))
@@ -242,7 +243,7 @@ class FiniteSamplingIODummy(FiniteSamplingIOInterface):
                         f'Buffered sample IO stopped before all samples have been read/written. '
                         f'{remaining_samples} samples remain unread/unwritten.'
                     )
-                self.module_state.unlock()
+                self._unlock_module()
 
     def get_buffered_samples(self, number_of_samples=None):
         with self._thread_lock:

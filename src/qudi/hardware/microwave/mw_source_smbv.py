@@ -29,6 +29,7 @@ import numpy as np
 
 from qudi.util.mutex import Mutex
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.interface.microwave_interface import MicrowaveInterface, MicrowaveConstraints
 from qudi.util.enums import SamplingOutputMode
 
@@ -113,13 +114,13 @@ class MicrowaveSmbv(MicrowaveInterface):
     @property
     def is_scanning(self):
         """Read-Only boolean flag indicating if a scan is running at the moment. Can be used together with
-        module_state() to determine if the currently running microwave output is a scan or CW.
-        Should return False if module_state() is 'idle'.
+        module_state to determine if the currently running microwave output is a scan or CW.
+        Should return False if module_state is ModuleState.IDLE.
 
         @return bool: Flag indicating if a scan is running (True) or not (False)
         """
         with self._thread_lock:
-            return (self.module_state() != 'idle') and not self._in_cw_mode()
+            return (self.module_state != ModuleState.IDLE) and not self._in_cw_mode()
 
     @property
     def cw_power(self):
@@ -151,7 +152,7 @@ class MicrowaveSmbv(MicrowaveInterface):
     @scan_power.setter
     def scan_power(self, value):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError('Unable to set scan_power. Microwave output is active.')
             assert self._constraints.power_in_range(value)[0], \
                 f'scan_power to set ({value} dBm) out of bounds for allowed range ' \
@@ -178,7 +179,7 @@ class MicrowaveSmbv(MicrowaveInterface):
     @scan_frequencies.setter
     def scan_frequencies(self, value):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError('Unable to set scan_frequencies. Microwave output is active.')
 
             assert self._constraints.frequency_in_range(min(value))[0] and \
@@ -218,7 +219,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         @param float power: power to set in dBm
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError('Unable to set CW parameters. Microwave output active.')
             self._assert_cw_parameters_args(frequency, power)
 
@@ -234,7 +235,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         """
         with self._thread_lock:
             # Sanity checks
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError('Unable to configure frequency scan. Microwave output active.')
             self._assert_scan_configuration_args(power, frequencies, mode, sample_rate)
 
@@ -250,12 +251,12 @@ class MicrowaveSmbv(MicrowaveInterface):
         Must return AFTER the device has actually stopped.
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self._device.write('OUTP:STAT OFF')
                 self._device.write('*WAI')
                 while int(float(self._device.query('OUTP:STAT?'))) != 0:
                     time.sleep(0.2)
-                self.module_state.unlock()
+                self._unlock_module()
 
     def cw_on(self):
         """ Switches on cw microwave output.
@@ -263,7 +264,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         Must return AFTER the output is actually active.
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 if self._in_cw_mode():
                     return
                 raise RuntimeError(
@@ -279,7 +280,7 @@ class MicrowaveSmbv(MicrowaveInterface):
             self._device.write('*WAI')
             while int(float(self._device.query(':OUTP:STAT?'))) == 0:
                 time.sleep(0.2)
-            self.module_state.lock()
+            self._lock_module()
 
     def start_scan(self):
         """Switches on the microwave scanning.
@@ -287,7 +288,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         Must return AFTER the output is actually active (and can receive triggers for example).
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 if not self._in_cw_mode:
                     return
                 raise RuntimeError('Unable to start frequency scan. CW microwave output is active.')
@@ -300,14 +301,14 @@ class MicrowaveSmbv(MicrowaveInterface):
             self._device.write(':OUTP:STAT ON')
             while int(float(self._device.query(':OUTP:STAT?'))) == 0:
                 time.sleep(0.2)
-            self.module_state.lock()
+            self._lock_module()
 
     def reset_scan(self):
         """Reset currently running scan and return to start frequency.
         Does not need to stop and restart the microwave output if the device allows soft scan reset.
         """
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 return
             if self._in_cw_mode:
                 raise RuntimeError('Can not reset frequency scan. CW microwave output active.')

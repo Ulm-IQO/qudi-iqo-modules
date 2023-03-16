@@ -28,6 +28,7 @@ import nidaqmx as ni
 from qudi.util.mutex import Mutex
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
+from qudi.core.module import ModuleState
 from qudi.util.helpers import natural_sort, in_range
 
 from qudi.interface.process_control_interface import ProcessControlConstraints
@@ -191,10 +192,10 @@ class NIXSeriesAnalogOutput(ProcessControlSwitchMixin, ProcessSetpointInterface)
 
     def _update_module_state(self) -> None:
         busy = len(self._ao_task_handles) > 0
-        if busy and self.module_state() != 'locked':
-            self.module_state.lock()
-        elif not busy and self.module_state() == 'locked':
-            self.module_state.unlock()
+        if busy and self.module_state != ModuleState.LOCKED:
+            self._lock_module()
+        elif not busy and self.module_state == ModuleState.LOCKED:
+            self._unlock_module()
 
     def set_setpoint(self, channel: str, value: float) -> None:
         """ Set new setpoint for a single channel """

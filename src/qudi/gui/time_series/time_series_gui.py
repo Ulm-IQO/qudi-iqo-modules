@@ -29,7 +29,7 @@ from qudi.util.uic import loadUi
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.colordefs import QudiPalettePale as palette
-from qudi.core.module import GuiBase
+from qudi.core.module import GuiBase, ModuleState
 from qudi.interface.data_instream_interface import StreamChannelType
 
 
@@ -602,7 +602,7 @@ class TimeSeriesGui(GuiBase):
         @param bool recording: True if the data trace recording is active
         """
         if running is None:
-            running = self._time_series_logic.module_state() == 'locked'
+            running = self._time_series_logic.module_state == ModuleState.LOCKED
         if recording is None:
             recording = self._time_series_logic.data_recording_active
 

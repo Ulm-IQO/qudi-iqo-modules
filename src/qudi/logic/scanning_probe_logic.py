@@ -24,7 +24,7 @@ from PySide2 import QtCore
 import copy as cp
 import numpy as np
 
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -120,7 +120,7 @@ class ScanningProbeLogic(LogicBase):
         """
         self.__scan_poll_timer.stop()
         self.__scan_poll_timer.timeout.disconnect()
-        if self.module_state() != 'idle':
+        if self.module_state != ModuleState.IDLE:
             self._scanner().stop_scan()
         return
 
@@ -223,7 +223,7 @@ class ScanningProbeLogic(LogicBase):
 
     def set_scan_range(self, ranges):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.log.warning('Scan is running. Unable to change scan ranges.')
                 new_ranges = self.scan_ranges
                 self.sigScanSettingsChanged.emit({'range': new_ranges})
@@ -246,7 +246,7 @@ class ScanningProbeLogic(LogicBase):
 
     def set_scan_resolution(self, resolution):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.log.warning('Scan is running. Unable to change scan resolution.')
                 new_res = self.scan_resolution
                 self.sigScanSettingsChanged.emit({'resolution': new_res})
@@ -268,7 +268,7 @@ class ScanningProbeLogic(LogicBase):
 
     def set_scan_frequency(self, frequency):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.log.warning('Scan is running. Unable to change scan frequency.')
                 new_freq = self.scan_frequency
                 self.sigScanSettingsChanged.emit({'frequency': new_freq})
@@ -290,7 +290,7 @@ class ScanningProbeLogic(LogicBase):
 
     def set_target_position(self, pos_dict, caller_id=None, move_blocking=False):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.log.error('Unable to change scanner target position while a scan is running.')
                 new_pos = self._scanner().get_target()
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
@@ -350,14 +350,14 @@ class ScanningProbeLogic(LogicBase):
 
     def start_scan(self, scan_axes, caller_id=None):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
                 return 0
 
             scan_axes = tuple(scan_axes)
             self._curr_caller_id = self.module_uuid if caller_id is None else caller_id
 
-            self.module_state.lock()
+            self._lock_module()
 
             settings = {'axes': scan_axes,
                         'range': tuple(self._scan_ranges[ax] for ax in scan_axes),
@@ -365,7 +365,7 @@ class ScanningProbeLogic(LogicBase):
                         'frequency': self._scan_frequency[scan_axes[0]]}
             fail, new_settings = self._scanner().configure_scan(settings)
             if fail:
-                self.module_state.unlock()
+                self._unlock_module()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error(f"Couldn't configure scan: {settings}")
                 return -1
@@ -380,7 +380,7 @@ class ScanningProbeLogic(LogicBase):
             self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
 
             if self._scanner().start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
-                self.module_state.unlock()
+                self._unlock_module()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error("Couldn't start scan.")
                 return -1
@@ -391,15 +391,15 @@ class ScanningProbeLogic(LogicBase):
 
     def stop_scan(self):
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
                 return 0
 
             self.__stop_timer()
 
-            err = self._scanner().stop_scan() if self._scanner().module_state() != 'idle' else 0
+            err = self._scanner.stop_scan() if self._scanner.module_state != ModuleState.IDLE else 0
 
-            self.module_state.unlock()
+            self._unlock_module()
 
             if self.scan_settings['save_to_history']:
                 # module_uuid signals data-ready to data logic
@@ -412,10 +412,10 @@ class ScanningProbeLogic(LogicBase):
     def __scan_poll_loop(self):
         with self._thread_lock:
             try:
-                if self.module_state() == 'idle':
+                if self.module_state == ModuleState.IDLE:
                     return
 
-                if self._scanner().module_state() == 'idle':
+                if self._scanner.module_state == ModuleState.IDLE:
                     self.stop_scan()
                     return
                 # TODO Added the following line as a quick test; Maybe look at it with more caution if correct

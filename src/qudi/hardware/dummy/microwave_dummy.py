@@ -24,6 +24,7 @@ import time
 import numpy as np
 
 from qudi.interface.microwave_interface import MicrowaveInterface, MicrowaveConstraints
+from qudi.core.module import ModuleState
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.mutex import Mutex
 
@@ -87,9 +88,9 @@ class MicrowaveDummy(MicrowaveInterface):
     @property
     def is_scanning(self):
         """Read-Only boolean flag indicating if a scan is running at the moment. Can be used
-        together with module_state() to determine if the currently running microwave output is a
+        together with module_state to determine if the currently running microwave output is a
         scan or CW.
-        Should return False if module_state() is 'idle'.
+        Should return False if module_state is ModuleState.IDLE.
 
         @return bool: Flag indicating if a scan is running (True) or not (False)
         """
@@ -162,13 +163,13 @@ class MicrowaveDummy(MicrowaveInterface):
         Must return AFTER the device has actually stopped.
         """
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 self.log.debug('Microwave output was not active')
                 return
             self.log.debug('Stopping microwave output')
             time.sleep(1)
             self._is_scanning = False
-            self.module_state.unlock()
+            self._unlock_module()
 
     def set_cw(self, frequency, power):
         """Configure the CW microwave output. Does not start physical signal output, see also
@@ -179,7 +180,7 @@ class MicrowaveDummy(MicrowaveInterface):
         """
         with self._thread_lock:
             # Check if CW parameters can be set.
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError(
                     'Unable to set CW power and frequency. Microwave output is active.'
                 )
@@ -196,12 +197,12 @@ class MicrowaveDummy(MicrowaveInterface):
         Must return AFTER the output is actually active.
         """
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 self.log.debug(f'Starting CW microwave output with {self._cw_frequency:.6e} Hz '
                                f'and {self._cw_power:.6f} dBm')
                 time.sleep(1)
                 self._is_scanning = False
-                self.module_state.lock()
+                self._lock_module()
             elif self._is_scanning:
                 raise RuntimeError(
                     'Unable to start microwave CW output. Frequency scanning in progress.'
@@ -214,7 +215,7 @@ class MicrowaveDummy(MicrowaveInterface):
         """
         with self._thread_lock:
             # Sanity checking
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError('Unable to configure scan. Microwave output is active.')
             self._assert_scan_configuration_args(power, frequencies, mode, sample_rate)
 
@@ -238,11 +239,11 @@ class MicrowaveDummy(MicrowaveInterface):
         Must return AFTER the output is actually active (and can receive triggers for example).
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError(
                     'Unable to start microwave frequency scan. Microwave output is active.'
                 )
-            self.module_state.lock()
+            self._lock_module()
             self._is_scanning = True
             time.sleep(1)
             self.log.debug(f'Starting frequency scan in "{self._scan_mode.name}" mode')

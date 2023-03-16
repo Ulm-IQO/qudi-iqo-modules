@@ -28,7 +28,7 @@ from PySide2 import QtCore
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 
 
 class CameraLogic(LogicBase):
@@ -79,7 +79,7 @@ class CameraLogic(LogicBase):
     def set_exposure(self, time):
         """ Set exposure time of camera """
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 camera = self._camera()
                 camera.set_exposure(time)
                 self._exposure = camera.get_exposure()
@@ -94,7 +94,7 @@ class CameraLogic(LogicBase):
 
     def set_gain(self, gain):
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 camera = self._camera()
                 camera.set_gain(gain)
                 self._gain = camera.get_gain()
@@ -110,12 +110,12 @@ class CameraLogic(LogicBase):
         """
         """
         with self._thread_lock:
-            if self.module_state() == 'idle':
-                self.module_state.lock()
+            if self.module_state == ModuleState.IDLE:
+                self._lock_module()
                 camera = self._camera()
                 camera.start_single_acquisition()
                 self._last_frame = camera.get_acquired_data()
-                self.module_state.unlock()
+                self._unlock_module()
                 self.sigFrameChanged.emit(self._last_frame)
                 self.sigAcquisitionFinished.emit()
             else:
@@ -131,8 +131,8 @@ class CameraLogic(LogicBase):
         """ Start the data recording loop.
         """
         with self._thread_lock:
-            if self.module_state() == 'idle':
-                self.module_state.lock()
+            if self.module_state == ModuleState.IDLE:
+                self._lock_module()
                 exposure = max(self._exposure, self._minimum_exposure_time)
                 camera = self._camera()
                 if camera.support_live_acquisition():
@@ -147,10 +147,10 @@ class CameraLogic(LogicBase):
         """ Stop the data recording loop.
         """
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self.__timer.stop()
                 self._camera().stop_acquisition()
-                self.module_state.unlock()
+                self._unlock_module()
                 self.sigAcquisitionFinished.emit()
 
     def __acquire_video_frame(self):
@@ -160,7 +160,7 @@ class CameraLogic(LogicBase):
             camera = self._camera()
             self._last_frame = camera.get_acquired_data()
             self.sigFrameChanged.emit(self._last_frame)
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 exposure = max(self._exposure, self._minimum_exposure_time)
                 self.__timer.start(1000 * exposure)
                 if not camera.support_live_acquisition():

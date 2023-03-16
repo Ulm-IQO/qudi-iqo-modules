@@ -31,6 +31,7 @@ from qudi.interface.scanning_probe_interface import ScanningProbeInterface, Scan
     ScannerAxis, ScannerChannel, ScanData
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
+from qudi.core.module import ModuleState
 from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.helpers import in_range
@@ -416,14 +417,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             # todo: scanning_probe_logic exits when scanner not locked right away
             # should rather ignore/wait until real hw timed scanning starts
-            self.module_state.lock()
+            self._lock_module()
 
             first_scan_position = {ax: pos[0] for ax, pos
                                    in zip(self.scan_settings['axes'], self.scan_settings['range'])}
             self._move_to_and_start_scan(first_scan_position)
 
         except Exception:
-            self.module_state.unlock()
+            self._unlock_module()
             self.log.exception("Starting scan failed: ")
 
 
@@ -455,7 +456,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self._ni_finite_sampling_io().stop_buffered_frame()
             # self.log.debug("Frame stopped")
 
-        self.module_state.unlock()
+        self._unlock_module()
         # self.log.debug("Module unlocked")
 
         self.move_absolute(self._stored_target_pos)
@@ -494,9 +495,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return bool: scanning probe is running (True) or not (False)
         """
         # module state used to indicate hw timed scan running
-        #self.log.debug(f"Module in state: {self.module_state()}")
-        #assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
-        if self.module_state() == 'locked':
+        #self.log.debug(f"Module in state: {self.module_state.value}")
+        #assert self.module_state != ModuleState.DEACTIVATED
+        if self.module_state == ModuleState.LOCKED:
             return True
         else:
             return False
@@ -776,7 +777,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.sigNextDataChunk.emit()
         except Exception as e:
             self.log.error(f'Could not start frame due to {str(e)}')
-            self.module_state.unlock()
+            self._unlock_module()
 
         self._start_scan_after_cursor = False
 

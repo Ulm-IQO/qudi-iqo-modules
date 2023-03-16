@@ -32,7 +32,7 @@ from datetime import datetime
 from collections import OrderedDict
 from PySide2 import QtCore
 
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
@@ -946,7 +946,7 @@ class PoiManagerLogic(LogicBase):
             if self.__timer.isActive():
                 self.log.error('Periodic refocus already running. Unable to start a new one.')
                 return
-            self.module_state.lock()
+            self._lock_module()
             self._periodic_refocus_poi = name
             self.optimise_poi_position(name=name)
             self._last_refocus = time.time()
@@ -963,7 +963,7 @@ class PoiManagerLogic(LogicBase):
                 self.__timer.stop()
                 self.__timer.timeout.disconnect()
                 self._periodic_refocus_poi = None
-                self.module_state.unlock()
+                self._unlock_module()
             self.sigOptimizeTimerUpdated.emit(False, self.refocus_period, self.refocus_period)
         return
 
@@ -991,7 +991,7 @@ class PoiManagerLogic(LogicBase):
             if self.__timer.isActive():
                 remaining_time = self.time_until_refocus
                 self.sigOptimizeTimerUpdated.emit(True, self.refocus_period, remaining_time)
-                if remaining_time <= 0 and self._optimizelogic().module_state() == 'idle':
+                if remaining_time <= 0 and self._optimizelogic.module_state == ModuleState.IDLE:
                     self.optimise_poi_position(self._periodic_refocus_poi)
                     self._last_refocus = time.time()
         return
@@ -1020,7 +1020,7 @@ class PoiManagerLogic(LogicBase):
         self._update_roi_position = update_roi_position
 
         with self._thread_lock:
-            if self._optimizelogic().module_state() == 'idle':
+            if self._optimizelogic.module_state == ModuleState.IDLE:
                 self.__poi_optimization_running = True
                 self._optimizelogic().start_optimize()
                 self.sigOptimizeStateUpdated.emit(True)

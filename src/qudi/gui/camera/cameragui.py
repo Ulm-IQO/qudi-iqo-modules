@@ -23,7 +23,7 @@ import os
 from PySide2 import QtCore, QtWidgets, QtGui
 import datetime
 
-from qudi.core.module import GuiBase
+from qudi.core.module import GuiBase, ModuleState
 from qudi.core.connector import Connector
 from qudi.util.widgets.plotting.image_widget import ImageWidget
 from qudi.util.datastorage import TextDataStorage
@@ -96,7 +96,7 @@ class CameraGui(GuiBase):
     def on_activate(self):
         """ Initializes all needed UI files and establishes the connectors.
         """
-        logic = self._camera_logic()
+        logic = self._camera_logic
 
         # Create main window
         self._mw = CameraMainWindow()
@@ -110,7 +110,7 @@ class CameraGui(GuiBase):
         )
 
         # Fill in data from logic
-        logic_busy = logic.module_state() == 'locked'
+        logic_busy = logic.module_state == ModuleState.LOCKED
         self._mw.action_start_video.setChecked(logic_busy)
         self._mw.action_capture_frame.setChecked(logic_busy)
         self._update_frame(logic.last_frame)

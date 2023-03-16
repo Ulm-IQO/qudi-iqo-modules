@@ -1152,7 +1152,7 @@ class PicoHarp300(FastCounterInterface):
         """
         Starts the fast counter.
         """
-        self.lock()
+        self._lock_module()
 
         self.meas_run = True
 
@@ -1178,7 +1178,7 @@ class PicoHarp300(FastCounterInterface):
 
         if not self.meas_run:
             with self.threadlock:
-                self.unlock()
+                self._unlock_module()
                 self.stop_device()
                 return
 

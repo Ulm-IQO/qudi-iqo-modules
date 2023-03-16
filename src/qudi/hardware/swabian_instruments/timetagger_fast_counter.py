@@ -25,6 +25,7 @@ import TimeTagger as tt
 
 from qudi.interface.fast_counter_interface import FastCounterInterface
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 
 
 class TimeTaggerFastCounter(FastCounterInterface):
@@ -119,7 +120,7 @@ class TimeTaggerFastCounter(FastCounterInterface):
     def on_deactivate(self):
         """ Deactivate the FPGA.
         """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self.pulsed.stop()
         self.pulsed.clear()
         self.pulsed = None
@@ -161,7 +162,7 @@ class TimeTaggerFastCounter(FastCounterInterface):
 
     def start_measure(self):
         """ Start the fast counter. """
-        self.module_state.lock()
+        self._lock_module()
         self.pulsed.clear()
         self.pulsed.start()
         self.statusvar = 2
@@ -169,9 +170,9 @@ class TimeTaggerFastCounter(FastCounterInterface):
 
     def stop_measure(self):
         """ Stop the fast counter. """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self.pulsed.stop()
-            self.module_state.unlock()
+            self._unlock_module()
         self.statusvar = 1
         return 0
 
@@ -180,7 +181,7 @@ class TimeTaggerFastCounter(FastCounterInterface):
 
         Fast counter must be initially in the run state to make it pause.
         """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self.pulsed.stop()
             self.statusvar = 3
         return 0
@@ -190,7 +191,7 @@ class TimeTaggerFastCounter(FastCounterInterface):
 
         If fast counter is in pause state, then fast counter will be continued.
         """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self.pulsed.start()
             self.statusvar = 2
         return 0

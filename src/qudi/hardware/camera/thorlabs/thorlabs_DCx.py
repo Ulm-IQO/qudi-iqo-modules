@@ -29,6 +29,7 @@ from ctypes import *
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.interface.camera_interface import CameraInterface
 from .uc480_h import *
 
@@ -317,7 +318,7 @@ class CameraThorlabs(CameraInterface):
         """
         Return whether or not the camera is ready for an acquisition
         """
-        if self.module_state()!='idle':
+        if self.module_state != ModuleState.IDLE:
             return False
         return not self._acquiring
 

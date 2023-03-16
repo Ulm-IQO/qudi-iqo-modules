@@ -29,7 +29,7 @@ import matplotlib.pyplot as plt
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.util.datafitting import FitConfigurationsModel, FitContainer
@@ -304,7 +304,7 @@ class PulsedMeasurementLogic(LogicBase):
     def on_deactivate(self):
         """ Deactivate the module properly.
         """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self.stop_pulsed_measurement()
         self.__analysis_timer.timeout.disconnect()
         self.sigStartTimer.disconnect()
@@ -839,7 +839,7 @@ class PulsedMeasurementLogic(LogicBase):
                 if 'labels' in settings_dict:
                     self._data_labels = list(settings_dict.get('labels'))
 
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 # Get all other parameters if present
                 if 'controlled_variable' in settings_dict:
                     self._controlled_variable = np.array(settings_dict.get('controlled_variable'),
@@ -893,9 +893,9 @@ class PulsedMeasurementLogic(LogicBase):
                 return
 
         with self._threadlock:
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 # Lock module state
-                self.module_state.lock()
+                self._lock_module()
 
                 # Clear previous fits
                 self.do_fit('No Fit', False)
@@ -949,7 +949,7 @@ class PulsedMeasurementLogic(LogicBase):
             pass
 
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 # stopping the timer
                 self.sigStopTimer.emit()
                 # Turn off fast counter
@@ -970,7 +970,7 @@ class PulsedMeasurementLogic(LogicBase):
                 # Set measurement paused flag
                 self.__is_paused = False
 
-                self.module_state.unlock()
+                self._unlock_module()
                 self.sigMeasurementStatusUpdated.emit(False, False)
         return
 
@@ -993,7 +993,7 @@ class PulsedMeasurementLogic(LogicBase):
         Pauses the measurement
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 # pausing the timer
                 if self.__analysis_timer.isActive():
                     # stopping the timer
@@ -1020,7 +1020,7 @@ class PulsedMeasurementLogic(LogicBase):
         Continues the measurement
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 if self.__use_ext_microwave:
                     self.microwave_on()
                 self.fast_counter_continue()
@@ -1052,7 +1052,7 @@ class PulsedMeasurementLogic(LogicBase):
             self.__timer_interval = interval
             if self.__timer_interval > 0:
                 self.__analysis_timer.setInterval(int(1000. * self.__timer_interval))
-                if self.module_state() == 'locked' and not self.__is_paused:
+                if self.module_state == ModuleState.LOCKED and not self.__is_paused:
                     self.sigStartTimer.emit()
             else:
                 self.sigStopTimer.emit()
@@ -1090,7 +1090,7 @@ class PulsedMeasurementLogic(LogicBase):
     def manually_pull_data(self):
         """ Analyse and display the data
         """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self._pulsed_analysis_loop()
         return
 
@@ -1143,7 +1143,7 @@ class PulsedMeasurementLogic(LogicBase):
                 self._data_labels = list(self._measurement_information.get('labels'))
 
         # Check if a measurement is running and apply following settings if this is not the case
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             return
 
         if 'number_of_lasers' in self._measurement_information:
@@ -1216,7 +1216,7 @@ class PulsedMeasurementLogic(LogicBase):
             calculates fluorescence signal and creates plots.
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 # Update elapsed time
 
                 self._extract_laser_pulses()

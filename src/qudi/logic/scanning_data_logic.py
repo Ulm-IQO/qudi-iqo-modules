@@ -32,7 +32,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 from PySide2 import QtCore
 
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -167,7 +167,7 @@ class ScanningDataLogic(LogicBase):
 
     def restore_from_history(self, index):
         with self._thread_lock:
-            if self._scan_logic().module_state() != 'idle':
+            if self._scan_logic.module_state != ModuleState.IDLE:
                 self.log.error('Scan is running. Unable to restore history state.')
                 return
 
@@ -282,7 +282,7 @@ class ScanningDataLogic(LogicBase):
 
     def save_scan(self, scan_data, color_range=None):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
                 return
 
@@ -290,7 +290,7 @@ class ScanningDataLogic(LogicBase):
                 raise ValueError('Unable to save 2D scan. No data available.')
 
             self.sigSaveStateChanged.emit(True)
-            self.module_state.lock()
+            self._lock_module()
             try:
                 ds = TextDataStorage(root_dir=self.module_default_data_dir)
                 timestamp = datetime.datetime.now()
@@ -344,7 +344,7 @@ class ScanningDataLogic(LogicBase):
                         self.log.warning('No figure saved for data with more than 2 dimensions.')
 
             finally:
-                self.module_state.unlock()
+                self._unlock_module()
                 self.sigSaveStateChanged.emit(False)
             return
 

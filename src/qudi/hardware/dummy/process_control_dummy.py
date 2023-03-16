@@ -27,6 +27,7 @@ from typing import Union
 
 from qudi.util.mutex import Mutex
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.interface.process_control_interface import ProcessControlConstraints
 from qudi.interface.process_control_interface import ProcessControlInterface
 from qudi.interface.mixins.process_control_switch import ProcessControlSwitchMixin
@@ -163,10 +164,10 @@ class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
 
     def _update_module_state(self) -> None:
         module_busy = any(state for state in self._activity_states.values())
-        if module_busy and self.module_state() != 'locked':
-            self.module_state.lock()
-        elif not module_busy and self.module_state() == 'locked':
-            self.module_state.unlock()
+        if module_busy and self.module_state != ModuleState.LOCKED:
+            self._lock_module()
+        elif not module_busy and self.module_state == ModuleState.LOCKED:
+            self._unlock_module()
 
     def get_activity_state(self, channel: str) -> bool:
         """ Get activity state for given channel.

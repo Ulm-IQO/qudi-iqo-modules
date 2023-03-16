@@ -27,7 +27,7 @@ from PySide2 import QtCore
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
 
 
@@ -201,7 +201,7 @@ class LaserLogic(LogicBase):
     def _query_loop_body(self):
         """ Get power, current, shutter state and temperatures from laser. """
         with self._thread_lock:
-            if self.module_state() != 'locked':
+            if self.module_state != ModuleState.LOCKED:
                 return
 
             laser = self._laser()
@@ -275,8 +275,8 @@ class LaserLogic(LogicBase):
             return
 
         with self._thread_lock:
-            if self.module_state() == 'idle':
-                self.module_state.lock()
+            if self.module_state == ModuleState.IDLE:
+                self._lock_module()
                 self.__timer.start()
 
     @QtCore.Slot()
@@ -289,9 +289,9 @@ class LaserLogic(LogicBase):
             return
 
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self.__timer.stop()
-                self.module_state.unlock()
+                self._unlock_module()
 
     @QtCore.Slot(object)
     def set_control_mode(self, mode):

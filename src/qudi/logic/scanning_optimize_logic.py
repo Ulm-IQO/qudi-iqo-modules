@@ -26,7 +26,7 @@ from PySide2 import QtCore
 import itertools
 import copy as cp
 
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -164,7 +164,7 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def optimizer_running(self):
-        return self.module_state() != 'idle'
+        return self.module_state != ModuleState.IDLE
 
     @property
     def optimize_settings(self):
@@ -248,7 +248,7 @@ class ScanningOptimizeLogic(LogicBase):
         """
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 settings_update = self.optimize_settings
                 self.log.error('Can not change optimize settings when module is locked.')
             else:
@@ -279,12 +279,12 @@ class ScanningOptimizeLogic(LogicBase):
 
     def start_optimize(self):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
                 return 0
 
             # ToDo: Sanity checks for settings go here
-            self.module_state.lock()
+            self._lock_module()
             with self._result_lock:
                 self._last_scans = list()
                 self._last_fits = list()
@@ -301,20 +301,20 @@ class ScanningOptimizeLogic(LogicBase):
             # FIXME: Comparing floats by inequality here
             if any(val != optim_ranges[ax] for ax, val in actual_setting.items()):
                 self.log.warning('Some optimize scan ranges have been changed by the scanner.')
-                self.module_state.unlock()
+                self._unlock_module()
                 self.set_optimize_settings(
                     {'scan_range': {ax: abs(r[1] - r[0]) for ax, r in actual_setting.items()}}
                 )
-                self.module_state.lock()
+                self._lock_module()
 
             # Set scan frequency
             actual_setting = self._scan_logic().set_scan_frequency(self._scan_frequency)
             # FIXME: Comparing floats by inequality here
             if any(val != self._scan_frequency[ax] for ax, val in actual_setting.items()):
                 self.log.warning('Some optimize scan frequencies have been changed by the scanner.')
-                self.module_state.unlock()
+                self._unlock_module()
                 self.set_optimize_settings({'scan_frequency': actual_setting})
-                self.module_state.lock()
+                self._lock_module()
 
             # Set scan resolution
             actual_setting = self._scan_logic().set_scan_resolution(self._scan_resolution)
@@ -322,9 +322,9 @@ class ScanningOptimizeLogic(LogicBase):
             if any(val != self._scan_resolution[ax] for ax, val in actual_setting.items()):
                 self.log.warning(
                     'Some optimize scan resolutions have been changed by the scanner.')
-                self.module_state.unlock()
+                self._unlock_module()
                 self.set_optimize_settings({'scan_resolution': actual_setting})
-                self.module_state.lock()
+                self._lock_module()
 
             # optimizer scans are never saved
             self._scan_logic().set_scan_settings({'save_to_history': False})
@@ -338,7 +338,7 @@ class ScanningOptimizeLogic(LogicBase):
     def _next_sequence_step(self):
         with self._thread_lock:
 
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 return
 
             #self.log.debug(f"Next opt sequence step {self._sequence_index}")
@@ -355,7 +355,7 @@ class ScanningOptimizeLogic(LogicBase):
     def _scan_state_changed(self, is_running, data, caller_id):
 
         with self._thread_lock:
-            if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
+            if is_running or self.module_state == ModuleState.IDLE or caller_id != self.module_uuid:
                 return
             elif data is not None:
                 #self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
@@ -411,18 +411,18 @@ class ScanningOptimizeLogic(LogicBase):
 
     def stop_optimize(self):
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state == ModuleState.IDLE:
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
                 return 0
 
-            if self._scan_logic().module_state() != 'idle':
+            if self._scan_logic.module_state != ModuleState.IDLE:
                 # optimizer scans are never saved in scanning history
                 err = self._scan_logic().stop_scan()
             else:
                 err = 0
             self._scan_logic().set_scan_settings(self._stashed_scan_settings)
             self._stashed_scan_settings = dict()
-            self.module_state.unlock()
+            self._unlock_module()
             self.sigOptimizeStateChanged.emit(False, dict(), None)
             return err
 

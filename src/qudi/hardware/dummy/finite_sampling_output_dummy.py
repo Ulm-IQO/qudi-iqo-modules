@@ -28,6 +28,7 @@ from qudi.interface.finite_sampling_output_interface import FiniteSamplingOutput
 from qudi.interface.finite_sampling_output_interface import FiniteSamplingOutputConstraints
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.util.enums import SamplingOutputMode
 
 
@@ -112,7 +113,7 @@ class FiniteSamplingOutputDummy(FiniteSamplingOutputInterface):
     @property
     def samples_in_buffer(self):
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 elapsed_time = time.time() - self.__start_time
                 emitted_samples = min(self._frame_size, int(elapsed_time * self._sample_rate))
                 return max(0, emitted_samples - self.__emitted_samples)
@@ -124,7 +125,7 @@ class FiniteSamplingOutputDummy(FiniteSamplingOutputInterface):
             f'Sample rate "{sample_rate}Hz" to set is out of ' \
             f'bounds {self._constraints.sample_rate_limits}'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set sample rate. Sampling output in progress.'
             self._sample_rate = sample_rate
 
@@ -133,7 +134,7 @@ class FiniteSamplingOutputDummy(FiniteSamplingOutputInterface):
         assert chnl_set.issubset(self._constraints.channel_names), \
             'Invalid channels encountered to set active'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set active channels. Sampling output in progress.'
             if (self.__frame_buffer is not None) and (self._active_channels != chnl_set):
                 self.__frame_buffer = None
@@ -159,7 +160,7 @@ class FiniteSamplingOutputDummy(FiniteSamplingOutputInterface):
                 f'Frame size "{frame_size}" to set is out of ' \
                 f'bounds {self._constraints.frame_size_limits}'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set frame data. Sampling output in progress.'
             if data is None:
                 self._frame_size = 0
@@ -174,18 +175,18 @@ class FiniteSamplingOutputDummy(FiniteSamplingOutputInterface):
     def set_output_mode(self, mode):
         assert self._constraints.mode_supported(mode), f'Invalid output mode "{mode}"'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set output mode. Sampling output in progress.'
             self.__frame_buffer = None
             self._output_mode = mode
 
     def start_buffered_output(self):
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to start sampling output. Sampling output already in progress.'
             assert self.__frame_buffer is not None, \
                 'Unable to start sampling output. No frame data set.'
-            self.module_state.lock()
+            self._lock_module()
 
             self.__emitted_samples = 0
             total_time = 1000 * (self._frame_size / self._sample_rate)
@@ -194,7 +195,7 @@ class FiniteSamplingOutputDummy(FiniteSamplingOutputInterface):
 
     def stop_buffered_output(self):
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 remaining_samples = self._frame_size - self.__emitted_samples
                 if remaining_samples > 0:
                     self.log.warning(
@@ -202,7 +203,7 @@ class FiniteSamplingOutputDummy(FiniteSamplingOutputInterface):
                         f'been emitted. {remaining_samples} remaining samples will be discarded.'
                     )
                 self.__frame_buffer = None
-                self.module_state.unlock()
+                self._unlock_module()
 
     def emit_samples(self, data):
         with self._thread_lock:

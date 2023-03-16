@@ -28,6 +28,7 @@ from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputIn
 from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputConstraints
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 
 
 class SimulationMode(Enum):
@@ -120,7 +121,7 @@ class FiniteSamplingInputDummy(FiniteSamplingInputInterface):
     @property
     def samples_in_buffer(self):
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 elapsed_time = time.time() - self.__start_time
                 acquired_samples = min(self._frame_size,
                                        int(elapsed_time * self._sample_rate))
@@ -133,7 +134,7 @@ class FiniteSamplingInputDummy(FiniteSamplingInputInterface):
             f'Sample rate "{sample_rate}Hz" to set is out of ' \
             f'bounds {self._constraints.sample_rate_limits}'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set sample rate. Data acquisition in progress.'
             self._sample_rate = sample_rate
 
@@ -142,7 +143,7 @@ class FiniteSamplingInputDummy(FiniteSamplingInputInterface):
         assert chnl_set.issubset(self._constraints.channel_names), \
             'Invalid channels encountered to set active'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set active channels. Data acquisition in progress.'
             self._active_channels = chnl_set
 
@@ -151,16 +152,16 @@ class FiniteSamplingInputDummy(FiniteSamplingInputInterface):
         assert self._constraints.frame_size_in_range(samples)[0], \
             f'frame size "{samples}" to set is out of bounds {self._constraints.frame_size_limits}'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set frame size. Data acquisition in progress.'
             self._frame_size = samples
 
     def start_buffered_acquisition(self):
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to start data acquisition. Data acquisition already in progress.'
             assert isinstance(self._simulation_mode, SimulationMode), 'Invalid simulation mode'
-            self.module_state.lock()
+            self._lock_module()
 
             # ToDo: discriminate between different types of data
             if self._simulation_mode is SimulationMode.ODMR:
@@ -173,14 +174,14 @@ class FiniteSamplingInputDummy(FiniteSamplingInputInterface):
 
     def stop_buffered_acquisition(self):
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 remaining_samples = self._frame_size - self.__returned_samples
                 if remaining_samples > 0:
                     self.log.warning(
                         f'Buffered sample acquisition stopped before all samples have '
                         f'been read. {remaining_samples} remaining samples will be lost.'
                     )
-                self.module_state.unlock()
+                self._unlock_module()
 
     def get_buffered_samples(self, number_of_samples=None):
         with self._thread_lock:

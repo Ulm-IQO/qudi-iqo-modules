@@ -24,7 +24,7 @@ import numpy as np
 from PySide2 import QtCore
 
 from qudi.core.connector import Connector
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 
 
 class PulsedMasterLogic(LogicBase):
@@ -707,7 +707,7 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str, bool)
     def sample_ensemble(self, ensemble_name, with_load=False):
         already_busy = self.status_dict['sampling_ensemble_busy'] or self.status_dict[
-            'sampling_sequence_busy'] or self.sequencegeneratorlogic().module_state() == 'locked'
+            'sampling_sequence_busy'] or self.sequencegeneratorlogic.module_state == ModuleState.LOCKED
         if already_busy:
             self.log.error('Sampling of a different asset already in progress.\n'
                            'PulseBlockEnsemble "{0}" not sampled!'.format(ensemble_name))
@@ -734,7 +734,7 @@ class PulsedMasterLogic(LogicBase):
     @QtCore.Slot(str, bool)
     def sample_sequence(self, sequence_name, with_load=False):
         already_busy = self.status_dict['sampling_ensemble_busy'] or self.status_dict[
-            'sampling_sequence_busy'] or self.sequencegeneratorlogic().module_state() == 'locked'
+            'sampling_sequence_busy'] or self.sequencegeneratorlogic.module_state == ModuleState.LOCKED
         if already_busy:
             self.log.error('Sampling of a different asset already in progress.\n'
                            'PulseSequence "{0}" not sampled!'.format(sequence_name))

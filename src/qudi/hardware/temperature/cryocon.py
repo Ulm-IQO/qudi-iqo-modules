@@ -30,6 +30,7 @@ except ImportError:
     import visa
 from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 import numpy as np
 
 import warnings
@@ -108,7 +109,7 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
         try:
             response = self._inst.query(text)
         except visa.VisaIOError:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 return None
             self.log.warning('Cryocon connexion lost, automatic attempt to reconnect...')
             self.open_resource()

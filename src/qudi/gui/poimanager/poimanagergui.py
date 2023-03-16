@@ -29,7 +29,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.units import ScaledFloat
 from qudi.util.helpers import natural_sort
-from qudi.core.module import GuiBase
+from qudi.core.module import GuiBase, ModuleState
 
 from qudi.util.colordefs import QudiPalettePale as palette
 from PySide2 import QtCore, QtGui, QtWidgets
@@ -307,9 +307,9 @@ class PoiManagerGui(GuiBase):
         self.__init_roi_history_plot()
 
         # Initialize refocus timer
-        self.update_refocus_timer(self._poi_manager_logic().module_state() == 'locked',
-                                  self._poi_manager_logic().refocus_period,
-                                  self._poi_manager_logic().refocus_period)
+        self.update_refocus_timer(self._poi_manager_logic.module_state == ModuleState.LOCKED,
+                                  self._poi_manager_logic.refocus_period,
+                                  self._poi_manager_logic.refocus_period)
         # Initialize POIs
         self._update_pois(self._poi_manager_logic().poi_positions)
         # Initialize ROI name

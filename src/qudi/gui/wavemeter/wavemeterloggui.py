@@ -28,7 +28,7 @@ import pyqtgraph.exporters
 
 from qudi.core.connector import Connector
 from qudi.util import units
-from qudi.core.module import GuiBase
+from qudi.core.module import GuiBase, ModuleState
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from PySide2 import QtCore, QtWidgets, QtGui
@@ -267,7 +267,7 @@ class WavemeterLogGui(GuiBase):
         """ Handling the Start button to stop and restart the counter.
         """
         # If running, then we stop the measurement and enable inputs again
-        if self.wavemeterloggerlogic().module_state() == 'running':
+        if self.wavemeterloggerlogic.module_state == ModuleState.LOCKED:
             self._mw.actionStop_resume_scan.setText('Resume')
             self.wavemeterloggerlogic().stop_scanning()
             self._mw.actionStop_resume_scan.setEnabled(True)
@@ -283,7 +283,7 @@ class WavemeterLogGui(GuiBase):
     def start_clicked(self):
         """ Handling resume of the scanning without resetting the data.
         """
-        if self.wavemeterloggerlogic().module_state() == 'idle':
+        if self.wavemeterloggerlogic.module_state == ModuleState.IDLE:
             self._scatterplot.clear()
             self.wavemeterloggerlogic().start_scanning()
 

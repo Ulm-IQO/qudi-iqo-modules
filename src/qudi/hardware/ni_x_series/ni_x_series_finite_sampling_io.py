@@ -29,6 +29,7 @@ from nidaqmx.stream_readers import AnalogMultiChannelReader, CounterReader
 from nidaqmx.stream_writers import AnalogMultiChannelWriter
 
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.util.helpers import natural_sort
 from qudi.interface.finite_sampling_io_interface import FiniteSamplingIOInterface, FiniteSamplingIOConstraints
 from qudi.util.enums import SamplingOutputMode
@@ -529,7 +530,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         assert self.active_channels[1] == set(self.__frame_buffer), \
             f'Channels in active channels and frame buffer do not coincide'
 
-        self.module_state.lock()
+        self._lock_module()
 
         with self._thread_lock:
             self._number_of_pending_samples = self.frame_size
@@ -537,22 +538,22 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             # # set up all tasks
             if self._init_sample_clock() < 0:
                 self.terminate_all_tasks()
-                self.module_state.unlock()
+                self._unlock_module()
                 raise NiInitError('Sample clock initialization failed; all tasks terminated')
 
             if self._init_digital_tasks() < 0:
                 self.terminate_all_tasks()
-                self.module_state.unlock()
+                self._unlock_module()
                 raise NiInitError('Counter task initialization failed; all tasks terminated')
 
             if self._init_analog_in_task() < 0:
                 self.terminate_all_tasks()
-                self.module_state.unlock()
+                self._unlock_module()
                 raise NiInitError('Analog in task initialization failed; all tasks terminated')
 
             if self._init_analog_out_task() < 0:
                 self.terminate_all_tasks()
-                self.module_state.unlock()
+                self._unlock_module()
                 raise NiInitError('Analog out task initialization failed; all tasks terminated')
 
             output_data = np.ndarray((len(self.active_channels[1]), self.frame_size))
@@ -564,7 +565,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 self._ao_writer.write_many_sample(output_data)
             except ni.DaqError:
                 self.terminate_all_tasks()
-                self.module_state.unlock()
+                self._unlock_module()
                 raise
 
             if self._ao_task_handle is not None:
@@ -572,7 +573,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                     self._ao_task_handle.start()
                 except ni.DaqError:
                     self.terminate_all_tasks()
-                    self.module_state.unlock()
+                    self._unlock_module()
                     raise
 
             if self._ai_task_handle is not None:
@@ -580,7 +581,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                     self._ai_task_handle.start()
                 except ni.DaqError:
                     self.terminate_all_tasks()
-                    self.module_state.unlock()
+                    self._unlock_module()
                     raise
 
             if len(self._di_task_handles) > 0:
@@ -589,14 +590,14 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                         di_task.start()
                 except ni.DaqError:
                     self.terminate_all_tasks()
-                    self.module_state.unlock()
+                    self._unlock_module()
                     raise
 
             try:
                 self._clk_task_handle.start()
             except ni.DaqError:
                 self.terminate_all_tasks()
-                self.module_state.unlock()
+                self._unlock_module()
                 raise
 
     def stop_buffered_frame(self):
@@ -619,7 +620,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 self.terminate_all_tasks()  # nidaqmx raises a warning when frame is stopped before all samples acq.
-            self.module_state.unlock()
+            self._unlock_module()
 
     def get_buffered_samples(self, number_of_samples=None):
         """ Returns a chunk of the current data frame for all active input channels read from the
@@ -742,8 +743,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         @return bool: Finite IO is running (True) or not (False)
         """
-        assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
-        if self.module_state() == 'locked':
+        assert self.module_state != ModuleState.DEACTIVATED
+        if self.module_state == ModuleState.LOCKED:
             return True
         else:
             return False

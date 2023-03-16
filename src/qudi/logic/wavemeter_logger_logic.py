@@ -30,7 +30,7 @@ import matplotlib.pyplot as plt
 
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
-from qudi.core.module import Base
+from qudi.core.module import Base, ModuleState
 from qudi.util.mutex import Mutex
 
 
@@ -141,7 +141,7 @@ class WavemeterLoggerLogic(Base):
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
-        if self.module_state() != 'idle' and self.module_state() != 'deactivated':
+        if self.module_state == ModuleState.LOCKED:
             self.stop_scanning()
         self.acquisition_running = False
         self.sig_start_hardware_acquisition.disconnect()
@@ -175,7 +175,7 @@ class WavemeterLoggerLogic(Base):
         time_stamp = time.time() - self._acquisition_start_time
 
         # only wavelength >200 nm make sense, ignore the rest
-        if self.current_wavelength > 200 and self.module_state() == 'running':
+        if self.current_wavelength > 200 and self.module_state == ModuleState.LOCKED:
             self._wavelength_data.append(
                 np.array([time_stamp, self.current_wavelength])
             )
@@ -260,9 +260,9 @@ class WavemeterLoggerLogic(Base):
         """
 
         # TODO check first if state is still running
-        self.module_state.run()
+        self._lock_module()
 
-        if self._counter_logic.module_state() == 'idle':
+        if self._counter_logic.module_state == ModuleState.IDLE:
             self._counter_logic.startCount()
 
         if self._counter_logic.get_saving_state():
@@ -296,9 +296,9 @@ class WavemeterLoggerLogic(Base):
         """ Set a flag to request stopping counting.
         """
 
-        if not self.module_state() == 'idle':
+        if not self.module_state == ModuleState.IDLE:
             # set status to idle again
-            self.module_state.stop()
+            self._unlock_module()
 
         if self._counter_logic.get_saving_state():
             self._counter_logic.save_data(to_file=False)
@@ -320,7 +320,7 @@ class WavemeterLoggerLogic(Base):
         # If there is not yet any wavelength data, then wait and signal next loop
         if len(self._wavelength_data) == 0:
             self.sig_data_updated.emit()
-            if self.module_state() == 'running':
+            if self.module_state == ModuleState.LOCKED:
                 QtCore.QTimer.singleShot(int(self._logic_update_timing),
                                          self._attach_counts_to_wavelength)
             return
@@ -363,7 +363,7 @@ class WavemeterLoggerLogic(Base):
         # Run the old update histogram method to keep duplicate data
         self._update_histogram(False)
 
-        if self.module_state() == 'running':
+        if self.module_state == ModuleState.LOCKED:
             QtCore.QTimer.singleShot(int(self._logic_update_timing),
                                      self._attach_counts_to_wavelength)
 

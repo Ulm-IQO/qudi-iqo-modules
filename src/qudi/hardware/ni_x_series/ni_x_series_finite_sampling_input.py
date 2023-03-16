@@ -30,6 +30,7 @@ from nidaqmx.stream_readers import AnalogMultiChannelReader, CounterReader
 
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.util.helpers import natural_sort
 from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface, FiniteSamplingInputConstraints
 
@@ -250,7 +251,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         @return int: Number of unread samples per channel
         """
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 if self._ai_task_handle is None:
                     return self._di_task_handles[0].in_stream.avail_samp_per_chan
                 else:
@@ -263,7 +264,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             f'Sample rate "{sample_rate}Hz" to set is out of ' \
             f'bounds {self._constraints.sample_rate_limits}'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set sample rate. Data acquisition in progress.'
             self._sample_rate = sample_rate
             self.log.debug(f'set sample_rate to {self._sample_rate}')
@@ -277,7 +278,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         assert hasattr(channels, '__iter__') and not isinstance(channels, str), \
             f'Given input channels {channels} are not iterable'
 
-        assert self.module_state() != 'locked', \
+        assert self.module_state != ModuleState.LOCKED, \
             'Unable to change active channels while finite sampling is running. New settings ignored.'
 
         channels = tuple(self._extract_terminal(channel) for channel in channels)
@@ -301,7 +302,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         assert self._constraints.frame_size_in_range(samples)[0], \
             f'frame size "{samples}" to set is out of bounds {self._constraints.frame_size_limits}'
         with self._thread_lock:
-            assert self.module_state() == 'idle', \
+            assert self.module_state == ModuleState.IDLE, \
                 'Unable to set frame size. Data acquisition in progress.'
             self._frame_size = samples
             self.log.debug(f'set frame_size to {self._frame_size}')
@@ -312,22 +313,22 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
         Must raise exception if data acquisition can not be started.
         """
-        assert self.module_state() == 'idle', \
+        assert self.module_state == ModuleState.IDLE, \
             'Unable to start data acquisition. Data acquisition already in progress.'
-        self.module_state.lock()
+        self._lock_module()
 
         # set up tasks
         if self._init_sample_clock() < 0:
             self.terminate_all_tasks()
-            self.module_state.unlock()
+            self._unlock_module()
             raise NiInitError('Sample clock initialization failed; all tasks terminated')
         if self._init_digital_tasks() < 0:
             self.terminate_all_tasks()
-            self.module_state.unlock()
+            self._unlock_module()
             raise NiInitError('Counter task initialization failed; all tasks terminated')
         if self._init_analog_task() < 0:
             self.terminate_all_tasks()
-            self.module_state.unlock()
+            self._unlock_module()
             raise NiInitError('Analog in task initialization failed; all tasks terminated')
 
         # start tasks
@@ -337,7 +338,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                     task.start()
             except ni.DaqError:
                 self.terminate_all_tasks()
-                self.module_state.unlock()
+                self._unlock_module()
                 raise
 
         if self._ai_task_handle is not None:
@@ -345,14 +346,14 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 self._ai_task_handle.start()
             except ni.DaqError:
                 self.terminate_all_tasks()
-                self.module_state.unlock()
+                self._unlock_module()
                 raise
 
         try:
             self._clk_task_handle.start()
         except ni.DaqError:
             self.terminate_all_tasks()
-            self.module_state.unlock()
+            self._unlock_module()
             raise
 
     def stop_buffered_acquisition(self):
@@ -362,9 +363,9 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
         Must NOT raise exceptions if no data acquisition is running.
         """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self.terminate_all_tasks()
-            self.module_state.unlock()
+            self._unlock_module()
 
     def get_buffered_samples(self, number_of_samples=None):
         """ Returns a chunk of the current data frame for all active channels read from the frame
@@ -389,7 +390,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         @return dict: Sample arrays (values) for each active channel (keys)
         """
         data = dict()
-        if self.module_state() == 'idle' and self.samples_in_buffer < 1:
+        if self.module_state == ModuleState.IDLE and self.samples_in_buffer < 1:
             self.log.error('Unable to read data. Device is not running and no data in buffer.')
             return data
 
@@ -401,7 +402,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 f'pending for acquisition ({self._frame_size}).'
             )
 
-        if number_of_samples is not None and self.module_state() == 'locked':
+        if number_of_samples is not None and self.module_state == ModuleState.LOCKED:
             request_time = time.time()
             while number_of_samples > self.samples_in_buffer:  # TODO: Check whether this works with a real HW
                 # TODO could one use the ni timeout of the reader class here?
@@ -409,7 +410,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                     time.sleep(0.05)
                 else:
                     self.terminate_all_tasks()
-                    self.module_state.unlock()
+                    self._unlock_module()
                     raise TimeoutError(f'Acquiring {number_of_samples} samples took longer than the whole frame.')
         try:
             # TODO: What if counter stops while waiting for samples?

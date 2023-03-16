@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from PySide2 import QtCore
 
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.units import ScaledFloat
 from qudi.core.connector import Connector
@@ -168,7 +168,7 @@ class OdmrLogic(LogicBase):
         """
         # Stop measurement if it is still running
         self._sigNextLine.disconnect()
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self.stop_odmr_scan()
 
     @_fit_configs.representer
@@ -327,7 +327,7 @@ class OdmrLogic(LogicBase):
     @QtCore.Slot(object, object, object, int)
     def set_frequency_range(self, start, stop, points, index):
         with self._threadlock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.log.error('Unable to set frequency range. ODMR scan in progress.')
             else:
                 try:
@@ -354,7 +354,7 @@ class OdmrLogic(LogicBase):
             return
 
         with self._threadlock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.log.error('Unable to set frequency range count. ODMR scan in progress.')
                 self.sigScanParametersUpdated.emit({'frequency_ranges': self.frequency_ranges})
                 return
@@ -412,7 +412,7 @@ class OdmrLogic(LogicBase):
             return
         with self._threadlock:
             # checks if scanner is still running
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self.log.error('Unable to set sample rate. ODMR measurement in progress.')
             else:
                 data_rate = self.data_rate if data_rate is None else float(data_rate)
@@ -463,11 +463,11 @@ class OdmrLogic(LogicBase):
         with self._threadlock:
             microwave = self._microwave()
             # Return early if CW output is already in desired state
-            if enable == (microwave.module_state() != 'idle' and not microwave.is_scanning):
+            if enable == (microwave.module_state != ModuleState.IDLE and not microwave.is_scanning):
                 self.sigCwStateUpdated.emit(enable)
                 return
             # Throw error and return early if CW output can not be turned on
-            if enable and self.module_state() != 'idle':
+            if enable and self.module_state != ModuleState.IDLE:
                 self.log.error('Unable to turn on microwave CW output. ODMR scan in progress.')
                 return
             # Toggle microwave output
@@ -481,7 +481,7 @@ class OdmrLogic(LogicBase):
                 self.log.exception('Error while trying to toggle microwave CW output:')
             finally:
                 self.sigCwStateUpdated.emit(
-                    microwave.module_state() != 'idle' and not microwave.is_scanning
+                    microwave.module_state != ModuleState.IDLE and not microwave.is_scanning
                 )
 
     @QtCore.Slot(bool, bool)
@@ -501,7 +501,7 @@ class OdmrLogic(LogicBase):
         """ Starting an ODMR scan.
         """
         with self._threadlock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 self.log.error('Can not start ODMR scan. Measurement is already running.')
                 self.sigScanStateUpdated.emit(True)
                 return
@@ -510,7 +510,7 @@ class OdmrLogic(LogicBase):
             sampler = self._data_scanner()
 
             self.toggle_cw_output(False)
-            self.module_state.lock()
+            self._lock_module()
 
             # Set up hardware
             try:
@@ -539,7 +539,7 @@ class OdmrLogic(LogicBase):
                 microwave.configure_scan(self._scan_power, frequencies, mode, sample_rate)
                 microwave.start_scan()
             except:
-                self.module_state.unlock()
+                self._unlock_module()
                 self.log.exception('Unable to start ODMR scan. Error while setting up hardware:')
                 self.sigScanStateUpdated.emit(False)
                 return
@@ -561,13 +561,13 @@ class OdmrLogic(LogicBase):
         @return int: error code (0:OK, -1:error)
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self.log.error('Can not continue ODMR scan. Measurement is already running.')
                 self.sigScanStateUpdated.emit(True)
                 return
 
             # ToDo: see start_odmr_scan
-            self.module_state.lock()
+            self._lock_module()
 
             self.sigScanStateUpdated.emit(True)
             self._start_time = time.time() - self._elapsed_time
@@ -580,16 +580,16 @@ class OdmrLogic(LogicBase):
         @return int: error code (0:OK, -1:error)
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self._microwave().off()
-                self.module_state.unlock()
+                self._unlock_module()
             self.sigScanStateUpdated.emit(False)
 
     @QtCore.Slot()
     def clear_odmr_data(self):
         """ Clear the current ODMR data and reset elapsed time/sweeps """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self._elapsed_time = 0.0
                 self._elapsed_sweeps = 0
                 self._initialize_odmr_data()
@@ -603,7 +603,7 @@ class OdmrLogic(LogicBase):
         """
         with self._threadlock:
             # If the odmr measurement is not running do nothing and break the Qt signal loop
-            if self.module_state() != 'locked':
+            if self.module_state != ModuleState.LOCKED:
                 return
 
             try:

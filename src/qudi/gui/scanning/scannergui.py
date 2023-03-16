@@ -32,7 +32,7 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.interface.scanning_probe_interface import ScanData
-from qudi.core.module import GuiBase
+from qudi.core.module import GuiBase, ModuleState
 from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
@@ -176,7 +176,7 @@ class ScannerGui(GuiBase):
         # Initialize widget data
         self.scanner_settings_updated()
         self.scanner_target_updated()
-        self.scan_state_updated(self._scanning_logic().module_state() != 'idle')
+        self.scan_state_updated(self._scanning_logic.module_state != ModuleState.IDLE)
 
         # Connect signals
         self.sigScannerTargetChanged.connect(

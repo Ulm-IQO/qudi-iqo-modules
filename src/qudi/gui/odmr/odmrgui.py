@@ -27,7 +27,7 @@ from PySide2 import QtCore, QtWidgets, QtGui
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util import units
-from qudi.core.module import GuiBase
+from qudi.core.module import GuiBase, ModuleState
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.paths import get_artwork_dir
@@ -331,7 +331,7 @@ class OdmrGui(GuiBase):
         @param bool running:
         """
         if running is None:
-            running = self._odmr_logic().module_state() != 'idle'
+            running = self._odmr_logic.module_state != ModuleState.IDLE
         # set controls state
         self._mw.action_toggle_measurement.setEnabled(True)
         self._mw.action_resume_measurement.setEnabled(not running)

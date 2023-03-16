@@ -24,7 +24,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import random
 from PySide2 import QtCore
 
-from qudi.core.module import Base
+from qudi.core.module import ModuleState
 from qudi.core.configoption import ConfigOption
 from qudi.interface.wavemeter_interface import WavemeterInterface
 from qudi.util.mutex import Mutex
@@ -62,7 +62,7 @@ class HardwarePull(QtCore.QObject):
         range_step = 0.1
 
         # update as long as the status is busy
-        if self._parentclass.module_state() == 'running':
+        if self._parentclass.module_state == ModuleState.LOCKED:
             # get the current wavelength from the wavemeter
             self._parentclass._current_wavelength += random.uniform(-range_step, range_step)
             self._parentclass._current_wavelength2 += random.uniform(-range_step, range_step)
@@ -132,11 +132,11 @@ class WavemeterDummy(WavemeterInterface):
         """
 
         # first check its status
-        if self.module_state() == 'running':
+        if self.module_state == ModuleState.LOCKED:
             self.log.error('Wavemeter busy')
             return -1
 
-        self.module_state.run()
+        self._lock_module()
         # actually start the wavemeter
         self.log.warning('starting Wavemeter')
 
@@ -151,14 +151,13 @@ class WavemeterDummy(WavemeterInterface):
         @return int: error code (0:OK, -1:error)
         """
         # check status just for a sanity check
-        if self.module_state() == 'idle' or self.module_state() == 'deactivated':
-            self.log.warning('Wavemeter was already stopped, stopping it '
-                    'anyway!')
+        if self.module_state != ModuleState.LOCKED:
+            self.log.warning('Wavemeter was already stopped, stopping it anyway!')
         else:
             # stop the measurement thread
             self.sig_handle_timer.emit(False)
             # set status to idle again
-            self.module_state.stop()
+            self._unlock_module()
 
         # Stop the actual wavemeter measurement
         self.log.warning('stopping Wavemeter')

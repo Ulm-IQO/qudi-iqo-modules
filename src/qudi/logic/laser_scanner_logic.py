@@ -32,7 +32,7 @@ import time
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qtpy import QtCore
 
 
@@ -154,8 +154,8 @@ class LaserScannerLogic(LogicBase):
             self._static_v = volts
 
         # Checks if the scanner is still running
-        if (self.module_state() == 'locked'
-                or self._scanning_device.module_state() == 'locked'):
+        if (self.module_state == ModuleState.LOCKED
+                or self._scanning_device.module_state == ModuleState.LOCKED):
             self.log.error('Cannot goto, because scanner is locked!')
             return -1
         else:
@@ -193,7 +193,7 @@ class LaserScannerLogic(LogicBase):
         """
         self._clock_frequency = float(clock_frequency)
         # checks if scanner is still running
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             return -1
         else:
             return 0
@@ -242,21 +242,21 @@ class LaserScannerLogic(LogicBase):
 
     def _initialise_scanner(self):
         """Initialise the clock and locks for a scan"""
-        self.module_state.lock()
-        self._scanning_device.module_state.lock()
+        self._lock_module()
+        self._scanning_device._lock_module()
 
         returnvalue = self._scanning_device.set_up_scanner_clock(
             clock_frequency=self._clock_frequency)
         if returnvalue < 0:
-            self._scanning_device.module_state.unlock()
-            self.module_state.unlock()
+            self._scanning_device._unlock_module()
+            self._unlock_module()
             self.set_position('scanner')
             return -1
 
         returnvalue = self._scanning_device.set_up_scanner()
         if returnvalue < 0:
-            self._scanning_device.module_state.unlock()
-            self.module_state.unlock()
+            self._scanning_device._unlock_module()
+            self._unlock_module()
             self.set_position('scanner')
             return -1
 
@@ -306,7 +306,7 @@ class LaserScannerLogic(LogicBase):
         @return int: error code (0:OK, -1:error)
         """
         with self.threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self.stopRequested = True
         return 0
 
@@ -315,8 +315,8 @@ class LaserScannerLogic(LogicBase):
         with self.threadlock:
             self.kill_scanner()
             self.stopRequested = False
-            if self.module_state.can('unlock'):
-                self.module_state.unlock()
+            if self.module_state == ModuleState.LOCKED:
+                self._unlock_module()
 
     def _do_next_line(self):
         """ If stopRequested then finish the scan, otherwise perform next repeat of the scan line
@@ -455,8 +455,8 @@ class LaserScannerLogic(LogicBase):
             self.log.exception('Could not even close the scanner, giving up.')
             raise e
         try:
-            if self._scanning_device.module_state.can('unlock'):
-                self._scanning_device.module_state.unlock()
+            if self._scanning_device.module_state == ModuleState.LOCKED:
+                self._scanning_device._unlock_module()
         except:
             self.log.exception('Could not unlock scanning device.')
         return 0

@@ -27,7 +27,7 @@ import datetime as dt
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import StreamChannelType, StreamingMode
 
@@ -144,7 +144,7 @@ class TimeSeriesReaderLogic(LogicBase):
         """ De-initialisation performed during deactivation of the module.
         """
         # Stop measurement
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self._stop_reader_wait()
 
         self._sigNextDataFrame.disconnect()
@@ -319,7 +319,7 @@ class TimeSeriesReaderLogic(LogicBase):
             return self.all_settings
 
         # Flag indicating if the stream should be restarted
-        restart = self.module_state() == 'locked'
+        restart = self.module_state == ModuleState.LOCKED
         if restart:
             self._stop_reader_wait()
 
@@ -471,12 +471,12 @@ class TimeSeriesReaderLogic(LogicBase):
         """
         with self.threadlock:
             # Lock module
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self.log.warning('Data acquisition already running. "start_reading" call ignored.')
                 self.sigStatusChanged.emit(True, self._data_recording_active)
                 return 0
 
-            self.module_state.lock()
+            self._lock_module()
             self._stop_requested = False
 
             self.sigStatusChanged.emit(True, self._data_recording_active)
@@ -519,7 +519,7 @@ class TimeSeriesReaderLogic(LogicBase):
         @return int: error code (0: OK, -1: error)
         """
         with self.threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self._stop_requested = True
         return 0
 
@@ -531,7 +531,7 @@ class TimeSeriesReaderLogic(LogicBase):
         It runs repeatedly by being connected to a QTimer timeout signal.
         """
         with self.threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 # check for break condition
                 if self._stop_requested:
                     # terminate the hardware streaming
@@ -542,7 +542,7 @@ class TimeSeriesReaderLogic(LogicBase):
                         self._save_recorded_data(to_file=True, save_figure=True)
                         self._recorded_data = list()
                     self._data_recording_active = False
-                    self.module_state.unlock()
+                    self._unlock_module()
                     self.sigStatusChanged.emit(False, False)
                     return
 
@@ -624,11 +624,11 @@ class TimeSeriesReaderLogic(LogicBase):
         """
         with self.threadlock:
             if self._data_recording_active:
-                self.sigStatusChanged.emit(self.module_state() == 'locked', True)
+                self.sigStatusChanged.emit(self.module_state == ModuleState.LOCKED, True)
                 return -1
 
             self._data_recording_active = True
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self._recorded_data = list()
                 self._record_start_time = dt.datetime.now()
                 self.sigStatusChanged.emit(True, True)
@@ -646,11 +646,11 @@ class TimeSeriesReaderLogic(LogicBase):
         """
         with self.threadlock:
             if not self._data_recording_active:
-                self.sigStatusChanged.emit(self.module_state() == 'locked', False)
+                self.sigStatusChanged.emit(self.module_state == ModuleState.LOCKED, False)
                 return 0
 
             self._data_recording_active = False
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self._save_recorded_data(to_file=True, save_figure=True)
                 self._recorded_data = list()
                 self.sigStatusChanged.emit(True, False)
@@ -803,6 +803,6 @@ class TimeSeriesReaderLogic(LogicBase):
                 self._save_recorded_data(to_file=True, save_figure=True)
                 self._recorded_data = list()
             self._data_recording_active = False
-            self.module_state.unlock()
+            self._unlock_module()
             self.sigStatusChanged.emit(False, False)
         return 0

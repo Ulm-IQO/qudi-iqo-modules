@@ -29,6 +29,7 @@ import time
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.interface.microwave_interface import MicrowaveInterface, MicrowaveConstraints
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.mutex import Mutex
@@ -119,8 +120,8 @@ class MicrowaveAgilent(MicrowaveInterface):
     @property
     def is_scanning(self):
         """Read-Only boolean flag indicating if a scan is running at the moment. Can be used
-        together with module_state() to determine if the currently running microwave output is a
-        scan or CW. Should return False if module_state() is 'idle'.
+        together with module_state to determine if the currently running microwave output is a
+        scan or CW. Should return False if module_state is ModuleState.IDLE.
 
         @return bool: Flag indicating if a scan is running (True) or not (False)
         """
@@ -194,7 +195,7 @@ class MicrowaveAgilent(MicrowaveInterface):
         @param float power: power to set in dBm
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError('Unable to set CW parameters. Microwave output active.')
             self._assert_cw_parameters_args(frequency, power)
             self._command_wait(f':FREQ:CW {frequency:e} Hz')
@@ -205,7 +206,7 @@ class MicrowaveAgilent(MicrowaveInterface):
         """
         with self._thread_lock:
             # Sanity checks
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 raise RuntimeError('Unable to configure frequency scan. Microwave output active.')
             self._assert_scan_configuration_args(power, frequencies, mode, sample_rate)
 
@@ -262,7 +263,7 @@ class MicrowaveAgilent(MicrowaveInterface):
         Must return AFTER the device has actually stopped.
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 # turn of scanning (both "list" and "sweep"）
                 self._device.write(':SWEep:RF:STATe OFF')
                 while int(float(self._device.query(':SWEep:RF:STATe?'))) != 0:
@@ -274,7 +275,7 @@ class MicrowaveAgilent(MicrowaveInterface):
                 while int(float(self._device.query(':RFO:STAT?'))) != 0:
                     time.sleep(0.2)
                 self._is_scanning = False
-                self.module_state.unlock()
+                self._unlock_module()
 
     def cw_on(self):
         """ Switches on cw microwave output.
@@ -282,7 +283,7 @@ class MicrowaveAgilent(MicrowaveInterface):
         Must return AFTER the output is actually active.
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 if self._in_cw_mode():
                     return
                 raise RuntimeError(
@@ -300,7 +301,7 @@ class MicrowaveAgilent(MicrowaveInterface):
         Must return AFTER the output is actually active (and can receive triggers for example).
         """
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            if self.module_state != ModuleState.IDLE:
                 if self._is_scanning:
                     return
                 raise RuntimeError('Unable to start frequency scan. CW microwave output is active.')

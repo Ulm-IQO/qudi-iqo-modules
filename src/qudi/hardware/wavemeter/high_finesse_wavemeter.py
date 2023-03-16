@@ -29,7 +29,7 @@ import ctypes   # is a foreign function library for Python. It provides C
                 # in pure Python.
 
 from qudi.interface.wavemeter_interface import WavemeterInterface
-from qudi.core.module import Base
+from qudi.core.module import ModuleState
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 
@@ -66,7 +66,7 @@ class HardwarePull(QtCore.QObject):
         """
 
         # update as long as the state is busy
-        if self._parentclass.module_state() == 'running':
+        if self._parentclass.module_state == ModuleState.LOCKED:
             # get the current wavelength from the wavemeter
             temp1=float(self._parentclass._wavemeterdll.GetWavelength(0))
             temp2=float(self._parentclass._wavemeterdll.GetWavelength(0))
@@ -176,7 +176,7 @@ class HighFinesseWavemeter(WavemeterInterface):
 
 
     def on_deactivate(self):
-        if self.module_state() != 'idle' and self.module_state() != 'deactivated':
+        if self.module_state == ModuleState.LOCKED:
             self.stop_acquisition()
         self.hardware_thread.quit()
         self.sig_handle_timer.disconnect()
@@ -210,12 +210,12 @@ class HighFinesseWavemeter(WavemeterInterface):
         """
 
         # first check its status
-        if self.module_state() == 'running':
+        if self.module_state == ModuleState.LOCKED:
             self.log.error('Wavemeter busy')
             return -1
 
 
-        self.module_state.run()
+        self._lock_module()
         # actually start the wavemeter
         self._wavemeterdll.Operation(self._cCtrlStartMeasurment) #starts measurement
 
@@ -230,14 +230,14 @@ class HighFinesseWavemeter(WavemeterInterface):
         @return int: error code (0:OK, -1:error)
         """
         # check status just for a sanity check
-        if self.module_state() == 'idle':
+        if self.module_state == ModuleState.IDLE:
             self.log.warning('Wavemeter was already stopped, stopping it '
                     'anyway!')
         else:
             # stop the measurement thread
             self.sig_handle_timer.emit(True)
             # set status to idle again
-            self.module_state.stop()
+            self._unlock_module()
 
         # Stop the actual wavemeter measurement
         self._wavemeterdll.Operation(self._cCtrlStop)

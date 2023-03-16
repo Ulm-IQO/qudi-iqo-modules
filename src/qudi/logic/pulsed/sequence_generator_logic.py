@@ -36,7 +36,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.paths import get_home_dir
 from qudi.util.helpers import natural_sort
 from qudi.util.network import netobtain
-from qudi.core.module import LogicBase
+from qudi.core.module import LogicBase, ModuleState
 from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElement
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
@@ -681,7 +681,7 @@ class SequenceGeneratorLogic(LogicBase):
         @return:
         """
         # Check if generation is in progress and do nothing if that is the case
-        if self.module_state() != 'locked':
+        if self.module_state != ModuleState.LOCKED:
             # Determine complete settings dictionary
             if not isinstance(settings_dict, dict):
                 settings_dict = kwargs
@@ -1712,8 +1712,8 @@ class SequenceGeneratorLogic(LogicBase):
             return -1, list(), dict()
 
         # lock module if it's not already locked (sequence sampling in progress)
-        if self.module_state() == 'idle':
-            self.module_state.lock()
+        if self.module_state == ModuleState.IDLE:
+            self._lock_module()
         elif not self.__sequence_generation_in_progress:
             self.sigSampleEnsembleComplete.emit(None)
             return -1, list(), dict()
@@ -1790,7 +1790,7 @@ class SequenceGeneratorLogic(LogicBase):
                 ensemble_info['number_of_samples'],
                 n_max_samples))
             if not self.__sequence_generation_in_progress:
-                self.module_state.unlock()
+                self._unlock_module()
             self.sigSampleEnsembleComplete.emit(None)
             return -1, list(), dict()
 
@@ -1808,7 +1808,7 @@ class SequenceGeneratorLogic(LogicBase):
                            'Try using the overhead_bytes ConfigOption to limit memory usage.'
                            ''.format(ensemble.name))
             if not self.__sequence_generation_in_progress:
-                self.module_state.unlock()
+                self._unlock_module()
             self.sigSampleEnsembleComplete.emit(None)
             return -1, list(), dict()
 
@@ -1896,7 +1896,7 @@ class SequenceGeneratorLogic(LogicBase):
                                                ''.format(block_name, ensemble.name, written_samples,
                                                          array_length))
                                 if not self.__sequence_generation_in_progress:
-                                    self.module_state.unlock()
+                                    self._unlock_module()
                                 self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
                                 self.sigSampleEnsembleComplete.emit(None)
                                 return -1, list(), dict()
@@ -1944,7 +1944,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.log.warning('Empty waveform (0 samples) created from PulseBlockEnsemble "{0}".'
                              ''.format(ensemble.name))
         if not self.__sequence_generation_in_progress:
-            self.module_state.unlock()
+            self._unlock_module()
         self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
         self.sigSampleEnsembleComplete.emit(ensemble)
         return offset_bin, natural_sort(written_waveforms), ensemble_info
@@ -1981,9 +1981,9 @@ class SequenceGeneratorLogic(LogicBase):
             return
 
         # lock module and set sequence-generation-in-progress flag
-        if self.module_state() == 'idle':
+        if self.module_state == ModuleState.IDLE:
             self.__sequence_generation_in_progress = True
-            self.module_state.lock()
+            self._lock_module()
         else:
             self.log.error('Cannot sample sequence "{0}" because the SequenceGeneratorLogic is '
                            'still busy (locked).\nFunction call ignored.'.format(sequence.name))
@@ -2041,7 +2041,7 @@ class SequenceGeneratorLogic(LogicBase):
                     self.log.error('Sampling of PulseBlockEnsemble "{0}" failed during sampling of '
                                    'PulseSequence "{1}".\nFailed to create waveforms on device.'
                                    ''.format(seq_step.ensemble, sequence.name))
-                    self.module_state.unlock()
+                    self._unlock_module()
                     self.__sequence_generation_in_progress = False
                     self.sigSampleSequenceComplete.emit(None)
                     return
@@ -2088,7 +2088,7 @@ class SequenceGeneratorLogic(LogicBase):
                       ''.format(sequence.name, int(np.rint(time.time() - start_time))))
 
         # unlock module
-        self.module_state.unlock()
+        self._unlock_module()
         self.__sequence_generation_in_progress = False
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         self.sigSampleSequenceComplete.emit(sequence)
@@ -2148,8 +2148,8 @@ class SequenceGeneratorLogic(LogicBase):
     @QtCore.Slot()
     def run_pg_benchmark(self, t_goal=10):
         # lock module if it's not already locked (sequence sampling in progress)
-        if self.module_state() == 'idle':
-            self.module_state.lock()
+        if self.module_state == ModuleState.IDLE:
+            self._lock_module()
         else:
             self.log.error("Module is locked, can't sample benchmark chunk")
             self.sigSampleEnsembleComplete.emit(None)
@@ -2225,8 +2225,8 @@ class SequenceGeneratorLogic(LogicBase):
         else:
             self.log.info(f"Pulse generator benchmark finished after {i:d} chunks.")
         finally:
-            if self.module_state() == 'locked':
-                self.module_state.unlock()
+            if self.module_state == ModuleState.LOCKED:
+                self._unlock_module()
             self.sigSampleEnsembleComplete.emit(None)
             self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
 
