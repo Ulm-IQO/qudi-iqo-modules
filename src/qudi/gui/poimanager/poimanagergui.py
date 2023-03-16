@@ -781,10 +781,12 @@ class PoiManagerGui(GuiBase):
     @QtCore.Slot()
     def load_roi(self):
         """ Load a saved ROI from file."""
-        this_file = QtWidgets.QFileDialog.getOpenFileName(self._mw,
-                                                          'Open ROI',
-                                                          self._poi_manager_logic.data_directory,
-                                                          'Data files (*.dat)')[0]
+        this_file = QtWidgets.QFileDialog.getOpenFileName(
+            self._mw,
+            'Open ROI',
+            self._poi_manager_logic.module_default_data_dir,
+            'Data files (*.dat)'
+        )[0]
         if this_file:
             self._poi_manager_logic.load_roi(complete_path=this_file)
         return

@@ -90,7 +90,6 @@ class TimeSeriesGui(GuiBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._time_series_logic = None
         self._mw = None
         self._pw = None
         self._vb = None

@@ -63,7 +63,6 @@ class PIDLogic(Base):
         self.threadlock = Mutex()
 
         # initialize attributes
-        self._controller = None
         self.history = None
         self.saving_state = False
         self._is_recording = False

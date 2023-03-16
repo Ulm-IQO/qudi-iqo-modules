@@ -68,7 +68,6 @@ class PIDGui(GuiBase):
         super().__init__(*args, **kwargs)
 
         # initialize attributes
-        self._pid_logic = None
         self._mw = None
         self._pw = None
 

@@ -223,17 +223,17 @@ class PulsedMeasurementGui(GuiBase):
             self.pulsedmasterlogic.refresh_pulse_generator_settings,
             QtCore.Qt.QueuedConnection)
         self.sigPulseGeneratorRunBenchmark.connect(
-            self.pulsedmasterlogic.sequencegeneratorlogic().run_pg_benchmark,
+            self.pulsedmasterlogic.sequencegeneratorlogic.run_pg_benchmark,
             QtCore.Qt.QueuedConnection)
         self.sigPulseGeneratorRunBenchmark.connect(
             self.benchmark_busy,
             QtCore.Qt.QueuedConnection)
-        self.pulsedmasterlogic.sequencegeneratorlogic().sigBenchmarkComplete.connect(
+        self.pulsedmasterlogic.sequencegeneratorlogic.sigBenchmarkComplete.connect(
             self.sampling_or_loading_finished, QtCore.Qt.QueuedConnection)
 
         self.show()
 
-        if not self.pulsedmasterlogic.sequencegeneratorlogic().has_valid_pg_benchmark():
+        if not self.pulsedmasterlogic.sequencegeneratorlogic.has_valid_pg_benchmark():
             dialog = QtWidgets.QMessageBox()
             dialog.setWindowTitle("Benchmark missing")
             dialog.setText("<center><h2>Benchmark missing:</h2></center>")
