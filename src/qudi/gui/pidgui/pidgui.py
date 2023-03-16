@@ -59,7 +59,7 @@ class PIDGui(GuiBase):
     """
 
     # declare connectors
-    pidlogic = Connector(name='pid_logic', interface='PIDLogic')
+    _pid_logic = Connector(name='pid_logic', interface='PIDLogic')
 
     sigStart = QtCore.Signal()
     sigStop = QtCore.Signal()
@@ -85,8 +85,6 @@ class PIDGui(GuiBase):
         """ Definition and initialisation of the GUI plus staring the measurement.
 
         """
-        self._pid_logic = self.pidlogic()
-
         #####################
         # Configuring the dock widgets
         # Use the inherited class 'CounterMainWindow' to create the GUI window

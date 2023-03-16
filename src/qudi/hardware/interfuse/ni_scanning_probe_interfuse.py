@@ -134,8 +134,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             f'Not all specified channels are mapped to an ni card physical channel'
 
         # TODO: Any case where ni_ao and ni_fio potentially don't have the same channels?
-        specified_ni_finite_io_channels_set = set(self._ni_finite_sampling_io().constraints.input_channel_units).union(
-            set(self._ni_finite_sampling_io().constraints.output_channel_units))
+        specified_ni_finite_io_channels_set = set(self._ni_finite_sampling_io.constraints.input_channel_units).union(
+            set(self._ni_finite_sampling_io.constraints.output_channel_units))
         mapped_channels = set([val.lower() for val in self._ni_channel_mapping.values()])
 
         assert set(mapped_channels).issubset(specified_ni_finite_io_channels_set), \
@@ -172,7 +172,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.QueuedConnection)
 
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
-        ni_ao = self._ni_ao()
+        ni_ao = self._ni_ao
         for channel in ni_ao.constraints.setpoint_channels:
             ni_ao.set_activity_state(channel, enable)
 
@@ -180,7 +180,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def _ao_setpoint_channels_active(self) -> bool:
         mapped_channels = set(self._ni_channel_mapping.values())
         return all(
-            state for ch, state in self._ni_ao().activity_states.items() if ch in mapped_channels
+            state for ch, state in self._ni_ao.activity_states.items() if ch in mapped_channels
         )
 
     def on_deactivate(self):
@@ -188,8 +188,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         Deactivate the module
         """
         self._abort_cursor_movement()
-        if self._ni_finite_sampling_io().is_running:
-            self._ni_finite_sampling_io().stop_buffered_frame()
+        if self._ni_finite_sampling_io.is_running:
+            self._ni_finite_sampling_io.stop_buffered_frame()
 
     def get_constraints(self):
         """ Get hardware constraints/limitations.
@@ -273,18 +273,18 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                     return True, self.scan_settings
 
             try:
-                self._ni_finite_sampling_io().set_sample_rate(frequency)
-                self._ni_finite_sampling_io().set_active_channels(
+                self._ni_finite_sampling_io.set_sample_rate(frequency)
+                self._ni_finite_sampling_io.set_active_channels(
                     input_channels=(self._ni_channel_mapping[in_ch] for in_ch in self._input_channel_units),
                     output_channels=(self._ni_channel_mapping[ax] for ax in axes)
                     # TODO Use all axes and keep the unused constant? basically just constants in ni scan dict.
                 )
 
-                self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
+                self._ni_finite_sampling_io.set_output_mode(SamplingOutputMode.JUMP_LIST)
 
                 ni_scan_dict = self._initialize_ni_scan_arrays(self._scan_data)
 
-                self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
+                self._ni_finite_sampling_io.set_frame_data(ni_scan_dict)
 
             except:
                 self.log.exception("")
@@ -375,7 +375,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             if not self._ao_setpoint_channels_active:
                 self._toggle_ao_setpoint_channels(True)
 
-            pos = self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
+            pos = self._voltage_dict_to_position_dict(self._ni_ao.setpoints)
             return pos
 
     def start_scan(self):
@@ -452,8 +452,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self._abort_cursor_movement()
             # self.log.debug("Move aborted")
 
-        if self._ni_finite_sampling_io().is_running:
-            self._ni_finite_sampling_io().stop_buffered_frame()
+        if self._ni_finite_sampling_io.is_running:
+            self._ni_finite_sampling_io.stop_buffered_frame()
             # self.log.debug("Frame stopped")
 
         self._unlock_module()
@@ -483,8 +483,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         @return:
         """
         # TODO: Implement. Yet not used in logic till yet? Maybe sth like this:
-        # self._ni_finite_sampling_io().terminate_all_tasks()
-        # self._ni_ao().set_activity_state(False)
+        # self._ni_finite_sampling_io.terminate_all_tasks()
+        # self._ni_ao.set_activity_state(False)
         pass
 
     @property
@@ -523,17 +523,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
     def _fetch_data_chunk(self):
         try:
-            # self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
+            # self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io.samples_in_buffer}, {self.is_scan_running}')
             # chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
             chunk_size = 10  # TODO Hardcode or go line by line as commented out above?
             # Request a minimum of chunk_size samples per loop
             try:
-                samples_dict = self._ni_finite_sampling_io().get_buffered_samples(chunk_size) \
-                    if self._ni_finite_sampling_io().samples_in_buffer < chunk_size\
-                    else self._ni_finite_sampling_io().get_buffered_samples()
+                samples_dict = self._ni_finite_sampling_io.get_buffered_samples(chunk_size) \
+                    if self._ni_finite_sampling_io.samples_in_buffer < chunk_size\
+                    else self._ni_finite_sampling_io.get_buffered_samples()
             except ValueError:  # ValueError is raised, when more samples are requested then pending or still to get
                 # after HW stopped
-                samples_dict = self._ni_finite_sampling_io().get_buffered_samples()
+                samples_dict = self._ni_finite_sampling_io.get_buffered_samples()
 
             reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
 
@@ -565,7 +565,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
 
         ni_channel = self._ni_channel_mapping[axis]
-        voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
+        voltage_range = self._ni_finite_sampling_io.constraints.output_channel_limits[ni_channel]
         position_range = self.get_constraints().axes[axis].value_range
 
         slope = np.diff(voltage_range) / np.diff(position_range)
@@ -609,7 +609,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         for ni_channel in voltages:
             try:
                 axis = reverse_routing[ni_channel]
-                voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
+                voltage_range = self._ni_finite_sampling_io.constraints.output_channel_limits[ni_channel]
                 position_range = self.get_constraints().axes[axis].value_range
 
                 slope = np.diff(position_range) / np.diff(voltage_range)
@@ -752,7 +752,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                     new_voltage = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, pos)
                                    for ax, pos in new_pos.items()}
 
-                    self._ni_ao().setpoints = new_voltage
+                    self._ni_ao.setpoints = new_voltage
                     #self.log.debug(f'Cursor_write_loop move to {new_pos}, Dist= {distance_to_target} '
                     #               f'took {1e3*(time.perf_counter()-t_start)} ms.')
 
@@ -773,7 +773,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         #self.log.debug("Starting hw timed scan")
         try:
-            self._ni_finite_sampling_io().start_buffered_frame()
+            self._ni_finite_sampling_io.start_buffered_frame()
             self.sigNextDataChunk.emit()
         except Exception as e:
             self.log.error(f'Could not start frame due to {str(e)}')

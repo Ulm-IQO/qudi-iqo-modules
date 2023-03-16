@@ -140,10 +140,10 @@ class SpectrometerLogic(LogicBase):
         self.sig_state_updated.emit()
 
         if self.differential_spectrum_available and self._differential_spectrum:
-            self.modulation_device().modulation_on()
+            self.modulation_device.modulation_on()
 
         # get data from the spectrometer
-        data = np.array(netobtain(self.spectrometer().record_spectrum()))
+        data = np.array(netobtain(self.spectrometer.record_spectrum()))
         with self._lock:
             if self._spectrum[0] is None:
                 self._spectrum[0] = data[1, :]
@@ -154,8 +154,8 @@ class SpectrometerLogic(LogicBase):
             self._repetitions_spectrum += 1
 
         if self.differential_spectrum_available and self._differential_spectrum:
-            self.modulation_device().modulation_off()
-            data = np.array(netobtain(self.spectrometer().record_spectrum()))
+            self.modulation_device.modulation_off()
+            data = np.array(netobtain(self.spectrometer.record_spectrum()))
             with self._lock:
                 if self._spectrum[1] is None:
                     self._spectrum[1] = data[1, :]
@@ -193,7 +193,7 @@ class SpectrometerLogic(LogicBase):
         self.sig_state_updated.emit()
 
         # get data from the spectrometer
-        data = np.array(netobtain(self.spectrometer().record_spectrum()))
+        data = np.array(netobtain(self.spectrometer.record_spectrum()))
         with self._lock:
             if self._background is None:
                 self._background = data[1, :]
@@ -281,7 +281,7 @@ class SpectrometerLogic(LogicBase):
 
     @property
     def differential_spectrum_available(self):
-        return self.modulation_device() is not None
+        return self.modulation_device is not None
 
     @property
     def differential_spectrum(self):
@@ -429,11 +429,11 @@ class SpectrometerLogic(LogicBase):
 
     @property
     def exposure_time(self):
-        return self.spectrometer().exposure_time
+        return self.spectrometer.exposure_time
 
     @exposure_time.setter
     def exposure_time(self, value):
-        self.spectrometer().exposure_time = float(value)
+        self.spectrometer.exposure_time = float(value)
 
     ################
     # Fitting things

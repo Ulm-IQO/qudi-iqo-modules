@@ -88,10 +88,10 @@ class NVCalculatorLogic(LogicBase):
         if data_source == 0:
             self.sigDataSourceUpdated.emit(0)
         elif data_source == 1:
-            self.fit = self.odmr()
+            self.fit = self.odmr
             self.sigDataSourceUpdated.emit(1)
         elif data_source == 2:
-            self.fit = self.pulsed()
+            self.fit = self.pulsed
             self.sigDataSourceUpdated.emit(2)
         return
 

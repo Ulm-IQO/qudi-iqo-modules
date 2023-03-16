@@ -92,10 +92,10 @@ class WavemeterLoggerLogic(Base):
 
         self.stopRequested = False
 
-        self._save_logic = self.savelogic()
-        self._counter_logic = self.counterlogic()
+        self._save_logic = self.savelogic
+        self._counter_logic = self.counterlogic
 
-        self._fit_logic = self.fitlogic()
+        self._fit_logic = self.fitlogic
         self.fc = self._fit_logic.make_fit_container('Wavemeter counts', '1d')
         self.fc.set_units(['Hz', 'c/s'])
 
@@ -161,7 +161,7 @@ class WavemeterLoggerLogic(Base):
         elif not self._acquisition_running and run:
             # TODO: Query on hardware if already measuring (GetOperationState) to avoid "wavemeter busy" errors
             self._acquisition_running = True
-            self.wavemeter().start_acquisition()
+            self.wavemeter.start_acquisition()
             self.sig_start_hardware_acquisition.emit()
 
     def _update_data(self):
@@ -170,7 +170,7 @@ class WavemeterLoggerLogic(Base):
             to sigCountNext and emitting sigCountNext through a queued connection.
         """
 
-        self.current_wavelength = 1.0 * self.wavemeter().get_current_wavelength()
+        self.current_wavelength = 1.0 * self.wavemeter.get_current_wavelength()
 
         time_stamp = time.time() - self._acquisition_start_time
 
@@ -191,7 +191,7 @@ class WavemeterLoggerLogic(Base):
         if self.acquisition_running:
             QtCore.QTimer.singleShot(int(self._logic_acquisition_timing), self._update_data)
         else:
-            self.wavemeter().stop_acquisition()
+            self.wavemeter.stop_acquisition()
 
     def get_max_wavelength(self):
         """ Current maximum wavelength of the scan.

@@ -132,7 +132,7 @@ class CameraGui(GuiBase):
     def on_deactivate(self):
         """ De-initialisation performed during deactivation of the module.
         """
-        logic = self._camera_logic()
+        logic = self._camera_logic
         # disconnect all signals
         self.sigCaptureFrameTriggered.disconnect()
         self.sigStartStopVideoToggled.disconnect()
@@ -153,13 +153,13 @@ class CameraGui(GuiBase):
 
     def _update_settings(self):
         """ Write new settings from the gui to the file. """
-        logic = self._camera_logic()
+        logic = self._camera_logic
         logic.set_exposure(self._settings_dialog.exposure_spinbox.value())
         logic.set_gain(self._settings_dialog.gain_spinbox.value())
 
     def _keep_former_settings(self):
         """ Keep the old settings and restores them in the gui. """
-        logic = self._camera_logic()
+        logic = self._camera_logic
         self._settings_dialog.exposure_spinbox.setValue(logic.get_exposure())
         self._settings_dialog.gain_spinbox.setValue(logic.get_gain())
 
@@ -191,7 +191,7 @@ class CameraGui(GuiBase):
         self._mw.image_widget.set_image(frame_data)
 
     def _save_frame(self):
-        logic = self._camera_logic()
+        logic = self._camera_logic
         ds = TextDataStorage(root_dir=self.module_default_data_dir)
         timestamp = datetime.datetime.now()
         tag = logic.create_tag(timestamp)

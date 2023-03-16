@@ -82,7 +82,7 @@ class SwitchLogic(LogicBase):
 
     def __getattr__(self, item):
         if item in self.__wrapped_hw_attributes:
-            return getattr(self.switch(), item)
+            return getattr(self.switch, item)
         raise AttributeError(f'SwitchLogic has no attribute with name "{item}"')
 
     @property
@@ -91,7 +91,7 @@ class SwitchLogic(LogicBase):
 
         @return str: The name of the connected hardware switch
         """
-        return self.switch().name
+        return self.switch.name
 
     @property
     def watchdog_active(self):
@@ -106,7 +106,7 @@ class SwitchLogic(LogicBase):
         """
         with self._thread_lock:
             try:
-                states = self.switch().states
+                states = self.switch.states
             except:
                 if self._watchdog_active:
                     self.toggle_watchdog(False)
@@ -128,7 +128,7 @@ class SwitchLogic(LogicBase):
         """
         with self._thread_lock:
             try:
-                self.switch().states = state_dict
+                self.switch.states = state_dict
             except:
                 self.log.exception('Error while trying to set switch states.')
 
@@ -144,7 +144,7 @@ class SwitchLogic(LogicBase):
         """
         with self._thread_lock:
             try:
-                state = self.switch().get_state(switch)
+                state = self.switch.get_state(switch)
             except:
                 self.log.exception(f'Error while trying to query state of switch "{switch}".')
                 state = None
@@ -159,7 +159,7 @@ class SwitchLogic(LogicBase):
         """
         with self._thread_lock:
             try:
-                self.switch().set_state(switch, state)
+                self.switch.set_state(switch, state)
             except:
                 self.log.exception(
                     f'Error while trying to set switch "{switch}" to state "{state}".'

@@ -308,15 +308,15 @@ class SequenceGeneratorLogic(LogicBase):
 
     @property
     def pulse_generator_constraints(self):
-        return self.pulsegenerator().get_constraints()
+        return self.pulsegenerator.get_constraints()
 
     @property
     def sampled_waveforms(self):
-        return netobtain(self.pulsegenerator().get_waveform_names())
+        return netobtain(self.pulsegenerator.get_waveform_names())
 
     @property
     def sampled_sequences(self):
-        return netobtain(self.pulsegenerator().get_sequence_names())
+        return netobtain(self.pulsegenerator.get_sequence_names())
 
     @property
     def analog_channels(self):
@@ -328,7 +328,7 @@ class SequenceGeneratorLogic(LogicBase):
 
     @property
     def loaded_asset(self):
-        asset_names, asset_type = self.pulsegenerator().get_loaded_assets()
+        asset_names, asset_type = self.pulsegenerator.get_loaded_assets()
         name_list = list(asset_names.values())
         if asset_type == 'waveform' and len(name_list) > 0:
             return_type = 'PulseBlockEnsemble'
@@ -359,7 +359,7 @@ class SequenceGeneratorLogic(LogicBase):
         @return:
         """
         # Check if pulse generator is running and do nothing if that is the case
-        pulser_status, status_dict = self.pulsegenerator().get_status()
+        pulser_status, status_dict = self.pulsegenerator.get_status()
         if pulser_status == 0:
             # Determine complete settings dictionary
             if not isinstance(settings_dict, dict):
@@ -426,19 +426,19 @@ class SequenceGeneratorLogic(LogicBase):
                             changed_settings[name] = new_channel
 
             if 'sample_rate' in settings_dict:
-                self.__sample_rate = self.pulsegenerator().set_sample_rate(
+                self.__sample_rate = self.pulsegenerator.set_sample_rate(
                     float(settings_dict['sample_rate']))
 
             if 'analog_levels' in settings_dict:
-                self.__analog_levels = self.pulsegenerator().set_analog_level(
+                self.__analog_levels = self.pulsegenerator.set_analog_level(
                     *settings_dict['analog_levels'])
 
             if 'digital_levels' in settings_dict:
-                self.__digital_levels = self.pulsegenerator().set_digital_level(
+                self.__digital_levels = self.pulsegenerator.set_digital_level(
                     *settings_dict['digital_levels'])
 
             if 'interleave' in settings_dict:
-                self.__interleave = self.pulsegenerator().set_interleave(
+                self.__interleave = self.pulsegenerator.set_interleave(
                     bool(settings_dict['interleave']))
 
             self.__upload_speed = self.get_speed_write_load()
@@ -463,10 +463,10 @@ class SequenceGeneratorLogic(LogicBase):
     def clear_pulser(self):
         """
         """
-        if self.pulsegenerator().get_status()[0] > 0:
+        if self.pulsegenerator.get_status()[0] > 0:
             self.log.error('Can´t clear the pulser as it is running. Switch off the pulser and try again.')
             return -1
-        self.pulsegenerator().clear_all()
+        self.pulsegenerator.clear_all()
         # Delete all sampling information from all PulseBlockEnsembles and PulseSequences
         for seq_name in self.saved_pulse_sequences:
             seq = self.saved_pulse_sequences[seq_name]
@@ -512,7 +512,7 @@ class SequenceGeneratorLogic(LogicBase):
                     self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
                     return
 
-            if self.pulsegenerator().get_status()[0] > 0:
+            if self.pulsegenerator.get_status()[0] > 0:
                 self.log.error('Can´t load a waveform, because pulser running. Switch off the pulser and try again.')
                 return -1
 
@@ -525,7 +525,7 @@ class SequenceGeneratorLogic(LogicBase):
 
             # Actually load the waveforms to the generic channels
             start_time = time.perf_counter()
-            self.pulsegenerator().load_waveform(ensemble.sampling_information['waveforms'])
+            self.pulsegenerator.load_waveform(ensemble.sampling_information['waveforms'])
             self._benchmark_load.add_benchmark(time.perf_counter() - start_time, ensemble.sampling_information['number_of_samples'])
         else:
             self.log.error('Loading of PulseBlockEnsemble "{0}" failed.\n'
@@ -564,11 +564,11 @@ class SequenceGeneratorLogic(LogicBase):
                     self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
                     return
 
-            if self.pulsegenerator().get_status()[0] > 0:
+            if self.pulsegenerator.get_status()[0] > 0:
                 self.log.error('Can´t load a sequence, because pulser running. Switch off the pulser and try again.')
                 return -1
             # Actually load the sequence to the generic channels
-            self.pulsegenerator().load_sequence(sequence.name)
+            self.pulsegenerator.load_sequence(sequence.name)
         else:
             self.log.error('Loading of PulseSequence "{0}" failed.\n'
                            'It has not been generated yet.'.format(sequence.name))
@@ -579,7 +579,7 @@ class SequenceGeneratorLogic(LogicBase):
         """
         """
         # Read activation_config from device.
-        channel_state = self.pulsegenerator().get_active_channels()
+        channel_state = self.pulsegenerator.get_active_channels()
         current_config = {chnl for chnl in channel_state if channel_state[chnl]}
 
         # Check if the read back config is a valid config in constraints
@@ -602,19 +602,19 @@ class SequenceGeneratorLogic(LogicBase):
                 self.__activation_config = config_to_set
 
         # Read sample rate from device
-        self.__sample_rate = float(self.pulsegenerator().get_sample_rate())
+        self.__sample_rate = float(self.pulsegenerator.get_sample_rate())
 
         # Read analog levels from device
-        self.__analog_levels = self.pulsegenerator().get_analog_level()
+        self.__analog_levels = self.pulsegenerator.get_analog_level()
 
         # Read digital levels from device
-        self.__digital_levels = self.pulsegenerator().get_digital_level()
+        self.__digital_levels = self.pulsegenerator.get_digital_level()
 
         # Read interleave flag from device
-        self.__interleave = self.pulsegenerator().get_interleave()
+        self.__interleave = self.pulsegenerator.get_interleave()
 
         # Read available flags from device
-        self.__flags = set(self.pulsegenerator().get_constraints().flags)
+        self.__flags = set(self.pulsegenerator.get_constraints().flags)
 
         # Notify new settings to listening module
         self.set_pulse_generator_settings()
@@ -625,13 +625,13 @@ class SequenceGeneratorLogic(LogicBase):
 
         @param set activation_config: A set of channels to set active (all others inactive)
         """
-        channel_state = self.pulsegenerator().get_active_channels()
+        channel_state = self.pulsegenerator.get_active_channels()
         for chnl in channel_state:
             if chnl in activation_config:
                 channel_state[chnl] = True
             else:
                 channel_state[chnl] = False
-        set_state = self.pulsegenerator().set_active_channels(channel_state)
+        set_state = self.pulsegenerator.set_active_channels(channel_state)
         set_config = set([chnl for chnl in set_state if set_state[chnl]])
         return set_config
 
@@ -1784,7 +1784,7 @@ class SequenceGeneratorLogic(LogicBase):
         else:
             array_length = self._overhead_bytes // bytes_per_sample
 
-        n_max_samples = self.pulsegenerator().get_constraints().waveform_length.max
+        n_max_samples = self.pulsegenerator.get_constraints().waveform_length.max
         if n_max_samples > 0. and ensemble_info['number_of_samples'] > n_max_samples:
             self.log.error("Tried to write more samples ({:d}) than device supports ({:d}).".format(
                 ensemble_info['number_of_samples'],
@@ -1876,7 +1876,7 @@ class SequenceGeneratorLogic(LogicBase):
                             # Set first/last chunk flags
                             is_first_chunk = array_write_index == processed_samples
                             is_last_chunk = processed_samples == ensemble_info['number_of_samples']
-                            written_samples, wfm_list = self.pulsegenerator().write_waveform(
+                            written_samples, wfm_list = self.pulsegenerator.write_waveform(
                                 name=waveform_name,
                                 analog_samples=analog_samples,
                                 digital_samples=digital_samples,
@@ -1994,7 +1994,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         # delete already written sequences on the device memory.
         if sequence.name in self.sampled_sequences:
-            self.pulsegenerator().delete_sequence(sequence.name)
+            self.pulsegenerator.delete_sequence(sequence.name)
 
         # Make sure the PulseSequence is contained in the saved sequences dict
         sequence.sampling_information = dict()
@@ -2066,7 +2066,7 @@ class SequenceGeneratorLogic(LogicBase):
                 (tuple(generated_ensembles[name_tag]['waveforms']), seq_step))
 
         # pass the whole information to the sequence creation method:
-        steps_written = self.pulsegenerator().write_sequence(sequence.name,
+        steps_written = self.pulsegenerator.write_sequence(sequence.name,
                                                              sequence_param_dict_list)
         if steps_written != len(sequence_param_dict_list):
             self.log.error('Writing PulseSequence "{0}" to the device memory failed.\n'
@@ -2100,7 +2100,7 @@ class SequenceGeneratorLogic(LogicBase):
         current_waveforms = self.sampled_waveforms
         for wfm in names:
             if wfm in current_waveforms:
-                self.pulsegenerator().delete_waveform(wfm)
+                self.pulsegenerator.delete_waveform(wfm)
         self.sigAvailableWaveformsUpdated.emit(self.sampled_waveforms)
         return
 
@@ -2124,7 +2124,7 @@ class SequenceGeneratorLogic(LogicBase):
         current_sequences = self.sampled_sequences
         for seq in names:
             if seq in current_sequences:
-                self.pulsegenerator().delete_sequence(seq)
+                self.pulsegenerator.delete_sequence(seq)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         return
     
@@ -2157,7 +2157,7 @@ class SequenceGeneratorLogic(LogicBase):
             return
 
         try:
-            constraints = self.pulsegenerator().get_constraints()
+            constraints = self.pulsegenerator.get_constraints()
 
             def round_to_granularity(n_samples):
                 granularity = constraints.waveform_length.step
@@ -2242,7 +2242,7 @@ class SequenceGeneratorLogic(LogicBase):
         def _get_largest_channel_config():
             # find the config that transfers the most data
             # assumes that analog channels are heavier than digital channels
-            configs = self.pulsegenerator().get_constraints().activation_config
+            configs = self.pulsegenerator.get_constraints().activation_config
             if 'all' in configs:
                 largest_config = 'all'
             else:
@@ -2278,9 +2278,9 @@ class SequenceGeneratorLogic(LogicBase):
 
         n_samples = int(n_samples)
         pg_chs_a, pg_chs_d = _get_largest_channel_config()
-        active_channels_saved = self.pulsegenerator().get_active_channels()
+        active_channels_saved = self.pulsegenerator.get_active_channels()
         # benchmark the pg with all channels
-        self.pulsegenerator().set_active_channels({ch: True for ch in(pg_chs_a + pg_chs_d)})
+        self.pulsegenerator.set_active_channels({ch: True for ch in(pg_chs_a + pg_chs_d)})
 
         analog_samples, digital_samples = {},{}
 
@@ -2289,12 +2289,12 @@ class SequenceGeneratorLogic(LogicBase):
         for chnl in pg_chs_d:
             digital_samples[chnl] = np.random.randint(0, 2, n_samples, bool)
 
-        #loaded_waves_old = {key: val for key, val in self.pulsegenerator().get_loaded_assets()[0].items() if val != ''}
+        #loaded_waves_old = {key: val for key, val in self.pulsegenerator.get_loaded_assets()[0].items() if val != ''}
 
         start_time = time.perf_counter()
 
         self._delete_waveform_by_nametag(waveform_name)
-        written_samples, wfm_list = self.pulsegenerator().write_waveform(
+        written_samples, wfm_list = self.pulsegenerator.write_waveform(
             name=waveform_name,
             analog_samples=analog_samples,
             digital_samples=digital_samples,
@@ -2316,7 +2316,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         start_time = time.perf_counter()
 
-        loaded_dict = self.pulsegenerator().load_waveform(wfm_list)
+        loaded_dict = self.pulsegenerator.load_waveform(wfm_list)
         if not ignore_datapoint:
             self._benchmark_load.add_benchmark(time.perf_counter() - start_time, n_samples,
                                                 is_persistent=persistent_datapoint)
@@ -2325,9 +2325,9 @@ class SequenceGeneratorLogic(LogicBase):
             self.log.warning("Loading of waves {} failed, still: {}".format(wfm_list, loaded_dict))
 
         #if len(loaded_waves_old) > 0:
-        #    self.pulsegenerator().load_waveform(loaded_waves_old)
+        #    self.pulsegenerator.load_waveform(loaded_waves_old)
         self._delete_waveform_by_nametag(waveform_name)
-        self.pulsegenerator().set_active_channels(active_channels_saved)
+        self.pulsegenerator.set_active_channels(active_channels_saved)
         return 0, list(), dict()
 
     def has_valid_pg_benchmark(self):

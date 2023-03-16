@@ -164,7 +164,7 @@ class LaserGui(GuiBase):
     def on_activate(self):
         """ Definition and initialisation of the GUI plus staring the measurement.
         """
-        logic = self._laser_logic()
+        logic = self._laser_logic
 
         #####################
         # create main window
@@ -273,7 +273,7 @@ class LaserGui(GuiBase):
         """
         self._mw.close()
         # disconnect all signals
-        logic = self._laser_logic()
+        logic = self._laser_logic
         logic.sigPowerSetpointChanged.disconnect(self._power_setpoint_updated)
         logic.sigCurrentSetpointChanged.disconnect(self._current_setpoint_updated)
         logic.sigControlModeChanged.disconnect(self._control_mode_updated)

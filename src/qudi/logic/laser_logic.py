@@ -74,7 +74,7 @@ class LaserLogic(LogicBase):
         self.__timer.timeout.connect(self._query_loop_body, QtCore.Qt.QueuedConnection)
 
         # initialize data buffer
-        laser = self._laser()
+        laser = self._laser
         allowed_modes = laser.allowed_control_modes()
         self._data = {name: np.zeros(self._buffer_length) for name in laser.get_temperatures()}
         self._data['time'] = time.time() - np.arange(self._buffer_length)[::-1] * self._query_interval
@@ -106,27 +106,27 @@ class LaserLogic(LogicBase):
     @property
     def allowed_control_modes(self):
         with self._thread_lock:
-            return self._laser().allowed_control_modes()
+            return self._laser.allowed_control_modes()
 
     @property
     def extra_info(self):
         with self._thread_lock:
-            return self._laser().get_extra_info()
+            return self._laser.get_extra_info()
 
     @property
     def current_range(self):
         with self._thread_lock:
-            return self._laser().get_current_range()
+            return self._laser.get_current_range()
 
     @property
     def power_range(self):
         with self._thread_lock:
-            return self._laser().get_power_range()
+            return self._laser.get_power_range()
 
     @property
     def current_unit(self):
         with self._thread_lock:
-            return self._laser().get_current_unit()
+            return self._laser.get_current_unit()
 
     @property
     def data(self):
@@ -135,12 +135,12 @@ class LaserLogic(LogicBase):
     @property
     def temperatures(self):
         with self._thread_lock:
-            return self._laser().get_temperatures()
+            return self._laser.get_temperatures()
 
     @property
     def laser_state(self):
         with self._thread_lock:
-            self._last_laser_state = self._laser().get_laser_state()
+            self._last_laser_state = self._laser.get_laser_state()
             return self._last_laser_state
 
     @laser_state.setter
@@ -150,7 +150,7 @@ class LaserLogic(LogicBase):
     @property
     def shutter_state(self):
         with self._thread_lock:
-            self._last_shutter_state = self._laser().get_shutter_state()
+            self._last_shutter_state = self._laser.get_shutter_state()
             return self._last_shutter_state
 
     @shutter_state.setter
@@ -160,12 +160,12 @@ class LaserLogic(LogicBase):
     @property
     def power(self):
         with self._thread_lock:
-            return self._laser().get_power()
+            return self._laser.get_power()
 
     @property
     def power_setpoint(self):
         with self._thread_lock:
-            self._last_power_setpoint = self._laser().get_power_setpoint()
+            self._last_power_setpoint = self._laser.get_power_setpoint()
             return self._last_power_setpoint
 
     @power_setpoint.setter
@@ -175,12 +175,12 @@ class LaserLogic(LogicBase):
     @property
     def current(self):
         with self._thread_lock:
-            return self._laser().get_current()
+            return self._laser.get_current()
 
     @property
     def current_setpoint(self):
         with self._thread_lock:
-            self._last_current_setpoint = self._laser().get_current_setpoint()
+            self._last_current_setpoint = self._laser.get_current_setpoint()
             return self._last_current_setpoint
 
     @current_setpoint.setter
@@ -190,7 +190,7 @@ class LaserLogic(LogicBase):
     @property
     def control_mode(self):
         with self._thread_lock:
-            self._last_control_mode = self._laser().get_control_mode()
+            self._last_control_mode = self._laser.get_control_mode()
             return self._last_control_mode
 
     @control_mode.setter
@@ -204,7 +204,7 @@ class LaserLogic(LogicBase):
             if self.module_state != ModuleState.LOCKED:
                 return
 
-            laser = self._laser()
+            laser = self._laser
             # Check if settings have changed by e.g. a device front panel
             try:
                 laser_state = laser.get_laser_state()
@@ -302,7 +302,7 @@ class LaserLogic(LogicBase):
                 self.log.error(f'Invalid control mode "{mode}" for laser encountered.')
             else:
                 try:
-                    self._laser().set_control_mode(mode)
+                    self._laser.set_control_mode(mode)
                 except:
                     self.log.exception('Error while setting laser control mode:')
             self.sigControlModeChanged.emit(self.control_mode)
@@ -318,7 +318,7 @@ class LaserLogic(LogicBase):
                 self.log.error(f'Invalid laser state to set: "{state}"')
             else:
                 try:
-                    self._laser().set_laser_state(state)
+                    self._laser.set_laser_state(state)
                 except:
                     self.log.exception('Error while setting laser state:')
             self.sigLaserStateChanged.emit(self.laser_state)
@@ -330,7 +330,7 @@ class LaserLogic(LogicBase):
         with self._thread_lock:
             if state in (ShutterState.OPEN, ShutterState.CLOSED):
                 try:
-                    self._laser().set_shutter_state(state)
+                    self._laser.set_shutter_state(state)
                 except:
                     self.log.exception('Error while setting shutter state:')
             else:
@@ -341,12 +341,12 @@ class LaserLogic(LogicBase):
     def set_power(self, power, caller_id=None):
         """ Set laser output power """
         with self._thread_lock:
-            self._laser().set_power(power)
+            self._laser.set_power(power)
             self.sigPowerSetpointChanged.emit(self.power_setpoint, caller_id)
 
     @QtCore.Slot(float, object)
     def set_current(self, current, caller_id=None):
         """ Set laser (diode) current """
         with self._thread_lock:
-            self._laser().set_current(current)
+            self._laser.set_current(current)
             self.sigCurrentSetpointChanged.emit(self.current_setpoint, caller_id)

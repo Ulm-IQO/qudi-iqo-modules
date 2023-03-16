@@ -50,8 +50,8 @@ class SoftPIDController(PIDControllerInterface):
     """
 
     # declare connectors
-    process = Connector(name='process_value', interface='ProcessValueInterface')
-    control = Connector(name='setpoint', interface='ProcessSetpointInterface')
+    _process = Connector(name='process_value', interface='ProcessValueInterface')
+    _control = Connector(name='setpoint', interface='ProcessSetpointInterface')
 
     # config options
     # channels to use for process and setpoint devices
@@ -75,8 +75,6 @@ class SoftPIDController(PIDControllerInterface):
         super().__init__(*args, **kwargs)
 
         # initialize attributes
-        self._process = None
-        self._control = None
         self.timer = None
 
         self.history = None
@@ -91,9 +89,6 @@ class SoftPIDController(PIDControllerInterface):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self._process = self.process()
-        self._control = self.control()
-
         self._process.set_activity_state(self.process_value_channel, True)
         self._control.set_activity_state(self.setpoint_channel, True)
 

@@ -74,12 +74,12 @@ class SwitchCombinerInterfuse(SwitchInterface):
         @return dict: Available states per switch in the form {"switch": ("state1", "state2")}
         """
         if self._extend_hardware_name:
-            new_dict = {f'{self.switch1().name}.{switch}': states
-                        for switch, states in self.switch1().available_states.items()}
-            new_dict.update({f'{self.switch2().name}.{switch}': states
-                             for switch, states in self.switch2().available_states.items()})
+            new_dict = {f'{self.switch1.name}.{switch}': states
+                        for switch, states in self.switch1.available_states.items()}
+            new_dict.update({f'{self.switch2.name}.{switch}': states
+                             for switch, states in self.switch2.available_states.items()})
         else:
-            new_dict = {**self.switch1().available_states, **self.switch2().available_states}
+            new_dict = {**self.switch1.available_states, **self.switch2.available_states}
         return new_dict
 
     @property
@@ -88,7 +88,7 @@ class SwitchCombinerInterfuse(SwitchInterface):
 
         @return int: number of switches
         """
-        return self.switch1().number_of_switches + self.switch2().number_of_switches
+        return self.switch1.number_of_switches + self.switch2.number_of_switches
 
     @property
     def switch_names(self):
@@ -106,16 +106,16 @@ class SwitchCombinerInterfuse(SwitchInterface):
         @return dict: All the current states of the switches in the form {"switch": "state"}
         """
         if self._extend_hardware_name:
-            hw_name = self.switch1().name
+            hw_name = self.switch1.name
             new_dict = {
-                f'{hw_name}.{switch}': states for switch, states in self.switch1().states.items()
+                f'{hw_name}.{switch}': states for switch, states in self.switch1.states.items()
             }
-            hw_name = self.switch2().name
+            hw_name = self.switch2.name
             new_dict.update(
-                {f'{hw_name}.{switch}': states for switch, states in self.switch2().states.items()}
+                {f'{hw_name}.{switch}': states for switch, states in self.switch2.states.items()}
             )
         else:
-            new_dict = {**self.switch1().states, **self.switch2().states}
+            new_dict = {**self.switch1.states, **self.switch2.states}
         return new_dict
 
     @states.setter
@@ -131,8 +131,8 @@ class SwitchCombinerInterfuse(SwitchInterface):
                           dict), f'Property "state" must be dict type. Received: {type(state_dict)}'
         states1 = dict()
         states2 = dict()
-        hardware1 = self.switch1()
-        hardware2 = self.switch2()
+        hardware1 = self.switch1
+        hardware2 = self.switch2
         for switch, state in state_dict.items():
             if self._extend_hardware_name:
                 if switch.startswith(f'{hardware2.name}.'):
@@ -157,17 +157,17 @@ class SwitchCombinerInterfuse(SwitchInterface):
         """
         assert switch in self.available_states, f'Invalid switch name: "{switch}"'
         if self._extend_hardware_name:
-            hardware = self.switch2()
+            hardware = self.switch2
             if switch.startswith(f'{hardware.name}.'):
                 return hardware.get_state(switch[len(hardware.name) + 1:])
-            hardware = self.switch1()
+            hardware = self.switch1
             if switch.startswith(f'{hardware.name}.'):
                 return hardware.get_state(switch[len(hardware.name) + 1:])
         else:
-            hardware = self.switch2()
+            hardware = self.switch2
             if switch in hardware.available_states:
                 return hardware.get_state(switch)
-            return self.switch1().get_state(switch)
+            return self.switch1.get_state(switch)
 
     def set_state(self, switch, state):
         """ Query state of single switch by name
@@ -176,14 +176,14 @@ class SwitchCombinerInterfuse(SwitchInterface):
         @param str state: name of the state to set
         """
         if self._extend_hardware_name:
-            hardware = self.switch2()
+            hardware = self.switch2
             if switch.startswith(f'{hardware.name}.'):
                 return hardware.set_state(switch[len(hardware.name) + 1:], state)
-            hardware = self.switch1()
+            hardware = self.switch1
             if switch.startswith(f'{hardware.name}.'):
                 return hardware.set_state(switch[len(hardware.name) + 1:], state)
         else:
-            hardware = self.switch2()
+            hardware = self.switch2
             if switch in hardware.available_states:
                 return hardware.set_state(switch, state)
-            return self.switch1().set_state(switch, state)
+            return self.switch1.set_state(switch, state)

@@ -82,8 +82,8 @@ class ScanningOptimizeLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        axes = self._scan_logic().scanner_axes
-        channels = self._scan_logic().scanner_channels
+        axes = self._scan_logic.scanner_axes
+        channels = self._scan_logic.scanner_channels
 
         self.log.debug(f"Opt settings at startup, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
 
@@ -115,14 +115,14 @@ class ScanningOptimizeLogic(LogicBase):
         self._last_fits = list()
 
         self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
-        self._scan_logic().sigScanStateChanged.connect(
+        self._scan_logic.sigScanStateChanged.connect(
             self._scan_state_changed, QtCore.Qt.QueuedConnection
         )
 
     def on_deactivate(self):
         """ Reverse steps of activation
         """
-        self._scan_logic().sigScanStateChanged.disconnect(self._scan_state_changed)
+        self._scan_logic.sigScanStateChanged.disconnect(self._scan_state_changed)
         self._sigNextSequenceStep.disconnect()
         self.stop_optimize()
         return
@@ -191,8 +191,8 @@ class ScanningOptimizeLogic(LogicBase):
             settings = self.optimize_settings
 
         settings = cp.deepcopy(settings)
-        hw_axes = self._scan_logic().scanner_axes
-        sig_channels = self._scan_logic().scanner_channels
+        hw_axes = self._scan_logic.scanner_axes
+        sig_channels = self._scan_logic.scanner_channels
 
         def check_valid(settings, key):
             is_valid = True  # non present key -> valid
@@ -223,7 +223,7 @@ class ScanningOptimizeLogic(LogicBase):
 
         # scan_sequence check, only sensibel if plot dimensions (eg. from confocal gui) are available
         if 'scan_sequence' in settings and plot_dimensions:
-            dummy_seq = OptimizerScanSequence(tuple(self._scan_logic().scanner_axes.keys()),
+            dummy_seq = OptimizerScanSequence(tuple(self._scan_logic.scanner_axes.keys()),
                                               plot_dimensions)
 
             if len(dummy_seq.available_opt_sequences) == 0:
@@ -291,13 +291,13 @@ class ScanningOptimizeLogic(LogicBase):
             self.sigOptimizeStateChanged.emit(True, dict(), None)
 
             # stash old scanner settings
-            self._stashed_scan_settings = self._scan_logic().scan_settings
+            self._stashed_scan_settings = self._scan_logic.scan_settings
 
             # Set scan ranges
-            curr_pos = self._scan_logic().scanner_target
+            curr_pos = self._scan_logic.scanner_target
             optim_ranges = {ax: (pos - self._scan_range[ax] / 2, pos + self._scan_range[ax] / 2) for
                             ax, pos in curr_pos.items()}
-            actual_setting = self._scan_logic().set_scan_range(optim_ranges)
+            actual_setting = self._scan_logic.set_scan_range(optim_ranges)
             # FIXME: Comparing floats by inequality here
             if any(val != optim_ranges[ax] for ax, val in actual_setting.items()):
                 self.log.warning('Some optimize scan ranges have been changed by the scanner.')
@@ -308,7 +308,7 @@ class ScanningOptimizeLogic(LogicBase):
                 self._lock_module()
 
             # Set scan frequency
-            actual_setting = self._scan_logic().set_scan_frequency(self._scan_frequency)
+            actual_setting = self._scan_logic.set_scan_frequency(self._scan_frequency)
             # FIXME: Comparing floats by inequality here
             if any(val != self._scan_frequency[ax] for ax, val in actual_setting.items()):
                 self.log.warning('Some optimize scan frequencies have been changed by the scanner.')
@@ -317,7 +317,7 @@ class ScanningOptimizeLogic(LogicBase):
                 self._lock_module()
 
             # Set scan resolution
-            actual_setting = self._scan_logic().set_scan_resolution(self._scan_resolution)
+            actual_setting = self._scan_logic.set_scan_resolution(self._scan_resolution)
             # FIXME: Comparing floats by inequality here
             if any(val != self._scan_resolution[ax] for ax, val in actual_setting.items()):
                 self.log.warning(
@@ -327,7 +327,7 @@ class ScanningOptimizeLogic(LogicBase):
                 self._lock_module()
 
             # optimizer scans are never saved
-            self._scan_logic().set_scan_settings({'save_to_history': False})
+            self._scan_logic.set_scan_settings({'save_to_history': False})
 
             self._sequence_index = 0
             self._optimal_position = dict()
@@ -343,7 +343,7 @@ class ScanningOptimizeLogic(LogicBase):
 
             #self.log.debug(f"Next opt sequence step {self._sequence_index}")
 
-            if self._scan_logic().toggle_scan(True,
+            if self._scan_logic.toggle_scan(True,
                                               self._scan_sequence[self._sequence_index],
                                               self.module_uuid) < 0:
                 self.log.error('Unable to start {0} scan. Optimize aborted.'.format(
@@ -379,7 +379,7 @@ class ScanningOptimizeLogic(LogicBase):
                     position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
                     #self.log.debug(f"Optimizer issuing position update: {position_update}")
                     if fit_data is not None:
-                        new_pos = self._scan_logic().set_target_position(position_update, move_blocking=True)
+                        new_pos = self._scan_logic.set_target_position(position_update, move_blocking=True)
                         for ax in tuple(position_update):
                             position_update[ax] = new_pos[ax]
 
@@ -417,10 +417,10 @@ class ScanningOptimizeLogic(LogicBase):
 
             if self._scan_logic.module_state != ModuleState.IDLE:
                 # optimizer scans are never saved in scanning history
-                err = self._scan_logic().stop_scan()
+                err = self._scan_logic.stop_scan()
             else:
                 err = 0
-            self._scan_logic().set_scan_settings(self._stashed_scan_settings)
+            self._scan_logic.set_scan_settings(self._stashed_scan_settings)
             self._stashed_scan_settings = dict()
             self._unlock_module()
             self.sigOptimizeStateChanged.emit(False, dict(), None)

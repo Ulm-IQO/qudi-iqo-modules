@@ -46,7 +46,7 @@ class PIDLogic(Base):
     """
 
     # declare connectors
-    controller = Connector(interface='PIDControllerInterface')
+    _controller = Connector(name='controller', interface='PIDControllerInterface')
 
     # status vars
     buffer_length = StatusVar('buffer_length', 1000)
@@ -72,8 +72,6 @@ class PIDLogic(Base):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self._controller = self.controller()
-
         self.history = np.zeros([3, self.buffer_length])
         self.saving_state = False
         self.timer = QtCore.QTimer()

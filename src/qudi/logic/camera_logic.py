@@ -58,7 +58,7 @@ class CameraLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        camera = self._camera()
+        camera = self._camera
         self._exposure = camera.get_exposure()
         self._gain = camera.get_gain()
 
@@ -80,7 +80,7 @@ class CameraLogic(LogicBase):
         """ Set exposure time of camera """
         with self._thread_lock:
             if self.module_state == ModuleState.IDLE:
-                camera = self._camera()
+                camera = self._camera
                 camera.set_exposure(time)
                 self._exposure = camera.get_exposure()
             else:
@@ -89,13 +89,13 @@ class CameraLogic(LogicBase):
     def get_exposure(self):
         """ Get exposure of hardware """
         with self._thread_lock:
-            self._exposure = self._camera().get_exposure()
+            self._exposure = self._camera.get_exposure()
             return self._exposure
 
     def set_gain(self, gain):
         with self._thread_lock:
             if self.module_state == ModuleState.IDLE:
-                camera = self._camera()
+                camera = self._camera
                 camera.set_gain(gain)
                 self._gain = camera.get_gain()
             else:
@@ -103,7 +103,7 @@ class CameraLogic(LogicBase):
 
     def get_gain(self):
         with self._thread_lock:
-            self._gain = self._camera().get_gain()
+            self._gain = self._camera.get_gain()
             return self._gain
 
     def capture_frame(self):
@@ -112,7 +112,7 @@ class CameraLogic(LogicBase):
         with self._thread_lock:
             if self.module_state == ModuleState.IDLE:
                 self._lock_module()
-                camera = self._camera()
+                camera = self._camera
                 camera.start_single_acquisition()
                 self._last_frame = camera.get_acquired_data()
                 self._unlock_module()
@@ -134,7 +134,7 @@ class CameraLogic(LogicBase):
             if self.module_state == ModuleState.IDLE:
                 self._lock_module()
                 exposure = max(self._exposure, self._minimum_exposure_time)
-                camera = self._camera()
+                camera = self._camera
                 if camera.support_live_acquisition():
                     camera.start_live_acquisition()
                 else:
@@ -149,7 +149,7 @@ class CameraLogic(LogicBase):
         with self._thread_lock:
             if self.module_state == ModuleState.LOCKED:
                 self.__timer.stop()
-                self._camera().stop_acquisition()
+                self._camera.stop_acquisition()
                 self._unlock_module()
                 self.sigAcquisitionFinished.emit()
 
@@ -157,7 +157,7 @@ class CameraLogic(LogicBase):
         """ Execute step in the data recording loop: save one of each control and process values
         """
         with self._thread_lock:
-            camera = self._camera()
+            camera = self._camera
             self._last_frame = camera.get_acquired_data()
             self.sigFrameChanged.emit(self._last_frame)
             if self.module_state == ModuleState.LOCKED:

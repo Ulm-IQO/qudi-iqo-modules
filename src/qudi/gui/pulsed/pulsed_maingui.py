@@ -191,7 +191,7 @@ class PulsedMeasurementGui(GuiBase):
         self._pm_cfg = PredefinedMethodsConfigDialog()
         self._fcd = FitConfigurationDialog(
             parent=self._mw,
-            fit_config_model=self.pulsedmasterlogic().fit_config_model
+            fit_config_model=self.pulsedmasterlogic.fit_config_model
         )
 
         self._mw.tabWidget.addTab(self._pa, 'Analysis')
@@ -220,20 +220,20 @@ class PulsedMeasurementGui(GuiBase):
         self._connect_logic_signals()
 
         self.sigPulseGeneratorSettingsUpdated.connect(
-            self.pulsedmasterlogic().refresh_pulse_generator_settings,
+            self.pulsedmasterlogic.refresh_pulse_generator_settings,
             QtCore.Qt.QueuedConnection)
         self.sigPulseGeneratorRunBenchmark.connect(
-            self.pulsedmasterlogic().sequencegeneratorlogic().run_pg_benchmark,
+            self.pulsedmasterlogic.sequencegeneratorlogic().run_pg_benchmark,
             QtCore.Qt.QueuedConnection)
         self.sigPulseGeneratorRunBenchmark.connect(
             self.benchmark_busy,
             QtCore.Qt.QueuedConnection)
-        self.pulsedmasterlogic().sequencegeneratorlogic().sigBenchmarkComplete.connect(
+        self.pulsedmasterlogic.sequencegeneratorlogic().sigBenchmarkComplete.connect(
             self.sampling_or_loading_finished, QtCore.Qt.QueuedConnection)
 
         self.show()
 
-        if not self.pulsedmasterlogic().sequencegeneratorlogic().has_valid_pg_benchmark():
+        if not self.pulsedmasterlogic.sequencegeneratorlogic().has_valid_pg_benchmark():
             dialog = QtWidgets.QMessageBox()
             dialog.setWindowTitle("Benchmark missing")
             dialog.setText("<center><h2>Benchmark missing:</h2></center>")
@@ -429,34 +429,34 @@ class PulsedMeasurementGui(GuiBase):
 
     def _connect_logic_signals(self):
         # Connect update signals from pulsed_master_logic
-        self.pulsedmasterlogic().sigMeasurementDataUpdated.connect(self.measurement_data_updated)
-        self.pulsedmasterlogic().sigTimerUpdated.connect(self.measurement_timer_updated)
-        self.pulsedmasterlogic().sigFitUpdated.connect(self.fit_data_updated)
-        self.pulsedmasterlogic().sigMeasurementStatusUpdated.connect(self.measurement_status_updated)
-        self.pulsedmasterlogic().sigPulserRunningUpdated.connect(self.pulser_running_updated)
-        self.pulsedmasterlogic().sigExtMicrowaveRunningUpdated.connect(self.microwave_running_updated)
-        self.pulsedmasterlogic().sigExtMicrowaveSettingsUpdated.connect(self.microwave_settings_updated)
-        self.pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(self.fast_counter_settings_updated)
-        self.pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(self.measurement_settings_updated)
-        self.pulsedmasterlogic().sigAnalysisSettingsUpdated.connect(self.analysis_settings_updated)
-        self.pulsedmasterlogic().sigExtractionSettingsUpdated.connect(self.extraction_settings_updated)
-        self.pulsedmasterlogic().sigSampleBlockEnsemble.connect(self.sampling_or_loading_busy)
-        self.pulsedmasterlogic().sigLoadBlockEnsemble.connect(self.sampling_or_loading_busy)
-        self.pulsedmasterlogic().sigLoadSequence.connect(self.sampling_or_loading_busy)
-        self.pulsedmasterlogic().sigSampleSequence.connect(self.sampling_or_loading_busy)
-        self.pulsedmasterlogic().sigLoadedAssetUpdated.connect(self.sampling_or_loading_finished)
+        self.pulsedmasterlogic.sigMeasurementDataUpdated.connect(self.measurement_data_updated)
+        self.pulsedmasterlogic.sigTimerUpdated.connect(self.measurement_timer_updated)
+        self.pulsedmasterlogic.sigFitUpdated.connect(self.fit_data_updated)
+        self.pulsedmasterlogic.sigMeasurementStatusUpdated.connect(self.measurement_status_updated)
+        self.pulsedmasterlogic.sigPulserRunningUpdated.connect(self.pulser_running_updated)
+        self.pulsedmasterlogic.sigExtMicrowaveRunningUpdated.connect(self.microwave_running_updated)
+        self.pulsedmasterlogic.sigExtMicrowaveSettingsUpdated.connect(self.microwave_settings_updated)
+        self.pulsedmasterlogic.sigFastCounterSettingsUpdated.connect(self.fast_counter_settings_updated)
+        self.pulsedmasterlogic.sigMeasurementSettingsUpdated.connect(self.measurement_settings_updated)
+        self.pulsedmasterlogic.sigAnalysisSettingsUpdated.connect(self.analysis_settings_updated)
+        self.pulsedmasterlogic.sigExtractionSettingsUpdated.connect(self.extraction_settings_updated)
+        self.pulsedmasterlogic.sigSampleBlockEnsemble.connect(self.sampling_or_loading_busy)
+        self.pulsedmasterlogic.sigLoadBlockEnsemble.connect(self.sampling_or_loading_busy)
+        self.pulsedmasterlogic.sigLoadSequence.connect(self.sampling_or_loading_busy)
+        self.pulsedmasterlogic.sigSampleSequence.connect(self.sampling_or_loading_busy)
+        self.pulsedmasterlogic.sigLoadedAssetUpdated.connect(self.sampling_or_loading_finished)
 
-        self.pulsedmasterlogic().sigBlockDictUpdated.connect(self.update_block_dict)
-        self.pulsedmasterlogic().sigEnsembleDictUpdated.connect(self.update_ensemble_dict)
-        self.pulsedmasterlogic().sigSequenceDictUpdated.connect(self.update_sequence_dict)
-        self.pulsedmasterlogic().sigAvailableWaveformsUpdated.connect(self.waveform_list_updated)
-        self.pulsedmasterlogic().sigAvailableSequencesUpdated.connect(self.sequence_list_updated)
-        self.pulsedmasterlogic().sigSampleEnsembleComplete.connect(self.sample_ensemble_finished)
-        self.pulsedmasterlogic().sigSampleSequenceComplete.connect(self.sample_sequence_finished)
-        self.pulsedmasterlogic().sigLoadedAssetUpdated.connect(self.loaded_asset_updated)
-        self.pulsedmasterlogic().sigGeneratorSettingsUpdated.connect(self.pulse_generator_settings_updated)
-        self.pulsedmasterlogic().sigSamplingSettingsUpdated.connect(self.generation_parameters_updated)
-        self.pulsedmasterlogic().sigPredefinedSequenceGenerated.connect(self.predefined_generated)
+        self.pulsedmasterlogic.sigBlockDictUpdated.connect(self.update_block_dict)
+        self.pulsedmasterlogic.sigEnsembleDictUpdated.connect(self.update_ensemble_dict)
+        self.pulsedmasterlogic.sigSequenceDictUpdated.connect(self.update_sequence_dict)
+        self.pulsedmasterlogic.sigAvailableWaveformsUpdated.connect(self.waveform_list_updated)
+        self.pulsedmasterlogic.sigAvailableSequencesUpdated.connect(self.sequence_list_updated)
+        self.pulsedmasterlogic.sigSampleEnsembleComplete.connect(self.sample_ensemble_finished)
+        self.pulsedmasterlogic.sigSampleSequenceComplete.connect(self.sample_sequence_finished)
+        self.pulsedmasterlogic.sigLoadedAssetUpdated.connect(self.loaded_asset_updated)
+        self.pulsedmasterlogic.sigGeneratorSettingsUpdated.connect(self.pulse_generator_settings_updated)
+        self.pulsedmasterlogic.sigSamplingSettingsUpdated.connect(self.generation_parameters_updated)
+        self.pulsedmasterlogic.sigPredefinedSequenceGenerated.connect(self.predefined_generated)
         return
 
     def _disconnect_main_window_signals(self):
@@ -588,29 +588,29 @@ class PulsedMeasurementGui(GuiBase):
 
     def _disconnect_logic_signals(self):
         # Disconnect update signals from pulsed_master_logic
-        self.pulsedmasterlogic().sigMeasurementDataUpdated.disconnect()
-        self.pulsedmasterlogic().sigTimerUpdated.disconnect()
-        self.pulsedmasterlogic().sigFitUpdated.disconnect()
-        self.pulsedmasterlogic().sigMeasurementStatusUpdated.disconnect()
-        self.pulsedmasterlogic().sigPulserRunningUpdated.disconnect()
-        self.pulsedmasterlogic().sigExtMicrowaveRunningUpdated.disconnect()
-        self.pulsedmasterlogic().sigExtMicrowaveSettingsUpdated.disconnect()
-        self.pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect()
-        self.pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect()
-        self.pulsedmasterlogic().sigAnalysisSettingsUpdated.disconnect()
-        self.pulsedmasterlogic().sigExtractionSettingsUpdated.disconnect()
+        self.pulsedmasterlogic.sigMeasurementDataUpdated.disconnect()
+        self.pulsedmasterlogic.sigTimerUpdated.disconnect()
+        self.pulsedmasterlogic.sigFitUpdated.disconnect()
+        self.pulsedmasterlogic.sigMeasurementStatusUpdated.disconnect()
+        self.pulsedmasterlogic.sigPulserRunningUpdated.disconnect()
+        self.pulsedmasterlogic.sigExtMicrowaveRunningUpdated.disconnect()
+        self.pulsedmasterlogic.sigExtMicrowaveSettingsUpdated.disconnect()
+        self.pulsedmasterlogic.sigFastCounterSettingsUpdated.disconnect()
+        self.pulsedmasterlogic.sigMeasurementSettingsUpdated.disconnect()
+        self.pulsedmasterlogic.sigAnalysisSettingsUpdated.disconnect()
+        self.pulsedmasterlogic.sigExtractionSettingsUpdated.disconnect()
 
-        self.pulsedmasterlogic().sigBlockDictUpdated.disconnect()
-        self.pulsedmasterlogic().sigEnsembleDictUpdated.disconnect()
-        self.pulsedmasterlogic().sigSequenceDictUpdated.disconnect()
-        self.pulsedmasterlogic().sigAvailableWaveformsUpdated.disconnect()
-        self.pulsedmasterlogic().sigAvailableSequencesUpdated.disconnect()
-        self.pulsedmasterlogic().sigSampleEnsembleComplete.disconnect()
-        self.pulsedmasterlogic().sigSampleSequenceComplete.disconnect()
-        self.pulsedmasterlogic().sigLoadedAssetUpdated.disconnect()
-        self.pulsedmasterlogic().sigGeneratorSettingsUpdated.disconnect()
-        self.pulsedmasterlogic().sigSamplingSettingsUpdated.disconnect()
-        self.pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
+        self.pulsedmasterlogic.sigBlockDictUpdated.disconnect()
+        self.pulsedmasterlogic.sigEnsembleDictUpdated.disconnect()
+        self.pulsedmasterlogic.sigSequenceDictUpdated.disconnect()
+        self.pulsedmasterlogic.sigAvailableWaveformsUpdated.disconnect()
+        self.pulsedmasterlogic.sigAvailableSequencesUpdated.disconnect()
+        self.pulsedmasterlogic.sigSampleEnsembleComplete.disconnect()
+        self.pulsedmasterlogic.sigSampleSequenceComplete.disconnect()
+        self.pulsedmasterlogic.sigLoadedAssetUpdated.disconnect()
+        self.pulsedmasterlogic.sigGeneratorSettingsUpdated.disconnect()
+        self.pulsedmasterlogic.sigSamplingSettingsUpdated.disconnect()
+        self.pulsedmasterlogic.sigPredefinedSequenceGenerated.disconnect()
         return
 
     ###########################################################################
@@ -618,7 +618,7 @@ class PulsedMeasurementGui(GuiBase):
     ###########################################################################
     def _activate_main_window_ui(self):
         self._setup_toolbar()
-        self.loaded_asset_updated(*self.pulsedmasterlogic().loaded_asset)
+        self.loaded_asset_updated(*self.pulsedmasterlogic.loaded_asset)
         return
 
     def _deactivate_main_window_ui(self):
@@ -668,7 +668,7 @@ class PulsedMeasurementGui(GuiBase):
             self._mw.pulser_on_off_PushButton.setText('Pulser OFF')
         else:
             self._mw.pulser_on_off_PushButton.setText('Pulser ON')
-        self.pulsedmasterlogic().toggle_pulse_generator(checked)
+        self.pulsedmasterlogic.toggle_pulse_generator(checked)
         return
 
     @QtCore.Slot(bool)
@@ -702,7 +702,7 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def clear_pulser_clicked(self):
         """ Delete all loaded files in the device's current memory. """
-        self.pulsedmasterlogic().clear_pulse_generator()
+        self.pulsedmasterlogic.clear_pulse_generator()
         return
 
     @QtCore.Slot(str, str)
@@ -734,13 +734,13 @@ class PulsedMeasurementGui(GuiBase):
 
         @param bool isChecked: start scan if that is possible
         """
-        self.pulsedmasterlogic().toggle_pulsed_measurement(isChecked)
+        self.pulsedmasterlogic.toggle_pulsed_measurement(isChecked)
         return
 
     @QtCore.Slot(bool)
     def measurement_continue_pause_clicked(self, isChecked):
         """ Continues and pauses the measurement. """
-        self.pulsedmasterlogic().toggle_pulsed_measurement_pause(isChecked)
+        self.pulsedmasterlogic.toggle_pulsed_measurement_pause(isChecked)
         return
 
     @QtCore.Slot(bool, bool)
@@ -837,7 +837,7 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def pull_data_clicked(self):
         """ Pulls and analysis the data when the 'action_pull_data'-button is clicked. """
-        self.pulsedmasterlogic().manually_pull_data()
+        self.pulsedmasterlogic.manually_pull_data()
         return
 
     def save_clicked(self):
@@ -848,7 +848,7 @@ class PulsedMeasurementGui(GuiBase):
             nametag = self._mw.save_tag_LineEdit.text()
             with_error = self._pa.ana_param_errorbars_CheckBox.isChecked()
 
-            self.pulsedmasterlogic().save_measurement_data(tag=nametag, with_error=with_error)
+            self.pulsedmasterlogic.save_measurement_data(tag=nametag, with_error=with_error)
         finally:
             self._mw.action_save.setEnabled(True)
             self._mw.action_save_as.setEnabled(True)
@@ -863,7 +863,7 @@ class PulsedMeasurementGui(GuiBase):
             file_types = {'Text File (*.dat)': TextDataStorage,
                           'CSV File (*.csv)': CsvDataStorage,
                           'Numpy Binary File (*.npy)': NpyDataStorage}
-            default_dir = self.pulsedmasterlogic().default_data_dir
+            default_dir = self.pulsedmasterlogic.default_data_dir
             os.makedirs(default_dir, exist_ok=True)
             default_filename = get_timestamp_filename(timestamp=datetime.datetime.now(),
                                                       nametag=nametag if nametag else None)
@@ -878,7 +878,7 @@ class PulsedMeasurementGui(GuiBase):
             )
 
             if file_path:
-                self.pulsedmasterlogic().save_measurement_data(file_path=file_path,
+                self.pulsedmasterlogic.save_measurement_data(file_path=file_path,
                                                                storage_cls=file_types[file_type],
                                                                with_error=with_error)
         finally:
@@ -889,7 +889,7 @@ class PulsedMeasurementGui(GuiBase):
     def measurement_timer_changed(self):
         """ This method handles the analysis timing"""
         timer_interval = self._pa.time_param_ana_periode_DoubleSpinBox.value()
-        self.pulsedmasterlogic().set_timer_interval(timer_interval)
+        self.pulsedmasterlogic.set_timer_interval(timer_interval)
         return
 
     @QtCore.Slot(float, int, float)
@@ -925,13 +925,13 @@ class PulsedMeasurementGui(GuiBase):
         Initialize the settings dialog for 'Analysis' Tab.
         """
         self._as.ana_param_x_axis_name_LineEdit.setText(
-            self.pulsedmasterlogic().measurement_settings['labels'][0])
+            self.pulsedmasterlogic.measurement_settings['labels'][0])
         self._as.ana_param_x_axis_unit_LineEdit.setText(
-            self.pulsedmasterlogic().measurement_settings['units'][0])
+            self.pulsedmasterlogic.measurement_settings['units'][0])
         self._as.ana_param_y_axis_name_LineEdit.setText(
-            self.pulsedmasterlogic().measurement_settings['labels'][1])
+            self.pulsedmasterlogic.measurement_settings['labels'][1])
         self._as.ana_param_y_axis_unit_LineEdit.setText(
-            self.pulsedmasterlogic().measurement_settings['units'][1])
+            self.pulsedmasterlogic.measurement_settings['units'][1])
 
         self._as.ana_param_second_plot_x_axis_name_LineEdit.setText(self._ana_param_second_plot_x_axis_name_text)
         self._as.ana_param_second_plot_x_axis_unit_LineEdit.setText(self._ana_param_second_plot_x_axis_unit_text)
@@ -960,19 +960,19 @@ class PulsedMeasurementGui(GuiBase):
         self._ana_param_second_plot_y_axis_name_text = self._as.ana_param_second_plot_y_axis_name_LineEdit.text()
         self._ana_param_second_plot_y_axis_unit_text = self._as.ana_param_second_plot_y_axis_unit_LineEdit.text()
 
-        self.pulsedmasterlogic().set_measurement_settings(units=axis_units, labels=axis_labels)
+        self.pulsedmasterlogic.set_measurement_settings(units=axis_units, labels=axis_labels)
         return
 
     def keep_former_analysis_settings(self):
         """ Keep the old settings """
         self._as.ana_param_x_axis_name_LineEdit.setText(
-            self.pulsedmasterlogic().measurement_settings['labels'][0])
+            self.pulsedmasterlogic.measurement_settings['labels'][0])
         self._as.ana_param_x_axis_unit_LineEdit.setText(
-            self.pulsedmasterlogic().measurement_settings['units'][0])
+            self.pulsedmasterlogic.measurement_settings['units'][0])
         self._as.ana_param_y_axis_name_LineEdit.setText(
-            self.pulsedmasterlogic().measurement_settings['labels'][1])
+            self.pulsedmasterlogic.measurement_settings['labels'][1])
         self._as.ana_param_y_axis_unit_LineEdit.setText(
-            self.pulsedmasterlogic().measurement_settings['units'][1])
+            self.pulsedmasterlogic.measurement_settings['units'][1])
         self._as.ana_param_second_plot_x_axis_name_LineEdit.setText(
             self._ana_param_second_plot_x_axis_name_text)
         self._as.ana_param_second_plot_x_axis_unit_LineEdit.setText(
@@ -1002,7 +1002,7 @@ class PulsedMeasurementGui(GuiBase):
         self.__create_digital_channel_setting_widgets()
 
         # Apply hardware constraints to widgets
-        pg_constr = self.pulsedmasterlogic().pulse_generator_constraints
+        pg_constr = self.pulsedmasterlogic.pulse_generator_constraints
         self._pgs.gen_sample_freq_DSpinBox.setMinimum(pg_constr.sample_rate.min)
         self._pgs.gen_sample_freq_DSpinBox.setMaximum(pg_constr.sample_rate.max)
         self._pgs.gen_activation_config_ComboBox.clear()
@@ -1015,7 +1015,7 @@ class PulsedMeasurementGui(GuiBase):
             widget2.setRange(pg_constr.d_ch_high.min, pg_constr.d_ch_high.max)
 
         # Set widget values/content
-        self.pulse_generator_settings_updated(self.pulsedmasterlogic().pulse_generator_settings)
+        self.pulse_generator_settings_updated(self.pulsedmasterlogic.pulse_generator_settings)
         return
 
     def _deactivate_generator_settings_ui(self):
@@ -1035,7 +1035,7 @@ class PulsedMeasurementGui(GuiBase):
             return
 
         analog_channels = set()
-        for cfg in self.pulsedmasterlogic().pulse_generator_constraints.activation_config.values():
+        for cfg in self.pulsedmasterlogic.pulse_generator_constraints.activation_config.values():
             for ach in (chnl for chnl in cfg if chnl.startswith('a')):
                 analog_channels.add(ach)
         analog_channels = natural_sort(analog_channels)
@@ -1075,7 +1075,7 @@ class PulsedMeasurementGui(GuiBase):
             return
 
         digital_channels = set()
-        for cfg in self.pulsedmasterlogic().pulse_generator_constraints.activation_config.values():
+        for cfg in self.pulsedmasterlogic.pulse_generator_constraints.activation_config.values():
             for dch in (chnl for chnl in cfg if chnl.startswith('d')):
                 digital_channels.add(dch)
         digital_channels = natural_sort(digital_channels)
@@ -1129,12 +1129,12 @@ class PulsedMeasurementGui(GuiBase):
             digital_high[chnl] = widget2.value()
         settings_dict['digital_levels'] = (digital_low, digital_high)
 
-        self.pulsedmasterlogic().set_pulse_generator_settings(settings_dict)
+        self.pulsedmasterlogic.set_pulse_generator_settings(settings_dict)
         return
 
     def keep_former_generator_settings(self):
         """ Keep the old settings """
-        self.pulse_generator_settings_updated(self.pulsedmasterlogic().pulse_generator_settings)
+        self.pulse_generator_settings_updated(self.pulsedmasterlogic.pulse_generator_settings)
         return
 
     def show_generator_settings(self):
@@ -1151,7 +1151,7 @@ class PulsedMeasurementGui(GuiBase):
         editor.
         """
         # create all GUI elements and check all boxes listed in the methods to show
-        for method_name in natural_sort(self.pulsedmasterlogic().generate_methods):
+        for method_name in natural_sort(self.pulsedmasterlogic.generate_methods):
             # create checkboxes for the config dialogue
             name_checkbox = 'checkbox_' + method_name
             setattr(self._pm_cfg, name_checkbox, QtWidgets.QCheckBox(self._pm_cfg.scrollArea))
@@ -1176,7 +1176,7 @@ class PulsedMeasurementGui(GuiBase):
         return
 
     def keep_former_predefined_methods_config(self):
-        for method_name in self.pulsedmasterlogic().generate_methods:
+        for method_name in self.pulsedmasterlogic.generate_methods:
             groupbox = getattr(self._pm, method_name + '_GroupBox')
             checkbox = getattr(self._pm_cfg, 'checkbox_' + method_name)
             checkbox.setChecked(groupbox.isVisible())
@@ -1184,7 +1184,7 @@ class PulsedMeasurementGui(GuiBase):
 
     def apply_predefined_methods_config(self):
         self._predefined_methods_to_show = list()
-        for method_name in self.pulsedmasterlogic().generate_methods:
+        for method_name in self.pulsedmasterlogic.generate_methods:
             groupbox = getattr(self._pm, method_name + '_GroupBox')
             checkbox = getattr(self._pm_cfg, 'checkbox_' + method_name)
             groupbox.setVisible(checkbox.isChecked())
@@ -1205,7 +1205,7 @@ class PulsedMeasurementGui(GuiBase):
         self._channel_selection_comboboxes = list()  # List of created channel selection ComboBoxes
         self._global_param_widgets = list()  # List of all other created global parameter widgets
         self._create_pm_global_params()
-        self.generation_parameters_updated(self.pulsedmasterlogic().generation_parameters)
+        self.generation_parameters_updated(self.pulsedmasterlogic.generation_parameters)
 
         # Dynamically create GUI elements for predefined methods
         self._pm.gen_buttons = dict()
@@ -1229,7 +1229,7 @@ class PulsedMeasurementGui(GuiBase):
         col_count = 0
         row_count = 1
         combo_count = 0
-        for param, value in self.pulsedmasterlogic().generation_parameters.items():
+        for param, value in self.pulsedmasterlogic.generation_parameters.items():
             # Do not create widget for laser_channel since this widget is already part of the pulse
             # editor tab.
             if param in ('laser_channel', 'sync_channel', 'gate_channel'):
@@ -1243,8 +1243,8 @@ class PulsedMeasurementGui(GuiBase):
                 widget.setObjectName('global_param_' + param)
                 widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
                 widget.addItem('')
-                widget.addItems(natural_sort(self.pulsedmasterlogic().digital_channels))
-                widget.addItems(natural_sort(self.pulsedmasterlogic().analog_channels))
+                widget.addItems(natural_sort(self.pulsedmasterlogic.digital_channels))
+                widget.addItems(natural_sort(self.pulsedmasterlogic.analog_channels))
                 index = widget.findText(value)
                 if index >= 0:
                     widget.setCurrentIndex(index)
@@ -1321,8 +1321,8 @@ class PulsedMeasurementGui(GuiBase):
         self._pm.samplo_buttons = dict()
         self._pm.method_param_widgets = dict()
 
-        method_params = self.pulsedmasterlogic().generate_method_params
-        for method_name in natural_sort(self.pulsedmasterlogic().generate_methods):
+        method_params = self.pulsedmasterlogic.generate_method_params
+        for method_name in natural_sort(self.pulsedmasterlogic.generate_methods):
             # Create the widgets for the predefined methods dialogue
             # Create GroupBox for the method to reside in
             groupBox = QtWidgets.QGroupBox(self._pm)
@@ -1413,10 +1413,10 @@ class PulsedMeasurementGui(GuiBase):
         self._pg.curr_ensemble_laserpulses_SpinBox.setRange(0, 2**31-1)
 
         # initialize widgets
-        self.generation_parameters_updated(self.pulsedmasterlogic().generation_parameters)
-        self.fast_counter_settings_updated(self.pulsedmasterlogic().fast_counter_settings)
-        self.update_block_dict(self.pulsedmasterlogic().saved_pulse_blocks)
-        self.update_ensemble_dict(self.pulsedmasterlogic().saved_pulse_block_ensembles)
+        self.generation_parameters_updated(self.pulsedmasterlogic.generation_parameters)
+        self.fast_counter_settings_updated(self.pulsedmasterlogic.fast_counter_settings)
+        self.update_block_dict(self.pulsedmasterlogic.saved_pulse_blocks)
+        self.update_ensemble_dict(self.pulsedmasterlogic.saved_pulse_block_ensembles)
         return
 
     def _deactivate_pulse_generator_ui(self):
@@ -1610,7 +1610,7 @@ class PulsedMeasurementGui(GuiBase):
                 elif hasattr(widget, 'text'):
                     settings_dict[param_name] = widget.text()
 
-        self.pulsedmasterlogic().set_generation_parameters(settings_dict)
+        self.pulsedmasterlogic.set_generation_parameters(settings_dict)
 
         self._pg.block_editor.set_laser_channel_is_digital(settings_dict['laser_channel'].startswith('d'))
         return
@@ -1766,13 +1766,13 @@ class PulsedMeasurementGui(GuiBase):
             return
         block_object = self._pg.block_editor.get_block()
         block_object.name = name
-        self.pulsedmasterlogic().save_pulse_block(block_object)
+        self.pulsedmasterlogic.save_pulse_block(block_object)
         return
 
     @QtCore.Slot()
     def editor_delete_block_clicked(self):
         name = self._pg.saved_blocks_ComboBox.currentText()
-        self.pulsedmasterlogic().delete_pulse_block(name)
+        self.pulsedmasterlogic.delete_pulse_block(name)
         return
 
     @QtCore.Slot()
@@ -1785,16 +1785,16 @@ class PulsedMeasurementGui(GuiBase):
             QtWidgets.QMessageBox.Yes,
             QtWidgets.QMessageBox.No)
         if result == QtWidgets.QMessageBox.Yes:
-            self.pulsedmasterlogic().delete_all_pulse_blocks()
+            self.pulsedmasterlogic.delete_all_pulse_blocks()
         return
 
     @QtCore.Slot()
     def editor_load_block_clicked(self):
         name = self._pg.saved_blocks_ComboBox.currentText()
-        block = self.pulsedmasterlogic().saved_pulse_blocks[name]
+        block = self.pulsedmasterlogic.saved_pulse_blocks[name]
 
         # Do not load PulseBlock into editor if channel activations do not match
-        current_channels = self.pulsedmasterlogic().pulse_generator_settings['activation_config'][1]
+        current_channels = self.pulsedmasterlogic.pulse_generator_settings['activation_config'][1]
         if block.channel_set != current_channels:
             self.log.error('Can not load PulseBlock "{0}" into editor.\nCurrent channel activation '
                            '"{1}" does not match channel activation "{2}" used during generation '
@@ -1816,8 +1816,8 @@ class PulsedMeasurementGui(GuiBase):
         self._pg.block_organizer.set_rotating_frame(rotating_frame)
         ensemble_object = self._pg.block_organizer.get_ensemble()
         ensemble_object.name = name
-        self.pulsedmasterlogic().save_block_ensemble(ensemble_object)
-        length_s, length_bins, lasers = self.pulsedmasterlogic().get_ensemble_info(ensemble_object)
+        self.pulsedmasterlogic.save_block_ensemble(ensemble_object)
+        length_s, length_bins, lasers = self.pulsedmasterlogic.get_ensemble_info(ensemble_object)
         self._pg.curr_ensemble_length_DSpinBox.setValue(length_s)
         self._pg.curr_ensemble_bins_SpinBox.setValue(length_bins)
         self._pg.curr_ensemble_laserpulses_SpinBox.setValue(lasers)
@@ -1826,7 +1826,7 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def editor_delete_ensemble_clicked(self):
         name = self._pg.saved_ensembles_ComboBox.currentText()
-        self.pulsedmasterlogic().delete_block_ensemble(name)
+        self.pulsedmasterlogic.delete_block_ensemble(name)
         return
 
     @QtCore.Slot()
@@ -1840,18 +1840,18 @@ class PulsedMeasurementGui(GuiBase):
             QtWidgets.QMessageBox.Yes,
             QtWidgets.QMessageBox.No)
         if result == QtWidgets.QMessageBox.Yes:
-            self.pulsedmasterlogic().delete_all_block_ensembles()
+            self.pulsedmasterlogic.delete_all_block_ensembles()
         return
 
     @QtCore.Slot()
     def editor_load_ensemble_clicked(self):
         name = self._pg.saved_ensembles_ComboBox.currentText()
-        ensemble = self.pulsedmasterlogic().saved_pulse_block_ensembles[name]
+        ensemble = self.pulsedmasterlogic.saved_pulse_block_ensembles[name]
         self._pg.block_organizer.load_ensemble(ensemble)
         self._pg.curr_ensemble_name_LineEdit.setText(name)
         self._pg.curr_ensemble_rot_frame_CheckBox.setChecked(ensemble.rotating_frame)
 
-        length_s, length_bins, lasers = self.pulsedmasterlogic().get_ensemble_info(ensemble)
+        length_s, length_bins, lasers = self.pulsedmasterlogic.get_ensemble_info(ensemble)
         self._pg.curr_ensemble_length_DSpinBox.setValue(length_s)
         self._pg.curr_ensemble_bins_SpinBox.setValue(length_bins)
         self._pg.curr_ensemble_laserpulses_SpinBox.setValue(lasers)
@@ -1934,7 +1934,7 @@ class PulsedMeasurementGui(GuiBase):
         # Get the ensemble name from the ComboBox
         ensemble_name = self._pg.gen_ensemble_ComboBox.currentText()
         # Sample and upload the ensemble via logic module
-        self.pulsedmasterlogic().sample_ensemble(ensemble_name, False)
+        self.pulsedmasterlogic.sample_ensemble(ensemble_name, False)
         return
 
     @QtCore.Slot(object)
@@ -1943,7 +1943,7 @@ class PulsedMeasurementGui(GuiBase):
         This method
         """
         # enable buttons
-        if not self.pulsedmasterlogic().status_dict['sampload_busy']:
+        if not self.pulsedmasterlogic.status_dict['sampload_busy']:
             self._pg.sample_ensemble_PushButton.setEnabled(True)
             self._pg.samplo_ensemble_PushButton.setEnabled(True)
             # Reactivate predefined method buttons
@@ -1963,7 +1963,7 @@ class PulsedMeasurementGui(GuiBase):
         # Get the ensemble name from the ComboBox
         ensemble_name = self._pg.gen_ensemble_ComboBox.currentText()
         # Sample, upload and load the ensemble via logic module
-        self.pulsedmasterlogic().sample_ensemble(ensemble_name, True)
+        self.pulsedmasterlogic.sample_ensemble(ensemble_name, True)
         return
 
     @QtCore.Slot()
@@ -1976,12 +1976,12 @@ class PulsedMeasurementGui(GuiBase):
         # Get the ensemble name to be loaded from the ComboBox
         ensemble_name = self._pg.gen_ensemble_ComboBox.currentText()
         # Load ensemble into channles via logic module
-        self.pulsedmasterlogic().load_ensemble(ensemble_name)
+        self.pulsedmasterlogic.load_ensemble(ensemble_name)
         return
 
     @QtCore.Slot()
     def sampling_or_loading_busy(self):
-        if self.pulsedmasterlogic().status_dict['sampload_busy']:
+        if self.pulsedmasterlogic.status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(False)
 
             label = self._mw.current_loaded_asset_Label
@@ -1990,7 +1990,7 @@ class PulsedMeasurementGui(GuiBase):
 
     @QtCore.Slot()
     def benchmark_busy(self):
-        if self.pulsedmasterlogic().status_dict['benchmark_busy']:
+        if self.pulsedmasterlogic.status_dict['benchmark_busy']:
             self._mw.action_run_stop.setEnabled(False)
 
             label = self._mw.current_loaded_asset_Label
@@ -1999,7 +1999,7 @@ class PulsedMeasurementGui(GuiBase):
 
     @QtCore.Slot()
     def sampling_or_loading_finished(self):
-        if not self.pulsedmasterlogic().status_dict['sampload_busy']:
+        if not self.pulsedmasterlogic.status_dict['sampload_busy']:
             self._mw.action_run_stop.setEnabled(True)
             self._mw.loading_indicator_action.setVisible(False)
 
@@ -2033,7 +2033,7 @@ class PulsedMeasurementGui(GuiBase):
             for button in self._pm.samplo_buttons.values():
                 button.setEnabled(False)
 
-        self.pulsedmasterlogic().generate_predefined_sequence(
+        self.pulsedmasterlogic.generate_predefined_sequence(
             method_name, param_dict, sample_and_load
         )
 
@@ -2047,7 +2047,7 @@ class PulsedMeasurementGui(GuiBase):
         # "sampload_busy" flag in PulsedMasterLogic status_dict is False.
         # If generation was successful and "sampload_busy" flag is True, disable respective buttons
         # in "Pulse Generator" and "Sequence Generator" tab
-        if asset_name is None or not self.pulsedmasterlogic().status_dict['sampload_busy']:
+        if asset_name is None or not self.pulsedmasterlogic.status_dict['sampload_busy']:
             for button in self._pm.samplo_buttons.values():
                 button.setEnabled(True)
         else:
@@ -2073,9 +2073,9 @@ class PulsedMeasurementGui(GuiBase):
     #                   Sequence Generator tab related methods                #
     ###########################################################################
     def _activate_sequence_generator_ui(self):
-        self.update_sequence_dict(self.pulsedmasterlogic().saved_pulse_sequences)
+        self.update_sequence_dict(self.pulsedmasterlogic.saved_pulse_sequences)
         self._sg.curr_sequence_length_DSpinBox.setRange(0, np.inf)
-        pulser_constr = self.pulsedmasterlogic().pulse_generator_constraints
+        pulser_constr = self.pulsedmasterlogic.pulse_generator_constraints
         self._sg.sequence_editor.set_available_triggers(pulser_constr.event_triggers)
         self._sg.sequence_editor.set_available_flags(set(pulser_constr.flags))
         return
@@ -2140,8 +2140,8 @@ class PulsedMeasurementGui(GuiBase):
         self._sg.sequence_editor.set_rotating_frame(rotating_frame)
         sequence_object = self._sg.sequence_editor.get_sequence()
         sequence_object.name = name
-        self.pulsedmasterlogic().save_sequence(sequence_object)
-        length_s, length_bins, lasers = self.pulsedmasterlogic().get_sequence_info(sequence_object)
+        self.pulsedmasterlogic.save_sequence(sequence_object)
+        length_s, length_bins, lasers = self.pulsedmasterlogic.get_sequence_info(sequence_object)
         self._sg.curr_sequence_length_DSpinBox.setValue(length_s)
         self._sg.curr_sequence_bins_SpinBox.setValue(length_bins)
         self._sg.curr_sequence_laserpulses_SpinBox.setValue(lasers)
@@ -2150,7 +2150,7 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def editor_delete_sequence_clicked(self):
         name = self._sg.saved_sequences_ComboBox.currentText()
-        self.pulsedmasterlogic().delete_sequence(name)
+        self.pulsedmasterlogic.delete_sequence(name)
         return
 
     @QtCore.Slot()
@@ -2164,18 +2164,18 @@ class PulsedMeasurementGui(GuiBase):
             QtWidgets.QMessageBox.Yes,
             QtWidgets.QMessageBox.No)
         if result == QtWidgets.QMessageBox.Yes:
-            self.pulsedmasterlogic().delete_all_pulse_sequences()
+            self.pulsedmasterlogic.delete_all_pulse_sequences()
         return
 
     @QtCore.Slot()
     def editor_load_sequence_clicked(self):
         name = self._sg.saved_sequences_ComboBox.currentText()
-        sequence = self.pulsedmasterlogic().saved_pulse_sequences[name]
+        sequence = self.pulsedmasterlogic.saved_pulse_sequences[name]
         self._sg.sequence_editor.load_sequence(sequence)
         self._sg.curr_sequence_name_LineEdit.setText(name)
         self._sg.curr_sequence_rot_frame_CheckBox.setChecked(sequence.rotating_frame)
 
-        length_s, length_bins, lasers = self.pulsedmasterlogic().get_sequence_info(sequence)
+        length_s, length_bins, lasers = self.pulsedmasterlogic.get_sequence_info(sequence)
         self._sg.curr_sequence_length_DSpinBox.setValue(length_s)
         self._sg.curr_sequence_bins_SpinBox.setValue(length_bins)
         self._sg.curr_sequence_laserpulses_SpinBox.setValue(lasers)
@@ -2227,7 +2227,7 @@ class PulsedMeasurementGui(GuiBase):
         # Get the sequence name from the ComboBox
         sequence_name = self._sg.gen_sequence_ComboBox.currentText()
         # Sample the sequence via logic module
-        self.pulsedmasterlogic().sample_sequence(sequence_name, False)
+        self.pulsedmasterlogic.sample_sequence(sequence_name, False)
         return
 
     @QtCore.Slot(object)
@@ -2236,7 +2236,7 @@ class PulsedMeasurementGui(GuiBase):
         This method
         """
         # enable buttons
-        if not self.pulsedmasterlogic().status_dict['sampload_busy']:
+        if not self.pulsedmasterlogic.status_dict['sampload_busy']:
             self._sg.sample_sequence_PushButton.setEnabled(True)
             self._sg.samplo_sequence_PushButton.setEnabled(True)
             # Reactivate predefined method buttons
@@ -2256,7 +2256,7 @@ class PulsedMeasurementGui(GuiBase):
         # Get the sequence name from the ComboBox
         sequence_name = self._sg.gen_sequence_ComboBox.currentText()
         # Sample the sequence via logic module
-        self.pulsedmasterlogic().sample_sequence(sequence_name, True)
+        self.pulsedmasterlogic.sample_sequence(sequence_name, True)
         return
 
     @QtCore.Slot()
@@ -2269,7 +2269,7 @@ class PulsedMeasurementGui(GuiBase):
         # Get the sequence name to be loaded from the ComboBox
         sequence_name = self._sg.gen_sequence_ComboBox.currentText()
         # Load sequence into channles via logic module
-        self.pulsedmasterlogic().load_sequence(sequence_name)
+        self.pulsedmasterlogic.load_sequence(sequence_name)
         return
 
     @QtCore.Slot(list)
@@ -2341,14 +2341,14 @@ class PulsedMeasurementGui(GuiBase):
         self._pa.pulse_analysis_second_PlotWidget.addItem(self.second_fit_image)
 
         # Fit settings dialog
-        fit_containers = self.pulsedmasterlogic().fit_containers
+        fit_containers = self.pulsedmasterlogic.fit_containers
         self._pa.first_plot_fitwidget.link_fit_container(fit_containers[0])
         self._pa.second_plot_fitwidget.link_fit_container(fit_containers[1])
         self._pa.first_plot_fitwidget.sigDoFit.connect(
-            lambda x: self.pulsedmasterlogic().do_fit(x, False)
+            lambda x: self.pulsedmasterlogic.do_fit(x, False)
         )
         self._pa.second_plot_fitwidget.sigDoFit.connect(
-            lambda x: self.pulsedmasterlogic().do_fit(x, True)
+            lambda x: self.pulsedmasterlogic.do_fit(x, True)
         )
 
         # Adjust splitter ratio
@@ -2375,18 +2375,18 @@ class PulsedMeasurementGui(GuiBase):
         self._pa.ana_param_errorbars_CheckBox.blockSignals(True)
         self._pa.ana_param_errorbars_CheckBox.setChecked(self._ana_param_errorbars)
         self._pa.ana_param_errorbars_CheckBox.blockSignals(False)
-        self.second_plot_changed(self.pulsedmasterlogic().alternative_data_type)
+        self.second_plot_changed(self.pulsedmasterlogic.alternative_data_type)
 
         # Update measurement, microwave and fast counter settings from logic
-        self.measurement_settings_updated(self.pulsedmasterlogic().measurement_settings)
-        self.fast_counter_settings_updated(self.pulsedmasterlogic().fast_counter_settings)
-        self.microwave_settings_updated(self.pulsedmasterlogic().ext_microwave_settings)
+        self.measurement_settings_updated(self.pulsedmasterlogic.measurement_settings)
+        self.fast_counter_settings_updated(self.pulsedmasterlogic.fast_counter_settings)
+        self.microwave_settings_updated(self.pulsedmasterlogic.ext_microwave_settings)
         # Update analysis interval from logic
         self._pa.time_param_ana_periode_DoubleSpinBox.setValue(
-            self.pulsedmasterlogic().timer_interval)
+            self.pulsedmasterlogic.timer_interval)
 
         self.toggle_error_bars(self._ana_param_errorbars)
-        self.second_plot_changed(self.pulsedmasterlogic().alternative_data_type)
+        self.second_plot_changed(self.pulsedmasterlogic.alternative_data_type)
         self.measurement_data_updated()
         return
 
@@ -2401,8 +2401,8 @@ class PulsedMeasurementGui(GuiBase):
         Retrieve the constraints from pulser and fast counter hardware and apply these constraints
         to the analysis tab GUI elements.
         """
-        mw_constraints = self.pulsedmasterlogic().ext_microwave_constraints
-        fc_constraints = self.pulsedmasterlogic().fast_counter_constraints
+        mw_constraints = self.pulsedmasterlogic.ext_microwave_constraints
+        fc_constraints = self.pulsedmasterlogic.fast_counter_constraints
         # block signals
         self._pa.ext_control_mw_freq_DoubleSpinBox.blockSignals(True)
         self._pa.ext_control_mw_power_DoubleSpinBox.blockSignals(True)
@@ -2430,15 +2430,15 @@ class PulsedMeasurementGui(GuiBase):
 
         @return:
         """
-        signal_data = self.pulsedmasterlogic().signal_data
-        signal_alt_data = self.pulsedmasterlogic().signal_alt_data
-        measurement_error = self.pulsedmasterlogic().measurement_error
+        signal_data = self.pulsedmasterlogic.signal_data
+        signal_alt_data = self.pulsedmasterlogic.signal_alt_data
+        measurement_error = self.pulsedmasterlogic.measurement_error
 
         # Adjust number of data sets to plot
         self.set_plot_dimensions()
 
         # Change second plot combobox if it has been changed in the logic
-        self.second_plot_changed(self.pulsedmasterlogic().alternative_data_type)
+        self.second_plot_changed(self.pulsedmasterlogic.alternative_data_type)
 
         # create ErrorBarItems
         tmp_array = signal_data[0, 1:] - signal_data[0, :-1]
@@ -2538,7 +2538,7 @@ class PulsedMeasurementGui(GuiBase):
             self._pa.ext_control_mw_power_Label.setVisible(False)
             self._pa.ext_control_mw_power_DoubleSpinBox.setVisible(False)
 
-        self.pulsedmasterlogic().set_ext_microwave_settings(settings_dict)
+        self.pulsedmasterlogic.set_ext_microwave_settings(settings_dict)
         return
 
     @QtCore.Slot(dict)
@@ -2609,7 +2609,7 @@ class PulsedMeasurementGui(GuiBase):
         settings_dict = dict()
         settings_dict['record_length'] = self._pa.ana_param_record_length_DoubleSpinBox.value()
         settings_dict['bin_width'] = float(self._pa.ana_param_fc_bins_ComboBox.currentText())
-        self.pulsedmasterlogic().set_fast_counter_settings(settings_dict)
+        self.pulsedmasterlogic.set_fast_counter_settings(settings_dict)
         return
 
     @QtCore.Slot(dict)
@@ -2632,7 +2632,7 @@ class PulsedMeasurementGui(GuiBase):
                 self._pg.gen_gatechannel_ComboBox.setEnabled(True)
             else:
                 self._pg.gen_gatechannel_ComboBox.setEnabled(False)
-                self.pulsedmasterlogic().set_generation_parameters(gate_channel='')
+                self.pulsedmasterlogic.set_generation_parameters(gate_channel='')
 
         # unblock signals
         self._pa.ana_param_record_length_DoubleSpinBox.blockSignals(False)
@@ -2667,7 +2667,7 @@ class PulsedMeasurementGui(GuiBase):
         controlled_variable = np.arange(num_of_ticks, dtype=float)
         settings_dict['controlled_variable'] = controlled_variable * vals_incr + vals_start
 
-        self.pulsedmasterlogic().set_measurement_settings(settings_dict)
+        self.pulsedmasterlogic.set_measurement_settings(settings_dict)
         return
 
     @QtCore.Slot(dict)
@@ -2757,7 +2757,7 @@ class PulsedMeasurementGui(GuiBase):
         self._pa.ana_param_invoke_settings_CheckBox.blockSignals(False)
         self._pe.laserpulses_ComboBox.blockSignals(False)
 
-        self.second_plot_changed(self.pulsedmasterlogic().alternative_data_type)
+        self.second_plot_changed(self.pulsedmasterlogic.alternative_data_type)
         return
 
     def set_plot_dimensions(self):
@@ -2766,8 +2766,8 @@ class PulsedMeasurementGui(GuiBase):
         @param alternating:
         @return:
         """
-        number_of_signals = self.pulsedmasterlogic().signal_data.shape[0] - 1
-        number_of_alt_signals = self.pulsedmasterlogic().signal_alt_data.shape[0] - 1
+        number_of_signals = self.pulsedmasterlogic.signal_data.shape[0] - 1
+        number_of_alt_signals = self.pulsedmasterlogic.signal_alt_data.shape[0] - 1
 
         if number_of_signals == 1:
             if self.signal_image2 in self._pa.pulse_analysis_PlotWidget.items():
@@ -2845,10 +2845,10 @@ class PulsedMeasurementGui(GuiBase):
             self._pa.second_plot_ComboBox.setCurrentIndex(index)
             self._pa.second_plot_ComboBox.blockSignals(False)
 
-        if second_plot != self.pulsedmasterlogic().alternative_data_type:
-            self.pulsedmasterlogic().set_alternative_data_type(second_plot)
+        if second_plot != self.pulsedmasterlogic.alternative_data_type:
+            self.pulsedmasterlogic.set_alternative_data_type(second_plot)
 
-        if self.pulsedmasterlogic().alternative_data_type == 'Delta':
+        if self.pulsedmasterlogic.alternative_data_type == 'Delta':
             self._ana_param_second_plot_x_axis_name_text = self._as.ana_param_x_axis_name_LineEdit.text()
             self._ana_param_second_plot_x_axis_unit_text = self._as.ana_param_x_axis_unit_LineEdit.text()
             self._ana_param_second_plot_y_axis_name_text = self._as.ana_param_y_axis_name_LineEdit.text()
@@ -2904,7 +2904,7 @@ class PulsedMeasurementGui(GuiBase):
         self._pe.measuring_error_PlotWidget.setLabel('left', 'measuring error',  units='arb.u.')
 
         # Initialize widgets
-        number_of_lasers = self.pulsedmasterlogic().measurement_settings['number_of_lasers']
+        number_of_lasers = self.pulsedmasterlogic.measurement_settings['number_of_lasers']
         self._pe.laserpulses_display_raw_CheckBox.blockSignals(True)
         self._pe.laserpulses_ComboBox.blockSignals(True)
         self._pe.extract_param_analysis_method_comboBox.blockSignals(True)
@@ -2920,10 +2920,10 @@ class PulsedMeasurementGui(GuiBase):
 
         self._pe.extract_param_analysis_method_comboBox.clear()
         self._pe.extract_param_analysis_method_comboBox.addItems(
-            list(self.pulsedmasterlogic().analysis_methods))
+            list(self.pulsedmasterlogic.analysis_methods))
         self._pe.extract_param_method_comboBox.clear()
         self._pe.extract_param_method_comboBox.addItems(
-            list(self.pulsedmasterlogic().extraction_methods))
+            list(self.pulsedmasterlogic.extraction_methods))
 
         self._pe.laserpulses_display_raw_CheckBox.blockSignals(False)
         self._pe.laserpulses_ComboBox.blockSignals(False)
@@ -2934,8 +2934,8 @@ class PulsedMeasurementGui(GuiBase):
         self._extraction_param_widgets = None
 
         # Initialize from logic values
-        self.analysis_settings_updated(self.pulsedmasterlogic().analysis_settings)
-        self.extraction_settings_updated(self.pulsedmasterlogic().extraction_settings)
+        self.analysis_settings_updated(self.pulsedmasterlogic.analysis_settings)
+        self.extraction_settings_updated(self.pulsedmasterlogic.extraction_settings)
         self.update_laser_data()
         return
 
@@ -2952,7 +2952,7 @@ class PulsedMeasurementGui(GuiBase):
         settings_dict = dict()
         settings_dict['method'] = self._pe.extract_param_method_comboBox.currentText()
         # Check if the method has been changed
-        if settings_dict['method'] == self.pulsedmasterlogic().extraction_settings['method']:
+        if settings_dict['method'] == self.pulsedmasterlogic.extraction_settings['method']:
             for label, widget in self._extraction_param_widgets:
                 param_name = widget.objectName()[14:]
                 if hasattr(widget, 'isChecked'):
@@ -2964,7 +2964,7 @@ class PulsedMeasurementGui(GuiBase):
         else:
             self._delete_extraction_param_widgets()
 
-        self.pulsedmasterlogic().set_extraction_settings(settings_dict)
+        self.pulsedmasterlogic.set_extraction_settings(settings_dict)
         return
 
     @QtCore.Slot(dict)
@@ -3092,7 +3092,7 @@ class PulsedMeasurementGui(GuiBase):
         settings_dict['norm_end'] = settings_dict['norm_start'] + norm_width
 
         settings_dict['method'] = self._pe.extract_param_analysis_method_comboBox.currentText()
-        self.pulsedmasterlogic().set_analysis_settings(settings_dict)
+        self.pulsedmasterlogic.set_analysis_settings(settings_dict)
         return
 
     @QtCore.Slot()
@@ -3109,7 +3109,7 @@ class PulsedMeasurementGui(GuiBase):
         settings_dict['norm_end'] = ref_end if ref_end >= ref_start else ref_start
 
         settings_dict['method'] = self._pe.extract_param_analysis_method_comboBox.currentText()
-        self.pulsedmasterlogic().set_analysis_settings(settings_dict)
+        self.pulsedmasterlogic.set_analysis_settings(settings_dict)
         return
 
     @QtCore.Slot(dict)
@@ -3172,25 +3172,25 @@ class PulsedMeasurementGui(GuiBase):
         """
         laser_index = self._pe.laserpulses_ComboBox.currentIndex()
         show_raw = self._pe.laserpulses_display_raw_CheckBox.isChecked()
-        is_gated = len(self.pulsedmasterlogic().raw_data.shape) > 1
+        is_gated = len(self.pulsedmasterlogic.raw_data.shape) > 1
 
         # Determine the right array to plot as y-data
         if show_raw:
             if is_gated:
                 if laser_index == 0:
-                    y_data = np.sum(self.pulsedmasterlogic().raw_data, axis=0)
+                    y_data = np.sum(self.pulsedmasterlogic.raw_data, axis=0)
                 else:
-                    y_data = self.pulsedmasterlogic().raw_data[laser_index - 1]
+                    y_data = self.pulsedmasterlogic.raw_data[laser_index - 1]
             else:
-                y_data = self.pulsedmasterlogic().raw_data
+                y_data = self.pulsedmasterlogic.raw_data
         else:
             if laser_index == 0:
-                y_data = np.sum(self.pulsedmasterlogic().laser_data, axis=0)
+                y_data = np.sum(self.pulsedmasterlogic.laser_data, axis=0)
             else:
-                y_data = self.pulsedmasterlogic().laser_data[laser_index - 1]
+                y_data = self.pulsedmasterlogic.laser_data[laser_index - 1]
 
         # Calculate the x-axis of the laser plot here
-        bin_width = self.pulsedmasterlogic().fast_counter_settings['bin_width']
+        bin_width = self.pulsedmasterlogic.fast_counter_settings['bin_width']
         x_data = np.arange(y_data.size, dtype=float) * bin_width
 
         # Plot data
@@ -3207,6 +3207,6 @@ class PulsedMeasurementGui(GuiBase):
     @QtCore.Slot()
     def run_pg_benchmark(self):
 
-        self.pulsedmasterlogic().status_dict['benchmark_busy'] = True
+        self.pulsedmasterlogic.status_dict['benchmark_busy'] = True
         self.sigPulseGeneratorRunBenchmark.emit()
         self.sigPulseGeneratorSettingsUpdated.emit()

@@ -29,10 +29,10 @@ class InterfaceTestLogic(LogicBase):
     _second_hardware = Connector(name='second_hardware', interface='SecondTestInterface')
 
     def on_activate(self):
-        self._first_hardware().herp()
-        self._second_hardware().herp()
-        print(self._first_hardware().x)
-        print(self._second_hardware().y)
+        self._first_hardware.herp()
+        self._second_hardware.herp()
+        print(self._first_hardware.x)
+        print(self._second_hardware.y)
 
     def on_deactivate(self):
         pass

@@ -91,13 +91,13 @@ class ScanningDataLogic(LogicBase):
         else:
             self._curr_history_index = 0
             self._curr_data_per_scan = dict()
-        self._logic_id = self._scan_logic().module_uuid
-        self._scan_logic().sigScanStateChanged.connect(self._update_scan_state)
+        self._logic_id = self._scan_logic.module_uuid
+        self._scan_logic.sigScanStateChanged.connect(self._update_scan_state)
 
     def on_deactivate(self):
         """ Reverse steps of activation
         """
-        self._scan_logic().sigScanStateChanged.disconnect(self._update_scan_state)
+        self._scan_logic.sigScanStateChanged.disconnect(self._update_scan_state)
         self._curr_data_per_scan = dict()
 
     @_scan_history.representer
@@ -184,7 +184,7 @@ class ScanningDataLogic(LogicBase):
                 'resolution': {ax: data.scan_resolution[i] for i, ax in enumerate(data.scan_axes)},
                 'frequency': {data.scan_axes[0]: data.scan_frequency}
             }
-            self._scan_logic().set_scan_settings(settings)
+            self._scan_logic.set_scan_settings(settings)
 
             #self.log.debug(f"Restoring hist settings from index {index} with {settings}")
 
@@ -227,7 +227,7 @@ class ScanningDataLogic(LogicBase):
         """
         data = scan_data.data[channel]
         axis = scan_data.scan_axes[0]
-        scanner_pos = self._scan_logic().scanner_target
+        scanner_pos = self._scan_logic.scanner_target
 
         # Scale axes and data
         scan_range_x = (scan_data.scan_range[0][0], scan_data.scan_range[0][1])
@@ -317,7 +317,7 @@ class ScanningDataLogic(LogicBase):
                 if scan_data.scanner_target_at_start:
                     for new_ax in scan_data.scanner_target_at_start.keys():
                         if new_ax not in scan_data.scan_axes:
-                            ax_info = self._scan_logic().scanner_constraints.axes[new_ax]
+                            ax_info = self._scan_logic.scanner_constraints.axes[new_ax]
                             ax_name = ax_info.name
                             ax_unit = ax_info.unit
                             parameters[f"{new_ax} axis name"] = ax_name
@@ -367,7 +367,7 @@ class ScanningDataLogic(LogicBase):
         """
         image_arr = scan_data.data[channel]
         scan_axes = scan_data.scan_axes
-        scanner_pos = self._scan_logic().scanner_target
+        scanner_pos = self._scan_logic.scanner_target
 
 
         # If no colorbar range was given, take full range of data
@@ -460,7 +460,7 @@ class ScanningDataLogic(LogicBase):
             target_str = ""
             for (target_ax, target_val) in scan_data.scanner_target_at_start.items():
                 if target_ax not in scan_axes:
-                    ax_info = self._scan_logic().scanner_constraints.axes[target_ax]
+                    ax_info = self._scan_logic.scanner_constraints.axes[target_ax]
                     unit = ax_info.unit
                     target_str += f"{target_ax}: {ScaledFloat(target_val):.3r}{unit}\n"
             if target_str:

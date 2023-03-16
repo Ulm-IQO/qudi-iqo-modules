@@ -272,14 +272,14 @@ class PulsedMeasurementLogic(LogicBase):
         self.pulse_generator_off()
 
         # Check and configure fast counter
-        binning_constraints = self._fastcounter().get_constraints()['hardware_binwidth_list']
+        binning_constraints = self._fastcounter.get_constraints()['hardware_binwidth_list']
         if self.__fast_counter_binwidth not in binning_constraints:
             self.__fast_counter_binwidth = binning_constraints[0]
         if self.__fast_counter_record_length <= 0:
             self.__fast_counter_record_length = 3e-6
         self.fast_counter_off()
         # Set default number of gates to a reasonable number for gated counters (>0 if gated)
-        if self._fastcounter().is_gated() and self.__fast_counter_gates < 1:
+        if self._fastcounter.is_gated() and self.__fast_counter_gates < 1:
             self.__fast_counter_gates = max(1, self._number_of_lasers)
         self.set_fast_counter_settings()
 
@@ -341,7 +341,7 @@ class PulsedMeasurementLogic(LogicBase):
         settings_dict['bin_width'] = float(self.__fast_counter_binwidth)
         settings_dict['record_length'] = float(self.__fast_counter_record_length)
         settings_dict['number_of_gates'] = int(self.__fast_counter_gates)
-        settings_dict['is_gated'] = bool(self._fastcounter().is_gated())
+        settings_dict['is_gated'] = bool(self._fastcounter.is_gated())
         return settings_dict
 
     @fast_counter_settings.setter
@@ -352,7 +352,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def fast_counter_constraints(self):
-        return self._fastcounter().get_constraints()
+        return self._fastcounter.get_constraints()
 
     @QtCore.Slot(dict)
     def set_fast_counter_settings(self, settings_dict=None, **kwargs):
@@ -367,7 +367,7 @@ class PulsedMeasurementLogic(LogicBase):
         @return:
         """
         # Check if fast counter is running and do nothing if that is the case
-        counter_status = self._fastcounter().get_status()
+        counter_status = self._fastcounter.get_status()
         if not counter_status >= 2 and not counter_status < 0:
             # Determine complete settings dictionary
             if not isinstance(settings_dict, dict):
@@ -381,7 +381,7 @@ class PulsedMeasurementLogic(LogicBase):
             if 'record_length' in settings_dict:
                 self.__fast_counter_record_length = float(settings_dict['record_length'])
             if 'number_of_gates' in settings_dict:
-                if self._fastcounter().is_gated():
+                if self._fastcounter.is_gated():
                     self.__fast_counter_gates = int(settings_dict['number_of_gates'])
                 else:
                     self.__fast_counter_gates = 0
@@ -389,7 +389,7 @@ class PulsedMeasurementLogic(LogicBase):
             # Apply the settings to hardware
             self.__fast_counter_binwidth, \
             self.__fast_counter_record_length, \
-            self.__fast_counter_gates = self._fastcounter().configure(
+            self.__fast_counter_gates = self._fastcounter.configure(
                 self.__fast_counter_binwidth,
                 self.__fast_counter_record_length,
                 self.__fast_counter_gates
@@ -407,14 +407,14 @@ class PulsedMeasurementLogic(LogicBase):
 
         @return int: error code (0:OK, -1:error)
         """
-        return self._fastcounter().start_measure()
+        return self._fastcounter.start_measure()
 
     def fast_counter_off(self):
         """Switching off the fast counter
 
         @return int: error code (0:OK, -1:error)
         """
-        return self._fastcounter().stop_measure()
+        return self._fastcounter.stop_measure()
 
     @QtCore.Slot(bool)
     def toggle_fast_counter(self, switch_on):
@@ -434,14 +434,14 @@ class PulsedMeasurementLogic(LogicBase):
 
         @return int: error code (0:OK, -1:error)
         """
-        return self._fastcounter().pause_measure()
+        return self._fastcounter.pause_measure()
 
     def fast_counter_continue(self):
         """Switching off the fast counter
 
         @return int: error code (0:OK, -1:error)
         """
-        return self._fastcounter().continue_measure()
+        return self._fastcounter.continue_measure()
 
     @QtCore.Slot(bool)
     def fast_counter_pause_continue(self, continue_counter):
@@ -483,7 +483,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def ext_microwave_constraints(self):
-        microwave = self._microwave()
+        microwave = self._microwave
         if microwave is None:
             return None
         return microwave.constraints
@@ -494,7 +494,7 @@ class PulsedMeasurementLogic(LogicBase):
 
         :return int: error code (0:OK, -1:error)
         """
-        microwave = self._microwave()
+        microwave = self._microwave
         if microwave is None:
             self.sigExtMicrowaveRunningUpdated.emit(False)
         else:
@@ -510,7 +510,7 @@ class PulsedMeasurementLogic(LogicBase):
 
         :return int: error code (0:OK, -1:error)
         """
-        microwave = self._microwave()
+        microwave = self._microwave
         if microwave is None:
             self.sigExtMicrowaveRunningUpdated.emit(False)
         else:
@@ -551,7 +551,7 @@ class PulsedMeasurementLogic(LogicBase):
         @return:
         """
         # Check if microwave is running and do nothing if that is the case
-        microwave = self._microwave()
+        microwave = self._microwave
         if microwave is not None and microwave.is_running:
             self.log.warning('Microwave device is running.\nUnable to apply new settings.')
         else:
@@ -587,11 +587,11 @@ class PulsedMeasurementLogic(LogicBase):
     ############################################################################
     @property
     def pulse_generator_constraints(self):
-        return self._pulsegenerator().get_constraints()
+        return self._pulsegenerator.get_constraints()
 
     def pulse_generator_on(self):
         """Switching on the pulse generator. """
-        err = self._pulsegenerator().pulser_on()
+        err = self._pulsegenerator.pulser_on()
         if err < 0:
             self.log.error('Failed to turn on pulse generator output.')
             self.sigPulserRunningUpdated.emit(False)
@@ -601,7 +601,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     def pulse_generator_off(self):
         """Switching off the pulse generator. """
-        err = self._pulsegenerator().pulser_off()
+        err = self._pulsegenerator.pulser_off()
         if err < 0:
             self.log.error('Failed to turn off pulse generator output.')
             self.sigPulserRunningUpdated.emit(True)
@@ -846,7 +846,7 @@ class PulsedMeasurementLogic(LogicBase):
                                                          dtype=float)
                 if 'number_of_lasers' in settings_dict:
                     self._number_of_lasers = int(settings_dict.get('number_of_lasers'))
-                    if self._fastcounter().is_gated():
+                    if self._fastcounter.is_gated():
                         self.set_fast_counter_settings(number_of_gates=self._number_of_lasers)
                 if 'laser_ignore_list' in settings_dict:
                     self._laser_ignore_list = sorted(settings_dict.get('laser_ignore_list'))
@@ -1182,7 +1182,7 @@ class PulsedMeasurementLogic(LogicBase):
                            'Measurement information container is incomplete/invalid.')
             return
 
-        if self._fastcounter().is_gated():
+        if self._fastcounter.is_gated():
             self.set_fast_counter_settings(number_of_gates=self._number_of_lasers,
                                            record_length=fast_counter_record_length)
         else:
@@ -1204,7 +1204,7 @@ class PulsedMeasurementLogic(LogicBase):
                            'controlled_variable ticks ({1:d}).'
                            ''.format(number_of_analyzed_lasers, len(self._controlled_variable)))
 
-        if self._fastcounter().is_gated() and self._number_of_lasers != self.__fast_counter_gates:
+        if self._fastcounter.is_gated() and self._number_of_lasers != self.__fast_counter_gates:
             self.log.error('Gated fast counter gate number ({0:d}) differs from number of laser pulses ({1:d})'
                            'configured in measurement settings.'.format(self._number_of_lasers,
                                                                         self.__fast_counter_gates))
@@ -1292,7 +1292,7 @@ class PulsedMeasurementLogic(LogicBase):
                                                  info_dict with keys 'elapsed_sweeps' and 'elapsed_time'
         """
         # get raw data from fast counter
-        fc_data = self._fastcounter().get_data_trace()
+        fc_data = self._fastcounter.get_data_trace()
         if type(fc_data) == tuple and len(fc_data) == 2:  # if the hardware implement the new version of the interface
             fc_data, info_dict = fc_data
         else:

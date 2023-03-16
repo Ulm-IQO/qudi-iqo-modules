@@ -120,7 +120,7 @@ class QDPlotterGui(GuiBase):
         # Use the inherited class 'QDPlotMainWindow' to create the GUI window
         self._mw = QDPlotMainWindow()
 
-        logic = self._qdplot_logic()
+        logic = self._qdplot_logic
 
         self._fit_config_dialog = FitConfigurationDialog(parent=self._mw,
                                                          fit_config_model=logic.fit_config_model)
@@ -181,7 +181,7 @@ class QDPlotterGui(GuiBase):
         self.sigRemovePlotClicked.disconnect()
 
         # Disconnect signals from logic
-        logic = self._qdplot_logic()
+        logic = self._qdplot_logic
         logic.sigPlotDataChanged.disconnect(self._update_data)
         logic.sigPlotConfigChanged.disconnect(self._update_plot_config)
         logic.sigPlotAdded.disconnect(self._plot_added)
@@ -381,7 +381,7 @@ class QDPlotterGui(GuiBase):
 
     def _plot_added(self) -> None:
         index = len(self._plot_dockwidgets)
-        dockwidget = QDPlotDockWidget(fit_container=self._qdplot_logic().get_fit_container(index),
+        dockwidget = QDPlotDockWidget(fit_container=self._qdplot_logic.get_fit_container(index),
                                       plot_number=index + 1)
         self._plot_dockwidgets.append(dockwidget)
         self._color_cyclers.append(cycle(self._pen_color_list))
@@ -427,7 +427,7 @@ class QDPlotterGui(GuiBase):
                      ) -> None:
         """ Function creates empty plots, grabs the data and sends it to them. """
         if data is None:
-            data = self._qdplot_logic().get_data(plot_index)
+            data = self._qdplot_logic.get_data(plot_index)
 
         widget = self._plot_dockwidgets[plot_index].widget()
         current_plots = set(widget.plot_names)
@@ -462,7 +462,7 @@ class QDPlotterGui(GuiBase):
                             ) -> None:
         """ Function updated limits, labels and units in the plot and parameter widgets. """
         if config is None:
-            config = self._qdplot_logic().get_plot_config(plot_index)
+            config = self._qdplot_logic.get_plot_config(plot_index)
         widget = self._plot_dockwidgets[plot_index].widget()
         widget.blockSignals(True)
         try:
@@ -479,7 +479,7 @@ class QDPlotterGui(GuiBase):
                          ) -> None:
         """ Function that handles the fit results received from the logic via a signal """
         if fit_config is None or fit_results is None:
-            fit_config, fit_results = self._qdplot_logic().get_fit_results(plot_index)
+            fit_config, fit_results = self._qdplot_logic.get_fit_results(plot_index)
         if not fit_config:
             fit_config = 'No Fit'
 

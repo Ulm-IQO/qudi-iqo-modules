@@ -121,23 +121,23 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_timer.stop()
         self.__scan_poll_timer.timeout.disconnect()
         if self.module_state != ModuleState.IDLE:
-            self._scanner().stop_scan()
+            self._scanner.stop_scan()
         return
 
     @property
     def scan_data(self):
         with self._thread_lock:
-            return self._scanner().get_scan_data()
+            return self._scanner.get_scan_data()
 
     @property
     def scanner_position(self):
         with self._thread_lock:
-            return self._scanner().get_position()
+            return self._scanner.get_position()
 
     @property
     def scanner_target(self):
         with self._thread_lock:
-            return self._scanner().get_target()
+            return self._scanner.get_target()
 
     @property
     def scanner_axes(self):
@@ -149,7 +149,7 @@ class ScanningProbeLogic(LogicBase):
 
     @property
     def scanner_constraints(self):
-        return self._scanner().get_constraints()
+        return self._scanner.get_constraints()
 
     @property
     def scan_ranges(self):
@@ -292,7 +292,7 @@ class ScanningProbeLogic(LogicBase):
         with self._thread_lock:
             if self.module_state != ModuleState.IDLE:
                 self.log.error('Unable to change scanner target position while a scan is running.')
-                new_pos = self._scanner().get_target()
+                new_pos = self._scanner.get_target()
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
@@ -301,7 +301,7 @@ class ScanningProbeLogic(LogicBase):
             for ax, pos in pos_dict.items():
                 if ax not in ax_constr:
                     self.log.error('Unknown scanner axis: "{0}"'.format(ax))
-                    new_pos = self._scanner().get_target()
+                    new_pos = self._scanner.get_target()
                     self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                     return new_pos
 
@@ -310,7 +310,7 @@ class ScanningProbeLogic(LogicBase):
                     self.log.warning('Scanner position target value out of bounds for axis "{0}". '
                                      'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
 
-            new_pos = self._scanner().move_absolute(new_pos, blocking=move_blocking)
+            new_pos = self._scanner.move_absolute(new_pos, blocking=move_blocking)
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
             #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
@@ -363,7 +363,7 @@ class ScanningProbeLogic(LogicBase):
                         'range': tuple(self._scan_ranges[ax] for ax in scan_axes),
                         'resolution': tuple(self._scan_resolution[ax] for ax in scan_axes),
                         'frequency': self._scan_frequency[scan_axes[0]]}
-            fail, new_settings = self._scanner().configure_scan(settings)
+            fail, new_settings = self._scanner.configure_scan(settings)
             if fail:
                 self._unlock_module()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
@@ -379,7 +379,7 @@ class ScanningProbeLogic(LogicBase):
                                             line_points / self._scan_frequency[scan_axes[0]])
             self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
 
-            if self._scanner().start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
+            if self._scanner.start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
                 self._unlock_module()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error("Couldn't start scan.")

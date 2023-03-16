@@ -421,7 +421,7 @@ class PoiManagerLogic(LogicBase):
         self._periodic_refocus_poi = None
 
         # Connect callback for a finished refocus
-        self._optimizelogic().sigOptimizeStateChanged.connect(
+        self._optimizelogic.sigOptimizeStateChanged.connect(
             self._optimisation_callback, QtCore.Qt.QueuedConnection)
         # Connect internal start/stop signals to decouple QTimer from other threads
         self.__sigStartPeriodicRefocus.connect(
@@ -447,14 +447,14 @@ class PoiManagerLogic(LogicBase):
         self.stop_periodic_refocus()
 
         # Disconnect signals
-        self._optimizelogic().sigOptimizeStateChanged.disconnect(self._optimisation_callback)
+        self._optimizelogic.sigOptimizeStateChanged.disconnect(self._optimisation_callback)
         self.__sigStartPeriodicRefocus.disconnect()
         self.__sigStopPeriodicRefocus.disconnect()
         return
 
     @property
     def optimise_xy_size(self):
-        return np.max([self._optimizelogic().scan_range['x'], self._optimizelogic().scan_range['y']])
+        return np.max([self._optimizelogic.scan_range['x'], self._optimizelogic.scan_range['y']])
 
     @property
     def active_poi(self):
@@ -559,7 +559,7 @@ class PoiManagerLogic(LogicBase):
 
     @property
     def scanner_position(self):
-        return np.array(list(self._scanninglogic().scanner_position.values()))
+        return np.array(list(self._scanninglogic.scanner_position.values()))
 
     @property
     def move_scanner_after_optimise(self):
@@ -851,7 +851,7 @@ class PoiManagerLogic(LogicBase):
                     self.log.error('Scanner position to set must be dictionary or iterable of length 3.')
                     return
                 position = {'x': position[0], 'y': position[1], 'z': position[2]}
-            self._scanninglogic().set_target_position(position)
+            self._scanninglogic.set_target_position(position)
             return
 
     @QtCore.Slot(bool)
@@ -859,9 +859,9 @@ class PoiManagerLogic(LogicBase):
         """ Get the current xy scan data and set as scan_image of ROI. """
         with self._thread_lock:
 
-            scan_data = self._data_logic().get_current_scan_data(scan_axes)
+            scan_data = self._data_logic.get_current_scan_data(scan_axes)
             if scan_data:
-                self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
+                self._roi.set_scan_image(scan_data.data[self._optimizelogic._data_channel],
                                          scan_data.scan_range)
 
             if emit_change:
@@ -1022,7 +1022,7 @@ class PoiManagerLogic(LogicBase):
         with self._thread_lock:
             if self._optimizelogic.module_state == ModuleState.IDLE:
                 self.__poi_optimization_running = True
-                self._optimizelogic().start_optimize()
+                self._optimizelogic.start_optimize()
                 self.sigOptimizeStateUpdated.emit(True)
             else:
                 self.log.warning('Unable to start POI refocus procedure. '

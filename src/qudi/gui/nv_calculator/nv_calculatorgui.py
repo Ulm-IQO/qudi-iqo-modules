@@ -38,10 +38,9 @@ class NVCalculatorGui(GuiBase):
             nv_calculatorlogic: 'nv_calculator_logic'
 
     """
-    _modclass = 'NVCalculatorGui'
-    _modtype = 'gui'
-    ## declare connectors
-    nv_calculatorlogic = Connector(interface='NVCalculatorLogic')
+
+    # declare connectors
+    _nv_calculatorlogic = Connector(name='nv_calculatorlogic', interface='NVCalculatorLogic')
 
     sigCalParamsChanged = QtCore.Signal(float, float, bool)
     sigManualDipsChanged = QtCore.Signal(float, float)
@@ -52,7 +51,7 @@ class NVCalculatorGui(GuiBase):
         """Create all UI objects and show the window.
         """
         self._mw = NVCalculatorMainWindow()
-        self.calculator = self.nv_calculatorlogic()
+        self.calculator = self._nv_calculatorlogic
 
         ########################################################################
         #              Configuration of the display Widgets                    #

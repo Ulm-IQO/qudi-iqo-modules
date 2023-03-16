@@ -74,7 +74,7 @@ class TimeSeriesGui(GuiBase):
     """
 
     # declare connectors
-    _time_series_logic_con = Connector(interface='TimeSeriesReaderLogic')
+    _time_series_logic = Connector(name='_time_series_logic_con', interface='TimeSeriesReaderLogic')
 
     # declare ConfigOptions
     _use_antialias = ConfigOption('use_antialias', default=True)
@@ -110,8 +110,6 @@ class TimeSeriesGui(GuiBase):
         """ Definition and initialisation of the GUI.
         """
         self._use_antialias = bool(self._use_antialias)
-
-        self._time_series_logic = self._time_series_logic_con()
 
         #####################
         # Configuring the dock widgets

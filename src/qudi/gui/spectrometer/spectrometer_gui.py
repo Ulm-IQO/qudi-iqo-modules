@@ -77,18 +77,18 @@ class SpectrometerGui(GuiBase):
         # Fit settings dialog
         self._fsd = FitConfigurationDialog(
             parent=self._mw,
-            fit_config_model=self._spectrometer_logic().fit_config_model
+            fit_config_model=self._spectrometer_logic.fit_config_model
         )
         self._mw.action_show_fit_settings.triggered.connect(self._fsd.show)
 
         # Link fit widget to logic
-        self._mw.data_widget.fit_widget.link_fit_container(self._spectrometer_logic().fit_container)
-        self._mw.data_widget.fit_widget.sigDoFit.connect(self._spectrometer_logic().do_fit)
+        self._mw.data_widget.fit_widget.link_fit_container(self._spectrometer_logic.fit_container)
+        self._mw.data_widget.fit_widget.sigDoFit.connect(self._spectrometer_logic.do_fit)
 
         # Connect signals
-        self._spectrometer_logic().sig_data_updated.connect(self.update_data)
-        self._spectrometer_logic().sig_state_updated.connect(self.update_state)
-        self._spectrometer_logic().sig_fit_updated.connect(self.update_fit)
+        self._spectrometer_logic.sig_data_updated.connect(self.update_data)
+        self._spectrometer_logic.sig_state_updated.connect(self.update_state)
+        self._spectrometer_logic.sig_fit_updated.connect(self.update_fit)
 
         self._mw.control_widget.acquire_button.clicked.connect(self.acquire_spectrum)
         self._mw.control_widget.spectrum_continue_button.clicked.connect(self.continue_spectrum)
@@ -117,7 +117,7 @@ class SpectrometerGui(GuiBase):
         self._mw.data_widget.target_point.sigPositionChangeFinished.connect(self.target_changed)
 
         # fill initial settings
-        self._mw.data_widget.axis_type.setChecked(self._spectrometer_logic().axis_type_frequency)
+        self._mw.data_widget.axis_type.setChecked(self._spectrometer_logic.axis_type_frequency)
         self._mw.data_widget.target_point.setPos(self._target_x)
         self.keep_settings()
         self.update_state()
@@ -141,9 +141,9 @@ class SpectrometerGui(GuiBase):
         self._mw.data_widget.fit_widget.sigDoFit.disconnect()
 
         # disconnect signals
-        self._spectrometer_logic().sig_data_updated.disconnect(self.update_data)
-        self._spectrometer_logic().sig_state_updated.disconnect(self.update_state)
-        self._spectrometer_logic().sig_fit_updated.disconnect(self.update_fit)
+        self._spectrometer_logic.sig_data_updated.disconnect(self.update_data)
+        self._spectrometer_logic.sig_state_updated.disconnect(self.update_state)
+        self._spectrometer_logic.sig_fit_updated.disconnect(self.update_fit)
 
         self._mw.control_widget.acquire_button.clicked.disconnect()
         self._mw.control_widget.spectrum_continue_button.clicked.disconnect()
@@ -174,7 +174,7 @@ class SpectrometerGui(GuiBase):
 
     def update_state(self):
         # Update the text of the buttons according to logic state
-        if self._spectrometer_logic().acquisition_running:
+        if self._spectrometer_logic.acquisition_running:
             self._start_acquisition_timestamp = perf_counter()
             self._mw.control_widget.progress_bar.setValue(0)
             self._progress_timer.start()
@@ -196,18 +196,18 @@ class SpectrometerGui(GuiBase):
         self._mw.data_widget.fit_region_to.blockSignals(True)
 
         self._mw.control_widget.background_correction_switch.setChecked(
-            self._spectrometer_logic().background_correction
+            self._spectrometer_logic.background_correction
         )
         self._mw.control_widget.constant_acquisition_switch.setChecked(
-            self._spectrometer_logic().constant_acquisition
+            self._spectrometer_logic.constant_acquisition
         )
         self._mw.control_widget.spectrum_continue_button.setEnabled(
-            self._spectrometer_logic().constant_acquisition
+            self._spectrometer_logic.constant_acquisition
         )
 
-        self._mw.data_widget.fit_region.setRegion(self._spectrometer_logic().fit_region)
-        self._mw.data_widget.fit_region_from.setValue(self._spectrometer_logic().fit_region[0])
-        self._mw.data_widget.fit_region_to.setValue(self._spectrometer_logic().fit_region[1])
+        self._mw.data_widget.fit_region.setRegion(self._spectrometer_logic.fit_region)
+        self._mw.data_widget.fit_region_from.setValue(self._spectrometer_logic.fit_region[0])
+        self._mw.data_widget.fit_region_to.setValue(self._spectrometer_logic.fit_region[1])
 
         self._mw.control_widget.background_correction_switch.blockSignals(False)
         self._mw.control_widget.constant_acquisition_switch.blockSignals(False)
@@ -217,14 +217,14 @@ class SpectrometerGui(GuiBase):
 
         self._mw.control_widget.differential_spectrum_switch.blockSignals(True)
         self._mw.control_widget.differential_spectrum_switch.setEnabled(
-            self._spectrometer_logic().differential_spectrum_available
+            self._spectrometer_logic.differential_spectrum_available
         )
         self._mw.control_widget.differential_spectrum_switch.setChecked(
-            self._spectrometer_logic().differential_spectrum
+            self._spectrometer_logic.differential_spectrum
         )
         self._mw.control_widget.differential_spectrum_switch.blockSignals(False)
 
-        if self._spectrometer_logic().axis_type_frequency:
+        if self._spectrometer_logic.axis_type_frequency:
             self._mw.data_widget.plot_widget.setLabel('bottom', 'Frequency', units='Hz')
             self._mw.data_widget.target_x.setSuffix('Hz')
             self._mw.data_widget.fit_region_from.setSuffix('Hz')
@@ -238,8 +238,8 @@ class SpectrometerGui(GuiBase):
     def update_data(self):
         """ The function that grabs the data and sends it to the plot.
         """
-        x_data = self._spectrometer_logic().x_data
-        spectrum = self._spectrometer_logic().spectrum
+        x_data = self._spectrometer_logic.x_data
+        spectrum = self._spectrometer_logic.spectrum
         if x_data is None or spectrum is None:
             return
 
@@ -263,82 +263,82 @@ class SpectrometerGui(GuiBase):
             self._mw.data_widget.fit_curve.setData(x=[], y=[])
 
     def acquire_spectrum(self):
-        if not self._spectrometer_logic().acquisition_running:
-            self._spectrometer_logic().background_correction = self._mw.control_widget.background_correction_switch.isChecked()
-            self._spectrometer_logic().constant_acquisition = self._mw.control_widget.constant_acquisition_switch.isChecked()
-            self._spectrometer_logic().differential_spectrum = self._mw.control_widget.differential_spectrum_switch.isChecked()
-            self._spectrometer_logic().run_get_spectrum()
+        if not self._spectrometer_logic.acquisition_running:
+            self._spectrometer_logic.background_correction = self._mw.control_widget.background_correction_switch.isChecked()
+            self._spectrometer_logic.constant_acquisition = self._mw.control_widget.constant_acquisition_switch.isChecked()
+            self._spectrometer_logic.differential_spectrum = self._mw.control_widget.differential_spectrum_switch.isChecked()
+            self._spectrometer_logic.run_get_spectrum()
             self._mw.control_widget.acquire_button.setText('Stop Spectrum')
         else:
-            self._spectrometer_logic().stop()
+            self._spectrometer_logic.stop()
             self._mw.control_widget.acquire_button.setText('Acquire Spectrum')
 
     def continue_spectrum(self):
-        if not self._spectrometer_logic().acquisition_running:
-            self._spectrometer_logic().background_correction = self._mw.control_widget.background_correction_switch.isChecked()
-            self._spectrometer_logic().constant_acquisition = self._mw.control_widget.constant_acquisition_switch.isChecked()
-            self._spectrometer_logic().differential_spectrum = self._mw.control_widget.differential_spectrum_switch.isChecked()
-            self._spectrometer_logic().run_get_spectrum(reset=False)
+        if not self._spectrometer_logic.acquisition_running:
+            self._spectrometer_logic.background_correction = self._mw.control_widget.background_correction_switch.isChecked()
+            self._spectrometer_logic.constant_acquisition = self._mw.control_widget.constant_acquisition_switch.isChecked()
+            self._spectrometer_logic.differential_spectrum = self._mw.control_widget.differential_spectrum_switch.isChecked()
+            self._spectrometer_logic.run_get_spectrum(reset=False)
             self._mw.control_widget.acquire_button.setText('Stop Spectrum')
 
     def acquire_background(self):
-        if not self._spectrometer_logic().acquisition_running:
-            self._spectrometer_logic().background_correction = self._mw.control_widget.background_correction_switch.isChecked()
-            self._spectrometer_logic().constant_acquisition = self._mw.control_widget.constant_acquisition_switch.isChecked()
-            self._spectrometer_logic().differential_spectrum = self._mw.control_widget.differential_spectrum_switch.isChecked()
-            self._spectrometer_logic().run_get_background()
+        if not self._spectrometer_logic.acquisition_running:
+            self._spectrometer_logic.background_correction = self._mw.control_widget.background_correction_switch.isChecked()
+            self._spectrometer_logic.constant_acquisition = self._mw.control_widget.constant_acquisition_switch.isChecked()
+            self._spectrometer_logic.differential_spectrum = self._mw.control_widget.differential_spectrum_switch.isChecked()
+            self._spectrometer_logic.run_get_background()
             self._mw.control_widget.background_button.setText('Stop Background')
         else:
-            self._spectrometer_logic().stop()
+            self._spectrometer_logic.stop()
             self._mw.control_widget.background_button.setText('Acquire Background')
 
     def save_spectrum(self):
-        self._spectrometer_logic().save_spectrum_data(background=False)
+        self._spectrometer_logic.save_spectrum_data(background=False)
 
     def save_background(self):
-        self._spectrometer_logic().save_spectrum_data(background=True)
+        self._spectrometer_logic.save_spectrum_data(background=True)
 
     def background_correction_changed(self):
-        self._spectrometer_logic().background_correction = self._mw.control_widget.background_correction_switch.isChecked()
+        self._spectrometer_logic.background_correction = self._mw.control_widget.background_correction_switch.isChecked()
 
     def constant_acquisition_changed(self):
-        self._spectrometer_logic().constant_acquisition = self._mw.control_widget.constant_acquisition_switch.isChecked()
+        self._spectrometer_logic.constant_acquisition = self._mw.control_widget.constant_acquisition_switch.isChecked()
 
     def differential_spectrum_changed(self):
-        self._spectrometer_logic().differential_spectrum = self._mw.control_widget.differential_spectrum_switch.isChecked()
+        self._spectrometer_logic.differential_spectrum = self._mw.control_widget.differential_spectrum_switch.isChecked()
 
     def fit_region_changed(self):
-        self._spectrometer_logic().fit_region = self._mw.data_widget.fit_region.getRegion()
+        self._spectrometer_logic.fit_region = self._mw.data_widget.fit_region.getRegion()
 
     def fit_region_value_changed(self):
-        self._spectrometer_logic().fit_region = (self._mw.data_widget.fit_region_from.value(),
+        self._spectrometer_logic.fit_region = (self._mw.data_widget.fit_region_from.value(),
                                                  self._mw.data_widget.fit_region_to.value())
 
     def axis_type_changed(self):
-        self._spectrometer_logic().axis_type_frequency = self._mw.data_widget.axis_type.isChecked()
+        self._spectrometer_logic.axis_type_frequency = self._mw.data_widget.axis_type.isChecked()
 
     def apply_settings(self):
         exposure_time = self._mw.settings_dialog.exposure_time_spinbox.value()
-        self._spectrometer_logic().exposure_time = exposure_time
+        self._spectrometer_logic.exposure_time = exposure_time
         max_repetitions = self._mw.settings_dialog.max_repetitions_spinbox.value()
-        self._spectrometer_logic().max_repetitions = max_repetitions
+        self._spectrometer_logic.max_repetitions = max_repetitions
         self._mw.control_widget.progress_bar.setValue(0)
         self._mw.control_widget.progress_bar.setRange(0, round(100 * exposure_time))
         self._delete_fit = self._mw.settings_dialog.delete_fit.isChecked()
 
     def keep_settings(self):
-        exposure_time = float(self._spectrometer_logic().exposure_time)
+        exposure_time = float(self._spectrometer_logic.exposure_time)
         self._mw.settings_dialog.exposure_time_spinbox.setValue(round(exposure_time))
-        self._mw.settings_dialog.max_repetitions_spinbox.setValue(self._spectrometer_logic().max_repetitions)
+        self._mw.settings_dialog.max_repetitions_spinbox.setValue(self._spectrometer_logic.max_repetitions)
         self._mw.control_widget.progress_bar.setRange(0, round(100 * exposure_time))
         self._mw.settings_dialog.delete_fit.setChecked(self._delete_fit)
 
     def target_changed(self):
-        x_data = self._spectrometer_logic().x_data
+        x_data = self._spectrometer_logic.x_data
         if x_data is None:
             return
-        start_index = -1 if self._spectrometer_logic().axis_type_frequency else 0
-        end_index = 0 if self._spectrometer_logic().axis_type_frequency else -1
+        start_index = -1 if self._spectrometer_logic.axis_type_frequency else 0
+        end_index = 0 if self._spectrometer_logic.axis_type_frequency else -1
         self._target_x = self._mw.data_widget.target_point.pos()[0]
 
         if self._target_x < min(x_data):
@@ -346,7 +346,7 @@ class SpectrometerGui(GuiBase):
         elif self._target_x > max(x_data):
             self._target_x = x_data[end_index]
 
-        new_y = self._spectrometer_logic().get_spectrum_at_x(self._target_x)
+        new_y = self._spectrometer_logic.get_spectrum_at_x(self._target_x)
         self._mw.data_widget.target_x.setValue(self._target_x)
         self._mw.data_widget.target_y.setValue(new_y)
 

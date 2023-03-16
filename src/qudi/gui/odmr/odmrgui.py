@@ -76,7 +76,7 @@ class OdmrGui(GuiBase):
 
     def on_activate(self):
         # Create main window
-        logic = self._odmr_logic()
+        logic = self._odmr_logic
         data_constraints = logic.data_constraints
         mw_constraints = logic.microwave_constraints
         self.__cw_control_available = True
@@ -162,7 +162,7 @@ class OdmrGui(GuiBase):
 
     def __connect_cw_control_signals(self):
         self._cw_control_dockwidget.sigCwParametersChanged.connect(
-            self._odmr_logic().set_cw_parameters
+            self._odmr_logic.set_cw_parameters
         )
         self._cw_control_dockwidget.sigClosed.connect(
             lambda: self._mw.action_show_cw_controls.setChecked(False)
@@ -172,7 +172,7 @@ class OdmrGui(GuiBase):
         self._fit_dockwidget.fit_widget.sigDoFit.connect(self._fit_clicked)
 
     def __connect_scan_control_signals(self):
-        logic = self._odmr_logic()
+        logic = self._odmr_logic
         self._scan_control_dockwidget.sigRangeCountChanged.connect(
             logic.set_frequency_range_count, QtCore.Qt.QueuedConnection
         )
@@ -201,14 +201,14 @@ class OdmrGui(GuiBase):
         )
 
     def __connect_gui_signals(self):
-        logic = self._odmr_logic()
+        logic = self._odmr_logic
         self.sigToggleScan.connect(logic.toggle_odmr_scan, QtCore.Qt.QueuedConnection)
         self.sigToggleCw.connect(logic.toggle_cw_output, QtCore.Qt.QueuedConnection)
         self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
         self.sigSaveData.connect(logic.save_odmr_data, QtCore.Qt.QueuedConnection)
 
     def __connect_logic_signals(self):
-        logic = self._odmr_logic()
+        logic = self._odmr_logic
         logic.sigScanStateUpdated.connect(self._update_scan_state, QtCore.Qt.QueuedConnection)
         logic.sigCwStateUpdated.connect(self._update_cw_state, QtCore.Qt.QueuedConnection)
         logic.sigElapsedUpdated.connect(self._mw.set_elapsed, QtCore.Qt.QueuedConnection)
@@ -250,7 +250,7 @@ class OdmrGui(GuiBase):
         self.sigSaveData.disconnect()
 
     def __disconnect_logic_signals(self):
-        logic = self._odmr_logic()
+        logic = self._odmr_logic
         logic.sigScanStateUpdated.disconnect(self._update_scan_state)
         logic.sigCwStateUpdated.disconnect(self._update_cw_state)
         logic.sigElapsedUpdated.disconnect(self._mw.set_elapsed)
@@ -311,7 +311,7 @@ class OdmrGui(GuiBase):
 
     @QtCore.Slot()
     def _apply_odmr_settings(self):
-        self._odmr_logic().set_sample_rate(
+        self._odmr_logic.set_sample_rate(
             data_rate=self._odmr_settings_dialog.data_rate_spinbox.value(),
             oversampling=self._odmr_settings_dialog.oversampling_spinbox.value()
         )
@@ -319,7 +319,7 @@ class OdmrGui(GuiBase):
 
     @QtCore.Slot()
     def _restore_odmr_settings(self):
-        logic = self._odmr_logic()
+        logic = self._odmr_logic
         self._odmr_settings_dialog.oversampling_spinbox.setValue(logic.oversampling)
         self._odmr_settings_dialog.data_rate_spinbox.setValue(logic.data_rate)
         self._odmr_settings_dialog.max_scans_shown_spinbox.setValue(self._max_shown_scans)
@@ -359,7 +359,7 @@ class OdmrGui(GuiBase):
 
     def _update_cw_parameters(self, parameters=None):
         if parameters is None:
-            parameters = self._odmr_logic().cw_parameters
+            parameters = self._odmr_logic.cw_parameters
         self._cw_control_dockwidget.set_cw_parameters(frequency=parameters.get('frequency', None),
                                                       power=parameters.get('power', None))
 
@@ -367,7 +367,7 @@ class OdmrGui(GuiBase):
         """ Refresh the plot widgets with new data. """
         range_index = self._scan_control_dockwidget.selected_range
         channel = self._scan_control_dockwidget.selected_channel
-        logic = self._odmr_logic()
+        logic = self._odmr_logic
         signal_data = logic.signal_data
         raw_data = logic.raw_data
         frequency_data = logic.frequency_data
@@ -388,7 +388,7 @@ class OdmrGui(GuiBase):
         logic.
         """
         if param_dict is None:
-            logic = self._odmr_logic()
+            logic = self._odmr_logic
             param_dict = logic.scan_parameters
 
         param = param_dict.get('data_rate')
@@ -422,7 +422,7 @@ class OdmrGui(GuiBase):
             channel = self._scan_control_dockwidget.selected_channel
         if range_index is None:
             range_index = self._scan_control_dockwidget.selected_range
-        logic = self._odmr_logic()
+        logic = self._odmr_logic
         channel_unit = logic.data_constraints.channel_units[channel]
         self._plot_widget.set_signal_label(channel, channel_unit)
         self._update_scan_data()

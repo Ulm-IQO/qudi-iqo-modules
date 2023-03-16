@@ -134,36 +134,36 @@ class SwitchGui(GuiBase):
             self._state_colorscheme == StateColorScheme.HIGHLIGHT
         )
         self._mw.action_view_alt_toggle_style.setChecked(self._alt_toggle_switch_style)
-        self._mw.setWindowTitle(f'qudi: {self.switchlogic().device_name.title()}')
+        self._mw.setWindowTitle(f'qudi: {self.switchlogic.device_name.title()}')
 
         self._populate_switches()
 
-        self.sigSwitchChanged.connect(self.switchlogic().set_state, QtCore.Qt.QueuedConnection)
+        self.sigSwitchChanged.connect(self.switchlogic.set_state, QtCore.Qt.QueuedConnection)
         self._mw.action_periodic_state_check.toggled.connect(
-            self.switchlogic().toggle_watchdog, QtCore.Qt.QueuedConnection
+            self.switchlogic.toggle_watchdog, QtCore.Qt.QueuedConnection
         )
         self._mw.switch_view_action_group.triggered.connect(self._update_switch_appearance)
         self._mw.action_view_highlight_state.triggered.connect(self._update_state_colorscheme)
         self._mw.action_view_alt_toggle_style.triggered.connect(self._update_toggle_switch_style)
-        self.switchlogic().sigWatchdogToggled.connect(
+        self.switchlogic.sigWatchdogToggled.connect(
             self._watchdog_updated, QtCore.Qt.QueuedConnection
         )
-        self.switchlogic().sigSwitchesChanged.connect(
+        self.switchlogic.sigSwitchesChanged.connect(
             self._switches_updated, QtCore.Qt.QueuedConnection
         )
 
         self._restore_window_geometry(self._mw)
 
-        self._watchdog_updated(self.switchlogic().watchdog_active)
-        self._switches_updated(self.switchlogic().states)
+        self._watchdog_updated(self.switchlogic.watchdog_active)
+        self._switches_updated(self.switchlogic.states)
         self._update_state_colorscheme()
         self.show()
 
     def on_deactivate(self):
         """ Hide window empty the GUI and disconnect signals
         """
-        self.switchlogic().sigSwitchesChanged.disconnect(self._switches_updated)
-        self.switchlogic().sigWatchdogToggled.disconnect(self._watchdog_updated)
+        self.switchlogic.sigSwitchesChanged.disconnect(self._switches_updated)
+        self.switchlogic.sigWatchdogToggled.disconnect(self._watchdog_updated)
         self._mw.action_view_highlight_state.triggered.disconnect()
         self._mw.action_view_alt_toggle_style.triggered.disconnect()
         self._mw.switch_view_action_group.triggered.disconnect()
@@ -183,7 +183,7 @@ class SwitchGui(GuiBase):
         """ Dynamically build the gui
         """
         self._widgets = dict()
-        for ii, (switch, states) in enumerate(self.switchlogic().available_states.items()):
+        for ii, (switch, states) in enumerate(self.switchlogic.available_states.items()):
             label = self._get_switch_label(switch)
 
             if self._switch_row_num_max is None:
@@ -276,7 +276,7 @@ class SwitchGui(GuiBase):
             self._mw.close()
             self._delete_switches()
             self._populate_switches()
-            self._switches_updated(self.switchlogic().states)
+            self._switches_updated(self.switchlogic.states)
             self._update_state_colorscheme()
             self._mw.show()
 
@@ -300,7 +300,7 @@ class SwitchGui(GuiBase):
                 self._mw.close()
                 self._delete_switches()
                 self._populate_switches()
-                self._switches_updated(self.switchlogic().states)
+                self._switches_updated(self.switchlogic.states)
                 self._update_state_colorscheme()
                 self._mw.show()
 

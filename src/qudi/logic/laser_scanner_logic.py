@@ -87,8 +87,8 @@ class LaserScannerLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self._scanning_device = self.confocalscanner1()
-        self._save_logic = self.savelogic()
+        self._scanning_device = self.confocalscanner1
+        self._save_logic = self.savelogic
 
         # Reads in the maximal scanning range. The unit of that scan range is
         # micrometer!

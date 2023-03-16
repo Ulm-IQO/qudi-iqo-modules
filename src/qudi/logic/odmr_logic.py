@@ -128,8 +128,8 @@ class OdmrLogic(LogicBase):
         Initialisation performed during activation of the module.
         """
         # Recall status variables and check against constraints
-        mw_constraints = self._microwave().constraints
-        data_constraints = self._data_scanner().constraints
+        mw_constraints = self._microwave.constraints
+        data_constraints = self._data_scanner.constraints
 
         self._cw_frequency = mw_constraints.frequency_in_range(self._cw_frequency)[1]
         self._cw_power = mw_constraints.power_in_range(self._cw_power)[1]
@@ -195,7 +195,7 @@ class OdmrLogic(LogicBase):
         samples_per_line = sum(freq_range[-1] for freq_range in self._scan_frequency_ranges)
         # Add 5% Safety; Minimum of 1 line
         self.__estimated_lines = max(1, int(1.05 * estimated_samples / samples_per_line))
-        for channel in self._data_scanner().constraints.channel_names:
+        for channel in self._data_scanner.constraints.channel_names:
             self._raw_data[channel] = [
                 np.full((freq_arr.size, self.__estimated_lines), np.nan) for freq_arr in
                 self._frequency_data
@@ -238,11 +238,11 @@ class OdmrLogic(LogicBase):
 
     @property
     def data_constraints(self):
-        return self._data_scanner().constraints
+        return self._data_scanner.constraints
 
     @property
     def microwave_constraints(self):
-        return self._microwave().constraints
+        return self._microwave.constraints
 
     @property
     def signal_data(self):
@@ -461,7 +461,7 @@ class OdmrLogic(LogicBase):
     @QtCore.Slot(bool)
     def toggle_cw_output(self, enable):
         with self._threadlock:
-            microwave = self._microwave()
+            microwave = self._microwave
             # Return early if CW output is already in desired state
             if enable == (microwave.module_state != ModuleState.IDLE and not microwave.is_scanning):
                 self.sigCwStateUpdated.emit(enable)
@@ -506,8 +506,8 @@ class OdmrLogic(LogicBase):
                 self.sigScanStateUpdated.emit(True)
                 return
 
-            microwave = self._microwave()
-            sampler = self._data_scanner()
+            microwave = self._microwave
+            sampler = self._data_scanner
 
             self.toggle_cw_output(False)
             self._lock_module()
@@ -581,7 +581,7 @@ class OdmrLogic(LogicBase):
         """
         with self._threadlock:
             if self.module_state == ModuleState.LOCKED:
-                self._microwave().off()
+                self._microwave.off()
                 self._unlock_module()
             self.sigScanStateUpdated.emit(False)
 
@@ -607,7 +607,7 @@ class OdmrLogic(LogicBase):
                 return
 
             try:
-                scanner = self._data_scanner()
+                scanner = self._data_scanner
                 new_counts = scanner.acquire_frame()
                 if self._oversampling_factor > 1:
                     for ch in new_counts:
@@ -615,7 +615,7 @@ class OdmrLogic(LogicBase):
                             new_counts[ch].reshape(-1, self._oversampling_factor),
                             axis=1
                         )
-                self._microwave().reset_scan()
+                self._microwave.reset_scan()
             except:
                 self.log.exception('Error while trying to read ODMR scan data from hardware:')
                 self.stop_odmr_scan()

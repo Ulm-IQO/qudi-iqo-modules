@@ -145,7 +145,7 @@ class ScannerGui(GuiBase):
         This method executes the all the inits for the differnt GUIs and passes
         the event argument from fysom to the methods.
         """
-        self._optimizer_id = self._optimize_logic().module_uuid
+        self._optimizer_id = self._optimize_logic.module_uuid
 
         self.scan_2d_dockwidgets = dict()
         self.scan_1d_dockwidgets = dict()
@@ -164,7 +164,7 @@ class ScannerGui(GuiBase):
 
         # Automatically generate scanning widgets for desired scans
         scans = list()
-        axes = tuple(self._scanning_logic().scanner_axes)
+        axes = tuple(self._scanning_logic.scanner_axes)
         for i, first_ax in enumerate(axes, 1):
             #if not scans:
             scans.append((first_ax,))
@@ -180,50 +180,50 @@ class ScannerGui(GuiBase):
 
         # Connect signals
         self.sigScannerTargetChanged.connect(
-            self._scanning_logic().set_target_position, QtCore.Qt.QueuedConnection
+            self._scanning_logic.set_target_position, QtCore.Qt.QueuedConnection
         )
         self.sigScanSettingsChanged.connect(
-            self._scanning_logic().set_scan_settings, QtCore.Qt.QueuedConnection
+            self._scanning_logic.set_scan_settings, QtCore.Qt.QueuedConnection
         )
-        self.sigToggleScan.connect(self._scanning_logic().toggle_scan, QtCore.Qt.QueuedConnection)
+        self.sigToggleScan.connect(self._scanning_logic.toggle_scan, QtCore.Qt.QueuedConnection)
         self.sigToggleOptimize.connect(
-            self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection
+            self._optimize_logic.toggle_optimize, QtCore.Qt.QueuedConnection
         )
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize, QtCore.Qt.QueuedConnection)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
         self._mw.action_save_all_scans.triggered.connect(lambda x: self.save_scan_data(scan_axes=None))
-        self.sigSaveScan.connect(self._data_logic().save_scan_by_axis, QtCore.Qt.QueuedConnection)
+        self.sigSaveScan.connect(self._data_logic.save_scan_by_axis, QtCore.Qt.QueuedConnection)
         self.sigSaveFinished.connect(self._save_dialog.hide, QtCore.Qt.QueuedConnection)
-        self._data_logic().sigSaveStateChanged.connect(self._track_save_status)
+        self._data_logic.sigSaveStateChanged.connect(self._track_save_status)
 
         self._mw.action_utility_zoom.toggled.connect(self.toggle_cursor_zoom)
         self._mw.action_utility_full_range.triggered.connect(
-            self._scanning_logic().set_full_scan_ranges, QtCore.Qt.QueuedConnection
+            self._scanning_logic.set_full_scan_ranges, QtCore.Qt.QueuedConnection
         )
         self._mw.action_history_forward.triggered.connect(
-            self._data_logic().history_next, QtCore.Qt.QueuedConnection
+            self._data_logic.history_next, QtCore.Qt.QueuedConnection
         )
         self._mw.action_history_back.triggered.connect(
-            self._data_logic().history_previous, QtCore.Qt.QueuedConnection
+            self._data_logic.history_previous, QtCore.Qt.QueuedConnection
         )
 
-        self._scanning_logic().sigScannerTargetChanged.connect(
+        self._scanning_logic.sigScannerTargetChanged.connect(
             self.scanner_target_updated, QtCore.Qt.QueuedConnection
         )
-        self._scanning_logic().sigScanSettingsChanged.connect(
+        self._scanning_logic.sigScanSettingsChanged.connect(
             self.scanner_settings_updated, QtCore.Qt.QueuedConnection
         )
-        self._scanning_logic().sigScanStateChanged.connect(
+        self._scanning_logic.sigScanStateChanged.connect(
             self.scan_state_updated, QtCore.Qt.QueuedConnection
         )
-        self._data_logic().sigHistoryScanDataRestored.connect(
+        self._data_logic.sigHistoryScanDataRestored.connect(
             self._update_from_history, QtCore.Qt.QueuedConnection
         )
-        self._optimize_logic().sigOptimizeStateChanged.connect(
+        self._optimize_logic.sigOptimizeStateChanged.connect(
             self.optimize_state_updated, QtCore.Qt.QueuedConnection
         )
         self.sigOptimizerSettingsChanged.connect(
-            self._optimize_logic().set_optimize_settings, QtCore.Qt.QueuedConnection)
+            self._optimize_logic.set_optimize_settings, QtCore.Qt.QueuedConnection)
 
         self.sigShowSaveDialog.connect(lambda x: self._save_dialog.show() if x else self._save_dialog.hide(),
                                        QtCore.Qt.DirectConnection)
@@ -264,11 +264,11 @@ class ScannerGui(GuiBase):
         self._mw.action_history_back.triggered.disconnect()
         self._mw.action_utility_full_range.triggered.disconnect()
         self._mw.action_utility_zoom.toggled.disconnect()
-        self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
-        self._scanning_logic().sigScanSettingsChanged.disconnect(self.scanner_settings_updated)
-        self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
-        self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
-        self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
+        self._scanning_logic.sigScannerTargetChanged.disconnect(self.scanner_target_updated)
+        self._scanning_logic.sigScanSettingsChanged.disconnect(self.scanner_settings_updated)
+        self._scanning_logic.sigScanStateChanged.disconnect(self.scan_state_updated)
+        self._optimize_logic.sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
+        self._data_logic.sigHistoryScanDataRestored.disconnect(self._update_from_history)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
 
@@ -288,8 +288,8 @@ class ScannerGui(GuiBase):
         """ Configuration and initialisation of the optimizer settings dialog.
         """
         # Create the Settings window
-        self._osd = OptimizerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
-                                           tuple(self._scanning_logic().scanner_channels.values()),
+        self._osd = OptimizerSettingDialog(tuple(self._scanning_logic.scanner_axes.values()),
+                                           tuple(self._scanning_logic.scanner_channels.values()),
                                            self._optimizer_plot_dims)
 
         # Connect MainWindow actions
@@ -308,8 +308,8 @@ class ScannerGui(GuiBase):
         """
         """
         # Create the Settings dialog
-        self._ssd = ScannerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
-                                         self._scanning_logic().scanner_constraints)
+        self._ssd = ScannerSettingDialog(tuple(self._scanning_logic.scanner_axes.values()),
+                                         self._scanning_logic.scanner_constraints)
 
         # Connect MainWindow actions
         self._mw.action_scanner_settings.triggered.connect(lambda x: self._ssd.exec_())
@@ -323,7 +323,7 @@ class ScannerGui(GuiBase):
 
     def _init_static_dockwidgets(self):
         self.scanner_control_dockwidget = AxesControlDockWidget(
-            tuple(self._scanning_logic().scanner_axes.values())
+            tuple(self._scanning_logic.scanner_axes.values())
         )
         if self._default_position_unit_prefix is not None:
             self.scanner_control_dockwidget.set_assumed_unit_prefix(
@@ -357,9 +357,9 @@ class ScannerGui(GuiBase):
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
 
-        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
+        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic.scanner_axes,
                                                         plot_dims=self._optimizer_plot_dims,
-                                                        sequence=self._optimize_logic().scan_sequence)
+                                                        sequence=self._optimize_logic.scan_sequence)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
         self.optimizer_dockwidget.visibilityChanged.connect(
@@ -471,7 +471,7 @@ class ScannerGui(GuiBase):
         """
         self.sigShowSaveDialog.emit(True)
         try:
-            data_logic = self._data_logic()
+            data_logic = self._data_logic
             if scan_axes is None:
                 scan_axes = [scan.scan_axes for scan in data_logic.get_all_current_scan_data()]
             else:
@@ -508,10 +508,10 @@ class ScannerGui(GuiBase):
         dockwidget.deleteLater()
 
     def _add_scan_dockwidget(self, axes):
-        axes_constr = self._scanning_logic().scanner_axes
+        axes_constr = self._scanning_logic.scanner_axes
         axes_constr = tuple(axes_constr[ax] for ax in axes)
-        channel_constr = list(self._scanning_logic().scanner_channels.values())
-        optimizer_range = self._optimize_logic().scan_range
+        channel_constr = list(self._scanning_logic.scanner_channels.values())
+        optimizer_range = self._optimize_logic.scan_range
         axes = tuple(axes)
 
         if len(axes) == 1:
@@ -590,7 +590,7 @@ class ScannerGui(GuiBase):
     def restore_scanner_settings(self):
         """ ToDo: Document
         """
-        self.scanner_settings_updated({'frequency': self._scanning_logic().scan_frequency})
+        self.scanner_settings_updated({'frequency': self._scanning_logic.scan_frequency})
 
     @QtCore.Slot(bool)
     def scanner_settings_toggle_gui_lock(self, locked):
@@ -609,7 +609,7 @@ class ScannerGui(GuiBase):
                               If None (default) read the scanner setting from logic and update.
         """
         if not isinstance(settings, dict):
-            settings = self._scanning_logic().scan_settings
+            settings = self._scanning_logic.scan_settings
 
         if self._scanner_settings_locked:
             return
@@ -659,7 +659,7 @@ class ScannerGui(GuiBase):
             return
 
         if not isinstance(pos_dict, dict):
-            pos_dict = self._scanning_logic().scanner_target
+            pos_dict = self._scanning_logic.scanner_target
 
         self._update_scan_markers(pos_dict)
         self.scanner_control_dockwidget.set_target(pos_dict)
@@ -783,10 +783,10 @@ class ScannerGui(GuiBase):
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
         restored_axs = []
-        ids_to_restore = np.asarray([self._data_logic().get_current_scan_id(ax) for ax in avail_axs])
+        ids_to_restore = np.asarray([self._data_logic.get_current_scan_id(ax) for ax in avail_axs])
         ids_to_restore = ids_to_restore[~np.isnan(ids_to_restore)].astype(int)
 
-        [self._data_logic().restore_from_history(id) for id in ids_to_restore]
+        [self._data_logic.restore_from_history(id) for id in ids_to_restore]
 
         # auto range 2d widgets
         # todo: shouldn't be needed, as .restore_from_history() calls _update_scan_data() calls autoRange()
@@ -911,7 +911,7 @@ class ScannerGui(GuiBase):
         self.update_crosshair_sizes()
 
     def update_crosshair_sizes(self):
-        axes_constr = self._scanning_logic().scanner_axes
+        axes_constr = self._scanning_logic.scanner_axes
         for ax, dockwidget in self.scan_2d_dockwidgets.items():
             width = self._osd.settings['scan_range'][ax[0]]
             height = self._osd.settings['scan_range'][ax[1]]
@@ -932,22 +932,22 @@ class ScannerGui(GuiBase):
     @QtCore.Slot(dict)
     def update_optimizer_settings(self, settings=None):
         if not isinstance(settings, dict):
-            settings = self._optimize_logic().optimize_settings
+            settings = self._optimize_logic.optimize_settings
 
         # Update optimizer settings QDialog
         self._osd.change_settings(settings)
 
         # Adjust optimizer settings
         if 'scan_sequence' in settings:
-            new_settings = self._optimize_logic().check_sanity_optimizer_settings(settings, self._optimizer_plot_dims)
+            new_settings = self._optimize_logic.check_sanity_optimizer_settings(settings, self._optimizer_plot_dims)
             if settings['scan_sequence'] != new_settings['scan_sequence']:
                 new_seq = new_settings['scan_sequence']
                 self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
                                  f" Defaulted optimizer to= {new_seq}")
-                self._optimize_logic().scan_sequence = new_seq
+                self._optimize_logic.scan_sequence = new_seq
             settings = new_settings
 
-            axes_constr = self._scanning_logic().scanner_axes
+            axes_constr = self._scanning_logic.scanner_axes
             self.optimizer_dockwidget.scan_sequence = settings['scan_sequence']
 
             for seq_step in settings['scan_sequence']:
@@ -974,7 +974,7 @@ class ScannerGui(GuiBase):
 
                 # Adjust 1D plot y-axis label
                 if 'data_channel' in settings and len(seq_step)==1:
-                    channel_constr = self._scanning_logic().scanner_channels
+                    channel_constr = self._scanning_logic.scanner_channels
                     channel = settings['data_channel']
                     self.optimizer_dockwidget.set_plot_label(axs=seq_step, axis='left',
                                                              text=channel,

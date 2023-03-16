@@ -77,8 +77,8 @@ class VoltScanGui(GuiBase):
         """
         self.log.warning("This module has not been tested on the new qudi core."
                          "Use with caution and contribute bug fixed back, please.")
-        self._voltscan_logic = self.voltagescannerlogic1()
-        self._savelogic = self.savelogic()
+        self._voltscan_logic = self.voltagescannerlogic1
+        self._savelogic = self.savelogic
 
         # Use the inherited class 'Ui_VoltagescannerGuiUI' to create now the
         # GUI element:
