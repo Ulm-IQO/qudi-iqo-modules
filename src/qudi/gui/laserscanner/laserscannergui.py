@@ -28,7 +28,7 @@ from qudi.core.connector import Connector
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.core.module import GuiBase
 from qudi.util.paths import get_artwork_dir
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 from qudi.util.uic import loadUi
 
 

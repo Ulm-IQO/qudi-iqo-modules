@@ -26,7 +26,7 @@ import numpy as np
 from enum import Enum
 from functools import partial
 from itertools import cycle
-from PySide2 import QtCore, QtGui
+from PySide6 import QtCore, QtGui
 from pyqtgraph import mkColor
 from typing import Optional, Mapping, Sequence, Union, Tuple, List
 from lmfit.model import ModelResult as _ModelResult

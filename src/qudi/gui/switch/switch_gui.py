@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from enum import IntEnum
-from PySide2 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -57,29 +57,29 @@ class SwitchMainWindow(QtWidgets.QMainWindow):
         self.setMenuBar(menu_bar)
 
         menu = menu_bar.addMenu('Menu')
-        self.action_close = QtWidgets.QAction('Close Window')
+        self.action_close = QtGui.QAction('Close Window')
         self.action_close.setCheckable(False)
         self.action_close.setIcon(QtGui.QIcon('artwork/icons/application-exit.svg'))
         self.addAction(self.action_close)
         menu.addAction(self.action_close)
 
         menu = menu_bar.addMenu('View')
-        self.action_periodic_state_check = QtWidgets.QAction('Periodic State Checking')
+        self.action_periodic_state_check = QtGui.QAction('Periodic State Checking')
         self.action_periodic_state_check.setCheckable(True)
         menu.addAction(self.action_periodic_state_check)
         separator = menu.addSeparator()
         separator.setText('Switch Appearance')
-        self.switch_view_actions = [QtWidgets.QAction('use toggle switches'),
-                                    QtWidgets.QAction('use radio buttons')]
-        self.switch_view_action_group = QtWidgets.QActionGroup(self)
+        self.switch_view_actions = [QtGui.QAction('use toggle switches'),
+                                    QtGui.QAction('use radio buttons')]
+        self.switch_view_action_group = QtGui.QActionGroup(self)
         for action in self.switch_view_actions:
             action.setCheckable(True)
             self.switch_view_action_group.addAction(action)
             menu.addAction(action)
-        self.action_view_highlight_state = QtWidgets.QAction('highlight state labels')
+        self.action_view_highlight_state = QtGui.QAction('highlight state labels')
         self.action_view_highlight_state.setCheckable(True)
         menu.addAction(self.action_view_highlight_state)
-        self.action_view_alt_toggle_style = QtWidgets.QAction('alternative toggle switch')
+        self.action_view_alt_toggle_style = QtGui.QAction('alternative toggle switch')
         self.action_view_alt_toggle_style.setCheckable(True)
         menu.addAction(self.action_view_alt_toggle_style)
 

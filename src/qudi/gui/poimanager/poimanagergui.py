@@ -32,7 +32,7 @@ from qudi.util.helpers import natural_sort
 from qudi.core.module import GuiBase
 
 from qudi.util.colordefs import QudiPalettePale as palette
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.util import uic
 from qudi.util.widgets.plotting.image_widget import MouseTrackingImageWidget
 
@@ -201,19 +201,19 @@ class NameValidator(QtGui.QValidator):
         # Return intermediate status when empty string is passed
         if not string:
             if self._empty_allowed:
-                return self.Acceptable, '', position
+                return QtGui.QValidator.Acceptable, '', position
             else:
-                return self.Intermediate, string, position
+                return QtGui.QValidator.Intermediate, string, position
 
         match = self.name_re.match(string)
         if not match:
-            return self.Invalid, '', position
+            return QtGui.QValidator.Invalid, '', position
 
         matched = match.group()
         if matched == string:
-            return self.Acceptable, string, position
+            return QtGui.QValidator.Acceptable, string, position
 
-        return self.Invalid, matched, position
+        return QtGui.QValidator.Invalid, matched, position
 
     def fixup(self, text):
         match = self.name_re.search(text)
@@ -472,7 +472,7 @@ class PoiManagerGui(GuiBase):
             self._poi_manager_logic().set_poi_anchor_from_position, QtCore.Qt.QueuedConnection)
         self._mw.delete_poi_PushButton.clicked.connect(
             self._poi_manager_logic().delete_poi, QtCore.Qt.QueuedConnection)
-        self._mw.active_poi_ComboBox.activated[str].connect(
+        self._mw.active_poi_ComboBox.currentTextChanged.connect(
             self._poi_manager_logic().set_active_poi, QtCore.Qt.QueuedConnection)
         self._mw.goto_poi_after_update_checkBox.stateChanged.connect(
             self._poi_manager_logic().set_move_scanner_after_optimise, QtCore.Qt.QueuedConnection)

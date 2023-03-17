@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.gui.pulsed.pulsed_custom_widgets import MultipleCheckboxWidget, AnalogParametersWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 

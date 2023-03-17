@@ -23,7 +23,7 @@ import os
 
 from qudi.core.connector import Connector
 from qudi.core.module import GuiBase
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from qudi.util import uic
 
 

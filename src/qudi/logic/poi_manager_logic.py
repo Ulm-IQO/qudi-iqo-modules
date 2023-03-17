@@ -30,7 +30,7 @@ import numpy as np
 import time
 from datetime import datetime
 from collections import OrderedDict
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector

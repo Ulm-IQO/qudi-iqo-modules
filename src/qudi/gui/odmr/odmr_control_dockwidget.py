@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('OdmrCwControlDockWidget', 'OdmrScanControlDockWidget')
 
 import numpy as np
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
@@ -116,7 +116,7 @@ class OdmrScanControlDockWidget(AdvancedDockWidget):
     def __init__(self, *args, power_range=None, frequency_range=None, data_channels=None, points_range=None,  **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle('ODMR Scan Control')
-        self.setFeatures(self.DockWidgetFloatable | self.DockWidgetMovable)
+        self.setFeatures(QtWidgets.QDockWidget.DockWidgetFloatable | QtWidgets.QDockWidget.DockWidgetMovable)
 
         # Determine minimal spinbox width from current default metrics
         self._min_spinbox_width = QtGui.QFontMetrics(ScienDSpinBox().font()).width(
@@ -167,7 +167,7 @@ class OdmrScanControlDockWidget(AdvancedDockWidget):
         h_layout.addWidget(self.scan_power_spinbox)
         layout.addLayout(h_layout)
         frame = QtWidgets.QFrame()
-        frame.setFrameShape(frame.HLine)
+        frame.setFrameShape(QtWidgets.QFrame.HLine)
         layout.addWidget(frame)
         self._ranges_layout = QtWidgets.QGridLayout()
         self._ranges_layout.setContentsMargins(0, 0, 0, 0)

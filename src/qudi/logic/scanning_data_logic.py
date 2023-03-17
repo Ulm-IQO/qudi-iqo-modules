@@ -30,7 +30,7 @@ import operator
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex

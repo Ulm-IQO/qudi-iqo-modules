@@ -14,7 +14,7 @@ unix_dep = [
     'nidaqmx>=0.5.7',
     'numpy>=1.23.3',
     'pyqtgraph>=0.13.1',
-    'PySide2>=5.15.2',
+    'PySide6',
     'PyVisa>=1.12.0',
     'scipy>=1.9.1',
     'zaber_motion>=2.14.6'
@@ -30,7 +30,7 @@ windows_dep = [
     'nidaqmx>=0.5.7',
     'numpy>=1.23.3',
     'pyqtgraph>=0.13.1',
-    'PySide2>=5.15.2',
+    'PySide6',
     'PyVisa>=1.12.0',
     'scipy>=1.9.1',
     'zaber_motion>=2.14.6'

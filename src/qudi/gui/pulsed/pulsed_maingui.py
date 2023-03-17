@@ -35,7 +35,7 @@ from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.core.module import GuiBase
 from qudi.util import uic
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
@@ -388,11 +388,11 @@ class PulsedMeasurementGui(GuiBase):
         self._pa.ana_param_num_laser_pulse_SpinBox.editingFinished.connect(self.measurement_settings_changed)
 
         self._pa.ana_param_record_length_DoubleSpinBox.editingFinished.connect(self.fast_counter_settings_changed)
-        self._pa.ana_param_fc_bins_ComboBox.currentIndexChanged.connect(self.fast_counter_settings_changed)
+        self._pa.ana_param_fc_bins_ComboBox.currentTextChanged.connect(self.fast_counter_settings_changed)
 
         self._pa.time_param_ana_periode_DoubleSpinBox.editingFinished.connect(self.measurement_timer_changed)
         self._pa.ana_param_errorbars_CheckBox.toggled.connect(self.toggle_error_bars)
-        self._pa.second_plot_ComboBox.currentIndexChanged[str].connect(self.second_plot_changed)
+        self._pa.second_plot_ComboBox.currentTextChanged[str].connect(self.second_plot_changed)
         return
 
     def _connect_extraction_tab_signals(self):

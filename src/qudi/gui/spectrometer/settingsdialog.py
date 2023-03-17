@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.toggle_switch import ToggleSwitch
 
@@ -72,4 +72,4 @@ class SettingsDialog(QtWidgets.QDialog):
         # Add internal signals
         buttonbox.accepted.connect(self.accept)
         buttonbox.rejected.connect(self.reject)
-        buttonbox.button(buttonbox.Apply).clicked.connect(self.accepted)
+        buttonbox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.accepted)
