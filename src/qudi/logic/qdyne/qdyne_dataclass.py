@@ -77,6 +77,7 @@ class readout_settings:
 
 @dataclass
 class TimeTagDataProcessorSettings:
+    count_mode: str = 'Average'
     count_length: int = 2000
     start_count: int = 0
     stop_count: int = 0
@@ -102,14 +103,14 @@ class FT_settings:
 
 @dataclass
 class Fit_settings:
-    @dataclass
-    class save_settings:
-        save_binary: bool = True
-        show_full: bool = True
-        full_list_name: str = ''
-        file_extension: str = ''
+@dataclass
+class save_settings:
+    save_binary: bool = True
+    show_full: bool = True
+    full_list_name: str = ''
+    file_extension: str = ''
 
-        def get_full_list_name(self):
+    def get_full_list_name(self):
 
-    @dataclass
-    class Plot_settings:
+@dataclass
+class Plot_settings:
