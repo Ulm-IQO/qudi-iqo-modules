@@ -17,14 +17,25 @@ import numpy as np
 
 class FourierAnalysis:
 
-    def input_settings(self):
-        self._range_around_peak =
-        self._zero_padding =
-        self._double_padding =
-        self._cut_time_trace =
-        self._sequence_length =
+    def input_settings(self, settings):
+        self._range_around_peak = settings.range_around_peak
+        self._padding_parameter = settings.padding_parameter
+        self._cut_time_trace = settings.cut_time_trace
+        self._spectrum_type = settings.spectrum_type
+        self._sequence_length_s = settings.sequence_length_s
 
-    def do_fft(self, time_trace=None, cut_time_trace=False, padding_param=0):
+    def analyze(self, time_trace):
+        ft_signal = self.do_fft(time_trace, self._cut_time_trace, self._padding_parameter)
+        return ft_signal
+
+    def get_spectrum(self, ft_signal):
+        if self._spectrum_type == 'amp':
+            spectrum = self.get_norm_amp_spectrum(ft_signal)
+        elif self._spectrum_type == 'power':
+            spectrum = self.get_norm_psd(ft_signal)
+        return spectrum
+
+    def do_fft(self, time_trace, cut_time_trace=False, padding_param=0):
         """
         @return ft: complex ndarray
         """
@@ -69,22 +80,26 @@ class FourierAnalysis:
         norm_psd = psd / (len(psd))**2
         return norm_psd
 
-    def get_half_norm_psd(self, ft):
-        return self.get_norm_psd(ft)[:int(len(ft) / 2)]
-
-    def get_half_norm_amp_spectrum(self, ft):
-        return self.get_norm_amp_spectrum(ft)[:int(len(ft) / 2)]
-
-    def get_half_frequency_array(self, sequence_length, ft):
-        return 1 / (sequence_length * len(ft))*np.arange(len(ft)/2)
+    def get_half_frequency_array(self, sequence_length_s, ft):
+        return 1 / (sequence_length_s * len(ft))*np.arange(len(ft)/2)
 
 class TimeTraceAnalyzer:
 
     def __init__(self):
         self.method = 'FT'
 
-    def configure(self):
+    def configure_method(self, method):
+        if method == 'FT':
+            self.analyzer = FourierAnalysis()
+
+    def input_settings(self, settings):
+        self.analyzer.input_settings(settings)
 
     def analyze(self, time_trace):
+        signal = self.analyzer.analyze(time_trace)
 
         return signal
+
+    def get_spectrum(self, signal):
+        spectrum = self.analyzer.get_spectrum(signal)
+        return spectrum
