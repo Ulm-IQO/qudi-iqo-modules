@@ -19,13 +19,30 @@ class TimeSeriesDataProcessor:
 
 class TimeTagDataProcessor:
     def __init__(self):
-        # self.count_length = 2000
-        # self.start_count = 0
-        # self.stop_count = self.start_count + self.count_length
-        # self.count_threshold = 90000
         # return
 
-    def photon_count(self, time_tag, start_count, stop_count, count_threshold=90000):
+    def input_settings(self, settings):
+        self._count_mode = settings.count_mode
+        self._count_length = settings.count_length
+        self._start_count = settings.start_count
+        self._stop_count = settings.stop_count
+        self._count_threshold = settings.count_threshold
+
+    def process(self, time_tag_data):
+        if self._count_mode == 'Average':
+            counts_time_trace = self._photon_count(time_tag_data,
+                                                  self._start_count,
+                                                  self._stop_count,
+                                                  self._count_threshold)
+        elif self._count_mode == 'WeightedAverage':
+            counts_time_trace = self._weighted_photon_count(time_tag_data,
+                                                           self._weight,
+                                                           self._start_count,
+                                                           self._stop_count,
+                                                           self._count_threshold)
+        return counts_time_trace
+
+    def _photon_count(self, time_tag, start_count, stop_count, count_threshold=90000):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
@@ -37,7 +54,7 @@ class TimeTagDataProcessor:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
         return counts_time_trace
-    def weighted_photon_count(self, time_tag, weight, start_count, stop_count, count_threshold=90000):
+    def _weighted_photon_count(self, time_tag, weight, start_count, stop_count, count_threshold=90000):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
@@ -52,9 +69,15 @@ class TimeTagDataProcessor:
 
 class RawDataProcessor:
 
-    def configure(self):
-        pass
+    def configure_data_type(self, data_type):
+        if data_type == 'TimeSeries':
+            self.processor = TimeSeriesDataProcessor()
+        elif data_type == 'TimeTag':
+            self.processor = TimeTagDataProcessor()
 
-    def process(self):
+    def input_settings(self, settings):
+        self.processor.input_settings(settings)
+    def process(self, raw_data):
+        state_time_trace = self.proseccor.process(raw_data)
 
-        return time_trace
+        return state_time_trace
