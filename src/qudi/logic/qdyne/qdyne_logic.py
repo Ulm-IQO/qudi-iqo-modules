@@ -26,3 +26,33 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
+
+from qudi.logic.qdyne.qdyne_raw_data_processor import RawDataProcessor
+from qudi.logic.qdyne.qdyne_time_trace_analysis import TimeTraceAnalyzer
+
+class QdyneLogic:
+
+    def __init__(self):
+        self.rd_processor = RawDataProcessor()
+        self.tt_analyzer = TimeTraceAnalyzer()
+
+    def configure(self):
+        pass
+
+    def start_measurement(self):
+        pass
+
+    def stop_measurement(self):
+        pass
+
+    def get_raw_data(self):
+        pass
+
+    def process_raw_data(self):
+        self.time_trace = self.rd_processor.process()
+
+    def analyze_time_trace(self):
+        self.signal = self.tt_analyzer.analyze(self.time_trace)
+
+    def save(self):
+        pass
