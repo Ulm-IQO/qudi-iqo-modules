@@ -58,20 +58,7 @@ class Master_settings:
     extraction_method: str = ''
     fit_method: str = ''
 
-@dataclass
-class save_settings:
-    save_binary: bool = True
-    show_full: bool = True
-    full_list_name: str = ''
-    file_extension: str= ''
 
-    def get_full_list_name(self):
-
-@dataclass
-class Plot_settings:
-
-
-##### not general#####
 @dataclass
 class readout_settings:
     filename: str = ''
@@ -89,25 +76,40 @@ class readout_settings:
         return number_of_chunks
 
 @dataclass
-class Qdyne_extraction_settings:
-    # TODO
-    number_of_sweeps: int = 0
-    read_whole_file: bool = False
-    all_counts: bool = False
+class TimeTagDataProcessorSettings:
+    count_length: int = 2000
+    start_count: int = 0
+    stop_count: int = 0
+    count_thresholde: int = 90000
+    weight: list=[]
+    @property
+    def stop_count(self):
+        return self.start_count + self.count_length
 
 @dataclass
-class analyze_FFT_settings:
+class FT_settings:
     range_around_peak: int = 30
-    zero_padding: bool = True
-    double_padding: bool = False
+    padding_parameter: int = 1
     cut_time_trace: bool = False
-    sequence_length: float = 0
+    spectrum_type: str = 'FT'
+    sequence_length_s: float = 0
 
-    def ceiled_power_of_two(self, data_len):
-        return int(np.ceil(np.log(data_len, 2)))
+    def ceil_log(self, sample_size, base=2):
+        return int(np.ceil(np.log(sample_size, base)))
 
-    def n_fft(self, data_len):
-        return int(2**self.ceiled_power_of_two(data_len))
+    def next_pow_2(self, sample_size):
+        return int(2**self.ceil_log(sample_size))
 
 @dataclass
 class Fit_settings:
+    @dataclass
+    class save_settings:
+        save_binary: bool = True
+        show_full: bool = True
+        full_list_name: str = ''
+        file_extension: str = ''
+
+        def get_full_list_name(self):
+
+    @dataclass
+    class Plot_settings:
