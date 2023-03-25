@@ -23,39 +23,188 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('CameraSettingsDialog',)
 
 from PySide2 import QtCore, QtWidgets
+from numpy import who
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
 class CameraSettingsDialog(QtWidgets.QDialog):
     """ Create the camera settings dialog """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, max_num_of_exposures=1, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle('qudi: Camera Settings')
 
         layout = QtWidgets.QGridLayout()
         layout.setAlignment(QtCore.Qt.AlignCenter)
+        # layout.setSizeConstraint(QtWidgets.QLayout.SetMinimumSize)
 
-        label = QtWidgets.QLabel('Exposure Time:')
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        layout.addWidget(label, 0, 0)
-        self.exposure_spinbox = ScienDSpinBox()
-        self.exposure_spinbox.setSuffix('s')
-        self.exposure_spinbox.setMinimum(0)
-        self.exposure_spinbox.setDecimals(3)
-        self.exposure_spinbox.setMinimumWidth(100)
-        layout.addWidget(self.exposure_spinbox, 0, 1)
+        ring_of_exposures_group = QtWidgets.QGroupBox('Ring of Exposure Times')
+        ring_of_exposures_group.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        ring_of_exposures_group_layout = QtWidgets.QGridLayout()
+        
+        # set up the ring of exposure generation
+        linspace_group = QtWidgets.QGroupBox('Linspace Creation')
+        # layout for the linspace generation
+        linspace_layout = QtWidgets.QGridLayout()
+        linspace_group.setLayout(linspace_layout)
+        linspace_layout.setAlignment(QtCore.Qt.AlignCenter)
 
-        label = QtWidgets.QLabel('Gain:')
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        layout.addWidget(label, 1, 0)
-        self.gain_spinbox = ScienDSpinBox()
+        # linspace generation of ring_of_exposures
+        # start exposure time
+        self.exposure_start_spinbox = ScienDSpinBox()
+        self.exposure_start_spinbox.setSuffix('s')
+        self.exposure_start_spinbox.setMinimum(0)
+        self.exposure_start_spinbox.setDecimals(3)
+        self.exposure_start_spinbox.setMinimumWidth(100)
+        exposure_start_label = QtWidgets.QLabel("Minimum\t")
+        # step exposure time
+        self.exposure_step_spinbox = ScienDSpinBox()
+        self.exposure_step_spinbox.setSuffix('s')
+        self.exposure_step_spinbox.setMinimum(0)
+        self.exposure_step_spinbox.setDecimals(3)
+        self.exposure_step_spinbox.setMinimumWidth(100)
+        exposure_step_label = QtWidgets.QLabel("Step")
+        # stop exposure time
+        self.exposure_stop_spinbox = ScienDSpinBox()
+        self.exposure_stop_spinbox.setSuffix('s')
+        self.exposure_stop_spinbox.setMinimum(0)
+        self.exposure_stop_spinbox.setDecimals(3)
+        self.exposure_stop_spinbox.setMinimumWidth(100)
+        exposure_stop_label = QtWidgets.QLabel("Maximum\t")
+        # linspace creation button
+        self.exposure_creation_button = QtWidgets.QPushButton('Create')
+        # add the spinboxes to the linspace layout
+        linspace_layout.addWidget(exposure_start_label, 0, 0)
+        linspace_layout.addWidget(self.exposure_start_spinbox, 0, 1)
+        linspace_layout.addWidget(exposure_step_label, 1, 0)
+        linspace_layout.addWidget(self.exposure_step_spinbox, 1, 1)
+        linspace_layout.addWidget(exposure_stop_label, 2, 0)
+        linspace_layout.addWidget(self.exposure_stop_spinbox, 2, 1)
+        linspace_layout.addWidget(self.exposure_creation_button, 3, 0, 1, 2)
+        # add linspace layout to the general layout
+        self.ring_of_exposures_table = QtWidgets.QTableWidget(1, max_num_of_exposures)
+        self.ring_of_exposures_table.setVerticalHeaderLabels(['Time (s)'])
+        self.ring_of_exposures_table.setSizeAdjustPolicy(QtWidgets.QScrollArea.AdjustToContents)
+        self.ring_of_exposures_table.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        self.ring_of_exposures_table.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeToContents)
+        self.ring_of_exposures_table.setMaximumWidth(self.ring_of_exposures_table.columnWidth(1)*20)
+
+        # ring of exposures creation of length N with all values beeing the same
+        same_value_list_group = QtWidgets.QGroupBox('Same Exposure Times Creation')
+        # layout for the generation of the list
+        same_value_list_layout = QtWidgets.QGridLayout()
+        same_value_list_group.setLayout(same_value_list_layout)
+        same_value_list_layout.setAlignment(QtCore.Qt.AlignBottom)
+        # exposure time spin box
+        self.exposure_time_spinbox = ScienDSpinBox()
+        self.exposure_time_spinbox.setSuffix('s')
+        self.exposure_time_spinbox.setMinimum(0)
+        self.exposure_time_spinbox.setDecimals(3)
+        self.exposure_time_spinbox.setMinimumWidth(100)
+        exposure_time_label = QtWidgets.QLabel("Exposure time\t")
+        
+        # length of list spin box
+        self.exposure_num_spinbox = QtWidgets.QSpinBox()
+        self.exposure_num_spinbox.setMinimum(0)
+        self.exposure_num_spinbox.setMinimumWidth(100)
+        exposure_num_label = QtWidgets.QLabel("Number of exposures\t")
+        # same value creation button
+        self.exposure_same_value_creation_button = QtWidgets.QPushButton('Create')
+
+        same_value_list_layout.addWidget(exposure_time_label, 0, 0)
+        same_value_list_layout.addWidget(self.exposure_time_spinbox, 0, 1)
+        same_value_list_layout.addWidget(exposure_num_label, 1, 0)
+        same_value_list_layout.addWidget(self.exposure_num_spinbox, 1, 1)
+        same_value_list_layout.addWidget(self.exposure_same_value_creation_button, 2, 0, 1, 2)
+        
+        # add to layout
+        ring_of_exposures_group_layout.addWidget(linspace_group, 0, 0)
+        ring_of_exposures_group_layout.addWidget(same_value_list_group, 0, 1)
+        ring_of_exposures_group_layout.addWidget(self.ring_of_exposures_table, 1, 0, 1, 2)
+        ring_of_exposures_group.setLayout(ring_of_exposures_group_layout)
+
+        responsitivity_group = QtWidgets.QGroupBox('Responsitivity')
+        responsitivity_group.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        responsitivity_group_layout = QtWidgets.QHBoxLayout()
+        responsitivity_group.setLayout(responsitivity_group_layout)
+        self.responsitivity_spinbox = ScienDSpinBox()
         # ToDo: set proper unit for gain with self.gain_spinbox.setSuffix('s')
-        self.gain_spinbox.setMinimum(0)
-        self.gain_spinbox.setDecimals(3)
-        self.gain_spinbox.setMinimumWidth(100)
-        layout.addWidget(self.gain_spinbox, 1, 1)
+        self.responsitivity_spinbox.setMinimum(0)
+        self.responsitivity_spinbox.setDecimals(3)
+        self.responsitivity_spinbox.setMinimumWidth(100)
+        responsitivity_group_layout.addWidget(self.responsitivity_spinbox)
 
+        # Bit depth setting
+        bitdepth_group = QtWidgets.QGroupBox('Bit Depth')
+        bitdepth_group.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        bitdepth_group_layout = QtWidgets.QHBoxLayout()
+        bitdepth_group.setLayout(bitdepth_group_layout)
+        self.bitdepth_spinbox = QtWidgets.QSpinBox()
+        # ToDo: set proper unit for gain with self.gain_spinbox.setSuffix('s')
+        self.bitdepth_spinbox.setMinimum(0)
+        self.bitdepth_spinbox.setMinimumWidth(100)
+        bitdepth_group_layout.addWidget(self.bitdepth_spinbox)
+
+        # Binning setting
+        binning_group = QtWidgets.QGroupBox('Binning')
+        binning_group.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        binning_group_layout = QtWidgets.QGridLayout()
+        binning_group.setLayout(binning_group_layout)
+        self.hbinning_spinbox = QtWidgets.QSpinBox()
+        # ToDo: set proper unit for gain with self.gain_spinbox.setSuffix('s')
+        self.hbinning_spinbox.setMinimum(0)
+        self.hbinning_spinbox.setMaximum(10000)
+        self.hbinning_spinbox.setMinimumWidth(100)
+        labelx = QtWidgets.QLabel('x ')
+        labely = QtWidgets.QLabel('y ')
+
+        self.vbinning_spinbox = QtWidgets.QSpinBox()
+        # ToDo: set proper unit for gain with self.gain_spinbox.setSuffix('s')
+        self.vbinning_spinbox.setMinimum(0)
+        self.vbinning_spinbox.setMaximum(10000)
+        self.vbinning_spinbox.setMinimumWidth(100)
+        binning_group_layout.addWidget(labelx, 0, 0)
+        binning_group_layout.addWidget(self.hbinning_spinbox, 0, 1)
+        binning_group_layout.addWidget(labely, 1, 0)
+        binning_group_layout.addWidget(self.vbinning_spinbox, 1, 1)
+
+        # Area selection setting
+        area_selection_group = QtWidgets.QGroupBox('Area Selection')
+        area_selection_group.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        area_selection_group_layout = QtWidgets.QGridLayout()
+        area_selection_group.setLayout(area_selection_group_layout)
+        self.area_selection_group_start_x_spinbox = QtWidgets.QSpinBox()
+        self.area_selection_group_stop_x_spinbox = QtWidgets.QSpinBox()
+        self.area_selection_group_start_y_spinbox = QtWidgets.QSpinBox()
+        self.area_selection_group_stop_y_spinbox = QtWidgets.QSpinBox()
+        # ToDo: set proper unit for gain with self.gain_spinbox.setSuffix('s')
+        # TODO: set proper maximum for area selection
+        self.area_selection_group_start_x_spinbox.setMinimum(0)
+        self.area_selection_group_start_x_spinbox.setMaximum(10000)
+        self.area_selection_group_start_x_spinbox.setMinimumWidth(100)
+        self.area_selection_group_stop_x_spinbox.setMinimum(0)
+        self.area_selection_group_stop_x_spinbox.setMaximum(10000)
+        self.area_selection_group_stop_x_spinbox.setMinimumWidth(100)
+        self.area_selection_group_start_y_spinbox.setMinimum(0)
+        self.area_selection_group_start_y_spinbox.setMaximum(10000)
+        self.area_selection_group_start_y_spinbox.setMinimumWidth(100)
+        self.area_selection_group_stop_y_spinbox.setMinimum(0)
+        self.area_selection_group_stop_y_spinbox.setMaximum(10000)
+        self.area_selection_group_stop_y_spinbox.setMinimumWidth(100)
+        labelxmin = QtWidgets.QLabel('x_min')
+        labelxmax = QtWidgets.QLabel('x_max')
+        labelymin = QtWidgets.QLabel('y_min')
+        labelymax = QtWidgets.QLabel('y_max')
+        area_selection_group_layout.addWidget(labelxmin, 0, 0)
+        area_selection_group_layout.addWidget(self.area_selection_group_start_x_spinbox, 0, 1)
+        area_selection_group_layout.addWidget(labelxmax, 0, 2)
+        area_selection_group_layout.addWidget(self.area_selection_group_stop_x_spinbox, 0, 3)
+        area_selection_group_layout.addWidget(labelymin, 1, 0)
+        area_selection_group_layout.addWidget(self.area_selection_group_start_y_spinbox, 1, 1)
+        area_selection_group_layout.addWidget(labelymax, 1, 2)
+        area_selection_group_layout.addWidget(self.area_selection_group_stop_y_spinbox, 1, 3)
+
+        
         self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
                                                      QtWidgets.QDialogButtonBox.Cancel |
                                                      QtWidgets.QDialogButtonBox.Apply,
@@ -63,7 +212,22 @@ class CameraSettingsDialog(QtWidgets.QDialog):
                                                      self)
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
-        layout.addWidget(self.button_box, 2, 0, 1, 2)
 
-        layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
+        # add the settings groups to the overall layout
+        layout.addWidget(ring_of_exposures_group, 0, 0, 1, 3)
+        layout.addWidget(responsitivity_group, 1, 0)
+        layout.addWidget(bitdepth_group, 1, 1)
+        layout.addWidget(binning_group, 1, 2)
+        layout.addWidget(area_selection_group, 3, 0, 1, 3)
+        layout.addWidget(self.button_box, 4,0, 1, 3)
+        #layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
+        
+        # set the layout for the Settings Dialog
         self.setLayout(layout)
+
+        self.settable_settings_mapper = {
+                                         'responsitivity': responsitivity_group,
+                                         'bit_depth': bitdepth_group,
+                                         'binning': binning_group,
+                                         'crop': area_selection_group
+                                         }

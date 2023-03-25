@@ -41,7 +41,7 @@ def valid_binning(binning, crop):
     height = c1[1] - c1[0] + 1
     cond0 = width % b0 == 0
     cond1 = height % b1 == 0
-    if cond0 & cond1:
+    if cond0 and cond1:
         return True
     else:
         return False
@@ -53,19 +53,19 @@ def valid_crop(crop, binning, sensor_size):
     bound_low = 0
     bound_highx, bound_highy = sensor_size
     if (cropx[0] | cropy[0]) < bound_low:
-        return False
+        return 1
     elif (cropx[1] > bound_highx) | (cropy[1] > bound_highy):
-        return False
+        return 2
 
     # the number of pixels must be a multiple of the
-    # binning
-    npx_x = cropx[1] - cropx[0]
-    npx_y = cropy[1] - cropy[0]
+    # binning. +1 because pixels start from 0
+    npx_x = cropx[1] - cropx[0] + 1
+    npx_y = cropy[1] - cropy[0] + 1
     if npx_x % binning[0] != 0:
-        return False
+        return 3
     if npx_y % binning[1] != 0:
-        return False
-    return True
+        return 4
+    return 0
 
 
 def valid_readout_freq(freq, direction, amps, readout_freqs):
@@ -86,11 +86,7 @@ def valid_exposures(exposures, exposure_range, max_exposures):
     if len(exposures) > max_exposures:
         return False
 
-    # logger.error(exposures)
-    # logger.error(avail_exposures)
     for exposure in exposures:
-        # logger.error(type(exposure))
-        # logger.error(type(avail_exposures))
         if not np.any(np.isclose(exposure, avail_exposures)):
             return False
     return True
@@ -119,7 +115,8 @@ def calc_image_dimensions(binning, crop):
     b0, b1 = binning
     h0, h1 = crop[0]
     v0, v1 = crop[1]
-    return (h1 - h0) // b0, (v1 - v0) // b1
+    # +1 in the following, as all the pixels start with number 0
+    return (h1 - h0 + 1) // b0, (v1 - v0 + 1) // b1
 
 # Dealing with the readout time cosntraint
 def calc_readout_time(crop, binning, hrfq, vrfq, frame_transfer):
@@ -158,9 +155,6 @@ def readout_freq_hw_transform(available_readout_freqs, amp, dir):
 # Dealing with the sensitivity constraint
 def gains_hw_transform(available_amplifiers, amp, var_amp):
     gain = 1
-    # logger.error(available_amplifiers)
-    # logger.error(amp)
-    # logger.error(var_amp)
     for amplifier in amp:
         if amplifier != var_amp:
             gain *= amp[amplifier]

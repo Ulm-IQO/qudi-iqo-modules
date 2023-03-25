@@ -71,13 +71,12 @@ class CameraDummy(ScientificCameraInterface):
         self._start_temperature = self._ambient_temperature
         # variable to only allow reading of images within the exposure time limit
         self._temperature_control_start = 0.0
-
         self._cam = ModelCamera(amp_state={'preamp': 4.0}, binning_state=self._binning,
                                 crop_state=self._crop,
                                 readout_freq_state={'horizontal': 1e6, 'vertical': 0.5e6},
                                 acquisition_mode_state=self._acquisition_settings,
                                 trigger_mode_state='Internal',
-                                ring_of_exposures=[0.2],
+                                ring_of_exposures=[0.2, 0.5, 0.7],
                                 shutter_state=self._shutter,
                                 shutter_speed_state=self._shutter_speed,
                                 pixel_unit_state='Counts',
@@ -99,7 +98,18 @@ class CameraDummy(ScientificCameraInterface):
         shutter_speeds = self._cam.available_shutter_speeds
         self._constraints.shutter = {'states': shutter_states,
                                      'speed': shutter_speeds}
-        self._constraints.acquisition_modes = {'image': True, 'video': True, 'image_burst': True, 'image_burst_sequence': True}
+        self._constraints.acquisition_modes = {'Image': True,
+                                               'Software Timed Video': True,
+                                               'Hardware Timed Video': True,
+                                               'Image Sequence': True,
+                                               'N-Time Image Sequence': True}
+
+        self._constraints.settable_settings = {'responsitivity': True,
+                                               'bit_depth': False,
+                                               'binning': True,
+                                               'crop': True
+                                               }
+
         # now to the tricky constraints. They are derived quantities of the
         # hardware.
 
@@ -149,13 +159,34 @@ class CameraDummy(ScientificCameraInterface):
         """
         # set the operating mode
         self.operating_mode = self._operating_mode.name
-
         return
 
     def on_deactivate(self):
         """ Initialisation performed during deactivation of the module.
         """
         self.stop_acquisition()
+
+    @property
+    def binning(self):
+        return self._cam.binning
+
+    @binning.setter
+    def binning(self, size):
+        # TODO: Check the constraints that cropping is within the allowed pixel numbers
+        # within (0,0) and (max_px_num, max_px_num)
+        if len(size) == 2:
+            self._cam.binning = size
+    
+    @property
+    def crop(self):
+        return self._cam.crop
+
+    @crop.setter
+    def crop(self, size):
+        # TODO: Check the constraints that cropping is within the allowed pixel numbers
+        # within (0,0) and (max_px_num, max_px_num)
+        if len(size) == 2:
+            self._cam.crop = size
 
     @property
     def constraints(self):
@@ -212,7 +243,7 @@ class CameraDummy(ScientificCameraInterface):
     def ring_of_exposures(self, exposures):
         """ Set the list of exposures
 
-        @param float exposure: desired new exposure time
+        @param list of floats exposures: desired new exposure time
         """
         # TODO Think of something better here (ValueError could really be anything)
         try:
@@ -231,15 +262,15 @@ class CameraDummy(ScientificCameraInterface):
 
     @responsitivity.setter
     def responsitivity(self, responsitivity):
-        el_pos = element_pos(responsitivity, self.constraints.responsitivity)
-        if el_pos:
-            var_amp = self._responsitivity_mapper.qudi_kwargs['var_amp']
-            red_amp = red_dictionary(self._cam.amp, var_amp)
-            gain_besides_var_amp = gain_from_amp_chain(red_amp)
-            new_gain = responsitivity / gain_besides_var_amp
-            self._cam.amp = {var_amp: new_gain}
-        else:
-            self.log.error(outside_constraints('responsitivity'))
+        # el_pos = element_pos(responsitivity, self.constraints.responsitivity)
+        # if el_pos:
+        var_amp = self._responsitivity_mapper.qudi_kwargs['var_amp']
+        red_amp = red_dictionary(self._cam.amp, var_amp)
+        gain_besides_var_amp = gain_from_amp_chain(red_amp)
+        new_gain = responsitivity / gain_besides_var_amp
+        self._cam.amp = {var_amp: new_gain}
+        # else:
+        #     self.log.error(outside_constraints('responsitivity'))
         return
 
     @property
@@ -280,7 +311,7 @@ class CameraDummy(ScientificCameraInterface):
     @property
     def sensor_area_settings(self):
         """
-        Return the current binning and crop settings of the sensor e.g. {'binning': (2,2), 'crop' (128, 256)}
+        Return the current binning and crop settings of the sensor e.g. {'binning': (2,2), 'crop' ((0, 120), (128, 256))}
         @return: dict of the sensor area settings
         """
         return {'binning': self._cam.binning, 'crop': self._cam.crop}
@@ -288,7 +319,7 @@ class CameraDummy(ScientificCameraInterface):
     @sensor_area_settings.setter
     def sensor_area_settings(self, settings):
         """
-        Binning and extracting a certain part of the sensor e.g. {'binning': (2,2), 'crop' (128, 256)} takes 4 pixels
+        Binning and extracting a certain part of the sensor e.g. {'binning': (2,2), 'crop' ((0, 120), (128, 256))} takes 4 pixels
         together to 1 and takes from all the pixels and area of 128 by 256
         """
         # TODO Add constraints and check them
@@ -380,6 +411,14 @@ class CameraDummy(ScientificCameraInterface):
         else:
             self.log.error('Invalid acquisition mode.')
         return
+
+    @property
+    def available_acquisition_modes(self):
+        """
+        Getter method of the available acquisition modes
+        of the camera
+        """
+        return self._constraints.acquisition_modes
 
     def get_images(self, image_num):
         """
@@ -497,7 +536,7 @@ class CameraDummy(ScientificCameraInterface):
         # responsitvity
         # hw_settings = self._responsitivity_mapper.hardware_transform(self._cam.available_amplifiers)
         qudi_set = set(self._responsitivity_mapper.hardware_transform(self._cam.available_amplifiers))
-        self._constraints.responsitivity = qudi_set
+        # self._constraints.responsitivity = qudi_set
 
         return
 

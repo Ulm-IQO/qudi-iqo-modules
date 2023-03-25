@@ -23,9 +23,11 @@ If not, see <https://www.gnu.org/licenses/>.
 import matplotlib.pyplot as plt
 from PySide2 import QtCore
 from qudi.core.connector import Connector
+from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.module import LogicBase
 from qudi.util.immutablekeydict import ImmutableKeyDict
+import numpy as np
 
 
 class CameraLogic(LogicBase):
@@ -37,20 +39,24 @@ class CameraLogic(LogicBase):
     _camera_control_logic = Connector(name='camera_control_logic', interface='CameraControlLogic')
 
     # signals
-    sigFrameChanged = QtCore.Signal(object)
+    sigFrameChanged = QtCore.Signal(int, int)
     sigAcquisitionFinished = QtCore.Signal()
+
+    # config options
+    # declare precision of the exposure time 
+    _exposure_time_precision = ConfigOption(name='exposure_time_precision', default=6)
 
     
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
         self._thread_lock = RecursiveMutex()
-        self._last_frame = None
-        
+        self._current_image_number = 0
+        self._current_measurement_number = 0
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        self.last_frame = None
+        self.last_frames = None
         self._camera_control_logic().sigDataReceived.connect(self.frame_change)
         self._camera_control_logic().sigAcquisitionFinished.connect(self._acquisition_finished)
         # Map the different acquisition modes to different functions of the camera control:
@@ -70,21 +76,39 @@ class CameraLogic(LogicBase):
         self._camera_control_logic().sigDataReceived.disconnect()
         self._camera_control_logic().sigAcquisitionFinished.disconnect()
 
-    def frame_change(self, data):
+    def frame_change(self):
         """ Method that indicates that new data for the frame has been received by camera control"""
-        if self.expected_image_num != len(data):
-            self.log.warn(f"Mismatch in expected number of received frames ({self.expected_image_num}) and actually received image number ({len(data)}).")
-            return
-        self.last_frame = data
-        self.log.warn(f"{len(self.last_frame)}")
-        # if self.expected_image_num == 1:
-        #    self.last_frame = data[0]
-        self.sigFrameChanged.emit(self.last_frame[0])
+        # TODO think about how to incorporate scrolling through images
+        self.current_measurement_number = self.last_frames.shape[0] - 1
+        self.current_image_number = self.last_frames[self._current_measurement_number].shape[0] - 1
+        self.sigFrameChanged.emit(self._current_measurement_number, self._current_image_number)
 
     def _acquisition_finished(self):
         self.module_state.unlock()
         self.log.info("Acquisition finished. Logic unlocked.")
         self.sigAcquisitionFinished.emit()
+
+    @property
+    def current_image_number(self):
+        if self._current_image_number > self.last_frames[self._current_measurement_number].shape[0]:
+            self._current_image_number = self.last_frames[self.current_measurement_number].shape[0] - 1
+        return self._current_image_number
+    
+    @current_image_number.setter
+    def current_image_number(self, num):
+        if num < self.last_frames[self._current_measurement_number].shape[0]:
+            self._current_image_number = num
+
+    @property
+    def current_measurement_number(self):
+        if self._current_measurement_number > self.last_frames.shape[0]:
+            self._current_measurement_number = self.last_frames.shape[0] - 1
+        return self._current_measurement_number
+    
+    @current_measurement_number.setter
+    def current_measurement_number(self, num):
+        if num < self.last_frames.shape[0]:
+            self._current_measurement_number = num
 
     @property
     def max_image_num(self):
@@ -103,12 +127,12 @@ class CameraLogic(LogicBase):
         self._camera_control_logic().expected_image_num = num
 
     @property
-    def last_frame(self):
-        return self._last_frame
+    def last_frames(self):
+        return self._camera_control_logic().last_frames
 
-    @last_frame.setter
-    def last_frame(self, frame):
-        self._last_frame = frame
+    @last_frames.setter
+    def last_frames(self, frames):
+        self._last_frames = frames
 
     @property
     def responsitivity(self):
@@ -179,3 +203,58 @@ class CameraLogic(LogicBase):
         """
         return self._camera_control_logic().available_acquisition_modes
 
+    def linspace_creation(self, start, step, stop):
+        """
+        Function that creates a linspace in the half-open interval [start, stop)
+        parameters:
+            start: float, first value of linspace
+            step: float, step between values
+            stop: float, all values are lower than this value
+        returns:
+            linspace: np.array
+        """
+        # check if start < stop
+        if start < stop:
+            linspace = np.arange(start=start, stop=stop, step=step, dtype=np.float64)
+        if start > stop:
+            linspace = np.arange(start=stop, stop=start, step=step, dtype=np.float64)
+        if start == stop:
+            linspace = np.array([start])
+        linspace = np.around(linspace, decimals=self._exposure_time_precision)
+        return linspace
+
+    @property
+    def bit_depth(self):
+        return self._camera_control_logic().bit_depth
+
+    @bit_depth.setter
+    def bit_depth(self, bd):
+        self._camera_control_logic().bit_depth = bd
+    
+    @property
+    def binning(self):
+        return self._camera_control_logic().binning
+
+    @binning.setter
+    def binning(self, size):
+        """
+        Function that sets the binning size for the camera.
+        @param size, tuple of int: (x bin width, y bin width)
+        """
+        self._camera_control_logic().binning = size
+
+    @property
+    def crop(self):
+        return self._camera_control_logic().crop
+
+    @crop.setter
+    def crop(self, size):
+        """
+        Function that sets the binning size for the camera.
+        @param size, tuple of int: (x bin width, y bin width)
+        """
+        self._camera_control_logic().crop = size
+
+    @property
+    def constraints(self):
+        return self._camera_control_logic().constraints

@@ -28,7 +28,7 @@ class ModelCamera:
     # need to adjust the internal memory when adjusting image size ...
     _num_full_size_images = 25
     _internal_memory = np.zeros((_num_full_size_images, _size[0], _size[1]), dtype=datatype)
-    _num_exposures = 10
+    _num_exposures = 100
     _exposure_range = create_boundaries(0.01, 100.0, 0.01)
     _amps = {'preamp': create_boundaries(1, 100, 1),
              'EM': create_boundaries(1, 1000, 1)}
@@ -129,7 +129,7 @@ class ModelCamera:
             dim0, dim1 = calc_image_dimensions(self._binning_state, self._crop_state)
             self._internal_memory = np.zeros((num_images, dim0, dim1))
         else:
-            logger.error('the requested binning is not available')
+            logger.error('The requested binning is not a multiple of the number of pixels in x or y direction.')
         return
 
     @property
@@ -138,7 +138,8 @@ class ModelCamera:
 
     @crop.setter
     def crop(self, crop):
-        if valid_crop(crop, self._binning_state, self._size):
+        is_crop_valid = valid_crop(crop, self._binning_state, self._size)
+        if is_crop_valid == 0:
             self._crop_state = crop
             num_images = calc_new_number_images(self._num_full_size_images,
                                                 self._size, self._binning_state, self._crop_state)
@@ -146,8 +147,14 @@ class ModelCamera:
 
             dim0, dim1 = calc_image_dimensions(self._binning_state, self._crop_state)
             self._internal_memory = np.zeros((num_images, dim0, dim1))
-        else:
-            logger.error('the requested crop is not available')
+        if is_crop_valid == 1:
+            logger.error(f'The lower x or y value is out of bounds of the sensor area.')
+        if is_crop_valid == 2:
+            logger.error(f'The upper x or y value is out of bounds of the sensor area.')
+        if is_crop_valid == 3:
+            logger.error(f'The resulting number of x pixels is not a multiple of x binning.')
+        if is_crop_valid == 4:
+            logger.error(f'The resulting number of y pixels is not a multiple of y binning.')
         return
 
     @property

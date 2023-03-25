@@ -53,7 +53,7 @@ class CameraControlLogic(LogicBase):
                                   missing='warn')
 
     # Signal that is emitted upon receiving new data from the hardware
-    sigDataReceived = QtCore.Signal(object)
+    sigDataReceived = QtCore.Signal()
     sigAcquisitionFinished = QtCore.Signal()
 
     # internal timer signals to start and stop the QTimer readout loop
@@ -68,7 +68,7 @@ class CameraControlLogic(LogicBase):
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
         self._thread_lock = RecursiveMutex()
-        self._last_frame = None
+        self._last_frames = None
         self._stop_requested = True
         self.expected_image_num = 1
 
@@ -109,7 +109,7 @@ class CameraControlLogic(LogicBase):
         self.sigStopInternalTimerVideo.disconnect()
         
         # clear the stored frame data
-        self._last_frame = None
+        self._last_frames = None
 
     def start_single_image_acquisition(self):
         """
@@ -117,6 +117,10 @@ class CameraControlLogic(LogicBase):
         """
         # check whether an acquisition is already running
         if self.module_state() == 'idle':
+            if len(self.ring_of_exposures) > 1:
+                self.log.warn(f'Multiple exposure times set. Using the first exposure time {self.ring_of_exposures[0]} s.')
+                self.ring_of_exposures = [self.ring_of_exposures[0]]
+
             # set the number of expected images, received from the hardware
             self.expected_image_num = 1
             # lock the module
@@ -137,8 +141,8 @@ class CameraControlLogic(LogicBase):
         """
         Method that receives the single image data
         """
-        self.receive_single_frame()
-        self.sigDataReceived.emit(self.last_frame)
+        self.receive_frames()
+        self.sigDataReceived.emit()
         self.sigAcquisitionFinished.emit()
         self.module_state.unlock()
     
@@ -151,6 +155,10 @@ class CameraControlLogic(LogicBase):
         if self.module_state() == 'idle':
             # lock the module
             self.module_state.lock()
+            if len(self.ring_of_exposures) > 1:
+                self.log.warn(f'Multiple exposure times set. Using the first exposure time {self.ring_of_exposures[0]} s.')
+                self.ring_of_exposures = [self.ring_of_exposures[0]]
+
             # set the number of expected images, received from the hardware
             self.expected_image_num = 1
             # reset the stop request
@@ -186,8 +194,9 @@ class CameraControlLogic(LogicBase):
             #
             ##
             #
+            # TODO
             # test with 5 images
-            self.expected_image_num = 5
+            self.expected_image_num = len(self.ring_of_exposures)
             # set the camera's acquisition mode
             self._camera().acquisition_mode = (1, self.expected_image_num)
             # set timer to the correct interval
@@ -203,6 +212,7 @@ class CameraControlLogic(LogicBase):
     
     def start_n_image_sequences(self):
         self.log.warn("camera_control: start_n_image_sequences (not implemented)")
+        self.sigAcquisitionFinished.emit()
 
     def software_controlled_acquisition_loop(self):
         """
@@ -220,8 +230,8 @@ class CameraControlLogic(LogicBase):
                 self.module_state.unlock()
                 return
             # collect image data from the hardware
-            self.receive_single_frame()
-            self.sigDataReceived.emit(self.last_frame)
+            self.receive_frames()
+            self.sigDataReceived.emit()
             # start the acquisition of an image
             self._camera().start_acquisition()
             # restart the timer
@@ -229,6 +239,7 @@ class CameraControlLogic(LogicBase):
     
     def start_hardware_timed_video(self):
         self.log.warn("camera_control: start_n_image_sequences (not implemented)")
+        self.sigAcquisitionFinished.emit()
     
     def start_data_acquisition(self):
         """
@@ -275,13 +286,15 @@ class CameraControlLogic(LogicBase):
         # the timer interval consists of the length of exposure for a single image
         # the readout dead time of the camera and a puffer that takes care of the
         # QTimer sometimes finishing early and thus causing readout errors
-        return int(1000 * (self.ring_of_exposures[0] \
-                           + self._camera().readout_time) \
-                        * self.expected_image_num
-                   + self._software_timer_puffer)
+        out = 0
+        for time in self.ring_of_exposures:
+            out += 1000 * (time + self._camera().readout_time)
+                
+        out = int(out + self._software_timer_puffer)
+        return out
 
-    def receive_single_frame(self):
-        self.last_frame = self._camera().get_images(self.expected_image_num)
+    def receive_frames(self):
+        self.last_frames = self._camera().get_images(self.expected_image_num)
 
     def request_stop(self):
         """
@@ -319,18 +332,64 @@ class CameraControlLogic(LogicBase):
     @expected_image_num.setter
     def expected_image_num(self, num):
         if num > self.max_image_num:
-            self.log.warn("Number of images that should be stored in PC's memory is greater than the maximum allowed number of images.")
-            return
+            self.log.warn("Number of images that should be stored in PC's memory is greater than the maximum allowed number of images in memory.")
         self._expected_image_num = num
 
 
     @property
-    def last_frame(self):
-        return self._last_frame
+    def last_frames(self):
+        return self._last_frames
 
-    @last_frame.setter
-    def last_frame(self, data):
-        self._last_frame = data
+    @last_frames.setter
+    def last_frames(self, data):
+        currently_stored_data = self._last_frames
+        # if the data array has not been created yet
+        if currently_stored_data is None:
+            # write the data into the array if its length is smaller than the max number of images
+            self._last_frames = np.empty(1, dtype=object)
+            if data.shape[0] <= self._max_image_num:
+                self._last_frames[0] = data
+                return
+            # else just use the last recorded images
+            self._last_frames[0] = data[-self._max_image_num:]
+            self.log.warn(f"The number of received images ({data.shape[0]}) is larger than the maximum number of allowed images ({self._max_image_num}). Thus, only the last {self._max_image_num} images will be stored in memory.")
+            return
+        # if the number of images newly recorded is greater or equal than the 
+        # maximum number of images allowed in memory, directly store the newest
+        if data.shape[0] >= self._max_image_num:
+            self._last_frames = np.empty(1, dtype=object)
+            self.log.warn(f"The number of received images ({data.shape[0]}) is larger than the maximum number of allowed images ({self._max_image_num}). Thus, only the last {self._max_image_num} images will be stored in memory.")
+            self._last_frames[0] = data[-self._max_image_num:]
+            return
+
+        # check whether the total number of images exceeds the maximum allowed images to be stored in memory
+        # it is calculated out of the sum over the number of images in the sequences (2nd dimension of array)
+        # in each measurement (1st dimension of array)
+        total_number_of_images = np.zeros(currently_stored_data.shape[0], dtype=int)
+        # go through all already stored images and add them up
+        # save the number of images for each measurement num as this might be
+        # needed later, when stripping any overlength measurement numbers
+        for measurement_num, array in enumerate(currently_stored_data):
+            if measurement_num == 0:
+                total_number_of_images[0] = array.shape[0]
+                continue
+            total_number_of_images[measurement_num] = total_number_of_images[measurement_num-1] + array.shape[0]
+        # calculate, whether the total number of images + the newly acquired number of images is
+        # smaller than or equal to the maximum allowed image number
+        image_diff_to_max = total_number_of_images[-1] + data.shape[0] - self._max_image_num
+        index_to_cut_to = None
+        #if this is not the case remove the first elements to make room
+        if image_diff_to_max > 0:
+            # get the first index of self._last_frames, where the number of images up to that 
+            # index is greater than the number of images that need to be cut
+            index_to_cut_to = np.nonzero(total_number_of_images > image_diff_to_max)[0][0]
+            currently_stored_data = currently_stored_data[index_to_cut_to+1:]
+
+        # append data to the already stored data array
+        data_to_store = np.empty(currently_stored_data.shape[0]+1, dtype=object)
+        data_to_store[-1] = data
+        data_to_store[0:currently_stored_data.shape[0]] = currently_stored_data
+        self._last_frames = data_to_store
 
     @property
     def stop_requested(self):
@@ -378,7 +437,7 @@ class CameraControlLogic(LogicBase):
         with self._thread_lock:
             # first check the constraints
             max_exposure_dur = camera_constraints.ring_of_exposures['max']
-            if np.any(exposures > max_exposure_dur):
+            if np.any(np.array(exposures) > max_exposure_dur):
                 self.log.warn("A required exposure duration was larger than the maximum allowed exposure duration")
                 return 
             elif len(exposures) > camera_constraints.ring_of_exposures['max_num_of_exposure_times']:
@@ -396,12 +455,12 @@ class CameraControlLogic(LogicBase):
     def responsitivity(self, responsitivity):
         with self._thread_lock:
             # check the constraints:
-            max_responsitivity = camera_constraints.responsitivity['max']
-            min_responsitivity = camera_constraints.responsitivity['min']
-            if np.any(responsitivity > max_responsitivity):
+            max_responsitivity = self.camera_constraints.responsitivity['max']
+            min_responsitivity = self.camera_constraints.responsitivity['min']
+            if np.any(np.array(responsitivity) > max_responsitivity):
                 self.log.warn("The required responsitivity was larger than the maximum allowed responsitivity")
                 return
-            elif np.any(responsitivity < min_responsitivity):
+            elif np.any(np.array(responsitivity) < min_responsitivity):
                 self.log.warn("The required responsitivity was larger than the minimum allowed responsitivity")
                 return
             else:
@@ -438,7 +497,8 @@ class CameraControlLogic(LogicBase):
             if bd in camera_constraints.bit_depth:
                 self._camera().bit_depth = bd
         else:
-            self.log.error("The camera does not support setting the bit depth.")
+            self.log.warn(f"The camera does not support setting the bit depth. Using the value {self._camera().bit_depth} instead.")
+
 
     @property
     def acquisition_mode(self):
@@ -455,4 +515,37 @@ class CameraControlLogic(LogicBase):
         of the camera
         """
         return self._camera().available_acquisition_modes
+    
+    @property
+    def binning(self):
+        return self._camera().binning
 
+    @binning.setter
+    def binning(self, size):
+        """
+        Function that sets the binning size for the camera.
+        @param size, tuple of int: (x bin width, y bin width)
+        """
+        # TODO: Check the constraints that cropping is within the allowed pixel numbers
+        # within (0,0) and (max_px_num, max_px_num)
+        if len(size) == 2:
+            self._camera().binning = size
+
+    @property
+    def crop(self):
+        return self._camera().crop
+
+    @crop.setter
+    def crop(self, size):
+        """
+        Function that sets the binning size for the camera.
+        @param size, tuple of int: (x bin width, y bin width)
+        """
+        # TODO: Check the constraints that cropping is within the allowed pixel numbers
+        # within (0,0) and (max_px_num, max_px_num)
+        if len(size) == 2 and len(size[0]) == 2 and len(size[1]) == 2:
+            self._camera().crop = size
+
+    @property
+    def constraints(self):
+        return self._camera().constraints

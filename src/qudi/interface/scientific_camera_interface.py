@@ -23,6 +23,7 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 
 from abc import abstractmethod
 from qudi.core.module import Base
+from qudi.util.immutablekeydict import ImmutableKeyDict
 
 
 class CameraConstraints:
@@ -49,7 +50,38 @@ class CameraConstraints:
         self.operating_modes = ['default', 'high_sensitivity', 'fast_readout']
 
         # image acquisition modes
-        self.acquisition_modes = {'image': False, 'video': False, 'image_burst': False, 'image_burst_sequence': False}
+        self._acquisition_modes = ImmutableKeyDict({
+                                  'Image': False,
+                                  'Software Timed Video': False,
+                                  'Hardware Timed Video': False,
+                                  'Image Sequence': False,
+                                  'N-Time Image Sequence': False
+                                  })
+
+        self._settable_settings = ImmutableKeyDict({
+                                    'responsitivity': False,
+                                    'bit_depth': False,
+                                    'binning': False,
+                                    'crop': False
+                                    })
+
+    @property
+    def acquisition_modes(self):
+        return self._acquisition_modes
+
+    @acquisition_modes.setter
+    def acquisition_modes(self, data):
+        for key in data:
+            self._acquisition_modes[key] = data[key]
+    
+    @property
+    def settable_settings(self):
+        return self._settable_settings
+
+    @settable_settings.setter
+    def settable_settings(self, data):
+        for key in data:
+            self._settable_settings[key] = data[key]
 
 
 class ScientificCameraInterface(Base):

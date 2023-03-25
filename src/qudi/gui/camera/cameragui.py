@@ -25,16 +25,18 @@ import datetime
 
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
-from qudi.util.widgets.plotting.image_widget import ImageWidget
+from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.paths import get_artwork_dir
 from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
+from typing import Union, Optional, Tuple, List, Dict
+import numpy as np
 
 
 class CameraMainWindow(QtWidgets.QMainWindow):
     """ QMainWindow object for qudi CameraGui module """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, available_acquisition_modes, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # Create menu bar
@@ -60,20 +62,94 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         # Create toolbar
         toolbar = QtWidgets.QToolBar()
         toolbar.setAllowedAreas(QtCore.Qt.AllToolBarAreas)
-        self.action_start_video = QtWidgets.QAction('Start Video')
-        self.action_start_video.setCheckable(True)
-        toolbar.addAction(self.action_start_video)
-        self.action_capture_frame = QtWidgets.QAction('Capture Frame')
-        self.action_capture_frame.setCheckable(True)
-        toolbar.addAction(self.action_capture_frame)
+        self.action_toggle_acquisition = QtWidgets.QAction('Start Acquisition')
+        self.action_toggle_acquisition.setCheckable(True)
+        toolbar.addAction(self.action_toggle_acquisition)
+        # acquisition mode selector combobox
+        self.acquisition_modes_combobox = CameraModeSelector(available_acquisition_modes)
+        toolbar.addWidget(self.acquisition_modes_combobox)
         self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
 
+        # Settings Button
+        self.action_open_settings = QtWidgets.QAction('Settings')
+        self.action_open_settings.setCheckable(True)
+        toolbar.addAction(self.action_open_settings)
+
+
         # Create central widget
-        self.image_widget = ImageWidget()
+        #
+        #
+        #
+        #
+        #
+        #
+        self.cw = QtWidgets.QWidget()
+        layout = QtWidgets.QGridLayout(self.cw)
+        self.image_widget = RubberbandZoomSelectionImageWidget()
+        #self.image_widget = MyImageWidget()
         # FIXME: The camera hardware is currently transposing the image leading to this dirty hack
         self.image_widget.image_item.setOpts(False, axisOrder='row-major')
-        self.setCentralWidget(self.image_widget)
+        self.setCentralWidget(self.cw)
 
+        # Measurement Selector spi
+        measurement_number_layout = QtWidgets.QVBoxLayout()
+        self.measurement_number_label = QtWidgets.QLabel()
+        self.measurement_number_label.setText("Measurement Number")
+        self.measurement_number_spinbox = QtWidgets.QSpinBox()
+        self.measurement_number_spinbox.setMinimum(0)
+        self.measurement_number_spinbox.setMaximum(0)
+        measurement_number_layout.addWidget(self.measurement_number_label)
+        measurement_number_layout.addWidget(self.measurement_number_spinbox)
+
+        # Image number label
+        image_number_layout = QtWidgets.QVBoxLayout()
+        self.image_number_label = QtWidgets.QLabel()
+        self.image_number_label.setText("Image Number")
+        self.image_number_num_label = QtWidgets.QLabel()
+        self.image_number_num_label.setText("0 / 0")
+        image_number_layout.addWidget(self.image_number_label)
+        image_number_layout.addWidget(self.image_number_num_label)
+
+        # Image scrollbar
+        self.image_scrollbar = QtWidgets.QScrollBar(QtCore.Qt.Horizontal)
+        self.image_scrollbar.setMinimum(0)
+        self.image_scrollbar.setValue(0)
+        self.image_scrollbar.setMaximum(0)
+
+        
+        # add the widgets to the central widget layout
+        layout.addLayout(measurement_number_layout, 0, 0, 1, 1)
+        layout.addWidget(self.image_widget, 0, 1)
+        layout.addLayout(image_number_layout, 1, 0, 1, 1)
+        layout.addWidget(self.image_scrollbar, 1, 1)
+
+    def update_toolbar(self, text):
+        """
+        Method that updates the toolbar depending on which acquisition mode is chosen
+        """
+        # TODO implement this function
+        pass
+
+class CameraModeSelector(QtWidgets.QComboBox):
+    """
+    Combobox for the selction of the acquisition mode
+    """
+
+    def __init__(self, acquisition_modes, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # store the information on which acquisition modes are enabled
+        self._acquisition_modes = acquisition_modes
+        # add the enabled acquisition modes to the combobox
+        self.populate_combobox()
+
+    def populate_combobox(self):
+        """
+        Method to add all enabled acquisition modes to the Combobox
+        """
+        # check which acquisition_modes are set to True
+        # and assign them an index, based on their position in the tuple
+        self._available_acquisition_modes = [mode for mode in self._acquisition_modes if self._acquisition_modes[mode] == True]
+        self.addItems(self._available_acquisition_modes)
 
 class CameraGui(GuiBase):
     """
@@ -84,8 +160,7 @@ class CameraGui(GuiBase):
     """
     _camera_logic = Connector(name='camera_logic', interface='CameraLogic')
 
-    sigStartStopVideoToggled = QtCore.Signal(bool)
-    sigCaptureFrameTriggered = QtCore.Signal()
+    sigAcquisitionToggled = QtCore.Signal(bool, str)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -98,34 +173,39 @@ class CameraGui(GuiBase):
         logic = self._camera_logic()
 
         # Create main window
-        self._mw = CameraMainWindow()
+        self._mw = CameraMainWindow(available_acquisition_modes=logic.available_acquisition_modes)
         # Create settings dialog
-        self._settings_dialog = CameraSettingsDialog(self._mw)
+        self._settings_dialog = CameraSettingsDialog(self._mw, max_num_of_exposures=50)
         # Connect the action of the settings dialog with this module
         self._settings_dialog.accepted.connect(self._update_settings)
         self._settings_dialog.rejected.connect(self._keep_former_settings)
         self._settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
             self._update_settings
         )
+        self._settings_dialog.exposure_creation_button.clicked.connect(self._create_exposure_linspace)
+        self._settings_dialog.exposure_same_value_creation_button.clicked.connect(self._same_value_exposure_list)
+        self._mw.acquisition_modes_combobox.currentTextChanged.connect(self._update_toolbar)
 
         # Fill in data from logic
         logic_busy = logic.module_state() == 'locked'
-        self._mw.action_start_video.setChecked(logic_busy)
-        self._mw.action_capture_frame.setChecked(logic_busy)
-        self._update_frame(logic.last_frame)
+        self._mw.action_toggle_acquisition.setChecked(logic_busy)
+        self._update_frame(logic.last_frames)
         self._keep_former_settings()
-
+        # deactivate all not settable options
+        for setting in logic.constraints.settable_settings:
+                self._settings_dialog.settable_settings_mapper[setting].setEnabled(logic.constraints.settable_settings[setting])
         # connect main window actions
-        self._mw.action_start_video.triggered[bool].connect(self._start_video_clicked)
-        self._mw.action_capture_frame.triggered.connect(self._capture_frame_clicked)
+        self._mw.action_toggle_acquisition.triggered[bool].connect(self._start_acquisition_clicked)
         self._mw.action_show_settings.triggered.connect(lambda: self._settings_dialog.exec_())
         self._mw.action_save_frame.triggered.connect(self._save_frame)
+        self._mw.action_open_settings.triggered.connect(lambda: (self._keep_former_settings(), self._settings_dialog.exec_()))
+        self._mw.image_scrollbar.valueChanged.connect(self._image_slider_moved)
+        self._mw.measurement_number_spinbox.valueChanged.connect(self._measurement_slider_moved)
         # connect update signals from logic
         logic.sigAcquisitionFinished.connect(self._acquisition_finished)
         logic.sigFrameChanged.connect(self._update_frame)
         # connect GUI signals to logic slots
-        self.sigStartStopVideoToggled.connect(logic.toggle_video)
-        self.sigCaptureFrameTriggered.connect(logic.capture_frame)
+        self.sigAcquisitionToggled.connect(logic.toggle_acquisition)
         self.show()
 
     def on_deactivate(self):
@@ -133,13 +213,13 @@ class CameraGui(GuiBase):
         """
         logic = self._camera_logic()
         # disconnect all signals
-        self.sigCaptureFrameTriggered.disconnect()
-        self.sigStartStopVideoToggled.disconnect()
+        self.sigAcquisitionToggled.disconnect()
         logic.sigAcquisitionFinished.disconnect()
         self._mw.action_save_frame.triggered.disconnect()
         self._mw.action_show_settings.triggered.disconnect()
-        self._mw.action_capture_frame.triggered.disconnect()
-        self._mw.action_start_video.triggered.disconnect()
+        self._mw.action_toggle_acquisition.triggered.disconnect()
+        self._mw.action_open_settings.triggered.disconnect()
+        self._mw.image_scrollbar.valueChanged.disconnect()
         self._mw.close()
 
     def show(self):
@@ -152,41 +232,133 @@ class CameraGui(GuiBase):
     def _update_settings(self):
         """ Write new settings from the gui to the file. """
         logic = self._camera_logic()
-        logic.ring_of_exposures = [self._settings_dialog.exposure_spinbox.value()]
-        logic.responsitivity = self._settings_dialog.gain_spinbox.value()
+        # get the settable settings of the camera
+        settable_settings = logic.constraints.settable_settings
+        logic.ring_of_exposures = self.get_ring_of_exposure()
+        if settable_settings['responsitivity']:
+            logic.responsitivity = self._settings_dialog.responsitivity_spinbox.value()
+        if settable_settings['bit_depth']:
+            logic.bit_depth = self._settings_dialog.bitdepth_spinbox.value()
+        if settable_settings['binning']:
+            logic.binning = (self._settings_dialog.hbinning_spinbox.value(), self._settings_dialog.vbinning_spinbox.value())
+        if settable_settings['crop']:
+            logic.crop = ((self._settings_dialog.area_selection_group_start_x_spinbox.value(), self._settings_dialog.area_selection_group_stop_x_spinbox.value()), (self._settings_dialog.area_selection_group_start_y_spinbox.value(), self._settings_dialog.area_selection_group_stop_y_spinbox.value()))
+
+    def get_ring_of_exposure(self):
+        """
+        Gets the ring of exposure set in the settings and converts it to a list
+        """
+        list_of_exposures = []
+        for column in range(self._settings_dialog.ring_of_exposures_table.columnCount()):
+            list_of_exposures.append(self._settings_dialog.ring_of_exposures_table.item(0, column).data(0))
+        return np.array(list_of_exposures, dtype=float)
 
     def _keep_former_settings(self):
         """ Keep the old settings and restores them in the gui. """
         logic = self._camera_logic()
-        self._settings_dialog.exposure_spinbox.setValue(logic.ring_of_exposures[0])
-        self._settings_dialog.gain_spinbox.setValue(logic.responsitivity)
+        start = logic.ring_of_exposures[0]
+        stop = logic.ring_of_exposures[-1]
+        step = abs(stop-start)/len(logic.ring_of_exposures)
+        if step == 0:
+            step = 0.01
+        # TODO: set the correct values for all options (bin width, etc.)
+        self._settings_dialog.exposure_start_spinbox.setValue(start)
+        self._settings_dialog.exposure_step_spinbox.setValue(step)
+        self._settings_dialog.exposure_stop_spinbox.setValue(stop)
+        self._settings_dialog.exposure_time_spinbox.setValue(start)
+        self._settings_dialog.exposure_num_spinbox.setValue(len(logic.ring_of_exposures))
+        self._settings_dialog.responsitivity_spinbox.setValue(logic.responsitivity)
+        self._settings_dialog.bitdepth_spinbox.setValue(logic.bit_depth)
+        self._settings_dialog.hbinning_spinbox.setValue(logic.binning[0])
+        self._settings_dialog.vbinning_spinbox.setValue(logic.binning[1])
+        self._settings_dialog.area_selection_group_start_x_spinbox.setValue(logic.crop[0][0])
+        self._settings_dialog.area_selection_group_stop_x_spinbox.setValue(logic.crop[0][1])
+        self._settings_dialog.area_selection_group_start_y_spinbox.setValue(logic.crop[1][0])
+        self._settings_dialog.area_selection_group_stop_y_spinbox.setValue(logic.crop[1][1])
+        self._display_ring_of_exposures(logic.ring_of_exposures)
 
-    def _capture_frame_clicked(self):
-        self._mw.action_start_video.setDisabled(True)
-        self._mw.action_capture_frame.setDisabled(True)
-        self._mw.action_show_settings.setDisabled(True)
-        self.sigCaptureFrameTriggered.emit()
+    def _update_toolbar(self, text):
+        """
+        Method that updates the toolbar with settings specific to the current acquisition mode.
+        """
+        # TODO implement this function
+        self._mw.update_toolbar(text)
+
+    def _create_exposure_linspace(self):
+        """
+        Function that is called when the linspace creation button is clicked. 
+        """
+        start = self._settings_dialog.exposure_start_spinbox.value()
+        step = self._settings_dialog.exposure_step_spinbox.value()
+        stop = self._settings_dialog.exposure_stop_spinbox.value()
+        self._display_ring_of_exposures(self._camera_logic().linspace_creation(start=start,step=step,stop=stop))
+
+    def _same_value_exposure_list(self):
+        """
+        Function that creates a list of exposure times with all having the same value.
+        The exposure time is taken from the spinbox in the same value exposure creation group in the SettingsDialog.
+        """
+        self._display_ring_of_exposures([self._settings_dialog.exposure_time_spinbox.value() for i in range(self._settings_dialog.exposure_num_spinbox.value())])
+
+    def _display_ring_of_exposures(self, exposures_list):
+        """
+        Change the data of the ring of exposures table in the
+        settings dialog to the current ring_of_exposures list
+        """
+        logic = self._camera_logic()
+        self._settings_dialog.ring_of_exposures_table.setColumnCount(len(exposures_list))
+        counter = 0
+        for exposure in exposures_list:
+            item = QtWidgets.QTableWidgetItem()
+            item.setData(0, exposure)
+            item.setText(str(exposure))
+            self._settings_dialog.ring_of_exposures_table.setItem(0, counter, item)
+            counter += 1
 
     def _acquisition_finished(self):
-        self._mw.action_start_video.setChecked(False)
-        self._mw.action_start_video.setEnabled(True)
-        self._mw.action_capture_frame.setChecked(False)
-        self._mw.action_capture_frame.setEnabled(True)
+        self._mw.action_toggle_acquisition.setChecked(False)
+        self._mw.action_toggle_acquisition.setEnabled(True)
+        self._mw.action_toggle_acquisition.setText("Start Acquisition")
+        self._mw.action_open_settings.setChecked(False)
+        self._mw.action_open_settings.setEnabled(True)
+        self._mw.acquisition_modes_combobox.setEnabled(True)
         self._mw.action_show_settings.setEnabled(True)
 
-    def _start_video_clicked(self, checked):
+    def _start_acquisition_clicked(self, checked):
         if checked:
             self._mw.action_show_settings.setDisabled(True)
-            self._mw.action_capture_frame.setDisabled(True)
-            self._mw.action_start_video.setText('Stop Video')
+            self._mw.action_open_settings.setDisabled(True)
+            self._mw.acquisition_modes_combobox.setEnabled(False)
+            self._mw.action_toggle_acquisition.setText('Stop Acquisition')
         else:
-            self._mw.action_start_video.setText('Start Video')
-        self.sigStartStopVideoToggled.emit(checked)
+            self._mw.action_toggle_acquisition.setText('Start Acquisition')
+        self.sigAcquisitionToggled.emit(checked, self._mw.acquisition_modes_combobox.currentText())
 
-    def _update_frame(self, frame_data):
+    def _update_frame(self, sequence_num=0, image_num=0):
         """
         """
-        self._mw.image_widget.set_image(frame_data)
+        frame_data = self._camera_logic().last_frames
+        if frame_data is None:
+            self._mw.image_widget.set_image(frame_data)
+            return
+        # update measurement and image number slider
+        image_num_string = str(image_num) + " / " + str(frame_data[sequence_num].shape[0]-1)
+        self._mw.measurement_number_spinbox.setMaximum(frame_data.shape[0]-1)
+        self._mw.measurement_number_spinbox.setValue(sequence_num)
+        self._mw.image_number_num_label.setText(image_num_string)
+        # set scrollbar position and maximum value
+        self._mw.image_scrollbar.setMaximum(frame_data[sequence_num].shape[0]-1)
+        self._mw.image_scrollbar.setValue(image_num)
+        # update the imageview with the new image data
+        self._mw.image_widget.set_image(frame_data[sequence_num][image_num])
+
+    def _image_slider_moved(self, image_num):
+        self._camera_logic().current_image_number = image_num
+        self._update_frame(sequence_num=self._camera_logic().current_measurement_number, image_num=image_num)
+
+    def _measurement_slider_moved(self, sequence_num):
+        self._camera_logic().current_measurement_number = sequence_num
+        self._update_frame(sequence_num=sequence_num, image_num=self._camera_logic().current_image_number)
 
     def _save_frame(self):
         logic = self._camera_logic()
@@ -198,7 +370,7 @@ class CameraGui(GuiBase):
         parameters['responsitivity'] = logic.responsitivity
         parameters['exposure'] = logic.ring_of_exposures
 
-        data = logic.last_frame
+        data = logic.last_frames
         if data is not None:
             file_path, _, _ = ds.save_data(data, metadata=parameters, nametag=tag,
                                        timestamp=timestamp, column_headers='Image (columns is X, rows is Y)')
