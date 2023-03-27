@@ -118,10 +118,10 @@ class CameraMainWindow(QtWidgets.QMainWindow):
 
         
         # add the widgets to the central widget layout
-        layout.addLayout(measurement_number_layout, 0, 0, 1, 1)
-        layout.addWidget(self.image_widget, 0, 1)
-        layout.addLayout(image_number_layout, 1, 0, 1, 1)
-        layout.addWidget(self.image_scrollbar, 1, 1)
+        layout.addLayout(measurement_number_layout, 2, 0, 1, 1)
+        layout.addWidget(self.image_widget, 0, 0, 1, 2)
+        layout.addLayout(image_number_layout, 2, 1, 1, 1)
+        layout.addWidget(self.image_scrollbar, 1, 0, 1, 2)
 
     def update_toolbar(self, text):
         """
@@ -194,6 +194,11 @@ class CameraGui(GuiBase):
         # deactivate all not settable options
         for setting in logic.constraints.settable_settings:
                 self._settings_dialog.settable_settings_mapper[setting].setEnabled(logic.constraints.settable_settings[setting])
+        # get all operating modes
+        operating_modes = [mode.name for mode in self._camera_logic().constraints.operating_modes]
+        if not operating_modes:
+            self._settings_dialog.operating_mode_combobox.setEnabled(False)
+        self._settings_dialog.operating_mode_combobox.addItems(operating_modes)
         # connect main window actions
         self._mw.action_toggle_acquisition.triggered[bool].connect(self._start_acquisition_clicked)
         self._mw.action_show_settings.triggered.connect(lambda: self._settings_dialog.exec_())
@@ -243,6 +248,8 @@ class CameraGui(GuiBase):
             logic.binning = (self._settings_dialog.hbinning_spinbox.value(), self._settings_dialog.vbinning_spinbox.value())
         if settable_settings['crop']:
             logic.crop = ((self._settings_dialog.area_selection_group_start_x_spinbox.value(), self._settings_dialog.area_selection_group_stop_x_spinbox.value()), (self._settings_dialog.area_selection_group_start_y_spinbox.value(), self._settings_dialog.area_selection_group_stop_y_spinbox.value()))
+        if self._settings_dialog.operating_mode_combobox.isEnabled():
+            logic.operating_mode = logic.constraints.operating_modes(self._settings_dialog.operating_mode_combobox.currentIndex() + 1)
 
     def get_ring_of_exposure(self):
         """
@@ -276,6 +283,7 @@ class CameraGui(GuiBase):
         self._settings_dialog.area_selection_group_start_y_spinbox.setValue(logic.crop[1][0])
         self._settings_dialog.area_selection_group_stop_y_spinbox.setValue(logic.crop[1][1])
         self._display_ring_of_exposures(logic.ring_of_exposures)
+        self._settings_dialog.operating_mode_combobox.setCurrentIndex(logic.operating_mode.value - 1)
 
     def _update_toolbar(self, text):
         """

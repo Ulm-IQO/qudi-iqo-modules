@@ -205,6 +205,14 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         area_selection_group_layout.addWidget(self.area_selection_group_stop_y_spinbox, 1, 3)
 
         
+        # Operating Mode selection
+        operating_mode_group = QtWidgets.QGroupBox('Operating Modes')
+        operating_mode_group.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        operating_mode_layout = QtWidgets.QHBoxLayout()
+        operating_mode_group.setLayout(operating_mode_layout)
+        self.operating_mode_combobox = QtWidgets.QComboBox()
+        operating_mode_layout.addWidget(self.operating_mode_combobox)
+        
         self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
                                                      QtWidgets.QDialogButtonBox.Cancel |
                                                      QtWidgets.QDialogButtonBox.Apply,
@@ -219,7 +227,8 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         layout.addWidget(bitdepth_group, 1, 1)
         layout.addWidget(binning_group, 1, 2)
         layout.addWidget(area_selection_group, 3, 0, 1, 3)
-        layout.addWidget(self.button_box, 4,0, 1, 3)
+        layout.addWidget(operating_mode_group, 4, 0, 1, 1)
+        layout.addWidget(self.button_box, 5,0, 1, 3)
         #layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
         
         # set the layout for the Settings Dialog

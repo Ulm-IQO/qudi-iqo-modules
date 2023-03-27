@@ -22,6 +22,8 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 
 from enum import Enum
 
+from numpy import who
+
 from qudi.hardware.dummy.camera_dummy.helper_functions import *
 from qudi.hardware.dummy.camera_dummy.helper_classes \
     import ModelCamera, ImageGenerator, CameraMeasurement, QudiHardwareMapper
@@ -32,10 +34,10 @@ from qudi.interface.scientific_camera_interface import ScientificCameraInterface
 from qudi.util.network import netobtain
 
 
-class OperatingMode(Enum):
-    default = 0
-    high_responsitivity = 1
-    fast_readout = 2
+# class OperatingMode(Enum):
+#     default = 0
+#     high_responsitivity = 1
+#     fast_readout = 2
 
 
 class CameraDummy(ScientificCameraInterface):
@@ -100,7 +102,6 @@ class CameraDummy(ScientificCameraInterface):
                                      'speed': shutter_speeds}
         self._constraints.acquisition_modes = {'Image': True,
                                                'Software Timed Video': True,
-                                               'Hardware Timed Video': True,
                                                'Image Sequence': True,
                                                'N-Time Image Sequence': True}
 
@@ -109,7 +110,7 @@ class CameraDummy(ScientificCameraInterface):
                                                'binning': True,
                                                'crop': True
                                                }
-
+        self._constraints.operating_modes = ['default', 'high_responsitivity', 'fast_readout']
         # now to the tricky constraints. They are derived quantities of the
         # hardware.
 
@@ -149,7 +150,6 @@ class CameraDummy(ScientificCameraInterface):
                                                        qudi_kwargs=qudi_kwargs)
 
 
-        self._operating_mode = OperatingMode.default
         # self._update_constraints()
 
 
@@ -158,8 +158,7 @@ class CameraDummy(ScientificCameraInterface):
         """ Initialisation performed during activation of the module.
         """
         # set the operating mode
-        self.operating_mode = self._operating_mode.name
-        return
+        self.operating_mode = self._constraints.operating_modes.default
 
     def on_deactivate(self):
         """ Initialisation performed during deactivation of the module.
@@ -367,7 +366,9 @@ class CameraDummy(ScientificCameraInterface):
 
     @operating_mode.setter
     def operating_mode(self, mode):
-        self._operating_mode = getattr(OperatingMode, mode)
+        if self._constraints.operating_modes:
+            if mode in self._constraints.operating_modes:
+                self._operating_mode = mode
         # adjust the camera settings to the new operating mode
         self._configure_operating_mode(mode)
         return
@@ -483,7 +484,7 @@ class CameraDummy(ScientificCameraInterface):
         return
 
     def _configure_operating_mode(self, mode):
-        if mode == OperatingMode.default.name:
+        if mode == self._constraints.operating_modes.default:
             self.log.info('operationg mode set to >> default <<')
             self._cam.trigger_mode = 'Software'
             self._cam.amp = {'preamp': 4.0}
@@ -493,7 +494,7 @@ class CameraDummy(ScientificCameraInterface):
             self._responsitivity_mapper.hardware_kwargs['var_amp'] = 'preamp'
             self._responsitivity_mapper.qudi_kwargs['var_amp'] = 'preamp'
 
-        elif mode == OperatingMode.high_responsitivity.name:
+        elif mode == self._constraints.operating_modes.high_responsitivity:
             self.log.info('operationg mode set to >> high_responsitivity <<')
             self._cam.trigger_mode = 'Internal'
             self._cam.amp = {'preamp': 4.0, 'EM': 100.0}
@@ -504,7 +505,7 @@ class CameraDummy(ScientificCameraInterface):
             self._responsitivity_mapper.hardware_kwargs['var_amp'] = 'EM'
             self._responsitivity_mapper.qudi_kwargs['var_amp'] = 'EM'
 
-        elif mode == OperatingMode.fast_readout.name:
+        elif mode == self._constraints.operating_modes.fast_readout:
             self.log.info('operationg mode set to >> fast_readout <<')
             self._cam.trigger_mode = 'Internal'
             self._cam.amp = {'preamp': 4.0, 'EM': 100.0}

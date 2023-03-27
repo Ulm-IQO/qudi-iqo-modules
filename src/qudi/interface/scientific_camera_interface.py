@@ -21,9 +21,10 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-from abc import abstractmethod
+from abc import ABC, abstractmethod
 from qudi.core.module import Base
 from qudi.util.immutablekeydict import ImmutableKeyDict
+from enum import Enum
 
 
 class CameraConstraints:
@@ -47,13 +48,12 @@ class CameraConstraints:
         self.shutter = {'states': [True, False], 'speed': {'min': 0.02, 'max': 1.0, 'step': 0.01, 'unit': 's'}}
 
         # operating modes
-        self.operating_modes = ['default', 'high_sensitivity', 'fast_readout']
+        # self.operating_modes = ['default', 'high_sensitivity', 'fast_readout']
 
         # image acquisition modes
         self._acquisition_modes = ImmutableKeyDict({
                                   'Image': False,
                                   'Software Timed Video': False,
-                                  'Hardware Timed Video': False,
                                   'Image Sequence': False,
                                   'N-Time Image Sequence': False
                                   })
@@ -65,6 +65,7 @@ class CameraConstraints:
                                     'crop': False
                                     })
 
+        self._operating_modes = None
     @property
     def acquisition_modes(self):
         return self._acquisition_modes
@@ -82,7 +83,15 @@ class CameraConstraints:
     def settable_settings(self, data):
         for key in data:
             self._settable_settings[key] = data[key]
+    
+    @property
+    def operating_modes(self):
+        return self._operating_modes
 
+    @operating_modes.setter
+    def operating_modes(self, data):
+        if self._operating_modes is None:
+            self._operating_modes = Enum('OperatingModes', data)    
 
 class ScientificCameraInterface(Base):
     """ This interface is used to define the basic functionality

@@ -237,10 +237,6 @@ class CameraControlLogic(LogicBase):
             # restart the timer
             self.sigStartInternalTimerVideo.emit()
     
-    def start_hardware_timed_video(self):
-        self.log.warn("camera_control: start_n_image_sequences (not implemented)")
-        self.sigAcquisitionFinished.emit()
-    
     def start_data_acquisition(self):
         """
         Start the acquisition of data.
@@ -549,3 +545,11 @@ class CameraControlLogic(LogicBase):
     @property
     def constraints(self):
         return self._camera().constraints
+
+    @property
+    def operating_mode(self):
+        return self._camera().operating_mode
+    
+    @operating_mode.setter
+    def operating_mode(self, data):
+        self._camera().operating_mode = data

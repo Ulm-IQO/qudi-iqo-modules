@@ -63,7 +63,6 @@ class CameraLogic(LogicBase):
         self._acquisition_mode_mapper = ImmutableKeyDict(
                 {'Image': self._camera_control_logic().start_single_image_acquisition,
                  'Software Timed Video': self._camera_control_logic().start_software_timed_video,
-                 'Hardware Timed Video': self._camera_control_logic().start_hardware_timed_video,
                  'Image Sequence': self._camera_control_logic().start_image_sequence,
                  'N-Time Image Sequence': self._camera_control_logic().start_n_image_sequences,
                  })
@@ -258,3 +257,11 @@ class CameraLogic(LogicBase):
     @property
     def constraints(self):
         return self._camera_control_logic().constraints
+    
+    @property
+    def operating_mode(self):
+        return self._camera_control_logic().operating_mode
+
+    @operating_mode.setter
+    def operating_mode(self, data):
+        self._camera_control_logic().operating_mode = data
