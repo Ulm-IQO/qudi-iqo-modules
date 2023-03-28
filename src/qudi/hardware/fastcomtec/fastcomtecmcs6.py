@@ -29,6 +29,7 @@ import numpy as np
 
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
+from qudi.interface.data_instream_interface import DataInStreamInterface
 
 
 """
@@ -157,7 +158,7 @@ class BOARDSETTING(ctypes.Structure):
                 ('timepreset',  ctypes.c_double), ]
 
 
-class FastComtec(FastCounterInterface):
+class FastComtec(FastCounterInterface, DataInStreamInterface):
     """ Hardware Class for the FastComtec Card.
 
     stable: Jochen Scheuer, Simon Schmitt
@@ -192,6 +193,13 @@ class FastComtec(FastCounterInterface):
         #in the fastcomtec it can be on "stopped" or "halt"
         self.stopped_or_halt = "stopped"
         self.timetrace_tmp = []
+
+
+        ####### variables for the DataInStreamInterface ##########
+        self._sample_rate = None
+        self._buffer_size = None
+        self._use_circular_buffer = None
+        self._data_type = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -251,6 +259,17 @@ class FastComtec(FastCounterInterface):
                                                      np.linspace(0,24,25))))
         constraints['max_sweep_len'] = 6.8
         constraints['max_bins'] = 6.8 /0.2e-9
+
+        ####################### TODO #########################
+        # Implement the constraints getter for the DataInStreamInterface
+        # possibly by setting a flag that only returns the DataInStreamInterace if set to True
+
+
+        """
+        Return the constraints on the settings for this data streamer.
+
+        @return DataInStreamConstraints: Instance of DataInStreamConstraints containing constraints
+        """
         return constraints
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=1):
@@ -889,6 +908,279 @@ class FastComtec(FastCounterInterface):
         self.save_data(nametag)
         return nametag
 
+    ############################ Methods for the DataInstreamerInterface ########################
+    #############################################################################################
+
+    @property
+    def sample_rate(self) -> float:
+        """
+        The currently set sample rate
+
+        @return float: current sample rate in Hz
+        """
+        return self._sample_rate
+
+    @sample_rate.setter
+    def sample_rate(self, samplerate: float):
+        """
+        Set the sample rate
+
+        @param float, samplerate: samplerate that should be set
+        """
+        # TODO implement a useful check whether sample rate is in a sensible range
+        self._sample_rate = samplerate
+
+    @property
+    def data_type(self) -> type:
+        """
+        Read-only property.
+        The data type of the stream data. Must be numpy type.
+
+        @return type: stream data type (numpy type)
+        """
+        return self._data_type
+
+    @property
+    def buffer_size(self) -> int:
+        """
+        The currently set buffer size.
+        Buffer size corresponds to the number of samples that can be buffered. 
+        It determines the number of lines than can be read by from the measurement file to the internal memory of the PC.
+
+        @return int: current buffer size in samples per channel
+        """
+        return self._buffer_size
+
+    @buffer_size.setter
+    def buffer_size(self, buffersize: int):
+        """
+        Sets number of lines that can be read from the measurement file into the memory of the PC.
+
+        @param int, buffersize: number of lines that should be read into the memory
+        """
+        # TODO implement reasonable check for buffersize's constraints
+        self._buffer_size = buffersize
+
+    @property
+    def use_circular_buffer(self) -> bool:
+        """
+        A flag indicating if circular sample buffering is being used or not.
+
+        @return bool: indicate if circular sample buffering is used (True) or not (False)
+        """
+        return self._use_circular_buffer
+
+    @use_circular_buffer.setter
+    def use_circular_buffer(self, flag: bool):
+        """
+        Set the flag indicating if circular sample buffering is being used or not.
+        @param bool, flag: indicate if circular sample buffering is used (True) or not (False) 
+        """
+        self._use_circular_buffer = flag
+
+    @property
+    def streaming_mode(self):
+        """
+        The currently configured streaming mode Enum.
+
+        @return StreamingMode: Finite (StreamingMode.FINITE) or continuous
+                               (StreamingMode.CONTINUOUS) data acquisition
+        """
+        pass
+
+    @property
+    def stream_length(self):
+        """
+        Property holding the total number of samples per channel to be acquired by this stream.
+        This number is only relevant if the streaming mode is set to StreamingMode.FINITE.
+
+        @return int: The number of samples to acquire per channel. Ignored for continuous streaming.
+        """
+        pass
+
+    @property
+    def all_settings(self):
+        """
+        Read-only property to return a dict containing all current settings and values that can be
+        configured using the method "configure". Basically returns the same as "configure".
+
+        @return dict: Dictionary containing all configurable settings
+        """
+        pass
+
+    @property
+    def number_of_channels(self):
+        """
+        Read-only property to return the currently configured number of active data channels.
+
+        @return int: the currently set number of channels
+        """
+        pass
+
+    @property
+    def active_channels(self):
+        """
+        The currently configured data channel properties.
+        Returns a dict with channel names as keys and corresponding StreamChannel instances as
+        values.
+
+        @return dict: currently active data channel properties with keys being the channel names
+                      and values being the corresponding StreamChannel instances.
+        """
+        pass
+
+    @property
+    def available_channels(self):
+        """
+        Read-only property to return the currently used data channel properties.
+        Returns a dict with channel names as keys and corresponding StreamChannel instances as
+        values.
+
+        @return dict: data channel properties for all available channels with keys being the channel
+                      names and values being the corresponding StreamChannel instances.
+        """
+        pass
+
+    @property
+    def available_samples(self):
+        """
+        Read-only property to return the currently available number of samples per channel ready
+        to read from buffer.
+
+        @return int: Number of available samples per channel
+        """
+        pass
+
+    @property
+    def buffer_overflown(self):
+        """
+        Read-only flag to check if the read buffer has overflown.
+        In case of a circular buffer it indicates data loss.
+        In case of a non-circular buffer the data acquisition should have stopped if this flag is
+        coming up.
+        Flag will only be reset after starting a new data acquisition.
+
+        @return bool: Flag indicates if buffer has overflown (True) or not (False)
+        """
+        pass
+
+    @property
+    def is_running(self):
+        """
+        Read-only flag indicating if the data acquisition is running.
+
+        @return bool: Data acquisition is running (True) or not (False)
+        """
+        pass
+
+    def configure(self, sample_rate=None, streaming_mode=None, active_channels=None,
+                  total_number_of_samples=None, buffer_size=None, use_circular_buffer=None):
+        """
+        Method to configure all possible settings of the data input stream.
+
+        @param float sample_rate: The sample rate in Hz at which data points are acquired
+        @param StreamingMode streaming_mode: The streaming mode to use (finite or continuous)
+        @param iterable active_channels: Iterable of channel names (str) to be read from.
+        @param int total_number_of_samples: In case of a finite data stream, the total number of
+                                            samples to read per channel
+        @param int buffer_size: The size of the data buffer to pre-allocate in samples per channel
+        @param bool use_circular_buffer: Use circular buffering (True) or stop upon buffer overflow
+                                         (False)
+
+        @return dict: All current settings in a dict. Keywords are the same as kwarg names.
+        """
+        pass
+
+    def start_stream(self):
+        """
+        Start the data acquisition and data stream.
+
+        @return int: error code (0: OK, -1: Error)
+        """
+        pass
+
+    def stop_stream(self):
+        """
+        Stop the data acquisition and data stream.
+
+        @return int: error code (0: OK, -1: Error)
+        """
+        pass
+
+    def read_data_into_buffer(self, buffer, number_of_samples=None):
+        """
+        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
+        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
+        channels the array must be 2D with the first index corresponding to the channel number and
+        the second index serving as sample index:
+            buffer.shape == (self.number_of_channels, number_of_samples)
+        The numpy array must have the same data type as self.data_type.
+        If number_of_samples is omitted it will be derived from buffer.shape[1]
+
+        This method will not return until all requested samples have been read or a timeout occurs.
+
+        @param numpy.ndarray buffer: The numpy array to write the samples to
+        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
+                                      this number will be derived from buffer axis 1 size.
+
+        @return int: Number of samples read into buffer; negative value indicates error
+                     (e.g. read timeout)
+        """
+        pass
+
+    def read_available_data_into_buffer(self, buffer):
+        """
+        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
+        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
+        channels the array must be 2D with the first index corresponding to the channel number and
+        the second index serving as sample index:
+            buffer.shape == (self.number_of_channels, number_of_samples)
+        The numpy array must have the same data type as self.data_type.
+
+        This method will read all currently available samples into buffer. If number of available
+        samples exceed buffer size, read only as many samples as fit into the buffer.
+
+        @param numpy.ndarray buffer: The numpy array to write the samples to
+
+        @return int: Number of samples read into buffer; negative value indicates error
+                     (e.g. read timeout)
+        """
+        pass
+
+    def read_data(self, number_of_samples=None):
+        """
+        Read data from the stream buffer into a 2D numpy array and return it.
+        The arrays first index corresponds to the channel number and the second index serves as
+        sample index:
+            return_array.shape == (self.number_of_channels, number_of_samples)
+        The numpy arrays data type is the one defined in self.data_type.
+        If number_of_samples is omitted all currently available samples are read from buffer.
+
+        This method will not return until all requested samples have been read or a timeout occurs.
+
+        If no samples are available, this method will immediately return an empty array.
+        You can check for a failed data read if number_of_samples != <return_array>.shape[1].
+
+        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
+                                      all available samples are read from buffer.
+
+        @return numpy.ndarray: The read samples in a numpy array
+        """
+        pass
+
+    def read_single_point(self):
+        """
+        This method will initiate a single sample read on each configured data channel.
+        In general this sample may not be acquired simultaneous for all channels and timing in
+        general can not be assured. Us this method if you want to have a non-timing-critical
+        snapshot of your current data channel input.
+        May not be available for all devices.
+        The returned 1D numpy array will contain one sample for each channel.
+
+        @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
+                               indicates error.
+        """
+        pass
 
 # =========================================================================
 #   The following methods have to be carefully reviewed and integrated as
