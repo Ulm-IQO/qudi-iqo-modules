@@ -25,7 +25,8 @@ from pyvisa import constants
 import time
 from enum import Enum
 from qudi.core.configoption import ConfigOption
-from qudi.interface.syringe_pump_interface import SyringePumpInterface, PumpStatus, SyringePumpConstraints 
+from qudi.interface.syringe_pump_interface import SyringePumpInterface, PumpStatus, SyringePumpConstraints
+import numpy as np
 
 def response_splitter(response, returntype=str, split_delimiter=' = '):
     """
@@ -78,7 +79,7 @@ class ChemyxF4000X(SyringePumpInterface):
     _baud_rate = ConfigOption(name='baud_rate', default=9600, missing='warn')
     _timeout = ConfigOption(name='visa_timeout', default=1000, missing='warn')
     _query_delay = ConfigOption(name='visa_query_delay', default=0.0, missing='warn')
-
+    _is_close_precision = ConfigOption(name='numpy_is_close_precision', default=3, missing='warn') # gives the number of decimals for which the return value of the pump upon setting a setting is checked, whether it is close to the orginal asked value
     # Syringe-specific config options
     _pump_number = ConfigOption(name='pump_number', missing='error') # the number of the pump that should be controlled by the module
 
@@ -118,6 +119,7 @@ class ChemyxF4000X(SyringePumpInterface):
         self._constraints.transfer_rate.min = 0.0001
         self._constraints.transfer_rate.max = 170.5 * 10**3
 
+        self.__pump_direction = None
         
     def on_activate(self):
         # open serial connection
@@ -143,6 +145,7 @@ class ChemyxF4000X(SyringePumpInterface):
         self.get_constraints()
         # get the currently set settings on the pump
         self.get_last_settings()
+        self._pump_direction = -1
 
     def on_deactivate(self):
         if self.status == PumpStatus.RUNNING:
@@ -334,7 +337,7 @@ class ChemyxF4000X(SyringePumpInterface):
         return self._get_current_pump_parameters()[PumpParameters('rate')]
 
 
-    @transfer_time.setter
+    @transfer_rate.setter
     def transfer_rate(self, transfer_rate):
         """
         Method to set the transfer rate of the pump.
@@ -350,6 +353,8 @@ class ChemyxF4000X(SyringePumpInterface):
             response = self.send_command(f'{self._pump_number} set rate {transfer_rate}', clear_blank_lines=True)
             response = response_splitter(response[-1], float)
             if self.change_successful(transfer_rate, response):
+                # set the correct direction of pumping
+                self._pump_direction = np.sign(transfer_rate)
                 self.log.info(f"Set transfer rate to {response} {self._units.get_str_of_unit()} for pump {self._pump_number}.")
                 self._transfer_rate = response
                 return 0
@@ -380,6 +385,9 @@ class ChemyxF4000X(SyringePumpInterface):
         if self.status == PumpStatus.RUNNING:
             self.log.error("Can't set transfer volume as pump is still running!")
             return -1
+        if transfer_volume < 0:
+            self.log.error("Transfer volume must be a positive value!")
+            return -1
         if self.in_constraints(transfer_volume, self._constraints.transfer_volume):
             response = self.send_command(f'{self._pump_number} set volume {transfer_volume}', clear_blank_lines=True)
             response = response_splitter(response[-1], float)
@@ -390,6 +398,31 @@ class ChemyxF4000X(SyringePumpInterface):
             return -1
         self.log.error(f"Could not set transfer volume {transfer_volume} {self.units.get_str_of_numerator()} for pump {self._pump_number} because the value is not in the constraints ({self._constraints.transfer_volume.min},{self._constraints.transfer_volume.max}) {self.units.get_str_of_numerator()}.")
         return -1
+
+    @property
+    def _pump_direction(self):
+        """
+        Returns the pump direction as integer.
+        ! Disclaimer ! The pump direction is only stored in software and does not necessarily
+        coincide with the direction of the actual hardware. In case one interferes with the
+        device through a different source.
+
+        @return int: specifies the pump direction {withdrawal: -1, infusion: 1}
+        """
+        return self.__pump_direction
+
+    @_pump_direction.setter
+    def _pump_direction(self, direction):
+        """
+        Method to set the direction (injection / withdrawal) of the specified pump.
+
+        @param direction int: specifies the direction to set to {withdrawal: -1, infusion: 1}
+        """
+        if direction in (-1, 1):
+            rate = self.transfer_rate
+            self.__pump_direction = direction
+            self.send_command(f'{self._pump_number} set rate {self.transfer_rate * direction}', clear_blank_lines=True)
+        return
 
     @property
     def units(self):
@@ -473,7 +506,12 @@ class ChemyxF4000X(SyringePumpInterface):
 
         @return bool, True if <desired_value> == <received_value>, else False
         """
+
         if desired_value != received_value:
+            if np.isclose(desired_value, received_value, self._is_close_precision):
+                self.log.warn(
+                    f"Value that should be set on the pump does not match the received value, however it is close (within {self._is_close_precision} decimals)")
+                return True
             self.log.error("Value that should be set on the pump does not match the received actually set value. Check whether you entered a value within the constraints of the current settings.")
             return False
         return True
