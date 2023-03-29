@@ -29,7 +29,7 @@ import numpy as np
 
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
-from qudi.interface.data_instream_interface import DataInStreamInterface
+from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode
 
 
 """
@@ -200,6 +200,10 @@ class FastComtec(FastCounterInterface, DataInStreamInterface):
         self._buffer_size = None
         self._use_circular_buffer = None
         self._data_type = None
+        self._streaming_mode = None
+        self._stream_length = None
+
+        self._constraints = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -211,6 +215,41 @@ class FastComtec(FastCounterInterface, DataInStreamInterface):
         else:
             self.change_sweep_mode(gated=False)
         return
+
+        ########## activation of DataInStreamInterface #########
+        self._streaming_mode = StreamingMode.CONTINUOUS
+        
+        # Create constraints
+        self._constraints = DataInStreamConstraints(
+            digital_channels=tuple(
+                StreamChannel(name=src,
+                              type=StreamChannelType.DIGITAL,
+                              unit='counts') for src in self._digital_sources
+            ),
+            analog_channels=tuple(
+                StreamChannel(name=src,
+                              type=StreamChannelType.ANALOG,
+                              unit='V') for src in self._analog_sources
+            ),
+            analog_sample_rate={'default'    : 1,
+                                'bounds'     : (self._device_handle.ai_min_rate,
+                                                self._device_handle.ai_max_multi_chan_rate),
+                                'increment'  : 1,
+                                'enforce_int': False},
+            # FIXME: What is the minimum frequency for the digital counter timebase?
+            digital_sample_rate={'default'    : 1,
+                                 'bounds'     : (0.1, self._device_handle.ci_max_timebase),
+                                 'increment'  : 0.1,
+                                 'enforce_int': False},
+            read_block_size={'default'    : 1,
+                             'bounds'     : (1, int(self._max_channel_samples_buffer)),
+                             'increment'  : 1,
+                             'enforce_int': True},
+            streaming_modes=(StreamingMode.CONTINUOUS,),  # TODO: Implement FINITE streaming mode
+            data_type=np.float64,
+            allow_circular_buffer=True
+        )
+        self._constraints.combined_sample_rate = self._constraints.analog_sample_rate.copy()
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
@@ -979,46 +1018,82 @@ class FastComtec(FastCounterInterface, DataInStreamInterface):
         self._use_circular_buffer = flag
 
     @property
-    def streaming_mode(self):
+    def streaming_mode(self) -> StreamingMode:
         """
         The currently configured streaming mode Enum.
 
         @return StreamingMode: Finite (StreamingMode.FINITE) or continuous
                                (StreamingMode.CONTINUOUS) data acquisition
         """
-        pass
+        return self._streaming_mode
+
+    @streaming_mode.setter
+    def streaming_mode(self, mode: int):
+        """
+        Method to set the streaming mode
+
+        @param int mode: value that is in the StreamingMode class (StreamingMode.CONTINUOUS: 0, StreamingMode.FINITE: 1)
+        """
+        # TODO do we need a settings settable checker?
+        # if self._check_settings_change():
+        mode = StreamingMode(mode)
+        if mode not in self._constraints.streaming_modes:
+            self.log.error('Unknown streaming mode "{0}" encountered.\nValid modes are: {1}.'
+                           ''.format(mode, self._constraints.streaming_modes))
+            return
+        self._streaming_mode = mode
+        return
 
     @property
-    def stream_length(self):
+    def stream_length(self) -> int:
         """
         Property holding the total number of samples per channel to be acquired by this stream.
         This number is only relevant if the streaming mode is set to StreamingMode.FINITE.
 
         @return int: The number of samples to acquire per channel. Ignored for continuous streaming.
         """
-        pass
+        return self._stream_length
+    
+    @stream_length.setter
+    def stream_length(self, length: int):
+        # TODO do we need the check whether settings are currently changeable, e.g. are settings changeable during a running measurement?
+        # if not then a checker has to be implemented, which checks the status of the device.
+        # thus only proceeding when the status is idle or something like that.
+        # get_status() method earlier in this file could be used for that
+        # if self._check_settings_change():
+        length = int(length)
+        if length < 1:
+            self.log.error('Stream_length must be a positive integer >= 1.')
+            return
+        self._stream_length = length
+        return
 
     @property
-    def all_settings(self):
+    def all_settings(self) -> dict:
         """
         Read-only property to return a dict containing all current settings and values that can be
         configured using the method "configure". Basically returns the same as "configure".
 
         @return dict: Dictionary containing all configurable settings
         """
-        pass
+        return {'sample_rate': self.__sample_rate,
+                'streaming_mode': self.__streaming_mode,
+                'active_channels': self.active_channels,
+                'stream_length': self.__stream_length,
+                'buffer_size': self.__buffer_size,
+                'use_circular_buffer': self.__use_circular_buffer}
 
     @property
-    def number_of_channels(self):
+    def number_of_channels(self) -> int:
         """
         Read-only property to return the currently configured number of active data channels.
 
         @return int: the currently set number of channels
         """
-        pass
+        return len(self.__active_channels)
 
     @property
-    def active_channels(self):
+    def active_channels(self) -> tuple:
         """
         The currently configured data channel properties.
         Returns a dict with channel names as keys and corresponding StreamChannel instances as
@@ -1027,7 +1102,22 @@ class FastComtec(FastCounterInterface, DataInStreamInterface):
         @return dict: currently active data channel properties with keys being the channel names
                       and values being the corresponding StreamChannel instances.
         """
-        pass
+        constr = self._constraints
+        return(*(ch.copy() for ch in constr.digital_channels if ch.name in self.__active_channels),
+               *(ch.copy() for ch in constr.analog_channels if ch.name in self.__active_channels))
+
+    @active_channels.setter
+    def active_channels(self, channels: str):
+        # TODO checker for channel settings
+        # if self._check_settings_change():
+        avail_channels = tuple(ch.name for ch in self.available_channels)
+        if any(ch not in avail_channels for ch in channels):
+            self.log.error('Invalid channel to stream from encountered ({0}).\nValid channels '
+                           'are: {1}'
+                           ''.format(tuple(channels), tuple(self.available_channels)))
+            return
+        self.__active_channels = tuple(channels)
+        return
 
     @property
     def available_channels(self):
