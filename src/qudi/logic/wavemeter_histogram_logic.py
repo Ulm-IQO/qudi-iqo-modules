@@ -17,11 +17,12 @@ class WavemeterLogic(LogicBase):
 
 
     # declare signals
-    sigDataChanged = QtCore.Signal(object)
+    sigDataChanged = QtCore.Signal(object, object)
     sig_new_data_points = QtCore.Signal(object, object)
     sigStatusChanged = QtCore.Signal(bool) #TODO 2nd boolean for recording
     sigSettingsChanged = QtCore.Signal(dict)
-    _sigNextDataFrameWavelength = QtCore.Signal(bool)  # internal signal #now with boolean if complete histogram to be calculated or only new data
+    sigNewWavelength2 = QtCore.Signal(object, object)
+    #_sigNextDataFrameWavelength = QtCore.Signal(bool)  # internal signal #now with boolean if complete histogram to be calculated or only new data
 
     # declare connectors
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
@@ -49,10 +50,11 @@ class WavemeterLogic(LogicBase):
         self._samples_per_frame = None
         self._stop_requested = True
         self.start_time_bool = True
+        self.complete_histogram = False
         self.start_time = None
 
-        # Data arrays
-        self._trace_data = np.empty((2,0), dtype=np.float64)
+        # Data arrays #wavelength, counts, timings, wavelength in Hz
+        self._trace_data = np.empty((4, 0), dtype=np.float64)
 
         #####Old Core#####
         self._bins = 200
@@ -115,7 +117,10 @@ class WavemeterLogic(LogicBase):
         self.sumhisto = np.ones(self._bins) * 1.0e-10
 
         # set up internal frame loop connection
-        self._sigNextDataFrameWavelength.connect(self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
+        #self._sigNextDataFrameWavelength.connect(self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
+
+        streamer.sigNewWavelength.connect(
+            self.display_current_wavelength, QtCore.Qt.QueuedConnection)
 
         return
 
@@ -126,9 +131,8 @@ class WavemeterLogic(LogicBase):
         if self.module_state() == 'locked':
             self._stop_reader_wait()
 
-        self._sigNextDataFrameWavelength.disconnect()
-        #self._time_series_logic.sigDataChanged.disconnect()
-
+        #self._sigNextDataFrameWavelength.disconnect()
+        self._streamer().sigNewWavelength.disconnect()
         return
 
     @property
@@ -149,10 +153,10 @@ class WavemeterLogic(LogicBase):
         self.configure_settings(data_rate=val)
         return
 
-    @QtCore.Slot()
-    def _counts_and_wavelength(self, complete_histogram):
+    @QtCore.Slot(object)
+    def _counts_and_wavelength(self, new_count_data):
         """
-                This method gets the available data from both hardwares.
+                This method gets the available data from both ◘.
 
                 It runs repeatedly by being connected to a QTimer timeout signal.
                 """
@@ -166,57 +170,56 @@ class WavemeterLogic(LogicBase):
                             'Error while trying to stop streaming device data acquisition (wavemeter).')
                     self.module_state.unlock()
                     self.sigStatusChanged.emit(False)
+                    self._time_series_logic.sigDataChangedWavemeter.disconnect()
                     return
                 #set the integer samples_to_read to the according value of count instreamer
                 #and interpolate the wavelength values accordingly
                 #TODO is the timing of data aquisition below synchronised
                 #TODO what is max() exactly needed for
-                samples_to_read_counts = (self._time_series_logic._streamer().available_samples // self._time_series_logic._oversampling_factor) * self._time_series_logic._oversampling_factor#,
-                    #self._time_series_logic._samples_per_frame * self._time_series_logic._oversampling_factor)
 
-                if samples_to_read_counts < 1:
-                    self._sigNextDataFrameWavelength.emit(complete_histogram)
-                    return
+                # Determine samples to read according to new_count_data size (!one channel only!)
+                if new_count_data is not None:
+                    samples_to_read_counts = len(new_count_data[0])
 
-                # read the current counts values
-                _data_counts = self._time_series_logic._streamer().read_data(
-                    number_of_samples=samples_to_read_counts)
-                # TODO be aware of digital counter channels
-                # read the current wavemeter values (until at least one value available!)
                 _data_wavelength = self._streamer().read_data(number_of_samples=samples_to_read_counts)
+
+                _data_counts = new_count_data
 
                 if _data_wavelength.shape[1] != samples_to_read_counts or _data_counts.shape[1] != samples_to_read_counts:
                     self.log.error('Reading data from streamer went wrong; '
                                    'killing the stream with next data frame.')
                     self._stop_requested = True
-                    self._sigNextDataFrameWavelength.emit(complete_histogram)
                     return
 
                 # Process data
-                #[0] for wavelength only
-                self._process_data_for_histogram(_data_wavelength[0], _data_counts[0])
-                self._update_histogram(complete_histogram)
-
-                #Emit update signal for Gui
-                self.sigDataChanged.emit(self._trace_data)
-
                 #let time start at 0s
                 if self.start_time_bool:
                     self.start_time = _data_wavelength[1, 0]
                     self.start_time_bool = False
 
-                #emit time wavelength signal for scatterplot; /1000 to get time in s
-                self.sig_new_data_points.emit(list(_data_wavelength[0]), list((_data_wavelength[1] - self.start_time)/1000))
+                #timings of wavelengths in s
+                _data_wavelength_timings = (_data_wavelength[1] - self.start_time)/1000
 
-                #emit new signal for aquisition loop
-                self._sigNextDataFrameWavelength.emit(False)
+                #[0] for wavelength only
+                self._process_data_for_histogram(_data_wavelength[0], _data_counts[0], _data_wavelength_timings)
+                self._update_histogram(self.complete_histogram)
+
+                #Emit update signal for Gui
+                self.sigDataChanged.emit(_data_wavelength[0], _data_counts[0])
+
+                #emit time wavelength signal for scatterplot; /1000 to get time in s
+                self.sig_new_data_points.emit(_data_wavelength[0], list(_data_wavelength_timings))
+
         return
 
-    def _process_data_for_histogram(self, data_wavelength, data_counts):
+    def _process_data_for_histogram(self, data_wavelength, data_counts, data_wavelength_timings):
         """Method for generating whole data set of wavelength and counts (already interpolated)"""
         #scale counts upon sample rate in order to display counts/s
-        data_counts *= self._time_series_logic.sampling_rate
-        temp = [list(data_wavelength), list(data_counts)]
+        #data_counts *= self._time_series_logic.sampling_rate
+        #Do this alrady in time series file otherwise weird outcome
+
+        data_freq = 3.0e17 / data_wavelength
+        temp = [list(data_wavelength), list(data_counts), list(data_wavelength_timings), list(data_freq)]
         self._trace_data = np.append(self._trace_data, np.array(temp), axis=1)
         return
 
@@ -229,6 +232,7 @@ class WavemeterLogic(LogicBase):
         #reset data index
         if complete_histogram:
             self._data_index = 0
+            self.complete_histogram = False
 
         temp = self._trace_data.tolist()
         for i in temp[0][self._data_index:]:
@@ -279,12 +283,17 @@ class WavemeterLogic(LogicBase):
             self.sigStatusChanged.emit(True)
 
             #start counterlogic aquisition loop
-            if self._time_series_logic.module_state() == 'idle':
-                if self._time_series_logic._streamer().start_stream() < 0:
-                    self.log.error('Error while starting streaming device data acquisition.')
-                    #self._stop_requested = True
-                    #self._sigNextDataFrameWavelength.emit()
-                    return -1
+            #if self._time_series_logic.module_state() == 'idle':
+            #    if self._time_series_logic._streamer().start_stream() < 0:
+            #        self.log.error('Error while starting streaming device data acquisition.')
+            #        #self._stop_requested = True
+            #        #self._sigNextDataFrameWavelength.emit()
+            #        return -1
+
+            #start counterlogic QTqueued acquisition loop
+            #TODO check that time series gui has to be running
+            self._time_series_logic.sigDataChangedWavemeter.connect(
+                self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
 
             #if self._data_recording_active:
             #    self._record_start_time = dt.datetime.now()
@@ -293,10 +302,10 @@ class WavemeterLogic(LogicBase):
             if self._streamer().start_stream() < 0:
                 self.log.error('Error while starting streaming device data acquisition.')
                 self._stop_requested = True
-                self._sigNextDataFrameWavelength.emit(False)
+                #self._sigNextDataFrameWavelength.emit(False)
                 return -1
 
-            self._sigNextDataFrameWavelength.emit(False)
+            #self._sigNextDataFrameWavelength.emit(False)
         return 0
 
     @QtCore.Slot()
@@ -309,7 +318,7 @@ class WavemeterLogic(LogicBase):
         with self.threadlock:
             #TODO
             #if self._time_series_logic.module_state() == 'locked':
-            self._time_series_logic._streamer().stop_stream()
+            #self._time_series_logic._streamer().stop_stream()
             if self.module_state() == 'locked':
                 self._stop_requested = True
         return 0
@@ -607,5 +616,33 @@ class WavemeterLogic(LogicBase):
         #self.envelope_histogram = np.zeros(self._bins)
         self.sumhisto = np.ones(self._bins) * 1.0e-10
         self.histogram_axis = np.linspace(self._xmin, self._xmax, self._bins)
-        self._sigNextDataFrameWavelength.emit(True)
+        #self._sigNextDataFrameWavelength.emit(True)
+        self.complete_histogram = True
         return
+
+    @QtCore.Slot(object)
+    def display_current_wavelength(self, current_wavelength):
+        #self.display_current_wavelength_2 = current_wavelength
+        current_freq = 3.0e8 / current_wavelength #in GHz
+        self.sigNewWavelength2.emit(current_wavelength, current_freq)
+        return
+
+    def _stop_reader_wait(self):
+        """
+        Stops the counter if still running when deactivate module
+
+        @return: error code
+        """
+        with self.threadlock:
+            self._stop_requested = True
+            # terminate the hardware streaming
+            if self._streamer().stop_stream() < 0:
+                self.log.error(
+                    'Error while trying to stop streaming device data acquisition.')
+            #if self._data_recording_active:
+            #    self._save_recorded_data(to_file=True, save_figure=True)
+            #    self._recorded_data = list()
+            #self._data_recording_active = False
+            self.module_state.unlock()
+            self.sigStatusChanged.emit(False)
+        return 0
