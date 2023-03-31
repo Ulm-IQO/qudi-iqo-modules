@@ -19,9 +19,11 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+import ctypes
+import numpy as np
 
 from qudi.core.configoption import ConfigOption
-from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode
+from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode, StreamChannel, StreamChannelType
 
 class FastComtec(DataInStreamInterface):
     """ Hardware Class for the FastComtec Card.
@@ -33,13 +35,15 @@ class FastComtec(DataInStreamInterface):
     fastcomtec_mcs6:
         module.Class: 'fastcomtec.fastcomtecmcs6.FastComtec'
         options:
-            gated: False
-            trigger_safety: 400e-9
-            aom_delay: 390e-9
-            minimal_binwidth: 0.2e-9
+            
 
     """
+    # config options
+    _digital_sources = ConfigOption(name='digital_sources', default=tuple(), missing='info') # specify the digital channels on the device that should be used for streaming in data
+    _max_read_block_size = ConfigOption(name='max_read_block_size', default=10000, missing='info') # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
+
     def __init__(self, config, **kwargs):
+        super().__init__(config=config, **kwargs)
         self._sample_rate = None
         self._buffer_size = None
         self._use_circular_buffer = None
@@ -51,6 +55,13 @@ class FastComtec(DataInStreamInterface):
         
 
     def on_activate(self):
+        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
+        # if self.gated:
+        #     self.change_sweep_mode(gated=True)
+        # else:
+        #     self.change_sweep_mode(gated=False)
+        # return
+
         self._streaming_mode = StreamingMode.CONTINUOUS
         
         # Create constraints
@@ -60,39 +71,27 @@ class FastComtec(DataInStreamInterface):
                               type=StreamChannelType.DIGITAL,
                               unit='counts') for src in self._digital_sources
             ),
-            analog_channels=tuple(
-                StreamChannel(name=src,
-                              type=StreamChannelType.ANALOG,
-                              unit='V') for src in self._analog_sources
-            ),
-            analog_sample_rate={'default'    : 1,
-                                'bounds'     : (self._device_handle.ai_min_rate,
-                                                self._device_handle.ai_max_multi_chan_rate),
-                                'increment'  : 1,
-                                'enforce_int': False},
-            # FIXME: What is the minimum frequency for the digital counter timebase?
+            # TODO correctly implement the minimal sample_rate
             digital_sample_rate={'default'    : 1,
-                                 'bounds'     : (0.1, self._device_handle.ci_max_timebase),
+                                 'bounds'     : (0.1, 1/100e-12),
+                                 'increment'  : 0.1,
+                                 'enforce_int': False},
+            combined_sample_rate={'default'    : 1,
+                                 'bounds'     : (0.1, 1/100e-12),
                                  'increment'  : 0.1,
                                  'enforce_int': False},
             read_block_size={'default'    : 1,
-                             'bounds'     : (1, int(self._max_channel_samples_buffer)),
+                             'bounds'     : (1, int(self._max_read_block_size)),
                              'increment'  : 1,
                              'enforce_int': True},
             streaming_modes=(StreamingMode.CONTINUOUS,),  # TODO: Implement FINITE streaming mode
             data_type=np.float64,
             allow_circular_buffer=True
         )
-        self._constraints.combined_sample_rate = self._constraints.analog_sample_rate.copy()
+        # TODO implement the constraints for the fastcomtec max_bins, max_sweep_len and hardware_binwidth_list
 
     def on_deactivate(self):
-        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
-        # if self.gated:
-        #     self.change_sweep_mode(gated=True)
-        # else:
-        #     self.change_sweep_mode(gated=False)
-        # return
-
+        pass
 
     @property
     def sample_rate(self) -> float:
@@ -220,12 +219,12 @@ class FastComtec(DataInStreamInterface):
 
         @return dict: Dictionary containing all configurable settings
         """
-        return {'sample_rate': self.__sample_rate,
-                'streaming_mode': self.__streaming_mode,
+        return {'sample_rate': self._sample_rate,
+                'streaming_mode': self._streaming_mode,
                 'active_channels': self.active_channels,
-                'stream_length': self.__stream_length,
-                'buffer_size': self.__buffer_size,
-                'use_circular_buffer': self.__use_circular_buffer}
+                'stream_length': self._stream_length,
+                'buffer_size': self._buffer_size,
+                'use_circular_buffer': self._use_circular_buffer}
 
     @property
     def number_of_channels(self) -> int:
@@ -413,5 +412,13 @@ class FastComtec(DataInStreamInterface):
 
         @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
                                indicates error.
+        """
+        pass
+    
+    def get_constraints(self):
+        """
+        Return the constraints on the settings for this data streamer.
+
+        @return DataInStreamConstraints: Instance of DataInStreamConstraints containing constraints
         """
         pass
