@@ -113,8 +113,8 @@ class ScannerGui(GuiBase):
     sigSaveFinished = QtCore.Signal()
     sigShowSaveDialog = QtCore.Signal(bool)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # QMainWindow and QDialog child instances
         self._mw = None

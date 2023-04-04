@@ -24,7 +24,7 @@ import numpy as np
 from enum import Enum
 from abc import abstractmethod
 from qudi.core.module import Base
-from qudi.core.interface import ScalarConstraint
+from qudi.util.constraints import ScalarConstraint
 
 
 class DataInStreamInterface(Base):
@@ -372,32 +372,32 @@ class DataInStreamConstraints:
             self.analog_channels = tuple(ch.copy() for ch in analog_channels)
 
         if isinstance(analog_sample_rate, ScalarConstraint):
-            self.analog_sample_rate = ScalarConstraint(**vars(analog_sample_rate))
+            self.analog_sample_rate = analog_sample_rate.copy()
         elif isinstance(analog_sample_rate, dict):
             self.analog_sample_rate = ScalarConstraint(**analog_sample_rate)
         else:
-            self.analog_sample_rate = ScalarConstraint(min=1, max=np.inf, step=1, default=1)
+            self.analog_sample_rate = ScalarConstraint(default=1, bounds=(1, np.inf), increment=1)
 
         if isinstance(digital_sample_rate, ScalarConstraint):
-            self.digital_sample_rate = ScalarConstraint(**vars(digital_sample_rate))
+            self.digital_sample_rate = digital_sample_rate.copy()
         elif isinstance(digital_sample_rate, dict):
             self.digital_sample_rate = ScalarConstraint(**digital_sample_rate)
         else:
-            self.digital_sample_rate = ScalarConstraint(min=1, max=np.inf, step=1, default=1)
+            self.digital_sample_rate = ScalarConstraint(default=1, bounds=(1, np.inf), increment=1)
 
         if isinstance(combined_sample_rate, ScalarConstraint):
-            self.combined_sample_rate = ScalarConstraint(**vars(combined_sample_rate))
+            self.combined_sample_rate = combined_sample_rate.copy()
         elif isinstance(combined_sample_rate, dict):
             self.combined_sample_rate = ScalarConstraint(**combined_sample_rate)
         else:
-            self.combined_sample_rate = ScalarConstraint(min=1, max=np.inf, step=1, default=1)
+            self.combined_sample_rate = ScalarConstraint(default=1, bounds=(1, np.inf), increment=1)
 
         if isinstance(read_block_size, ScalarConstraint):
-            self.read_block_size = ScalarConstraint(**vars(read_block_size))
+            self.read_block_size = read_block_size.copy()
         elif isinstance(read_block_size, dict):
             self.read_block_size = ScalarConstraint(**read_block_size)
         else:
-            self.read_block_size = ScalarConstraint(min=1, max=np.inf, step=1, default=1)
+            self.read_block_size = ScalarConstraint(default=1, bounds=(1, np.inf), increment=1)
 
         if streaming_modes is None:
             self.streaming_modes = (StreamingMode.CONTINUOUS, StreamingMode.FINITE)

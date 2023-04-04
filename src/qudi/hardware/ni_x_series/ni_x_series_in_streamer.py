@@ -112,7 +112,6 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
         # Stored hardware constraints
         self._constraints = None
-        return
 
     def on_activate(self):
         """
@@ -180,35 +179,36 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             )
 
         # Create constraints
-        self._constraints = DataInStreamConstraints()
-        self._constraints.digital_channels = tuple(
-            StreamChannel(name=src,
-                          type=StreamChannelType.DIGITAL,
-                          unit='counts') for src in self._digital_sources)
-        self._constraints.analog_channels = tuple(
-            StreamChannel(name=src,
-                          type=StreamChannelType.ANALOG,
-                          unit='V') for src in self._analog_sources)
-
-        self._constraints.analog_sample_rate.min = self._device_handle.ai_min_rate
-        self._constraints.analog_sample_rate.max = self._device_handle.ai_max_multi_chan_rate
-        self._constraints.analog_sample_rate.step = 1
-        self._constraints.analog_sample_rate.unit = 'Hz'
-        # FIXME: What is the minimum frequency for the digital counter timebase?
-        self._constraints.digital_sample_rate.min = 0.1
-        self._constraints.digital_sample_rate.max = self._device_handle.ci_max_timebase
-        self._constraints.digital_sample_rate.step = 0.1
-        self._constraints.digital_sample_rate.unit = 'Hz'
-        self._constraints.combined_sample_rate = self._constraints.analog_sample_rate
-
-        self._constraints.read_block_size.min = 1
-        self._constraints.read_block_size.max = int(self._max_channel_samples_buffer)
-        self._constraints.read_block_size.step = 1
-
-        # TODO: Implement FINITE streaming mode
-        self._constraints.streaming_modes = (StreamingMode.CONTINUOUS,)  # , StreamingMode.FINITE)
-        self._constraints.data_type = np.float64
-        self._constraints.allow_circular_buffer = True
+        self._constraints = DataInStreamConstraints(
+            digital_channels=tuple(
+                StreamChannel(name=src,
+                              type=StreamChannelType.DIGITAL,
+                              unit='counts') for src in self._digital_sources
+            ),
+            analog_channels=tuple(
+                StreamChannel(name=src,
+                              type=StreamChannelType.ANALOG,
+                              unit='V') for src in self._analog_sources
+            ),
+            analog_sample_rate={'default'    : 1,
+                                'bounds'     : (self._device_handle.ai_min_rate,
+                                                self._device_handle.ai_max_multi_chan_rate),
+                                'increment'  : 1,
+                                'enforce_int': False},
+            # FIXME: What is the minimum frequency for the digital counter timebase?
+            digital_sample_rate={'default'    : 1,
+                                 'bounds'     : (0.1, self._device_handle.ci_max_timebase),
+                                 'increment'  : 0.1,
+                                 'enforce_int': False},
+            read_block_size={'default'    : 1,
+                             'bounds'     : (1, int(self._max_channel_samples_buffer)),
+                             'increment'  : 1,
+                             'enforce_int': True},
+            streaming_modes=(StreamingMode.CONTINUOUS,),  # TODO: Implement FINITE streaming mode
+            data_type=np.float64,
+            allow_circular_buffer=True
+        )
+        self._constraints.combined_sample_rate = self._constraints.analog_sample_rate.copy()
 
         # Check external sample clock source
         if self._external_sample_clock_source is not None:
@@ -234,34 +234,36 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                                'bounds. Please choose a value between {1:.3e}Hz and {2:.3e}Hz.'
                                ' Value will be clipped to the closest boundary.'
                                ''.format(self._external_sample_clock_frequency,
-                                         self._constraints.combined_sample_rate.min,
-                                         self._constraints.combined_sample_rate.max))
+                                         self._constraints.combined_sample_rate.minimum,
+                                         self._constraints.combined_sample_rate.maximum))
                 self._external_sample_clock_frequency = min(
                     self._external_sample_clock_frequency,
-                    self._constraints.combined_sample_rate.max)
+                    self._constraints.combined_sample_rate.maximum)
                 self._external_sample_clock_frequency = max(
                     self._external_sample_clock_frequency,
-                    self._constraints.combined_sample_rate.min)
+                    self._constraints.combined_sample_rate.minimum)
             else:
                 self.log.error('External sample clock frequency requested ({0:.3e}Hz) is out of '
                                'bounds. Please choose a value between {1:.3e}Hz and {2:.3e}Hz.'
                                ' Value will be clipped to the closest boundary.'
                                ''.format(self._external_sample_clock_frequency,
-                                         self._constraints.digital_sample_rate.min,
-                                         self._constraints.digital_sample_rate.max))
+                                         self._constraints.digital_sample_rate.minimum,
+                                         self._constraints.digital_sample_rate.maximum))
                 self._external_sample_clock_frequency = min(
                     self._external_sample_clock_frequency,
-                    self._constraints.digital_sample_rate.max)
+                    self._constraints.digital_sample_rate.maximum
+                )
                 self._external_sample_clock_frequency = max(
                     self._external_sample_clock_frequency,
-                    self._constraints.digital_sample_rate.min)
+                    self._constraints.digital_sample_rate.minimum
+                )
 
         self.terminate_all_tasks()
 
         if self._external_sample_clock_frequency is not None:
             self.__sample_rate = float(self._external_sample_clock_frequency)
         else:
-            self.__sample_rate = self._constraints.combined_sample_rate.min
+            self.__sample_rate = self._constraints.combined_sample_rate.minimum
 
         self.__data_type = np.float64
         self.__stream_length = -1
@@ -297,11 +299,11 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         if self._check_settings_change():
             if not self._clk_frequency_valid(rate):
                 if self._analog_sources:
-                    min_val = self._constraints.combined_sample_rate.min
-                    max_val = self._constraints.combined_sample_rate.max
+                    min_val = self._constraints.combined_sample_rate.minimum
+                    max_val = self._constraints.combined_sample_rate.maximum
                 else:
-                    min_val = self._constraints.digital_sample_rate.min
-                    max_val = self._constraints.digital_sample_rate.max
+                    min_val = self._constraints.digital_sample_rate.minimum
+                    max_val = self._constraints.digital_sample_rate.maximum
                 self.log.warning(
                     'Sample rate requested ({0:.3e}Hz) is out of bounds. Please choose '
                     'a value between {1:.3e}Hz and {2:.3e}Hz. Value will be clipped to '
@@ -1119,11 +1121,11 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
     def _clk_frequency_valid(self, frequency):
         if self._analog_sources:
-            max_rate = self._constraints.combined_sample_rate.max
-            min_rate = self._constraints.combined_sample_rate.min
+            max_rate = self._constraints.combined_sample_rate.maximum
+            min_rate = self._constraints.combined_sample_rate.minimum
         else:
-            max_rate = self._constraints.digital_sample_rate.max
-            min_rate = self._constraints.digital_sample_rate.min
+            max_rate = self._constraints.digital_sample_rate.maximum
+            min_rate = self._constraints.digital_sample_rate.minimum
         return min_rate <= frequency <= max_rate
 
     def _init_buffer(self):
