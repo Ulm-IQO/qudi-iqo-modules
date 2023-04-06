@@ -27,13 +27,13 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
 
-from qudi.logic.qdyne.qdyne_raw_data_processor import RawDataProcessor
-from qudi.logic.qdyne.qdyne_time_trace_analysis import TimeTraceAnalyzer
+from qudi.logic.qdyne.qdyne_state_estimator import StateEstimator
+from qudi.logic.qdyne.qdyne_time_trace_analyzer import TimeTraceAnalyzer
 
 class QdyneLogic:
 
     def __init__(self):
-        self.rd_processor = RawDataProcessor()
+        self.s_estimator = StateEstimator()
         self.tt_analyzer = TimeTraceAnalyzer()
 
     def configure(self):
@@ -49,7 +49,7 @@ class QdyneLogic:
         pass
 
     def process_raw_data(self):
-        self.time_trace = self.rd_processor.process()
+        self.time_trace = self.s_estimator.estimate()
 
     def analyze_time_trace(self):
         self.signal = self.tt_analyzer.analyze(self.time_trace)
