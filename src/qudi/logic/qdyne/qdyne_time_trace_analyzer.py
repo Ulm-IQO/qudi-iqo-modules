@@ -17,8 +17,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
 
-class Analyzer(ABC):
 
+class Analyzer(ABC):
     @abstractmethod
     def input_settings(self, settings):
         pass
@@ -31,8 +31,9 @@ class Analyzer(ABC):
     def get_spectrum(self, signal):
         pass
 
+
 @dataclass
-class FT_settings:
+class FourierSettings:
     range_around_peak: int = 30
     padding_parameter: int = 1
     cut_time_trace: bool = False
@@ -45,9 +46,17 @@ class FT_settings:
     def next_pow_2(self, sample_size):
         return int(2**self.ceil_log(sample_size))
 
+
 class FourierAnalyzer(Analyzer):
 
-    def input_settings(self, settings: FT_settings) -> None:
+    def __init__(self):
+        self._range_around_peak = FourierSettings.range_around_peak
+        self._padding_parameter = FourierSettings.padding_parameter
+        self._cut_time_trace = FourierSettings.cut_time_trace
+        self._spectrum_type = FourierSettings.spectrum_type
+        self._sequence_length_s = FourierSettings.sequence_length_s
+
+    def input_settings(self, settings: FourierSettings) -> None:
         self._range_around_peak = settings.range_around_peak
         self._padding_parameter = settings.padding_parameter
         self._cut_time_trace = settings.cut_time_trace
@@ -118,11 +127,12 @@ class FourierAnalyzer(Analyzer):
 class TimeTraceAnalyzer:
 
     def __init__(self):
+        self.analyzer = None
         self.method = 'FT'
 
     def configure_method(self, method):
         if method == 'FT':
-            self.analyzer = FourierAnalysis()
+            self.analyzer = FourierAnalyzer()
 
     def input_settings(self, settings):
         self.analyzer.input_settings(settings)
