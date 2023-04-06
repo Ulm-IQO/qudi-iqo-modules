@@ -13,22 +13,45 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
-class TimeSeriesDataProcessor:
+class Estimator(ABC):
+
+    @abstractmethod
+    def input_settings(self, settings):
+        pass
+
+    @abstractmethod
+    def estimate(self, data):
+        pass
+class TimeSeriesBasedEstimator(Estimator):
     pass
 
-class TimeTagDataProcessor:
+@dataclass
+class TimeTagBasedEstimatorSettings:
+    count_mode: str = 'Average'
+    count_length: int = 2000
+    start_count: int = 0
+    stop_count: int = 0
+    count_threshold: int = 90000
+    weight: list=[]
+    @property
+    def stop_count(self):
+        return self.start_count + self.count_length
+
+class TimeTagBasedEstimator(Estimator):
     def __init__(self):
         # return
 
-    def input_settings(self, settings):
+    def input_settings(self, settings: TimeTagBasedEstimatorSettings) -> None:
         self._count_mode = settings.count_mode
         self._count_length = settings.count_length
         self._start_count = settings.start_count
         self._stop_count = settings.stop_count
         self._count_threshold = settings.count_threshold
 
-    def process(self, time_tag_data):
+    def estimate(self, time_tag_data):
         if self._count_mode == 'Average':
             counts_time_trace = self._photon_count(time_tag_data,
                                                   self._start_count,
@@ -67,17 +90,19 @@ class TimeTagDataProcessor:
                 photon_counts = 0
         return counts_time_trace
 
-class RawDataProcessor:
+
+
+class StateEstimator:
 
     def configure_data_type(self, data_type):
         if data_type == 'TimeSeries':
-            self.processor = TimeSeriesDataProcessor()
+            self.estimator = TimeSeriesBasedEstimator()
         elif data_type == 'TimeTag':
-            self.processor = TimeTagDataProcessor()
+            self.estimator = TimeTagBasedEstimator()
 
     def input_settings(self, settings):
-        self.processor.input_settings(settings)
-    def process(self, raw_data):
-        state_time_trace = self.proseccor.process(raw_data)
+        self.estimator.input_settings(settings)
+    def estimate(self, raw_data):
+        state_time_trace = self.estimator.estimate(raw_data)
 
         return state_time_trace
