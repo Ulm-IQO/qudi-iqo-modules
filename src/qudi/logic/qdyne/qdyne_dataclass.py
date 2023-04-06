@@ -75,42 +75,20 @@ class readout_settings:
             number_of_chunks = int(lines_to_read / lines_per_chunk)
         return number_of_chunks
 
-@dataclass
-class TimeTagDataProcessorSettings:
-    count_mode: str = 'Average'
-    count_length: int = 2000
-    start_count: int = 0
-    stop_count: int = 0
-    count_thresholde: int = 90000
-    weight: list=[]
-    @property
-    def stop_count(self):
-        return self.start_count + self.count_length
+
 
 @dataclass
-class FT_settings:
-    range_around_peak: int = 30
-    padding_parameter: int = 1
-    cut_time_trace: bool = False
-    spectrum_type: str = 'FT'
-    sequence_length_s: float = 0
-
-    def ceil_log(self, sample_size, base=2):
-        return int(np.ceil(np.log(sample_size, base)))
-
-    def next_pow_2(self, sample_size):
-        return int(2**self.ceil_log(sample_size))
-
+class FitSettings:
+    pass
 @dataclass
-class Fit_settings:
-@dataclass
-class save_settings:
+class SaveSettings:
     save_binary: bool = True
     show_full: bool = True
     full_list_name: str = ''
     file_extension: str = ''
 
     def get_full_list_name(self):
+        pass
 
 @dataclass
-class Plot_settings:
+class PlotSettings:
