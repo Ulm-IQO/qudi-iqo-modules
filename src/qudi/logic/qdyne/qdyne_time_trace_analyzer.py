@@ -13,11 +13,41 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+from abc import ABC, abstractmethod
+from dataclasses import dataclass
 import numpy as np
 
-class FourierAnalysis:
+class Analyzer(ABC):
 
+    @abstractmethod
     def input_settings(self, settings):
+        pass
+
+    @abstractmethod
+    def analyze(self, time_trace):
+        pass
+
+    @abstractmethod
+    def get_spectrum(self, signal):
+        pass
+
+@dataclass
+class FT_settings:
+    range_around_peak: int = 30
+    padding_parameter: int = 1
+    cut_time_trace: bool = False
+    spectrum_type: str = 'FT'
+    sequence_length_s: float = 0
+
+    def ceil_log(self, sample_size, base=2):
+        return int(np.ceil(np.log(sample_size, base)))
+
+    def next_pow_2(self, sample_size):
+        return int(2**self.ceil_log(sample_size))
+
+class FourierAnalyzer(Analyzer):
+
+    def input_settings(self, settings: FT_settings) -> None:
         self._range_around_peak = settings.range_around_peak
         self._padding_parameter = settings.padding_parameter
         self._cut_time_trace = settings.cut_time_trace
@@ -82,6 +112,8 @@ class FourierAnalysis:
 
     def get_half_frequency_array(self, sequence_length_s, ft):
         return 1 / (sequence_length_s * len(ft))*np.arange(len(ft)/2)
+
+
 
 class TimeTraceAnalyzer:
 
