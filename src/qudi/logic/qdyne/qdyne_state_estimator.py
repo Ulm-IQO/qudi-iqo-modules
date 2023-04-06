@@ -16,6 +16,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+
 class Estimator(ABC):
 
     @abstractmethod
@@ -25,8 +26,16 @@ class Estimator(ABC):
     @abstractmethod
     def estimate(self, data):
         pass
+
+
 class TimeSeriesBasedEstimator(Estimator):
-    pass
+
+    def input_settings(self, settings):
+        pass
+
+    def estimate(self, data):
+        pass
+
 
 @dataclass
 class TimeTagBasedEstimatorSettings:
@@ -35,14 +44,20 @@ class TimeTagBasedEstimatorSettings:
     start_count: int = 0
     stop_count: int = 0
     count_threshold: int = 90000
-    weight: list=[]
+    weight: list = []
+
     @property
     def stop_count(self):
         return self.start_count + self.count_length
 
+
 class TimeTagBasedEstimator(Estimator):
     def __init__(self):
-        # return
+        self._count_mode = TimeTagBasedEstimatorSettings.count_mode
+        self._count_length = TimeTagBasedEstimatorSettings.count_length
+        self._start_count = TimeTagBasedEstimatorSettings.start_count
+        self._stop_count = TimeTagBasedEstimatorSettings.stop_count
+        self._count_threshold = TimeTagBasedEstimatorSettings.count_threshold
 
     def input_settings(self, settings: TimeTagBasedEstimatorSettings) -> None:
         self._count_mode = settings.count_mode
@@ -54,15 +69,15 @@ class TimeTagBasedEstimator(Estimator):
     def estimate(self, time_tag_data):
         if self._count_mode == 'Average':
             counts_time_trace = self._photon_count(time_tag_data,
-                                                  self._start_count,
-                                                  self._stop_count,
-                                                  self._count_threshold)
+                                                   self._start_count,
+                                                   self._stop_count,
+                                                   self._count_threshold)
         elif self._count_mode == 'WeightedAverage':
             counts_time_trace = self._weighted_photon_count(time_tag_data,
-                                                           self._weight,
-                                                           self._start_count,
-                                                           self._stop_count,
-                                                           self._count_threshold)
+                                                            self._weight,
+                                                            self._start_count,
+                                                            self._stop_count,
+                                                            self._count_threshold)
         return counts_time_trace
 
     def _photon_count(self, time_tag, start_count, stop_count, count_threshold=90000):
@@ -77,6 +92,7 @@ class TimeTagBasedEstimator(Estimator):
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
         return counts_time_trace
+
     def _weighted_photon_count(self, time_tag, weight, start_count, stop_count, count_threshold=90000):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
@@ -91,8 +107,10 @@ class TimeTagBasedEstimator(Estimator):
         return counts_time_trace
 
 
-
 class StateEstimator:
+
+    def __init__(self):
+        self.estimator = None
 
     def configure_data_type(self, data_type):
         if data_type == 'TimeSeries':
@@ -102,6 +120,7 @@ class StateEstimator:
 
     def input_settings(self, settings):
         self.estimator.input_settings(settings)
+
     def estimate(self, raw_data):
         state_time_trace = self.estimator.estimate(raw_data)
 
