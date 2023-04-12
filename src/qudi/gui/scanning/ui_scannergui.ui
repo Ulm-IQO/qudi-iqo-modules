@@ -33,7 +33,7 @@
      <x>0</x>
      <y>0</y>
      <width>1440</width>
-     <height>30</height>
+     <height>18</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -64,6 +64,7 @@
     <addaction name="action_restore_default_view"/>
     <addaction name="separator"/>
     <addaction name="action_autorange_2d_scans"/>
+    <addaction name="action_view_Tilt_correction"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -328,6 +329,14 @@ Shortcut:Alt+T</string>
    </property>
    <property name="text">
     <string>Save all</string>
+   </property>
+  </action>
+  <action name="action_view_Tilt_correction">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Tilt_correction</string>
    </property>
   </action>
  </widget>
