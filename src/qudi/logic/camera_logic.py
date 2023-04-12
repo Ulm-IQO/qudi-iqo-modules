@@ -72,6 +72,8 @@ class CameraLogic(LogicBase):
         if self.module_state() == 'locked':
             self.module_state.unlock()
 
+        self.last_frames = None
+
         self._camera_control_logic().sigDataReceived.disconnect()
         self._camera_control_logic().sigAcquisitionFinished.disconnect()
 

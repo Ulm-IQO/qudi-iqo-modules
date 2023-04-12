@@ -220,11 +220,20 @@ class CameraGui(GuiBase):
         # disconnect all signals
         self.sigAcquisitionToggled.disconnect()
         logic.sigAcquisitionFinished.disconnect()
-        self._mw.action_save_frame.triggered.disconnect()
-        self._mw.action_show_settings.triggered.disconnect()
+        logic.sigFrameChanged.disconnect()
         self._mw.action_toggle_acquisition.triggered.disconnect()
+        self._mw.action_show_settings.triggered.disconnect()
+        self._mw.action_save_frame.triggered.disconnect()
         self._mw.action_open_settings.triggered.disconnect()
         self._mw.image_scrollbar.valueChanged.disconnect()
+        self._mw.measurement_number_spinbox.valueChanged.disconnect()
+        self._settings_dialog.exposure_creation_button.clicked.disconnect()
+        self._settings_dialog.exposure_same_value_creation_button.clicked.disconnect()
+        self._mw.acquisition_modes_combobox.currentTextChanged.disconnect()
+        self._settings_dialog.accepted.disconnect()
+        self._settings_dialog.rejected.disconnect()
+        self._settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
+
         self._mw.close()
 
     def show(self):

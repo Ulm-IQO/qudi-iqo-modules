@@ -103,11 +103,18 @@ class CameraControlLogic(LogicBase):
         if self.module_state() == 'locked':
             self.stop_data_acquisition()
             self.module_state.unlock()
-        
+       
+        # stop any running timers
+        self.__video_software_timer.stop()
+        self.__image_software_timer.stop()
+
         # disconnect all signals
         self.__video_software_timer.timeout.disconnect()
+        self.__image_software_timer.timeout.disconnect()
         self.sigStartInternalTimerVideo.disconnect()
         self.sigStopInternalTimerVideo.disconnect()
+        self.sigStartInternalTimerImage.disconnect()
+        self.sigStopInternalTimerImage.disconnect()
         
         # clear the stored frame data
         self._last_frames = None
