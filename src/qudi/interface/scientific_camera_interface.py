@@ -25,7 +25,9 @@ from abc import ABC, abstractmethod
 from qudi.core.module import Base
 from qudi.util.immutablekeydict import ImmutableKeyDict
 from enum import Enum
-
+from dataclasses import dataclass
+from datetime import datetime
+import numpy as np
 
 class CameraConstraints:
     """
@@ -91,7 +93,7 @@ class CameraConstraints:
     @operating_modes.setter
     def operating_modes(self, data):
         if self._operating_modes is None:
-            self._operating_modes = Enum('OperatingModes', data)    
+            self._operating_modes = Enum('OperatingModes', data, start=0)    
 
 class ScientificCameraInterface(Base):
     """ This interface is used to define the basic functionality
@@ -259,3 +261,21 @@ class ScientificCameraInterface(Base):
         @return:
         """
         pass
+
+@dataclass
+class MeasurementData:
+    """
+    Data class that represents stores all necessary measurement data of a camera measurement.
+    On top of storing the image data itself it stores metadata to make it possible to get measurement parameters later on.
+    The data can not only store data for a single image but also for a sequence of images.
+    """
+    data: np.ndarray # numpy array that stores the image / image sequence data
+    ring_of_exposures: list # list of exposures that have been used for this measurement
+    responsitivity: float # float that gives the responsitivity set for this measurement
+    bit_depth: int # int that gives the currently set bit depth of the camera
+    binning: tuple # (x_binning, y_binning) tuple that gives the binning setting of the measurement
+    crop: tuple # ((x_min, x_max), (y_min, y_max)) tuple of tuples that give the minimal and maximal values for pixels on the camera chip that have been illuminated
+    operating_mode: str # str that gives the operating mode of the camera
+    timestamp: datetime = datetime.now() # stores the timestamp of when the image has been taken
+
+    

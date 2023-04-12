@@ -189,7 +189,7 @@ class CameraGui(GuiBase):
         # Fill in data from logic
         logic_busy = logic.module_state() == 'locked'
         self._mw.action_toggle_acquisition.setChecked(logic_busy)
-        self._update_frame(logic.last_frames)
+        self._update_frame()
         self._keep_former_settings()
         # deactivate all not settable options
         for setting in logic.constraints.settable_settings:
@@ -249,7 +249,7 @@ class CameraGui(GuiBase):
         if settable_settings['crop']:
             logic.crop = ((self._settings_dialog.area_selection_group_start_x_spinbox.value(), self._settings_dialog.area_selection_group_stop_x_spinbox.value()), (self._settings_dialog.area_selection_group_start_y_spinbox.value(), self._settings_dialog.area_selection_group_stop_y_spinbox.value()))
         if self._settings_dialog.operating_mode_combobox.isEnabled():
-            logic.operating_mode = logic.constraints.operating_modes(self._settings_dialog.operating_mode_combobox.currentIndex() + 1)
+            logic.operating_mode = logic.constraints.operating_modes(self._settings_dialog.operating_mode_combobox.currentIndex())
 
     def get_ring_of_exposure(self):
         """
@@ -283,7 +283,7 @@ class CameraGui(GuiBase):
         self._settings_dialog.area_selection_group_start_y_spinbox.setValue(logic.crop[1][0])
         self._settings_dialog.area_selection_group_stop_y_spinbox.setValue(logic.crop[1][1])
         self._display_ring_of_exposures(logic.ring_of_exposures)
-        self._settings_dialog.operating_mode_combobox.setCurrentIndex(logic.operating_mode.value - 1)
+        self._settings_dialog.operating_mode_combobox.setCurrentIndex(logic.operating_mode.value)
 
     def _update_toolbar(self, text):
         """
@@ -350,15 +350,15 @@ class CameraGui(GuiBase):
             self._mw.image_widget.set_image(frame_data)
             return
         # update measurement and image number slider
-        image_num_string = str(image_num) + " / " + str(frame_data[sequence_num].shape[0]-1)
+        image_num_string = str(image_num) + " / " + str(frame_data[sequence_num].data.shape[0]-1)
         self._mw.measurement_number_spinbox.setMaximum(frame_data.shape[0]-1)
         self._mw.measurement_number_spinbox.setValue(sequence_num)
         self._mw.image_number_num_label.setText(image_num_string)
         # set scrollbar position and maximum value
-        self._mw.image_scrollbar.setMaximum(frame_data[sequence_num].shape[0]-1)
+        self._mw.image_scrollbar.setMaximum(frame_data[sequence_num].data.shape[0]-1)
         self._mw.image_scrollbar.setValue(image_num)
         # update the imageview with the new image data
-        self._mw.image_widget.set_image(frame_data[sequence_num][image_num])
+        self._mw.image_widget.set_image(frame_data[sequence_num].data[image_num])
 
     def _image_slider_moved(self, image_num):
         self._camera_logic().current_image_number = image_num
@@ -370,20 +370,35 @@ class CameraGui(GuiBase):
 
     def _save_frame(self):
         logic = self._camera_logic()
-        ds = TextDataStorage(root_dir=self.module_default_data_dir)
-        timestamp = datetime.datetime.now()
-        tag = logic.create_tag(timestamp)
-
-        parameters = {}
-        parameters['responsitivity'] = logic.responsitivity
-        parameters['exposure'] = logic.ring_of_exposures
-
-        data = logic.last_frames
-        if data is not None:
-            file_path, _, _ = ds.save_data(data, metadata=parameters, nametag=tag,
-                                       timestamp=timestamp, column_headers='Image (columns is X, rows is Y)')
-            figure = logic.draw_2d_image(data, cbar_range=None)
-            ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
-        else:
+        # check if data is available
+        full_data = logic.last_frames
+        if full_data is None:
+            # if not throw an error and return
             self.log.error('No Data acquired. Nothing to save.')
-        return
+            return
+        # if data is available, get the metadata of the saved data and write all different images to different image files
+        ds = TextDataStorage(root_dir=self.module_default_data_dir)
+        for ii, measurement_data in enumerate(full_data):
+            timestamp = datetime.datetime.now()
+            # set the metadata
+            parameters = {
+                    'timestamp': measurement_data.timestamp.strftime('%Y-%m-%d, %H:%M:%S'),
+                    'measurement number': ii,
+                    'responsitivity': measurement_data.responsitivity,
+                    'measurement exposure list': list(measurement_data.ring_of_exposures),
+                    'bit depth': measurement_data.bit_depth,
+                    'binning': measurement_data.binning,
+                    'crop': measurement_data.crop,
+                    'operating mode': measurement_data.operating_mode.name,
+                        }
+            for kk, data in enumerate(measurement_data.data):
+                # set the image specific metadata
+                parameters['image number'] = kk
+                parameters['exposure'] = measurement_data.ring_of_exposures[kk]
+                tag = logic.create_tag(measurement_num = ii, image_num = kk)
+                # save the raw data
+                file_path, _, _ = ds.save_data(data, metadata=parameters, nametag=tag,
+                                           timestamp=timestamp, column_headers='Image (columns is X, rows is Y)')
+                # save a drawn image of the data
+                figure = logic.draw_2d_image(data, cbar_range=None)
+                ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])

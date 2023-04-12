@@ -77,9 +77,8 @@ class CameraLogic(LogicBase):
 
     def frame_change(self):
         """ Method that indicates that new data for the frame has been received by camera control"""
-        # TODO think about how to incorporate scrolling through images
         self.current_measurement_number = self.last_frames.shape[0] - 1
-        self.current_image_number = self.last_frames[self._current_measurement_number].shape[0] - 1
+        self.current_image_number = self.last_frames[self._current_measurement_number].data.shape[0] - 1
         self.sigFrameChanged.emit(self._current_measurement_number, self._current_image_number)
 
     def _acquisition_finished(self):
@@ -89,13 +88,13 @@ class CameraLogic(LogicBase):
 
     @property
     def current_image_number(self):
-        if self._current_image_number > self.last_frames[self._current_measurement_number].shape[0]:
-            self._current_image_number = self.last_frames[self.current_measurement_number].shape[0] - 1
+        if self._current_image_number > self.last_frames[self._current_measurement_number].data.shape[0]:
+            self._current_image_number = self.last_frames[self.current_measurement_number].data.shape[0] - 1
         return self._current_image_number
     
     @current_image_number.setter
     def current_image_number(self, num):
-        if num < self.last_frames[self._current_measurement_number].shape[0]:
+        if num < self.last_frames[self._current_measurement_number].data.shape[0]:
             self._current_image_number = num
 
     @property
@@ -177,8 +176,8 @@ class CameraLogic(LogicBase):
                     self._camera_control_logic().request_stop()
                     self.module_state.unlock()
 
-    def create_tag(self, time_stamp):
-        return f"{time_stamp}_captured_frame"
+    def create_tag(self, measurement_num, image_num):
+        return f"_captured_frame_measurement_{measurement_num}_image_{image_num}"
 
     def draw_2d_image(self, data, cbar_range=None):
         # Create image plot

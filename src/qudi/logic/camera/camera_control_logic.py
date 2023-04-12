@@ -27,6 +27,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.module import LogicBase
 from qudi.util.uic import module_from_spec
+from qudi.interface.scientific_camera_interface import MeasurementData
 
 
 class CameraControlLogic(LogicBase):
@@ -344,10 +345,10 @@ class CameraControlLogic(LogicBase):
             # write the data into the array if its length is smaller than the max number of images
             self._last_frames = np.empty(1, dtype=object)
             if data.shape[0] <= self._max_image_num:
-                self._last_frames[0] = data
+                self._last_frames[0] = self.standard_measurement_data_creator(data)                
                 return
             # else just use the last recorded images
-            self._last_frames[0] = data[-self._max_image_num:]
+            self._last_frames[0] = self.standard_measurement_data_creator(data[-self._max_image_num:])
             self.log.warn(f"The number of received images ({data.shape[0]}) is larger than the maximum number of allowed images ({self._max_image_num}). Thus, only the last {self._max_image_num} images will be stored in memory.")
             return
         # if the number of images newly recorded is greater or equal than the 
@@ -355,7 +356,7 @@ class CameraControlLogic(LogicBase):
         if data.shape[0] >= self._max_image_num:
             self._last_frames = np.empty(1, dtype=object)
             self.log.warn(f"The number of received images ({data.shape[0]}) is larger than the maximum number of allowed images ({self._max_image_num}). Thus, only the last {self._max_image_num} images will be stored in memory.")
-            self._last_frames[0] = data[-self._max_image_num:]
+            self._last_frames[0] = self.standard_measurement_data_creator(data[-self._max_image_num:])
             return
 
         # check whether the total number of images exceeds the maximum allowed images to be stored in memory
@@ -367,9 +368,9 @@ class CameraControlLogic(LogicBase):
         # needed later, when stripping any overlength measurement numbers
         for measurement_num, array in enumerate(currently_stored_data):
             if measurement_num == 0:
-                total_number_of_images[0] = array.shape[0]
+                total_number_of_images[0] = array.data.shape[0]
                 continue
-            total_number_of_images[measurement_num] = total_number_of_images[measurement_num-1] + array.shape[0]
+            total_number_of_images[measurement_num] = total_number_of_images[measurement_num-1] + array.data.shape[0]
         # calculate, whether the total number of images + the newly acquired number of images is
         # smaller than or equal to the maximum allowed image number
         image_diff_to_max = total_number_of_images[-1] + data.shape[0] - self._max_image_num
@@ -377,15 +378,34 @@ class CameraControlLogic(LogicBase):
         #if this is not the case remove the first elements to make room
         if image_diff_to_max > 0:
             # get the first index of self._last_frames, where the number of images up to that 
-            # index is greater than the number of images that need to be cut
-            index_to_cut_to = np.nonzero(total_number_of_images > image_diff_to_max)[0][0]
+            # index is greater or equal than the number of images that need to be cut
+            index_to_cut_to = np.nonzero(total_number_of_images >= image_diff_to_max)[0][0]
             currently_stored_data = currently_stored_data[index_to_cut_to+1:]
 
         # append data to the already stored data array
         data_to_store = np.empty(currently_stored_data.shape[0]+1, dtype=object)
-        data_to_store[-1] = data
+        data_to_store[-1] = self.standard_measurement_data_creator(data)
         data_to_store[0:currently_stored_data.shape[0]] = currently_stored_data
         self._last_frames = data_to_store
+
+    def standard_measurement_data_creator(self, data):
+        """
+        Method that creates a MeasurementData object with timestamp as of function call
+        @param np.ndarray data: 3D ndarray that stores the image data in the last to indices and stores the individual images of the measurement in the first index
+
+        @return MeasurementData out: Measurement data that carries all the image and meta data of the current measurement
+        """
+        out = MeasurementData(
+                data=data,
+                ring_of_exposures=self.ring_of_exposures,
+                responsitivity=self.responsitivity,
+                bit_depth=self.bit_depth,
+                binning=self.binning,
+                crop=self.crop,
+                operating_mode=self.operating_mode
+                )
+        return out
+
 
     @property
     def stop_requested(self):
