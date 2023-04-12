@@ -64,6 +64,9 @@ class CameraControlLogic(LogicBase):
     sigStartInternalTimerImage = QtCore.Signal()
     sigStopInternalTimerImage = QtCore.Signal()
 
+    sigStartInternalTimerSequence = QtCore.Signal()
+    sigStopInternalTimerSequence = QtCore.Signal()
+
     _received_data = None
 
     def __init__(self, config, **kwargs):
@@ -71,6 +74,11 @@ class CameraControlLogic(LogicBase):
         self._thread_lock = RecursiveMutex()
         self._last_frames = None
         self._stop_requested = True
+        
+        self._number_of_measurements = 0
+        self._expected_image_num = 0
+
+        self.number_of_measurements = 1
         self.expected_image_num = 1
 
     def on_activate(self):
@@ -86,16 +94,24 @@ class CameraControlLogic(LogicBase):
         self.__image_software_timer.setSingleShot(True)
         self.__image_software_timer.setInterval(self.software_timer_interval())
 
+        # Initialize the software timer for readout of a sequence of images
+        self.__sequence_software_timer = QtCore.QTimer()
+        self.__sequence_software_timer.setSingleShot(True)
+        self.__sequence_software_timer.setInterval(self.software_timer_interval())
+
         # connect the signals to the correct functions
         # connect the timer timeout to the video acquisition loop
         self.__video_software_timer.timeout.connect(self.software_controlled_acquisition_loop)
         self.__image_software_timer.timeout.connect(self.acquire_single_image)
+        self.__sequence_software_timer.timeout.connect(self.n_image_sequences_loop)
 
         # connect the timer's start stop signals
         self.sigStartInternalTimerVideo.connect(self.__video_software_timer.start)
         self.sigStopInternalTimerVideo.connect(self.__video_software_timer.stop)
         self.sigStartInternalTimerImage.connect(self.__image_software_timer.start)
         self.sigStopInternalTimerImage.connect(self.__image_software_timer.stop)
+        self.sigStartInternalTimerSequence.connect(self.__sequence_software_timer.start)
+        self.sigStopInternalTimerSequence.connect(self.__sequence_software_timer.stop)
 
     def on_deactivate(self):
         """ Perform required deactivation. """
@@ -111,10 +127,13 @@ class CameraControlLogic(LogicBase):
         # disconnect all signals
         self.__video_software_timer.timeout.disconnect()
         self.__image_software_timer.timeout.disconnect()
+        self.__sequence_software_timer.timeout.disconnect()
         self.sigStartInternalTimerVideo.disconnect()
         self.sigStopInternalTimerVideo.disconnect()
         self.sigStartInternalTimerImage.disconnect()
         self.sigStopInternalTimerImage.disconnect()
+        self.sigStartInternalTimerSequence.disconnect()
+        self.sigStopInternalTimerSequence.disconnect()
         
         # clear the stored frame data
         self._last_frames = None
@@ -128,6 +147,10 @@ class CameraControlLogic(LogicBase):
             if len(self.ring_of_exposures) > 1:
                 self.log.warn(f'Multiple exposure times set. Using the first exposure time {self.ring_of_exposures[0]} s.')
                 self.ring_of_exposures = [self.ring_of_exposures[0]]
+
+            if self.number_of_measurements != 1:
+                self.log.warn(f'Multiple number of measurements requested. Please use acquisition mode "N time sequence" for this. Setting number of measurements to 1.')
+                self.number_of_measurements = 1
 
             # set the number of expected images, received from the hardware
             self.expected_image_num = 1
@@ -167,6 +190,10 @@ class CameraControlLogic(LogicBase):
                 self.log.warn(f'Multiple exposure times set. Using the first exposure time {self.ring_of_exposures[0]} s.')
                 self.ring_of_exposures = [self.ring_of_exposures[0]]
 
+            if self.number_of_measurements != 1:
+                self.log.warn(f'Multiple number of measurements requested. Please use acquisition mode "N time sequence" for this. Setting number of measurements to 1.')
+                self.number_of_measurements = 1
+
             # set the number of expected images, received from the hardware
             self.expected_image_num = 1
             # reset the stop request
@@ -186,24 +213,18 @@ class CameraControlLogic(LogicBase):
     def start_image_sequence(self):
         """
         Method that starts the hardware timed acquisition of an image sequence
-        of length m.
+        of length of the ring_of_exposures variable.
         """
         if self.module_state() == 'idle':
             # lock the module
             self.module_state.lock()
             # reset the stop request
             self.stop_requested = False
-            ####
-            ###
-            ##
-            ##
-            #
-            #
-            #
-            ##
-            #
-            # TODO
-            # test with 5 images
+            
+            if self.number_of_measurements != 1:
+                self.log.warn(f'Multiple number of measurements requested. Please use acquisition mode "N time sequence" for this. Setting number of measurements to 1.')
+                self.number_of_measurements = 1
+
             self.expected_image_num = len(self.ring_of_exposures)
             # set the camera's acquisition mode
             self._camera().acquisition_mode = (1, self.expected_image_num)
@@ -215,12 +236,49 @@ class CameraControlLogic(LogicBase):
             # start the timer for the acquisition readout
             self.sigStartInternalTimerImage.emit()
         else:
-            self.log.error('Unable to capture single frame. Acquisition still in progress.')
+            self.log.error('Unable to capture image sequence. Acquisition still in progress.')
 
     
     def start_n_image_sequences(self):
-        self.log.warn("camera_control: start_n_image_sequences (not implemented)")
-        self.sigAcquisitionFinished.emit()
+        """
+        Method that starts a hardware timed acquisition of n image sequences which each have the length of the ring_of_exposure variable.
+        """
+        if self.module_state() == 'idle':
+            # lock the module
+            self.module_state.lock()
+            # reset the stop request
+            self.stop_requested = False
+            self.expected_image_num = len(self.ring_of_exposures) * self.number_of_measurements
+            
+            # set the camera's acquisition mode
+            self._camera().acquisition_mode = (1, len(self.ring_of_exposures))
+            # set timer to the correct interval
+            # this is the set exposure time + the readout time of the camera
+            self.__sequence_software_timer.setInterval(self.software_timer_interval())
+            self._measurement_counter = 1
+            # start the image sequence acquisition
+            self._camera().start_acquisition()
+            # start the timer for the acquisition readout
+            self.sigStartInternalTimerSequence.emit()
+        else:
+            self.log.error('Unable to capture image sequence. Acquisition still in progress.')
+
+    def n_image_sequences_loop(self):
+        # check whether an acquisition is running, else do nothing
+        if self.module_state() == "locked":
+            # collect image data from the hardware
+            self.receive_frames()
+            self.sigDataReceived.emit()
+            # start the acquisition of an image
+            self._camera().start_acquisition()
+            self._measurement_counter += 1
+            # check whether the total number of measurements has already been exceeded            
+            if self._measurement_counter > self._number_of_measurements:
+                # stop the measurement
+                self.request_stop()
+
+            # restart the timer
+            self.sigStartInternalTimerSequence.emit()
 
     def software_controlled_acquisition_loop(self):
         """
@@ -229,14 +287,6 @@ class CameraControlLogic(LogicBase):
         """
         # check whether an acquisition is running, else do nothing
         if self.module_state() == "locked":
-            # check whether a stop was requested
-            if self.stop_requested:
-                self.sigStopInternalTimerVideo.emit()
-                # emit the acquisition finished signal
-                self.sigAcquisitionFinished.emit()
-                # quit the loop and unlock the module
-                self.module_state.unlock()
-                return
             # collect image data from the hardware
             self.receive_frames()
             self.sigDataReceived.emit()
@@ -298,7 +348,7 @@ class CameraControlLogic(LogicBase):
         return out
 
     def receive_frames(self):
-        self.last_frames = self._camera().get_images(self.expected_image_num)
+        self.last_frames = self._camera().get_images(int(self.expected_image_num/self.number_of_measurements))
 
     def request_stop(self):
         """
@@ -313,6 +363,8 @@ class CameraControlLogic(LogicBase):
                 self.sigStopInternalTimerVideo.emit()
             if self.__image_software_timer.isActive():
                 self.sigStopInternalTimerImage.emit()
+            if self.__sequence_software_timer.isActive():
+                self.sigStopInternalTimerSequence.emit()
             # tell the camera to stop acquiring
             self._camera().stop_acquisition()
             # unlock the module
@@ -335,10 +387,19 @@ class CameraControlLogic(LogicBase):
 
     @expected_image_num.setter
     def expected_image_num(self, num):
-        if num > self.max_image_num:
+        if num * self.number_of_measurements > self.max_image_num:
             self.log.warn("Number of images that should be stored in PC's memory is greater than the maximum allowed number of images in memory.")
         self._expected_image_num = num
 
+    @property
+    def number_of_measurements(self):
+        return self._number_of_measurements
+
+    @number_of_measurements.setter
+    def number_of_measurements(self, num):
+        if num > self.max_image_num:
+            self.log.warn("Number of measurements that should be stored in PC's memory is greater than the maximum allowed number of images in memory.")
+        self._number_of_measurements = num
 
     @property
     def last_frames(self):

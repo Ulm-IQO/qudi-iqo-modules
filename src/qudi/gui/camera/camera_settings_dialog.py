@@ -213,6 +213,17 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         self.operating_mode_combobox = QtWidgets.QComboBox()
         operating_mode_layout.addWidget(self.operating_mode_combobox)
         
+        # Number of measurements selection
+        num_measurements_group = QtWidgets.QGroupBox('Number of Measurements')
+        num_measurements_group.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        num_measurements_layout = QtWidgets.QHBoxLayout()
+        num_measurements_group.setLayout(num_measurements_layout)
+        self.num_measurements_spinbox = QtWidgets.QSpinBox()
+        self.num_measurements_spinbox.setMinimum(1)
+        self.num_measurements_spinbox.setMaximum(10000)
+        self.num_measurements_spinbox.setMinimumWidth(100)
+        num_measurements_layout.addWidget(self.num_measurements_spinbox)
+
         self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
                                                      QtWidgets.QDialogButtonBox.Cancel |
                                                      QtWidgets.QDialogButtonBox.Apply,
@@ -228,6 +239,7 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         layout.addWidget(binning_group, 1, 2)
         layout.addWidget(area_selection_group, 3, 0, 1, 3)
         layout.addWidget(operating_mode_group, 4, 0, 1, 1)
+        layout.addWidget(num_measurements_group, 4, 1, 1, 1)
         layout.addWidget(self.button_box, 5,0, 1, 3)
         #layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
         

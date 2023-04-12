@@ -125,6 +125,14 @@ class CameraLogic(LogicBase):
     @expected_image_num.setter
     def expected_image_num(self, num):
         self._camera_control_logic().expected_image_num = num
+    
+    @property
+    def number_of_measurements(self):
+        return self._camera_control_logic().number_of_measurements
+
+    @number_of_measurements.setter
+    def number_of_measurements(self, num):
+        self._camera_control_logic().number_of_measurements = num
 
     @property
     def last_frames(self):

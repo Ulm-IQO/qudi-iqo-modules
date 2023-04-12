@@ -213,6 +213,9 @@ class CameraGui(GuiBase):
         self.sigAcquisitionToggled.connect(logic.toggle_acquisition)
         self.show()
 
+        # set the maximum value of th settings dialog measurement number spinbox to the maximum allowed number of images in buffer
+        self._settings_dialog.num_measurements_spinbox.setMaximum(logic.max_image_num)
+
     def on_deactivate(self):
         """ De-initialisation performed during deactivation of the module.
         """
@@ -259,6 +262,8 @@ class CameraGui(GuiBase):
             logic.crop = ((self._settings_dialog.area_selection_group_start_x_spinbox.value(), self._settings_dialog.area_selection_group_stop_x_spinbox.value()), (self._settings_dialog.area_selection_group_start_y_spinbox.value(), self._settings_dialog.area_selection_group_stop_y_spinbox.value()))
         if self._settings_dialog.operating_mode_combobox.isEnabled():
             logic.operating_mode = logic.constraints.operating_modes(self._settings_dialog.operating_mode_combobox.currentIndex())
+        if self._settings_dialog.num_measurements_spinbox.isEnabled():
+            logic.number_of_measurements = self._settings_dialog.num_measurements_spinbox.value()
 
     def get_ring_of_exposure(self):
         """
@@ -293,6 +298,7 @@ class CameraGui(GuiBase):
         self._settings_dialog.area_selection_group_stop_y_spinbox.setValue(logic.crop[1][1])
         self._display_ring_of_exposures(logic.ring_of_exposures)
         self._settings_dialog.operating_mode_combobox.setCurrentIndex(logic.operating_mode.value)
+        self._settings_dialog.num_measurements_spinbox.setValue(logic.number_of_measurements)
 
     def _update_toolbar(self, text):
         """
