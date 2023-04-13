@@ -33,7 +33,7 @@
      <x>0</x>
      <y>0</y>
      <width>1440</width>
-     <height>18</height>
+     <height>17</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -92,9 +92,9 @@
    <addaction name="action_optimize_position"/>
    <addaction name="action_utility_zoom"/>
    <addaction name="action_utility_full_range"/>
-   <addaction name="separator"/>
    <addaction name="action_history_back"/>
    <addaction name="action_history_forward"/>
+   <addaction name="action_Tilt_correction"/>
   </widget>
   <action name="action_scanner_settings">
    <property name="icon">
@@ -334,6 +334,18 @@ Shortcut:Alt+T</string>
   <action name="action_view_Tilt_correction">
    <property name="checkable">
     <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>Tilt_correction</string>
+   </property>
+  </action>
+  <action name="action_Tilt_correction">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="icon">
+    <iconset>
+     <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/correct-tilt.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/correct-tilt.svg</iconset>
    </property>
    <property name="text">
     <string>Tilt_correction</string>
