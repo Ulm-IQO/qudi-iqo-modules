@@ -34,7 +34,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
 from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
-
+from qudi.gui.scanning.tilt_correction_dcokwidget import TiltCorrectionDockWidget
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
 from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
@@ -62,6 +62,13 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
         else:
             super().mouseDoubleClickEvent(event)
         return
+
+        # Create the tilt correction dock widget
+
+    #tilt_correction_dock_widget = TiltCorrectionDockWidget()
+
+        # Add the dock widget to the main window
+    #self.addDockWidget(Qt.DockWidgetArea(8), tilt_correction_dock_widget)
 
 class SaveDialog(QtWidgets.QDialog):
     """ Dialog to provide feedback and block GUI while saving """
@@ -113,8 +120,8 @@ class ScannerGui(GuiBase):
     sigSaveFinished = QtCore.Signal()
     sigShowSaveDialog = QtCore.Signal(bool)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # QMainWindow and QDialog child instances
         self._mw = None
@@ -335,6 +342,7 @@ class ScannerGui(GuiBase):
             self._mw.action_view_scanner_control.setChecked)
         self._mw.action_view_scanner_control.triggered[bool].connect(
             self.scanner_control_dockwidget.setVisible)
+
         self._mw.action_view_line_scan.triggered[bool].connect(
             lambda is_vis: [wid.setVisible(is_vis) for wid in self.scan_1d_dockwidgets.values()]
         )
@@ -370,6 +378,14 @@ class ScannerGui(GuiBase):
         self._mw.util_toolBar.visibilityChanged.connect(
             self._mw.action_view_toolbar.setChecked)
         self._mw.action_view_toolbar.triggered[bool].connect(self._mw.util_toolBar.setVisible)
+
+        self.tilt_correction_dockwidget = TiltCorrectionDockWidget()
+        self.tilt_correction_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.tilt_correction_dockwidget)
+        self.tilt_correction_dockwidget.setVisible(False)
+        self._mw.action_view_Tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
+
+
 
     @QtCore.Slot()
     def restore_default_view(self):
@@ -553,6 +569,10 @@ class ScannerGui(GuiBase):
         dockwidget.scan_widget.sigZoomAreaSelected.connect(
             self.__get_range_from_selection_func(axes)
         )
+
+    def _add_tilt_correction_dock_widget(self):
+        dockwidget = TiltCorrectionDockWidget()
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
 
     def set_active_tab(self, axes):
         avail_axs = list(self.scan_1d_dockwidgets.keys())

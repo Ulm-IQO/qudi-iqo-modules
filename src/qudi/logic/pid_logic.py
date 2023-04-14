@@ -55,9 +55,8 @@ class PIDLogic(Base):
     # signals
     sigUpdateDisplay = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-        self.log.debug('The following configuration was found.')
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # number of lines in the matrix plot
         self.NumberOfSecondsLog = 100

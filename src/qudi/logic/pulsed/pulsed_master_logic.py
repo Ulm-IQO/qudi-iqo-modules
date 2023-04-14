@@ -117,16 +117,13 @@ class PulsedMasterLogic(LogicBase):
     sigSamplingSettingsUpdated = QtCore.Signal(dict)
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
 
-    def __init__(self, config, **kwargs):
+    def __init__(self, *args, **kwargs):
         """ Create PulsedMasterLogic object with connectors.
-
-          @param dict kwargs: optional parameters
         """
-        super().__init__(config=config, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # Dictionary servings as status register
         self.status_dict = dict()
-        return
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.

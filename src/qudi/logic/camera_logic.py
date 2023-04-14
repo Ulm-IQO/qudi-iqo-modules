@@ -47,8 +47,8 @@ class CameraLogic(LogicBase):
     sigFrameChanged = QtCore.Signal(object)
     sigAcquisitionFinished = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.__timer = None
         self._thread_lock = RecursiveMutex()
         self._exposure = -1
