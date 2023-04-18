@@ -21,9 +21,10 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('TiltCorrectionDockWidget')
 
-
+from PySide2 import QtCore, QtGui, QtWidgets
 from PySide2.QtWidgets import QDockWidget, QWidget,QGridLayout, QLabel, QPushButton,QTableWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
+from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, ToggleSwitchWidget
 #from qudi.interface.scanning_probe_interface import ScanData
 #from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 
@@ -36,7 +37,7 @@ class TiltCorrectionDockWidget(QDockWidget):
         dock_widget_layout = QGridLayout(dock_widget_contents)
         # Create the widgets for tilt correction
 
-        tiltpoint_label = QLabel("Set Tiltpoint")
+        tiltpoint_label = QLabel("Support Vectors")
         dock_widget_layout.addWidget(tiltpoint_label,0,0)
         tiltpoint_label = QLabel("X")
         dock_widget_layout.addWidget(tiltpoint_label,0,1)
@@ -44,19 +45,24 @@ class TiltCorrectionDockWidget(QDockWidget):
         dock_widget_layout.addWidget(tiltpoint_label, 0, 2)
         tiltpoint_label = QLabel("Z")
         dock_widget_layout.addWidget(tiltpoint_label, 0, 3)
-        tilt_set_01_pushButton = QPushButton("01")
+        tilt_set_01_pushButton = QPushButton("Vec 1")
         tilt_set_01_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(tilt_set_01_pushButton,1,0)
 
-        tilt_set_02_pushButton = QPushButton("02")
+        tilt_set_02_pushButton = QPushButton("Vec 2")
         tilt_set_02_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(tilt_set_02_pushButton,2,0)
 
-        tilt_set_03_pushButton = QPushButton("03")
+        tilt_set_03_pushButton = QPushButton("Vec 3")
         tilt_set_03_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(tilt_set_03_pushButton,3,0)
 
-        tilt_set_03_pushButton = QPushButton("04")
+        toggle_switch_widget = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
+        # Set size policy for the ToggleSwitchWidget
+        toggle_switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        dock_widget_layout.addWidget(toggle_switch_widget,4,4)
+
+        tilt_set_03_pushButton = QPushButton("Set Origin")
         tilt_set_03_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(tilt_set_03_pushButton, 4, 0)
 
@@ -86,6 +92,7 @@ class TiltCorrectionDockWidget(QDockWidget):
         dock_widget_layout.addWidget(z2_position, 3, 3)
         z3_position = ScienDSpinBox()
         dock_widget_layout.addWidget(z3_position, 4, 3)
+
 
 
         #calc_tilt_pushButton = QPushButton("Calc. Tilt")

@@ -94,7 +94,6 @@
    <addaction name="action_utility_full_range"/>
    <addaction name="action_history_back"/>
    <addaction name="action_history_forward"/>
-   <addaction name="action_Tilt_correction"/>
   </widget>
   <action name="action_scanner_settings">
    <property name="icon">

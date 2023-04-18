@@ -42,6 +42,8 @@ from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
+from qudi.util.widgets.toggle_switch import ToggleSwitch
+from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, ToggleSwitchWidget
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
@@ -377,19 +379,16 @@ class ScannerGui(GuiBase):
         self._mw.action_view_optimizer.triggered[bool].connect(
             self.optimizer_dockwidget.setVisible)
 
-        toggle_switch = ActivateTiltCorrection()
-        action = QAction(self)
-        #toolbar.addWidget(toggle_switch)
-        # Add the action to the toolbar
+        # Create a ToggleSwitchWidget
+        toggle_switch_widget = ToggleSwitchWidget(switch_states=('Tilt_Correction:OFF', 'Tilt_Correction:ON'))
 
-        self._mw.util_toolBar.addWidget(toggle_switch)
-        # Connect the action to a slot for handling the toggle switch state
-        action.triggered.connect(toggle_switch.toggleSwitch)
-        #action.setDefaultWidget(toggle_switch)
-        self._mw.util_toolBar.addAction(action)
+        # Set size policy for the ToggleSwitchWidget
+        toggle_switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        #toggle_switch_widget.setStyleSheet("QToolButton { height: 20px; width: 80px; }")
 
-        # Add the MyDockWidget to the QToolBar
-        #toolbar.addWidget(dock_widget)
+        # Add the widget to the toolbar as a button
+        self._mw.util_toolBar.addWidget(toggle_switch_widget )
+
 
         self._mw.util_toolBar.visibilityChanged.connect(
             self._mw.action_view_toolbar.setChecked)
