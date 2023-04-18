@@ -2,7 +2,6 @@
 from PySide2 import QtCore
 import numpy as np
 import datetime as dt
-#import matplotlib as mpl
 import matplotlib.pyplot as plt
 
 from qudi.core.connector import Connector
@@ -11,18 +10,22 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import StreamChannelType, StreamingMode
+from qudi.util.datafitting import FitContainer, FitConfigurationsModel
+from qudi.core.statusvariable import StatusVar
+from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping
+from lmfit.model import ModelResult as _ModelResult
+from qudi.util.datastorage import TextDataStorage
 
 
 class WavemeterLogic(LogicBase):
 
-
     # declare signals
     sigDataChanged = QtCore.Signal(object, object)
     sig_new_data_points = QtCore.Signal(object, object)
-    sigStatusChanged = QtCore.Signal(bool) #TODO 2nd boolean for recording
+    sigStatusChanged = QtCore.Signal(bool) #TODO 2nd boolean for recording?
     sigSettingsChanged = QtCore.Signal(dict)
     sigNewWavelength2 = QtCore.Signal(object, object)
-    #_sigNextDataFrameWavelength = QtCore.Signal(bool)  # internal signal #now with boolean if complete histogram to be calculated or only new data
+    sigFitChanged = QtCore.Signal(str, dict)  # fit_name, fit_results
 
     # declare connectors
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
@@ -40,6 +43,8 @@ class WavemeterLogic(LogicBase):
     _data_rate = StatusVar('data_rate', default=50)
     _active_channels = StatusVar('active_channels', default=None)
 
+    _fit_config_model = StatusVar(name='fit_configs', default=list())
+
     def __init__(self, *args, **kwargs):
         """
         """
@@ -52,20 +57,23 @@ class WavemeterLogic(LogicBase):
         self.start_time_bool = True
         self.complete_histogram = False
         self.start_time = None
+        self._fit_container = None
+        self.x_axis_hz_bool = False  # by default display wavelength
 
-        # Data arrays #wavelength, counts, timings, wavelength in Hz
+        # Data arrays #timings, counts, wavelength, wavelength in Hz
         self._trace_data = np.empty((4, 0), dtype=np.float64)
+        self.timings = []
+        self.counts = []
+        self.wavelength = []
+        self.frequency = []
 
-        #####Old Core#####
         self._bins = 200
         self._data_index = 0
-        self._xmin = 700
-        self._xmax = 750
+        self._xmin_histo = 600
+        self._xmax_histo = 750
+        self._xmin = 100000 #default; to be changed upon first iteration
+        self._xmax = -1
 
-        # for data recording
-        #self._recorded_data = None
-        #self._data_recording_active = False
-        #self._record_start_time = None
         return
 
     def on_activate(self):
@@ -79,6 +87,8 @@ class WavemeterLogic(LogicBase):
         self._data_recording_active = False
         self._record_start_time = None
         self.start_time_bool = True
+        self._fit_container = FitContainer(config_model=self._fit_config_model)
+        self._last_fit_result = None
 
         # Check valid StatusVar
         # active channels
@@ -106,18 +116,15 @@ class WavemeterLogic(LogicBase):
 
         # create a new x axis from xmin to xmax with bins points
         self.histogram_axis = np.arange(
-            self._xmin,
-            self._xmax,
-            (self._xmax - self._xmin) / self._bins
+            self._xmin_histo,
+            self._xmax_histo,
+            (self._xmax_histo - self._xmin_histo) / self._bins
         )
         self.histogram = np.zeros(self.histogram_axis.shape)
-        #self.envelope_histogram = np.zeros(self.histogram_axis.shape)
+        self.envelope_histogram = np.zeros(self.histogram_axis.shape)
         self.rawhisto = np.zeros(self._bins)
-        # self.envelope_histogram = np.zeros(self._bins)
         self.sumhisto = np.ones(self._bins) * 1.0e-10
 
-        # set up internal frame loop connection
-        #self._sigNextDataFrameWavelength.connect(self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
 
         streamer.sigNewWavelength.connect(
             self.display_current_wavelength, QtCore.Qt.QueuedConnection)
@@ -131,7 +138,6 @@ class WavemeterLogic(LogicBase):
         if self.module_state() == 'locked':
             self._stop_reader_wait()
 
-        #self._sigNextDataFrameWavelength.disconnect()
         self._streamer().sigNewWavelength.disconnect()
         return
 
@@ -171,11 +177,12 @@ class WavemeterLogic(LogicBase):
                     self.module_state.unlock()
                     self.sigStatusChanged.emit(False)
                     self._time_series_logic.sigDataChangedWavemeter.disconnect()
+                    #TODO change order
+                    self._trace_data = np.vstack(((self.timings, self.counts), (self.wavelength, self.frequency)))
                     return
                 #set the integer samples_to_read to the according value of count instreamer
                 #and interpolate the wavelength values accordingly
                 #TODO is the timing of data aquisition below synchronised
-                #TODO what is max() exactly needed for
 
                 # Determine samples to read according to new_count_data size (!one channel only!)
                 if new_count_data is not None:
@@ -219,8 +226,12 @@ class WavemeterLogic(LogicBase):
         #Do this alrady in time series file otherwise weird outcome
 
         data_freq = 3.0e17 / data_wavelength
-        temp = [list(data_wavelength), list(data_counts), list(data_wavelength_timings), list(data_freq)]
-        self._trace_data = np.append(self._trace_data, np.array(temp), axis=1)
+        for i in range(len(data_wavelength)):
+            self.wavelength.append(data_wavelength[i])
+            self.counts.append(data_counts[i])
+            self.timings.append(data_wavelength_timings[i])
+            self.frequency.append(data_freq[i])
+
         return
 
     def _update_histogram(self, complete_histogram):
@@ -234,30 +245,26 @@ class WavemeterLogic(LogicBase):
             self._data_index = 0
             self.complete_histogram = False
 
-        temp = self._trace_data.tolist()
-        for i in temp[0][self._data_index:]:
+        for i in self.wavelength[self._data_index:]:
             self._data_index += 1
 
             if i < self._xmin:
                 self._xmin = i
-                #check if new min wavelength
-                continue
             if i > self._xmax:
                 self._xmax = i
-                # check if new max wavelength
+            if i < self._xmin_histo or i > self._xmax_histo:
                 continue
 
             # calculate the bin the new wavelength needs to go in
             newbin = np.digitize([i], self.histogram_axis)[0]
 
             # sum the counts in rawhisto and count the occurence of the bin in sumhisto
-            self.rawhisto[newbin] += self._trace_data[1][self._data_index-1]
-            self.sumhisto[newbin] += 1.0
 
-            #self.envelope_histogram[newbin] = np.max([interpolation,
-            #                                          self.envelope_histogram[newbin]
-            #                                          ])
-            #TODO missing code fragment old core
+            self.rawhisto[newbin-1] += self.counts[self._data_index-1]
+            self.sumhisto[newbin-1] += 1.0
+
+            #TODO double check newbin-1
+            self.envelope_histogram[newbin-1] = np.max([self.counts[self._data_index-1], self.envelope_histogram[newbin-1]])
 
             # the plot data is the summed counts divided by the occurence of the respective bins
         self.histogram = self.rawhisto / self.sumhisto
@@ -282,30 +289,15 @@ class WavemeterLogic(LogicBase):
 
             self.sigStatusChanged.emit(True)
 
-            #start counterlogic aquisition loop
-            #if self._time_series_logic.module_state() == 'idle':
-            #    if self._time_series_logic._streamer().start_stream() < 0:
-            #        self.log.error('Error while starting streaming device data acquisition.')
-            #        #self._stop_requested = True
-            #        #self._sigNextDataFrameWavelength.emit()
-            #        return -1
-
-            #start counterlogic QTqueued acquisition loop
             #TODO check that time series gui has to be running
             self._time_series_logic.sigDataChangedWavemeter.connect(
                 self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
 
-            #if self._data_recording_active:
-            #    self._record_start_time = dt.datetime.now()
-            #    self._recorded_data = list()
-
             if self._streamer().start_stream() < 0:
                 self.log.error('Error while starting streaming device data acquisition.')
                 self._stop_requested = True
-                #self._sigNextDataFrameWavelength.emit(False)
                 return -1
 
-            #self._sigNextDataFrameWavelength.emit(False)
         return 0
 
     @QtCore.Slot()
@@ -323,6 +315,7 @@ class WavemeterLogic(LogicBase):
                 self._stop_requested = True
         return 0
 
+    # TODO modify this method as most of it is just copied from time series logic and redundant for wavemeter
     @property
     def all_settings(self):
         return {'oversampling_factor': self.oversampling_factor,
@@ -413,6 +406,7 @@ class WavemeterLogic(LogicBase):
         self.configure_settings(moving_average_width=val)
         return
 
+    #TODO modify this method as most of it is just copied from time series logic and redundant for wavemeter
     @QtCore.Slot(dict)
     def configure_settings(self, settings_dict=None, **kwargs):
         """
@@ -566,10 +560,6 @@ class WavemeterLogic(LogicBase):
                                        buffer_size=10000000,
                                        use_circular_buffer=True)
 
-            # update actually set values
-            #self._averaged_channels = tuple(
-            #    ch for ch in self._averaged_channels if ch in self.active_channel_names)
-
             self._samples_per_frame = int(round(self.data_rate / self._max_frame_rate))
             #TODO self._init_data_arrays()
             settings = self.all_settings
@@ -607,24 +597,28 @@ class WavemeterLogic(LogicBase):
         if bins is not None:
             self._bins = bins
         if xmin is not None:
-            self._xmin = xmin
+            self._xmin_histo = xmin
         if xmax is not None:
-            self._xmax = xmax
+            self._xmax_histo = xmax
 
         # create a new x axis from xmin to xmax with bins points
         self.rawhisto = np.zeros(self._bins)
-        #self.envelope_histogram = np.zeros(self._bins)
+        self.envelope_histogram = np.zeros(self._bins)
         self.sumhisto = np.ones(self._bins) * 1.0e-10
-        self.histogram_axis = np.linspace(self._xmin, self._xmax, self._bins)
-        #self._sigNextDataFrameWavelength.emit(True)
+        self.histogram_axis = np.linspace(self._xmin_histo, self._xmax_histo, self._bins)
         self.complete_histogram = True
         return
 
     @QtCore.Slot(object)
     def display_current_wavelength(self, current_wavelength):
-        #self.display_current_wavelength_2 = current_wavelength
         current_freq = 3.0e8 / current_wavelength #in GHz
         self.sigNewWavelength2.emit(current_wavelength, current_freq)
+        return
+
+    def autoscale_histogram(self):
+        self._xmax_histo = self._xmax
+        self._xmin_histo = self._xmin
+        self.recalculate_histogram(self._bins, self._xmin_histo, self._xmax_histo)
         return
 
     def _stop_reader_wait(self):
@@ -646,3 +640,237 @@ class WavemeterLogic(LogicBase):
             self.module_state.unlock()
             self.sigStatusChanged.emit(False)
         return 0
+
+    @staticmethod
+    @_fit_config_model.representer
+    def __repr_fit_configs(value: FitConfigurationsModel) -> List[Dict[str, Any]]:
+        return value.dump_configs()
+
+    @_fit_config_model.constructor
+    def __constr_fit_configs(self, value: Sequence[Mapping[str, Any]]) -> FitConfigurationsModel:
+        model = FitConfigurationsModel(parent=self)
+        model.load_configs(value)
+        return model
+
+    @property
+    def fit_config_model(self) -> FitConfigurationsModel:
+        return self._fit_config_model
+
+    def get_fit_container(self) -> FitContainer:
+        #with self.threadlock:
+        return self._get_fit_container()
+
+    def _get_fit_container(self) -> FitContainer:
+        return self._fit_container
+
+    def do_fit(self, fit_config: str) -> Dict[str, Union[None, _ModelResult]]:
+        """ Perform desired fit
+
+        @param str fit_config: name of the fit. Must match a fit configuration in fit_config_model.
+        """
+        with self.threadlock:
+            valid_fit_configs = self._fit_config_model.configuration_names
+            if (fit_config != 'No Fit') and (fit_config not in valid_fit_configs):
+                raise ValueError(f'Unknown fit configuration "{fit_config}" encountered. '
+                                 f'Options are: {valid_fit_configs}')
+            return self._do_fit(fit_config)
+
+    def _do_fit(self, fit_config: str) -> Dict[str, Union[None, _ModelResult]]:
+
+        fit_container = self._get_fit_container()
+
+        #fit the histogram
+        if not self.x_axis_hz_bool:
+            fit_results = fit_container.fit_data(fit_config=fit_config, x=self.histogram_axis,
+                                             data=self.histogram)[1]
+        elif self.x_axis_hz_bool:
+            fit_results = fit_container.fit_data(fit_config=fit_config, x=3.0e17 / self.histogram_axis,
+                                                 data=self.histogram)[1]
+        fit_config = fit_container._last_fit_config
+        self._last_fit_result = fit_results
+
+        fit_container.sigLastFitResultChanged.emit(fit_config, fit_results)
+        self.sigFitChanged.emit(fit_config, fit_results)
+        return fit_results
+
+    def get_fit_results(self) -> Tuple[str, Dict[str, Union[None, _ModelResult]]]:
+        #with self.threadlock:
+        return self._get_fit_results()
+
+    def _get_fit_results(self) -> Tuple[str, Dict[str, Union[None, _ModelResult]]]:
+        fit_container = self._get_fit_container()
+        return fit_container._last_fit_config, self._last_fit_result
+
+    def save_data(self, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> str:
+        """ Save data of a single plot to file.
+
+        @param str postfix: optional, an additional tag added to the generic filename
+        @param str root_dir: optional, define a deviating folder for the data to be saved into
+        @return str: file path the data was saved to
+        """
+        with self.threadlock:
+            return self._save_data(postfix, root_dir)
+
+    def _save_data(self, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> str:
+        """ Save data of a single plot to file.
+
+        @param str postfix: optional, an additional tag added to the generic filename
+        @param str root_dir: optional, define a deviating folder for the data to be saved into
+        @return str: file path the data was saved to
+        """
+        fit_container = self._get_fit_container()
+        if len(self._trace_data[0]) < 1:
+            self.log.warning(f'No data found in plot. Save aborted.')
+            return ''
+
+        # Fill array with less values with Nans
+        if len(self._trace_data[0]) > len(self.histogram):
+            temp = np.full(len(self._trace_data[0])-len(self.histogram), np.nan)
+            temp2 = np.append(self.histogram, temp)
+            temp1 = np.append(self.histogram_axis, temp)
+            data_set = np.vstack((self._trace_data, temp1))
+            data_set = np.vstack((data_set, temp2))
+
+        if len(self._trace_data[0]) < len(self.histogram):
+            temp = np.full((4, len(self.histogram)-len(self._trace_data[0])), np.nan)
+            temp1 = np.append(self._trace_data, temp, axis=1)
+            data_set = np.vstack((temp1, self.histogram_axis))
+            data_set = np.vstack((data_set, self.histogram))
+
+        #TODO set parameters
+        parameters = {'Number of Bins '                  : self.get_bins(),
+                      'Min Wavelength Of Histogram (nm) ': self._xmin_histo,
+                      'Max Wavelength Of Histogram (nm) ': self._xmax_histo,
+                      'FitResults': fit_container.formatted_result(self._last_fit_result)}
+
+        file_label = postfix if postfix else 'qdLaserScanning'
+
+        header = ['Timings (s)', 'Flourescence (counts/s)', 'Wavelength (nm)', 'Wavelength in Hz (Hz)', 'HistogramX', 'HistogramY']
+
+        ds = TextDataStorage(
+            root_dir=self.module_default_data_dir if root_dir is None else root_dir,
+            column_formats='.15e',
+            include_global_metadata=True)
+        file_path, _, _ = ds.save_data(data_set.T,
+                                       metadata=parameters,
+                                       column_headers=header,
+                                       column_dtypes=[float] * len(header),
+                                       nametag=file_label)
+
+        # plot graph and save as image alongside data file
+        fig = self._plot_figure(self.x_axis_hz_bool, self.get_fit_results(), data_set, fit_container)
+        ds.save_thumbnail(fig, file_path=file_path.rsplit('.', 1)[0])
+
+        self.log.debug(f'Data saved to: {file_path}')
+        return file_path
+
+    @staticmethod
+    def _plot_figure(x_axis_bool, fitting, data_set,
+                     fit_container: FitContainer) -> plt.Figure:
+
+        fit_config, fit_results = fitting
+
+        # High-resolution fit data and formatted result string
+        if fit_results is not None:
+            fit_data = fit_results.high_res_best_fit
+            fit_result_str = fit_container.formatted_result(fit_results)
+        else:
+            fit_data = None
+            fit_result_str = False
+        #TODO and label
+        #if not fit_data:
+        #    fit_data = [None] * len(data_set)
+
+        fig, ax1 = plt.subplots()
+
+        if not x_axis_bool:
+            ax1.plot(data_set[0],
+                     data_set[1],
+                     linestyle=':',
+                     linewidth=1,
+                     label='RawData')
+            ax1.plot(data_set[4],
+                     data_set[5],
+                     color='y',
+                     label='Histogram')
+            if fit_data is not None:
+                ax1.plot(fit_data[0],
+                         fit_data[1],
+                         color='r',
+                         marker='None',
+                         linewidth=1.5,
+                         label='Fit')
+        elif x_axis_bool:
+            ax1.plot(data_set[3],
+                     data_set[1],
+                     linestyle=':',
+                     linewidth=1,
+                     label='RawData')
+            ax1.plot(3.0e17/data_set[4],
+                     data_set[5],
+                     color='y',
+                     label='Histogram')
+            if fit_data is not None:
+                ax1.plot(fit_data[0],
+                         fit_data[1],
+                         color='r',
+                         marker='None',
+                         linewidth=1.5,
+                         label='Fit')
+
+        # Do not include fit parameter if there is no fit calculated.
+        if fit_result_str:
+            # Parameters for the text plot:
+            # The position of the text annotation is controlled with the
+            # relative offset in x direction and the relative length factor
+            # rel_len_fac of the longest entry in one column
+            rel_offset = 0.02
+            rel_len_fac = 0.011
+            entries_per_col = 24
+
+            # do reverse processing to get each entry in a list
+            entry_list = fit_result_str.split('\n')
+            # slice the entry_list in entries_per_col
+            chunks = [entry_list[x:x + entries_per_col] for x in
+                      range(0, len(entry_list), entries_per_col)]
+
+            is_first_column = True  # first entry should contain header or \n
+
+            for column in chunks:
+                max_length = max(column, key=len)  # get the longest entry
+                column_text = ''
+
+                for entry in column:
+                    column_text += entry.rstrip() + '\n'
+
+                column_text = column_text[:-1]  # remove the last new line
+
+                heading = f'Fit results for "{fit_config}":' if is_first_column else ''
+                column_text = f'{heading}\n{column_text}'
+
+                ax1.text(1.00 + rel_offset,
+                         0.99,
+                         column_text,
+                         verticalalignment='top',
+                         horizontalalignment='left',
+                         transform=ax1.transAxes,
+                         fontsize=12)
+
+                # the rel_offset in position of the text is a linear function
+                # which depends on the longest entry in the column
+                rel_offset += rel_len_fac * len(max_length)
+
+                is_first_column = False
+
+        # set labels, units and limits
+        if not x_axis_bool:
+            ax1.set_xlabel('Wavelength (nm)')
+        elif x_axis_bool:
+            ax1.set_xlabel('Frequency (Hz)')
+
+        ax1.set_ylabel('Flourescence (counts/s)')
+
+        ax1.legend()
+
+        fig.tight_layout()
+        return fig
