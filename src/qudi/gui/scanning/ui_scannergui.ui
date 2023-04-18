@@ -348,7 +348,7 @@ Shortcut:Alt+T</string>
      <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/correct-tilt.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/correct-tilt.svg</iconset>
    </property>
    <property name="text">
-    <string>Tilt_correction</string>
+    <string>Activate_Tilt_correction</string>
    </property>
   </action>
  </widget>

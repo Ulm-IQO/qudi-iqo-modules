@@ -15,7 +15,6 @@ either version 3 of the License, or (at your option) any later version.
 Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
 See the GNU Lesser General Public License for more details.
-
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
@@ -89,8 +88,8 @@ class TiltCorrectionDockWidget(QDockWidget):
         dock_widget_layout.addWidget(z3_position, 4, 3)
 
 
-        calc_tilt_pushButton = QPushButton("Calc. Tilt")
-        dock_widget_layout.addWidget(calc_tilt_pushButton)
+        #calc_tilt_pushButton = QPushButton("Calc. Tilt")
+        #dock_widget_layout.addWidget(calc_tilt_pushButton)
 
         # Set the dock widget contents
 

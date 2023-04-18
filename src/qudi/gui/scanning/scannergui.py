@@ -26,7 +26,8 @@ import copy as cp
 from typing import Union, Tuple
 from functools import partial
 from PySide2 import QtCore, QtGui, QtWidgets
-
+from PySide2.QtWidgets import QAction
+#from PyQt5.QtWidgets import  QAction
 import qudi.util.uic as uic
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -35,6 +36,7 @@ from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
 from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 from qudi.gui.scanning.tilt_correction_dcokwidget import TiltCorrectionDockWidget
+from qudi.gui.scanning.Tilt_correction_toggle_switch import ActivateTiltCorrection
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
 from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
@@ -374,6 +376,20 @@ class ScannerGui(GuiBase):
             self._mw.action_view_optimizer.setChecked)
         self._mw.action_view_optimizer.triggered[bool].connect(
             self.optimizer_dockwidget.setVisible)
+
+        toggle_switch = ActivateTiltCorrection()
+        action = QAction(self)
+        #toolbar.addWidget(toggle_switch)
+        # Add the action to the toolbar
+
+        self._mw.util_toolBar.addWidget(toggle_switch)
+        # Connect the action to a slot for handling the toggle switch state
+        action.triggered.connect(toggle_switch.toggleSwitch)
+        #action.setDefaultWidget(toggle_switch)
+        self._mw.util_toolBar.addAction(action)
+
+        # Add the MyDockWidget to the QToolBar
+        #toolbar.addWidget(dock_widget)
 
         self._mw.util_toolBar.visibilityChanged.connect(
             self._mw.action_view_toolbar.setChecked)
