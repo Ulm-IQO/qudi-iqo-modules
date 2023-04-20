@@ -50,27 +50,19 @@ class FourierSettings:
 class FourierAnalyzer(Analyzer):
 
     def __init__(self):
-        self._range_around_peak = FourierSettings.range_around_peak
-        self._padding_parameter = FourierSettings.padding_parameter
-        self._cut_time_trace = FourierSettings.cut_time_trace
-        self._spectrum_type = FourierSettings.spectrum_type
-        self._sequence_length_s = FourierSettings.sequence_length_s
+        self.stg = None
 
     def input_settings(self, settings: FourierSettings) -> None:
-        self._range_around_peak = settings.range_around_peak
-        self._padding_parameter = settings.padding_parameter
-        self._cut_time_trace = settings.cut_time_trace
-        self._spectrum_type = settings.spectrum_type
-        self._sequence_length_s = settings.sequence_length_s
+        self.stg = settings
 
     def analyze(self, time_trace):
-        ft_signal = self.do_fft(time_trace, self._cut_time_trace, self._padding_parameter)
+        ft_signal = self.do_fft(time_trace, self.stg.cut_time_trace, self.stg.padding_parameter)
         return ft_signal
 
     def get_spectrum(self, ft_signal):
-        if self._spectrum_type == 'amp':
+        if self.stg.spectrum_type == 'amp':
             spectrum = self.get_norm_amp_spectrum(ft_signal)
-        elif self._spectrum_type == 'power':
+        elif self.stg.spectrum_type == 'power':
             spectrum = self.get_norm_psd(ft_signal)
         return spectrum
 
@@ -125,13 +117,15 @@ class FourierAnalyzer(Analyzer):
 
 
 class TimeTraceAnalyzer:
+    method_lists = ['Fourier', "aurocorr"]
+
 
     def __init__(self):
         self.analyzer = None
-        self.method = 'FT'
+        self.method = 'Fourier'
 
     def configure_method(self, method):
-        if method == 'FT':
+        if method == 'Fourier':
             self.analyzer = FourierAnalyzer()
 
     def input_settings(self, settings):
