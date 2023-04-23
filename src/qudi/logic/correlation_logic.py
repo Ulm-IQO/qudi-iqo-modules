@@ -1,40 +1,18 @@
-import PIL.Image
-import PIL.ImageOps
-import matplotlib
-import matplotlib.pyplot as plt
-from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import scipy
 from scipy import ndimage
+import skimage
 import math
+import copy
 from qudi.core.module import LogicBase
+from qudi.util import paths
 from qudi.util.datastorage import TextDataStorage
-
-
-def initialize_process_steps():
-    """Prepare all process steps with their parameters and return a list containing all process steps."""
-    # preprocessing steps
-    to_8bit_step = To8Bit({'index': 0, 'enabled': True, 'percent_up': 99.1112, 'percent_down': 53.3,
-                           'equal_noise_filter': True, 'equal_upper_percentiles': True})
-    rescale_step = Rescale({'index': 1, 'enabled': True})
-    padding_step = Padding({'index': 2, 'enabled': True})
-    blur_step = Blur({'index': 3, 'enabled': True, 'method': 'box_blur', 'kernel_size': 4, 'sigma': 1, 'truncate': 4})
-    # point detection steps
-    feature_detection_step = FeatureDetection({'index': 4, 'enabled': False, 'min_sigma': 0.967, 'max_sigma': 4,
-                                               'sigma_ratio': 1.1, 'threshold': 0.07, 'overlap': 1, 'marker_size': 1.1})
-    # correlation steps
-    correlation_step = Correlation({'index': 5, 'enabled': True})
-    find_translation_step = FindTranslation({'index': 6, 'enabled': True})
-
-    process_steps = [to_8bit_step, rescale_step, padding_step, blur_step, feature_detection_step, correlation_step,
-                     find_translation_step]
-    return sorted(process_steps, key=return_index)
 
 
 class CorrelationLogic(LogicBase):
     """
     Correlate confocal scan images in order to find the translation and rotation between two images. This is done by
-    applying different process steps one after another.
+    successively applying different process steps.
     """
 
     # declare connectors
@@ -48,14 +26,17 @@ class CorrelationLogic(LogicBase):
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
+        self._display_image_1 = None
+        self._display_image_2 = None
         self._image_1 = None
         self._image_2 = None
         self.correlation_image = Image()
         self.translation_xy_pixels = None
         self.translation_xy_meters = None
-        # self._datastorage = TextDataStorage(root_dir=r'C:\Users\fabia\OneDrive\Uni_Laptop\Qudi notebooks')
-        self._datastorage = TextDataStorage(root_dir=None)
-        self._process_steps = initialize_process_steps()
+        self.result_dict = None
+        self._datastorage = TextDataStorage(root_dir=paths.get_default_data_dir())
+        self._process_steps = None
+        self.default_init_process_steps()
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -66,15 +47,52 @@ class CorrelationLogic(LogicBase):
 
     @property
     def image_1(self):
-        return self._image_1
+        return copy.deepcopy(self._image_1)
 
     @property
     def image_2(self):
-        return self._image_2
+        return copy.deepcopy(self._image_2)
+
+    @property
+    def display_image_1(self):
+        return copy.deepcopy(self._display_image_1)
+
+    @property
+    def display_image_2(self):
+        return copy.deepcopy(self._display_image_2)
 
     @property
     def process_steps(self):
-        return self._process_steps
+        return self._process_steps.copy()
+
+    def sort_process_steps(self):
+        self._process_steps = sorted(self._process_steps, key=lambda x: x.index)
+
+    def add_process_step(self, process_step):
+        self._process_steps.append(process_step)
+        self.sort_process_steps()
+
+    def remove_process_step(self, name):
+        """
+
+        """
+        new_process_steps = []
+        for step in self._process_steps:
+            if step.name is not name:
+                new_process_steps.append(step)
+        self._process_steps = new_process_steps
+        self.sort_process_steps()
+
+    def edit_process_step(self, name, parameter, value):
+        """ Edits a parameter of a process step.
+        @param str name: Name of the step that should be edited
+        @param str parameter: Parameter that should be edited in the specified step
+        @param value: New value for the specified parameter
+        """
+        for step in self._process_steps:
+            if step.name == name:
+                step.update_parameters({parameter: value})
+        self.sort_process_steps()
 
     def import_image(self, number, path):
         """Import an image from a .dat file into the correlation logic.
@@ -88,28 +106,53 @@ class CorrelationLogic(LogicBase):
         elif number == 2:
             self._image_2 = image
         else:
-            self.log.error(f"Importing image to image number {number} failed. Number should be 1 or 2.")
+            raise ValueError(f"Importing image to image number {number} failed. Number should be 1 or 2.")
 
     def run(self):
         """Run through the process steps with the current parameters"""
         # make sure that the process steps are sorted according to their index
-        self._process_steps = sorted(self.process_steps, key=return_index)
+        self.sort_process_steps()
+        # reset the result dictionary
+        self.result_dict = dict()
+        # reset the image to the raw image
+        self._image_1.reset_image()
+        self._image_2.reset_image()
 
-        # run through the sorted process steps and apply them if they are enabled
-        for process_step in self.process_steps:
-            if process_step.parameters['enabled']:
-                process_step.apply(self)
+        # run through the sorted process steps and apply them if they are enabled up to the last process step
+        enabled_process_steps = [x for x in self.process_steps if x.parameters['enabled'] is True]
+        for process_step in enabled_process_steps:
+            self._image_1, self._image_2, result_dict = process_step.apply(self._image_1, self._image_2)
 
+            if process_step.parameters.get('display_image') is True:
+                self._display_image_1 = copy.deepcopy(self._image_1)
+                self._display_image_2 = copy.deepcopy(self._image_2)
+
+            if result_dict is not None:
+                self.result_dict.update(result_dict)
+
+    def default_init_process_steps(self):
+        """Prepare all process steps with their parameters and return a list containing all process steps."""
+        # preprocessing steps
+        to_8bit_step = To8Bit({'index': 0, 'enabled': True, 'percent_up': 99.1112, 'percent_down': 53.3,
+                               'equal_noise_filter': True, 'equal_upper_percentiles': True})
+        rescale_step = Rescale({'index': 1, 'enabled': True, 'display_image': True})
+        padding_step = Padding({'index': 2, 'enabled': True})
+        blur_step = Blur(
+            {'index': 3, 'enabled': True, 'method': 'box_blur', 'kernel_size': 4, 'sigma': 1, 'truncate': 4})
+        # point detection steps
+        feature_detection_step = FeatureDetection({'index': 4, 'enabled': False, 'min_sigma': 0.967, 'max_sigma': 4,
+                                                   'sigma_ratio': 1.1, 'threshold': 0.07, 'overlap': 1,
+                                                   'marker_size': 1.1})
+        # correlation steps
+        correlation_step = Correlation({'index': 5, 'enabled': True})
+
+        self._process_steps = [to_8bit_step, rescale_step, padding_step, blur_step, feature_detection_step,
+                               correlation_step]
+        self.sort_process_steps()
 
 
 class Image:
-    """ Image class storing an image together with its attributes.
-    2d_array _array_raw: The raw imported image
-    2d_array array: The current maybe edited image
-    list resolution_xy: Image resolution (pixel per meter)
-    list _resolution_xy_raw: Raw image resolution (pixel per meter)
-    list range_xy: Image size in meters
-    TextDataStorage datastorage: Datastorage object used to import/save the images from files
+    """ Image class storing an image together with its properties.
     """
 
     def __init__(self, path=None, datastorage=None, root_dir=None):
@@ -118,11 +161,12 @@ class Image:
         @param TextDataStorage datastorage: Datastorage object used to import/save the images from files (optional).
         @param str root_dir: Root directory to save images into
         """
-        # raw imported image array
         self._array_raw = None
         # resolution of the raw image in pixel/meter
         self._resolution_xy_raw = None
-        # image array
+        # range of the raw image in meter
+        self._range_xy_raw = None
+
         self.array = None
         # resolution of the image in pixel/meter
         self.resolution_xy = None
@@ -146,15 +190,16 @@ class Image:
         """
         # import raw image from file
         self._array_raw, self.metadata, self.general = self._datastorage.load_data(path)
-        self.array = self._array_raw.copy()
+        self.array = self.array_raw
         # get range for image
         range_x = np.abs(self.metadata['x scan range'][1] - self.metadata['x scan range'][0])
         range_y = np.abs(self.metadata['y scan range'][1] - self.metadata['y scan range'][0])
-        self.range_xy = [range_x, range_y]
+        self._range_xy_raw = [range_x, range_y]
+        self.range_xy = self.range_xy_raw
         resolution_x = self.array.shape[1] / self.range_xy[0]
         resolution_y = self.array.shape[0] / self.range_xy[1]
-        self.resolution_xy = [resolution_x, resolution_y]
         self._resolution_xy_raw = [resolution_x, resolution_y]
+        self.resolution_xy = self.resolution_xy_raw
 
     def import_from_array(self, array, resolution_xy=None, range_xy=None):
         """Import image from an array and a given range or a given resolution.
@@ -173,13 +218,25 @@ class Image:
             self.range_xy = range_xy.copy()
             self.resolution_xy = [x_length / range_xy[0], y_length / range_xy[1]]
 
+    def reset_image(self):
+        """Resets the image array to the raw image array."""
+        self.array = self.array_raw
+        self.resolution_xy = self.resolution_xy_raw
+        self.range_xy = self.range_xy_raw
+
     @property
     def array_raw(self):
-        return self._array_raw
+        return self._array_raw.copy()
 
     @property
     def resolution_xy_raw(self):
-        return self._resolution_xy_raw
+        """Returns the resolution of the raw image in pixel/meter."""
+        return self._resolution_xy_raw.copy()
+
+    @property
+    def range_xy_raw(self):
+        """Returns the range of the raw image in meter."""
+        return self._range_xy_raw.copy()
 
     def show(self):
         """Show image (not implemented yet)"""
@@ -193,31 +250,33 @@ class ProcessStep:
         @param dict parameters: Dictionary of the parameters for the process step
         @param str name: Name of the process step
         """
-        self._name = name
+        self.name = name
         self._parameters = dict()
-        self.update_params(parameters)
+        self.update_parameters(parameters)
 
-    def update_params(self, parameters):
-        for parameter, value in parameters.items():
-            self._parameters[parameter] = value
-
-    def apply(self, correlation_logic):
-        """Applies a process step to the correlation logic.
-        @param CorrelationLogic correlation_logic: Apply the step to this correlation logic
+    def apply(self, image_1, image_2):
+        """Applies a process step to the two images and returns two images together with a result dictionary.
+        @param Image image_1: Image 1 for the process step
+        @param Image image_2: Image 2 for the process step
         """
-
-    @property
-    def name(self):
-        return self._name
+        image_1_result = copy.deepcopy(image_1)
+        image_2_result = copy.deepcopy(image_2)
+        result_dict = dict()
+        return image_1_result, image_2_result, result_dict
 
     @property
     def parameters(self):
-        return self._parameters
+        return self._parameters.copy()
 
+    def update_parameters(self, parameters):
+        """ Update the parameters' dictionary.
+        @param dict parameters: Dictionary of the parameters that should be changed together with their new values
+        """
+        self._parameters.update(parameters)
 
-def return_index(process_step):
-    """Return the index parameter value for a ProcessStep object"""
-    return process_step.parameters['index']
+    @property
+    def index(self):
+        return self._parameters['index']
 
 
 class To8Bit(ProcessStep):
@@ -225,10 +284,10 @@ class To8Bit(ProcessStep):
     def __init__(self, parameters, name='To8Bit'):
         super().__init__(parameters, name)
 
-    def apply(self, correlation_logic):
+    def apply(self, image_1, image_2):
         """Transform the two images into 8bit images by limiting the values with an upper and lower percentile."""
-        image_1 = correlation_logic.image_1
-        image_2 = correlation_logic.image_2
+        image_1 = copy.deepcopy(image_1)
+        image_2 = copy.deepcopy(image_2)
         # set parameters
         percent_down = self._parameters['percent_down']
         percent_up = self._parameters['percent_up']
@@ -270,17 +329,19 @@ class To8Bit(ProcessStep):
         image_2.array = (image_2.array - min_value_2) / (max_value_2 - min_value_2) * (2 ** 8 - 1)
         image_2.array = np.uint8(image_2.array)
 
+        return image_1, image_2, {}
+
 
 class Rescale(ProcessStep):
     def __init__(self, parameters, name='Rescale'):
         super().__init__(parameters, name)
 
-    def apply(self, correlation_logic):
+    def apply(self, image_1, image_2):
         """Rescales the image array with the smaller pixel/m resolution to the resolution of the other array
         (with the bigger resolution).
         Sets both x- and y-resolution to the same value."""
-        image_1 = correlation_logic.image_1
-        image_2 = correlation_logic.image_2
+        image_1 = copy.deepcopy(image_1)
+        image_2 = copy.deepcopy(image_2)
 
         y_length_1, x_length_1 = image_1.array.shape
         y_length_2, x_length_2 = image_2.array.shape
@@ -310,6 +371,7 @@ class Rescale(ProcessStep):
 
         image_1.resolution_xy = [x_resolution_1, y_resolution_1]
         image_2.resolution_xy = [x_resolution_2, y_resolution_2]
+        return image_1, image_2, {}
 
 
 class Padding(ProcessStep):
@@ -317,11 +379,11 @@ class Padding(ProcessStep):
     def __init__(self, parameters, name='Padding'):
         super().__init__(parameters, name)
 
-    def apply(self, correlation_logic):
-        """Pads the two image arrays in order to get them to the same size. Padding is done at the ends of the
-        arrays."""
-        image_1 = correlation_logic.image_1
-        image_2 = correlation_logic.image_2
+    def apply(self, image_1, image_2):
+        """Pads the two image arrays in order to get them to the same size. Padding is done at the end of the
+        array."""
+        image_1 = copy.deepcopy(image_1)
+        image_2 = copy.deepcopy(image_2)
 
         # get the pixel lengths of the image arrays
         y_length_1, x_length_1 = image_1.array.shape
@@ -350,16 +412,19 @@ class Padding(ProcessStep):
             # set new range_xy for image_1
             image_1.range_xy[1] = image_1.range_xy[1] + y_pad_right / image_1.resolution_xy[1]
 
+        return image_1, image_2, {}
+
 
 class Blur(ProcessStep):
 
     def __init__(self, parameters, name='Blur'):
         super().__init__(parameters, name)
 
-    def apply(self, correlation_logic):
+    def apply(self, image_1, image_2):
         """Apply a gaussian filter to the images in order to blur them."""
-        image_1 = correlation_logic.image_1
-        image_2 = correlation_logic.image_2
+        image_1 = copy.deepcopy(image_1)
+        image_2 = copy.deepcopy(image_2)
+
         # either use box blur or gaussian blur:
         # box blur:
         kernel_size = self.parameters['kernel_size']
@@ -382,24 +447,26 @@ class Blur(ProcessStep):
         image_1.array = np.rint(image_1.array).astype(np.uint8)
         image_2.array = np.rint(image_2.array).astype(np.uint8)
 
+        return image_1, image_2, {}
+
 
 class FeatureDetection(ProcessStep):
 
     def __init__(self, parameters, name='FeatureDetection'):
         super().__init__(parameters, name)
 
-    def apply(self, correlation_logic):
+    def apply(self, image_1, image_2):
         """Find features (NV centers) in the image and generate a new black image with markers for the detected
         features."""
-        image_1 = correlation_logic.image_1
-        image_2 = correlation_logic.image_2
+        image_1 = copy.deepcopy(image_1)
+        image_2 = copy.deepcopy(image_2)
+
         features_image_1 = skimage.feature.blob_dog(image_1.array, min_sigma=self.parameters['min_sigma'],
                                                     max_sigma=self.parameters['max_sigma'],
                                                     sigma_ratio=self.parameters['sigma_ratio'],
                                                     threshold=self.parameters['threshold'],
                                                     overlap=self.parameters['overlap'])
         image_1.array = self.draw_markers(image_1, features_image_1)
-        image_1.features = features_image_1
 
         features_image_2 = skimage.feature.blob_dog(image_2.array, min_sigma=self.parameters['min_sigma'],
                                                     max_sigma=self.parameters['max_sigma'],
@@ -407,7 +474,8 @@ class FeatureDetection(ProcessStep):
                                                     threshold=self.parameters['threshold'],
                                                     overlap=self.parameters['overlap'])
         image_2.array = self.draw_markers(image_2, features_image_2)
-        image_2.features = features_image_2
+
+        return image_1, image_2, {}
 
     def draw_markers(self, image, features):
         y_length, x_length = image.array.shape
@@ -449,27 +517,24 @@ class Correlation(ProcessStep):
     def __init__(self, parameters, name='Correlation'):
         super().__init__(parameters, name)
 
-    def apply(self, correlation_logic):
-        """Correlates two images"""
-        image_1 = correlation_logic.image_1
-        image_2 = correlation_logic.image_2
+    def apply(self, image_1, image_2):
+        """Correlates two images and uses the correlation to find the translation vector pointing from image_1 to
+        image_2.
+        """
+        image_1 = copy.deepcopy(image_1)
+        image_2 = copy.deepcopy(image_2)
         # dtype of input arrays for scipy.signal.correlate() defines output dtype -> prevent overflow if e.g. the dtype
         # is 8bit by using a bigger dtype
         dtype = 'uint64'
         im1 = image_1.array.astype(dtype)
         im2 = image_2.array.astype(dtype)
         correlation_array = scipy.signal.correlate(im2, im1, mode='full')
-        correlation_logic.correlation_image.import_from_array(correlation_array, resolution_xy=image_1.resolution_xy)
+        correlation_image = Image()
+        correlation_image.import_from_array(correlation_array, resolution_xy=image_1.resolution_xy)
+        result_dict = dict()
+        result_dict['correlation_image'] = correlation_image
 
-
-class FindTranslation(ProcessStep):
-    def __init__(self, parameters, name='FindTranslation'):
-        super().__init__(parameters, name)
-
-    def apply(self, correlation_logic):
-        """Tries to find the translation vector pointing from image_1 to image_2 by finding the
-            maximum value of the correlation"""
-        correlation_array = correlation_logic.correlation_image.array
+        # now find the translation by finding the position of the maximum value of the correlation
         # middle of matrix
         mid_y, mid_x = np.unravel_index(int(np.floor(correlation_array.size / 2)), correlation_array.shape)
         # find max value in cor
@@ -477,6 +542,9 @@ class FindTranslation(ProcessStep):
         # calculate translation vector pointing from im1 to im2
         trans_x = max_x - mid_x
         trans_y = max_y - mid_y
-        correlation_logic.translation_xy_pixels = np.array([trans_x, trans_y])
-        correlation_logic.translation_xy_meters = correlation_logic.translation_xy_pixels / np.array(
-            correlation_logic.correlation_image.resolution_xy)
+
+        translation_xy_pixels = np.array([trans_x, trans_y])
+        result_dict['translation_vector_xy_pixels'] = translation_xy_pixels
+        result_dict['translation_vector_xy_meters'] = translation_xy_pixels / np.array(correlation_image.resolution_xy)
+
+        return image_1, image_2, result_dict
