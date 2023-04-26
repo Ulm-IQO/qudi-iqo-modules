@@ -1,6 +1,6 @@
 import os
 from PySide2 import QtCore, QtWidgets, QtGui
-import datetime
+import time
 import numpy as np
 from pyqtgraph import PlotWidget
 import pyqtgraph as pg
@@ -45,8 +45,15 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
         self.action_show_fit_configuration.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
+        self.start_trace_Action2 = QtWidgets.QAction('Start Wavemeter')
+        self.start_trace_Action2.setCheckable(True)
+        self.start_trace_Action2.setToolTip('Start wavemeter to display wavelength')
+        self.start_trace_Action2.setIcon(icon)
+
+        icon = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
         self.start_trace_Action = QtWidgets.QAction('Start trace')
         self.start_trace_Action.setCheckable(True)
+        self.start_trace_Action.setToolTip('Start counter and wavemeter for data acquisition')
         self.start_trace_Action.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'edit-clear'))
@@ -62,6 +69,7 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
         # Create menu bar and add actions
         menu_bar = QtWidgets.QMenuBar()
         menu = menu_bar.addMenu('File')
+        menu.addAction(self.start_trace_Action2)
         menu.addAction(self.start_trace_Action)
         menu.addAction(self.actionClear_trace_data)
         menu.addSeparator()
@@ -79,6 +87,7 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
         # Create toolbar
         toolbar = QtWidgets.QToolBar()
         #TODO size policy
+        toolbar.addAction(self.start_trace_Action2)
         toolbar.addAction(self.start_trace_Action)
         toolbar.addAction(self.actionClear_trace_data)
         toolbar.addAction(self.action_save)
@@ -192,6 +201,7 @@ class WavemeterHistogramGui(GuiBase):
     sigStopCounter = QtCore.Signal()
     sigDoFit = QtCore.Signal(str)  # fit_config_name
     sigSaveData = QtCore.Signal(str)  # postfix_string
+    #_sig_gui_refresh = QtCore.Signal(object) #rate
 
 
     # declare connectors
@@ -235,10 +245,13 @@ class WavemeterHistogramGui(GuiBase):
         #self._pw.plotItem.vb.sigResized.connect(self.__update_viewbox_sync)
 
         # Create an empty plot curve to be filled later, set its pen
-        self.curve_data_points = pg.ScatterPlotItem(  # PlotDataItem
-            pen=pg.mkPen(palette.c1),
-            # symbol=None
+        self.curve_data_points = pg.PlotDataItem(
+            symbolPen=pg.mkPen(palette.c1),
+            symbol='o',
+            pen=None,
+            symbolSize=6
         )
+        self.curve_data_points.setDownsampling(auto=True, method='peak') #auto, method
         self._pw._plot_widget.addItem(self.curve_data_points)
 
         #Add plot for interactive plot widget
@@ -256,8 +269,13 @@ class WavemeterHistogramGui(GuiBase):
         self._spw = self._mw.scatterPlotWidget
         self._spw.setLabel('bottom', 'Wavelength', units='nm')
         self._spw.setLabel('left', 'Time', units='s')
-        self._scatterplot = pg.ScatterPlotItem(size=10, pen=pg.mkPen(None),
-                                               brush=pg.mkBrush(255, 255, 255, 20))
+        self._scatterplot = pg.PlotDataItem(
+            pen=None,
+            symbol='o',
+            symbolPen=pg.mkPen(palette.c3),
+            symbolSize=4
+        )
+        self._scatterplot.setDownsampling(auto=True, method='peak')
         self._spw.addItem(self._scatterplot)
         #self._spw.setXLink(self._pw)
 
@@ -265,8 +283,10 @@ class WavemeterHistogramGui(GuiBase):
         # Connecting file interactions
         self._mw.action_show_fit_configuration.triggered.connect(self._fit_config_dialog.show)
         self._mw.start_trace_Action.triggered.connect(self.start_clicked)
+        self._mw.start_trace_Action2.triggered.connect(self.start_clicked_wavemeter)
         self._mw.actionClear_trace_data.triggered.connect(self.clear_trace_data)
         self._mw.action_save.triggered.connect(self._save_clicked)
+        #self._sig_gui_refresh.connect(self.update_data_gui, QtCore.Qt.QueuedConnection)
         # Connect the view actions
         self._mw.actionToggle_x_axis.triggered.connect(self.toggle_axis)
         self._mw.sigFitClicked.connect(self._fit_clicked)
@@ -320,6 +340,7 @@ class WavemeterHistogramGui(GuiBase):
         #self._pw.plotItem.vb.sigResized.disconnect()
         self._mw.action_save.triggered.disconnect()
         self._mw.start_trace_Action.triggered.disconnect()
+        self._mw.start_trace_Action2.triggered.disconnect()
         self._mw.actionClear_trace_data.triggered.disconnect()
         self._mw.actionToggle_x_axis.triggered.disconnect()
         self._mw.action_autoscale_hist.triggered.disconnect()
@@ -352,21 +373,46 @@ class WavemeterHistogramGui(GuiBase):
     def display_current_wavelength(self, current_wavelength, current_freq):
         if current_wavelength is not None:
             self._mw.wavelengthLabel2.setText('{0:,.6f} nm '.format(current_wavelength))
-            self._mw.frequencyLabel.setText('{0:,.6f} GHz '.format(current_freq))
+            self._mw.frequencyLabel.setText('{0:,.6f} Hz '.format(current_freq))
+            if not self._wavemeter_logic.x_axis_hz_bool:
+                self._pw.move_marker_selection((current_wavelength, 0), 0)
+            elif self._wavemeter_logic.x_axis_hz_bool:
+                self._pw.move_marker_selection((current_freq, 0), 0)
         return
 
     @QtCore.Slot(object, object)
     def add_data_points(self, xpoints=None, ypoints=None):
-        if xpoints is not None and ypoints is not None:
-            if not self._wavemeter_logic.x_axis_hz_bool:
-                self._scatterplot.addPoints(list(xpoints), ypoints,
-                                            brush=pg.intColor(xpoints[0] / 100, 255))
-            elif self._wavemeter_logic.x_axis_hz_bool:
-                xpoints2 = list(3.0e17 / xpoints)
-                self._scatterplot.addPoints(xpoints2, ypoints,
-                                            brush=pg.intColor(xpoints[0] / 100, 255))
+        #if xpoints is not None and ypoints is not None:
+        #    if not self._wavemeter_logic.x_axis_hz_bool:
+                #self._scatterplot.setData(self._wavemeter_logic.wavelength, self._wavemeter_logic.timings#, symbolPen=pg.intColor(xpoints[0] / 100, 255)
+                #                            )
+                #self._scatterplot.addPoints(list(xpoints), ypoints)
+        #    elif self._wavemeter_logic.x_axis_hz_bool:
+                #self._scatterplot.setData(self._wavemeter_logic.frequency, self._wavemeter_logic.timings#,
+                                            #symbolPen=pg.intColor(xpoints[0] / 100, 255)
+                #                            )
+                #xpoints2 = list(3.0e17 / xpoints)
+                #self._scatterplot.addPoints(xpoints2, ypoints)
         return
 
+    '''
+    @QtCore.Slot(object)
+    def update_data_gui(self, rate) -> None:
+
+        if self.gui_refresh:
+            timings, counts, wavelength, frequency = self._wavemeter_logic.get_list_values()
+            if len(wavelength) > 0:
+                if not self._wavemeter_logic.x_axis_hz_bool:
+                    if len(wavelength) == len(counts) and len(wavelength) == len(timings):
+                        self.curve_data_points.setData(wavelength, counts)
+                        self._scatterplot.setData(wavelength, timings)
+                elif self._wavemeter_logic.x_axis_hz_bool:
+                    self.curve_data_points.setData(frequency, counts)
+                    self._scatterplot.setData(frequency, timings)
+            time.sleep(1/rate)
+            self._sig_gui_refresh.emit(rate)
+    '''
+    '''
     @QtCore.Slot(object, object)
     def update_data(self, data_wavelength=None, data_counts=None):
         """ The function that grabs the data and sends it to the plot.
@@ -375,22 +421,60 @@ class WavemeterHistogramGui(GuiBase):
 
         if not self._wavemeter_logic.x_axis_hz_bool:
             if data_wavelength is not None and data_counts is not None:
-                self.curve_data_points.addPoints(list(data_wavelength), list(data_counts))
-                data = self._wavemeter_logic._trace_data
-                if data is not None:
-                    self._pw.set_data('Histogram', x=x_axis, y=self._wavemeter_logic.histogram)
-                    self._pw.set_data('Envelope', x=x_axis, y=self._wavemeter_logic.envelope_histogram)
-                    #self._pw.set_data('RawData', x=data[0, :], y=data[1, :])
-                    self._pw.move_marker_selection((data_wavelength[0], 0), 0)
+                #self.curve_data_points.addPoints(list(data_wavelength), list(data_counts))
+                #self.curve_data_points.setData(self._wavemeter_logic.wavelength, self._wavemeter_logic.counts)
+                #self._scatterplot.setData(self._wavemeter_logic.wavelength,
+                #                          self._wavemeter_logic.timings
+                #                          )
+                self._pw.set_data('Histogram', x=x_axis, y=self._wavemeter_logic.histogram)
+                self._pw.set_data('Envelope', x=x_axis, y=self._wavemeter_logic.envelope_histogram)
+                #self._pw.set_data('RawData', x=data[0, :], y=data[1, :])
+                self._pw.move_marker_selection((data_wavelength[0], 0), 0)
 
         elif self._wavemeter_logic.x_axis_hz_bool:
             if data_wavelength is not None and data_counts is not None:
                 data_freq = 3.0e17 / data_wavelength
-                self.curve_data_points.addPoints(list(data_freq), list(data_counts))
+                #self.curve_data_points.addPoints(list(data_freq), list(data_counts))
+                #self.curve_data_points.setData(self._wavemeter_logic.frequency, self._wavemeter_logic.counts)
+                #self._scatterplot.setData(self._wavemeter_logic.frequency,
+                #                          self._wavemeter_logic.timings
+                #                          )
                 self._pw.set_data('Histogram', x=3.0e17 / x_axis, y=self._wavemeter_logic.histogram)
                 self._pw.set_data('Envelope', x=3.0e17 / x_axis, y=self._wavemeter_logic.envelope_histogram)
                 #self._pw.set_data('RawData', x=data[3, :], y=data[1, :])
                 self._pw.move_marker_selection((data_freq[0], 0), 0)
+
+        return 0
+    '''
+
+    @QtCore.Slot(object, object, object, object)
+    def update_data(self, timings, counts, wavelength, frequency):
+        """ The function that grabs the data and sends it to the plot.
+        """
+        x_axis = self._wavemeter_logic.histogram_axis
+
+        if not self._wavemeter_logic.x_axis_hz_bool:
+            if len(wavelength) > 0 and len(wavelength) == len(counts) == len(timings) == len(frequency):
+                self.curve_data_points.setData(wavelength, counts)
+                self._scatterplot.setData(wavelength, timings)
+                self._pw.set_data('Histogram', x=x_axis, y=self._wavemeter_logic.histogram)
+                self._pw.set_data('Envelope', x=x_axis, y=self._wavemeter_logic.envelope_histogram)
+                # self._pw.set_data('RawData', x=data[0, :], y=data[1, :])
+                #TODO Marker
+                #self._pw.move_marker_selection((data_wavelength[0], 0), 0)
+
+        elif self._wavemeter_logic.x_axis_hz_bool:
+            if len(wavelength) > 0 and len(wavelength) == len(counts) == len(timings) == len(frequency):
+                #data_freq = 3.0e17 / data_wavelength
+                # self.curve_data_points.addPoints(list(data_freq), list(data_counts))
+                self.curve_data_points.setData(frequency, counts)
+                self._scatterplot.setData(frequency, timings)
+                self._pw.set_data('Histogram', x=3.0e17 / x_axis, y=self._wavemeter_logic.histogram)
+                self._pw.set_data('Envelope', x=3.0e17 / x_axis,
+                                  y=self._wavemeter_logic.envelope_histogram)
+                # self._pw.set_data('RawData', x=data[3, :], y=data[1, :])
+                # TODO Marker
+                #self._pw.move_marker_selection((data_freq[0], 0), 0)
 
         return 0
 
@@ -414,14 +498,11 @@ class WavemeterHistogramGui(GuiBase):
         icon2 = QtGui.QIcon(os.path.join(icon_path, 'stop-counter'))
         self._mw.start_trace_Action.setIcon(icon2 if running else icon1)
 
-        # self._mw.record_trace_Action.setChecked(recording)
-        # self._mw.record_trace_Action.setText('Save recorded' if recording else 'Start recording')
-
         self._mw.start_trace_Action.setEnabled(True)
         self._mw.actionClear_trace_data.setEnabled(not running)
         self._mw.actionToggle_x_axis.setEnabled(not running)
         self._mw.action_save.setEnabled(not running)
-        # self._mw.record_trace_Action.setEnabled(running)
+        self._mw.start_trace_Action2.setEnabled(not running)
         return
 
     @QtCore.Slot()
@@ -432,17 +513,31 @@ class WavemeterHistogramGui(GuiBase):
         self._mw.actionClear_trace_data.setEnabled(False)
         self._mw.actionToggle_x_axis.setEnabled(False)
         self._mw.action_save.setEnabled(False)
-        # self._mw.record_trace_Action.setEnabled(False)
+        self._mw.start_trace_Action2.setEnabled(False)
 
         if self._mw.start_trace_Action.isChecked():
-            # settings = {'trace_window_size': self._mw.trace_length_DoubleSpinBox.value(),
-            #            'data_rate': self._mw.data_rate_DoubleSpinBox.value(),
-            #            'oversampling_factor': self._mw.oversampling_SpinBox.value(),
-            #            'moving_average_width': self._mw.moving_average_spinBox.value()}
-            # self.sigSettingsChanged.emit(settings)
             self.sigStartCounter.emit()
         else:
             self.sigStopCounter.emit()
+        return
+
+    def start_clicked_wavemeter(self):
+        #self._mw.start_trace_Action2.setEnabled(False)
+        if self._mw.start_trace_Action2.isChecked():
+            if self._wavemeter_logic._streamer().start_stream() < 0:
+                self.log.error('Error while starting streaming device data acquisition.')
+                return -1
+            self._mw.start_trace_Action2.setText('Stop Wavemeter')
+            icon_path = os.path.join(get_artwork_dir(), 'icons')
+            icon2 = QtGui.QIcon(os.path.join(icon_path, 'stop-counter'))
+            self._mw.start_trace_Action2.setIcon(icon2)
+        else:
+            self._wavemeter_logic._streamer().stop_stream()
+            self._mw.start_trace_Action2.setText('Start Wavemeter')
+            icon_path = os.path.join(get_artwork_dir(), 'icons')
+            icon1 = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
+            self._mw.start_trace_Action2.setIcon(icon1)
+
         return
 
     @QtCore.Slot()
