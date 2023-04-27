@@ -28,6 +28,7 @@ import ctypes
 from PySide2 import QtCore
 import scipy.interpolate as interpolate
 
+from qudi.core.configoption import ConfigOption
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
 from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
@@ -52,12 +53,37 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     wavemeter:
         module.Class: 'wavemeter.wavemeter_as_instreamer.WavemeterAsInstreamer'
+        options:
+            channels:
+                1:
+                    unit: 'nm'    # wavelength (nm) or frequency (Hz)
+                    medium: 'vac' # for wavelength: air or vac
+                    exposure: 10  # exposure time in ms
+                2:
+                    unit: 'nm'
+                    medium: 'vac'
+                    exposure: 10
+                3:
+                    unit: 'nm'
+                    medium: 'vac'
+                    exposure: 10
+                4:
+                    unit: 'nm'
+                    medium: 'vac'
+                    exposure: 10
     """
 
     #declare signals
     sigNewWavelength = QtCore.Signal(object)
 
     # config options
+    _wavemeter_ch_config = ConfigOption(
+        name='channels',
+        default={
+            1: {'unit': 'nm', 'medium': 'vac', 'exposure': 10}
+        },
+        missing='info'
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -68,7 +94,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._digital_event_rates = [1000, 1000, 1000, 1000]
 
         self._temperature = []
-        self._wavelength = []
+        self._data_from_callback = None
 
         # Internal settings
         self.__sample_rate = -1.0
@@ -149,9 +175,12 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         # Create constraints
         self._constraints = DataInStreamConstraints()
         self._constraints.digital_channels = tuple()
-        self._constraints.analog_channels = (
-            StreamChannel(name='wavelength', type=StreamChannelType.ANALOG, unit='nm'),
-            StreamChannel(name='wavelength_timing', type=StreamChannelType.ANALOG, unit='s'))
+
+        for i, info in self._wavemeter_ch_config.items():
+            data_channel = StreamChannel(name=f'data_ch_{i}', type=StreamChannelType.ANALOG, unit=info.unit)
+            timestamp_channel = StreamChannel(name=f'time_ch_{i}', type=StreamChannelType.ANALOG, unit='s')
+            self._constraints.analog_channels += (data_channel, timestamp_channel)
+
         self._constraints.analog_sample_rate.min = 1
         self._constraints.analog_sample_rate.max = 2 ** 31 - 1
         self._constraints.analog_sample_rate.step = 1
@@ -197,12 +226,14 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             :return: TODO: remove?
             """
             with self._lock:
-                if mode == high_finesse_constants.cmiWavelength1:
-                    self._wavelength.append((intval, dblval))
-                    #TODO emit signal for wavelength window
-                    self.sigNewWavelength.emit(dblval)
-                elif mode == high_finesse_constants.cmiTemperature:
-                    self._temperature.append((intval, dblval))
+                for ch, constant in high_finesse_constants.cmi_wavelength_n.items():
+                    if mode == constant:
+                        self._data_from_callback[ch].append((intval, dblval))
+
+                        #TODO emit signal for wavelength window
+                        self.sigNewWavelength.emit(dblval)
+                    # elif mode == high_finesse_constants.cmiTemperature:
+                    #     self._temperature.append((intval, dblval))
             return 0
 
         self._callback_function = _CALLBACK(handle_callback)
@@ -218,7 +249,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.warning('Unable to start input stream. It is already running.')
             return 0
 
-        self._wavelength = list()
+        self._data_from_callback = {i: [] for i in self._wavemeter_ch_config.keys()}
         self._temperature = list()
 
         # start callback procedure
@@ -251,11 +282,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             0)  # long P2: callback thread priority, 0 = standard
         self._callback_function = None
         return 0
-
-    @property
-    def wavelength(self):
-        with self._lock:
-            return self._wavelength.copy()
 
     @property
     def temperature(self):
@@ -319,7 +345,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         if number_of_samples < 1:
             return 0
-        while len(self.wavelength) == 0: #or self.available_samples < number_of_samples
+        while self.available_samples < number_of_samples:
+            # TODO: organize this with signals?
             if not self.is_running:
                 break
             time.sleep(0.001)
@@ -332,6 +359,12 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._last_read = time.perf_counter()
 
         with self._lock:
+            for wavemeter_ch, values in self._data_from_callback.items():
+                if not values:
+                    continue
+
+            # TODO: implement interpolation for multiple channels
+
             if len(self._wavelength) == 0:
                 return 0
             if len(self._wavelength) == 1:

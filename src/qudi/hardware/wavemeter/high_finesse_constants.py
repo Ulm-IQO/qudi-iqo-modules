@@ -283,6 +283,27 @@ cmiAveragingCount = 1524
 cmiAveragingMode = 1525
 cmiAveragingType = 1526
 
+# Helper dictionary for multichannel wavelength readout
+cmi_wavelength_n = {
+    1: cmiWavelength1,
+    2: cmiWavelength2,
+    3: cmiWavelength3,
+    4: cmiWavelength4,
+    5: cmiWavelength5,
+    6: cmiWavelength6,
+    7: cmiWavelength7,
+    8: cmiWavelength8,
+    9: cmiWavelength9,
+    10: cmiWavelength10,
+    11: cmiWavelength11,
+    12: cmiWavelength12,
+    13: cmiWavelength13,
+    14: cmiWavelength14,
+    15: cmiWavelength15,
+    16: cmiWavelength16,
+    17: cmiWavelength17
+}
+
 ## Index constants for Get- and SetExtraSetting
 cesCalculateLive = 4501
 
