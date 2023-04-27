@@ -51,6 +51,7 @@ class TimeSeriesReaderLogic(LogicBase):
     sigDataChanged = QtCore.Signal(object, object, object, object)
     sigStatusChanged = QtCore.Signal(bool, bool)
     sigSettingsChanged = QtCore.Signal(dict)
+    sigDataChangedWavemeter = QtCore.Signal(object)
     _sigNextDataFrame = QtCore.Signal()  # internal signal
 
     # declare connectors
@@ -561,6 +562,9 @@ class TimeSeriesReaderLogic(LogicBase):
                     self._stop_requested = True
                     self._sigNextDataFrame.emit()
                     return
+
+                # Emit update signal of latest acquired data (used in wavemeter_histogram_logic)
+                self.sigDataChangedWavemeter.emit(data*self.sampling_rate)
 
                 # Process data
                 self._process_trace_data(data)
