@@ -106,7 +106,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self.__active_channels = tuple()
 
         # Data buffer
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
+        self._data_buffer = None
         self._has_overflown = False
         self._last_read = None
         self._start_time = None
@@ -144,8 +144,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self.__active_channels = (ch.copy() for ch in constr.analog_channels if ch.name)
 
         # Reset data buffer
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
-        self._has_overflown = False
+        self._init_buffer()
         self._last_read = None
         self._start_time = None
         return
@@ -156,7 +155,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._has_overflown = False
         self._last_read = None
         # Free memory if possible while module is inactive
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
+        self._init_buffer()
 
         try:
             # clean up by removing reference to the ctypes library object
@@ -302,9 +301,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     def read_data_into_buffer(self, buffer, number_of_samples=None):
         """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
+        Read data from the stream buffer into a 2D numpy array given as parameter.
+        Even in the case of a single data channel, the array must be 2D with
+        the first index corresponding to the channel number and
         the second index serving as sample index:
             buffer.shape == (self.number_of_channels, number_of_samples)
         The numpy array must have the same data type as self.data_type.
@@ -328,20 +327,17 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                            ''.format(self.__data_type))
             return -1
 
-        if buffer.ndim == 2:
-            if buffer.shape[0] != self.number_of_channels:
-                self.log.error('Configured number of channels ({0:d}) does not match first '
-                               'dimension of 2D buffer array ({1:d}).'
-                               ''.format(self.number_of_channels, buffer.shape[0]))
-                return -1
-            number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
-            buffer = buffer.flatten()
-        elif buffer.ndim == 1:
-            number_of_samples = (buffer.size // self.number_of_channels) \
-                if number_of_samples is None else number_of_samples
-        else:
-            self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
+        if buffer.ndim != 2:
+            self.log.error('Buffer must be a 2D numpy.ndarray.')
             return -1
+
+        if buffer.shape[0] != self.number_of_channels:
+            self.log.error('Configured number of channels ({0:d}) does not match first '
+                           'dimension of 2D buffer array ({1:d}).'
+                           ''.format(self.number_of_channels, buffer.shape[0]))
+            return -1
+
+        number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
 
         if number_of_samples < 1:
             return 0
@@ -377,10 +373,13 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             wavelength_array = np.array(self._wavelength)
             del self._wavelength[:len(self._wavelength)]
 
+        # create a function which can be used to interpolate in between readings
         arr_interp = interpolate.interp1d(wavelength_array[:, 0], wavelength_array[:, 1])
+        # calculate timestamps for which readings were requested
         new_timings = np.linspace(wavelength_array[0, 0],
                                   wavelength_array[0, 0] + self._last_read - previous_read,
                                   number_of_samples)
+        # perform the actual interpolation to get readings for those timestamps
         buffer[:number_of_samples] = arr_interp(new_timings)
         buffer[number_of_samples:2 * number_of_samples] = new_timings
 
@@ -396,9 +395,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     def read_available_data_into_buffer(self, buffer):
         """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
+        Read data from the stream buffer into a 2D numpy array given as parameter.
+        Even in the case of a single data channel, the array must be 2D with
+        the first index corresponding to the channel number and
         the second index serving as sample index:
             buffer.shape == (self.number_of_channels, number_of_samples)
         The numpy array must have the same data type as self.data_type.
@@ -420,16 +419,14 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                            ''.format(self.__data_type))
             return -1
 
-        if buffer.ndim == 2:
-            buffer_size = buffer.shape[1]
-            buffer = buffer.flatten()
-        elif buffer.ndim == 1:
-            buffer_size = (buffer.size // self.number_of_channels)
-        else:
-            self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
+        if buffer.ndim != 2:
+            self.log.error('Buffer must be a 2D numpy.ndarray.')
             return -1
 
+        buffer_size = buffer.shape[1]
+
         with self._lock:
+            # TODO: convert this to multi-channel
             if len(self._wavelength) == 0:
                 return 0
             if len(self._wavelength) == 1:
@@ -475,9 +472,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             if read_samples != number_of_samples:
                 return np.empty((0, 0), dtype=self.data_type)
 
-        total_samples = self.number_of_channels * read_samples
-        return self._data_buffer[:total_samples].reshape((self.number_of_channels,
-                                                          read_samples))
+        return self._data_buffer[:read_samples]
 
     def read_single_point(self):  # TODO
         """
@@ -773,9 +768,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     def _init_buffer(self):
         if not self.is_running:
-            self._data_buffer = np.zeros(
-                self.number_of_channels * self.buffer_size,
-                dtype=self.data_type)
+            self._data_buffer = np.zeros((self.number_of_channels, self.buffer_size), dtype=self.data_type)
             self._has_overflown = False
         return
 
