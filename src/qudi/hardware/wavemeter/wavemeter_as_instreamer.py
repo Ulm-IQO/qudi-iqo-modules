@@ -176,9 +176,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._constraints.digital_channels = tuple()
 
         for i, info in self._wavemeter_ch_config.items():
-            data_channel = StreamChannel(name=f'data_ch_{i}', type=StreamChannelType.ANALOG, unit=info.unit)
             timestamp_channel = StreamChannel(name=f'time_ch_{i}', type=StreamChannelType.ANALOG, unit='s')
-            self._constraints.analog_channels += (data_channel, timestamp_channel)
+            data_channel = StreamChannel(name=f'data_ch_{i}', type=StreamChannelType.ANALOG, unit=info.unit)
+            self._constraints.analog_channels += (timestamp_channel, data_channel)
 
         self._constraints.analog_sample_rate.min = 1
         self._constraints.analog_sample_rate.max = 2 ** 31 - 1
@@ -225,9 +225,10 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             :return: TODO: remove?
             """
             with self._lock:
-                for ch, constant in high_finesse_constants.cmi_wavelength_n.items():
-                    if mode == constant:
-                        self._data_from_callback[ch].append((intval, dblval))
+                # got through configured channels to see if new data is from one of them
+                for i, ch in enumerate(self._wavemeter_ch_config.keys()):
+                    if mode == high_finesse_constants.cmi_wavelength_n[ch]:
+                        self._data_from_callback[i].append((intval, dblval))
 
                         #TODO emit signal for wavelength window
                         self.sigNewWavelength.emit(dblval)
@@ -248,7 +249,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.warning('Unable to start input stream. It is already running.')
             return 0
 
-        self._data_from_callback = {i: [] for i in self._wavemeter_ch_config.keys()}
+        self._data_from_callback = tuple([] for _ in self._wavemeter_ch_config.keys())
         self._temperature = list()
 
         # start callback procedure
@@ -280,6 +281,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             ctypes.cast(self._callback_function, ctypes.POINTER(ctypes.c_long)),  # long P1: function TODO unnecessary?
             0)  # long P2: callback thread priority, 0 = standard
         self._callback_function = None
+        self._data_from_callback = None
         return 0
 
     @property
