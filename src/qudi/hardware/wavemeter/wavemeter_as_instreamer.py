@@ -408,37 +408,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         @return int: Number of samples read into buffer; negative value indicates error
                      (e.g. read timeout)
         """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return -1
-
-        if not isinstance(buffer, np.ndarray) or buffer.dtype != self.__data_type:
-            self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
-                           ''.format(self.__data_type))
-            return -1
-
-        if buffer.ndim != 2:
-            self.log.error('Buffer must be a 2D numpy.ndarray.')
-            return -1
-
-        buffer_size = buffer.shape[1]
-
-        with self._lock:
-            # TODO: convert this to multi-channel
-            if len(self._wavelength) == 0:
-                return 0
-            if len(self._wavelength) == 1:
-                current_wavelength = self._wavelength[-1]
-                del self._wavelength[-1]
-                buffer[0:1] = current_wavelength[0:1]
-                return 1
-            read_length = len(self._wavelength) \
-                if len(self._wavelength) <= buffer_size else buffer_size
-            wavelength_array = np.array(self._wavelength[:read_length])
-            del self._wavelength[:read_length]
-            buffer[:read_length] = wavelength_array[:, 0]
-            buffer[read_length:2 * read_length] = wavelength_array[:, 1]
-            return read_length
+        avail_samples = min(buffer.size // self.number_of_channels, self.available_samples)
+        return self.read_data_into_buffer(buffer=buffer, number_of_samples=avail_samples)
 
     def read_data(self, number_of_samples=None):
         """
