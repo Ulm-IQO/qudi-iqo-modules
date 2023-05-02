@@ -141,7 +141,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self.__use_circular_buffer = False
         self.__streaming_mode = StreamingMode.CONTINUOUS
         constr = self.get_constraints()
-        self.__active_channels = (ch.copy() for ch in constr.analog_channels if ch.name)
+        self.__active_channels = tuple(ch.copy() for ch in constr.analog_channels if ch.name)
 
         # Reset data buffer
         self._init_buffer()
@@ -175,9 +175,10 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._constraints = DataInStreamConstraints()
         self._constraints.digital_channels = tuple()
 
+        self._constraints.analog_channels = tuple()
         for i, info in self._wavemeter_ch_config.items():
             timestamp_channel = StreamChannel(name=f'time_ch_{i}', type=StreamChannelType.ANALOG, unit='s')
-            data_channel = StreamChannel(name=f'data_ch_{i}', type=StreamChannelType.ANALOG, unit=info.unit)
+            data_channel = StreamChannel(name=f'data_ch_{i}', type=StreamChannelType.ANALOG, unit=info['unit'])
             self._constraints.analog_channels += (timestamp_channel, data_channel)
 
         self._constraints.analog_sample_rate.min = 1
@@ -363,14 +364,14 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
                 if len(readings) == 0:
                     # no new readings
-                    buffer[:number_of_samples, timestamp_ch] = np.nan
-                    buffer[:number_of_samples, data_ch] = np.nan
+                    buffer[timestamp_ch, :number_of_samples] = np.nan
+                    buffer[data_ch, :number_of_samples] = np.nan
 
                 elif len(readings) == 1:
                     # only one new reading
                     reading = readings.pop()
-                    buffer[:number_of_samples, timestamp_ch] = reading[0]
-                    buffer[:number_of_samples, data_ch] = reading[1]
+                    buffer[timestamp_ch, :number_of_samples] = reading[0]
+                    buffer[data_ch, :number_of_samples] = reading[1]
 
                 else:
                     # multiple new readings
@@ -386,8 +387,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                                                  timestamps[0] + self._last_read - previous_read,
                                                  number_of_samples)
                     # perform the actual interpolation to get readings for those timestamps
-                    buffer[:number_of_samples, timestamp_ch] = new_timestamps
-                    buffer[:number_of_samples, data_ch] = arr_interp(new_timestamps)
+                    buffer[timestamp_ch, :number_of_samples] = new_timestamps
+                    buffer[data_ch, :number_of_samples] = arr_interp(new_timestamps)
 
         return number_of_samples
 
@@ -441,7 +442,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             if read_samples != number_of_samples:
                 return np.empty((0, 0), dtype=self.data_type)
 
-        return self._data_buffer[:read_samples]
+        return self._data_buffer[:, :read_samples]
 
     def read_single_point(self):  # TODO
         """
