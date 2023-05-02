@@ -357,41 +357,37 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._last_read = time.perf_counter()
 
         with self._lock:
-            for wavemeter_ch, values in self._data_from_callback.items():
-                if not values:
-                    continue
+            for i, readings in enumerate(self._data_from_callback):
+                timestamp_ch = i * 2
+                data_ch = timestamp_ch + 1
 
-            # TODO: implement interpolation for multiple channels
+                if len(readings) == 0:
+                    # no new readings
+                    buffer[:number_of_samples, timestamp_ch] = np.nan
+                    buffer[:number_of_samples, data_ch] = np.nan
 
-            if len(self._wavelength) == 0:
-                return 0
-            if len(self._wavelength) == 1:
-                current_wavelength = self._wavelength[-1]
-                del self._wavelength[-1]
-                buffer[:number_of_samples] = np.ones(number_of_samples) * current_wavelength[-1]
-                buffer[number_of_samples:2 * number_of_samples] = np.ones(number_of_samples) * \
-                                                                  current_wavelength[0]
-                return number_of_samples
-            wavelength_array = np.array(self._wavelength)
-            del self._wavelength[:len(self._wavelength)]
+                elif len(readings) == 1:
+                    # only one new reading
+                    reading = readings.pop()
+                    buffer[:number_of_samples, timestamp_ch] = reading[0]
+                    buffer[:number_of_samples, data_ch] = reading[1]
 
-        # create a function which can be used to interpolate in between readings
-        arr_interp = interpolate.interp1d(wavelength_array[:, 0], wavelength_array[:, 1])
-        # calculate timestamps for which readings were requested
-        new_timings = np.linspace(wavelength_array[0, 0],
-                                  wavelength_array[0, 0] + self._last_read - previous_read,
-                                  number_of_samples)
-        # perform the actual interpolation to get readings for those timestamps
-        buffer[:number_of_samples] = arr_interp(new_timings)
-        buffer[number_of_samples:2 * number_of_samples] = new_timings
+                else:
+                    # multiple new readings
+                    readings_array = np.array(readings)
+                    del readings[:len(readings)]
+                    timestamps = readings_array[:, 0]
+                    wavelengths = readings_array[:, 1]
 
-        # temperature_array = np.array(self.temperature[:number_of_samples])
-        # del self.temperature[:number_of_samples]
-        # arr_interp = interpolate.interp1d(temperature_array[:, 0], temperature_array[:, 1])
-        # new_timings = np.linspace(temperature_array[0, 0],
-        #                           temperature_array[0, 0] + self._last_read,
-        #                           number_of_samples)
-        # buffer[:number_of_samples] = arr_interp(new_timings)
+                    # create a function to interpolate in between readings
+                    arr_interp = interpolate.interp1d(timestamps, wavelengths)
+                    # calculate timestamps for which readings were requested
+                    new_timestamps = np.linspace(timestamps[0],
+                                                 timestamps[0] + self._last_read - previous_read,
+                                                 number_of_samples)
+                    # perform the actual interpolation to get readings for those timestamps
+                    buffer[:number_of_samples, timestamp_ch] = new_timestamps
+                    buffer[:number_of_samples, data_ch] = arr_interp(new_timestamps)
 
         return number_of_samples
 
