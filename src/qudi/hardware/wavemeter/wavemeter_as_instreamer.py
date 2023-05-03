@@ -367,25 +367,36 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._last_read = time.perf_counter()
 
         with self._lock:
+            # iterate over the data that was collected from callbacks,
+            # keep the last reading on each channel for cases where
+            # no new readings were accumulated
             for i, readings in enumerate(self._data_from_callback):
                 timestamp_ch = i * 2
                 data_ch = timestamp_ch + 1
 
                 if len(readings) == 0:
-                    # no new readings
+                    # no readings so far
                     buffer[timestamp_ch, :number_of_samples] = np.nan
                     buffer[data_ch, :number_of_samples] = np.nan
 
                 elif len(readings) == 1:
-                    # only one new reading
-                    reading = readings.pop()
+                    # no new reading, only the last reading from last time
+                    reading = readings[0]
+                    buffer[timestamp_ch, :number_of_samples] = reading[0]
+                    buffer[data_ch, :number_of_samples] = reading[1]
+
+                elif len(readings) == 2:
+                    # a single new reading
+                    del readings[0]  # this is old now
+                    reading = readings[0]
                     buffer[timestamp_ch, :number_of_samples] = reading[0]
                     buffer[data_ch, :number_of_samples] = reading[1]
 
                 else:
                     # multiple new readings
+                    del readings[0]  # this is old now
                     readings_array = np.array(readings)
-                    del readings[:len(readings)]
+                    del readings[:len(readings) - 1]  # only keep the newest reading
                     timestamps = readings_array[:, 0]
                     measured_values = readings_array[:, 1]
 
@@ -398,7 +409,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                     # perform the actual interpolation to get readings for those timestamps
                     buffer[timestamp_ch, :number_of_samples] = new_timestamps
                     buffer[data_ch, :number_of_samples] = arr_interp(new_timestamps)
-
         return number_of_samples
 
     def read_available_data_into_buffer(self, buffer):
