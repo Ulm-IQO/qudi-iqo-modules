@@ -56,7 +56,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         options:
             channels:
                 1:
-                    unit: 'nm'    # wavelength (nm) or frequency (Hz)
+                    unit: 'nm'    # wavelength (nm) or frequency (THz)
                     medium: 'vac' # for wavelength: air or vac
                     exposure: 10  # exposure time in ms
                 2:
@@ -103,6 +103,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self.__use_circular_buffer = False
         self.__streaming_mode = None
         self.__active_channels = tuple()
+        self.__unit_return_type = {}
 
         # Data buffer
         self._data_buffer = None
@@ -132,6 +133,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                                                    ctypes.POINTER(ctypes.c_long),
                                                    ctypes.c_long]
         self._wavemeterdll.Instantiate.restype = ctypes.POINTER(ctypes.c_long)
+        self._wavemeterdll.ConvertUnit.restype = ctypes.c_double
+        self._wavemeterdll.ConvertUnit.argtypes = [ctypes.c_double, ctypes.c_long, ctypes.c_long]
 
         self.__sample_rate = self.get_constraints().combined_sample_rate.min
         self.__data_type = np.float64
@@ -141,6 +144,22 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self.__streaming_mode = StreamingMode.CONTINUOUS
         constr = self.get_constraints()
         self.__active_channels = tuple(ch.copy() for ch in constr.analog_channels if ch.name)
+
+        # configure wavemeter units
+        for ch, info in self._wavemeter_ch_config.items():
+            unit = info['unit']
+            medium = info['medium']
+            if unit == 'THz' or unit == 'Hz':
+                self.__unit_return_type[ch] = high_finesse_constants.cReturnFrequency
+            elif unit == 'nm' or unit == 'm':
+                if medium == 'vac':
+                    self.__unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
+                elif medium == 'air':
+                    self.__unit_return_type[ch] = high_finesse_constants.cReturnWavelengthAir
+                else:
+                    self.log.error(f'Invalid medium: {medium}. Valid media are vac and air.')
+            else:
+                self.log.error(f'Invalid unit: {unit}. Valid units are THz and nm.')
 
         # Reset data buffer
         self._init_buffer()
@@ -212,8 +231,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             Function called upon wavelength meter state change or if a new measurement result is available.
             See wavemeter manual section on CallbackProc for details.
 
-            In this implementation, the new wavelength
-            is appended to a list together with the current timestamp.
+            In this implementation, the new wavelength is converted to the desired unit and
+            appended to a list together with the current timestamp.
 
             :param version: Device version number which called the procedure.
             Only relevant if multiple wavemeter applications are running.
@@ -222,16 +241,24 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             If not, it contains the new value itself.
             :param dblval: May contain the new value (e.g. wavelength), depending on mode.
             :param res1: Mostly meaningless.
-            :return: TODO: remove?
+            :return: 0
             """
             with self._lock:
                 # got through configured channels to see if new data is from one of them
-                for i, ch in enumerate(self._wavemeter_ch_config.keys()):
-                    if mode == high_finesse_constants.cmi_wavelength_n[ch]:
-                        self._data_from_callback[i].append((intval, dblval))
+                for i, (ch, return_unit) in enumerate(self.__unit_return_type.items()):
+                    if mode != high_finesse_constants.cmi_wavelength_n[ch]:
+                        continue
+                    timestamp, wavelength = intval, dblval
+                    # unit conversion
+                    converted_value = self._wavemeterdll.ConvertUnit(
+                        wavelength, high_finesse_constants.cReturnWavelengthVac, return_unit
+                    )
+                    # saving the data
+                    self._data_from_callback[i].append((timestamp, converted_value))
 
-                        #TODO emit signal for wavelength window
-                        self.sigNewWavelength.emit(dblval)
+                    #TODO emit signal for wavelength window
+                    self.sigNewWavelength.emit(converted_value)
+                    break
             return 0
 
         self._callback_function = _CALLBACK(handle_callback)
@@ -357,10 +384,10 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                     readings_array = np.array(readings)
                     del readings[:len(readings)]
                     timestamps = readings_array[:, 0]
-                    wavelengths = readings_array[:, 1]
+                    measured_values = readings_array[:, 1]
 
                     # create a function to interpolate in between readings
-                    arr_interp = interpolate.interp1d(timestamps, wavelengths)
+                    arr_interp = interpolate.interp1d(timestamps, measured_values)
                     # calculate timestamps for which readings were requested
                     new_timestamps = np.linspace(timestamps[0],
                                                  timestamps[0] + self._last_read - previous_read,
