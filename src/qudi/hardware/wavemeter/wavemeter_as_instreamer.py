@@ -93,7 +93,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         self._digital_event_rates = [1000, 1000, 1000, 1000]
 
-        self._temperature = []
         self._data_from_callback = None
 
         # Internal settings
@@ -213,7 +212,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             Function called upon wavelength meter state change or if a new measurement result is available.
             See wavemeter manual section on CallbackProc for details.
 
-            In this implementation, the new wavelength or temperature value
+            In this implementation, the new wavelength
             is appended to a list together with the current timestamp.
 
             :param version: Device version number which called the procedure.
@@ -233,8 +232,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
                         #TODO emit signal for wavelength window
                         self.sigNewWavelength.emit(dblval)
-                    # elif mode == high_finesse_constants.cmiTemperature:
-                    #     self._temperature.append((intval, dblval))
             return 0
 
         self._callback_function = _CALLBACK(handle_callback)
@@ -251,7 +248,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             return 0
 
         self._data_from_callback = tuple([] for _ in self._wavemeter_ch_config.keys())
-        self._temperature = list()
 
         # start callback procedure
         self._wavemeterdll.Instantiate(
@@ -284,23 +280,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._callback_function = None
         self._data_from_callback = None
         return 0
-
-    @property
-    def temperature(self):
-        with self._lock:
-            return self._temperature.copy()
-
-    @property
-    def unit(self):
-        return self._unit
-
-    @unit.setter
-    def unit(self, new_unit):
-        if isinstance(new_unit, str):
-            self._unit = str(new_unit)
-        else:
-            raise TypeError('StreamChannel unit property must be str.')
-        return
 
     def read_data_into_buffer(self, buffer, number_of_samples=None):
         """
