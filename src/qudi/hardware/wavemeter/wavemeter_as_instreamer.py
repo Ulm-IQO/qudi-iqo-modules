@@ -135,6 +135,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._wavemeterdll.Instantiate.restype = ctypes.POINTER(ctypes.c_long)
         self._wavemeterdll.ConvertUnit.restype = ctypes.c_double
         self._wavemeterdll.ConvertUnit.argtypes = [ctypes.c_double, ctypes.c_long, ctypes.c_long]
+        self._wavemeterdll.SetExposureNum.restype = ctypes.c_long
+        self._wavemeterdll.SetExposureNum.argtypes = [ctypes.c_long, ctypes.c_long, ctypes.c_long]
 
         self.__sample_rate = self.get_constraints().combined_sample_rate.min
         self.__data_type = np.float64
@@ -145,7 +147,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         constr = self.get_constraints()
         self.__active_channels = tuple(ch.copy() for ch in constr.analog_channels if ch.name)
 
-        # configure wavemeter units
+        # configure wavemeter units and exposure time
         for ch, info in self._wavemeter_ch_config.items():
             unit = info['unit']
             medium = info['medium']
@@ -160,6 +162,14 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                     self.log.error(f'Invalid medium: {medium}. Valid media are vac and air.')
             else:
                 self.log.error(f'Invalid unit: {unit}. Valid units are THz and nm.')
+
+            try:
+                exp_time = info['exposure']
+            except KeyError:
+                continue
+            res = self._wavemeterdll.SetExposureNum(ch, 1, exp_time)
+            if res != 0:
+                self.log.error('Wavemeter error while setting exposure time.')
 
         # Reset data buffer
         self._init_buffer()
