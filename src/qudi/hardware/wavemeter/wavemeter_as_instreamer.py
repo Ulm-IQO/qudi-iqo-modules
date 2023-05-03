@@ -91,8 +91,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._callback_function = None
         self._wavemeterdll = None
 
-        self._digital_event_rates = [1000, 1000, 1000, 1000]
-
         self._data_from_callback = None
 
         # Internal settings
@@ -201,7 +199,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         """
         # Create constraints
         self._constraints = DataInStreamConstraints()
-        self._constraints.digital_channels = tuple()
 
         self._constraints.analog_channels = tuple()
         for i, info in self._wavemeter_ch_config.items():
@@ -213,10 +210,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._constraints.analog_sample_rate.max = 2 ** 31 - 1
         self._constraints.analog_sample_rate.step = 1
         self._constraints.analog_sample_rate.unit = 'Hz'
-        self._constraints.digital_sample_rate.min = 1
-        self._constraints.digital_sample_rate.max = 2 ** 31 - 1
-        self._constraints.digital_sample_rate.step = 1
-        self._constraints.digital_sample_rate.unit = 'Hz'
         self._constraints.combined_sample_rate = self._constraints.analog_sample_rate
 
         self._constraints.read_block_size.min = 1
@@ -460,13 +453,12 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         return self._data_buffer[:, :read_samples]
 
-    def read_single_point(self):  # TODO
+    def read_single_point(self):
         """
-        This method will initiate a single sample read on each configured data channel.
-        In general this sample may not be acquired simultaneous for all channels and timing in
-        general can not be assured. Us this method if you want to have a non-timing-critical
+        Return the last read sample of each configured data channel.
+        In general this sample may not be acquired simultaneously for all channels and timing in
+        general cannot be assured. Use this method if you want to have a non-timing-critical
         snapshot of your current data channel input.
-        May not be available for all devices.
         The returned 1D numpy array will contain one sample for each channel.
 
         @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
@@ -477,19 +469,14 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             return np.empty(0, dtype=self.__data_type)
 
         data = np.empty(self.number_of_channels, dtype=self.__data_type)
-        analog_x = 2 * np.pi * (self._last_read - self._start_time)
-        self._last_read = time.perf_counter()
-        for i, chnl in enumerate(self.__active_channels):
-            if chnl in self._digital_channels:
-                ch_index = self._digital_channels.index(chnl)
-                events_per_bin = self._digital_event_rates[ch_index] / self.__sample_rate
-                data[i] = np.random.poisson(events_per_bin)
-            else:
-                ch_index = self._analog_channels.index(chnl)
-                amplitude = self._analog_amplitudes[ch_index]
-                noise_level = 0.05 * amplitude
-                noise = noise_level - 2 * noise_level * np.random.rand()
-                data[i] = amplitude * np.sin(analog_x) + noise
+        with self._lock:
+            for i, readings in enumerate(self._data_from_callback):
+                last_reading = readings[-1]
+                timestamp_ch = i * 2
+                data_ch = timestamp_ch + 1
+                data[timestamp_ch] = last_reading[0]
+                data[data_ch] = last_reading[1]
+
         return data
 
     @property
@@ -504,14 +491,14 @@ class WavemeterAsInstreamer(DataInStreamInterface):
     @sample_rate.setter
     def sample_rate(self, rate):
         if self._check_settings_change():
-            if not self._clk_frequency_valid(rate):
-                min_val = self._constraints.digital_sample_rate.min
-                max_val = self._constraints.digital_sample_rate.max
+            min_rate = self._constraints.combined_sample_rate.min
+            max_rate = self._constraints.combined_sample_rate.max
+            if not (min_rate <= rate <= max_rate):
                 self.log.warning(
                     'Sample rate requested ({0:.3e}Hz) is out of bounds. Please choose '
                     'a value between {1:.3e}Hz and {2:.3e}Hz. Value will be clipped to '
-                    'the closest boundary.'.format(rate, min_val, max_val))
-                rate = max(min(max_val, rate), min_val)
+                    'the closest boundary.'.format(rate, min_rate, max_rate))
+                rate = max(min(max_rate, rate), min_rate)
             self.__sample_rate = float(rate)
         return
 
@@ -745,12 +732,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             if use_circular_buffer is not None:
                 self.use_circular_buffer = use_circular_buffer
         return self.all_settings
-
-    # =============================================================================================
-    def _clk_frequency_valid(self, frequency):
-        max_rate = self._constraints.digital_sample_rate.max
-        min_rate = self._constraints.digital_sample_rate.min
-        return min_rate <= frequency <= max_rate
 
     def _init_buffer(self):
         if not self.is_running:
