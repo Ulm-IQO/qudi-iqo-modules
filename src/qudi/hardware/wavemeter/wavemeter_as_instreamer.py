@@ -246,12 +246,17 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             :param res1: Mostly meaningless.
             :return: 0
             """
+            if mode == high_finesse_constants.cmiOperation and intval == high_finesse_constants.cStop:
+                self.log.error('Wavemeter acquisition was stopped during stream.')
+                return 0
+
             with self._lock:
                 # got through configured channels to see if new data is from one of them
                 for i, (ch, return_unit) in enumerate(self.__unit_return_type.items()):
                     if mode != high_finesse_constants.cmi_wavelength_n[ch]:
                         continue
-                    timestamp, wavelength = intval, dblval
+                    timestamp = 1e3 * intval  # wavemeter records timestamps in ms
+                    wavelength = dblval
                     # unit conversion
                     converted_value = self._wavemeterdll.ConvertUnit(
                         wavelength, high_finesse_constants.cReturnWavelengthVac, return_unit
@@ -394,6 +399,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
                 else:
                     # multiple new readings
+                    self.log.warning('Sampling rate too low to keep up with new wavemeter readings - performing '
+                                     'interpolation.')
                     del readings[0]  # this is old now
                     readings_array = np.array(readings)
                     del readings[:len(readings) - 1]  # only keep the newest reading
