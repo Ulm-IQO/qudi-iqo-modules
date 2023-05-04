@@ -41,15 +41,23 @@ class FastComtec(DataInStreamInterface):
     # config options
     _digital_sources = ConfigOption(name='digital_sources', default=tuple(), missing='info') # specify the digital channels on the device that should be used for streaming in data
     _max_read_block_size = ConfigOption(name='max_read_block_size', default=10000, missing='info') # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
+    _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
+    _header_length = ConfigOption(name='header_length', default=72, missing='warn')
+    _data_type = ConfigOption(name='data_type', default=np.int32, missing='info')
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
         self._sample_rate = None
         self._buffer_size = None
         self._use_circular_buffer = None
-        self._data_type = None
+        #self._data_type = None
         self._streaming_mode = None
         self._stream_length = None
+
+        self._data_buffer = np.empty(0, dtype=self._data_type)
+        self._has_overflown = False
+        self._read_lines = None
+        self._filename = None
 
         self._constraints = None
         
@@ -85,13 +93,19 @@ class FastComtec(DataInStreamInterface):
                              'increment'  : 1,
                              'enforce_int': True},
             streaming_modes=(StreamingMode.CONTINUOUS,),  # TODO: Implement FINITE streaming mode
-            data_type=np.float64,
+            data_type=np.int32,  #np.float64
             allow_circular_buffer=True
         )
         # TODO implement the constraints for the fastcomtec max_bins, max_sweep_len and hardware_binwidth_list
+        # Reset data buffer
+        self._data_buffer = np.empty(0, dtype=self._data_type)
+        self._has_overflown = False
+        self._read_lines = 0
 
     def on_deactivate(self):
-        pass
+        # Free memory if possible while module is inactive
+        self._data_buffer = np.empty(0, dtype=self._data_type)
+        return
 
     @property
     def sample_rate(self) -> float:
@@ -359,7 +373,26 @@ class FastComtec(DataInStreamInterface):
         @return int: Number of samples read into buffer; negative value indicates error
                      (e.g. read timeout)
         """
-        pass
+        if read_data_sanity_check(buffer, number_of_samples) < 1:
+            return -1
+
+        if buffer.ndim == 2:
+            number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
+            buffer = buffer.flatten()
+        else:
+            if number_of_samples is None:
+                number_of_samples = buffer.size // self.number_of_channels
+
+        if number_of_samples < 1:
+            return 0
+
+        data = read_data_from_file(number_of_samples=number_of_samples)
+        if len(data) < number_of_samples:
+            # Todo: find better solution when you have to wait for more data
+            read_data_into_buffer(buffer, number_of_samples)
+        buffer[:number_of_samples] = data
+        self._read_lines += number_of_samples
+        return number_of_samples
 
     def read_available_data_into_buffer(self, buffer):
         """
@@ -378,7 +411,14 @@ class FastComtec(DataInStreamInterface):
         @return int: Number of samples read into buffer; negative value indicates error
                      (e.g. read timeout)
         """
-        pass
+        if read_data_sanity_check(buffer) < 0:
+            return -1
+
+        data = read_data_from_file()
+        number_of_samples = len(data)
+        buffer[:number_of_samples] = data
+        self._read_lines += number_of_samples
+        return number_of_samples
 
     def read_data(self, number_of_samples=None):
         """
@@ -399,7 +439,23 @@ class FastComtec(DataInStreamInterface):
 
         @return numpy.ndarray: The read samples in a numpy array
         """
-        pass
+        if not self.is_running:
+            self.log.error('Unable to read data. Device is not running.')
+            return np.empty((0, 0), dtype=self._data_type)
+
+        if number_of_samples is None:
+            read_samples = self.read_available_data_into_buffer(self._data_buffer)
+            if read_samples < 0:
+                return np.empty((0, 0), dtype=self._data_type)
+        else:
+            read_samples = self.read_data_into_buffer(self._data_buffer,
+                                                      number_of_samples=number_of_samples)
+            if read_samples != number_of_samples:
+                return np.empty((0, 0), dtype=self._data_type)
+
+        total_samples = self.number_of_channels * read_samples
+        return self._data_buffer[:total_samples].reshape((self.number_of_channels,
+                                                          number_of_samples))
 
     def read_single_point(self):
         """
@@ -422,3 +478,83 @@ class FastComtec(DataInStreamInterface):
         @return DataInStreamConstraints: Instance of DataInStreamConstraints containing constraints
         """
         pass
+
+    # =============================================================================================
+    def read_data_sanity_check(self, buffer, number_of_samples=None):
+        if not self.is_running:
+            self.log.error('Unable to read data. Device is not running.')
+            return -1
+
+        if not isinstance(buffer, np.ndarray) or buffer.dtype != self._data_type:
+            self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
+                           ''.format(self.__data_type))
+            return -1
+
+        if buffer.ndim == 2:
+            if buffer.shape[0] != self.number_of_channels:
+                self.log.error('Configured number of channels ({0:d}) does not match first '
+                               'dimension of 2D buffer array ({1:d}).'
+                               ''.format(self.number_of_channels, buffer.shape[0]))
+                return -1
+        elif buffer.ndim == 1:
+            pass
+        else:
+            self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
+            return -1
+
+        # Check for buffer overflow
+        if self.available_samples > self.buffer_size:
+            self._has_overflown = True
+
+        if self._filename is None:
+            raise TypeError('No filename for data analysis is given.')
+        return 0
+
+    def read_data_from_file(self, filename=self._filename, header_length=self._header_length,
+                            read_lines=self._read_lines, chunk_size=self._chunk_size, number_of_samples=None):
+        data = []
+        if read_lines is None:
+            read_lines = 0
+        chunk_size = 10000  # chunk the file for faster reading
+
+        # read file and extract data
+        if number_of_samples is None:
+            number_of_chunks = int(self.buffer.shape[1] / chunk_size)  #float('inf')
+            remaining_samples = self.buffer.shape[1] % chunk_size
+        else:
+            number_of_chunks = int(number_of_samples / chunk_size)
+            remaining_samples = number_of_samples % chunk_size
+
+        extend_data = data.extend  # avoid dots for speed-up
+
+        with open(filename, 'r') as f:
+            # Todo: find a nice way to know the header length
+            list(islice(f, int(header_length + read_lines - 1),
+                        int(_header_length + read_lines)))  # ignore header and already read lines
+            ii = 0
+            while True:
+                if ii < number_of_chunks:
+                    next_lines = list(islice(f, chunk_size))
+                elif ii == number_of_chunks and remaining_samples:
+                    next_lines = list(islice(f, remaining_samples))
+                else:
+                    break
+                if not next_lines:  # no next lines, finished file
+                    break
+                # Todo: this might be quite specific
+                # if length of last entry of file isn't 9 there was being written on the file
+                # when this function was called
+                if len(next_lines[-1]) != 9:
+                    break
+                # Todo: the attribution of the binary digits depends on something I haven't understood yet
+                # convert arrival time of photons from hex to dex (arrival time is saved in (3rd-7th) entry)
+                new_lines = [int(s[2:7], 16) for s in next_lines]
+                extend_data(new_lines)
+                ii = ii + 1
+        return data
+
+    def _init_buffer(self):
+        self._data_buffer = np.zeros(self.number_of_channels * self.buffer_size,
+                                     dtype=self._data_type)
+        self._has_overflown = False
+        return
