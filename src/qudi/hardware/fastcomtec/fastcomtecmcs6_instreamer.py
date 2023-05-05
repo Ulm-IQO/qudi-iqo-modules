@@ -65,6 +65,11 @@ class FastComtec(DataInStreamInterface):
         self._read_lines = None
         self._filename = None
 
+        self._data_buffer = np.empty(0, dtype=self._data_type)
+        self._has_overflown = False
+        self._read_lines = None
+        self._filename = None
+
         self._constraints = None
         
 
