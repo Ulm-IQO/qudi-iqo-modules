@@ -385,7 +385,9 @@ class FastComtec(DataInStreamInterface):
         @return int: error code (0: OK, -1: Error)
         """
         # TODO: implement the correct return code
-        # TODO: tell counter to write the list file
+        # change the save mode to only write a list file
+        # TODO: can this be moved into the configure method?
+        self.change_save_mode(2)
         status = self.dll.Start(0)
         while not self.is_running:
             time.sleep(0.05)
@@ -541,12 +543,12 @@ class FastComtec(DataInStreamInterface):
 
         @return str filelocation: complete path to the file
         """
-        create_dir_for_file(self.module_default_data_dir)
-        Path(self.module_default_data_dir).touch(exist_ok=True)
-        filelocation = path.normpath(path.join(self.module_default_data_dir, name)).__str__()
-        self.log.warn(filelocation)
+        # join the default data dir with the file name
+        filelocation =  path.normpath(path.join(self.module_default_data_dir, name))
+        # create the directories to the filelocation
+        create_dir_for_file(filelocation)
+        # send the command for the filelocation to the dll
         cmd = 'mpaname=%s' % filelocation
-        self.log.warn(f"{cmd}")
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return filelocation
 
