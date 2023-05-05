@@ -37,17 +37,17 @@ class FT_dataclass:
 
 #####Settings#####
 @dataclass
-class Sequence_generator_settings:
+class SequenceGeneratorSettings:
     pass
 
 @dataclass
-class Counter_settings:
+class CounterSettings:
     bin_width: float  = 0
     record_length: float = 0
     number_of_gates: int = 1
 
 @dataclass
-class Measurement_settings(Sequence_generator_settings, Counter_settings):
+class MeasuremenSsettings(Sequence_generator_settings, Counter_settings):
     pass
 
 @dataclass
@@ -74,7 +74,6 @@ class readout_settings:
         else:
             number_of_chunks = int(lines_to_read / lines_per_chunk)
         return number_of_chunks
-
 
 
 @dataclass
