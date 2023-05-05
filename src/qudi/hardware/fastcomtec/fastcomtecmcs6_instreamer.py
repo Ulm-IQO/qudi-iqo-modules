@@ -103,23 +103,16 @@ class FastComtec(DataInStreamInterface):
             allow_circular_buffer=True
         )
         # TODO implement the constraints for the fastcomtec max_bins, max_sweep_len and hardware_binwidth_list
-<<<<<<< HEAD
-        # TODO: check whether the Fastcomtec is idle or unconfigured to allow for interaction
-
-    def on_deactivate(self):
-        # TODO: clear memory heavy variables and stop acquisition
-        pass
-=======
         # Reset data buffer
         self._data_buffer = np.empty(0, dtype=self._data_type)
         self._has_overflown = False
         self._read_lines = 0
+        # TODO: check whether the Fastcomtec is idle or unconfigured to allow for interaction
 
     def on_deactivate(self):
         # Free memory if possible while module is inactive
         self._data_buffer = np.empty(0, dtype=self._data_type)
         return
->>>>>>> 56793f2f88dade6972fc8592edc1d46e7aa53c7b
 
     @property
     def sample_rate(self) -> float:
@@ -425,11 +418,6 @@ class FastComtec(DataInStreamInterface):
         @return int: Number of samples read into buffer; negative value indicates error
                      (e.g. read timeout)
         """
-<<<<<<< HEAD
-        # TODO: this function should read data from the generated file into memory
-        # TODO: decide on which function to use for the actual reading of the data
-        pass
-=======
         if read_data_sanity_check(buffer, number_of_samples) < 1:
             return -1
 
@@ -450,7 +438,6 @@ class FastComtec(DataInStreamInterface):
         buffer[:number_of_samples] = data
         self._read_lines += number_of_samples
         return number_of_samples
->>>>>>> 56793f2f88dade6972fc8592edc1d46e7aa53c7b
 
     def read_available_data_into_buffer(self, buffer):
         """
@@ -469,10 +456,6 @@ class FastComtec(DataInStreamInterface):
         @return int: Number of samples read into buffer; negative value indicates error
                      (e.g. read timeout)
         """
-<<<<<<< HEAD
-        # TODO: decide on which function to use for the actual reading of the data
-        pass
-=======
         if read_data_sanity_check(buffer) < 0:
             return -1
 
@@ -481,7 +464,6 @@ class FastComtec(DataInStreamInterface):
         buffer[:number_of_samples] = data
         self._read_lines += number_of_samples
         return number_of_samples
->>>>>>> 56793f2f88dade6972fc8592edc1d46e7aa53c7b
 
     def read_data(self, number_of_samples=None):
         """
@@ -502,10 +484,6 @@ class FastComtec(DataInStreamInterface):
 
         @return numpy.ndarray: The read samples in a numpy array
         """
-<<<<<<< HEAD
-        # TODO: decide on which function to use for the actual reading of the data
-        pass
-=======
         if not self.is_running:
             self.log.error('Unable to read data. Device is not running.')
             return np.empty((0, 0), dtype=self._data_type)
@@ -523,7 +501,6 @@ class FastComtec(DataInStreamInterface):
         total_samples = self.number_of_channels * read_samples
         return self._data_buffer[:total_samples].reshape((self.number_of_channels,
                                                           number_of_samples))
->>>>>>> 56793f2f88dade6972fc8592edc1d46e7aa53c7b
 
     def read_single_point(self):
         """
@@ -546,7 +523,6 @@ class FastComtec(DataInStreamInterface):
 
         @return DataInStreamConstraints: Instance of DataInStreamConstraints containing constraints
         """
-<<<<<<< HEAD
         return self._constraints
 
 #################################### Methods for saving ###############################################
@@ -591,8 +567,6 @@ class FastComtec(DataInStreamInterface):
         cmd = 'savempa'
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return filelocation
-=======
-        pass
 
     # =============================================================================================
     def read_data_sanity_check(self, buffer, number_of_samples=None):
@@ -625,8 +599,17 @@ class FastComtec(DataInStreamInterface):
             raise TypeError('No filename for data analysis is given.')
         return 0
 
-    def read_data_from_file(self, filename=self._filename, header_length=self._header_length,
-                            read_lines=self._read_lines, chunk_size=self._chunk_size, number_of_samples=None):
+    def read_data_from_file(self, filename=None, header_length=None,
+                            read_lines=None, chunk_size=None, number_of_samples=None):
+        if filename is None:
+            filename = self._filename
+        if header_length is None:
+            header_length = self._header_length
+        if read_lines is None:
+            read_lines = self._read_lines
+        if chunk_size is None:
+            chunk_size = self._chunk_size
+
         data = []
         if read_lines is None:
             read_lines = 0
@@ -673,4 +656,3 @@ class FastComtec(DataInStreamInterface):
                                      dtype=self._data_type)
         self._has_overflown = False
         return
->>>>>>> 56793f2f88dade6972fc8592edc1d46e7aa53c7b
