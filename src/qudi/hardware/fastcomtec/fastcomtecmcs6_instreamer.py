@@ -49,6 +49,7 @@ class FastComtec(DataInStreamInterface):
     _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
     _header_length = ConfigOption(name='header_length', default=72, missing='warn')
     _data_type = ConfigOption(name='data_type', default=np.int32, missing='info')
+    _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -74,7 +75,7 @@ class FastComtec(DataInStreamInterface):
         
 
     def on_activate(self):
-        self.dll = ctypes.windll.LoadLibrary('C:\Windows\System32\DMCS6.dll')
+        self.dll = ctypes.windll.LoadLibrary(self._dll_path)
         # if self.gated:
         #     self.change_sweep_mode(gated=True)
         # else:
