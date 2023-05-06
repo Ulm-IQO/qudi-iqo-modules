@@ -29,6 +29,47 @@ import numpy as np
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
 from qudi.util.helpers import natural_sort, iter_modules_recursive
+from enum import Enum, EnumMeta
+
+
+class PulseEnvelopeTypeMeta(EnumMeta):
+    # hide special enum types containing '_'
+    def __iter__(self):
+        for x in super().__iter__():
+            if not '_' == x.value[0]:
+                yield x
+
+class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
+
+    rectangle = 'rectangle'
+    sin_n = 'sin_n'
+    parabola = 'parabola'
+    optimal = 'optimal'
+    from_gen_settings = '_from_gen_settings'
+
+    def __init__(self, *args):
+        self._parameters = self.default_parameters
+
+    @property
+    def default_parameters(self):
+        defaults = {'rectangle': {},
+                    'parabola': {'order_P': 1},
+                    'optimal': {},
+                    'sin_n': {'order_n': 2},
+                    '_from_gen_settings': {}}
+
+        return defaults[self.value]
+
+    @property
+    def parameters(self):
+        return self._parameters
+
+    @parameters.setter
+    def parameters(self, param_dict):
+        self._parameters = param_dict
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.value}))"
 
 
 class PulseBlockElement(object):
@@ -1035,6 +1076,16 @@ class PredefinedGeneratorBase:
     def generation_parameters(self):
         return self.__sequencegeneratorlogic.generation_parameters
 
+    @generation_parameters.setter
+    def generation_parameters(self, param_dict):
+        """
+        Update the generation parameters with a given dict.
+        Allows access to protected generation parameters. Use with care.
+        """
+        gen_params = self.generation_parameters
+        gen_params.update(param_dict)
+        self.__sequencegeneratorlogic.generation_parameters = gen_params
+
     @property
     def pulse_generator_constraints(self):
         return self.__sequencegeneratorlogic.pulse_generator_constraints
@@ -1648,28 +1699,20 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
     def activate_plugins(self):
         [gen.activate_plugin() for gen in self._generator_instances if hasattr(gen, 'activate_plugin')]
 
-
 class PredefinedGeneratorPlugin():
     """
     PredefinedGeneratorPlugin is a PredefinedGenerator with addtional powers.
     - It may manipulse the sequence generation parameters from it's code
     - It can run code after the PulseObjectGenerator in order to manipulate all loaded predefined methods.
     """
+    def __init__(self, *args, **kwargs):
+        # todo: not propagated to manager
+        import warnings
+        warnings.warn(f'PredefinedGeneratorPlugin will be deprecated.', DeprecationWarning, stacklevel=2)
+        super().__init__(*args, **kwargs)
+
     def activate_plugin(self):
         # allow plugins to invoke code after the PulseObjectGenerator is fully initialized
         pass
 
-    @property
-    def generation_parameters(self):
-        # allow access to protected generation parameters. Use with care
-        return self._PredefinedGeneratorBase__sequencegeneratorlogic.generation_parameters
 
-    @generation_parameters.setter
-    def generation_parameters(self, param_dict):
-        """
-        Update the generation paramters with a given dict.
-        Allows access to protected generation parameters. Use with care.
-        """
-        gen_params = self.generation_parameters
-        gen_params.update(param_dict)
-        self._PredefinedGeneratorBase__sequencegeneratorlogic.generation_parameters = gen_params
