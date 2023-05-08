@@ -40,6 +40,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import ImageFormat, NpyDataStorage, TextDataStorage
 from qudi.util.units import ScaledFloat
 
+
 from qudi.interface.scanning_probe_interface import ScanData
 
 
@@ -71,8 +72,8 @@ class ScanningDataLogic(LogicBase):
     sigHistoryScanDataRestored = QtCore.Signal(object)
     sigSaveStateChanged = QtCore.Signal(bool)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = RecursiveMutex()
 

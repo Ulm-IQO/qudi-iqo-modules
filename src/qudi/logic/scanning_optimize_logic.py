@@ -67,8 +67,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     _sigNextSequenceStep = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = RecursiveMutex()
         self._result_lock = Mutex()

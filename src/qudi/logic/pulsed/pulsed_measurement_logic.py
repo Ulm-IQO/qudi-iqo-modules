@@ -213,13 +213,8 @@ class PulsedMeasurementLogic(LogicBase):
          'custom_parameters': None},
     )
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-        self.log.debug('The following configuration was found.')
-        # checking for the right configuration
-        for key in config.keys():
-            self.log.debug('{0}: {1}'.format(key, config[key]))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # timer for measurement
         self.__analysis_timer = None
@@ -251,7 +246,6 @@ class PulsedMeasurementLogic(LogicBase):
         self.alt_fc = None
         self._fit_result = None
         self._fit_result_alt = None
-        return
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.

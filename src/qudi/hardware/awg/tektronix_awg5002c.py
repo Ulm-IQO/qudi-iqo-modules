@@ -64,8 +64,8 @@ class AWG5002C(PulserInterface):
     passwd = ConfigOption('ftp_passwd', 'anonymous@', missing='warn')
     default_sample_rate = ConfigOption('default_sample_rate', missing='warn')
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.connected = False
 
