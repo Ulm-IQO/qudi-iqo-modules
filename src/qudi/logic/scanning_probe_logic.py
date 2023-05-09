@@ -26,6 +26,7 @@ import numpy as np
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
+from qudi.util.linear_transform import LinearTransformation, LinearTransformation3D # lives in branch qudi-core:coord-transforma
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
@@ -325,6 +326,53 @@ class ScanningProbeLogic(LogicBase):
             if start:
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
+
+    def toggle_tilt_correction(self, enable=True, debug_func=False):
+        # todo: this function should be general for n axes depending on config of self._scan_axes
+        # todo: should do a sensible rotation
+
+        if debug_func:
+            func = self.__func_debug_transform()
+            self.log.info("Set test functions for coord transform")
+        else:
+            coord_transform = LinearTransformation(dimensions=len(self.scanner_axes))
+            func = coord_transform.rotate
+
+        if enable:
+            self._scanner().set_coordinate_transform(func)
+        else:
+            self._scanner().set_coordinate_transform(None)
+
+    def configure_tilt_correction(self, matrix=None, support_vecs=None):
+        # todo: should calculate the needed transformation from either
+        #  1. a) single support vector defining z plane
+        #     b) 3 more support vectors defining a set of planes
+        #  2. a reotation matrix
+        pass
+
+    def __func_debug_transform(self):
+        def transform_to(coord, inverse=False):
+            # this is a stub function
+            if inverse:
+                return {key: 0.5 * val for key, val in coord.items()}
+            else:
+                return {key: 2 * val for key, val in coord.items()}
+
+        def transform_to(coord, inverse=False):
+
+            ax_2_idx = lambda ch: ord(ch) - 120  # x->0, y->1, z->2; todo only for these axes
+            transform = LinearTransformation3D()
+
+            transform.rotate(0, 0, np.pi/10)
+            # todo: LinearTransformation expects vectors as row (not column) vectors
+            coord_vec = np.asarray(list(coord.values())).T
+            coord_transf = transform(coord_vec, invert=inverse).T
+            # make dict again after vector rotation
+            coord_transf = {ax: coord_transf[ax_2_idx(ax)] for (ax, val) in coord.items()}
+
+            return coord_transf
+
+        return transform_to
 
     def _update_scan_settings(self, scan_axes, settings):
         for ax_index, ax in enumerate(scan_axes):

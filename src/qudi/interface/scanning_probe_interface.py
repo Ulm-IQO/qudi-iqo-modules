@@ -31,6 +31,32 @@ class ScanningProbeInterface(Base):
 
     A scanner device is hardware that can move multiple axes.
     """
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._coordinate_transform = None
+
+    def coordinate_transform(self, val, inverse=False):
+        if self._coordinate_transform is None:
+            return val
+        return self._coordinate_transform(val, inverse)
+
+    def set_coordinate_transform(self, transform_func):
+        if transform_func is not None:
+            raise ValueError('Coordinate transformation not supported by scanning hardware.')
+
+    @property
+    def supports_coordinate_transform(self):
+        # todo: this should be part of the scanconstraints
+        # however this function is general for every scanner, but can't live
+        # in ScanContraints, as no handle to set_coordinate_transform
+        flag = False
+        try:
+            self.set_coordinate_transform(lambda x, inverse:  x)
+            self.set_coordinate_transform(None)
+            flag = True
+        except ValueError:
+            pass
+        return flag
 
     @abstractmethod
     def get_constraints(self):
@@ -535,7 +561,7 @@ class ScanConstraints:
     """
 
     def __init__(self, axes, channels, backscan_configurable, has_position_feedback,
-                 square_px_only):
+                 square_px_only, allow_coordinate_transform):
         """
         """
         if not all(isinstance(ax, ScannerAxis) for ax in axes):
@@ -548,11 +574,15 @@ class ScanConstraints:
             raise TypeError('Parameter "has_position_feedback" must be of type bool.')
         if not isinstance(square_px_only, bool):
             raise TypeError('Parameter "square_px_only" must be of type bool.')
+        if not isinstance(allow_coordinate_transform, bool):
+            raise TypeError('Parameter "allow_coordinate_transform" must be of type bool.')
         self._axes = {ax.name: ax for ax in axes}
         self._channels = {ch.name: ch for ch in channels}
         self._backscan_configurable = bool(backscan_configurable)
         self._has_position_feedback = bool(has_position_feedback)
         self._square_px_only = bool(square_px_only)
+        # todo: do we need this in the ScanContraints or is in scan interface enough?
+        self._allow_coordinate_transform = bool(allow_coordinate_transform)
 
     @property
     def axes(self):
@@ -573,3 +603,37 @@ class ScanConstraints:
     @property
     def square_px_only(self):  # TODO Incorporate in gui/logic toolchain?
         return self._square_px_only
+
+    @property
+    def allow_coordinate_transform(self):
+        return self._allow_coordinate_transform
+
+
+class CoordinateTransformMixin:
+    """ Can be used by concrete hardware modules to facilitate coordinate transformation, except
+    for performing scans.
+    The transformation for scanning can be either implemented in the base or in the mixed hardware
+    module.
+
+    Usage:
+        MyTransformationScanner(CoordinateTransformMixin, MyScanner):
+            pass
+    """
+    def set_coordinate_transform(self, transform_func):
+        # ToDo: Proper sanity checking here, e.g. function signature etc.
+        if transform_func is not None and not callable(transform_func):
+            raise ValueError('Coordinate transformation function must be callable with '
+                             'signature "coordinate_transform(value, inverse=False)"')
+        self._coordinate_transform = transform_func
+
+    def move_absolute(self, position, velocity=None, blocking=False):
+        return super().move_absolute(self.coordinate_transform(position), velocity, blocking)
+
+    def move_relative(self, distance, velocity=None, blocking=False):
+        return super().move_relative(self.coordinate_transform(distance), velocity, blocking)
+
+    def get_target(self):
+        return self.coordinate_transform(super().get_target(), inverse=True)
+
+    def get_position(self):
+        return self.coordinate_transform(super().get_position(), inverse=True)

@@ -1040,6 +1040,7 @@ class PredefinedGeneratorBase:
     def generation_parameters(self, param_dict):
         """
         Update the generation parameters with a given dict.
+        Allows access to protected generation parameters. Use with care.
         """
         gen_params = self.generation_parameters
         gen_params.update(param_dict)
@@ -1661,16 +1662,20 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
 class PredefinedGeneratorPlugin():
     """
-    PredefinedGeneratorPlugin is a PredefinedGenerator that can run code after the PulseObjectGenerator
-    in order to manipulate all loaded predefined methods.
+    PredefinedGeneratorPlugin is a PredefinedGenerator with addtional powers.
+    - It can run code after the PulseObjectGenerator in order to manipulate all loaded predefined methods.
     """
     def __init__(self, *args, **kwargs):
-        # should by of type DeprecationWarning, currently broken
-        warnings.warn(f'PredefinedGeneratorPlugin is an experimental feature and can be deprecated any time in future.')
+        # todo: not propagated to manager
+        print("Manual warning")
+        warnings.warn(f'1: PredefinedGeneratorPlugin will be deprecated.', DeprecationWarning)
+        warnings.warn(f'2: PredefinedGeneratorPlugin will be deprecated.')
+
         super().__init__(*args, **kwargs)
 
     def activate_plugin(self):
         # allow plugins to invoke code after the PulseObjectGenerator is fully initialized
+
         pass
 
 
