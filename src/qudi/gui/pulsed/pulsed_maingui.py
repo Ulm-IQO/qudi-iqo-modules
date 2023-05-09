@@ -582,6 +582,8 @@ class PulsedMeasurementGui(GuiBase):
         for widget in self._global_param_widgets:
             if hasattr(widget, 'isChecked'):
                 widget.stateChanged.disconnect()
+            elif hasattr(widget, 'currentText'):
+                widget.currentTextChanged.disconnect()
             else:
                 widget.editingFinished.disconnect()
         return
@@ -1283,6 +1285,12 @@ class PulsedMeasurementGui(GuiBase):
                 widget = QtWidgets.QCheckBox()
                 widget.setChecked(value)
                 widget.stateChanged.connect(self.generation_parameters_changed)
+            elif issubclass(type(value), Enum):
+                widget = QtWidgets.QComboBox()
+                for option in type(value):
+                    widget.addItem(option.name, option)
+                widget.setCurrentText(value.name)
+                widget.currentTextChanged.connect(self.generation_parameters_changed)
 
             widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
 
@@ -1609,6 +1617,8 @@ class PulsedMeasurementGui(GuiBase):
                     settings_dict[param_name] = widget.value()
                 elif hasattr(widget, 'text'):
                     settings_dict[param_name] = widget.text()
+                elif hasattr(widget, 'currentText'):
+                    settings_dict[param_name] = widget.currentData()
 
         self.pulsedmasterlogic().set_generation_parameters(settings_dict)
 
@@ -1656,6 +1666,9 @@ class PulsedMeasurementGui(GuiBase):
                         widget.setValue(settings_dict[param_name])
                     elif hasattr(widget, 'setText'):
                         widget.setText(settings_dict[param_name])
+                    elif hasattr(widget, 'currentText'):
+                        index = widget.findText(str(settings_dict[param_name].name))
+                        widget.setCurrentIndex(index)
                     widget.blockSignals(False)
 
         # unblock signals
