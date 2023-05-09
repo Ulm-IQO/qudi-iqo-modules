@@ -30,7 +30,8 @@ from qudi.util.linear_transform import LinearTransformation, LinearTransformatio
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-
+from qudi.util.basis_transformations.basis_transformation \
+    import compute_rotation_mat_rodriguez, compute_reduced_vectors
 
 class ScanningProbeLogic(LogicBase):
     """
@@ -348,7 +349,14 @@ class ScanningProbeLogic(LogicBase):
         #  1. a) single support vector defining z plane
         #     b) 3 more support vectors defining a set of planes
         #  2. a reotation matrix
-        pass
+        red_support_vecs = compute_reduced_vectors(support_vecs)
+        rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
+        shift = red_support_vecs[3]
+        lin_transform = LinearTransformation()
+        lin_transform.rotate(rot_mat)
+        lin_transform.translate(shift)
+
+        return lin_transform.__call__
 
     def __func_debug_transform(self):
         def transform_to(coord, inverse=False):
