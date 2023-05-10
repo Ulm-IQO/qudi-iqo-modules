@@ -584,7 +584,7 @@ class FastComtec(DataInStreamInterface):
 
         if not isinstance(buffer, np.ndarray) or buffer.dtype != self._data_type:
             self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
-                           ''.format(self.__data_type))
+                           ''.format(self._data_type))
             return -1
 
         if buffer.ndim == 2:
