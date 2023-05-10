@@ -471,7 +471,7 @@ class PoiManagerGui(GuiBase):
         self._mw.move_poi_PushButton.clicked.connect(
             self._poi_manager_logic().set_poi_anchor_from_position, QtCore.Qt.QueuedConnection)
         self._mw.delete_poi_PushButton.clicked.connect(
-            self._poi_manager_logic().delete_poi, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().delete_poi(None), QtCore.Qt.QueuedConnection)
         self._mw.active_poi_ComboBox.activated[str].connect(
             self._poi_manager_logic().set_active_poi, QtCore.Qt.QueuedConnection)
         self._mw.goto_poi_after_update_checkBox.stateChanged.connect(
@@ -783,7 +783,7 @@ class PoiManagerGui(GuiBase):
         """ Load a saved ROI from file."""
         this_file = QtWidgets.QFileDialog.getOpenFileName(self._mw,
                                                           'Open ROI',
-                                                          self._poi_manager_logic().data_directory,
+                                                          self._poi_manager_logic().module_default_data_dir,
                                                           'Data files (*.dat)')[0]
         if this_file:
             self._poi_manager_logic().load_roi(complete_path=this_file)
