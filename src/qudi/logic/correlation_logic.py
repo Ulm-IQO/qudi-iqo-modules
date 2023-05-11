@@ -108,15 +108,20 @@ class CorrelationLogic(LogicBase):
         else:
             raise ValueError(f"Importing image to image number {number} failed. Number should be 1 or 2.")
 
-    def run(self):
-        """Run through the process steps with the current parameters"""
-        # make sure that the process steps are sorted according to their index
-        self.sort_process_steps()
-        # reset the result dictionary
-        self.result_dict = dict()
-        # reset the image to the raw image
+    def reset(self):
+        """Resets the images and the result dict of the logic."""
         self._image_1.reset_image()
         self._image_2.reset_image()
+        self.result_dict = {}
+
+    def run(self, reset=True):
+        """Run through the process steps with the current parameters.
+        @param boolean reset: Decides whether the images and the result dict are reset before the run."""
+        # make sure that the process steps are sorted according to their index
+        self.sort_process_steps()
+
+        if reset:
+            self.reset()
 
         # run through the sorted process steps and apply them if they are enabled up to the last process step
         enabled_process_steps = [x for x in self.process_steps if x.parameters['enabled'] is True]
@@ -131,7 +136,7 @@ class CorrelationLogic(LogicBase):
                 self.result_dict.update(result_dict)
 
     def default_init_process_steps(self):
-        """Prepare all process steps with their parameters and return a list containing all process steps."""
+        """Prepare all process steps with their parameters in the right order."""
         # preprocessing steps
         to_8bit_step = To8Bit({'index': 0, 'enabled': True, 'percent_up': 99.1112, 'percent_down': 53.3,
                                'equal_noise_filter': True, 'equal_upper_percentiles': True})
@@ -140,14 +145,108 @@ class CorrelationLogic(LogicBase):
         blur_step = Blur(
             {'index': 3, 'enabled': True, 'method': 'box_blur', 'kernel_size': 4, 'sigma': 1, 'truncate': 4})
         # point detection steps
-        feature_detection_step = FeatureDetection({'index': 4, 'enabled': False, 'min_sigma': 0.967, 'max_sigma': 4,
+        feature_detection_step = FeatureDetection({'index': 4, 'enabled': True, 'min_sigma': 0.967, 'max_sigma': 4,
                                                    'sigma_ratio': 1.1, 'threshold': 0.07, 'overlap': 1,
                                                    'marker_size': 1.1})
         # correlation steps
-        correlation_step = Correlation({'index': 5, 'enabled': True})
+        correlation_step = Correlation({'index': 5, 'enabled': True, 'save_correlation_image': True})
 
         self._process_steps = [to_8bit_step, rescale_step, padding_step, blur_step, feature_detection_step,
                                correlation_step]
+        self.sort_process_steps()
+
+    def sweep(self, name, parameter, values):
+        """Sweeps a parameter through given values and runs through the process_steps for each value of the parameter.
+        Starts with the raw images.
+        Returns a list with the result dictionaries
+
+        @param str name: Name of the process step that includes the sweeping parameter.
+        @param str parameter: Name of the sweeping parameter.
+        @param list values: Values through which the parameter runs.
+
+        @return list results: List of the result dictionaries for the different sweeping steps.
+        """
+        # make sure that the process_step list is sorted and save the initial state of the list
+        self.sort_process_steps()
+        initial_process_steps = self.process_steps
+        active_process_steps = [step for step in self.process_steps if step.parameters['enabled']]
+        # create a new step list with all the steps up to the  step where the sweeping begins
+        one_time_steps = []
+        sweeping_steps = []
+        found_step = False
+        for step in active_process_steps:
+            if step.name == name:
+                found_step = True
+            if found_step:
+                sweeping_steps.append(step)
+            else:
+                one_time_steps.append(step)
+        if not found_step:
+            raise RuntimeError(f'Can\'t find the process step with name {name} in the list of active process steps,'
+                               f'where the sweeping should begin. Either the step is not part of the process_steps list'
+                               f'or it is not enabled.')
+
+        # run the process steps up to the step where the sweeping begins one time
+        self._process_steps = one_time_steps
+        self.run()
+
+        # save the interim state
+        image_1_start_sweeping = self.image_1
+        image_2_start_sweeping = self.image_2
+        result_dict_start_sweeping = self.result_dict
+
+        # create the new process step list for the sweeping
+
+        results = []
+        self.log.debug(f'One time steps: {[step.name for step in one_time_steps]}, Sweep steps: '
+                       f'{[step.name for step in sweeping_steps]}')
+        # sweep the parameter
+        for value in values:
+            self.log.debug(f'Current value: {value}')
+
+            # load the interim state
+            self._image_1 = copy.deepcopy(image_1_start_sweeping)
+            self._image_2 = copy.deepcopy(image_2_start_sweeping)
+            self.result_dict = copy.deepcopy(result_dict_start_sweeping)
+
+            # set the process_steps of the logic beginning with the sweeping step
+            self._process_steps = copy.deepcopy(sweeping_steps)
+            # update the sweeping parameter to its current value
+            self.edit_process_step(name, parameter, value)
+            self.log.debug('Run')
+            self.run(reset=False)
+            # add current value to the result_dict
+            self.result_dict['sweep_value'] = value
+            results.append(self.result_dict)
+
+        # load back the initial state of the logic
+        self._image_1.reset_image()
+        self._image_2.reset_image()
+        self._process_steps = initial_process_steps
+        self.result_dict = dict()
+
+        return results
+
+    def rotation_init_process_steps(self):
+        """Prepare all process steps with their parameters in the right order for the rotation detection."""
+        # preprocessing steps
+        to_8bit_step = To8Bit({'index': 0, 'enabled': True, 'percent_up': 99.1112, 'percent_down': 53.3,
+                               'equal_noise_filter': True, 'equal_upper_percentiles': True})
+        rescale_step = Rescale({'index': 1, 'enabled': True, 'display_image': True})
+        blur_step = Blur(
+            {'index': 2, 'enabled': True, 'method': 'box_blur', 'kernel_size': 4, 'sigma': 1, 'truncate': 4})
+        # point detection steps
+        feature_detection_step = FeatureDetection({'index': 3, 'enabled': True, 'min_sigma': 0.967, 'max_sigma': 4,
+                                                   'sigma_ratio': 1.1, 'threshold': 0.07, 'overlap': 1,
+                                                   'marker_size': 1.1})
+        # rotation
+        rotation_step = Rotation({'index': 4, 'enabled': True, 'rotation_angle': 0})
+        padding_step = Padding({'index': 5, 'enabled': True})
+        # correlation steps
+        correlation_step = Correlation({'index': 6, 'enabled': True, 'save_correlation_image': False})
+
+        self._process_steps = [to_8bit_step, rescale_step, padding_step, blur_step, feature_detection_step,
+                               correlation_step, rotation_step]
         self.sort_process_steps()
 
 
@@ -241,6 +340,19 @@ class Image:
     def show(self):
         """Show image (not implemented yet)"""
 
+    def rotate(self, angle, resize=True):
+        """Rotate the image by a certain angle around its center
+        @param angle: Angle of rotation
+        @param boolean resize: Decides whether the image is resized so that no part of the image is lost due to the
+        rotation.
+        """
+        self.array = skimage.transform.rotate(self.array, angle, resize=resize, preserve_range=True)
+
+        # calculate the new range of the image
+        range_x = self.array.shape[1] / self.resolution_xy[0]
+        range_y = self.array.shape[0] / self.resolution_xy[1]
+        self.range_xy = [range_x, range_y]
+
 
 class ProcessStep:
     """Generic class for a process step."""
@@ -252,6 +364,9 @@ class ProcessStep:
         """
         self.name = name
         self._parameters = dict()
+        # set default values for the required parameters
+        self._parameters['index'] = None
+        self._parameters['enabled'] = True
         self.update_parameters(parameters)
 
     def apply(self, image_1, image_2):
@@ -482,8 +597,8 @@ class FeatureDetection(ProcessStep):
         # calculate radius of features using the sigma values
         features[:, 2] = features[:, 2] * math.sqrt(2)
         if len(features) == 0:
-            print('No circles found!')
-            return np.zeros((y_length, x_length))
+            raise RuntimeError('No NV centers found! Adjust the parameters of the FeatureDetection.')
+            # return np.zeros((y_length, x_length))
         else:
             # make array with circle locations
             marked_spots = np.zeros((y_length, x_length))
@@ -532,13 +647,15 @@ class Correlation(ProcessStep):
         correlation_image = Image()
         correlation_image.import_from_array(correlation_array, resolution_xy=image_1.resolution_xy)
         result_dict = dict()
-        result_dict['correlation_image'] = correlation_image
+        if self.parameters.get('save_correlation_image'):
+            result_dict['correlation_image'] = correlation_image
 
         # now find the translation by finding the position of the maximum value of the correlation
         # middle of matrix
         mid_y, mid_x = np.unravel_index(int(np.floor(correlation_array.size / 2)), correlation_array.shape)
         # find max value in cor
         max_y, max_x = np.unravel_index(np.argmax(correlation_array), correlation_array.shape)
+        max_value = correlation_array[max_y, max_x]
         # calculate translation vector pointing from im1 to im2
         trans_x = max_x - mid_x
         trans_y = max_y - mid_y
@@ -546,5 +663,20 @@ class Correlation(ProcessStep):
         translation_xy_pixels = np.array([trans_x, trans_y])
         result_dict['translation_vector_xy_pixels'] = translation_xy_pixels
         result_dict['translation_vector_xy_meters'] = translation_xy_pixels / np.array(correlation_image.resolution_xy)
+        result_dict['max_correlation_value'] = max_value
 
         return image_1, image_2, result_dict
+
+
+class Rotation(ProcessStep):
+    def __init__(self, parameters, name='Rotation'):
+        super().__init__(parameters, name)
+
+    def apply(self, image_1, image_2):
+        """Rotates image_2."""
+        image_1 = copy.deepcopy(image_1)
+        image_2 = copy.deepcopy(image_2)
+
+        image_2.rotate(self.parameters['rotation_angle'])
+
+        return image_1, image_2, {}
