@@ -329,14 +329,12 @@ class ScanningProbeLogic(LogicBase):
             return self.stop_scan()
 
     def toggle_tilt_correction(self, enable=True, debug_func=False):
-        # todo: this function should be general for n axes depending on config of self._scan_axes
-        # todo: should do a sensible rotation
 
         if debug_func:
             func = self.__func_debug_transform()
             self.log.info("Set test functions for coord transform")
         else:
-            func = self._tilt_corr_transform.__call__
+            func = self._tilt_corr_transform.__call__ if self._tilt_corr_transform else None
 
         if enable:
             self._scanner().set_coordinate_transform(func)
