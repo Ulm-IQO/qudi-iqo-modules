@@ -78,7 +78,7 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
-        return
+        self._tilt_corr_transform = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -336,27 +336,37 @@ class ScanningProbeLogic(LogicBase):
             func = self.__func_debug_transform()
             self.log.info("Set test functions for coord transform")
         else:
-            coord_transform = LinearTransformation(dimensions=len(self.scanner_axes))
-            func = coord_transform.rotate
+            func = self._tilt_corr_transform.__call__
 
         if enable:
             self._scanner().set_coordinate_transform(func)
         else:
             self._scanner().set_coordinate_transform(None)
 
-    def configure_tilt_correction(self, matrix=None, support_vecs=None):
-        # todo: should calculate the needed transformation from either
-        #  1. a) single support vector defining z plane
-        #     b) 3 more support vectors defining a set of planes
-        #  2. a reotation matrix
-        red_support_vecs = compute_reduced_vectors(support_vecs)
-        rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
-        shift = red_support_vecs[3]
-        lin_transform = LinearTransformation()
-        lin_transform.rotate(rot_mat)
-        lin_transform.translate(shift)
+    def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
 
-        return lin_transform.__call__
+        support_vecs = np.asarray(support_vecs)
+
+        if support_vecs.shape[0] != 3:
+            raise ValueError(f"Need 3 n-dim support vectors, not {red_support_vecs.shape[0]}")
+
+        if shift_vec is None:
+            red_support_vecs = compute_reduced_vectors(support_vecs)
+            shift_vec = np.mean(red_support_vecs, axis=0)
+        else:
+            shift_vec = np.asarray(shift_vec)
+            red_support_vecs = compute_reduced_vectors(np.vstack([support_vecs, shift_vec]))
+            shift_vec = red_support_vecs[-1,:]
+
+        rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
+        shift = shift_vec
+
+        lin_transform = LinearTransformation3D()
+        lin_transform.add_rotation(rot_mat)
+        lin_transform.translate(shift[0], shift[1], shift[2])
+
+        self._tilt_corr_transform = lin_transform
+
 
     def __func_debug_transform(self):
         def transform_to(coord, inverse=False):
