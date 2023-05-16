@@ -34,9 +34,6 @@ from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
 from qudi.interface.data_instream_interface import StreamingMode, StreamChannelType, StreamChannel
 
-# DLL_PATH = 'C:\Windows\System32\wlmData.dll'
-DLL_PATH = 'wlmData.dll'
-
 _CALLBACK = ctypes.WINFUNCTYPE(ctypes.c_int,
                                ctypes.c_long,
                                ctypes.c_long,
@@ -114,16 +111,13 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         return
 
     def on_activate(self):
-        #############################################
-        # Initialisation to access external DLL
-        #############################################
-
         try:
-            # imports the spectrometer specific function from dll
+            # load wavemeter DLL
             self._wavemeterdll = ctypes.windll.LoadLibrary('wlmData.dll')
-        except:
-            self.log.critical('There is no Wavemeter installed on this Computer.\n'
-                              'Please install a High Finesse Wavemeter and try again.')
+        except FileNotFoundError:
+            self.log.critical('There is no wavemeter installed on this computer.\n'
+                              'Please install a High Finesse wavemeter and try again.')
+            return
 
         # define function header for a later call
         self._wavemeterdll.Instantiate.argtypes = [ctypes.c_long,
@@ -173,7 +167,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._init_buffer()
         self._last_read = None
         self._start_time = None
-        return
 
     def on_deactivate(self):  # TODO
         self.stop_stream()
