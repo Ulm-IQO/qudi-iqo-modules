@@ -372,10 +372,9 @@ class PoiManagerLogic(LogicBase):
     _optimizelogic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
     _scanninglogic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
     _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
-    #savelogic = Connector(interface='SaveLogic')
 
     # status vars
-    _roi = StatusVar(default=dict())  # Notice constructor and representer further below
+    _roi = StatusVar(default=RegionOfInterest())  # Notice constructor and representer further below
     _refocus_period = StatusVar(default=120)
     _active_poi = StatusVar(default=None)
     _move_scanner_after_optimization = StatusVar(default=True)
@@ -395,8 +394,8 @@ class PoiManagerLogic(LogicBase):
     __sigStartPeriodicRefocus = QtCore.Signal()
     __sigStopPeriodicRefocus = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # timer for the periodic refocus
         self.__timer = None
@@ -1209,6 +1208,8 @@ class PoiManagerLogic(LogicBase):
 
     @_roi.constructor
     def dict_to_roi(self, roi_dict):
+        if isinstance(roi_dict, RegionOfInterest):
+            return roi_dict
         return RegionOfInterest.from_dict(roi_dict)
 
     @_roi.representer

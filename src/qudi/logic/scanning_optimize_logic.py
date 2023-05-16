@@ -67,8 +67,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     _sigNextSequenceStep = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = RecursiveMutex()
         self._result_lock = Mutex()
@@ -341,6 +341,8 @@ class ScanningOptimizeLogic(LogicBase):
             if self.module_state() == 'idle':
                 return
 
+            #self.log.debug(f"Next opt sequence step {self._sequence_index}")
+
             if self._scan_logic().toggle_scan(True,
                                               self._scan_sequence[self._sequence_index],
                                               self.module_uuid) < 0:
@@ -356,6 +358,8 @@ class ScanningOptimizeLogic(LogicBase):
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
             elif data is not None:
+                #self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
+
                 try:
                     if data.scan_dimension == 1:
                         x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
@@ -373,14 +377,14 @@ class ScanningOptimizeLogic(LogicBase):
                         )
 
                     position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
+                    #self.log.debug(f"Optimizer issuing position update: {position_update}")
                     if fit_data is not None:
-                        new_pos = self._scan_logic().set_target_position(position_update)
+                        new_pos = self._scan_logic().set_target_position(position_update, move_blocking=True)
                         for ax in tuple(position_update):
                             position_update[ax] = new_pos[ax]
 
                         fit_data = {'fit_data': fit_data, 'full_fit_res': fit_res}
 
-                    self.log.debug(f"Optimizer issuing position update: {position_update}")
                     self._optimal_position.update(position_update)
                     with self._result_lock:
                         self._last_scans.append(data.copy())
@@ -426,7 +430,7 @@ class ScanningOptimizeLogic(LogicBase):
         model = Gaussian2D()
 
         try:
-            fit_result = model.fit(data, xy=xy, **model.estimate_peak(data, xy))
+            fit_result = model.fit(data, x=xy, **model.estimate_peak(data, xy))
         except:
             x_min, x_max = xy[0].min(), xy[0].max()
             y_min, y_max = xy[1].min(), xy[1].max()

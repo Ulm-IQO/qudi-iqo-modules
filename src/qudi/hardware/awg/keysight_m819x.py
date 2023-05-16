@@ -70,8 +70,8 @@ class AWGM819X(PulserInterface):
     _ext_ref_clock_freq = ConfigOption(name='ext_ref_clock_freq', default=None, missing='nothing')
 
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._BRAND = ''
         self._MODEL = ''
@@ -2125,8 +2125,8 @@ class AWGM8195A(AWGM819X):
     # physical output channel mapping
     ch_map = {'d_ch1': 3, 'd_ch2': 4}   # awg8195a: digital channels are analogue channels, only different config
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._sequence_names = []  # awg8195a can only store a single sequence
 

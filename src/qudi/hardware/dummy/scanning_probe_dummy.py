@@ -71,8 +71,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
     _spot_amplitude_dist = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
     _require_square_pixels = ConfigOption(name='require_square_pixels', default=False)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Scan process parameters
         self._current_scan_frequency = -1
@@ -262,7 +262,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             self._current_scan_frequency = frequency
             return False, self.scan_settings
 
-    def move_absolute(self, position, velocity=None):
+    def move_absolute(self, position, velocity=None, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
@@ -288,7 +288,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 self._current_position.update(position)
             return self._current_position
 
-    def move_relative(self, distance, velocity=None):
+    def move_relative(self, distance, velocity=None, blocking=False):
         """ Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 
