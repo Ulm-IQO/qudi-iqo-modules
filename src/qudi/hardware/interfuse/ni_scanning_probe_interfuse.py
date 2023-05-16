@@ -28,7 +28,7 @@ from PySide2 import QtCore
 from PySide2.QtGui import QGuiApplication
 
 from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanConstraints, \
-    ScannerAxis, ScannerChannel, ScanData
+    ScannerAxis, ScannerChannel, ScanData, CoordinateTransformMixin
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
 from qudi.util.mutex import RecursiveMutex, Mutex
@@ -160,7 +160,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             channels=channels,
                                             backscan_configurable=False,  # TODO incorporate in scanning_probe toolchain
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
-                                            square_px_only=False)  # TODO incorporate in scanning_probe toolchain
+                                            square_px_only=False,
+                                            allow_coordinate_transform=self.supports_coordinate_transform)  # TODO incorporate in scanning_probe toolchain
 #
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
         self._toggle_ao_setpoint_channels(False)  # And free ao resources after that
@@ -923,3 +924,18 @@ class RawDataContainer:
         return self.number_of_non_nan_values == self.frame_size
 
 
+class NiScanningProbeInterfuseCorrected(CoordinateTransformMixin, NiScanningProbeInterfuse):
+
+    def set_coordinate_transform(self, transform_func):
+        # todo: if set with a transform_func
+        #    pass, the _init_ni_scan_array must change
+        pass
+
+
+    def _initialize_ni_scan_arrays(self, scan_data):
+        # todo: complete pseudo code below
+        #vectors = super()._initialize_ni_scan_arrays()
+        #vectors_transormed = self.coordinate_transform(vectors)
+        #return vectors_transormed
+
+        pass

@@ -25,7 +25,7 @@ from PySide2 import QtCore
 from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
-from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData
+from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData, CoordinateTransformMixin
 from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
 
 
@@ -127,7 +127,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                             channels=channels,
                                             backscan_configurable=False,
                                             has_position_feedback=False,
-                                            square_px_only=False)
+                                            square_px_only=False,
+                                            allow_coordinate_transform=self.supports_coordinate_transform)
         self.__scan_start = 0
         self.__last_line = -1
         self.__update_timer = QtCore.QTimer()
@@ -364,7 +365,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                        self._current_scan_resolution[1])
             else:
                 y_values = np.linspace(self._current_position['y'], self._current_position['y'], 1)
-            xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
+            xy_grid = self._init_scan_grid(x_values, y_values)
 
             include_dist = self._spot_size_dist[0] + 5 * self._spot_size_dist[1]
             self._scan_image = np.random.uniform(0, 2e4, self._current_scan_resolution)
@@ -506,6 +507,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
+    def _init_scan_grid(self, x_values, y_values):
+        return np.meshgrid(x_values, y_values, indexing='ij')
 
     @staticmethod
     def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
@@ -519,3 +522,23 @@ class ScanningProbeDummy(ScanningProbeInterface):
         y_prime = y - y0
         return offset + amp * np.exp(
             -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
+
+
+class ScanningProbeDummyCorrected(CoordinateTransformMixin, ScanningProbeDummy):
+
+    def _init_scan_grid(self, x_values, y_values):
+        # todo: this is demonstration only, not really a transformation
+
+        vectors = {'x': x_values, 'y': y_values, 'z': np.zeros(len(x_values))}
+        vectors_tilted = self.coordinate_transform(vectors)
+
+        grid = np.meshgrid(vectors_tilted['x'], vectors_tilted['y'], indexing='ij')
+        print(f"Transforming grid: {grid}")
+
+        return grid
+
+
+
+
+
+

@@ -26,10 +26,12 @@ import numpy as np
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
+from qudi.util.linear_transform import LinearTransformation, LinearTransformation3D # lives in branch qudi-core:coord-transforma
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-
+from qudi.util.basis_transformations.basis_transformation \
+    import compute_rotation_mat_rodriguez, compute_reduced_vectors
 
 class ScanningProbeLogic(LogicBase):
     """
@@ -76,7 +78,7 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
-        return
+        self._tilt_corr_transform = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -325,6 +327,68 @@ class ScanningProbeLogic(LogicBase):
             if start:
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
+
+    def toggle_tilt_correction(self, enable=True, debug_func=False):
+
+        if debug_func:
+            func = self.__func_debug_transform()
+            self.log.info("Set test functions for coord transform")
+        else:
+            func = self._tilt_corr_transform.__call__ if self._tilt_corr_transform else None
+
+        if enable:
+            self._scanner().set_coordinate_transform(func)
+        else:
+            self._scanner().set_coordinate_transform(None)
+
+    def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
+
+        support_vecs = np.asarray(support_vecs)
+
+        if support_vecs.shape[0] != 3:
+            raise ValueError(f"Need 3 n-dim support vectors, not {red_support_vecs.shape[0]}")
+
+        if shift_vec is None:
+            red_support_vecs = compute_reduced_vectors(support_vecs)
+            shift_vec = np.mean(red_support_vecs, axis=0)
+        else:
+            shift_vec = np.asarray(shift_vec)
+            red_support_vecs = compute_reduced_vectors(np.vstack([support_vecs, shift_vec]))
+            shift_vec = red_support_vecs[-1,:]
+
+        rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
+        shift = shift_vec
+
+        lin_transform = LinearTransformation3D()
+        lin_transform.add_rotation(rot_mat)
+        lin_transform.translate(shift[0], shift[1], shift[2])
+
+        self._tilt_corr_transform = lin_transform
+
+
+    def __func_debug_transform(self):
+        def transform_to(coord, inverse=False):
+            # this is a stub function
+            if inverse:
+                return {key: 0.5 * val for key, val in coord.items()}
+            else:
+                return {key: 2 * val for key, val in coord.items()}
+
+        def transform_to(coord, inverse=False):
+
+            ax_2_idx = lambda ch: ord(ch) - 120  # x->0, y->1, z->2; todo only for these axes
+            transform = LinearTransformation3D()
+
+            transform.rotate(0, 0, np.pi/10)
+            # todo: LinearTransformation expects vectors as row (not column) vectors
+            coord_vec = np.asarray(list(coord.values())).T
+            coord_transf = transform(coord_vec, invert=inverse).T
+            # make dict again after vector rotation
+            coord_transf = {ax: coord_transf[ax_2_idx(ax)] for (ax, val) in coord.items()}
+
+            return coord_transf
+
+        return transform_to
 
     def _update_scan_settings(self, scan_axes, settings):
         for ax_index, ax in enumerate(scan_axes):
