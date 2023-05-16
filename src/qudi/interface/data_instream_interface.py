@@ -193,7 +193,7 @@ class DataInStreamInterface(Base):
             data_buffer.shape == (<channel_count>, <sample_count>)
         The data_buffer array must have the same data type as self.constraints.data_type.
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
+        In case of SampleTiming.TIMESTAMP a 1D numpy.timedelta64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
         at least <number_of_samples> in size.
 
@@ -213,7 +213,7 @@ class DataInStreamInterface(Base):
             data_buffer.shape == (<channel_count>, <sample_count>)
         The data_buffer array must have the same data type as self.constraints.data_type.
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
+        In case of SampleTiming.TIMESTAMP a 1D numpy.timedelta64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
         at least <number_of_samples> in size.
 
@@ -233,7 +233,7 @@ class DataInStreamInterface(Base):
             return_array.shape == (self.number_of_channels, number_of_samples)
         The numpy arrays data type is the one defined in self.constraints.data_type.
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array will be
+        In case of SampleTiming.TIMESTAMP a 1D numpy.timedelta64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
         If number_of_samples is omitted all currently available samples are read from buffer.
@@ -243,7 +243,7 @@ class DataInStreamInterface(Base):
         pass
 
     @abstractmethod
-    def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.datetime64]]:
+    def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.timedelta64]]:
         """
         This method will initiate a single sample read on each configured data channel.
         In general this sample may not be acquired simultaneous for all channels and timing in
@@ -252,7 +252,7 @@ class DataInStreamInterface(Base):
         May not be available for all devices.
         The returned 1D numpy array will contain one sample for each channel.
 
-        In case of SampleTiming.TIMESTAMP a single numpy.datetime64 timestamp value will be
+        In case of SampleTiming.TIMESTAMP a single numpy.timedelta64 timestamp value will be
         returned as well.
         """
         pass
