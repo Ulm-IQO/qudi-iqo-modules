@@ -26,7 +26,6 @@ import numpy as np
 import ctypes
 
 from PySide2 import QtCore
-import scipy.interpolate as interpolate
 
 from qudi.core.configoption import ConfigOption
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
@@ -51,6 +50,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
     wavemeter:
         module.Class: 'wavemeter.wavemeter_as_instreamer.WavemeterAsInstreamer'
         options:
+            switching_time: 12 # time in ms to switch from one channel to the next
             channels:
                 1:
                     unit: 'nm'    # wavelength (nm) or frequency (THz)
@@ -74,6 +74,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
     sigNewWavelength = QtCore.Signal(object)
 
     # config options
+    _switching_time = ConfigOption(name='switching_time', default=12, missing='nothing')
     _wavemeter_ch_config = ConfigOption(
         name='channels',
         default={
@@ -103,8 +104,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         # Data buffer
         self._data_buffer = None
         self._has_overflown = False
-        self._last_read = None
-        self._start_time = None
 
         # Stored hardware constraints
         self._constraints = None
@@ -165,14 +164,11 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         # Reset data buffer
         self._init_buffer()
-        self._last_read = None
-        self._start_time = None
 
     def on_deactivate(self):  # TODO
         self.stop_stream()
 
         self._has_overflown = False
-        self._last_read = None
         # Free memory if possible while module is inactive
         self._init_buffer()
 
@@ -199,9 +195,24 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             data_channel = StreamChannel(name=f'data_ch_{i}', type=StreamChannelType.ANALOG, unit=info['unit'])
             self._constraints.analog_channels += (timestamp_channel, data_channel)
 
-        self._constraints.analog_sample_rate.min = 1
-        self._constraints.analog_sample_rate.max = 2 ** 31 - 1
-        self._constraints.analog_sample_rate.step = 1
+        """
+        Compute the sampling rate based on the time between measurements of individual channels. 
+        Each measurements lasts for a defined exposure time. In between measurements of a single channel,
+        other channels may be measured (see HighFinesse manual on multi-channel switch).
+        """
+        n_channels = len(self._wavemeter_ch_config)
+        if n_channels == 1:
+            # there is only one active channel, sample_time equals to this channel's exposure time
+            sample_time = self._wavemeter_ch_config.values()[0]['exposure']
+        else:
+            # there are multiple active channels, account for switching time
+            total_exposure = sum([info['exposure'] for info in self._wavemeter_ch_config.values()])
+            total_switching = n_channels * self._switching_time
+            sample_time = total_switching + total_exposure
+        sample_rate = 1e3 / sample_time
+
+        self._constraints.analog_sample_rate.min = sample_rate
+        self._constraints.analog_sample_rate.max = sample_rate
         self._constraints.analog_sample_rate.unit = 'Hz'
         self._constraints.combined_sample_rate = self._constraints.analog_sample_rate
 
@@ -248,7 +259,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                 for i, (ch, return_unit) in enumerate(self.__unit_return_type.items()):
                     if mode != high_finesse_constants.cmi_wavelength_n[ch]:
                         continue
-                    timestamp = 1e3 * intval  # wavemeter records timestamps in ms
+                    timestamp = 1e-3 * intval  # wavemeter records timestamps in ms
                     wavelength = dblval
                     # unit conversion
                     converted_value = self._wavemeterdll.ConvertUnit(
@@ -285,8 +296,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             0)  # long P2: callback thread priority, 0 = standard
 
         self._init_buffer()
-        self._start_time = time.perf_counter()
-        self._last_read = self._start_time
         return 0
 
     def stop_stream(self):
@@ -351,64 +360,29 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         if number_of_samples < 1:
             return 0
+
+        # wait until requested number of samples is available
         while self.available_samples < number_of_samples:
-            # TODO: organize this with signals?
             if not self.is_running:
                 break
-            time.sleep(0.001)
+            # wait for one sample period
+            time.sleep(min(1e-3, 1 / self.sample_rate))
 
-        # Check for buffer overflow
+        # check for buffer overflow
         if self.available_samples > self.buffer_size:
             self._has_overflown = True
 
-        previous_read = self._last_read
-        self._last_read = time.perf_counter()
-
         with self._lock:
-            # iterate over the data that was collected from callbacks,
-            # keep the last reading on each channel for cases where
-            # no new readings were accumulated
+            """
+            Iterate over the channels of data collected from callbacks,
+            cast it to an array and put it in the buffer. There are two
+            software channels per physical measurement channel: one for
+            wavelength/frequency etc. and one for the time stamps.
+            """
             for i, readings in enumerate(self._data_from_callback):
                 timestamp_ch = i * 2
-                data_ch = timestamp_ch + 1
+                buffer[timestamp_ch:timestamp_ch+1, :number_of_samples] = np.array(readings)
 
-                if len(readings) == 0:
-                    # no readings so far
-                    buffer[timestamp_ch, :number_of_samples] = np.nan
-                    buffer[data_ch, :number_of_samples] = np.nan
-
-                elif len(readings) == 1:
-                    # no new reading, only the last reading from last time
-                    reading = readings[0]
-                    buffer[timestamp_ch, :number_of_samples] = reading[0]
-                    buffer[data_ch, :number_of_samples] = reading[1]
-
-                elif len(readings) == 2:
-                    # a single new reading
-                    del readings[0]  # this is old now
-                    reading = readings[0]
-                    buffer[timestamp_ch, :number_of_samples] = reading[0]
-                    buffer[data_ch, :number_of_samples] = reading[1]
-
-                else:
-                    # multiple new readings
-                    self.log.warning('Sampling rate too low to keep up with new wavemeter readings - performing '
-                                     'interpolation.')
-                    del readings[0]  # this is old now
-                    readings_array = np.array(readings)
-                    del readings[:len(readings) - 1]  # only keep the newest reading
-                    timestamps = readings_array[:, 0]
-                    measured_values = readings_array[:, 1]
-
-                    # create a function to interpolate in between readings
-                    arr_interp = interpolate.interp1d(timestamps, measured_values)
-                    # calculate timestamps for which readings were requested
-                    new_timestamps = np.linspace(timestamps[0],
-                                                 timestamps[0] + self._last_read - previous_read,
-                                                 number_of_samples)
-                    # perform the actual interpolation to get readings for those timestamps
-                    buffer[timestamp_ch, :number_of_samples] = new_timestamps
-                    buffer[data_ch, :number_of_samples] = arr_interp(new_timestamps)
         return number_of_samples
 
     def read_available_data_into_buffer(self, buffer):
@@ -503,14 +477,10 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         if self._check_settings_change():
             min_rate = self._constraints.combined_sample_rate.min
             max_rate = self._constraints.combined_sample_rate.max
-            if not (min_rate <= rate <= max_rate):
+            if not (min_rate == rate == max_rate):
                 self.log.warning(
-                    'Sample rate requested ({0:.3e}Hz) is out of bounds. Please choose '
-                    'a value between {1:.3e}Hz and {2:.3e}Hz. Value will be clipped to '
-                    'the closest boundary.'.format(rate, min_rate, max_rate))
-                rate = max(min(max_rate, rate), min_rate)
-            self.__sample_rate = float(rate)
-        return
+                    f'Sample rate requested ({rate:.3e}Hz) is out of bounds. The sample rate of this hardware '
+                    f'is fixed to {min_rate:.3e}Hz by the wavemeter exposure and switching times.')
 
     @property
     def data_type(self):
@@ -642,7 +612,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         """
         if not self.is_running:
             return 0
-        return int((time.perf_counter() - self._last_read) * self.__sample_rate)
+        else:
+            av_samples_per_channel = [len(i) for i in self._data_from_callback]
+            return min(av_samples_per_channel)
 
     @property
     def stream_length(self):
