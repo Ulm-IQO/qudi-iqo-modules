@@ -465,7 +465,7 @@ class PoiManagerGui(GuiBase):
         self._mw.set_poi_PushButton.clicked.connect(
             self._poi_manager_logic().add_poi, QtCore.Qt.QueuedConnection)
         self._mw.delete_last_pos_Button.clicked.connect(
-            self._poi_manager_logic().delete_history_entry, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().delete_history_entry(-1), QtCore.Qt.QueuedConnection)
         self._mw.manual_update_poi_PushButton.clicked.connect(
             self._poi_manager_logic().move_roi_from_poi_position, QtCore.Qt.QueuedConnection)
         self._mw.move_poi_PushButton.clicked.connect(
