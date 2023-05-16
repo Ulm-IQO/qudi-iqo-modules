@@ -50,7 +50,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
     wavemeter:
         module.Class: 'wavemeter.wavemeter_as_instreamer.WavemeterAsInstreamer'
         options:
-            switching_time: 12 # time in ms to switch from one channel to the next
             channels:
                 1:
                     unit: 'nm'    # wavelength (nm) or frequency (THz)
@@ -74,7 +73,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
     sigNewWavelength = QtCore.Signal(object)
 
     # config options
-    _switching_time = ConfigOption(name='switching_time', default=12, missing='nothing')
     _wavemeter_ch_config = ConfigOption(
         name='channels',
         default={
@@ -129,15 +127,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._wavemeterdll.SetExposureNum.restype = ctypes.c_long
         self._wavemeterdll.SetExposureNum.argtypes = [ctypes.c_long, ctypes.c_long, ctypes.c_long]
 
-        self.__sample_rate = self.get_constraints().combined_sample_rate.min
-        self.__data_type = np.float64
-        self.__stream_length = 0
-        self.__buffer_size = 1000
-        self.__use_circular_buffer = False
-        self.__streaming_mode = StreamingMode.CONTINUOUS
-        constr = self.get_constraints()
-        self.__active_channels = tuple(ch.copy() for ch in constr.analog_channels if ch.name)
-
         # configure wavemeter units and exposure time
         for ch, info in self._wavemeter_ch_config.items():
             unit = info['unit']
@@ -161,6 +150,17 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             res = self._wavemeterdll.SetExposureNum(ch, 1, exp_time)
             if res != 0:
                 self.log.error('Wavemeter error while setting exposure time.')
+
+        self.__data_type = np.float64
+        self.__stream_length = 0
+        self.__buffer_size = 1000
+        self.__use_circular_buffer = False
+        self.__streaming_mode = StreamingMode.CONTINUOUS
+        constr = self.get_constraints()
+        self.__active_channels = tuple(ch.copy() for ch in constr.analog_channels if ch.name)
+
+        # calibrate the wavemeter sample rate
+        self._calibrate_sample_rate()
 
         # Reset data buffer
         self._init_buffer()
@@ -195,24 +195,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             data_channel = StreamChannel(name=f'data_ch_{i}', type=StreamChannelType.ANALOG, unit=info['unit'])
             self._constraints.analog_channels += (timestamp_channel, data_channel)
 
-        """
-        Compute the sampling rate based on the time between measurements of individual channels. 
-        Each measurements lasts for a defined exposure time. In between measurements of a single channel,
-        other channels may be measured (see HighFinesse manual on multi-channel switch).
-        """
-        n_channels = len(self._wavemeter_ch_config)
-        if n_channels == 1:
-            # there is only one active channel, sample_time equals to this channel's exposure time
-            sample_time = self._wavemeter_ch_config.values()[0]['exposure']
-        else:
-            # there are multiple active channels, account for switching time
-            total_exposure = sum([info['exposure'] for info in self._wavemeter_ch_config.values()])
-            total_switching = n_channels * self._switching_time
-            sample_time = total_switching + total_exposure
-        sample_rate = 1e3 / sample_time
-
-        self._constraints.analog_sample_rate.min = sample_rate
-        self._constraints.analog_sample_rate.max = sample_rate
+        self._constraints.analog_sample_rate.min = self.sample_rate
+        self._constraints.analog_sample_rate.max = self.sample_rate
         self._constraints.analog_sample_rate.unit = 'Hz'
         self._constraints.combined_sample_rate = self._constraints.analog_sample_rate
 
@@ -286,15 +270,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.warning('Unable to start input stream. It is already running.')
             return 0
 
-        self._data_from_callback = tuple([] for _ in self._wavemeter_ch_config.keys())
-
-        # start callback procedure
-        self._wavemeterdll.Instantiate(
-            high_finesse_constants.cInstNotification,  # long ReasonForCall
-            high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
-            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),  # long P1: function
-            0)  # long P2: callback thread priority, 0 = standard
-
+        self._start_callback()
         self._init_buffer()
         return 0
 
@@ -308,14 +284,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
             return 0
 
-        # end callback procedure
-        self._wavemeterdll.Instantiate(
-            high_finesse_constants.cInstNotification,  # long ReasonForCall
-            high_finesse_constants.cNotifyRemoveCallback,  # long mode
-            ctypes.cast(self._callback_function, ctypes.POINTER(ctypes.c_long)),  # long P1: function TODO unnecessary?
-            0)  # long P2: callback thread priority, 0 = standard
-        self._callback_function = None
-        self._data_from_callback = None
+        self._stop_callback()
         return 0
 
     def read_data_into_buffer(self, buffer, number_of_samples=None):
@@ -366,7 +335,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             if not self.is_running:
                 break
             # wait for one sample period
-            time.sleep(min(1e-3, 1 / self.sample_rate))
+            time.sleep(max(1e-3, 1 / self.sample_rate))
 
         # check for buffer overflow
         if self.available_samples > self.buffer_size:
@@ -381,7 +350,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             """
             for i, readings in enumerate(self._data_from_callback):
                 timestamp_ch = i * 2
-                buffer[timestamp_ch:timestamp_ch+1, :number_of_samples] = np.array(readings)
+                buffer[timestamp_ch:timestamp_ch+2, :number_of_samples] = np.array(readings).T[:, :number_of_samples]
+                del readings[:number_of_samples]
 
         return number_of_samples
 
@@ -475,12 +445,10 @@ class WavemeterAsInstreamer(DataInStreamInterface):
     @sample_rate.setter
     def sample_rate(self, rate):
         if self._check_settings_change():
-            min_rate = self._constraints.combined_sample_rate.min
-            max_rate = self._constraints.combined_sample_rate.max
-            if not (min_rate == rate == max_rate):
+            if not self.__sample_rate == rate:
                 self.log.warning(
-                    f'Sample rate requested ({rate:.3e}Hz) is out of bounds. The sample rate of this hardware '
-                    f'is fixed to {min_rate:.3e}Hz by the wavemeter exposure and switching times.')
+                    f'Sample rate requested ({rate:.2e}Hz) is out of bounds. The sample rate of this hardware '
+                    f'is fixed to {self.__sample_rate:.2e}Hz by the wavemeter exposure and switching times.')
 
     @property
     def data_type(self):
@@ -733,3 +701,55 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                              'New settings ignored.')
             return False
         return True
+
+    def _start_callback(self):
+        """
+        Start the callback procedure which collects data from the wavemeter hardware.
+        :return:
+        """
+        self._data_from_callback = tuple([] for _ in self._wavemeter_ch_config.keys())
+
+        # start callback procedure
+        self._wavemeterdll.Instantiate(
+            high_finesse_constants.cInstNotification,  # long ReasonForCall
+            high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
+            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),  # long P1: function
+            0)  # long P2: callback thread priority, 0 = standard
+
+    def _stop_callback(self):
+        """
+        End the callback procedure which collects data from the wavemeter hardware.
+        :return:
+        """
+        self._wavemeterdll.Instantiate(
+            high_finesse_constants.cInstNotification,  # long ReasonForCall
+            high_finesse_constants.cNotifyRemoveCallback,  # long mode
+            ctypes.cast(self._callback_function, ctypes.POINTER(ctypes.c_long)),  # long P1: function TODO unnecessary?
+            0)  # long P2: callback thread priority, 0 = standard
+        self._callback_function = None
+        self._data_from_callback = None
+
+    def _calibrate_sample_rate(self, number_of_samples=10):
+        """
+        Calibrate the sampling rate based on the time between measurements of individual channels.
+        Each measurements lasts for a defined exposure time. In between measurements of a single channel,
+        other channels may be measured (see HighFinesse manual on multi-channel switch).
+
+        :param number_of_samples: number of samples to record for averaging
+        :return: actual wavemeter measurement rate in Hz
+        """
+        self._start_callback()
+
+        total_exposure = 1e-3 * sum(info['exposure'] for info in self._wavemeter_ch_config.values())
+        while self.available_samples < number_of_samples:
+            time.sleep(total_exposure)
+
+        timestamps = np.empty((number_of_samples, self.number_of_channels // 2))
+        with self._lock:
+            for i, readings in enumerate(self._data_from_callback):
+                timestamps[:, i] = np.array(readings)[:number_of_samples, 0]
+
+        actual_sample_rate = 1 / np.diff(timestamps, axis=0).mean()
+
+        self._stop_callback()
+        self.__sample_rate = actual_sample_rate
