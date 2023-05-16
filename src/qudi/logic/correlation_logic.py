@@ -289,6 +289,8 @@ class Image:
         """
         # import raw image from file
         self._array_raw, self.metadata, self.general = self._datastorage.load_data(path)
+        # set NaN-values to zero
+        self._array_raw[np.isnan(self._array_raw)] = 0
         self.array = self.array_raw
         # get range for image
         range_x = np.abs(self.metadata['x scan range'][1] - self.metadata['x scan range'][0])
@@ -312,7 +314,8 @@ class Image:
         if resolution_xy is not None:
             self.resolution_xy = resolution_xy.copy()
             self._resolution_xy_raw = resolution_xy.copy()
-            self.range_xy = [x_length / resolution_xy[0], y_length / resolution_xy[1]]
+            self._range_xy_raw = [x_length / resolution_xy[0], y_length / resolution_xy[1]]
+            self.range_xy = self._range_xy_raw.copy()
         elif range_xy is not None:
             self.range_xy = range_xy.copy()
             self.resolution_xy = [x_length / range_xy[0], y_length / range_xy[1]]
