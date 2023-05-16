@@ -1101,7 +1101,8 @@ class PoiManagerLogic(LogicBase):
             data = [[poi_name, poi_positions[ii, 0], poi_positions[ii, 1], poi_positions[ii, 2]] for ii, poi_name in
                     enumerate(list(poi_dict))]
 
-            data_storage.save_data(data, metadata=parameters, nametag=pois_filename, timestamp=timestamp)
+            data_storage.save_data(data, metadata=parameters, nametag=pois_filename, timestamp=timestamp,
+                                   column_dtypes=float)
 
             ############################################
             # Save ROI history to second file (binary) if present
