@@ -30,8 +30,9 @@ from PySide2 import QtCore
 from qudi.core.configoption import ConfigOption
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
 from qudi.util.mutex import Mutex
-from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
-from qudi.interface.data_instream_interface import StreamingMode, StreamChannelType, StreamChannel
+from qudi.util.constraints import ScalarConstraint
+from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode, \
+    SampleTiming
 
 _CALLBACK = ctypes.WINFUNCTYPE(ctypes.c_int,
                                ctypes.c_long,
@@ -51,32 +52,36 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         module.Class: 'wavemeter.wavemeter_as_instreamer.WavemeterAsInstreamer'
         options:
             channels:
-                1:
+                red_laser_1:
+                    channel: 1    # channel on the wavemeter switch
                     unit: 'nm'    # wavelength (nm) or frequency (THz)
                     medium: 'vac' # for wavelength: air or vac
                     exposure: 10  # exposure time in ms
-                2:
+                red_laser_2:
+                    channel: 2
                     unit: 'nm'
                     medium: 'vac'
                     exposure: 10
-                3:
+                green_laser:
+                    channel: 3
                     unit: 'nm'
                     medium: 'vac'
                     exposure: 10
-                4:
+                yellow_laser:
+                    channel: 4
                     unit: 'nm'
                     medium: 'vac'
                     exposure: 10
     """
 
-    #declare signals
+    # declare signals
     sigNewWavelength = QtCore.Signal(object)
 
     # config options
     _wavemeter_ch_config = ConfigOption(
         name='channels',
         default={
-            1: {'unit': 'nm', 'medium': 'vac', 'exposure': 10}
+            'default_channel': {'channel': 1, 'unit': 'nm', 'medium': 'vac', 'exposure': 10}
         },
         missing='info'
     )
@@ -90,30 +95,26 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._data_from_callback = None
 
         # Internal settings
-        self.__sample_rate = -1.0
-        self.__data_type = np.float64
-        self.__stream_length = -1
-        self.__buffer_size = -1
-        self.__use_circular_buffer = False
-        self.__streaming_mode = None
-        self.__active_channels = tuple()
-        self.__unit_return_type = {}
+        self._channel_names = None
+        self._channel_buffer_size = -1
+        self._active_channels = None
+        self._unit_return_type = {}
 
         # Data buffer
         self._data_buffer = None
-        self._has_overflown = False
+        self._timestamp_buffer = None
+        self._current_buffer_positions = None
 
         # Stored hardware constraints
         self._constraints = None
-        return
 
     def on_activate(self):
         try:
             # load wavemeter DLL
             self._wavemeterdll = ctypes.windll.LoadLibrary('wlmData.dll')
         except FileNotFoundError:
-            self.log.critical('There is no wavemeter installed on this computer.\n'
-                              'Please install a High Finesse wavemeter and try again.')
+            self.log.error('There is no wavemeter installed on this computer.\n'
+                           'Please install a High Finesse wavemeter and try again.')
             return
 
         # define function header for a later call
@@ -127,50 +128,55 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._wavemeterdll.SetExposureNum.restype = ctypes.c_long
         self._wavemeterdll.SetExposureNum.argtypes = [ctypes.c_long, ctypes.c_long, ctypes.c_long]
 
-        # configure wavemeter units and exposure time
-        for ch, info in self._wavemeter_ch_config.items():
+        # configure wavemeter channels
+        self._channel_names = {}
+        channel_units = {}
+        for ch_name, info in self._wavemeter_ch_config.items():
+            ch = info['channel']
             unit = info['unit']
             medium = info['medium']
+            self._channel_names[ch] = ch_name
+
             if unit == 'THz' or unit == 'Hz':
-                self.__unit_return_type[ch] = high_finesse_constants.cReturnFrequency
+                channel_units[ch_name] = unit
+                self._unit_return_type[ch] = high_finesse_constants.cReturnFrequency
             elif unit == 'nm' or unit == 'm':
+                channel_units[ch_name] = unit
                 if medium == 'vac':
-                    self.__unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
+                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
                 elif medium == 'air':
-                    self.__unit_return_type[ch] = high_finesse_constants.cReturnWavelengthAir
+                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthAir
                 else:
                     self.log.error(f'Invalid medium: {medium}. Valid media are vac and air.')
+                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
             else:
                 self.log.error(f'Invalid unit: {unit}. Valid units are THz and nm.')
+                channel_units[ch_name] = None
 
-            try:
-                exp_time = info['exposure']
-            except KeyError:
-                continue
-            res = self._wavemeterdll.SetExposureNum(ch, 1, exp_time)
-            if res != 0:
-                self.log.error('Wavemeter error while setting exposure time.')
+            exp_time = info.get('exposure')
+            if exp_time is not None:
+                res = self._wavemeterdll.SetExposureNum(ch, 1, exp_time)
+                if res != 0:
+                    self.log.warning('Wavemeter error while setting exposure time.')
 
-        self.__data_type = np.float64
-        self.__stream_length = 0
-        self.__buffer_size = 1000
-        self.__use_circular_buffer = False
-        self.__streaming_mode = StreamingMode.CONTINUOUS
-        constr = self.get_constraints()
-        self.__active_channels = tuple(ch.copy() for ch in constr.analog_channels if ch.name)
+        self._active_channels = list(self._channel_names)
 
-        # calibrate the wavemeter sample rate
-        self._calibrate_sample_rate()
-
-        # Reset data buffer
-        self._init_buffer()
+        # set up constraints
+        self._constraints = DataInStreamConstraints(
+            channel_units=channel_units,
+            sample_timings=[SampleTiming.TIMESTAMP],
+            streaming_modes=[StreamingMode.CONTINUOUS],
+            data_type=np.float64,
+            # TODO: figure out meaningful constraints
+            channel_buffer_size=ScalarConstraint(default=1000, bounds=(100, 10000), increment=1, enforce_int=True)
+        )
 
     def on_deactivate(self):  # TODO
         self.stop_stream()
 
-        self._has_overflown = False
-        # Free memory if possible while module is inactive
-        self._init_buffer()
+        # free memory
+        self._data_buffer = None
+        self._timestamp_buffer = None
 
         try:
             # clean up by removing reference to the ctypes library object
@@ -180,35 +186,13 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.error('Could not unload the wlmData.dll of the '
                            'wavemeter.')
 
-    def get_constraints(self):
+    @property
+    def constraints(self):
         """
         Return the constraints on the settings for this data streamer.
 
         @return DataInStreamConstraints: Instance of DataInStreamConstraints containing constraints
         """
-        # Create constraints
-        self._constraints = DataInStreamConstraints()
-
-        self._constraints.analog_channels = tuple()
-        for i, info in self._wavemeter_ch_config.items():
-            timestamp_channel = StreamChannel(name=f'time_ch_{i}', type=StreamChannelType.ANALOG, unit='s')
-            data_channel = StreamChannel(name=f'data_ch_{i}', type=StreamChannelType.ANALOG, unit=info['unit'])
-            self._constraints.analog_channels += (timestamp_channel, data_channel)
-
-        self._constraints.analog_sample_rate.min = self.sample_rate
-        self._constraints.analog_sample_rate.max = self.sample_rate
-        self._constraints.analog_sample_rate.unit = 'Hz'
-        self._constraints.combined_sample_rate = self._constraints.analog_sample_rate
-
-        self._constraints.read_block_size.min = 1
-        self._constraints.read_block_size.max = 1000000
-        self._constraints.read_block_size.step = 1
-
-        # TODO: Implement FINITE streaming mode
-        self._constraints.streaming_modes = (StreamingMode.CONTINUOUS,)  # , StreamingMode.FINITE)
-        self._constraints.data_type = np.float64
-        self._constraints.allow_circular_buffer = True
-
         return self._constraints
 
     def _get_callback_ex(self):
@@ -217,6 +201,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         is available or any of the wavelength meter's states changes.
         :return: callback function
         """
+
         def handle_callback(version, mode, intval, dblval, res1):
             """
             Function called upon wavelength meter state change or if a new measurement result is available.
@@ -239,141 +224,156 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                 return 0
 
             with self._lock:
-                # got through configured channels to see if new data is from one of them
-                for i, (ch, return_unit) in enumerate(self.__unit_return_type.items()):
-                    if mode != high_finesse_constants.cmi_wavelength_n[ch]:
-                        continue
-                    timestamp = 1e-3 * intval  # wavemeter records timestamps in ms
-                    wavelength = dblval
+                # see if new data is from one of the active channels
+                ch = high_finesse_constants.cmi_wavelength_n.get(mode)
+                if ch in self._active_channels:
+                    i = self._active_channels.index(ch)
+                    # wavemeter records timestamps in ms
+                    timestamp = np.datetime64(intval, 'ms')
                     # unit conversion
                     converted_value = self._wavemeterdll.ConvertUnit(
-                        wavelength, high_finesse_constants.cReturnWavelengthVac, return_unit
+                        dblval, high_finesse_constants.cReturnWavelengthVac, self._unit_return_type[ch]
                     )
-                    # saving the data
-                    self._data_from_callback[i].append((timestamp, converted_value))
 
-                    #TODO emit signal for wavelength window
+                    # insert the new data into the buffers
+                    try:
+                        self._timestamp_buffer[i, self._current_buffer_positions[i]] = timestamp
+                        self._data_buffer[i, self._current_buffer_positions[i]] = converted_value
+                    except IndexError:
+                        raise OverflowError(
+                            'Streaming buffer encountered an overflow while receiving a callback from the wavemeter. '
+                            'Please increase the buffer size or speed up data reading.'
+                        )
+                    self._current_buffer_positions[i] += 1
+
+                    # TODO emit signal for wavelength window
                     self.sigNewWavelength.emit(converted_value)
-                    break
             return 0
 
         self._callback_function = _CALLBACK(handle_callback)
         return self._callback_function
 
     def start_stream(self):
-        """
-        Start the data acquisition and data stream.
+        """ Start the data acquisition/streaming """
+        with self._lock:
+            if self.module_state() == 'idle':
+                self.module_state.lock()
+                self._data_from_callback = tuple([] for _ in self._wavemeter_ch_config.keys())
 
-        @return int: error code (0: OK, -1: Error)
-        """
-        if self.is_running:
-            self.log.warning('Unable to start input stream. It is already running.')
-            return 0
+                # start callback procedure
+                self._wavemeterdll.Instantiate(
+                    high_finesse_constants.cInstNotification,  # long ReasonForCall
+                    high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
+                    ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),  # long P1: function
+                    0)  # long P2: callback thread priority, 0 = standard
 
-        self._start_callback()
-        self._init_buffer()
-        return 0
+                self._init_buffers()
+            else:
+                self.log.warning('Unable to start input stream. It is already running.')
 
     def stop_stream(self):
-        """
-        Stop the data acquisition and data stream.
+        """ Stop the data acquisition/streaming """
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                self._wavemeterdll.Instantiate(
+                    high_finesse_constants.cInstNotification,  # long ReasonForCall
+                    high_finesse_constants.cNotifyRemoveCallback,  # long mode
+                    ctypes.cast(self._callback_function, ctypes.POINTER(ctypes.c_long)),
+                    # long P1: function TODO unnecessary?
+                    0)  # long P2: callback thread priority, 0 = standard
+                self._callback_function = None
+                self._data_from_callback = None
 
-        @return int: error code (0: OK, -1: Error)
-        """
-        if not self.is_running:
-            self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
-            return 0
+                self.module_state.unlock()
+            else:
+                self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
 
-        self._stop_callback()
-        return 0
-
-    def read_data_into_buffer(self, buffer, number_of_samples=None):
+    def read_data_into_buffer(self, data_buffer, timestamp_buffer=None, number_of_samples=None):
         """
-        Read data from the stream buffer into a 2D numpy array given as parameter.
-        Even in the case of a single data channel, the array must be 2D with
-        the first index corresponding to the channel number and
+        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
+        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
+        channels the array must be 2D with the first index corresponding to the channel number and
         the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
+            data_buffer.shape == (<channel_count>, <sample_count>)
+        The data_buffer array must have the same data type as self.constraints.data_type.
+
+        # TODO: 2D timestamp per channel!
+        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
+        provided to be filled with timestamps corresponding to the data_buffer array. It must be
+        at least <number_of_samples> in size.
+
         If number_of_samples is omitted it will be derived from buffer.shape[1]
-
-        This method will not return until all requested samples have been read or a timeout occurs.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      this number will be derived from buffer axis 1 size.
-
-        @return int: Number of samples read into buffer; negative value indicates error
-                     (e.g. read timeout)
         """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return -1
-
-        if not isinstance(buffer, np.ndarray) or buffer.dtype != self.__data_type:
-            self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
-                           ''.format(self.__data_type))
-            return -1
-
-        if buffer.ndim != 2:
-            self.log.error('Buffer must be a 2D numpy.ndarray.')
-            return -1
-
-        if buffer.shape[0] != self.number_of_channels:
-            self.log.error('Configured number of channels ({0:d}) does not match first '
-                           'dimension of 2D buffer array ({1:d}).'
-                           ''.format(self.number_of_channels, buffer.shape[0]))
-            return -1
-
-        number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
-
-        if number_of_samples < 1:
-            return 0
-
-        # wait until requested number of samples is available
-        while self.available_samples < number_of_samples:
-            if not self.is_running:
-                break
-            # wait for one sample period
-            time.sleep(max(1e-3, 1 / self.sample_rate))
-
-        # check for buffer overflow
-        if self.available_samples > self.buffer_size:
-            self._has_overflown = True
-
         with self._lock:
-            """
-            Iterate over the channels of data collected from callbacks,
-            cast it to an array and put it in the buffer. There are two
-            software channels per physical measurement channel: one for
-            wavelength/frequency etc. and one for the time stamps.
-            """
-            for i, readings in enumerate(self._data_from_callback):
-                timestamp_ch = i * 2
-                buffer[timestamp_ch:timestamp_ch+2, :number_of_samples] = np.array(readings).T[:, :number_of_samples]
-                del readings[:number_of_samples]
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
 
-        return number_of_samples
+            if not isinstance(data_buffer, np.ndarray) or data_buffer.dtype != self.constraints.data_type:
+                self.log.error(f'data_buffer must be numpy.ndarray with dtype {self.constraints.data_type}.')
 
-    def read_available_data_into_buffer(self, buffer):
+            if not isinstance(timestamp_buffer, np.ndarray) or timestamp_buffer.dtype != np.datetime64:
+                self.log.error(f'timestamp_buffer must be numpy.ndarray with dtype np.datetime64.')
+
+            n_channels = len(self._active_channels)
+            if n_channels > 1:
+                if data_buffer.ndim != 2:
+                    self.log.error('data_buffer must be a 2D numpy.ndarray if more then one channel is active.')
+
+                if data_buffer.shape[0] != n_channels:
+                    self.log.error(f'Configured number of channels ({n_channels}) does not match first '
+                                   f'dimension of 2D data_buffer array ({data_buffer.shape[0]}).')
+
+                if timestamp_buffer.ndim != 2:
+                    self.log.error('timestamp_buffer must be a 2D numpy.ndarray if more then one channel is active.')
+
+                if timestamp_buffer.shape[0] != n_channels:
+                    self.log.error(f'Configured number of channels ({n_channels}) does not match first '
+                                   f'dimension of 2D timestamp_buffer array ({timestamp_buffer.shape[0]}).')
+
+            if number_of_samples is None:
+                try:
+                    number_of_samples = data_buffer.shape[1]
+                except IndexError:
+                    number_of_samples = data_buffer.shape[0]
+            elif number_of_samples < 1:
+                return
+
+            # wait until requested number of samples is available
+            while self.available_samples < number_of_samples:
+                if self.module_state() != 'locked':
+                    break
+                # wait for 10 ms
+                time.sleep(0.01)
+
+            data_buffer[:, :number_of_samples] = self._data_buffer[:, :number_of_samples]
+            if timestamp_buffer is not None:
+                timestamp_buffer[:, :number_of_samples] = self._timestamp_buffer[:, :number_of_samples]
+
+            # remove samples that have been read from buffer to make space for new samples
+            self._data_buffer = np.roll(self._data_buffer, -number_of_samples, axis=1)
+            self._timestamp_buffer = np.roll(self._timestamp_buffer, -number_of_samples, axis=1)
+            remaining_samples = self.available_samples - number_of_samples
+            self._current_buffer_positions = np.full(len(self._active_channels), remaining_samples, dtype=int)
+
+    def read_available_data_into_buffer(self, data_buffer, timestamp_buffer=None):
         """
-        Read data from the stream buffer into a 2D numpy array given as parameter.
-        Even in the case of a single data channel, the array must be 2D with
-        the first index corresponding to the channel number and
+        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
+        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
+        channels the array must be 2D with the first index corresponding to the channel number and
         the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
+            data_buffer.shape == (<channel_count>, <sample_count>)
+        The data_buffer array must have the same data type as self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
+        provided to be filled with timestamps corresponding to the data_buffer array. It must be
+        at least <number_of_samples> in size.
 
         This method will read all currently available samples into buffer. If number of available
         samples exceed buffer size, read only as many samples as fit into the buffer.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-
-        @return int: Number of samples read into buffer; negative value indicates error
-                     (e.g. read timeout)
         """
-        avail_samples = min(buffer.size // self.number_of_channels, self.available_samples)
-        return self.read_data_into_buffer(buffer=buffer, number_of_samples=avail_samples)
+        available_samples = self.available_samples
+        self.read_data_into_buffer(data_buffer=data_buffer, timestamp_buffer=timestamp_buffer,
+                                   number_of_samples=available_samples)
 
     def read_data(self, number_of_samples=None):
         """
@@ -381,31 +381,33 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         The arrays first index corresponds to the channel number and the second index serves as
         sample index:
             return_array.shape == (self.number_of_channels, number_of_samples)
-        The numpy arrays data type is the one defined in self.data_type.
+        The numpy arrays data type is the one defined in self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array will be
+        returned as well with timestamps corresponding to the data_buffer array.
+
         If number_of_samples is omitted all currently available samples are read from buffer.
-
         This method will not return until all requested samples have been read or a timeout occurs.
-
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      all available samples are read from buffer.
-
-        @return numpy.ndarray: The read samples
+        If no samples are available, this method will immediately return an empty array.
         """
-        if not self.is_running:
+        data_buffer, timestamp_buffer = np.empty((0, 0), dtype=self.data_type), np.empty((0, 0), dtype=np.datetime64)
+
+        if self.module_state() != 'locked':
             self.log.error('Unable to read data. Device is not running.')
-            return np.empty((0, 0), dtype=self.data_type)
 
-        if number_of_samples is None:
-            read_samples = self.read_available_data_into_buffer(self._data_buffer)
-            if read_samples < 0:
-                return np.empty((0, 0), dtype=self.data_type)
+        elif number_of_samples is None:
+            if self.available_samples > 0:
+                data_buffer = np.zeros_like(self._data_buffer)
+                timestamp_buffer = np.zeros_like(self._data_buffer)
+                self.read_available_data_into_buffer(data_buffer, timestamp_buffer)
+            else:
+                return np.empty((0, 0), dtype=self.data_type), np.empty((0, 0), dtype=np.datetime64)
         else:
-            read_samples = self.read_data_into_buffer(self._data_buffer,
-                                                      number_of_samples=number_of_samples)
-            if read_samples != number_of_samples:
-                return np.empty((0, 0), dtype=self.data_type)
+            data_buffer = np.zeros_like(self._data_buffer)[:, :number_of_samples]
+            timestamp_buffer = np.zeros_like(self._data_buffer)[:, :number_of_samples]
+            self.read_data_into_buffer(data_buffer, timestamp_buffer, number_of_samples=number_of_samples)
 
-        return self._data_buffer[:, :read_samples]
+        return data_buffer, timestamp_buffer
 
     def read_single_point(self):
         """
@@ -418,89 +420,22 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
                                indicates error.
         """
-        if not self.is_running:
+        if self.module_state() != 'locked':
             self.log.error('Unable to read data. Device is not running.')
-            return np.empty(0, dtype=self.__data_type)
+            return np.empty(0, dtype=self.constraints.data_type), None
 
-        data = np.empty(self.number_of_channels, dtype=self.__data_type)
-        with self._lock:
-            for i, readings in enumerate(self._data_from_callback):
-                last_reading = readings[-1]
-                timestamp_ch = i * 2
-                data_ch = timestamp_ch + 1
-                data[timestamp_ch] = last_reading[0]
-                data[data_ch] = last_reading[1]
-
-        return data
+        i = self._current_buffer_positions.min() - 1
+        data = self._data_buffer[i]
+        timestamp = self._timestamp_buffer[i]
+        return data, timestamp
 
     @property
     def sample_rate(self):
+        """ Read-only property returning the currently set sample rate in Hz.
+
+        Not applicable for the wavemeter since SampleTiming.TIMESTAMP.
         """
-        Read-only property to return the currently set sample rate
-
-        @return float: current sample rate in Hz
-        """
-        return self.__sample_rate
-
-    @sample_rate.setter
-    def sample_rate(self, rate):
-        if self._check_settings_change():
-            if not self.__sample_rate == rate:
-                self.log.warning(
-                    f'Sample rate requested ({rate:.2e}Hz) is out of bounds. The sample rate of this hardware '
-                    f'is fixed to {self.__sample_rate:.2e}Hz by the wavemeter exposure and switching times.')
-
-    @property
-    def data_type(self):
-        """
-        Read-only property to return the currently set data type
-
-        @return type: current data type
-        """
-        return self.__data_type
-
-    @property
-    def buffer_size(self):
-        """
-        Read-only property to return the currently buffer size.
-        Buffer size corresponds to the number of samples per channel that can be buffered. So the
-        actual buffer size in bytes can be estimated by:
-            buffer_size * number_of_channels * size_in_bytes(data_type)
-
-        @return int: current buffer size in samples per channel
-        """
-        return self.__buffer_size
-
-    @buffer_size.setter
-    def buffer_size(self, size):
-        if self._check_settings_change():
-            size = int(size)
-            if size < 1:
-                self.log.error('Buffer size smaller than 1 makes no sense. Tried to set {0} as '
-                               'buffer size and failed.'.format(size))
-                return
-            self.__buffer_size = int(size)
-            self._init_buffer()
-        return
-
-    @property
-    def use_circular_buffer(self):
-        """
-        Read-only property to return a flag indicating if circular sample buffering is being used
-        or not.
-
-        @return bool: indicate if circular sample buffering is used (True) or not (False)
-        """
-        return self.__use_circular_buffer
-
-    @use_circular_buffer.setter
-    def use_circular_buffer(self, flag):
-        if self._check_settings_change():
-            if flag and not self._constraints.allow_circular_buffer:
-                self.log.error('Circular buffer not allowed for this hardware module.')
-                return
-            self.__use_circular_buffer = bool(flag)
-        return
+        return None
 
     @property
     def streaming_mode(self):
@@ -510,65 +445,13 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         @return StreamingMode: Finite (StreamingMode.FINITE) or continuous
                                (StreamingMode.CONTINUOUS) data acquisition
         """
-        return self.__streaming_mode
-
-    @streaming_mode.setter
-    def streaming_mode(self, mode):
-        if self._check_settings_change():
-            mode = StreamingMode(mode)
-            if mode not in self._constraints.streaming_modes:
-                self.log.error('Unknown streaming mode "{0}" encountered.\nValid modes are: {1}.'
-                               ''.format(mode, self._constraints.streaming_modes))
-                return
-            self.__streaming_mode = mode
-        return
-
-    @property
-    def number_of_channels(self):
-        """
-        Read-only property to return the currently configured number of data channels.
-
-        @return int: the currently set number of channels
-        """
-        return len(self.__active_channels)
+        return StreamingMode.CONTINUOUS
 
     @property
     def active_channels(self):
-        """
-        The currently configured data channel properties.
-        Returns a dict with channel names as keys and corresponding StreamChannel instances as
-        values.
-
-        @return dict: currently active data channel properties with keys being the channel names
-                      and values being the corresponding StreamChannel instances.
-        """
-        constr = self._constraints
-        return [ch.copy() for ch in constr.analog_channels if ch.name in self.__active_channels]
-
-    @active_channels.setter
-    def active_channels(self, channels):
-        if self._check_settings_change():
-            channels = tuple(channels)
-            avail_chnl_names = tuple(ch.name for ch in self.available_channels)
-            if any(ch not in avail_chnl_names for ch in channels):
-                self.log.error('Invalid channel to stream from encountered: {0}.\nValid channels '
-                               'are: {1}'
-                               ''.format(channels, avail_chnl_names))
-                return
-            self.__active_channels = channels
-        return
-
-    @property
-    def available_channels(self):
-        """
-        Read-only property to return the currently used data channel properties.
-        Returns a dict with channel names as keys and corresponding StreamChannel instances as
-        values.
-
-        @return tuple: data channel properties for all available channels with keys being the
-                       channel names and values being the corresponding StreamChannel instances.
-        """
-        return (ch.copy() for ch in self._constraints.analog_channels)
+        """ Read-only property returning the currently configured active channel names """
+        ch_names = [self._channel_names[ch] for ch in self._active_channels]
+        return ch_names
 
     @property
     def available_samples(self):
@@ -578,178 +461,51 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         @return int: Number of available samples per channel
         """
-        if not self.is_running:
+        if self.module_state() != 'locked':
             return 0
-        else:
-            av_samples_per_channel = [len(i) for i in self._data_from_callback]
-            return min(av_samples_per_channel)
 
-    @property
-    def stream_length(self):
-        """
-        Property holding the total number of samples per channel to be acquired by this stream.
-        This number is only relevant if the streaming mode is set to StreamingMode.FINITE.
+        # all channels must have been read out in order to count as an available sample
+        return min(self._current_buffer_positions)
 
-        @return int: The number of samples to acquire per channel. Ignored for continuous streaming.
-        """
-        return self.__stream_length
-
-    @stream_length.setter
-    def stream_length(self, length):
-        if self._check_settings_change():
-            length = int(length)
-            if length < 1:
-                self.log.error('Stream_length must be a positive integer >= 1.')
-                return
-            self.__stream_length = length
-        return
-
-    @property
-    def is_running(self):
-        """
-        Read-only flag indicating if the data acquisition is running.
-
-        @return bool: Data acquisition is running (True) or not (False)
-        """
-        return self._callback_function is not None
-
-    @property
-    def buffer_overflown(self):
-        """
-        Read-only flag to check if the read buffer has overflown.
-        In case of a circular buffer it indicates data loss.
-        In case of a non-circular buffer the data acquisition should have stopped if this flag is
-        coming up.
-        Flag will only be reset after starting a new data acquisition.
-
-        @return bool: Flag indicates if buffer has overflown (True) or not (False)
-        """
-        return self._has_overflown
-
-    @property
-    def all_settings(self):
-        """
-        Read-only property to return a dict containing all current settings and values that can be
-        configured using the method "configure". Basically returns the same as "configure".
-
-        @return dict: Dictionary containing all configurable settings
-        """
-        return {'sample_rate': self.__sample_rate,
-                'streaming_mode': self.__streaming_mode,
-                'active_channels': self.active_channels,
-                'stream_length': self.__stream_length,
-                'buffer_size': self.__buffer_size,
-                'use_circular_buffer': self.__use_circular_buffer}
-
-    def configure(self, sample_rate=None, streaming_mode=None, active_channels=None,
-                  stream_length=None, buffer_size=None, use_circular_buffer=None):
+    def configure(self, active_channels=None, streaming_mode=None, sample_timing=None,
+                  channel_buffer_size=None, sample_rate=None):
         """
         Method to configure all possible settings of the data input stream.
 
-        @param float sample_rate: The sample rate in Hz at which data points are acquired
-        @param StreamingMode streaming_mode: The streaming mode to use (finite or continuous)
         @param iterable active_channels: Iterable of channel names (str) to be read from.
-        @param int stream_length: In case of a finite data stream, the total number of
-                                            samples to read per channel
-        @param int buffer_size: The size of the data buffer to pre-allocate in samples per channel
-        @param bool use_circular_buffer: Use circular buffering (True) or stop upon buffer overflow
-                                         (False)
-
-        @return dict: All current settings in a dict. Keywords are the same as kwarg names.
+        @param StreamingMode streaming_mode: ignored (always continuous)
+        @param sample_timing: ignored (always timestamp)
+        @param int channel_buffer_size: The size of the data buffer to pre-allocate in samples per channel
+        @param float sample_rate: ignored (not applicable for wavemeter)
         """
-        if self._check_settings_change():
-            # Handle sample rate change
-            if sample_rate is not None:
-                self.sample_rate = sample_rate
+        if self.module_state() == 'locked':
+            raise RuntimeError('Unable to configure data stream while it is already running')
 
-            # Handle streaming mode change
-            if streaming_mode is not None:
-                self.streaming_mode = streaming_mode
+        if active_channels is not None:
+            self._active_channels = []
+            for ch in active_channels:
+                if ch in self._wavemeter_ch_config:
+                    self._active_channels.append(self._wavemeter_ch_config[ch]['channel'])
+                else:
+                    self.log.error(f'Channel {ch} is not set up in the config file. Available channels '
+                                   f'are {list(self._wavemeter_ch_config)}.')
 
-            # Handle active channels
-            if active_channels is not None:
-                self.active_channels = active_channels
+        if streaming_mode is not None and streaming_mode != StreamingMode.CONTINUOUS:
+            self.log.warning('Only continuous streaming is supported, ignoring this setting.')
 
-            # Handle total number of samples
-            if stream_length is not None:
-                self.stream_length = stream_length
+        if sample_timing is not None and sample_timing != SampleTiming.TIMESTAMP:
+            self.log.warning('Only timestamp sample timing is supported, ignoring this setting.')
 
-            # Handle buffer size
-            if buffer_size is not None:
-                self.buffer_size = buffer_size
+        if channel_buffer_size is not None:
+            self.constraints.channel_buffer_size.check(channel_buffer_size)
+            self._channel_buffer_size = channel_buffer_size
 
-            # Handle circular buffer flag
-            if use_circular_buffer is not None:
-                self.use_circular_buffer = use_circular_buffer
-        return self.all_settings
+        if sample_rate is not None:
+            self.log.warning('Sample rate is not applicable for a wavemeter and is ignored.')
 
-    def _init_buffer(self):
-        if not self.is_running:
-            self._data_buffer = np.zeros((self.number_of_channels, self.buffer_size), dtype=self.data_type)
-            self._has_overflown = False
-        return
-
-    def _check_settings_change(self):
-        """
-        Helper method to check if streamer settings can be changed, i.e. if the streamer is idle.
-        Throw a warning if the streamer is running.
-
-        @return bool: Flag indicating if settings can be changed (True) or not (False)
-        """
-        if self.is_running:
-            self.log.warning('Unable to change streamer settings while streamer is running. '
-                             'New settings ignored.')
-            return False
-        return True
-
-    def _start_callback(self):
-        """
-        Start the callback procedure which collects data from the wavemeter hardware.
-        :return:
-        """
-        self._data_from_callback = tuple([] for _ in self._wavemeter_ch_config.keys())
-
-        # start callback procedure
-        self._wavemeterdll.Instantiate(
-            high_finesse_constants.cInstNotification,  # long ReasonForCall
-            high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
-            ctypes.cast(self._get_callback_ex(), ctypes.POINTER(ctypes.c_long)),  # long P1: function
-            0)  # long P2: callback thread priority, 0 = standard
-
-    def _stop_callback(self):
-        """
-        End the callback procedure which collects data from the wavemeter hardware.
-        :return:
-        """
-        self._wavemeterdll.Instantiate(
-            high_finesse_constants.cInstNotification,  # long ReasonForCall
-            high_finesse_constants.cNotifyRemoveCallback,  # long mode
-            ctypes.cast(self._callback_function, ctypes.POINTER(ctypes.c_long)),  # long P1: function TODO unnecessary?
-            0)  # long P2: callback thread priority, 0 = standard
-        self._callback_function = None
-        self._data_from_callback = None
-
-    def _calibrate_sample_rate(self, number_of_samples=10):
-        """
-        Calibrate the sampling rate based on the time between measurements of individual channels.
-        Each measurements lasts for a defined exposure time. In between measurements of a single channel,
-        other channels may be measured (see HighFinesse manual on multi-channel switch).
-
-        :param number_of_samples: number of samples to record for averaging
-        :return: actual wavemeter measurement rate in Hz
-        """
-        self._start_callback()
-
-        total_exposure = 1e-3 * sum(info['exposure'] for info in self._wavemeter_ch_config.values())
-        while self.available_samples < number_of_samples:
-            time.sleep(total_exposure)
-
-        timestamps = np.empty((number_of_samples, self.number_of_channels // 2))
-        with self._lock:
-            for i, readings in enumerate(self._data_from_callback):
-                timestamps[:, i] = np.array(readings)[:number_of_samples, 0]
-
-        actual_sample_rate = 1 / np.diff(timestamps, axis=0).mean()
-
-        self._stop_callback()
-        self.__sample_rate = actual_sample_rate
+    def _init_buffers(self):
+        self._data_buffer = np.zeros([len(self._active_channels), self._channel_buffer_size],
+                                     dtype=self.constraints.data_type)
+        self._timestamp_buffer = np.zeros([len(self._active_channels), self._channel_buffer_size],
+                                          dtype=np.datetime64)
+        self._current_buffer_positions = np.zeros(len(self._active_channels), dtype=int)
