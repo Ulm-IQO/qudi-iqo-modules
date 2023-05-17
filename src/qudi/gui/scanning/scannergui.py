@@ -239,6 +239,18 @@ class ScannerGui(GuiBase):
         self.sigShowSaveDialog.connect(lambda x: self._save_dialog.show() if x else self._save_dialog.hide(),
                                        QtCore.Qt.DirectConnection)
 
+        # tilt correction signals
+        tilt_widget = self.tilt_correction_dockwidget
+        tilt_widget.tilt_set_01_pushButton.clicked.connect(lambda: self.tilt_corr_support_vector_updated(0),
+                                                                       QtCore.Qt.QueuedConnection)
+        tilt_widget.tilt_set_02_pushButton.clicked.connect(lambda: self.tilt_corr_support_vector_updated(1),
+                                                                       QtCore.Qt.QueuedConnection)
+        tilt_widget.tilt_set_03_pushButton.clicked.connect(lambda: self.tilt_corr_support_vector_updated(2),
+                                                                       QtCore.Qt.QueuedConnection)
+        tilt_widget.tilt_set_04_pushButton.clicked.connect(lambda: self.tilt_corr_support_vector_updated(3),
+                                                                       QtCore.Qt.QueuedConnection)
+
+
         # Initialize dockwidgets to default view
         self.restore_default_view()
         self.show()
@@ -1017,3 +1029,23 @@ class ScannerGui(GuiBase):
 
                 # Adjust crosshair size according to optimizer range
                 self.update_crosshair_sizes()
+
+    def tilt_corr_support_vector_updated(self, idx_vector=0):
+        target = self._scanning_logic().scanner_target
+
+        dim_idxs = [(idx, key) for idx,key in enumerate(target.keys())]
+        support_vecs = self.tilt_correction_dockwidget.support_vecs_box
+        [support_vecs[idx_vector][dim[0]].setValue(target[dim[1]]) for dim in dim_idxs]
+
+        self.log.debug(f"Button {idx_vector} clicked, current target {target}")
+
+        support_vecs_val = self.tilt_correction_dockwidget.support_vectors
+        all_vecs_valid = True
+        for vec in [0,1,2,3]:
+            vecs_valid = [support_vecs[vec][dim[0]].is_valid for dim in dim_idxs]
+            all_vecs_valid = np.all(vecs_valid) and all_vecs_valid
+
+        if all_vecs_valid:
+            self._scanning_logic().configure_tilt_correction(np.asarray(support_vecs_val[:-1]).T,
+                                                             np.asarray(support_vecs_val[-1]).T)
+

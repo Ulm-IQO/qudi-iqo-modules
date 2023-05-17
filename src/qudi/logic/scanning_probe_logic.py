@@ -346,7 +346,7 @@ class ScanningProbeLogic(LogicBase):
         support_vecs = np.asarray(support_vecs)
 
         if support_vecs.shape[0] != 3:
-            raise ValueError(f"Need 3 n-dim support vectors, not {red_support_vecs.shape[0]}")
+            raise ValueError(f"Need 3 n-dim support vectors, not {support_vecs.shape[0]}")
 
         if shift_vec is None:
             red_support_vecs = compute_reduced_vectors(support_vecs)
