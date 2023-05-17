@@ -1046,6 +1046,7 @@ class ScannerGui(GuiBase):
             all_vecs_valid = np.all(vecs_valid) and all_vecs_valid
 
         if all_vecs_valid:
-            self._scanning_logic().configure_tilt_correction(np.asarray(support_vecs_val[:-1]).T,
-                                                             np.asarray(support_vecs_val[-1]).T)
+            self._scanning_logic().configure_tilt_correction(np.asarray(support_vecs_val[:-1]),
+                                                             np.asarray(support_vecs_val[-1]))
+
 
