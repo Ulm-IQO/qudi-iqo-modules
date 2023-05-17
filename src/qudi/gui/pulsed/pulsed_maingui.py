@@ -174,9 +174,6 @@ class PulsedMeasurementGui(GuiBase):
     sigPulseGeneratorSettingsUpdated = QtCore.Signal()
     sigPulseGeneratorRunBenchmark = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
     def on_activate(self):
         """ Initialize, connect and configure the pulsed measurement GUI.
 

@@ -23,11 +23,42 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 import numpy as np
+from enum import Enum
+from typing import List, Iterable, Union, Optional, Tuple, Callable
 
 from qudi.core.configoption import ConfigOption
-from qudi.util.helpers import natural_sort
+from qudi.util.constraints import ScalarConstraint
+from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
-from qudi.interface.data_instream_interface import StreamingMode, StreamChannelType, StreamChannel
+from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
+
+
+def _make_sine_func() -> Callable[[np.ndarray, np.ndarray], None]:
+    freq = (np.pi / 500) + np.random.rand() * (49 * np.pi / 500)
+    amp = 1 + np.random.rand() * 9
+    noise_lvl = amp * (0.1 + np.random.rand() * 0.4)
+    def make_sine(x, y):
+        np.sin(freq * x, out=y)
+        y *= amp
+        noise = np.random.rand(x.size)
+        noise *= 2 * noise_lvl
+        noise -= noise_lvl
+        y += noise
+    return make_sine
+
+
+def _make_counts_func() -> Callable[[np.ndarray, np.ndarray], None]:
+    count_lvl = 1_000 + np.random.rand() * (1_000_000 - 1_000)
+    def make_counts(x, y):
+        y[:] = count_lvl
+        y += np.random.poisson(count_lvl, y.size)
+    return make_counts
+
+
+class SignalShape(Enum):
+    INVALID = -1
+    SINE = 0
+    COUNTS = 1
 
 
 class InStreamDummy(DataInStreamInterface):
@@ -57,497 +88,315 @@ class InStreamDummy(DataInStreamInterface):
             # analog_amplitudes: 10  # optional (10V by default)
     """
     # config options
-    _digital_channels = ConfigOption(name='digital_channels', default=tuple(), missing='nothing')
-    _analog_channels = ConfigOption(name='analog_channels', default=tuple(), missing='nothing')
-    _digital_event_rates = ConfigOption(name='digital_event_rates',
-                                        default=100000,
-                                        missing='nothing')
-    _analog_amplitudes = ConfigOption(name='analog_voltage_ranges', default=10, missing='nothing')
+    _channel_names = ConfigOption(name='channel_names',
+                                  missing='error',
+                                  constructor=lambda names: [str(x) for x in names])
+    _channel_units = ConfigOption(name='channel_units',
+                                  missing='error',
+                                  constructor=lambda units: [str(x) for x in units])
+    _channel_signals = ConfigOption(
+        name='channel_signals',
+        missing='error',
+        constructor=lambda signals: [SignalShape(x.lower()) for x in signals]
+    )
+    _data_type = ConfigOption(name='data_type',
+                              default='float64',
+                              missing='info',
+                              constructor=lambda typ: np.dtype(typ))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Internal settings
-        self.__sample_rate = -1.0
-        self.__data_type = np.float64
-        self.__stream_length = -1
-        self.__buffer_size = -1
-        self.__use_circular_buffer = False
-        self.__streaming_mode = None
-        self.__active_channels = tuple()
+        self._thread_lock = Mutex()
 
-        # Data buffer
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
-        self._has_overflown = False
-        self._is_running = False
+        self._active_channels = list()
+        self._sample_rate = -1
+        self._streaming_mode = StreamingMode.INVALID
+        self._sample_timing = SampleTiming.INVALID
+        self._channel_buffer_size = -1
+        self._data_buffer = None
+        self._timestamp_buffer = None
         self._last_read = None
         self._start_time = None
-
-        # Stored hardware constraints
+        self.__real_sample_rate = -1
         self._constraints = None
-        return
+        self._sample_generators = dict()
 
     def on_activate(self):
-        """
-        Starts up the NI-card and performs sanity checks.
-        """
         # Sanity check ConfigOptions
-        if not self._digital_channels and not self._analog_channels:
-            raise ValueError('Not a single analog or digital channel provided in ConfigOptions.')
-        self._digital_channels = natural_sort(str(chnl) for chnl in self._digital_channels)
-        self._analog_channels = natural_sort(str(chnl) for chnl in self._analog_channels)
-
-        if self._digital_channels:
-            try:
-                if len(self._digital_channels) != len(self._digital_event_rates):
-                    if len(self._digital_event_rates) == 1:
-                        tmp = self._digital_event_rates[0]
-                        self._digital_event_rates = [i * tmp for i, _ in
-                                                     enumerate(self._digital_channels, 1)]
-                    else:
-                        raise ValueError(
-                            'ConfigOption "digital_event_rates" must have same length as '
-                            '"digital_channels" or just be a single value.'
-                        )
-            except TypeError:
-                self._digital_event_rates = [i * self._digital_event_rates for i, _ in
-                                             enumerate(self._digital_channels, 1)]
-        if self._analog_channels:
-            try:
-                if len(self._analog_channels) != len(self._analog_amplitudes):
-                    if len(self._analog_amplitudes) == 1:
-                        tmp = self._analog_amplitudes[0]
-                        self._analog_amplitudes = [i * tmp for i, _ in
-                                                   enumerate(self._analog_channels, 1)]
-                    else:
-                        raise ValueError(
-                            'ConfigOption "analog_amplitudes" must have same length as '
-                            '"analog_channels" or just be a single value.'
-                        )
-            except TypeError:
-                self._analog_amplitudes = [i * self._analog_amplitudes for i, _ in
-                                           enumerate(self._analog_channels, 1)]
+        if not (len(self._channel_names) == len(self._channel_units) == len(self._channel_signals)):
+            raise ValueError('ConfigOptions "channel_names", "channel_units" and "channel_signals" '
+                             'must contain same number of elements')
+        if len(set(self._channel_names)) != len(self._channel_names):
+            raise ValueError('ConfigOptions "channel_names" must not contain duplicates')
 
         # Create constraints
-        self._constraints = DataInStreamConstraints()
-        self._constraints.digital_channels = tuple(
-            StreamChannel(name=ch, type=StreamChannelType.DIGITAL, unit='counts') for ch in
-            self._digital_channels)
-        self._constraints.analog_channels = tuple(
-            StreamChannel(name=ch, type=StreamChannelType.ANALOG, unit='V') for ch in
-            self._analog_channels)
-        self._constraints.analog_sample_rate.min = 1
-        self._constraints.analog_sample_rate.max = 2**31-1
-        self._constraints.analog_sample_rate.step = 1
-        self._constraints.analog_sample_rate.unit = 'Hz'
-        self._constraints.digital_sample_rate.min = 1
-        self._constraints.digital_sample_rate.max = 2**31-1
-        self._constraints.digital_sample_rate.step = 1
-        self._constraints.digital_sample_rate.unit = 'Hz'
-        self._constraints.combined_sample_rate = self._constraints.analog_sample_rate
+        self._constraints = DataInStreamConstraints(
+            channel_units=dict(zip(self._channel_names, self._channel_units)),
+            sample_timings=[SampleTiming.CONSTANT, SampleTiming.TIMESTAMP, SampleTiming.RANDOM],
+            streaming_modes=[StreamingMode.CONTINUOUS, StreamingMode.FINITE],
+            data_type=self._data_type,
+            channel_buffer_size=ScalarConstraint(default=4096,
+                                                 bounds=(128, 1024 ** 2),
+                                                 increment=1,
+                                                 enforce_int=True),
+            sample_rate=ScalarConstraint(default=10.0, bounds=(0.1, 1024 ** 2), increment=0.1)
+        )
+        self._data_type = self._constraints.data_type
 
-        self._constraints.read_block_size.min = 1
-        self._constraints.read_block_size.max = 1000000
-        self._constraints.read_block_size.step = 1
-
-        # TODO: Implement FINITE streaming mode
-        self._constraints.streaming_modes = (StreamingMode.CONTINUOUS,)  # , StreamingMode.FINITE)
-        self._constraints.data_type = np.float64
-        self._constraints.allow_circular_buffer = True
-
-        self.__sample_rate = self._constraints.combined_sample_rate.min
-        self.__data_type = np.float64
-        self.__stream_length = 0
-        self.__buffer_size = 1000
-        self.__use_circular_buffer = False
-        self.__streaming_mode = StreamingMode.CONTINUOUS
-        self.__active_channels = tuple()
-
-        # Reset data buffer
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
-        self._has_overflown = False
-        self._is_running = False
+        # User settings
+        self._active_channels = list(self._constraints.channel_units)
+        self._sample_rate = self._constraints.sample_rate.default
+        self._streaming_mode = self._constraints.streaming_modes[0]
+        self._sample_timing = self._constraints.sample_timings[0]
+        self._channel_buffer_size = self._constraints.channel_buffer_size.default
+        # process variables
         self._last_read = None
         self._start_time = None
-        return
+
+        # Randomize signal constants for each channel
+        self._sample_generators = dict()
+        for chnl, shape in zip(self._channel_names, self._channel_signals):
+            if shape == SignalShape.SINE:
+                self._sample_generators[chnl] = _make_sine_func()
+            elif shape == SignalShape.COUNTS:
+                self._sample_generators[chnl] = _make_counts_func()
+            else:
+                raise ValueError(f'Invalid SignalShape encountered: {shape}')
 
     def on_deactivate(self):
-        """ Shut down the NI card.
-        """
-        self._has_overflown = False
-        self._is_running = False
-        self._last_read = None
-        # Free memory if possible while module is inactive
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
-        return
+        # Free memory
+        self._data_buffer = None
+        self._timestamp_buffer = None
+        self._channel_buffer_size = -1
 
     @property
-    def sample_rate(self):
-        """
-        Read-only property to return the currently set sample rate
-
-        @return float: current sample rate in Hz
-        """
-        return self.__sample_rate
-
-    @sample_rate.setter
-    def sample_rate(self, rate):
-        if self._check_settings_change():
-            if not self._clk_frequency_valid(rate):
-                if self._analog_channels:
-                    min_val = self._constraints.combined_sample_rate.min
-                    max_val = self._constraints.combined_sample_rate.max
-                else:
-                    min_val = self._constraints.digital_sample_rate.min
-                    max_val = self._constraints.digital_sample_rate.max
-                self.log.warning(
-                    'Sample rate requested ({0:.3e}Hz) is out of bounds. Please choose '
-                    'a value between {1:.3e}Hz and {2:.3e}Hz. Value will be clipped to '
-                    'the closest boundary.'.format(rate, min_val, max_val))
-                rate = max(min(max_val, rate), min_val)
-            self.__sample_rate = float(rate)
-        return
+    def constraints(self) -> DataInStreamConstraints:
+        """ Read-only property returning the constraints on the settings for this data streamer. """
+        return self._constraints
 
     @property
-    def data_type(self):
-        """
-        Read-only property to return the currently set data type
-
-        @return type: current data type
-        """
-        return self.__data_type
-
-    @property
-    def buffer_size(self):
-        """
-        Read-only property to return the currently buffer size.
-        Buffer size corresponds to the number of samples per channel that can be buffered. So the
-        actual buffer size in bytes can be estimated by:
-            buffer_size * number_of_channels * size_in_bytes(data_type)
-
-        @return int: current buffer size in samples per channel
-        """
-        return self.__buffer_size
-
-    @buffer_size.setter
-    def buffer_size(self, size):
-        if self._check_settings_change():
-            size = int(size)
-            if size < 1:
-                self.log.error('Buffer size smaller than 1 makes no sense. Tried to set {0} as '
-                               'buffer size and failed.'.format(size))
-                return
-            self.__buffer_size = int(size)
-            self._init_buffer()
-        return
-
-    @property
-    def use_circular_buffer(self):
-        """
-        Read-only property to return a flag indicating if circular sample buffering is being used
-        or not.
-
-        @return bool: indicate if circular sample buffering is used (True) or not (False)
-        """
-        return self.__use_circular_buffer
-
-    @use_circular_buffer.setter
-    def use_circular_buffer(self, flag):
-        if self._check_settings_change():
-            if flag and not self._constraints.allow_circular_buffer:
-                self.log.error('Circular buffer not allowed for this hardware module.')
-                return
-            self.__use_circular_buffer = bool(flag)
-        return
-
-    @property
-    def streaming_mode(self):
-        """
-        Read-only property to return the currently configured streaming mode Enum.
-
-        @return StreamingMode: Finite (StreamingMode.FINITE) or continuous
-                               (StreamingMode.CONTINUOUS) data acquisition
-        """
-        return self.__streaming_mode
-
-    @streaming_mode.setter
-    def streaming_mode(self, mode):
-        if self._check_settings_change():
-            mode = StreamingMode(mode)
-            if mode not in self._constraints.streaming_modes:
-                self.log.error('Unknown streaming mode "{0}" encountered.\nValid modes are: {1}.'
-                               ''.format(mode, self._constraints.streaming_modes))
-                return
-            self.__streaming_mode = mode
-        return
-
-    @property
-    def number_of_channels(self):
-        """
-        Read-only property to return the currently configured number of data channels.
-
-        @return int: the currently set number of channels
-        """
-        return len(self.__active_channels)
-
-    @property
-    def active_channels(self):
-        """
-        The currently configured data channel properties.
-        Returns a dict with channel names as keys and corresponding StreamChannel instances as
-        values.
-
-        @return dict: currently active data channel properties with keys being the channel names
-                      and values being the corresponding StreamChannel instances.
-        """
-        constr = self._constraints
-        return (*(ch.copy() for ch in constr.digital_channels if ch.name in self.__active_channels),
-                *(ch.copy() for ch in constr.analog_channels if ch.name in self.__active_channels))
-
-    @active_channels.setter
-    def active_channels(self, channels):
-        if self._check_settings_change():
-            channels = tuple(channels)
-            avail_chnl_names = tuple(ch.name for ch in self.available_channels)
-            if any(ch not in avail_chnl_names for ch in channels):
-                self.log.error('Invalid channel to stream from encountered: {0}.\nValid channels '
-                               'are: {1}'
-                               ''.format(channels, avail_chnl_names))
-                return
-            self.__active_channels = channels
-        return
-
-    @property
-    def available_channels(self):
-        """
-        Read-only property to return the currently used data channel properties.
-        Returns a dict with channel names as keys and corresponding StreamChannel instances as
-        values.
-
-        @return tuple: data channel properties for all available channels with keys being the
-                       channel names and values being the corresponding StreamChannel instances.
-        """
-        return (*(ch.copy() for ch in self._constraints.digital_channels),
-                *(ch.copy() for ch in self._constraints.analog_channels))
-
-    @property
-    def available_samples(self):
-        """
-        Read-only property to return the currently available number of samples per channel ready
+    def available_samples(self) -> int:
+        """ Read-only property to return the currently available number of samples per channel ready
         to read from buffer.
-
-        @return int: Number of available samples per channel
         """
-        if not self.is_running:
-            return 0
-        return int((time.perf_counter() - self._last_read) * self.__sample_rate)
-
-    @property
-    def stream_length(self):
-        """
-        Property holding the total number of samples per channel to be acquired by this stream.
-        This number is only relevant if the streaming mode is set to StreamingMode.FINITE.
-
-        @return int: The number of samples to acquire per channel. Ignored for continuous streaming.
-        """
-        return self.__stream_length
-
-    @stream_length.setter
-    def stream_length(self, length):
-        if self._check_settings_change():
-            length = int(length)
-            if length < 1:
-                self.log.error('Stream_length must be a positive integer >= 1.')
-                return
-            self.__stream_length = length
-        return
-
-    @property
-    def is_running(self):
-        """
-        Read-only flag indicating if the data acquisition is running.
-
-        @return bool: Data acquisition is running (True) or not (False)
-        """
-        return self._is_running
-
-    @property
-    def buffer_overflown(self):
-        """
-        Read-only flag to check if the read buffer has overflown.
-        In case of a circular buffer it indicates data loss.
-        In case of a non-circular buffer the data acquisition should have stopped if this flag is
-        coming up.
-        Flag will only be reset after starting a new data acquisition.
-
-        @return bool: Flag indicates if buffer has overflown (True) or not (False)
-        """
-        return self._has_overflown
-
-    @property
-    def all_settings(self):
-        """
-        Read-only property to return a dict containing all current settings and values that can be
-        configured using the method "configure". Basically returns the same as "configure".
-
-        @return dict: Dictionary containing all configurable settings
-        """
-        return {'sample_rate': self.__sample_rate,
-                'streaming_mode': self.__streaming_mode,
-                'active_channels': self.active_channels,
-                'stream_length': self.__stream_length,
-                'buffer_size': self.__buffer_size,
-                'use_circular_buffer': self.__use_circular_buffer}
-
-    def configure(self, sample_rate=None, streaming_mode=None, active_channels=None,
-                  stream_length=None, buffer_size=None, use_circular_buffer=None):
-        """
-        Method to configure all possible settings of the data input stream.
-
-        @param float sample_rate: The sample rate in Hz at which data points are acquired
-        @param StreamingMode streaming_mode: The streaming mode to use (finite or continuous)
-        @param iterable active_channels: Iterable of channel names (str) to be read from.
-        @param int stream_length: In case of a finite data stream, the total number of
-                                            samples to read per channel
-        @param int buffer_size: The size of the data buffer to pre-allocate in samples per channel
-        @param bool use_circular_buffer: Use circular buffering (True) or stop upon buffer overflow
-                                         (False)
-
-        @return dict: All current settings in a dict. Keywords are the same as kwarg names.
-        """
-        if self._check_settings_change():
-            # Handle sample rate change
-            if sample_rate is not None:
-                self.sample_rate = sample_rate
-
-            # Handle streaming mode change
-            if streaming_mode is not None:
-                self.streaming_mode = streaming_mode
-
-            # Handle active channels
-            if active_channels is not None:
-                self.active_channels = active_channels
-
-            # Handle total number of samples
-            if stream_length is not None:
-                self.stream_length = stream_length
-
-            # Handle buffer size
-            if buffer_size is not None:
-                self.buffer_size = buffer_size
-
-            # Handle circular buffer flag
-            if use_circular_buffer is not None:
-                self.use_circular_buffer = use_circular_buffer
-        return self.all_settings
-
-    def get_constraints(self):
-        """
-        Return the constraints on the settings for this data streamer.
-
-        @return DataInStreamConstraints: Instance of DataInStreamConstraints containing constraints
-        """
-        return self._constraints.copy()
-
-    def start_stream(self):
-        """
-        Start the data acquisition and data stream.
-
-        @return int: error code (0: OK, -1: Error)
-        """
-        if self.is_running:
-            self.log.warning('Unable to start input stream. It is already running.')
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                return self._get_available_samples()
             return 0
 
-        self._init_buffer()
-        self._is_running = True
-        self._start_time = time.perf_counter()
-        self._last_read = self._start_time
-        return 0
+    def _get_available_samples(self) -> Tuple[int, float]:
+        now = time.perf_counter()
+        return int((now - self._last_read) * self.__real_sample_rate)
 
-    def stop_stream(self):
+    @property
+    def sample_rate(self) -> float:
+        """ Read-only property returning the currently set sample rate in Hz.
+
+        Ignored for anything but SampleTiming.CONSTANT.
         """
-        Stop the data acquisition and data stream.
+        return self._sample_rate
 
-        @return int: error code (0: OK, -1: Error)
+    @property
+    def channel_buffer_size(self) -> int:
+        """ Read-only property returning the currently set buffer size in samples per channel.
+        The total buffer size in bytes can be estimated by:
+            <buffer_size> * <channel_count> * numpy.nbytes[<data_type>]
+
+        For StreamingMode.FINITE this will also be the total number of samples to acquire per
+        channel.
         """
-        if self.is_running:
-            self._is_running = False
-        return 0
+        return self._channel_buffer_size
 
-    def read_data_into_buffer(self, buffer, number_of_samples=None):
+    @property
+    def streaming_mode(self) -> StreamingMode:
+        """ Read-only property returning the currently configured StreamingMode Enum """
+        return self._streaming_mode
+
+    @property
+    def sample_timing(self) -> SampleTiming:
+        """ Read-only property returning the currently configured SampleTiming Enum """
+        return self._sample_timing
+
+    @property
+    def active_channels(self) -> List[str]:
+        """ Read-only property returning the currently configured active channel names """
+        return self._active_channels.copy()
+
+    def configure(self,
+                  active_channels: Iterable[str],
+                  streaming_mode: Union[StreamingMode, int],
+                  sample_timing: Union[SampleTiming, int],
+                  channel_buffer_size: int,
+                  sample_rate: Optional[float] = None) -> None:
+        """ Configure a data stream. See read-only properties for information on each parameter. """
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                raise RuntimeError('Unable to configure data stream while it is already running')
+            # Cache current values to restore them if configuration fails
+            old_channels = self._active_channels
+            old_streaming_mode = self._streaming_mode
+            old_sample_timing = self._sample_timing
+            old_buffer_size = self._channel_buffer_size
+            old_sample_rate = self._sample_rate
+            try:
+                self._set_active_channels(active_channels)
+                self._set_streaming_mode(streaming_mode)
+                self._set_sample_timing(sample_timing)
+                self._set_channel_buffer_size(channel_buffer_size)
+                if sample_rate is not None:
+                    self._set_sample_rate(sample_rate)
+            except Exception as err:
+                self._active_channels = old_channels
+                self._streaming_mode = old_streaming_mode
+                self._sample_timing = old_sample_timing
+                self._channel_buffer_size = old_buffer_size
+                self._sample_rate = old_sample_rate
+                raise RuntimeError('Error while trying to configure data in-streamer') from err
+
+    def _set_active_channels(self, channels: Iterable[str]) -> None:
+        channels = set(channels)
+        if not channels.issubset(self._constraints.channel_units):
+            raise ValueError(f'Invalid channels to set active {channels}. Allowed channels are '
+                             f'{set(self._constraints.channel_units)}')
+        self._active_channels = [ch for ch in self._constraints.channel_units if ch in channels]
+
+    def _set_streaming_mode(self, mode: Union[StreamingMode, int]) -> None:
+        try:
+            mode = StreamingMode(mode.value)
+        except AttributeError:
+            mode = StreamingMode(mode)
+        if (mode == StreamingMode.INVALID) or mode not in self._constraints.streaming_modes:
+            raise ValueError(
+                f'Invalid streaming mode to set ({mode}). Allowed StreamingMode values are '
+                f'[{", ".join(str(mod) for mod in self._constraints.streaming_modes)}]'
+            )
+        self._streaming_mode = mode
+
+    def _set_sample_timing(self, timing: Union[SampleTiming, int]) -> None:
+        try:
+            timing = SampleTiming(timing.value)
+        except AttributeError:
+            timing = SampleTiming(timing)
+        if (timing == SampleTiming.INVALID) or timing not in self._constraints.sample_timings:
+            raise ValueError(
+                f'Invalid sample timing to set ({timing}). Allowed sample timing values are '
+                f'[{", ".join(str(tim) for tim in self._constraints.sample_timings)}]'
+            )
+        self._sample_timing = timing
+
+    def _set_channel_buffer_size(self, samples: int) -> None:
+        self._constraints.channel_buffer_size.check(samples)
+        self._channel_buffer_size = samples
+
+    def _set_sample_rate(self, rate: Union[int, float]) -> None:
+        rate = float(rate)
+        self._constraints.sample_rate.check(rate)
+        self._sample_rate = rate
+
+    def _init_buffers(self):
+        self._data_buffer = np.zeros([len(self._active_channels), self._channel_buffer_size],
+                                     dtype=self._data_type)
+        if self._sample_timing == SampleTiming.TIMESTAMP:
+            self._timestamp_buffer = np.zeros(self._channel_buffer_size, dtype=np.datetime64)
+        else:
+            self._timestamp_buffer = None
+
+    def start_stream(self) -> None:
+        """ Start the data acquisition/streaming """
+        with self._thread_lock:
+            if self.module_state() == 'idle':
+                self.module_state.lock()
+                try:
+                    self._init_buffers()
+                    self._start_time = time.perf_counter()
+                    self._last_read = self._start_time
+                except:
+                    self.module_state.unlock()
+                    raise
+            else:
+                self.log.warning('Unable to start input stream. It is already running.')
+
+    def stop_stream(self) -> None:
+        """ Stop the data acquisition/streaming """
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                self.module_state.unlock()
+
+    def read_data_into_buffer(self,
+                              data_buffer: np.ndarray,
+                              timestamp_buffer: Optional[np.ndarray] = None,
+                              number_of_samples: Optional[int] = None) -> None:
         """
         Read data from the stream buffer into a 1D/2D numpy array given as parameter.
         In case of a single data channel the numpy array can be either 1D or 2D. In case of more
         channels the array must be 2D with the first index corresponding to the channel number and
         the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
+            data_buffer.shape == (<channel_count>, <sample_count>)
+        The data_buffer array must have the same data type as self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
+        provided to be filled with timestamps corresponding to the data_buffer array. It must be
+        at least <number_of_samples> in size.
+
         If number_of_samples is omitted it will be derived from buffer.shape[1]
-
-        This method will not return until all requested samples have been read or a timeout occurs.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      this number will be derived from buffer axis 1 size.
-
-        @return int: Number of samples read into buffer; negative value indicates error
-                     (e.g. read timeout)
         """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return -1
+        with self._thread_lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
 
-        if not isinstance(buffer, np.ndarray) or buffer.dtype != self.__data_type:
-            self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
-                           ''.format(self.__data_type))
-            return -1
+            if number_of_samples is None:
+                try:
+                    number_of_samples = data_buffer.shape[1]
+                except IndexError:
+                    number_of_samples = data_buffer.shape[0]
 
-        if buffer.ndim == 2:
-            if buffer.shape[0] != self.number_of_channels:
-                self.log.error('Configured number of channels ({0:d}) does not match first '
-                               'dimension of 2D buffer array ({1:d}).'
-                               ''.format(self.number_of_channels, buffer.shape[0]))
-                return -1
-            number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
-            buffer = buffer.flatten()
-        elif buffer.ndim == 1:
-            number_of_samples = (buffer.size // self.number_of_channels) if number_of_samples is None else number_of_samples
-        else:
-            self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
-            return -1
+            if number_of_samples > 0:
+                # Wait for samples to become available
+                avail_samples, now = self._get_available_samples()
+                while avail_samples < number_of_samples:
+                    time.sleep(0.001)
+                    avail_samples, now = self._get_available_samples()
 
-        if number_of_samples < 1:
-            return 0
-        while self.available_samples < number_of_samples:
-            time.sleep(0.001)
+                # Check for buffer overflow
+                if avail_samples > self._channel_buffer_size:
+                    raise OverflowError(
+                        'Streaming buffer encountered an overflow. Streaming has been terminated. '
+                        'Please lower the sample rate or speed up data reading.'
+                    )
 
-        # Check for buffer overflow
-        avail_samples = self.available_samples
-        if avail_samples > self.buffer_size:
-            self._has_overflown = True
+                # Generate time axis
+                if self._sample_timing == SampleTiming.CONSTANT:
+                    x = np.arange(number_of_samples, dtype=np.float64)
 
-        offset = 0
-        analog_x = np.arange(number_of_samples, dtype=self.__data_type) / self.__sample_rate
-        analog_x *= 2 * np.pi
-        analog_x += 2 * np.pi * (self._last_read - self._start_time)
-        self._last_read = time.perf_counter()
-        for i, chnl in enumerate(self.__active_channels):
-            if chnl in self._digital_channels:
-                ch_index = self._digital_channels.index(chnl)
-                events_per_bin = self._digital_event_rates[ch_index] / self.__sample_rate
-                buffer[offset:(offset+number_of_samples)] = np.random.poisson(events_per_bin,
-                                                                              number_of_samples)
-            else:
-                ch_index = self._analog_channels.index(chnl)
-                amplitude = self._analog_amplitudes[ch_index]
-                np.sin(analog_x, out=buffer[offset:(offset+number_of_samples)])
-                buffer[offset:(offset + number_of_samples)] *= amplitude
-                noise_level = 0.1 * amplitude
-                noise = noise_level - 2 * noise_level * np.random.rand(number_of_samples)
-                buffer[offset:(offset + number_of_samples)] += noise
-            offset += number_of_samples
-        return number_of_samples
+                offset = 0
+                data_buffer = data_buffer.flatten()
+                for ch_idx, channel in enumerate(self._active_channels):
+                    generator = self._sample_generators[channel]
+
+
+                analog_x = np.arange(number_of_samples, dtype=self.__data_type) / self.__sample_rate
+                analog_x *= 2 * np.pi
+                analog_x += 2 * np.pi * (self._last_read - self._start_time)
+                self._last_read = time.perf_counter()
+                for i, chnl in enumerate(self.__active_channels):
+                    if chnl in self._digital_channels:
+                        ch_index = self._digital_channels.index(chnl)
+                        events_per_bin = self._digital_event_rates[ch_index] / self.__sample_rate
+                        buffer[offset:(offset+number_of_samples)] = np.random.poisson(events_per_bin,
+                                                                                      number_of_samples)
+                    else:
+                        ch_index = self._analog_channels.index(chnl)
+                        amplitude = self._analog_amplitudes[ch_index]
+                        np.sin(analog_x, out=buffer[offset:(offset+number_of_samples)])
+                        buffer[offset:(offset + number_of_samples)] *= amplitude
+                        noise_level = 0.1 * amplitude
+                        noise = noise_level - 2 * noise_level * np.random.rand(number_of_samples)
+                        buffer[offset:(offset + number_of_samples)] += noise
+                    offset += number_of_samples
+            return number_of_samples
+
+    def _generate_samples_to_buffer(self):
 
     def read_available_data_into_buffer(self, buffer):
         """
@@ -642,11 +491,11 @@ class InStreamDummy(DataInStreamInterface):
     # =============================================================================================
     def _clk_frequency_valid(self, frequency):
         if self._analog_channels:
-            max_rate = self._constraints.combined_sample_rate.max
-            min_rate = self._constraints.combined_sample_rate.min
+            max_rate = self._constraints.combined_sample_rate.maximum
+            min_rate = self._constraints.combined_sample_rate.minimum
         else:
-            max_rate = self._constraints.digital_sample_rate.max
-            min_rate = self._constraints.digital_sample_rate.min
+            max_rate = self._constraints.digital_sample_rate.maximum
+            min_rate = self._constraints.digital_sample_rate.minimum
         return min_rate <= frequency <= max_rate
 
     def _init_buffer(self):

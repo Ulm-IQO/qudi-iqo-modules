@@ -96,6 +96,8 @@ class ScannerGui(GuiBase):
     _default_position_unit_prefix = ConfigOption(name='default_position_unit_prefix', default=None)
     # for all optimizer sub widgets, (2= xy, 1=z)
     _optimizer_plot_dims = ConfigOption(name='optimizer_plot_dimensions', default=[2,1])
+    # minimum crosshair size as fraction of the displayed scan range
+    _min_crosshair_size_fraction = ConfigOption(name='min_crosshair_size_fraction', default=1/50, missing='nothing')
 
     # status vars
     _window_state = StatusVar(name='window_state', default=None)
@@ -111,8 +113,8 @@ class ScannerGui(GuiBase):
     sigSaveFinished = QtCore.Signal()
     sigShowSaveDialog = QtCore.Signal(bool)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # QMainWindow and QDialog child instances
         self._mw = None
@@ -529,7 +531,8 @@ class ScannerGui(GuiBase):
                 return
             marker_size = tuple(abs(optimizer_range[ax]) for ax in axes)
             marker_bounds = (axes_constr[0].value_range, axes_constr[1].value_range)
-            dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
+            dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr,
+                                        xy_region_min_size_percentile=self._min_crosshair_size_fraction)
             dockwidget.scan_widget.set_marker_size(marker_size)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
             dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range,

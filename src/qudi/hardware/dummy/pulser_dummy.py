@@ -45,8 +45,8 @@ class PulserDummy(PulserInterface):
     activation_config = StatusVar(default=None)
     force_sequence_option = ConfigOption('force_sequence_option', default=False)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.log.info('Dummy Pulser: I will simulate an AWG :) !')
 

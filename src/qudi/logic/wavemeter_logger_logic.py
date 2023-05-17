@@ -58,15 +58,12 @@ class WavemeterLoggerLogic(Base):
     _logic_acquisition_timing = ConfigOption('logic_acquisition_timing', 20.0, missing='warn')
     _logic_update_timing = ConfigOption('logic_update_timing', 100.0, missing='warn')
 
-    def __init__(self, config, **kwargs):
+    def __init__(self, *args, **kwargs):
         """ Create WavemeterLoggerLogic object with connectors.
-
-          @param dict config: module configuration
-          @param dict kwargs: optional parameters
         """
         self.log.warning("This module has not been tested on the new qudi core."
                          "Use with caution and contribute bug fixed back, please.")
-        super().__init__(config=config, **kwargs)
+        super().__init__(*args, **kwargs)
 
         # locking for thread safety
         self.threadlock = Mutex()
