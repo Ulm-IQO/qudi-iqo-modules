@@ -64,10 +64,12 @@ class TiltCorrectionDockWidget(QDockWidget):
 
         origin_switch_label = QLabel("Auto origin")
         dock_widget_layout.addWidget(origin_switch_label, 4, 0)
-        toggle_switch_widget = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
+        toggle_auto_or_widget = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
+        toggle_auto_or_widget.toggle_switch.sigStateChanged.connect(self.auto_origin_changed,
+                                                                    QtCore.Qt.QueuedConnection)
         # Set size policy for the ToggleSwitchWidget
-        toggle_switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
-        dock_widget_layout.addWidget(toggle_switch_widget,4,1)
+        toggle_auto_or_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        dock_widget_layout.addWidget(toggle_auto_or_widget,4,1)
 
         self.tilt_set_04_pushButton = QPushButton("Origin")
         self.tilt_set_04_pushButton.setMaximumSize(70, 16777215)
@@ -94,6 +96,8 @@ class TiltCorrectionDockWidget(QDockWidget):
         dock_widget_contents.setLayout(dock_widget_layout)
         self.setWidget(dock_widget_contents)
 
+    # todo: disconnect  toggle_auto_or_widget.toggle_switch.sigStateChanged
+
     @property
     def support_vectors(self):
         support_vecs = self.support_vecs_box
@@ -103,15 +107,16 @@ class TiltCorrectionDockWidget(QDockWidget):
             vec_vals.append([box.value() for box in vec])
 
         return vec_vals
-        """
-        dim_idxs = list(range(self._n_dim))
 
-        all_vecs_valid = True
-        for vec in [0, 1, 2, 3]:
-            vecs_valid = [support_vecs[vec][dim].is_valid for dim in dim_idxs]
-            all_vecs_valid = np.all(vecs_valid) and all_vecs_valid
+    def auto_origin_changed(self, state):
+        # todo: make sure shift vector is correctly returned in this case
 
-        """
+        auto_enabled = True if state == 'ON' else False
+
+        [el.setEnabled(not auto_enabled) for el in self.support_vecs_box[-1]]
+        self.tilt_set_04_pushButton.setEnabled(not auto_enabled)
+
+
 
 
 

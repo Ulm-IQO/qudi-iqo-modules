@@ -300,6 +300,12 @@ class ScannerGui(GuiBase):
         for scan in tuple(self.scan_2d_dockwidgets):
             self._remove_scan_dockwidget(scan)
 
+        tilt_widget = self.tilt_correction_dockwidget
+        tilt_widget.tilt_set_01_pushButton.clicked.disconnect()
+        tilt_widget.tilt_set_02_pushButton.clicked.disconnect()
+        tilt_widget.tilt_set_03_pushButton.clicked.disconnect()
+        tilt_widget.tilt_set_04_pushButton.clicked.disconnect()
+
     def show(self):
         """Make main window visible and put it above all other windows. """
         # Show the Main Confocal GUI:
