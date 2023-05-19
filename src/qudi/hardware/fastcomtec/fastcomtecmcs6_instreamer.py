@@ -113,7 +113,6 @@ class FastComtec(DataInStreamInterface):
         self._data_buffer = np.empty(0, dtype=self._data_type)
         self._has_overflown = False
         self._read_lines = 0
-        # TODO: check whether the Fastcomtec is idle or unconfigured to allow for interaction
 
     def on_deactivate(self):
         # Free memory if possible while module is inactive
@@ -177,6 +176,12 @@ class FastComtec(DataInStreamInterface):
 
         @return bool: indicate if circular sample buffering is used (True) or not (False)
         """
+        bsetting=BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
+        if bsetting.sweepmode == 1978500:
+            self._use_circular_buffer = True
+        if bsetting.sweepmode == 1978496:
+            self._use_circular_buffer = False
         return self._use_circular_buffer
 
     @use_circular_buffer.setter
@@ -185,8 +190,16 @@ class FastComtec(DataInStreamInterface):
         Set the flag indicating if circular sample buffering is being used or not.
         @param bool, flag: indicate if circular sample buffering is used (True) or not (False) 
         """
+        if self._is_not_settable():
+            return
+        if flag:
+            self._use_circular_buffer = False
+            self.log.error("No circular buffer implemented. Circular buffer is switched off.")
+            return
         self._use_circular_buffer = flag
-
+        cmd = 'sweepmode={0}'.format(hex(1978496))
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+        
     @property
     def streaming_mode(self) -> StreamingMode:
         """
@@ -195,6 +208,12 @@ class FastComtec(DataInStreamInterface):
         @return StreamingMode: Finite (StreamingMode.FINITE) or continuous
                                (StreamingMode.CONTINUOUS) data acquisition
         """
+        bsetting=BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
+        if bsetting.sweepmode == 1880272:
+            self._streaming_mode = StreamingMode.CONTINUOUS
+            return self._streaming_mode
+        self._streaming_mode = StreamingMode.FINITE
         return self._streaming_mode
 
     @streaming_mode.setter
@@ -204,15 +223,20 @@ class FastComtec(DataInStreamInterface):
 
         @param int mode: value that is in the StreamingMode class (StreamingMode.CONTINUOUS: 0, StreamingMode.FINITE: 1)
         """
-        # TODO we need a settings settable checker, that checks, whether the fastcomtec is currently running
-        # if self._check_settings_change():
+        if self._is_not_settable():
+            return
         mode = StreamingMode(mode)
         if mode not in self._constraints.streaming_modes:
             self.log.error('Unknown streaming mode "{0}" encountered.\nValid modes are: {1}.'
                            ''.format(mode, self._constraints.streaming_modes))
             return
+        if mode == StreamingMode.FINITE:
+            cmd = 'sweepmode={0}'.format(hex(1978496))
+        else:
+            cmd = 'sweepmode={0}'.format(hex(1978500))
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         self._streaming_mode = mode
-        return
+        return mode.value
 
     @property
     def stream_length(self) -> int:
@@ -222,21 +246,22 @@ class FastComtec(DataInStreamInterface):
 
         @return int: The number of samples to acquire per channel. Ignored for continuous streaming.
         """
+        setting = AcqSettings()
+        self.dll.GetSettingData(ctypes.byref(setting), 0)
+        self._stream_length = setting.range
         return self._stream_length
     
     @stream_length.setter
     def stream_length(self, length: int):
-        # TODO do we need the check whether settings are currently changeable, e.g. are settings changeable during a running measurement?
-        # if not then a checker has to be implemented, which checks the status of the device.
-        # thus only proceeding when the status is idle or something like that.
-        # get_status() method earlier in this file could be used for that
-        # if self._check_settings_change():
+        if self._is_not_settable():
+            return
         length = int(length)
         if length < 1:
             self.log.error('Stream_length must be a positive integer >= 1.')
             return
+        cmd = 'range={0}'.format(int(length))
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         self._stream_length = length
-        return
 
     @property
     def all_settings(self) -> dict:
@@ -358,6 +383,20 @@ class FastComtec(DataInStreamInterface):
             self.log.error(
                 'There is an unknown status from FastComtec. The status message was %s' % (str(status.started)))
             return
+    
+    def _is_not_settable(self, option: str = ""):
+        """
+        Method that checks whether the FastComtec is running. Throws an error if it is running.
+        @return bool: True - device is running, can't set options: False - Device not running, can set options
+        """
+        if self.is_running:
+            if option:
+                self.log.error(f"Can't set {option} as an acquisition is currently running.")
+            else:
+                self.log.error(f"Can't set option as an acquisition is currently running.")
+            return True
+        return False
+
 
     def configure(self, sample_rate=None, streaming_mode=None, active_channels=None,
                   total_number_of_samples=None, buffer_size=None, use_circular_buffer=None):
@@ -375,6 +414,8 @@ class FastComtec(DataInStreamInterface):
 
         @return dict: All current settings in a dict. Keywords are the same as kwarg names.
         """
+        # TODO: how to handle, if no arguments are passed
+        self.sample_rate = sample_rate
         # TODO: implement the communication with the hardware for setting the settings
         return self.all_settings
 
@@ -400,11 +441,11 @@ class FastComtec(DataInStreamInterface):
         @return int: error code (0: OK, -1: Error)
         """
         # TODO: implement the correct return code
-        # TODO: do we need a stop list file writing fastcomtecmcs6: change_save_mode()
-        # TODO: implement change of list file writing
         status = self.dll.Halt(0)
         while self.is_running:
             time.sleep(0.05)
+        # set the fastcounter save mode back to standard again
+        self.change_save_mode(0)
         return status
 
     def read_data_into_buffer(self, buffer, number_of_samples=None):
