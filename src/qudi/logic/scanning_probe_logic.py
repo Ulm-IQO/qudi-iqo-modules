@@ -348,18 +348,24 @@ class ScanningProbeLogic(LogicBase):
             return
 
         support_vecs = np.asarray(support_vecs)
+        ndim = len(self.scanner_axes)
 
         if support_vecs.shape[0] != 3:
             raise ValueError(f"Need 3 n-dim support vectors, not {support_vecs.shape[0]}")
 
         if shift_vec is None:
             # todo: for the case of 3d vectors in plane, throws out too many dimensions
-            red_support_vecs = support_vecs#compute_reduced_vectors(support_vecs)
+            red_support_vecs = support_vecs #compute_reduced_vectors(support_vecs)
             shift_vec = np.mean(red_support_vecs, axis=0)
         else:
             shift_vec = np.asarray(shift_vec)
             red_support_vecs = np.vstack([support_vecs, shift_vec])# compute_reduced_vectors(np.vstack([support_vecs, shift_vec]))
             shift_vec = red_support_vecs[-1,:]
+
+        # todo remove workaround code for dim reduction
+        red_support_vecs = red_support_vecs[:,:ndim-1]
+        shift_vec = shift_vec[:ndim-1]
+
 
         rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec

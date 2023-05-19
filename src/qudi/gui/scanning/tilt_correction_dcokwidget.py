@@ -31,10 +31,10 @@ from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, Toggle
 #from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 
 class TiltCorrectionDockWidget(QDockWidget):
-    def __init__(self, parent=None, n_dim=3):
+    def __init__(self, parent=None, scanner_axes=None):
         super(TiltCorrectionDockWidget, self).__init__(parent)
 
-        self._n_dim = n_dim
+        self._n_dim = len(scanner_axes)
 
         self.setWindowTitle("Tilt Correction")
         # Create the dock widget contents
@@ -44,12 +44,11 @@ class TiltCorrectionDockWidget(QDockWidget):
 
         tiltpoint_label = QLabel("Support Vectors")
         dock_widget_layout.addWidget(tiltpoint_label, 0, 0)
-        tiltpoint_label = QLabel("X")
-        dock_widget_layout.addWidget(tiltpoint_label, 0, 1)
-        tiltpoint_label = QLabel("Y")
-        dock_widget_layout.addWidget(tiltpoint_label, 0, 2)
-        tiltpoint_label = QLabel("Z")
-        dock_widget_layout.addWidget(tiltpoint_label, 0, 3)
+
+        for idx, ax in enumerate(list(scanner_axes.keys())):
+            tiltpoint_label = QLabel(ax)
+            dock_widget_layout.addWidget(tiltpoint_label, 0, 1+idx)
+
         self.tilt_set_01_pushButton = QPushButton("Vec 1")
         self.tilt_set_01_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(self.tilt_set_01_pushButton, 1, 0)
@@ -78,7 +77,7 @@ class TiltCorrectionDockWidget(QDockWidget):
         self.support_vecs_box = []  # row: idx of support vecs (1-4), col: dimension (0-n)
         for idx_row in [1, 2, 3, 5]:
             pos_vecs = []
-            for idx_dim in range(0, n_dim):
+            for idx_dim in range(0, self._n_dim):
                 x_i_position = ScienDSpinBox()
                 x_i_position.setMinimumWidth(70)
                 dock_widget_layout.addWidget(x_i_position, idx_row, idx_dim+1)
