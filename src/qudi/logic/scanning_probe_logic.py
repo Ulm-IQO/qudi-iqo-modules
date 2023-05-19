@@ -482,7 +482,6 @@ class ScanningProbeLogic(LogicBase):
 
             return err
 
-
     def __scan_poll_loop(self):
         with self._thread_lock:
             try:
@@ -523,7 +522,10 @@ class ScanningProbeLogic(LogicBase):
         else:
             self.__scan_poll_timer.stop()
 
-    def __transform_func(coord, inverse=False):
+    def __transform_func(self, coord, inverse=False):
+        # todo: remove workaround, reduce dimension to 3d
+        coord = {key:val for key, val in list(coord.items())[:3]}
+
         # convert from coordinate dict to plain vector
         ax_2_idx = lambda ch: ord(ch) - 120  # x->0, y->1, z->2; todo only for these axes
         transform = self._tilt_corr_transform.__call__
