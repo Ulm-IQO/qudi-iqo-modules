@@ -251,9 +251,12 @@ class ScannerGui(GuiBase):
                                                                        QtCore.Qt.QueuedConnection)
         tilt_widget.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.tilt_corr_support_vector_updated,
                                                                        QtCore.Qt.QueuedConnection)
-
         self.toggle_switch_widget.toggle_switch.sigStateChanged.connect(self.toggle_tilt_correction,
                                                                         QtCore.Qt.QueuedConnection)
+        self._mw.action_toggle_tilt_correction.triggered.connect(self.toggle_tilt_correction,
+                                                                QtCore.Qt.QueuedConnection)
+
+        self.tilt_corr_support_vector_updated()
 
         # Initialize dockwidgets to default view
         self.restore_default_view()
@@ -311,6 +314,7 @@ class ScannerGui(GuiBase):
         tilt_widget.tilt_set_03_pushButton.clicked.disconnect()
         tilt_widget.tilt_set_04_pushButton.clicked.disconnect()
         tilt_widget.auto_origin_switch.toggle_switch.sigStateChanged.disconnect()
+        self._mw.action_toggle_tilt_correction.triggered.disconnect()
 
     def show(self):
         """Make main window visible and put it above all other windows. """
@@ -422,7 +426,7 @@ class ScannerGui(GuiBase):
         self.tilt_correction_dockwidget.setAllowedAreas(QtCore.Qt.BottomDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.tilt_correction_dockwidget)
         self.tilt_correction_dockwidget.setVisible(False)
-        self._mw.action_view_Tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
+        self._mw.action_view_tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
 
 
 
@@ -1070,12 +1074,28 @@ class ScannerGui(GuiBase):
             self._scanning_logic().configure_tilt_correction(support_vecs_val[:-1],
                                                              shift_vec)
             self.toggle_switch_widget.setEnabled(True)
+            self._mw.action_toggle_tilt_correction.setEnabled(True)
         else:
             self._scanning_logic().configure_tilt_correction(None, None)
             self.toggle_switch_widget.set_state('Tilt_Correction:OFF')
             self.toggle_switch_widget.setEnabled(False)
+            self._mw.action_toggle_tilt_correction.setEnabled(False)
 
     def toggle_tilt_correction(self, state):
-        enabled = True if state == 'Tilt_Correction:ON' else False
+        # toggle switch
+        if type(state) == str:
+            enabled = True if state == 'Tilt_Correction:ON' else False
+        # button
+        if type(state) == bool:
+            enabled = state
+
         self._scanning_logic().toggle_tilt_correction(enabled)
+
+        icon_on = QtGui.QIcon(QtGui.QPixmap("./artwork/icons/correct-tilt.svg"))
+        icon_off = QtGui.QIcon(QtGui.QPixmap("./artwork/icons/correct-tilt_off.svg"))
+        if enabled:
+            self._mw.action_toggle_tilt_correction.setIcon(icon_on)
+        else:
+            self._mw.action_toggle_tilt_correction.setIcon(icon_off)
+
 
