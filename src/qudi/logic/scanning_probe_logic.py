@@ -334,7 +334,7 @@ class ScanningProbeLogic(LogicBase):
             func = self.__func_debug_transform()
             self.log.info("Set test functions for coord transform")
         else:
-            func = self._tilt_corr_transform.__call__ if self._tilt_corr_transform else None
+            func = self.__transform_func if self._tilt_corr_transform else None
 
         if enable:
             self._scanner().set_coordinate_transform(func)
@@ -478,6 +478,7 @@ class ScanningProbeLogic(LogicBase):
 
             return err
 
+
     def __scan_poll_loop(self):
         with self._thread_lock:
             try:
@@ -517,3 +518,14 @@ class ScanningProbeLogic(LogicBase):
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.stop()
+
+    def __transform_func(coord, inverse=False):
+        # convert from coordinate dict to plain vector
+        ax_2_idx = lambda ch: ord(ch) - 120  # x->0, y->1, z->2; todo only for these axes
+        transform = self._tilt_corr_transform.__call__
+        coord_vec = np.asarray(list(coord.values())).T
+        coord_transf = transform(coord_vec, invert=inverse).T
+        # make dict again after vector rotation
+        coord_transf = {ax: coord_transf[ax_2_idx(ax)] for (ax, val) in coord.items()}
+
+        return coord_transf
