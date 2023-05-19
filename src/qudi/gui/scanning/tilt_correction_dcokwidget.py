@@ -43,33 +43,33 @@ class TiltCorrectionDockWidget(QDockWidget):
         # Create the widgets for tilt correction
 
         tiltpoint_label = QLabel("Support Vectors")
-        dock_widget_layout.addWidget(tiltpoint_label,0,0)
+        dock_widget_layout.addWidget(tiltpoint_label, 0, 0)
         tiltpoint_label = QLabel("X")
-        dock_widget_layout.addWidget(tiltpoint_label,0,1)
+        dock_widget_layout.addWidget(tiltpoint_label, 0, 1)
         tiltpoint_label = QLabel("Y")
         dock_widget_layout.addWidget(tiltpoint_label, 0, 2)
         tiltpoint_label = QLabel("Z")
         dock_widget_layout.addWidget(tiltpoint_label, 0, 3)
         self.tilt_set_01_pushButton = QPushButton("Vec 1")
         self.tilt_set_01_pushButton.setMaximumSize(70, 16777215)
-        dock_widget_layout.addWidget(self.tilt_set_01_pushButton,1,0)
+        dock_widget_layout.addWidget(self.tilt_set_01_pushButton, 1, 0)
 
         self.tilt_set_02_pushButton = QPushButton("Vec 2")
         self.tilt_set_02_pushButton.setMaximumSize(70, 16777215)
-        dock_widget_layout.addWidget(self.tilt_set_02_pushButton,2,0)
+        dock_widget_layout.addWidget(self.tilt_set_02_pushButton, 2, 0)
 
         self.tilt_set_03_pushButton = QPushButton("Vec 3")
         self.tilt_set_03_pushButton.setMaximumSize(70, 16777215)
-        dock_widget_layout.addWidget(self.tilt_set_03_pushButton,3,0)
+        dock_widget_layout.addWidget(self.tilt_set_03_pushButton, 3, 0)
 
         origin_switch_label = QLabel("Auto origin")
         dock_widget_layout.addWidget(origin_switch_label, 4, 0)
-        toggle_auto_or_widget = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
-        toggle_auto_or_widget.toggle_switch.sigStateChanged.connect(self.auto_origin_changed,
+        self.auto_origin_switch = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
+        # todo: disconnect  self.auto_origin_switch.toggle_switch.sigStateChanged
+        self.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.auto_origin_changed,
                                                                     QtCore.Qt.QueuedConnection)
-        # Set size policy for the ToggleSwitchWidget
-        toggle_auto_or_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
-        dock_widget_layout.addWidget(toggle_auto_or_widget,4,1)
+        self.auto_origin_switch.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        dock_widget_layout.addWidget(self.auto_origin_switch, 4, 1)
 
         self.tilt_set_04_pushButton = QPushButton("Origin")
         self.tilt_set_04_pushButton.setMaximumSize(70, 16777215)
@@ -80,23 +80,19 @@ class TiltCorrectionDockWidget(QDockWidget):
             pos_vecs = []
             for idx_dim in range(0, n_dim):
                 x_i_position = ScienDSpinBox()
+                x_i_position.setMinimumWidth(70)
                 dock_widget_layout.addWidget(x_i_position, idx_row, idx_dim+1)
                 x_i_position.setValue(np.nan)
                 pos_vecs.append(x_i_position)
             self.support_vecs_box.append(pos_vecs)
 
-
-
-
-        #calc_tilt_pushButton = QPushButton("Calc. Tilt")
-        #dock_widget_layout.addWidget(calc_tilt_pushButton)
-
         # Set the dock widget contents
-
         dock_widget_contents.setLayout(dock_widget_layout)
         self.setWidget(dock_widget_contents)
 
-    # todo: disconnect  toggle_auto_or_widget.toggle_switch.sigStateChanged
+        # default init auto origin button = True
+        self.auto_origin_switch.set_state('ON')
+        self.auto_origin_changed(self.auto_origin_switch.switch_state)
 
     @property
     def support_vectors(self):
@@ -108,13 +104,26 @@ class TiltCorrectionDockWidget(QDockWidget):
 
         return vec_vals
 
+    @property
+    def auto_origin(self):
+        return True if self.auto_origin_switch.switch_state == 'ON' else False
+
     def auto_origin_changed(self, state):
-        # todo: make sure shift vector is correctly returned in this case
 
         auto_enabled = True if state == 'ON' else False
 
         [el.setEnabled(not auto_enabled) for el in self.support_vecs_box[-1]]
+
+        # nan renders the gui boxes invalid/red, so instead inf
+        [el.setValue(np.inf) for el in self.support_vecs_box[-1]]
+        if not auto_enabled:
+            [el.setValue(np.nan) for el in self.support_vecs_box[-1]]
+
         self.tilt_set_04_pushButton.setEnabled(not auto_enabled)
+
+
+
+
 
 
 

@@ -343,6 +343,10 @@ class ScanningProbeLogic(LogicBase):
 
     def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
 
+        if support_vecs is None:
+            self._tilt_corr_transform = None
+            return
+
         support_vecs = np.asarray(support_vecs)
 
         if support_vecs.shape[0] != 3:
