@@ -29,7 +29,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
-from qudi.interface.data_instream_interface import StreamChannelType, StreamingMode
+# from qudi.interface.data_instream_interface import StreamChannelType, StreamingMode
 
 
 class TimeSeriesReaderLogic(LogicBase):
@@ -58,7 +58,6 @@ class TimeSeriesReaderLogic(LogicBase):
 
     # config options
     _max_frame_rate = ConfigOption('max_frame_rate', default=10, missing='warn')
-    _calc_digital_freq = ConfigOption('calc_digital_freq', default=True, missing='warn')
 
     # status vars
     _trace_window_size = StatusVar('trace_window_size', default=6)
@@ -88,7 +87,6 @@ class TimeSeriesReaderLogic(LogicBase):
         self._recorded_data = None
         self._data_recording_active = False
         self._record_start_time = None
-        return
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -175,7 +173,7 @@ class TimeSeriesReaderLogic(LogicBase):
 
         @return SlowCounterConstraints: object with constraints for the counter
         """
-        return self._streamer().get_constraints()
+        return self._streamer().constraints
 
     @property
     def data_rate(self):
@@ -184,7 +182,6 @@ class TimeSeriesReaderLogic(LogicBase):
     @data_rate.setter
     def data_rate(self, val):
         self.configure_settings(data_rate=val)
-        return
 
     @property
     def trace_window_size(self):
@@ -193,7 +190,6 @@ class TimeSeriesReaderLogic(LogicBase):
     @trace_window_size.setter
     def trace_window_size(self, val):
         self.configure_settings(trace_window_size=val)
-        return
 
     @property
     def moving_average_width(self):
@@ -202,7 +198,6 @@ class TimeSeriesReaderLogic(LogicBase):
     @moving_average_width.setter
     def moving_average_width(self, val):
         self.configure_settings(moving_average_width=val)
-        return
 
     @property
     def data_recording_active(self):
@@ -210,20 +205,11 @@ class TimeSeriesReaderLogic(LogicBase):
 
     @property
     def oversampling_factor(self):
-        """
-
-        @return int: Oversampling factor (always >= 1). Value of 1 means no oversampling.
-        """
         return self._oversampling_factor
 
     @oversampling_factor.setter
     def oversampling_factor(self, val):
-        """
-
-        @param int val: The oversampling factor to set. Must be >= 1.
-        """
         self.configure_settings(oversampling_factor=val)
-        return
 
     @property
     def sampling_rate(self):
@@ -231,37 +217,17 @@ class TimeSeriesReaderLogic(LogicBase):
 
     @property
     def available_channels(self):
-        return self._streamer().available_channels
-
-    @property
-    def active_channels(self):
-        return self._streamer().active_channels
+        return list(self.streamer_constraints.channel_units)
 
     @property
     def active_channel_names(self):
-        return tuple(ch.name for ch in self._streamer().active_channels)
+        return self._streamer().active_channels
 
     @property
     def active_channel_units(self):
-        unit_dict = dict()
-        for ch in self._streamer().active_channels:
-            if self._calc_digital_freq and ch.type == StreamChannelType.DIGITAL:
-                unit_dict[ch.name] = 'Hz'
-            else:
-                unit_dict[ch.name] = ch.unit
-        return unit_dict
-
-    @property
-    def active_channel_types(self):
-        return {ch.name: ch.type for ch in self._streamer().active_channels}
-
-    @property
-    def has_active_analog_channels(self):
-        return any(ch.type == StreamChannelType.ANALOG for ch in self._streamer().active_channels)
-
-    @property
-    def has_active_digital_channels(self):
-        return any(ch.type == StreamChannelType.DIGITAL for ch in self._streamer().active_channels)
+        channels = self.active_channel_names
+        return {ch: unit for ch, unit in self.streamer_constraints.channel_units.items() for ch in
+                channels}
 
     @property
     def averaged_channel_names(self):
@@ -269,7 +235,7 @@ class TimeSeriesReaderLogic(LogicBase):
 
     @property
     def number_of_active_channels(self):
-        return self._streamer().number_of_channels
+        return len(self.active_channel_names)
 
     @property
     def trace_data(self):
@@ -325,7 +291,7 @@ class TimeSeriesReaderLogic(LogicBase):
 
         with self.threadlock:
             constraints = self.streamer_constraints
-            all_ch = tuple(ch.name for ch in self._streamer().available_channels)
+            all_ch = tuple(constraints.channel_units)
             data_rate = self.data_rate
             active_ch = self.active_channel_names
 
