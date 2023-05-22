@@ -69,12 +69,14 @@ class SampleGenerator:
                  signal_shapes: Iterable[SignalShape],
                  sample_rate: float,
                  sample_timing: SampleTiming,
+                 streaming_mode: StreamingMode,
                  data_type: Union[type, str],
                  buffer_size: int,
                  ) -> None:
         self.data_type = np.dtype(data_type)
         self.sample_rate = float(sample_rate)
         self.sample_timing = SampleTiming(sample_timing)
+        self.streaming_mode = StreamingMode(streaming_mode)
         self.signal_shapes = [SignalShape(shape) for shape in signal_shapes]
         self.buffer_size = buffer_size
 
@@ -115,37 +117,42 @@ class SampleGenerator:
         now = time.perf_counter()
         elapsed_time = now - self._last_time
         time_offset = self._last_time - self._start_time
-        samples = int(elapsed_time * self.sample_rate)  # truncate
-
-        # Generate x-axis (time) for sample generation
-        if self.sample_timing == SampleTiming.CONSTANT:
-            x = np.arange(samples, dtype=np.float64)
-            x /= self.sample_rate
-        else:
-            # randomize ticks within time interval for non-regular sampling
-            x = np.random.rand(samples)
-            x.sort()
-            x *= elapsed_time
-        x += time_offset
-
-        # Generate samples and write into buffer
         insert = self.__start + self.__available_samples
-        end = insert + samples
         buf_size = self._sample_buffer.shape[1]
-        if end > buf_size:
-            first_samples = buf_size - insert
-            end = end - buf_size
-            for ch_idx, generator in enumerate(self._generator_functions):
-                generator(x[:first_samples], self._sample_buffer[ch_idx, insert:])
-                generator(x[first_samples:], self._sample_buffer[ch_idx, :end])
-            if self.sample_timing == SampleTiming.TIMESTAMP:
-                self._timestamp_buffer[insert:] = x[:first_samples]
-                self._timestamp_buffer[:end] = x[first_samples:]
-        else:
-            for ch_idx, generator in enumerate(self._generator_functions):
-                generator(x, self._sample_buffer[ch_idx, insert:end])
-            if self.sample_timing == SampleTiming.TIMESTAMP:
-                self._timestamp_buffer[insert:end] = x
+        samples = int(elapsed_time * self.sample_rate)  # truncate
+        if self.streaming_mode == StreamingMode.FINITE:
+            samples = min(samples, buf_size - insert)
+
+        if samples > 0:
+            # Generate x-axis (time) for sample generation
+            if self.sample_timing == SampleTiming.CONSTANT:
+                x = np.arange(samples, dtype=np.float64)
+                x /= self.sample_rate
+            else:
+                # randomize ticks within time interval for non-regular sampling
+                x = np.random.rand(samples)
+                x.sort()
+                x *= elapsed_time
+            x += time_offset
+
+            # Generate samples and write into buffer
+
+            end = insert + samples
+            if end > buf_size:
+                first_samples = buf_size - insert
+                end = end - buf_size
+                for ch_idx, generator in enumerate(self._generator_functions):
+                    generator(x[:first_samples], self._sample_buffer[ch_idx, insert:])
+                    generator(x[first_samples:], self._sample_buffer[ch_idx, :end])
+                if self.sample_timing == SampleTiming.TIMESTAMP:
+                    self._timestamp_buffer[insert:] = x[:first_samples]
+                    self._timestamp_buffer[:end] = x[first_samples:]
+            else:
+                for ch_idx, generator in enumerate(self._generator_functions):
+                    generator(x, self._sample_buffer[ch_idx, insert:end])
+                if self.sample_timing == SampleTiming.TIMESTAMP:
+                    self._timestamp_buffer[insert:end] = x
+
         # Update pointers
         self.__available_samples += samples
         self._last_time = now
@@ -214,7 +221,7 @@ class InStreamDummy(DataInStreamInterface):
     _channel_signals = ConfigOption(
         name='channel_signals',
         missing='error',
-        constructor=lambda signals: [SignalShape(x.lower()) for x in signals]
+        constructor=lambda signals: [SignalShape[x.upper()] for x in signals]
     )
     _data_type = ConfigOption(name='data_type',
                               default='float64',
@@ -351,7 +358,7 @@ class InStreamDummy(DataInStreamInterface):
             raise ValueError(f'Invalid channels to set active {channels}. Allowed channels are '
                              f'{set(self._constraints.channel_units)}')
         channel_shapes = {ch: self._channel_signals[idx] for idx, ch in
-                          self._constraints.channel_units if ch in channels}
+                          enumerate(self._constraints.channel_units) if ch in channels}
         self._sample_generator.signal_shapes = [shape for shape in channel_shapes.values()]
         self._active_channels = list(channel_shapes)
 
