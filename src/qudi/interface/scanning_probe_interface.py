@@ -627,10 +627,12 @@ class CoordinateTransformMixin:
         self._coordinate_transform = transform_func
 
     def move_absolute(self, position, velocity=None, blocking=False):
-        return super().move_absolute(self.coordinate_transform(position), velocity, blocking)
+        new_pos_bare = super().move_absolute(self.coordinate_transform(position), velocity, blocking)
+        return self.coordinate_transform(new_pos_bare, inverse=True)
 
     def move_relative(self, distance, velocity=None, blocking=False):
-        return super().move_relative(self.coordinate_transform(distance), velocity, blocking)
+        new_pos_bare =  super().move_relative(self.coordinate_transform(distance), velocity, blocking)
+        return self.coordinate_transform(new_pos_bare, inverse=True)
 
     def get_target(self):
         return self.coordinate_transform(super().get_target(), inverse=True)

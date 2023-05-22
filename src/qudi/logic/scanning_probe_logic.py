@@ -342,6 +342,7 @@ class ScanningProbeLogic(LogicBase):
             self._scanner().set_coordinate_transform(func)
         else:
             self._scanner().set_coordinate_transform(None)
+            target_pos = self._scanner().get_target()
 
         # set target pos again with updated, (dis-) engaged tilt correction
         self.set_target_position(target_pos)
