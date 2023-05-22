@@ -73,7 +73,7 @@ class SampleGenerator:
                  data_type: Union[type, str],
                  buffer_size: int,
                  ) -> None:
-        self.data_type = np.dtype(data_type)
+        self.data_type = np.dtype(data_type).type
         self.sample_rate = float(sample_rate)
         self.sample_timing = SampleTiming(sample_timing)
         self.streaming_mode = StreamingMode(streaming_mode)
@@ -226,7 +226,7 @@ class InStreamDummy(DataInStreamInterface):
     _data_type = ConfigOption(name='data_type',
                               default='float64',
                               missing='info',
-                              constructor=lambda typ: np.dtype(typ))
+                              constructor=lambda typ: np.dtype(typ).type)
     _sample_timing = ConfigOption(name='sample_timing',
                                   default='CONSTANT',
                                   missing='info',

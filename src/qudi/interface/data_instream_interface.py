@@ -64,7 +64,7 @@ class DataInStreamConstraints:
         self._channel_units = {**channel_units}
         self._sample_timing = SampleTiming(sample_timing)
         self._streaming_modes = [StreamingMode(mode) for mode in streaming_modes]
-        self._data_type = np.dtype(data_type)
+        self._data_type = np.dtype(data_type).type
         self._channel_buffer_size = channel_buffer_size
         if sample_rate is None:
             if SampleTiming.CONSTANT in self._sample_timings:
