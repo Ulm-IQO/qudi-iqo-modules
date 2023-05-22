@@ -553,7 +553,7 @@ class ScanningProbeLogic(LogicBase):
         coord_vec = np.asarray(list(coord_reduced.values())).T
         coord_vec_transf = transform(coord_vec, invert=inverse).T
         # make dict again after vector rotation
-        coord_transf = coord
+        coord_transf = cp.copy(coord)
         [coord_transf.update({ax: coord_vec_transf[idx]})  for (idx, (ax, val)) in enumerate(coord_reduced.items())]
 
         return coord_transf
