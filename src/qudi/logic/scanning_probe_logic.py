@@ -298,8 +298,13 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
+            #self.log.debug(f"Set pos to= {pos_dict}")
             ax_constr = self.scanner_constraints.axes
+            old_target = self.scanner_target
             new_pos = pos_dict.copy()
+            old_target.update(new_pos)  # tilt correction needs all coordinates, not only the new ones given
+            new_pos = old_target
+
             for ax, pos in pos_dict.items():
                 if ax not in ax_constr:
                     self.log.error('Unknown scanner axis: "{0}"'.format(ax))
@@ -313,6 +318,7 @@ class ScanningProbeLogic(LogicBase):
                                      'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
 
             new_pos = self._scanner().move_absolute(new_pos, blocking=move_blocking)
+            #self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
             #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
