@@ -29,7 +29,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
-# from qudi.interface.data_instream_interface import StreamChannelType, StreamingMode
+from qudi.interface.data_instream_interface import StreamingMode
 
 
 class TimeSeriesReaderLogic(LogicBase):
@@ -73,9 +73,8 @@ class TimeSeriesReaderLogic(LogicBase):
         super().__init__(*args, **kwargs)
 
         # locking for thread safety
-        self.threadlock = Mutex()
+        self._threadlock = Mutex()
         self._samples_per_frame = None
-        self._stop_requested = True
 
         # Data arrays
         self._trace_data = None
@@ -95,22 +94,21 @@ class TimeSeriesReaderLogic(LogicBase):
         streamer = self._streamer()
 
         # Flag to stop the loop and process variables
-        self._stop_requested = True
         self._data_recording_active = False
         self._record_start_time = None
 
         # Check valid StatusVar
         # active channels
-        avail_channels = tuple(ch.name for ch in streamer.available_channels)
+        avail_channels = self.available_channels
         if self._active_channels is None:
             if streamer.active_channels:
-                self._active_channels = tuple(ch.name for ch in streamer.active_channels)
+                self._active_channels = tuple(streamer.active_channels)
             else:
                 self._active_channels = avail_channels
         elif any(ch not in avail_channels for ch in self._active_channels):
             self.log.warning('Invalid active channels found in StatusVar. StatusVar ignored.')
             if streamer.active_channels:
-                self._active_channels = tuple(ch.name for ch in streamer.active_channels)
+                self._active_channels = tuple(streamer.active_channels)
             else:
                 self._active_channels = avail_channels
 
@@ -119,7 +117,8 @@ class TimeSeriesReaderLogic(LogicBase):
             self._averaged_channels = self._active_channels
         else:
             self._averaged_channels = tuple(
-                ch for ch in self._averaged_channels if ch in self._active_channels)
+                ch for ch in self._averaged_channels if ch in self._active_channels
+            )
 
         # Check for odd moving averaging window
         if self._moving_average_width % 2 == 0:
@@ -132,35 +131,36 @@ class TimeSeriesReaderLogic(LogicBase):
         settings = self.all_settings
         settings['active_channels'] = self._active_channels
         settings['data_rate'] = self._data_rate
-        self.configure_settings(**settings)
+        self.configure_settings(settings)
 
         # set up internal frame loop connection
         self._sigNextDataFrame.connect(self.acquire_data_block, QtCore.Qt.QueuedConnection)
-        return
 
     def on_deactivate(self):
         """ De-initialisation performed during deactivation of the module.
         """
-        # Stop measurement
-        if self.module_state() == 'locked':
-            self._stop_reader_wait()
-
-        self._sigNextDataFrame.disconnect()
-
-        # Save status vars
-        self._active_channels = self.active_channel_names
-        self._data_rate = self.data_rate
-        return
+        try:
+            self._sigNextDataFrame.disconnect()
+            # Stop measurement
+            if self.module_state() == 'locked':
+                self._stop()
+        finally:
+            # Save status vars
+            self._active_channels = self.active_channel_names
+            self._data_rate = self.data_rate
 
     def _init_data_arrays(self):
         window_size = self.trace_window_size_samples
         self._trace_data = np.zeros(
-            [self.number_of_active_channels, window_size + self._moving_average_width // 2])
+            [self.number_of_active_channels, window_size + self._moving_average_width // 2],
+            dtype=self.streamer_constraints.data_type
+        )
         self._trace_data_averaged = np.zeros(
-            [len(self._averaged_channels), window_size - self._moving_average_width // 2])
-        self._trace_times = np.arange(window_size) / self.data_rate
+            [len(self._averaged_channels), window_size - self._moving_average_width // 2],
+            dtype=self.streamer_constraints.data_type
+        )
+        self._trace_times = np.arange(window_size, dtype=np.float64) / self.data_rate
         self._recorded_data = list()
-        return
 
     @property
     def trace_window_size_samples(self):
@@ -168,11 +168,7 @@ class TimeSeriesReaderLogic(LogicBase):
 
     @property
     def streamer_constraints(self):
-        """
-        Retrieve the hardware constrains from the counter device.
-
-        @return SlowCounterConstraints: object with constraints for the counter
-        """
+        """ Retrieve the hardware constrains from the counter device """
         return self._streamer().constraints
 
     @property
@@ -217,17 +213,18 @@ class TimeSeriesReaderLogic(LogicBase):
 
     @property
     def available_channels(self):
-        return list(self.streamer_constraints.channel_units)
+        return tuple(self.streamer_constraints.channel_units)
 
     @property
     def active_channel_names(self):
-        return self._streamer().active_channels
+        return tuple(self._streamer().active_channels)
 
     @property
     def active_channel_units(self):
-        channels = self.active_channel_names
-        return {ch: unit for ch, unit in self.streamer_constraints.channel_units.items() for ch in
-                channels}
+        streamer = self._streamer()
+        active_channels = streamer.active_channels
+        channel_units = streamer.constraints.channel_units
+        return {ch: unit for ch, unit in channel_units.items() if ch in active_channels}
 
     @property
     def averaged_channel_names(self):
@@ -255,7 +252,7 @@ class TimeSeriesReaderLogic(LogicBase):
     @property
     def all_settings(self):
         return {'oversampling_factor': self.oversampling_factor,
-                'active_channels': self.active_channels,
+                'active_channels': self.active_channel_names,
                 'averaged_channels': self.averaged_channel_names,
                 'moving_average_width': self.moving_average_width,
                 'trace_window_size': self.trace_window_size,
@@ -274,267 +271,154 @@ class TimeSeriesReaderLogic(LogicBase):
         """
         if self.data_recording_active:
             self.log.warning('Unable to configure settings while data is being recorded.')
-            return self.all_settings
-
-        if settings_dict is None:
-            settings_dict = kwargs
-        else:
-            settings_dict.update(kwargs)
-
-        if not settings_dict:
-            return self.all_settings
+            return
 
         # Flag indicating if the stream should be restarted
         restart = self.module_state() == 'locked'
         if restart:
             self._stop_reader_wait()
 
-        with self.threadlock:
-            constraints = self.streamer_constraints
-            all_ch = tuple(constraints.channel_units)
-            data_rate = self.data_rate
-            active_ch = self.active_channel_names
-
-            if 'oversampling_factor' in settings_dict:
-                new_val = int(settings_dict['oversampling_factor'])
-                if new_val < 1:
-                    self.log.error('Oversampling factor must be integer value >= 1 '
-                                   '(received: {0:d}).'.format(new_val))
-                else:
-                    if self.has_active_analog_channels and self.has_active_digital_channels:
-                        min_val = constraints.combined_sample_rate.minimum
-                        max_val = constraints.combined_sample_rate.maximum
-                    elif self.has_active_analog_channels:
-                        min_val = constraints.analog_sample_rate.minimum
-                        max_val = constraints.analog_sample_rate.maximum
-                    else:
-                        min_val = constraints.digital_sample_rate.minimum
-                        max_val = constraints.digital_sample_rate.maximum
-                    if not (min_val <= (new_val * data_rate) <= max_val):
-                        if 'data_rate' in settings_dict:
-                            self._oversampling_factor = new_val
-                        else:
-                            self.log.error('Oversampling factor to set ({0:d}) would cause '
-                                           'sampling rate outside allowed value range. '
-                                           'Setting not changed.'.format(new_val))
-                    else:
-                        self._oversampling_factor = new_val
-
-            if 'moving_average_width' in settings_dict:
-                new_val = int(settings_dict['moving_average_width'])
-                if new_val < 1:
-                    self.log.error('Moving average width must be integer value >= 1 '
-                                   '(received: {0:d}).'.format(new_val))
-                elif new_val % 2 == 0:
-                    new_val += 1
-                    self.log.warning('Moving average window must be odd integer number in order to '
-                                     'ensure perfect data alignment. Will increase value to {0:d}.'
-                                     ''.format(new_val))
-                if new_val / data_rate > self.trace_window_size:
-                    if 'data_rate' in settings_dict or 'trace_window_size' in settings_dict:
-                        self._moving_average_width = new_val
-                        self.__moving_filter = np.full(shape=self.moving_average_width,
-                                                       fill_value=1.0 / self.moving_average_width)
-                    else:
-                        self.log.warning('Moving average width to set ({0:d}) is smaller than the '
-                                         'trace window size. Will adjust trace window size to '
-                                         'match.'.format(new_val))
-                        self._trace_window_size = float(new_val / data_rate)
-                else:
-                    self._moving_average_width = new_val
-                    self.__moving_filter = np.full(shape=self.moving_average_width,
-                                                   fill_value=1.0 / self.moving_average_width)
-
-            if 'data_rate' in settings_dict:
-                new_val = float(settings_dict['data_rate'])
-                if new_val < 0:
-                    self.log.error('Data rate must be float value > 0.')
-                else:
-                    if self.has_active_analog_channels and self.has_active_digital_channels:
-                        min_val = constraints.combined_sample_rate.minimum
-                        max_val = constraints.combined_sample_rate.maximum
-                    elif self.has_active_analog_channels:
-                        min_val = constraints.analog_sample_rate.minimum
-                        max_val = constraints.analog_sample_rate.maximum
-                    else:
-                        min_val = constraints.digital_sample_rate.minimum
-                        max_val = constraints.digital_sample_rate.maximum
-                    sample_rate = new_val * self.oversampling_factor
-                    if not (min_val <= sample_rate <= max_val):
-                        self.log.warning('Data rate to set ({0:.3e}Hz) would cause sampling rate '
-                                         'outside allowed value range. Will clip data rate to '
-                                         'boundaries.'.format(new_val))
-                        if sample_rate > max_val:
-                            new_val = max_val / self.oversampling_factor
-                        elif sample_rate < min_val:
-                            new_val = min_val / self.oversampling_factor
-
-                    data_rate = new_val
-                    if self.moving_average_width / data_rate > self.trace_window_size:
-                        if 'trace_window_size' not in settings_dict:
-                            self.log.warning('Data rate to set ({0:.3e}Hz) would cause too few '
-                                             'data points within the trace window. Adjusting window'
-                                             ' size.'.format(new_val))
-                            self._trace_window_size = self.moving_average_width / data_rate
-
-            if 'trace_window_size' in settings_dict:
-                new_val = float(settings_dict['trace_window_size'])
-                if new_val < 0:
-                    self.log.error('Trace window size must be float value > 0.')
-                else:
-                    # Round window to match data rate
-                    data_points = int(round(new_val * data_rate))
-                    new_val = data_points / data_rate
-                    # Check if enough points are present
-                    if data_points < self.moving_average_width:
-                        self.log.warning('Requested trace_window_size ({0:.3e}s) would have too '
-                                         'few points for moving average. Adjusting window size.'
-                                         ''.format(new_val))
-                        new_val = self.moving_average_width / data_rate
-                    self._trace_window_size = new_val
-
-            if 'active_channels' in settings_dict:
-                new_val = tuple(settings_dict['active_channels'])
-                if any(ch not in all_ch for ch in new_val):
-                    self.log.error('Invalid channel found to set active.')
-                else:
-                    active_ch = new_val
-
-            if 'averaged_channels' in settings_dict:
-                new_val = tuple(ch for ch in settings_dict['averaged_channels'] if ch in active_ch)
-                if any(ch not in all_ch for ch in new_val):
-                    self.log.error('Invalid channel found to set activate moving average for.')
-                else:
-                    self._averaged_channels = new_val
-
-            # Apply settings to hardware if needed
-            self._streamer().configure(sample_rate=data_rate * self.oversampling_factor,
-                                       streaming_mode=StreamingMode.CONTINUOUS,
-                                       active_channels=active_ch,
-                                       buffer_size=10000000,
-                                       use_circular_buffer=True)
-
-            # update actually set values
-            self._averaged_channels = tuple(
-                ch for ch in self._averaged_channels if ch in self.active_channel_names)
-
-            self._samples_per_frame = int(round(self.data_rate / self._max_frame_rate))
-            self._init_data_arrays()
+        try:
+            # Refine and sanity check settings
             settings = self.all_settings
-            self.sigSettingsChanged.emit(settings)
-            if not restart:
-                self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
-        if restart:
-            self.start_reading()
-        return settings
+            if settings_dict is not None:
+                settings.update(settings_dict)
+            settings.update(kwargs)
+            settings['oversampling_factor'] = int(settings['oversampling_factor'])
+            settings['moving_average_width'] = int(settings_dict['moving_average_width'])
+            settings_dict['data_rate'] = float(settings_dict['data_rate'])
+            settings_dict['trace_window_size'] = int(round(settings_dict['trace_window_size'] * settings_dict['data_rate'])) / settings_dict['data_rate']
+            settings_dict['active_channels'] = tuple(settings_dict['active_channels'])
+            settings_dict['averaged_channels'] = tuple(
+                ch for ch in settings_dict['averaged_channels'] if
+                ch in settings_dict['active_channels']
+            )
+
+            if settings['oversampling_factor'] < 1:
+                raise ValueError(f'Oversampling factor must be integer value >= 1 '
+                                 f'(received: {settings["oversampling_factor"]:d})')
+
+            if settings['moving_average_width'] < 1:
+                raise ValueError(f'Moving average width must be integer value >= 1 '
+                                 f'(received: {settings["moving_average_width"]:d})')
+            if settings['moving_average_width'] % 2 == 0:
+                settings['moving_average_width'] += 1
+                self.log.warning(f'Moving average window must be odd integer number in order to ensure '
+                                 f'perfect data alignment. Increased value to '
+                                 f'{settings["moving_average_width"]:d}.')
+            if settings['moving_average_width'] / settings['data_rate'] > settings['trace_window_size']:
+                self.log.warning(f'Moving average width ({settings["moving_average_width"]:d}) is '
+                                 f'smaller than the trace window size. Will adjust trace window size '
+                                 f'to match.')
+                settings['trace_window_size'] = float(
+                    settings['moving_average_width'] / settings['data_rate']
+                )
+
+            with self._threadlock:
+                # Apply settings to hardware if needed
+                self._streamer().configure(
+                    active_channels=settings_dict['active_channels'],
+                    streaming_mode=StreamingMode.CONTINUOUS,
+                    channel_buffer_size=1024**2,
+                    sample_rate=settings_dict['data_rate'] * settings['oversampling_factor']
+                )
+                # update actually set values
+                self._oversampling_factor = settings['oversampling_factor']
+                self._moving_average_width = settings['moving_average_width']
+                self._trace_window_size = settings_dict['trace_window_size']
+                self._averaged_channels = tuple(ch for ch in settings_dict['averaged_channels'] if
+                                                ch in self.active_channel_names)
+                self.__moving_filter = np.full(shape=self._moving_average_width,
+                                               fill_value=1.0 / self._moving_average_width)
+                self._samples_per_frame = int(round(self.data_rate / self._max_frame_rate))
+                self._init_data_arrays()
+        except:
+            self.log.exception('Error while trying to configure new settings:')
+            raise
+        finally:
+                self.sigSettingsChanged.emit(self.all_settings)
+                if restart:
+                    self.start_reading()
+                else:
+                    self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
 
     @QtCore.Slot()
     def start_reading(self):
-        """
-        Start data acquisition loop.
-
-        @return error: 0 is OK, -1 is error
-        """
-        with self.threadlock:
+        """ Start data acquisition loop """
+        with self._threadlock:
             # Lock module
             if self.module_state() == 'locked':
                 self.log.warning('Data acquisition already running. "start_reading" call ignored.')
                 self.sigStatusChanged.emit(True, self._data_recording_active)
-                return 0
+                return
 
             self.module_state.lock()
-            self._stop_requested = False
-
-            self.sigStatusChanged.emit(True, self._data_recording_active)
-
-            # # Configure streaming device
-            # curr_settings = self._streamer().configure(sample_rate=self.sampling_rate,
-            #                                          streaming_mode=StreamingMode.CONTINUOUS,
-            #                                          active_channels=self._active_channels,
-            #                                          buffer_size=10000000,
-            #                                          use_circular_buffer=True)
-            # # update actually set values
-            # self._active_channels = tuple(ch.name for ch in curr_settings['active_channels'])
-            # self._averaged_channels = tuple(
-            #     ch for ch in self._averaged_channels if ch in self._active_channels)
-            # self._data_rate = curr_settings['sample_rate'] / self._oversampling_factor
-            #
-            # self._samples_per_frame = int(round(self._data_rate / self._max_frame_rate))
-            # self._init_data_arrays()
-            # settings = self.all_settings
-            # self.sigSettingsChanged.emit(settings)
-
-            if self._data_recording_active:
-                self._record_start_time = dt.datetime.now()
-                self._recorded_data = list()
-
-            if self._streamer().start_stream() < 0:
-                self.log.error('Error while starting streaming device data acquisition.')
-                self._stop_requested = True
+            try:
+                if self._data_recording_active:
+                    self._record_start_time = dt.datetime.now()
+                    self._recorded_data = list()
+                self._streamer().start_stream()
+            except:
+                self.module_state.unlock()
+                self.log.exception('Error while starting stream reader:')
+                raise
+            finally:
                 self._sigNextDataFrame.emit()
-                return -1
-
-            self._sigNextDataFrame.emit()
-        return 0
+                self.sigStatusChanged.emit(self.module_state() == 'locked',
+                                           self._data_recording_active)
 
     @QtCore.Slot()
     def stop_reading(self):
-        """
-        Send a request to stop counting.
+        """ Send a request to stop counting """
+        with self._threadlock:
+            self._stop()
 
-        @return int: error code (0: OK, -1: error)
-        """
-        with self.threadlock:
-            if self.module_state() == 'locked':
-                self._stop_requested = True
-        return 0
+    def _stop(self) -> None:
+        if self.module_state() == 'locked':
+            try:
+                self._streamer().stop_stream()
+                if self._data_recording_active:
+                    self._save_recorded_data(to_file=True, save_figure=True)
+                    self._recorded_data = list()
+            except:
+                self.log.exception('Error while trying to stop stream reader:')
+                raise
+            finally:
+                self.module_state.unlock()
+                self._data_recording_active = False
+                self.sigStatusChanged.emit(False, False)
 
     @QtCore.Slot()
     def acquire_data_block(self):
+        """ This method gets the available data from the hardware. It runs repeatedly by being
+        connected to a QTimer timeout signal.
         """
-        This method gets the available data from the hardware.
-
-        It runs repeatedly by being connected to a QTimer timeout signal.
-        """
-        with self.threadlock:
+        with self._threadlock:
             if self.module_state() == 'locked':
-                # check for break condition
-                if self._stop_requested:
-                    # terminate the hardware streaming
-                    if self._streamer().stop_stream() < 0:
-                        self.log.error(
-                            'Error while trying to stop streaming device data acquisition.')
-                    if self._data_recording_active:
-                        self._save_recorded_data(to_file=True, save_figure=True)
-                        self._recorded_data = list()
-                    self._data_recording_active = False
-                    self.module_state.unlock()
-                    self.sigStatusChanged.emit(False, False)
-                    return
+                try:
+                    streamer = self._streamer()
+                    samples_to_read = max(
+                        (streamer.available_samples // self._oversampling_factor) * self._oversampling_factor,
+                        self._samples_per_frame * self._oversampling_factor
+                    )
+                    if samples_to_read > 0:
+                        # read the current counter values
+                        data, timestamps = streamer.read_data(number_of_samples=samples_to_read)
+                        if data.shape[1] != samples_to_read:
+                            raise RuntimeError(
+                                f'Number of samples read from stream ({data.shape[1]:d}) does not '
+                                f'match requested number of samples ({samples_to_read:d})'
+                            )
+                        # Process data
+                        self._process_trace_data(data)
+                        # Emit update signal
+                        self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
+                except:
+                    self.log.exception('Reading data from streamer went wrong')
+                    self._stop()
+                    raise
 
-                samples_to_read = max(
-                    (self._streamer().available_samples // self._oversampling_factor) * self._oversampling_factor,
-                    self._samples_per_frame * self._oversampling_factor)
-                if samples_to_read < 1:
-                    self._sigNextDataFrame.emit()
-                    return
-
-                # read the current counter values
-                data = self._streamer().read_data(number_of_samples=samples_to_read)
-                if data.shape[1] != samples_to_read:
-                    self.log.error('Reading data from streamer went wrong; '
-                                   'killing the stream with next data frame.')
-                    self._stop_requested = True
-                    self._sigNextDataFrame.emit()
-                    return
-
-                # Process data
-                self._process_trace_data(data)
-
-                # Emit update signal
-                self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
                 self._sigNextDataFrame.emit()
-        return
 
     def _process_trace_data(self, data):
         """
@@ -542,26 +426,16 @@ class TimeSeriesReaderLogic(LogicBase):
         """
         # Down-sample and average according to oversampling factor
         if self.oversampling_factor > 1:
-            if data.shape[1] % self.oversampling_factor != 0:
-                self.log.error('Number of samples per channel not an integer multiple of the '
-                               'oversampling factor.')
-                return -1
             tmp = data.reshape((data.shape[0],
                                 data.shape[1] // self.oversampling_factor,
                                 self.oversampling_factor))
             data = np.mean(tmp, axis=2)
 
-        digital_channels = [c for c, typ in self.active_channel_types.items() if
-                            typ == StreamChannelType.DIGITAL]
-        # Convert digital event count numbers into frequencies according to ConfigOption
-        if self._calc_digital_freq and digital_channels:
-            data[:len(digital_channels)] *= self.sampling_rate
-
         # Append data to save if necessary
         if self._data_recording_active:
             self._recorded_data.append(data)
 
-        data = data[:, -self._trace_data.shape[1]:]
+        data = data[:, -self._trace_data.shape[1]:]  # discard data outside time frame
         new_samples = data.shape[1]
 
         # Roll data array to have a continuously running time trace
@@ -578,29 +452,23 @@ class TimeSeriesReaderLogic(LogicBase):
                 data_index = self.active_channel_names.index(ch)
                 self._trace_data_averaged[i, -new_samples:] = np.convolve(
                     self._trace_data[data_index, -offset:], self.__moving_filter, mode='valid')
-        return
 
     @QtCore.Slot()
     def start_recording(self):
+        """ Sets up start-time and initializes data array, if not resuming, and changes saving
+        state. If the counter is not running it will be started in order to have data to save.
         """
-        Sets up start-time and initializes data array, if not resuming, and changes saving state.
-        If the counter is not running it will be started in order to have data to save.
-
-        @return int: Error code (0: OK, -1: Error)
-        """
-        with self.threadlock:
+        with self._threadlock:
             if self._data_recording_active:
                 self.sigStatusChanged.emit(self.module_state() == 'locked', True)
-                return -1
-
-            self._data_recording_active = True
-            if self.module_state() == 'locked':
-                self._recorded_data = list()
-                self._record_start_time = dt.datetime.now()
-                self.sigStatusChanged.emit(True, True)
             else:
-                self.start_reading()
-        return 0
+                self._data_recording_active = True
+                if self.module_state() == 'locked':
+                    self._recorded_data = list()
+                    self._record_start_time = dt.datetime.now()
+                    self.sigStatusChanged.emit(True, True)
+                else:
+                    self.start_reading()
 
     @QtCore.Slot()
     def stop_recording(self):
@@ -610,17 +478,15 @@ class TimeSeriesReaderLogic(LogicBase):
 
         @return int: Error code (0: OK, -1: Error)
         """
-        with self.threadlock:
-            if not self._data_recording_active:
+        with self._threadlock:
+            if self._data_recording_active:
+                self._data_recording_active = False
+                if self.module_state() == 'locked':
+                    self._save_recorded_data(to_file=True, save_figure=True)
+                    self._recorded_data = list()
+                    self.sigStatusChanged.emit(True, False)
+            else:
                 self.sigStatusChanged.emit(self.module_state() == 'locked', False)
-                return 0
-
-            self._data_recording_active = False
-            if self.module_state() == 'locked':
-                self._save_recorded_data(to_file=True, save_figure=True)
-                self._recorded_data = list()
-                self.sigStatusChanged.emit(True, False)
-        return 0
 
     def _save_recorded_data(self, to_file=True, name_tag='', save_figure=True):
         """ Save the counter trace data and writes it to a file.
@@ -722,7 +588,7 @@ class TimeSeriesReaderLogic(LogicBase):
         This method saves the already displayed counts to file and does not accumulate them.
         """
         pass
-        # with self.threadlock:
+        # with self._threadlock:
         #     timestamp = dt.datetime.now()
         #
         #     # write the parameters:
@@ -749,26 +615,3 @@ class TimeSeriesReaderLogic(LogicBase):
         #                                   delimiter='\t')
         #         self.log.info('Time series snapshot saved to: {0}'.format(filepath))
         # return data, parameters
-
-    def _stop_reader_wait(self):
-        """
-        Stops the counter and waits until it actually has stopped.
-
-        @param timeout: float, the max. time in seconds how long the method should wait for the
-                        process to stop.
-
-        @return: error code
-        """
-        with self.threadlock:
-            self._stop_requested = True
-            # terminate the hardware streaming
-            if self._streamer().stop_stream() < 0:
-                self.log.error(
-                    'Error while trying to stop streaming device data acquisition.')
-            if self._data_recording_active:
-                self._save_recorded_data(to_file=True, save_figure=True)
-                self._recorded_data = list()
-            self._data_recording_active = False
-            self.module_state.unlock()
-            self.sigStatusChanged.emit(False, False)
-        return 0

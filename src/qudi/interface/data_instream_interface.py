@@ -46,7 +46,7 @@ class DataInStreamConstraints:
     """
     def __init__(self,
                  channel_units: Mapping[str, str],
-                 sample_timings: Iterable[Union[SampleTiming, int]],
+                 sample_timing: Union[SampleTiming, int],
                  streaming_modes: Iterable[Union[StreamingMode, int]],
                  data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
                  channel_buffer_size: Optional[ScalarConstraint],
@@ -62,7 +62,7 @@ class DataInStreamConstraints:
                 f'{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance'
             )
         self._channel_units = {**channel_units}
-        self._sample_timings = [SampleTiming(timing) for timing in sample_timings]
+        self._sample_timing = SampleTiming(sample_timing)
         self._streaming_modes = [StreamingMode(mode) for mode in streaming_modes]
         self._data_type = np.dtype(data_type)
         self._channel_buffer_size = channel_buffer_size
@@ -79,8 +79,8 @@ class DataInStreamConstraints:
         return self._channel_units.copy()
 
     @property
-    def sample_timings(self) -> List[SampleTiming]:
-        return self._sample_timings.copy()
+    def sample_timing(self) -> SampleTiming:
+        return self._sample_timing
 
     @property
     def streaming_modes(self) -> List[StreamingMode]:
@@ -150,12 +150,6 @@ class DataInStreamInterface(Base):
 
     @property
     @abstractmethod
-    def sample_timing(self) -> SampleTiming:
-        """ Read-only property returning the currently configured SampleTiming Enum """
-        pass
-
-    @property
-    @abstractmethod
     def active_channels(self) -> List[str]:
         """ Read-only property returning the currently configured active channel names """
         pass
@@ -164,7 +158,6 @@ class DataInStreamInterface(Base):
     def configure(self,
                   active_channels: Iterable[str],
                   streaming_mode: Union[StreamingMode, int],
-                  sample_timing: Union[SampleTiming, int],
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
         """ Configure a data stream. See read-only properties for information on each parameter. """

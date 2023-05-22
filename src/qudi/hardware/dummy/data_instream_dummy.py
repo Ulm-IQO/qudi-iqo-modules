@@ -227,9 +227,10 @@ class InStreamDummy(DataInStreamInterface):
                               default='float64',
                               missing='info',
                               constructor=lambda typ: np.dtype(typ))
-    _channel_buffer_size = ConfigOption(name='channel_buffer_size',
-                                        default=1024**2,
-                                        missing='info')
+    _sample_timing = ConfigOption(name='sample_timing',
+                                  default='CONSTANT',
+                                  missing='info',
+                                  constructor=lambda timing: SampleTiming[timing.upper()])
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -249,7 +250,7 @@ class InStreamDummy(DataInStreamInterface):
 
         self._constraints = DataInStreamConstraints(
             channel_units=dict(zip(self._channel_names, self._channel_units)),
-            sample_timings=[SampleTiming.CONSTANT, SampleTiming.TIMESTAMP, SampleTiming.RANDOM],
+            sample_timing=self._sample_timing,
             streaming_modes=[StreamingMode.CONTINUOUS, StreamingMode.FINITE],
             data_type=self._data_type,
             channel_buffer_size=ScalarConstraint(default=1024**2,
@@ -262,7 +263,7 @@ class InStreamDummy(DataInStreamInterface):
         self._sample_generator = SampleGenerator(
             signal_shapes=self._channel_signals,
             sample_rate=self._constraints.sample_rate.default,
-            sample_timing=self._constraints.sample_timings[0],
+            sample_timing=self._constraints.sample_timing,
             streaming_mode=self._constraints.streaming_modes[0],
             data_type=self._constraints.data_type,
             buffer_size=self._constraints.channel_buffer_size.default
@@ -312,11 +313,6 @@ class InStreamDummy(DataInStreamInterface):
         return self._sample_generator.streaming_mode
 
     @property
-    def sample_timing(self) -> SampleTiming:
-        """ Read-only property returning the currently configured SampleTiming Enum """
-        return self._sample_generator.sample_timing
-
-    @property
     def active_channels(self) -> List[str]:
         """ Read-only property returning the currently configured active channel names """
         return self._active_channels.copy()
@@ -324,7 +320,6 @@ class InStreamDummy(DataInStreamInterface):
     def configure(self,
                   active_channels: Iterable[str],
                   streaming_mode: Union[StreamingMode, int],
-                  sample_timing: Union[SampleTiming, int],
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
         """ Configure a data stream. See read-only properties for information on each parameter. """
@@ -335,19 +330,16 @@ class InStreamDummy(DataInStreamInterface):
             # Cache current values to restore them if configuration fails
             old_channels = self.active_channels
             old_streaming_mode = self.streaming_mode
-            old_sample_timing = self.sample_timing
             old_buffer_size = self.channel_buffer_size
             old_sample_rate = self.sample_rate
             try:
                 self._set_active_channels(active_channels)
                 self._set_streaming_mode(streaming_mode)
-                self._set_sample_timing(sample_timing)
                 self._set_channel_buffer_size(channel_buffer_size)
                 self._set_sample_rate(sample_rate)
             except Exception as err:
                 self._set_active_channels(old_channels)
                 self._set_streaming_mode(old_streaming_mode)
-                self._set_sample_timing(old_sample_timing)
                 self._set_channel_buffer_size(old_buffer_size)
                 self._set_sample_rate(old_sample_rate)
                 raise RuntimeError('Error while trying to configure data in-streamer') from err
@@ -373,18 +365,6 @@ class InStreamDummy(DataInStreamInterface):
                 f'[{", ".join(str(mod) for mod in self._constraints.streaming_modes)}]'
             )
         self._sample_generator.streaming_mode = mode
-
-    def _set_sample_timing(self, timing: Union[SampleTiming, int]) -> None:
-        try:
-            timing = SampleTiming(timing.value)
-        except AttributeError:
-            timing = SampleTiming(timing)
-        if (timing == SampleTiming.INVALID) or timing not in self._constraints.sample_timings:
-            raise ValueError(
-                f'Invalid sample timing to set ({timing}). Allowed sample timing values are '
-                f'[{", ".join(str(tim) for tim in self._constraints.sample_timings)}]'
-            )
-        self._sample_generator.sample_timing = timing
 
     def _set_channel_buffer_size(self, samples: int) -> None:
         self._constraints.channel_buffer_size.check(samples)
@@ -434,7 +414,7 @@ class InStreamDummy(DataInStreamInterface):
         with self._thread_lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
-            if (self.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
+            if (self.constraints.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
                 raise RuntimeError('SampleTiming.TIMESTAMP mode requires a timestamp buffer array')
 
             if data_buffer.ndim == 1:
@@ -482,7 +462,7 @@ class InStreamDummy(DataInStreamInterface):
         with self._thread_lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
-            if (self.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
+            if (self.constraints.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
                 raise RuntimeError('SampleTiming.TIMESTAMP mode requires a timestamp buffer array')
 
             if data_buffer.ndim == 1:
@@ -518,7 +498,7 @@ class InStreamDummy(DataInStreamInterface):
 
             data_buffer = np.zeros([len(self.active_channels), number_of_samples],
                                    dtype=self._constraints.data_type)
-            if self.sample_timing == SampleTiming.TIMESTAMP:
+            if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
                 timestamp_buffer = np.zeros(number_of_samples, dtype=np.float64)
             else:
                 timestamp_buffer = None
@@ -542,7 +522,7 @@ class InStreamDummy(DataInStreamInterface):
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
             data_buffer = np.zeros(len(self.active_channels), dtype=self._constraints.data_type)
-            if self.sample_timing == SampleTiming.TIMESTAMP:
+            if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
                 timestamp_buffer = np.zeros([1, 1], dtype=np.float64)
             else:
                 timestamp_buffer = None
