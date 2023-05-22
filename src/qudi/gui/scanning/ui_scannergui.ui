@@ -60,11 +60,12 @@
     <addaction name="action_view_optimizer"/>
     <addaction name="action_view_toolbar"/>
     <addaction name="action_view_line_scan"/>
+    <addaction name="action_view_tilt_correction"/>
     <addaction name="separator"/>
     <addaction name="action_restore_default_view"/>
     <addaction name="separator"/>
     <addaction name="action_autorange_2d_scans"/>
-    <addaction name="action_view_Tilt_correction"/>
+
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
@@ -94,6 +95,7 @@
    <addaction name="action_utility_full_range"/>
    <addaction name="action_history_back"/>
    <addaction name="action_history_forward"/>
+   <addaction name="action_toggle_tilt_correction"/>
   </widget>
   <action name="action_scanner_settings">
    <property name="icon">
@@ -330,24 +332,25 @@ Shortcut:Alt+T</string>
     <string>Save all</string>
    </property>
   </action>
-  <action name="action_view_Tilt_correction">
+  <action name="action_view_tilt_correction">
    <property name="checkable">
     <bool>true</bool>
    </property>
    <property name="text">
-    <string>Tilt_correction</string>
+    <string>Tilt correction</string>
    </property>
   </action>
-  <action name="action_Tilt_correction">
+  <action name="action_toggle_tilt_correction">
    <property name="checkable">
     <bool>true</bool>
    </property>
    <property name="icon">
     <iconset>
-     <normaloff>../../../../../qudi-core/src/qudi/artwork/icons/correct-tilt.svg</normaloff>../../../../../qudi-core/src/qudi/artwork/icons/correct-tilt.svg</iconset>
+     <normalon>../../../../../qudi-core/src/qudi/artwork/icons/correct-tilt_off.svg</normalon>
+    </iconset>
    </property>
    <property name="text">
-    <string>Activate_Tilt_correction</string>
+    <string>Tilt correction</string>
    </property>
   </action>
  </widget>

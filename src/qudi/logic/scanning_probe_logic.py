@@ -334,7 +334,7 @@ class ScanningProbeLogic(LogicBase):
             func = self.__func_debug_transform()
             self.log.info("Set test functions for coord transform")
         else:
-            func = self._tilt_corr_transform.__call__ if self._tilt_corr_transform else None
+            func = self.__transform_func if self._tilt_corr_transform else None
 
         if enable:
             self._scanner().set_coordinate_transform(func)
@@ -343,18 +343,27 @@ class ScanningProbeLogic(LogicBase):
 
     def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
 
+        if support_vecs is None:
+            self._tilt_corr_transform = None
+            return
+
         support_vecs = np.asarray(support_vecs)
 
         if support_vecs.shape[0] != 3:
-            raise ValueError(f"Need 3 n-dim support vectors, not {red_support_vecs.shape[0]}")
+            raise ValueError(f"Need 3 n-dim support vectors, not {support_vecs.shape[0]}")
 
         if shift_vec is None:
-            red_support_vecs = compute_reduced_vectors(support_vecs)
+            # todo: for the case of 3d vectors in plane, throws out too many dimensions
+            red_support_vecs = support_vecs #compute_reduced_vectors(support_vecs)
             shift_vec = np.mean(red_support_vecs, axis=0)
         else:
             shift_vec = np.asarray(shift_vec)
-            red_support_vecs = compute_reduced_vectors(np.vstack([support_vecs, shift_vec]))
+            red_support_vecs = np.vstack([support_vecs, shift_vec])# compute_reduced_vectors(np.vstack([support_vecs, shift_vec]))
             shift_vec = red_support_vecs[-1,:]
+
+        # todo remove workaround code for dim reduction
+        red_support_vecs = red_support_vecs[:,:3]
+        shift_vec = shift_vec[:3]
 
         rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec
@@ -512,3 +521,17 @@ class ScanningProbeLogic(LogicBase):
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.stop()
+
+    def __transform_func(self, coord, inverse=False):
+        # todo: remove workaround, reduce dimension to 3d
+        coord = {key:val for key, val in list(coord.items())[:3]}
+
+        # convert from coordinate dict to plain vector
+        ax_2_idx = lambda ch: ord(ch) - 120  # x->0, y->1, z->2; todo only for these axes
+        transform = self._tilt_corr_transform.__call__
+        coord_vec = np.asarray(list(coord.values())).T
+        coord_transf = transform(coord_vec, invert=inverse).T
+        # make dict again after vector rotation
+        coord_transf = {ax: coord_transf[ax_2_idx(ax)] for (ax, val) in coord.items()}
+
+        return coord_transf
