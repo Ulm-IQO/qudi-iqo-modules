@@ -33,12 +33,12 @@ from qudi.interface.data_instream_interface import DataInStreamInterface, DataIn
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 
 
-def _make_sine_func() -> Callable[[np.ndarray, np.ndarray], None]:
-    freq = (np.pi / 500) + np.random.rand() * (49 * np.pi / 500)
+def _make_sine_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], None]:
+    freq = sample_rate / (20 + 80 * np.random.rand())
     amp = 1 + np.random.rand() * 9
     noise_lvl = amp * (0.1 + np.random.rand() * 0.4)
     def make_sine(x, y):
-        np.sin(freq * x, out=y)
+        np.sin(2 * np.pi * freq * x, out=y)
         y *= amp
         noise = np.random.rand(x.size)
         noise *= 2 * noise_lvl
@@ -47,7 +47,7 @@ def _make_sine_func() -> Callable[[np.ndarray, np.ndarray], None]:
     return make_sine
 
 
-def _make_counts_func() -> Callable[[np.ndarray, np.ndarray], None]:
+def _make_counts_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], None]:
     count_lvl = 1_000 + np.random.rand() * (1_000_000 - 1_000)
     def make_counts(x, y):
         y[:] = count_lvl
@@ -103,9 +103,9 @@ class SampleGenerator:
         self._generator_functions = list()
         for shape in self.signal_shapes:
             if shape == SignalShape.SINE:
-                self._generator_functions.append(_make_sine_func())
+                self._generator_functions.append(_make_sine_func(self.sample_rate))
             elif shape == SignalShape.COUNTS:
-                self._generator_functions.append(_make_counts_func())
+                self._generator_functions.append(_make_counts_func(self.sample_rate))
             else:
                 raise ValueError(f'Invalid SignalShape encountered: {shape}')
         self._start_time = self._last_time = time.perf_counter()
@@ -498,7 +498,6 @@ class InStreamDummy(DataInStreamInterface):
             if number_of_samples is None:
                 number_of_samples = self._sample_generator.available_samples
             else:
-                print(number_of_samples, self._sample_generator.available_samples)
                 while self._sample_generator.available_samples < number_of_samples:
                     self._sample_generator.generate_samples()
                     time.sleep(0.01)

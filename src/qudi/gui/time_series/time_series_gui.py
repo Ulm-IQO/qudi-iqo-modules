@@ -106,6 +106,11 @@ class TimeSeriesGui(GuiBase):
         # Sync resize events
         self._mw.trace_plot_widget.plotItem.vb.sigResized.connect(self.__update_viewbox_sync)
 
+        # self._mw.trace_plot_widget.enableAutoRange(axis='xy')
+        # # self._mw.trace_plot_widget.setAutoVisible(x=True)
+        # self._vb.enableAutoRange(axis='xy')
+        # # self._vb.setAutoVisible(x=True)
+
         self.curves = dict()
         self.averaged_curves = dict()
         for i, ch in enumerate(hw_constr.channel_units):
@@ -250,8 +255,12 @@ class TimeSeriesGui(GuiBase):
     @QtCore.Slot()
     def __update_viewbox_sync(self):
         """ Helper method to sync plots for both y-axes """
-        self._vb.setGeometry(self._mw.trace_plot_widget.plotItem.vb.sceneBoundingRect())
-        self._vb.linkedViewChanged(self._mw.trace_plot_widget.plotItem.vb, self._vb.XAxis)
+        try:
+            self._vb.setGeometry(self._mw.trace_plot_widget.plotItem.vb.sceneBoundingRect())
+            self._vb.linkedViewChanged(self._mw.trace_plot_widget.plotItem.vb, self._vb.XAxis)
+        except:
+            self.log.exception('sdsdasd')
+            raise
 
     def apply_trace_view_settings(self, setting):
         for chnl, (show_data, show_average) in setting.items():
@@ -283,23 +292,52 @@ class TimeSeriesGui(GuiBase):
         finally:
             self._mw.current_value_combobox.blockSignals(False)
         self._current_value_channel = self._mw.current_value_combobox.currentText()
-        #
-        # # Update plot widget axes
-        # ch_list = self._time_series_logic_con().active_channels
-        # digital_channels = tuple(ch for ch in ch_list if ch.type == StreamChannelType.DIGITAL)
-        # analog_channels = tuple(ch for ch in ch_list if ch.type == StreamChannelType.ANALOG)
-        # self._channels_per_axis = list()
-        # if digital_channels:
-        #     self._channels_per_axis.append(tuple(ch.name for ch in digital_channels))
-        #     self._mw.trace_plot_widget.setLabel('left', 'Digital Channels', units=digital_channels[0].unit)
-        # if analog_channels:
-        #     self._channels_per_axis.append(tuple(ch.name for ch in analog_channels))
-        #     axis = 'right' if digital_channels else 'left'
-        #     self._mw.trace_plot_widget.setLabel(axis, 'Analog Channels', units=analog_channels[0].unit)
-        # if analog_channels and digital_channels:
-        #     self._mw.trace_plot_widget.showAxis('right')
-        # else:
-        #     self._mw.trace_plot_widget.hideAxis('right')
+
+        # Update plot widget axes
+        channel_units = self._time_series_logic_con().streamer_constraints.channel_units
+        channel_units = {ch: unit for ch, unit in channel_units.items() if ch in enabled}
+        different_units = list(set(channel_units.values()))
+        self._channels_per_axis = list()
+        if len(different_units) == 2:
+            self._mw.trace_plot_widget.showAxis('right')
+            self._channels_per_axis = [
+                tuple(ch for ch, u in channel_units.items() if u == different_units[0]),
+                tuple(ch for ch, u in channel_units.items() if u == different_units[1])
+            ]
+            if len(enabled) == 2:
+                self._mw.trace_plot_widget.setLabel('left',
+                                                    self._channels_per_axis[0][0],
+                                                    units=different_units[0])
+                self._mw.trace_plot_widget.setLabel('right',
+                                                    self._channels_per_axis[1][0],
+                                                    units=different_units[1])
+            else:
+                self._mw.trace_plot_widget.setLabel('left', 'Signal', units=different_units[0])
+                self._mw.trace_plot_widget.setLabel('right', 'Signal', units=different_units[1])
+        elif len(different_units) > 2:
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [tuple(channel_units), tuple()]
+            self._mw.trace_plot_widget.setLabel('left', 'Signal', units='')
+        elif len(enabled) == 2:
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [(enabled[0],), (enabled[1],)]
+            self._mw.trace_plot_widget.setLabel('left',
+                                                enabled[0],
+                                                units=channel_units[enabled[0]])
+            self._mw.trace_plot_widget.setLabel('right',
+                                                enabled[1],
+                                                units=channel_units[enabled[1]])
+        elif len(enabled) > 2:
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [tuple(enabled), tuple()]
+            self._mw.trace_plot_widget.setLabel('left', 'Signal', units=different_units[0])
+        else:
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [tuple(enabled), tuple()]
+            self._mw.trace_plot_widget.setLabel('left', enabled[0], units=different_units[0])
+
+        for ch in channel_units:
+            self._toggle_channel_data_plot(ch, ch in enabled, ch in averaged)
 
     @QtCore.Slot(object, object, object, object)
     def update_data(self, data_time, data, smooth_time, smooth_data):
@@ -358,7 +396,7 @@ class TimeSeriesGui(GuiBase):
         self._mw.record_trace_action.setChecked(recording)
         self._mw.record_trace_action.setText('Save recorded' if recording else 'Start recording')
         # Enable/Disable widgets and actions
-        self._mw.settings_dockwidget.setEnabled(not running)
+        self._mw.settings_dockwidget.setEnabled(True)
         self._mw.channel_settings_action.setEnabled(not running)
         self._mw.toggle_trace_action.setEnabled(True)
         self._mw.record_trace_action.setEnabled(running)
