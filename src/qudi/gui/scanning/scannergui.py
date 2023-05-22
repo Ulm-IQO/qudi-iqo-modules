@@ -402,10 +402,8 @@ class ScannerGui(GuiBase):
                                                         sequence=self._optimize_logic().scan_sequence)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
-        self.optimizer_dockwidget.visibilityChanged.connect(
-            self._mw.action_view_optimizer.setChecked)
-        self._mw.action_view_optimizer.triggered[bool].connect(
-            self.optimizer_dockwidget.setVisible)
+        self.optimizer_dockwidget.visibilityChanged.connect(self._mw.action_view_optimizer.setChecked)
+        self._mw.action_view_optimizer.triggered[bool].connect(self.optimizer_dockwidget.setVisible)
 
         # Create a ToggleSwitchWidget
         self.toggle_switch_widget = ToggleSwitchWidget(switch_states=('Tilt_Correction:OFF',
@@ -415,17 +413,16 @@ class ScannerGui(GuiBase):
         self.toggle_switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
         #toggle_switch_widget.setStyleSheet("QToolButton { height: 20px; width: 80px; }")
 
-        # Add the widget to the toolbar as a button
         self._mw.util_toolBar.addWidget(self.toggle_switch_widget)
-
-        self._mw.util_toolBar.visibilityChanged.connect(
-            self._mw.action_view_toolbar.setChecked)
+        self._mw.util_toolBar.visibilityChanged.connect(self._mw.action_view_toolbar.setChecked)
         self._mw.action_view_toolbar.triggered[bool].connect(self._mw.util_toolBar.setVisible)
 
+        # Add tilt correction widget to the toolbar as a button
         self.tilt_correction_dockwidget = TiltCorrectionDockWidget(scanner_axes=self._scanning_logic().scanner_axes)
         self.tilt_correction_dockwidget.setAllowedAreas(QtCore.Qt.BottomDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.tilt_correction_dockwidget)
         self.tilt_correction_dockwidget.setVisible(False)
+        self.tilt_correction_dockwidget.visibilityChanged.connect(self._mw.action_view_tilt_correction.setChecked)
         self._mw.action_view_tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
 
 
@@ -438,6 +435,7 @@ class ScannerGui(GuiBase):
         # Remove all dockwidgets from main window layout
         self._mw.removeDockWidget(self.optimizer_dockwidget)
         self._mw.removeDockWidget(self.scanner_control_dockwidget)
+        self._mw.removeDockWidget(self.tilt_correction_dockwidget)
         for dockwidget in self.scan_2d_dockwidgets.values():
             self._mw.removeDockWidget(dockwidget)
         for dockwidget in self.scan_1d_dockwidgets.values():
@@ -451,6 +449,12 @@ class ScannerGui(GuiBase):
         self.scanner_control_dockwidget.setFloating(False)
         self.scanner_control_dockwidget.show()
         self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.scanner_control_dockwidget)
+
+        # Add tilt correction dock widget
+        self.tilt_correction_dockwidget.setFloating(False)
+        self.tilt_correction_dockwidget.setVisible(False)
+        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.tilt_correction_dockwidget)
+
         # Add dynamically created dock widgets to layout
         dockwidgets_2d = tuple(self.scan_2d_dockwidgets.values())
         dockwidgets_1d = tuple(self.scan_1d_dockwidgets.values())
@@ -583,6 +587,9 @@ class ScannerGui(GuiBase):
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
             dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range)
             self.scan_1d_dockwidgets[axes] = dockwidget
+
+            # todo not working on view/restore default
+            #dockwidget.visibilityChanged.connect(self._mw.action_view_line_scan.setChecked)
         else:
             if axes in self.scan_2d_dockwidgets:
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
