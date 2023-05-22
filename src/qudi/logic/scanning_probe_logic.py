@@ -330,6 +330,8 @@ class ScanningProbeLogic(LogicBase):
 
     def toggle_tilt_correction(self, enable=True, debug_func=False):
 
+        target_pos = self._scanner().get_target()
+
         if debug_func:
             func = self.__func_debug_transform()
             self.log.info("Set test functions for coord transform")
@@ -340,6 +342,9 @@ class ScanningProbeLogic(LogicBase):
             self._scanner().set_coordinate_transform(func)
         else:
             self._scanner().set_coordinate_transform(None)
+
+        # set target pos again with updated, (dis-) engaged tilt correction
+        self.set_target_position(target_pos)
 
     def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
 
@@ -373,6 +378,8 @@ class ScanningProbeLogic(LogicBase):
         lin_transform.translate(shift[0], shift[1], shift[2])
 
         self._tilt_corr_transform = lin_transform
+        # todo, get from compute_reduced_vectors
+        self._tilt_corr_axes = list(self._scanner().get_constraints().axes)[:3]
 
 
     def __func_debug_transform(self):
@@ -523,15 +530,23 @@ class ScanningProbeLogic(LogicBase):
             self.__scan_poll_timer.stop()
 
     def __transform_func(self, coord, inverse=False):
-        # todo: remove workaround, reduce dimension to 3d
-        coord = {key:val for key, val in list(coord.items())[:3]}
+        """
+        Takes a coordinate as dict (with axes keys) and applies the tilt correction transformation.
+        To this end, reduce dimensionality to 3d on the axes configured for the tilt transformation.
+        :param coord: dict of the coordinate. Keys are configured scanner axes.
+        :param inverse:
+        :return:
+        """
+        # todo: double check: reduce dimension to 3d
+        coord_reduced = {key:val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}
+        #ax_2_idx_map = {key:idx for (idx, (key, val)) in enumerate(list(coord.items())) if key in self._tilt_corr_axes}
 
         # convert from coordinate dict to plain vector
-        ax_2_idx = lambda ch: ord(ch) - 120  # x->0, y->1, z->2; todo only for these axes
         transform = self._tilt_corr_transform.__call__
-        coord_vec = np.asarray(list(coord.values())).T
-        coord_transf = transform(coord_vec, invert=inverse).T
+        coord_vec = np.asarray(list(coord_reduced.values())).T
+        coord_vec_transf = transform(coord_vec, invert=inverse).T
         # make dict again after vector rotation
-        coord_transf = {ax: coord_transf[ax_2_idx(ax)] for (ax, val) in coord.items()}
+        coord_transf = coord
+        [coord_transf.update({ax: coord_vec_transf[idx]})  for (idx, (ax, val)) in enumerate(coord_reduced.items())]
 
         return coord_transf

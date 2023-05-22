@@ -1076,7 +1076,9 @@ class ScannerGui(GuiBase):
             self.toggle_switch_widget.setEnabled(True)
             self._mw.action_toggle_tilt_correction.setEnabled(True)
         else:
+            self.toggle_tilt_correction(False)
             self._scanning_logic().configure_tilt_correction(None, None)
+
             self.toggle_switch_widget.set_state('Tilt_Correction:OFF')
             self.toggle_switch_widget.setEnabled(False)
             self._mw.action_toggle_tilt_correction.setEnabled(False)
