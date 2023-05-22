@@ -114,6 +114,7 @@ class SampleGenerator:
         """ Generates new samples in free buffer space and updates buffer pointers. If new samples
         do not fit into buffer, raise an OverflowError.
         """
+        time.sleep(2/self.sample_rate)  # Generate at least 2 samples between calls
         now = time.perf_counter()
         elapsed_time = now - self._last_time
         time_offset = self._last_time - self._start_time
@@ -440,6 +441,7 @@ class InStreamDummy(DataInStreamInterface):
                 )
                 number_of_samples -= read_samples
                 offset += read_samples
+                time.sleep(0.0001)
 
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
@@ -495,6 +497,11 @@ class InStreamDummy(DataInStreamInterface):
             self._sample_generator.generate_samples()
             if number_of_samples is None:
                 number_of_samples = self._sample_generator.available_samples
+            else:
+                print(number_of_samples, self._sample_generator.available_samples)
+                while self._sample_generator.available_samples < number_of_samples:
+                    self._sample_generator.generate_samples()
+                    time.sleep(0.01)
 
             data_buffer = np.zeros([len(self.active_channels), number_of_samples],
                                    dtype=self._constraints.data_type)

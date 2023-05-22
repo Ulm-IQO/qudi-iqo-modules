@@ -165,6 +165,8 @@ class TimeSeriesGui(GuiBase):
         self.sigStartRecording.connect(logic.start_recording, QtCore.Qt.QueuedConnection)
         self.sigStopRecording.connect(logic.stop_recording, QtCore.Qt.QueuedConnection)
         self.sigTraceSettingsChanged.connect(logic.set_trace_settings, QtCore.Qt.QueuedConnection)
+        self.sigChannelSettingsChanged.connect(logic.set_channel_settings,
+                                               QtCore.Qt.QueuedConnection)
 
         logic.sigDataChanged.connect(self.update_data, QtCore.Qt.QueuedConnection)
         logic.sigTraceSettingsChanged.connect(self.update_trace_settings,
@@ -212,7 +214,8 @@ class TimeSeriesGui(GuiBase):
         self.sigStopCounter.disconnect()
         self.sigStartRecording.disconnect()
         self.sigStopRecording.disconnect()
-        self.sigSettingsChanged.disconnect()
+        self.sigTraceSettingsChanged.disconnect()
+        self.sigChannelSettingsChanged.disconnect()
         logic.sigDataChanged.disconnect(self.update_data)
         logic.sigTraceSettingsChanged.disconnect(self.update_trace_settings)
         logic.sigChannelSettingsChanged.disconnect(self.update_channel_settings)
