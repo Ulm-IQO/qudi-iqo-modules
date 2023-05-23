@@ -228,15 +228,8 @@ class TimeSeriesGui(GuiBase):
         self._mw.close()
 
     def _exec_trace_view_dialog(self):
-        channel_states = dict()
-        for ch, plot in self.curves.items():
-            average = self.averaged_curves[ch]
-            channel_states[ch] = (
-                (plot in self._vb.addedItems) or (plot in self._mw.trace_plot_widget.items()),
-                (average in self._vb.addedItems) or (average in self._mw.trace_plot_widget.items()),
-            )
-        dialog = TraceViewDialog(list(channel_states), parent=self._mw)
-        dialog.set_channel_states(channel_states)
+        dialog = TraceViewDialog(self._visible_traces.keys(), parent=self._mw)
+        dialog.set_channel_states(self._visible_traces)
         # Show modal dialog and update logic if necessary
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
             self.apply_trace_view_settings(dialog.get_channel_states())
@@ -263,8 +256,12 @@ class TimeSeriesGui(GuiBase):
             raise
 
     def apply_trace_view_settings(self, setting):
+        active_channels, averaged_channels = self._time_series_logic_con().channel_settings
         for chnl, (show_data, show_average) in setting.items():
-            self._toggle_channel_data_plot(chnl, show_data, show_average)
+            chnl_active = chnl in active_channels
+            data_visible = show_data and chnl_active
+            average_visible = show_average and chnl_active and (chnl in averaged_channels)
+            self._toggle_channel_data_plot(chnl, data_visible, average_visible)
         self._visible_traces = setting
 
     def apply_channel_settings(self, setting):
@@ -295,14 +292,13 @@ class TimeSeriesGui(GuiBase):
 
         # Update plot widget axes
         channel_units = self._time_series_logic_con().streamer_constraints.channel_units
-        channel_units = {ch: unit for ch, unit in channel_units.items() if ch in enabled}
-        different_units = list(set(channel_units.values()))
+        different_units = list({unit for ch, unit in channel_units.items() if ch in enabled})
         self._channels_per_axis = list()
         if len(different_units) == 2:
             self._mw.trace_plot_widget.showAxis('right')
             self._channels_per_axis = [
-                tuple(ch for ch, u in channel_units.items() if u == different_units[0]),
-                tuple(ch for ch, u in channel_units.items() if u == different_units[1])
+                tuple(ch for ch in enabled if channel_units[ch] == different_units[0]),
+                tuple(ch for ch in enabled if channel_units[ch] == different_units[1])
             ]
             if len(enabled) == 2:
                 self._mw.trace_plot_widget.setLabel('left',
@@ -316,7 +312,7 @@ class TimeSeriesGui(GuiBase):
                 self._mw.trace_plot_widget.setLabel('right', 'Signal', units=different_units[1])
         elif len(different_units) > 2:
             self._mw.trace_plot_widget.hideAxis('right')
-            self._channels_per_axis = [tuple(channel_units), tuple()]
+            self._channels_per_axis = [tuple(enabled), tuple()]
             self._mw.trace_plot_widget.setLabel('left', 'Signal', units='')
         elif len(enabled) == 2:
             self._mw.trace_plot_widget.hideAxis('right')
@@ -337,7 +333,9 @@ class TimeSeriesGui(GuiBase):
             self._mw.trace_plot_widget.setLabel('left', enabled[0], units=different_units[0])
 
         for ch in channel_units:
-            self._toggle_channel_data_plot(ch, ch in enabled, ch in averaged)
+            show_channel = (ch in enabled) and self._visible_traces[ch][0]
+            show_average = show_channel and (ch in averaged) and self._visible_traces[ch][1]
+            self._toggle_channel_data_plot(ch, show_channel, show_average)
 
     @QtCore.Slot(object, object, object, object)
     def update_data(self, data_time, data, smooth_time, smooth_data):

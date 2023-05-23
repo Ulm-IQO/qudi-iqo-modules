@@ -446,10 +446,15 @@ class InStreamDummy(DataInStreamInterface):
             offset = 0
             while number_of_samples > 0:
                 self._sample_generator.wait_get_available_samples(1)
-                read_samples = self._sample_generator.read_samples(
-                    sample_buffer=data_buffer[:, offset:offset + number_of_samples],
-                    timestamp_buffer=timestamp_buffer[offset:offset + number_of_samples]
-                )
+                if timestamp_buffer is None:
+                    read_samples = self._sample_generator.read_samples(
+                        sample_buffer=data_buffer[:, offset:offset + number_of_samples]
+                    )
+                else:
+                    read_samples = self._sample_generator.read_samples(
+                        sample_buffer=data_buffer[:, offset:offset + number_of_samples],
+                        timestamp_buffer=timestamp_buffer[offset:offset + number_of_samples]
+                    )
                 number_of_samples -= read_samples
                 offset += read_samples
 
