@@ -255,7 +255,8 @@ class ScannerGui(GuiBase):
                                                                         QtCore.Qt.QueuedConnection)
         self._mw.action_toggle_tilt_correction.triggered.connect(self.toggle_tilt_correction,
                                                                 QtCore.Qt.QueuedConnection)
-
+        [box.valueChanged.connect(self.tilt_corr_support_vector_updated, QtCore.Qt.QueuedConnection)
+                                  for box_row in tilt_widget.support_vecs_box for box in box_row]
         self.tilt_corr_support_vector_updated()
 
         # Initialize dockwidgets to default view
@@ -1089,8 +1090,6 @@ class ScannerGui(GuiBase):
                                                              shift_vec)
             self.toggle_switch_widget.setEnabled(True)
             self._mw.action_toggle_tilt_correction.setEnabled(True)
-
-
 
 
     def toggle_tilt_correction(self, state):

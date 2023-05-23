@@ -379,7 +379,7 @@ class ScanningProbeLogic(LogicBase):
         if red_support_vecs.shape != (3,3) or shift_vec.shape[0] != 3:
             n_dim = support_vecs.shape[1]
             raise ValueError(f"Can't calculate tilt in >3 dimensions. "
-                             f"Given support vectors (dim= {n_dim}) must be constant in {n_dim-3} dims. ")
+                             f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. ")
 
         rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec
