@@ -31,7 +31,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.basis_transformations.basis_transformation \
-    import compute_rotation_mat_rodriguez, compute_reduced_vectors
+    import compute_rotation_mat_rodriguez, compute_reduced_vectors, det_changing_axes
 
 class ScanningProbeLogic(LogicBase):
     """
@@ -314,6 +314,7 @@ class ScanningProbeLogic(LogicBase):
 
                 new_pos[ax] = ax_constr[ax].clip_value(pos)
                 if pos != new_pos[ax]:
+                    # todo: check bounds on transformed (bare) hw coordinates
                     self.log.warning('Scanner position target value out of bounds for axis "{0}". '
                                      'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
 
@@ -365,17 +366,20 @@ class ScanningProbeLogic(LogicBase):
             raise ValueError(f"Need 3 n-dim support vectors, not {support_vecs.shape[0]}")
 
         if shift_vec is None:
-            # todo: for the case of 3d vectors in plane, throws out too many dimensions
-            red_support_vecs = support_vecs #compute_reduced_vectors(support_vecs)
+            red_support_vecs = compute_reduced_vectors(support_vecs)
             shift_vec = np.mean(red_support_vecs, axis=0)
         else:
             shift_vec = np.asarray(shift_vec)
             red_support_vecs = np.vstack([support_vecs, shift_vec])# compute_reduced_vectors(np.vstack([support_vecs, shift_vec]))
+            red_support_vecs = compute_reduced_vectors(red_support_vecs)[:-1,:]
             shift_vec = red_support_vecs[-1,:]
 
-        # todo remove workaround code for dim reduction
-        red_support_vecs = red_support_vecs[:,:3]
-        shift_vec = shift_vec[:3]
+        tilt_axes = det_changing_axes(support_vecs)
+
+        if red_support_vecs.shape != (3,3) or shift_vec.shape[0] != 3:
+            n_dim = support_vecs.shape[1]
+            raise ValueError(f"Can't calculate tilt in >3 dimensions. "
+                             f"Given support vectors (dim= {n_dim}) must be constant in {n_dim-3} dims. ")
 
         rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec
@@ -385,8 +389,7 @@ class ScanningProbeLogic(LogicBase):
         lin_transform.translate(shift[0], shift[1], shift[2])
 
         self._tilt_corr_transform = lin_transform
-        # todo, get from compute_reduced_vectors
-        self._tilt_corr_axes = list(self._scanner().get_constraints().axes)[:3]
+        self._tilt_corr_axes = [el for idx, el in enumerate(self._scanner().get_constraints().axes) if tilt_axes[idx]]
 
 
     def __func_debug_transform(self):
