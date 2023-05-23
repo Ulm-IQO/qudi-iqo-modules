@@ -19,10 +19,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore
+import time
 import numpy as np
 import datetime as dt
 # import matplotlib.pyplot as plt
+from PySide2 import QtCore
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -309,7 +310,7 @@ class TimeSeriesReaderLogic(LogicBase):
                 self._trace_window_size = settings_dict['trace_window_size']
                 self.__moving_filter = np.full(shape=self._moving_average_width,
                                                fill_value=1.0 / self._moving_average_width)
-                self._samples_per_frame = int(round(self.data_rate / self._max_frame_rate))
+                self._samples_per_frame = max(1, int(round(self.data_rate / self._max_frame_rate)))
                 self._init_data_arrays()
         except:
             self.log.exception('Error while trying to configure new trace settings:')
@@ -408,18 +409,17 @@ class TimeSeriesReaderLogic(LogicBase):
                         (streamer.available_samples // self._oversampling_factor) * self._oversampling_factor,
                         self._samples_per_frame * self._oversampling_factor
                     )
-                    if samples_to_read > 0:
-                        # read the current counter values
-                        data, timestamps = streamer.read_data(number_of_samples=samples_to_read)
-                        if data.shape[1] != samples_to_read:
-                            raise RuntimeError(
-                                f'Number of samples read from stream ({data.shape[1]:d}) does not '
-                                f'match requested number of samples ({samples_to_read:d})'
-                            )
-                        # Process data
-                        self._process_trace_data(data)
-                        # Emit update signal
-                        self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
+                    # read the current counter values
+                    data, timestamps = streamer.read_data(number_of_samples=samples_to_read)
+                    if data.shape[1] != samples_to_read:
+                        raise RuntimeError(
+                            f'Number of samples read from stream ({data.shape[1]:d}) does not '
+                            f'match requested number of samples ({samples_to_read:d})'
+                        )
+                    # Process data
+                    self._process_trace_data(data)
+                    # Emit update signal
+                    self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
                 except:
                     self.log.exception('Reading data from streamer went wrong')
                     self._stop()

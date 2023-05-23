@@ -90,6 +90,7 @@ class SampleGenerator:
 
     @property
     def available_samples(self) -> int:
+        self.generate_samples()
         return self.__available_samples
 
     def restart(self) -> None:
@@ -114,7 +115,6 @@ class SampleGenerator:
         """ Generates new samples in free buffer space and updates buffer pointers. If new samples
         do not fit into buffer, raise an OverflowError.
         """
-        time.sleep(2/self.sample_rate)  # Generate at least 2 samples between calls
         now = time.perf_counter()
         elapsed_time = now - self._last_time
         time_offset = self._last_time - self._start_time
@@ -137,7 +137,6 @@ class SampleGenerator:
             x += time_offset
 
             # Generate samples and write into buffer
-
             end = insert + samples
             if end > buf_size:
                 first_samples = buf_size - insert
@@ -156,7 +155,7 @@ class SampleGenerator:
 
         # Update pointers
         self.__available_samples += samples
-        self._last_time = now
+        self._last_time += samples / self.sample_rate
         if self.__available_samples > buf_size:
             raise OverflowError('Sample buffer has overflown. Decrease sample rate or increase '
                                 'data readout rate.')
@@ -184,6 +183,18 @@ class SampleGenerator:
         self.__start = end
         self.__available_samples -= samples
         return samples
+
+    def wait_get_available_samples(self, samples: int) -> int:
+        available = self.available_samples
+        if available < samples:
+            # Wait for bulk time
+            time.sleep((samples - available) / self.sample_rate)
+            available = self.available_samples
+            # Wait a little more if necessary
+            while available < samples:
+                time.sleep(1 / self.sample_rate)
+                available = self.available_samples
+        return available
 
 
 class InStreamDummy(DataInStreamInterface):
@@ -434,14 +445,13 @@ class InStreamDummy(DataInStreamInterface):
             # Return immediately if no samples are requested
             offset = 0
             while number_of_samples > 0:
-                self._sample_generator.generate_samples()
+                self._sample_generator.wait_get_available_samples(1)
                 read_samples = self._sample_generator.read_samples(
                     sample_buffer=data_buffer[:, offset:offset + number_of_samples],
                     timestamp_buffer=timestamp_buffer[offset:offset + number_of_samples]
                 )
                 number_of_samples -= read_samples
                 offset += read_samples
-                time.sleep(0.0001)
 
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
@@ -498,9 +508,7 @@ class InStreamDummy(DataInStreamInterface):
             if number_of_samples is None:
                 number_of_samples = self._sample_generator.available_samples
             else:
-                while self._sample_generator.available_samples < number_of_samples:
-                    self._sample_generator.generate_samples()
-                    time.sleep(0.01)
+                self._sample_generator.wait_get_available_samples(number_of_samples)
 
             data_buffer = np.zeros([len(self.active_channels), number_of_samples],
                                    dtype=self._constraints.data_type)
@@ -508,8 +516,9 @@ class InStreamDummy(DataInStreamInterface):
                 timestamp_buffer = np.zeros(number_of_samples, dtype=np.float64)
             else:
                 timestamp_buffer = None
-            self._sample_generator.read_samples(sample_buffer=data_buffer,
-                                                timestamp_buffer=timestamp_buffer)
+            if number_of_samples > 0:
+                self._sample_generator.read_samples(sample_buffer=data_buffer,
+                                                    timestamp_buffer=timestamp_buffer)
             return data_buffer, timestamp_buffer
 
     def read_single_point(self):
@@ -532,7 +541,7 @@ class InStreamDummy(DataInStreamInterface):
                 timestamp_buffer = np.zeros([1, 1], dtype=np.float64)
             else:
                 timestamp_buffer = None
-            self._sample_generator.generate_samples()
+            self._sample_generator.wait_get_available_samples(1)
             self._sample_generator.read_samples(sample_buffer=np.expand_dims(data_buffer, axis=0),
                                                 timestamp_buffer=timestamp_buffer)
             return data_buffer, None if timestamp_buffer is None else timestamp_buffer[0]
