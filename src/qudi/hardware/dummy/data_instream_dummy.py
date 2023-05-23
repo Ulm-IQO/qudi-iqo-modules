@@ -178,7 +178,7 @@ class SampleGenerator:
         else:
             sample_buffer[:, :samples] = self._sample_buffer[:, self.__start:end]
             if timestamp_buffer is not None:
-                timestamp_buffer[:, :samples] = self._timestamp_buffer[:, self.__start:end]
+                timestamp_buffer[:samples] = self._timestamp_buffer[self.__start:end]
         # Update pointers
         self.__start = end
         self.__available_samples -= samples

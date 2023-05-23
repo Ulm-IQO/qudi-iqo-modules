@@ -33,6 +33,7 @@ from qudi.util.helpers import is_integer_type, is_float_type
 from qudi.core.module import GuiBase
 from qudi.gui.time_series.main_window import TimeSeriesGuiMainWindow
 from qudi.gui.time_series.settings_dialog import TraceViewDialog, ChannelSettingsDialog
+from qudi.interface.data_instream_interface import SampleTiming
 
 
 class TimeSeriesGui(GuiBase):
@@ -91,7 +92,10 @@ class TimeSeriesGui(GuiBase):
             }
 
         # Configure PlotWidget
-        self._mw.trace_plot_widget.setLabel('bottom', 'Time', units='s')
+        if hw_constr.sample_timing == SampleTiming.RANDOM:
+            self._mw.trace_plot_widget.setLabel('bottom', 'Sample')
+        else:
+            self._mw.trace_plot_widget.setLabel('bottom', 'Time', units='s')
         self._mw.trace_plot_widget.setMouseEnabled(x=False, y=False)
         self._mw.trace_plot_widget.setMouseTracking(False)
         self._mw.trace_plot_widget.setMenuEnabled(False)
