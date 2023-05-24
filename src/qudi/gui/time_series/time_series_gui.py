@@ -110,10 +110,8 @@ class TimeSeriesGui(GuiBase):
         # Sync resize events
         self._mw.trace_plot_widget.plotItem.vb.sigResized.connect(self.__update_viewbox_sync)
 
-        # self._mw.trace_plot_widget.enableAutoRange(axis='xy')
-        # # self._mw.trace_plot_widget.setAutoVisible(x=True)
-        # self._vb.enableAutoRange(axis='xy')
-        # # self._vb.setAutoVisible(x=True)
+        self._mw.trace_plot_widget.disableAutoRange(axis='x')
+        # self._mw.trace_plot_widget.setAutoVisible(x=True)
 
         self.curves = dict()
         self.averaged_curves = dict()
@@ -345,9 +343,11 @@ class TimeSeriesGui(GuiBase):
     def update_data(self, data_time, data, smooth_time, smooth_data):
         """ The function that grabs the data and sends it to the plot """
         if data is not None:
+            data_time = data_time - data_time[0]
             for channel, y_arr in data.items():
                 self.curves[channel].setData(y=y_arr, x=data_time)
         if smooth_data is not None:
+            smooth_time = smooth_time - smooth_time[0]
             for channel, y_arr in smooth_data.items():
                 self.averaged_curves[channel].setData(y=y_arr, x=smooth_time)
 
@@ -464,6 +464,17 @@ class TimeSeriesGui(GuiBase):
                 settings_dict['moving_average_width']
             )
             self._mw.settings_dockwidget.moving_average_spinbox.blockSignals(False)
+        sample_timing = self._time_series_logic_con().streamer_constraints.sample_timing
+        if sample_timing == SampleTiming.RANDOM:
+            self._mw.trace_plot_widget.setRange(
+                xRange=[0, settings_dict['trace_window_size'] * settings_dict['data_rate']],
+                disableAutoRange=False
+            )
+        else:
+            self._mw.trace_plot_widget.setRange(
+                xRange=[0, settings_dict['trace_window_size']],
+                disableAutoRange=False
+            )
 
     def _remove_channel_from_plot(self, channel: str) -> None:
         data_curve = self.curves[channel]
