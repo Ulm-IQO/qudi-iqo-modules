@@ -177,6 +177,8 @@ class TimeSeriesReaderLogic(LogicBase):
             dtype=np.float64
         )
         self._trace_times = np.arange(window_size, dtype=np.float64)
+        if constraints.sample_timing == SampleTiming.TIMESTAMP:
+            self._trace_times -= window_size
         if constraints.sample_timing != SampleTiming.RANDOM:
             self._trace_times /= self.data_rate
 
