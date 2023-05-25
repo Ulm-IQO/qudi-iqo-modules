@@ -560,8 +560,8 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                         raise RuntimeError('Error while setting up clock. Probably because no free '
                                            'counter resource could be reserved.') from err
                 else:
+                    self._clk_task_handle = task
                     break
-            self._clk_task_handle = task
 
     def _init_digital_tasks(self):
         """ Set up tasks for digital event counting. """
