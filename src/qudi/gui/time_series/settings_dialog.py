@@ -130,7 +130,6 @@ class TraceViewDialog(QtWidgets.QDialog):
             label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
             checkbox_1 = QtWidgets.QCheckBox()
             checkbox_2 = QtWidgets.QCheckBox()
-            checkbox_1.stateChanged.connect(checkbox_2.setEnabled)
             layout.addWidget(label, row, 0)
             layout.addWidget(checkbox_1, row, 1)
             layout.addWidget(checkbox_2, row, 2)

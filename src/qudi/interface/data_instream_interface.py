@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple
+from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence
 from enum import Enum
 from abc import abstractmethod
 from qudi.core.module import Base
@@ -125,8 +125,9 @@ class DataInStreamInterface(Base):
     @abstractmethod
     def sample_rate(self) -> float:
         """ Read-only property returning the currently set sample rate in Hz.
-
-        Ignored for anything but SampleTiming.CONSTANT.
+        For SampleTiming.CONSTANT this is the sample rate of the hardware, for any other timing mode
+        this property represents only a hint to the actual hardware timebase and can not be
+        considered accurate.
         """
         pass
 
@@ -156,7 +157,7 @@ class DataInStreamInterface(Base):
 
     @abstractmethod
     def configure(self,
-                  active_channels: Iterable[str],
+                  active_channels: Sequence[str],
                   streaming_mode: Union[StreamingMode, int],
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
@@ -176,8 +177,8 @@ class DataInStreamInterface(Base):
     @abstractmethod
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
-                              timestamp_buffer: Optional[np.ndarray] = None,
-                              number_of_samples: Optional[int] = None) -> None:
+                              number_of_samples: Optional[int] = None,
+                              timestamp_buffer: Optional[np.ndarray] = None) -> None:
         """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
         In case of a single data channel the numpy array can be either 1D or 2D. In case of more
         channels the array must be 2D with the first index corresponding to the channel number and

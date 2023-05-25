@@ -24,11 +24,12 @@ If not, see <https://www.gnu.org/licenses/>.
 import time
 import numpy as np
 from enum import Enum
-from typing import List, Iterable, Union, Optional, Tuple, Callable
+from typing import List, Iterable, Union, Optional, Tuple, Callable, Sequence
 
 from qudi.core.configoption import ConfigOption
 from qudi.util.constraints import ScalarConstraint
 from qudi.util.mutex import Mutex
+from qudi.util.helpers import is_integer_type
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 
@@ -48,7 +49,7 @@ def _make_sine_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], No
 
 
 def _make_counts_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], None]:
-    count_lvl = 1_000 + np.random.rand() * (1_000_000 - 1_000)
+    count_lvl = 1_00 + np.random.rand() * (5_000 - 1_00)
     def make_counts(x, y):
         y[:] = count_lvl
         y += np.random.poisson(count_lvl, y.size)
@@ -259,6 +260,10 @@ class InStreamDummy(DataInStreamInterface):
                              'must contain same number of elements')
         if len(set(self._channel_names)) != len(self._channel_names):
             raise ValueError('ConfigOptions "channel_names" must not contain duplicates')
+        if is_integer_type(self._data_type) and any(sig == SignalShape.SINE for sig in self._channel_signals):
+            self.log.warning('Integer data type not supported for Sine signal shape. '
+                             'Falling back to numpy.float64 data type instead.')
+            self._data_type = np.float64
 
         self._constraints = DataInStreamConstraints(
             channel_units=dict(zip(self._channel_names, self._channel_units)),
@@ -303,8 +308,9 @@ class InStreamDummy(DataInStreamInterface):
     @property
     def sample_rate(self) -> float:
         """ Read-only property returning the currently set sample rate in Hz.
-
-        Ignored for anything but SampleTiming.CONSTANT.
+        For SampleTiming.CONSTANT this is the sample rate of the hardware, for any other timing mode
+        this property represents only a hint to the actual hardware timebase and can not be
+        considered accurate.
         """
         return self._sample_generator.sample_rate
 
@@ -330,7 +336,7 @@ class InStreamDummy(DataInStreamInterface):
         return self._active_channels.copy()
 
     def configure(self,
-                  active_channels: Iterable[str],
+                  active_channels: Sequence[str],
                   streaming_mode: Union[StreamingMode, int],
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
@@ -439,7 +445,7 @@ class InStreamDummy(DataInStreamInterface):
                                    f'all requested samples ({number_of_samples:d})')
 
             if (timestamp_buffer is not None) and (timestamp_buffer.size < number_of_samples):
-                raise RuntimeError(f'timestamp_buffer too small ({timestamp_buffer.shape[1]:d}) to '
+                raise RuntimeError(f'timestamp_buffer too small ({timestamp_buffer.size:d}) to '
                                    f'contain all requested samples ({number_of_samples:d})')
 
             # Return immediately if no samples are requested

@@ -30,6 +30,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
+from qudi.util.helpers import is_integer_type
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 
 
@@ -164,17 +165,18 @@ class TimeSeriesReaderLogic(LogicBase):
         channel_count = len(self._averaged_channels)
         window_size = int(round(self._trace_window_size * self.data_rate))
         constraints = self.streamer_constraints
+        trace_dtype = np.float64 if is_integer_type(constraints.data_type) else constraints.data_type
 
         # processed data arrays
         self._recorded_data = list()
         self._recorded_times = list()
         self._trace_data = np.zeros(
             [channel_count, window_size + self._moving_average_width // 2],
-            dtype=np.float64
+            dtype=trace_dtype
         )
         self._trace_data_averaged = np.zeros(
             [channel_count, window_size - self._moving_average_width // 2],
-            dtype=np.float64
+            dtype=trace_dtype
         )
         self._trace_times = np.arange(window_size, dtype=np.float64)
         if constraints.sample_timing == SampleTiming.TIMESTAMP:
