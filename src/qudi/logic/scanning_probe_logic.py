@@ -338,6 +338,7 @@ class ScanningProbeLogic(LogicBase):
     def toggle_tilt_correction(self, enable=True, debug_func=False):
 
         target_pos = self._scanner().get_target()
+        is_enabled = self._scanner().coordinate_transform_enabled
 
         if debug_func:
             func = self.__func_debug_transform()
@@ -351,8 +352,9 @@ class ScanningProbeLogic(LogicBase):
             self._scanner().set_coordinate_transform(None)
             target_pos = self._scanner().get_target()
 
-        # set target pos again with updated, (dis-) engaged tilt correction
-        self.set_target_position(target_pos)
+        if enable != is_enabled:
+            # set target pos again with updated, (dis-) engaged tilt correction
+            self.set_target_position(target_pos, move_blocking=True)
 
     def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
 
@@ -557,6 +559,8 @@ class ScanningProbeLogic(LogicBase):
         coord_vec_transf = transform(coord_vec, invert=inverse).T
         # make dict again after vector rotation
         coord_transf = cp.copy(coord)
-        [coord_transf.update({ax: coord_vec_transf[idx]})  for (idx, (ax, val)) in enumerate(coord_reduced.items())]
+        [coord_transf.update({ax: coord_vec_transf[idx]}) for (idx, (ax, val)) in enumerate(coord_reduced.items())]
+
+        #self.log.debug(f"Tranforming {coord} => {coord_transf}")
 
         return coord_transf

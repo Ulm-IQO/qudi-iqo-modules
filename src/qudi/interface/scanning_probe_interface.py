@@ -45,6 +45,10 @@ class ScanningProbeInterface(Base):
             raise ValueError('Coordinate transformation not supported by scanning hardware.')
 
     @property
+    def coordinate_transform_enabled(self):
+        return self._coordinate_transform is not None
+
+    @property
     def supports_coordinate_transform(self):
         # todo: this should be part of the scanconstraints
         # however this function is general for every scanner, but can't live
