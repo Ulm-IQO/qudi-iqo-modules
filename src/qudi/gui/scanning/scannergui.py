@@ -255,7 +255,8 @@ class ScannerGui(GuiBase):
                                                                         QtCore.Qt.QueuedConnection)
         self._mw.action_toggle_tilt_correction.triggered.connect(self.toggle_tilt_correction,
                                                                 QtCore.Qt.QueuedConnection)
-
+        [box.valueChanged.connect(self.tilt_corr_support_vector_updated, QtCore.Qt.QueuedConnection)
+                                  for box_row in tilt_widget.support_vecs_box for box in box_row]
         self.tilt_corr_support_vector_updated()
 
         # Initialize dockwidgets to default view
@@ -1074,6 +1075,13 @@ class ScannerGui(GuiBase):
             vecs_valid = [support_vecs[vec][dim[0]].is_valid for dim in dim_idxs]
             all_vecs_valid = np.all(vecs_valid) and all_vecs_valid
 
+        self.toggle_tilt_correction(False)
+        self._scanning_logic().configure_tilt_correction(None, None)
+
+        self.toggle_switch_widget.set_state('Tilt_Correction:OFF')
+        self.toggle_switch_widget.setEnabled(False)
+        self._mw.action_toggle_tilt_correction.setEnabled(False)
+
         if all_vecs_valid:
             shift_vec = support_vecs_val[-1]
             if not np.all([np.isfinite(el) for el in shift_vec]):
@@ -1082,13 +1090,7 @@ class ScannerGui(GuiBase):
                                                              shift_vec)
             self.toggle_switch_widget.setEnabled(True)
             self._mw.action_toggle_tilt_correction.setEnabled(True)
-        else:
-            self.toggle_tilt_correction(False)
-            self._scanning_logic().configure_tilt_correction(None, None)
 
-            self.toggle_switch_widget.set_state('Tilt_Correction:OFF')
-            self.toggle_switch_widget.setEnabled(False)
-            self._mw.action_toggle_tilt_correction.setEnabled(False)
 
     def toggle_tilt_correction(self, state):
         # toggle switch
