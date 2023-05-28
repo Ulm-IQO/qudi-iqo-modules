@@ -298,12 +298,11 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
-            #self.log.debug(f"Set pos to= {pos_dict}")
+            #self.log.debug(f"Requested Set pos to= {pos_dict}")
             ax_constr = self.scanner_constraints.axes
-            old_target = self.scanner_target
-            new_pos = pos_dict.copy()
-            old_target.update(new_pos)  # tilt correction needs all coordinates, not only the new ones given
-            new_pos = old_target
+            pos_dict = self._scanner()._expand_coordinate(pos_dict)
+
+            pos_dict = self._scanner().coordinate_transform(pos_dict)
 
             for ax, pos in pos_dict.items():
                 if ax not in ax_constr:
@@ -312,21 +311,21 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                     return new_pos
 
-                new_pos[ax] = ax_constr[ax].clip_value(pos)
-                if pos != new_pos[ax]:
-                    # todo: check bounds on transformed (bare) hw coordinates
-                    self.log.warning('Scanner position target value out of bounds for axis "{0}". '
-                                     'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
+                pos_dict[ax] = ax_constr[ax].clip_value(pos)
+                if pos != pos_dict[ax]:
+                    self.log.warning(f'Scanner position target value {pos:.3e} out of bounds for axis "{ax}". '
+                                     f'Clipping value to {pos_dict[ax]:.3e}.')
 
-            new_pos = self._scanner().move_absolute(new_pos, blocking=move_blocking)
+            # move_absolute expects untransformed coordinatess, so invert clipped pos
+            pos_dict = self._scanner().coordinate_transform(pos_dict, inverse=True)
+
+            new_pos = self._scanner().move_absolute(pos_dict, blocking=move_blocking)
             #self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
             #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
-            self.sigScannerTargetChanged.emit(
-                new_pos,
-                self.module_uuid if caller_id is None else caller_id
-            )
+            self.sigScannerTargetChanged.emit(new_pos,
+                self.module_uuid if caller_id is None else caller_id)
             return new_pos
 
     def toggle_scan(self, start, scan_axes, caller_id=None):

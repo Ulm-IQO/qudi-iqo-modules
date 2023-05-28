@@ -687,20 +687,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             raise ValueError(f"Not supported scan dimension: {scan_data.scan_dimension}")
 
-        # expand coord dict to full dimension, setting unsued axes to constant
-        scanner_axes = self.get_constraints().axes
-        axes_unused = [ax for ax in scanner_axes.keys() if ax not in coord_dict.keys()]
-        coord_unused = {}
-
-        for ax in axes_unused:
-            target_coord = self.get_target()[ax]
-            coords = np.ones(list(coord_dict.values())[0].shape)* target_coord
-            coord_unused[ax] = coords
-
-        self.log.debug(f"Expanding scan coord {coord_dict} with unused {coord_unused}")
-        coord_dict.update(coord_unused)
-
-        return coord_dict
+        return self._expand_coordinate(coord_dict)
 
     def _initialize_ni_scan_arrays(self, scan_data):
         """
