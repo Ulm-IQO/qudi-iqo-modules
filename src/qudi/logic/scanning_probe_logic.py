@@ -23,6 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from PySide2 import QtCore
 import copy as cp
 import numpy as np
+from collections import OrderedDict
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
@@ -300,7 +301,8 @@ class ScanningProbeLogic(LogicBase):
 
             #self.log.debug(f"Requested Set pos to= {pos_dict}")
             ax_constr = self.scanner_constraints.axes
-            pos_dict = self._scanner()._expand_coordinate(pos_dict)
+            pos_dict = self._scanner()._expand_coordinate(cp.copy(pos_dict))
+            #self.log.debug(f"Expand to= {pos_dict}")
 
             pos_dict = self._scanner().coordinate_transform(pos_dict)
 
@@ -316,9 +318,10 @@ class ScanningProbeLogic(LogicBase):
                     self.log.warning(f'Scanner position target value {pos:.3e} out of bounds for axis "{ax}". '
                                      f'Clipping value to {pos_dict[ax]:.3e}.')
 
+
             # move_absolute expects untransformed coordinatess, so invert clipped pos
             pos_dict = self._scanner().coordinate_transform(pos_dict, inverse=True)
-
+            #self.log.debug(f"In front of hw.move_abs {pos_dict}")
             new_pos = self._scanner().move_absolute(pos_dict, blocking=move_blocking)
             #self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
@@ -371,9 +374,10 @@ class ScanningProbeLogic(LogicBase):
             shift_vec = np.mean(red_support_vecs, axis=0)
         else:
             shift_vec = np.asarray(shift_vec)
-            red_support_vecs = np.vstack([support_vecs, shift_vec])# compute_reduced_vectors(np.vstack([support_vecs, shift_vec]))
-            red_support_vecs = compute_reduced_vectors(red_support_vecs)[:-1,:]
-            shift_vec = red_support_vecs[-1,:]
+            red_support_vecs = np.vstack([support_vecs, shift_vec])
+            red_vecs = compute_reduced_vectors(red_support_vecs)
+            red_support_vecs = red_vecs[:-1,:]
+            shift_vec = red_vecs[-1,:]
 
         tilt_axes = det_changing_axes(support_vecs)
 
@@ -550,6 +554,7 @@ class ScanningProbeLogic(LogicBase):
         """
         # todo: double check: reduce dimension to 3d
         coord_reduced = {key:val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}
+        coord_reduced = OrderedDict(sorted(coord_reduced.items()))
         #ax_2_idx_map = {key:idx for (idx, (key, val)) in enumerate(list(coord.items())) if key in self._tilt_corr_axes}
 
         # convert from coordinate dict to plain vector

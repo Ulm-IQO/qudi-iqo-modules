@@ -163,7 +163,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             square_px_only=False,
                                             allow_coordinate_transform=self.supports_coordinate_transform)  # TODO incorporate in scanning_probe toolchain
 #
-        self._target_pos = self.get_position()  # get voltages/pos from ni_ao
+        self._target_pos = self._get_position()  # get voltages/pos from ni_ao
         self._toggle_ao_setpoint_channels(False)  # And free ao resources after that
         self._t_last_move = time.perf_counter()
         self.__init_ao_timer()
@@ -307,11 +307,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # assert not self.is_running, 'Cannot move the scanner while, scan is running'
         if self.is_scan_running:
             self.log.error('Cannot move the scanner while, scan is running')
-            return self.get_target()
+            return self._get_target()
 
         if not set(position).issubset(self.get_constraints().axes):
             self.log.error('Invalid axes name in position')
-            return self.get_target()
+            return self._get_target()
 
         try:
             self._prepare_movement(position, velocity=velocity)
@@ -322,7 +322,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             self._t_last_move = time.perf_counter()
 
-            return self.get_target()
+            return self._get_target()
         except:
             self.log.exception("Couldn't move: ")
 
@@ -345,7 +345,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         Log error and return current target position if something fails or a 1D/2D scan is in
         progress.
         """
-        current_position = self.get_position()
+        current_position = self._get_position()
         end_pos = {ax: current_position[ax] + distance[ax] for ax in distance}
         self.move_absolute(end_pos, velocity=velocity, blocking=blocking)
 
@@ -357,10 +357,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current target position per axis.
         """
-        if self.is_scan_running:
-            return self._stored_target_pos
-        else:
-            return self._target_pos
+        return self._get_target()
 
     def get_position(self):
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
@@ -407,7 +404,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             with self._thread_lock_data:
                 self._scan_data.new_scan()
                 #self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
-                self._stored_target_pos = self.get_target().copy()
+                self._stored_target_pos = self._get_target().copy()
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
 
             # todo: scanning_probe_logic exits when scanner not locked right away
@@ -782,7 +779,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
 
         #self.log.debug(f"Aborting move.")
-        self._target_pos = self.get_position()
+        self._target_pos = self._get_position()
 
         with self._thread_lock_cursor:
 
@@ -826,7 +823,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 # TODO Adapt interface to use "in_range"?
                 self._target_pos[axis] = position[axis]
 
-            #self.log.debug(f"New target pos: {self._target_pos}")
+            self.log.debug(f"New target pos: {self._target_pos}")
 
             # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
             if velocity is None:
@@ -853,6 +850,16 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             pos = self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
             return pos
 
+    def _get_target(self):
+        """ Raw target position of the scanner hardware. Interface method .get_target() might
+        get wrapped by tilt correction and transform to a virtual coord system.
+
+        """
+        if self.is_scan_running:
+            return self._stored_target_pos
+        else:
+            return self._target_pos
+
     def __init_ao_timer(self):
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
 
@@ -878,29 +885,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except:
             self.log.exception("")
 
-    def _expand_coordinate(self, coord):
-        """
-        Expand coord dict to all scanner dimensions, setting missing axes to current scanner target.
-        """
 
-        scanner_axes = self.get_constraints().axes
-        current_target = self.get_target()
-        len_coord = 0
-        axes_unused = scanner_axes.keys()
-
-        if coord:
-            len_coord = len(list(coord.values())[0])
-            axes_unused = [ax for ax in scanner_axes.keys() if ax not in coord.keys()]
-        coord_unused = {}
-
-        for ax in axes_unused:
-            target_coord = current_target[ax]
-            coords = np.ones(len_coord)*target_coord if len_coord > 1 else target_coord
-            coord_unused[ax] = coords
-
-        coord.update(coord_unused)
-
-        return coord
 class RawDataContainer:
 
     def __init__(self, channel_keys, number_of_scan_lines, forward_line_resolution, backwards_line_resolution):
