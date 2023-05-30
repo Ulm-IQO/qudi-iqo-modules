@@ -878,7 +878,29 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         except:
             self.log.exception("")
 
+    def _expand_coordinate(self, coord):
+        """
+        Expand coord dict to all scanner dimensions, setting missing axes to current scanner target.
+        """
 
+        scanner_axes = self.get_constraints().axes
+        current_target = self.get_target()
+        len_coord = 0
+        axes_unused = scanner_axes.keys()
+
+        if coord:
+            len_coord = len(list(coord.values())[0])
+            axes_unused = [ax for ax in scanner_axes.keys() if ax not in coord.keys()]
+        coord_unused = {}
+
+        for ax in axes_unused:
+            target_coord = current_target[ax]
+            coords = np.ones(len_coord)*target_coord if len_coord > 1 else target_coord
+            coord_unused[ax] = coords
+
+        coord.update(coord_unused)
+
+        return coord
 class RawDataContainer:
 
     def __init__(self, channel_keys, number_of_scan_lines, forward_line_resolution, backwards_line_resolution):
