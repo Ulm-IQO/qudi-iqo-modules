@@ -23,7 +23,8 @@ import ctypes
 import numpy as np
 import time
 from os import path
-from pathlib import Path
+from psutil import virtual_memory
+from psutil._common import bytes2human
 
 from qudi.util.datastorage import create_dir_for_file
 from qudi.core.configoption import ConfigOption
@@ -50,6 +51,8 @@ class FastComtec(DataInStreamInterface):
     _header_length = ConfigOption(name='header_length', default=72, missing='warn')
     _data_type = ConfigOption(name='data_type', default=np.int32, missing='info')
     _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
+    
+    _line_size = ConfigOption(name='line_size', default=4, missing='nothing') # how many bytes does one line of measurement data have
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -66,22 +69,12 @@ class FastComtec(DataInStreamInterface):
         self._read_lines = None
         self._filename = None
 
-        self._data_buffer = np.empty(0, dtype=self._data_type)
-        self._has_overflown = False
-        self._read_lines = None
-        self._filename = None
-
         self._constraints = None
+
         
 
     def on_activate(self):
         self.dll = ctypes.windll.LoadLibrary(self._dll_path)
-        # if self.gated:
-        #     self.change_sweep_mode(gated=True)
-        # else:
-        #     self.change_sweep_mode(gated=False)
-        # return
-
         self._streaming_mode = StreamingMode.CONTINUOUS
         
         # Create constraints
@@ -135,7 +128,6 @@ class FastComtec(DataInStreamInterface):
 
         @param float, samplerate: samplerate that should be set
         """
-        # TODO implement a useful check whether sample rate is in a sensible range
         self._sample_rate = samplerate
 
     @property
@@ -166,7 +158,11 @@ class FastComtec(DataInStreamInterface):
 
         @param int, buffersize: number of lines that should be read into the memory
         """
-        # TODO implement reasonable check for buffersize's constraints
+        # check if buffersize is smaller than 80 % of the available PC's memory
+        available_memory = virtual_memory().available * 0.8
+        if buffersize * self._line_size > available_memory:
+            self.log.error(f"The required buffersize ({bytes2human(buffersize)}B) is greater than 80 % of the available memory ({bytes2human(available_memory)}B). Can't set new buffersize.")
+            return
         self._buffer_size = buffersize
 
     @property
@@ -337,7 +333,20 @@ class FastComtec(DataInStreamInterface):
         """
         # TODO: how to implement this as we are only reading from a file.
         # Maybe we can implement this by checking for the number of lines in the file and then returning this value
-        pass
+        if not self._filename:
+            self.log.error("No filename has been specified yet. First call the change_filename function to create a file.")
+            return
+        # open the raw file and count the \n
+        with open(self._filename, 'rb') as fp:
+            generator = self._count_generator(fp.raw.read)
+            count = sum(buffer.count(b'\n') for buffer in generator)
+        return count
+    
+    def _count_generator(self, reader):
+        b = reader(1024 * 1024)
+        while b:
+            yield b
+            b = reader(1024 * 1024)
 
     @property
     def buffer_overflown(self):
@@ -350,7 +359,7 @@ class FastComtec(DataInStreamInterface):
 
         @return bool: Flag indicates if buffer has overflown (True) or not (False)
         """
-        # TODO: our buffer is hard coded -> can't overflow, return False all the time
+        # TODO: we have to decide on this
         return False
 
     @property
@@ -591,6 +600,7 @@ class FastComtec(DataInStreamInterface):
         # send the command for the filelocation to the dll
         cmd = 'mpaname=%s' % filelocation
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+        self._filename = filelocation
         return filelocation
 
     def change_save_mode(self, mode):
