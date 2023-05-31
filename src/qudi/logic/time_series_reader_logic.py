@@ -32,6 +32,7 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.helpers import is_integer_type
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
+from qudi.util.datastorage import TextDataStorage
 
 
 class TimeSeriesReaderLogic(LogicBase):
@@ -51,6 +52,7 @@ class TimeSeriesReaderLogic(LogicBase):
     """
     # declare signals
     sigDataChanged = QtCore.Signal(object, object, object, object)
+    sigNewRawData = QtCore.Signal(object, object)
     sigStatusChanged = QtCore.Signal(bool, bool)
     sigTraceSettingsChanged = QtCore.Signal(dict)
     sigChannelSettingsChanged = QtCore.Signal(list, list)
@@ -65,6 +67,10 @@ class TimeSeriesReaderLogic(LogicBase):
                                         default=1024**2,
                                         missing='info',
                                         constructor=lambda x: int(round(x)))
+    _max_raw_data_bytes = ConfigOption(name='max_raw_data_bytes',
+                                       default=1024**3,
+                                       missing='info',
+                                       constructor=lambda x: int(round(x)))
 
     # status vars
     _trace_window_size = StatusVar('trace_window_size', default=6)
@@ -98,8 +104,9 @@ class TimeSeriesReaderLogic(LogicBase):
         self.__moving_filter = None
 
         # for data recording
-        self._recorded_data = None
-        self._recorded_times = None
+        self._recorded_raw_data = None
+        self._recorded_raw_times = None
+        self._recorded_sample_count = 0
         self._data_recording_active = False
         self._record_start_time = None
 
@@ -109,6 +116,9 @@ class TimeSeriesReaderLogic(LogicBase):
         streamer = self._streamer()
 
         # Flag to stop the loop and process variables
+        self._recorded_raw_data = None
+        self._recorded_raw_times = None
+        self._recorded_sample_count = 0
         self._data_recording_active = False
         self._record_start_time = None
 
@@ -162,20 +172,19 @@ class TimeSeriesReaderLogic(LogicBase):
             self._times_buffer = None
 
     def _init_data_arrays(self):
-        channel_count = len(self._averaged_channels)
+        channel_count = len(self._active_channels)
+        averaged_channel_count = len(self._averaged_channels)
         window_size = int(round(self._trace_window_size * self.data_rate))
         constraints = self.streamer_constraints
         trace_dtype = np.float64 if is_integer_type(constraints.data_type) else constraints.data_type
 
         # processed data arrays
-        self._recorded_data = list()
-        self._recorded_times = list()
         self._trace_data = np.zeros(
             [channel_count, window_size + self._moving_average_width // 2],
             dtype=trace_dtype
         )
         self._trace_data_averaged = np.zeros(
-            [channel_count, window_size - self._moving_average_width // 2],
+            [averaged_channel_count, window_size - self._moving_average_width // 2],
             dtype=trace_dtype
         )
         self._trace_times = np.arange(window_size, dtype=np.float64)
@@ -388,9 +397,8 @@ class TimeSeriesReaderLogic(LogicBase):
             self.module_state.lock()
             try:
                 if self._data_recording_active:
+                    self._init_recording_arrays()
                     self._record_start_time = dt.datetime.now()
-                    self._recorded_data = list()
-                    self._recorded_times = list()
                 self._streamer().start_stream()
             except:
                 self.module_state.unlock()
@@ -411,17 +419,12 @@ class TimeSeriesReaderLogic(LogicBase):
         if self.module_state() == 'locked':
             try:
                 self._streamer().stop_stream()
-                if self._data_recording_active:
-                    self._save_recorded_data(to_file=True, save_figure=True)
-                    self._recorded_data = list()
-                    self._recorded_times = list()
             except:
                 self.log.exception('Error while trying to stop stream reader:')
                 raise
             finally:
                 self.module_state.unlock()
-                self._data_recording_active = False
-                self.sigStatusChanged.emit(False, False)
+                self._stop_recording()
 
     @QtCore.Slot()
     def _acquire_data_block(self):
@@ -446,8 +449,17 @@ class TimeSeriesReaderLogic(LogicBase):
                                                    timestamp_buffer=self._times_buffer)
                     # Process data
                     self._process_trace_data(samples_to_read)
-                    if self._times_buffer is not None:
+                    if self._times_buffer is None:
+                        if self._data_recording_active:
+                            self._add_to_recording_array(self._data_buffer[:, :samples_to_read])
+                        self.sigNewRawData.emit(None, self._data_buffer[:, :samples_to_read])
+                    else:
                         self._process_trace_times(samples_to_read)
+                        if self._data_recording_active:
+                            self._add_to_recording_array(self._data_buffer[:, :samples_to_read],
+                                                         self._times_buffer[:samples_to_read])
+                        self.sigNewRawData.emit(self._times_buffer[:samples_to_read],
+                                                self._data_buffer[:, :samples_to_read])
                     # Emit update signal
                     self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
                 except:
@@ -465,10 +477,6 @@ class TimeSeriesReaderLogic(LogicBase):
             )
             times = np.mean(times, axis=1)
 
-        # Append data to save if necessary
-        if self._data_recording_active:
-            self._recorded_times.append(times.copy())
-
         times = times[-self._trace_times.size:]  # discard data outside time frame
 
         # Roll data array to have a continuously running time trace
@@ -485,10 +493,6 @@ class TimeSeriesReaderLogic(LogicBase):
                                  data.shape[1] // self.oversampling_factor,
                                  self.oversampling_factor))
             data = np.mean(data, axis=2)
-
-        # Append data to save if necessary
-        if self._data_recording_active:
-            self._recorded_data.append(data.copy())
 
         data = data[:, -self._trace_data.shape[1]:]  # discard data outside time frame
 
@@ -510,6 +514,77 @@ class TimeSeriesReaderLogic(LogicBase):
                     mode='valid'
                 )
 
+    def _init_recording_arrays(self) -> None:
+        constraints = self.streamer_constraints
+        try:
+            sample_bytes = np.finfo(constraints.data_type).bits // 8
+        except ValueError:
+            sample_bytes = np.iinfo(constraints.data_type).bits // 8
+        # Try to allocate space for approx. 10sec of samples (limited by ConfigOption)
+        channel_count = len(self._active_channels)
+        channel_samples = int(10 * self.sampling_rate)
+        data_byte_size = sample_bytes * channel_count * channel_samples
+        if constraints.sample_timing == SampleTiming.TIMESTAMP:
+            if (8 * channel_samples + data_byte_size) > self._max_raw_data_bytes:
+                channel_samples = max(
+                    1,
+                    self._max_raw_data_bytes // (channel_count * sample_bytes + 8)
+                )
+            self._recorded_raw_times = np.zeros(channel_samples, dtype=np.float64)
+        else:
+            if data_byte_size > self._max_raw_data_bytes:
+                channel_samples = max(1, self._max_raw_data_bytes // (channel_count * sample_bytes))
+            self._recorded_raw_times = None
+        self._recorded_raw_data = np.zeros([channel_count, channel_samples],
+                                           dtype=constraints.data_type)
+        self._recorded_sample_count = 0
+
+    def _expand_recording_arrays(self) -> int:
+        channel_count, current_samples = self._recorded_raw_data.shape
+        sample_byte_size = channel_count * self._recorded_raw_data.itemsize
+        new_byte_size = 2 * current_samples * sample_byte_size
+        if self._recorded_raw_times is not None:
+            new_byte_size += 16 * current_samples
+            sample_byte_size += 8
+        new_samples = (min(self._max_raw_data_bytes,
+                           new_byte_size) // sample_byte_size) - current_samples
+        self._recorded_raw_data = np.append(
+            self._recorded_raw_data,
+            np.empty([channel_count, new_samples], dtype=self._recorded_raw_data.dtype),
+            axis=1
+        )
+        if self._recorded_raw_times is not None:
+            self._recorded_raw_times = np.append(
+                self._recorded_raw_times,
+                np.empty(new_samples, dtype=self._recorded_raw_times.dtype)
+            )
+        return new_samples
+
+    def _add_to_recording_array(self, data, times = None) -> None:
+        free_samples = self._recorded_raw_data.shape[1] - self._recorded_sample_count
+        new_samples = data.shape[1]
+        if new_samples > free_samples:
+            free_samples += self._expand_recording_arrays()
+            if new_samples > free_samples:
+                self.log.error(
+                    f'Configured maximum allowed amount of raw data reached '
+                    f'({self._max_raw_data_bytes:d} bytes). Saving raw data so far and terminating '
+                    f'data recording.'
+                )
+                self._recorded_raw_data[:, self._recorded_sample_count:self._recorded_sample_count + free_samples] = data[:, :free_samples]
+                try:
+                    self._recorded_raw_times[self._recorded_sample_count:self._recorded_sample_count + free_samples] = times[:free_samples]
+                except (AttributeError, TypeError):
+                    pass
+                self._recorded_sample_count += free_samples
+                self._stop_recording()
+        self._recorded_raw_data[:, self._recorded_sample_count:self._recorded_sample_count + new_samples] = data
+        try:
+            self._recorded_raw_times[self._recorded_sample_count:self._recorded_sample_count + new_samples] = times
+        except (AttributeError, TypeError):
+            pass
+        self._recorded_sample_count += new_samples
+
     @QtCore.Slot()
     def start_recording(self):
         """ Sets up start-time and initializes data array, if not resuming, and changes saving
@@ -521,7 +596,7 @@ class TimeSeriesReaderLogic(LogicBase):
             else:
                 self._data_recording_active = True
                 if self.module_state() == 'locked':
-                    self._recorded_data = list()
+                    self._init_recording_arrays()
                     self._record_start_time = dt.datetime.now()
                     self.sigStatusChanged.emit(True, True)
                 else:
@@ -536,25 +611,20 @@ class TimeSeriesReaderLogic(LogicBase):
         @return int: Error code (0: OK, -1: Error)
         """
         with self._threadlock:
+            self._stop_recording()
+
+    def _stop_recording(self) -> None:
+        try:
             if self._data_recording_active:
-                self._data_recording_active = False
-                if self.module_state() == 'locked':
-                    self._save_recorded_data(to_file=True, save_figure=True)
-                    self._recorded_data = list()
-                    self.sigStatusChanged.emit(True, False)
-            else:
-                self.sigStatusChanged.emit(self.module_state() == 'locked', False)
+                self._save_recorded_data(to_file=True, save_figure=True)
+        finally:
+            self._data_recording_active = False
+            self.sigStatusChanged.emit(self.module_state() == 'locked', False)
 
     def _save_recorded_data(self, to_file=True, name_tag='', save_figure=True):
-        """ Save the counter trace data and writes it to a file.
-
-        @param bool to_file: indicate, whether data have to be saved to file
-        @param str name_tag: an additional tag, which will be added to the filename upon save
-        @param bool save_figure: select whether png and pdf should be saved
-
-        @return dict parameters: Dictionary which contains the saving parameters
-        """
+        """ Save the recorded counter trace data and writes it to a file """
         pass
+        # storage = TextDataStorage()
         # if not self._recorded_data:
         #     self.log.error('No data has been recorded. Save to file failed.')
         #     return np.empty(0), dict()
