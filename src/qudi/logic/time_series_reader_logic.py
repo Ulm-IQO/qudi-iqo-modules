@@ -153,8 +153,8 @@ class TimeSeriesReaderLogic(LogicBase):
             self._moving_average_width += 1
 
         # set settings in streamer hardware
-        self.set_trace_settings(data_rate=self._data_rate)
         self.set_channel_settings(self._active_channels, self._averaged_channels)
+        self.set_trace_settings(data_rate=self._data_rate)
         # set up internal frame loop connection
         self._sigNextDataFrame.connect(self._acquire_data_block, QtCore.Qt.QueuedConnection)
 
@@ -172,7 +172,7 @@ class TimeSeriesReaderLogic(LogicBase):
             self._times_buffer = None
 
     def _init_data_arrays(self):
-        channel_count = len(self._active_channels)
+        channel_count = len(self.active_channel_names)
         averaged_channel_count = len(self._averaged_channels)
         window_size = int(round(self._trace_window_size * self.data_rate))
         constraints = self.streamer_constraints
@@ -521,7 +521,7 @@ class TimeSeriesReaderLogic(LogicBase):
         except ValueError:
             sample_bytes = np.iinfo(constraints.data_type).bits // 8
         # Try to allocate space for approx. 10sec of samples (limited by ConfigOption)
-        channel_count = len(self._active_channels)
+        channel_count = len(self.active_channel_names)
         channel_samples = int(10 * self.sampling_rate)
         data_byte_size = sample_bytes * channel_count * channel_samples
         if constraints.sample_timing == SampleTiming.TIMESTAMP:
@@ -616,67 +616,41 @@ class TimeSeriesReaderLogic(LogicBase):
     def _stop_recording(self) -> None:
         try:
             if self._data_recording_active:
-                self._save_recorded_data(to_file=True, save_figure=True)
+                self._save_recorded_data(save_figure=True)
         finally:
             self._data_recording_active = False
             self.sigStatusChanged.emit(self.module_state() == 'locked', False)
 
-    def _save_recorded_data(self, to_file=True, name_tag='', save_figure=True):
+    def _save_recorded_data(self, name_tag='', save_figure=True):
         """ Save the recorded counter trace data and writes it to a file """
-        pass
-        # storage = TextDataStorage()
-        # if not self._recorded_data:
-        #     self.log.error('No data has been recorded. Save to file failed.')
-        #     return np.empty(0), dict()
-        #
-        # data_arr = np.concatenate(self._recorded_data, axis=1)
-        # if data_arr.size == 0:
-        #     self.log.error('No data has been recorded. Save to file failed.')
-        #     return np.empty(0), dict()
-        #
-        # saving_stop_time = self._record_start_time + dt.timedelta(
-        #     seconds=data_arr.shape[1] * self.data_rate)
-        #
-        # # write the parameters:
-        # parameters = dict()
-        # parameters['Start recoding time'] = self._record_start_time.strftime(
-        #     '%d.%m.%Y, %H:%M:%S.%f')
-        # parameters['Stop recoding time'] = saving_stop_time.strftime('%d.%m.%Y, %H:%M:%S.%f')
-        # parameters['Data rate (Hz)'] = self.data_rate
-        # parameters['Oversampling factor (samples)'] = self.oversampling_factor
-        # parameters['Sampling rate (Hz)'] = self.sampling_rate
-        #
-        # if to_file:
-        #     # If there is a postfix then add separating underscore
-        #     filelabel = 'data_trace_{0}'.format(name_tag) if name_tag else 'data_trace'
-        #
-        #     # prepare the data in a dict:
-        #     header = ', '.join(
-        #         '{0} ({1})'.format(ch, unit) for ch, unit in self.active_channel_units.items())
-        #
-        #     data = {header: data_arr.transpose()}
-        #     filepath = self._savelogic.get_path_for_module(module_name='TimeSeriesReader')
-        #     set_of_units = set(self.active_channel_units.values())
-        #     unit_list = tuple(self.active_channel_units)
-        #     y_unit = 'arb.u.'
-        #     occurrences = 0
-        #     for unit in set_of_units:
-        #         count = unit_list.count(unit)
-        #         if count > occurrences:
-        #             occurrences = count
-        #             y_unit = unit
-        #
-        #     fig = self._draw_figure(data_arr, self.data_rate, y_unit) if save_figure else None
-        #
-        #     self._savelogic.save_data(data=data,
-        #                               filepath=filepath,
-        #                               parameters=parameters,
-        #                               filelabel=filelabel,
-        #                               plotfig=fig,
-        #                               delimiter='\t',
-        #                               timestamp=saving_stop_time)
-        #     self.log.info('Time series saved to: {0}'.format(filepath))
-        # return data_arr, parameters
+        try:
+            constraints = self.streamer_constraints
+            metadata = {
+                'Start recoding time': self._record_start_time.strftime('%d.%m.%Y, %H:%M:%S.%f'),
+                'Sample rate (Hz)': self.sampling_rate
+            }
+            column_headers = [
+                f'{ch} ({constraints.channel_units[ch]})' for ch in self.active_channel_names
+            ]
+            nametag = f'data_trace_{name_tag}' if name_tag else 'data_trace'
+
+            if self._recorded_raw_times is None:
+                data = self._recorded_raw_data[:, :self._recorded_sample_count]
+            else:
+                data = np.vstack(
+                    [self._recorded_raw_times[:self._recorded_sample_count],
+                     self._recorded_raw_data[:, :self._recorded_sample_count]]
+                )
+                column_headers.insert(0, 'Time (s)')
+
+            storage = TextDataStorage(root_dir=self.module_default_data_dir)
+            storage.save_data(data.transpose(),
+                              metadata=metadata,
+                              nametag=nametag,
+                              column_headers=column_headers)
+        except:
+            self.log.exception('Something went wrong while saving raw data:')
+            raise
 
     def _draw_figure(self, data, timebase, y_unit):
         """ Draw figure to save with data file.
