@@ -664,22 +664,21 @@ class TimeSeriesReaderLogic(LogicBase):
         while data.shape[1] >= 2000:
             decimate_factor += 2
             data = decimate(data, q=2, axis=1)
-        if decimate_factor == 0:
-            decimate_factor = 1
-        print(decimate_factor)
 
         if constraints.sample_timing == SampleTiming.RANDOM:
             x = np.arange(data.shape[1])
             x_label = 'Sample Index'
         elif constraints.sample_timing == SampleTiming.CONSTANT:
-            x = np.arange(data.shape[1]) / (self.sampling_rate / decimate_factor)
+            if decimate_factor > 0:
+                x = np.arange(data.shape[1]) / (self.sampling_rate / decimate_factor)
+            else:
+                x = np.arange(data.shape[1]) / self.sampling_rate
             x_label = 'Time (s)'
         else:
             x = self._recorded_raw_times[:self._recorded_sample_count] - self._recorded_raw_times[0]
-            if decimate_factor > 1:
-                while decimate_factor > 0:
-                    decimate_factor -= 2
-                    x = decimate(x, q=2)
+            while decimate_factor > 0:
+                decimate_factor -= 2
+                x = decimate(x, q=2)
             x_label = 'Time (s)'
         # Create figure and scale data
         max_abs_value = ScaledFloat(max(data.max(), np.abs(data.min())))
