@@ -94,7 +94,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         # Internal settings
         self._channel_names = None  # dictionary with switch channel numbers as keys, channel names as values
-        self._channel_buffer_size = -1
+        self._channel_buffer_size = 1000
         self._active_switch_channels = None  # list of active switch channel numbers
         self._unit_return_type = {}
 
@@ -166,7 +166,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             streaming_modes=[StreamingMode.CONTINUOUS],
             data_type=np.float64,
             # TODO: figure out meaningful constraints
-            channel_buffer_size=ScalarConstraint(default=1000, bounds=(100, 10000), increment=1, enforce_int=True)
+            channel_buffer_size=ScalarConstraint(default=1000, bounds=(100, 1024**2), increment=1, enforce_int=True)
         )
 
     def on_deactivate(self) -> None:
@@ -212,13 +212,16 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                 self.log.error('Wavemeter acquisition was stopped during stream.')
                 return 0
 
-            with self._lock:
+            # TODO: why does this not work in the lock anymore?
+            # with self._lock:
+            if True:
                 # see if new data is from one of the active channels
                 ch = high_finesse_constants.cmi_wavelength_n.get(mode)
                 if ch in self._active_switch_channels:
                     i = self._active_switch_channels.index(ch)
 
                     if self._current_buffer_positions[i] >= self.channel_buffer_size:
+                        # TODO: what to do after raising this error for the first time?
                         raise OverflowError(
                             'Streaming buffer encountered an overflow while receiving a callback from the wavemeter. '
                             'Please increase the buffer size or speed up data reading.'
@@ -235,7 +238,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                     self._data_buffer[i, self._current_buffer_positions[i]] = converted_value
                     if i == 0:
                         # only record the timestamp of the first active channel
-                        self._timestamp_buffer[self._current_buffer_positions[i]] = timestamp
+                        self._timestamp_buffer[self._current_buffer_positions[0]] = timestamp
                     self._current_buffer_positions[i] += 1
 
                     # TODO emit signal for wavelength window
@@ -264,7 +267,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     def stop_stream(self) -> None:
         """ Stop the data acquisition/streaming """
-        with self._thread_lock:
+        with self._lock:
             if self.module_state() == 'locked':
                 self._wavemeterdll.Instantiate(
                     high_finesse_constants.cInstNotification,  # long ReasonForCall
@@ -303,10 +306,11 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             if not isinstance(data_buffer, np.ndarray) or data_buffer.dtype != self.constraints.data_type:
                 self.log.error(f'data_buffer must be numpy.ndarray with dtype {self.constraints.data_type}.')
 
-            if not isinstance(timestamp_buffer, np.ndarray) or timestamp_buffer.dtype != np.datetime64:
+            if not isinstance(timestamp_buffer, np.ndarray) or not np.issubdtype(timestamp_buffer.dtype, np.datetime64):
+                # TODO: explicit datetime64 unit checking
                 self.log.error(f'timestamp_buffer must be numpy.ndarray with dtype np.datetime64.')
 
-            n_channels = len(self._active_channels)
+            n_channels = len(self.active_channels)
             if n_channels > 1:
                 if data_buffer.ndim != 2:
                     self.log.error('data_buffer must be a 2D numpy.ndarray if more then one channel is active.')
@@ -358,8 +362,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         samples exceed buffer size, read only as many samples as fit into the buffer.
         """
         available_samples = self.available_samples
-        self.read_data_into_buffer(data_buffer=data_buffer, timestamp_buffer=timestamp_buffer,
-                                   number_of_samples=available_samples)
+        self.read_data_into_buffer(data_buffer=data_buffer,
+                                   number_of_samples=available_samples,
+                                   timestamp_buffer=timestamp_buffer)
         return available_samples
 
     def read_data(self,
@@ -414,7 +419,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             return np.empty(0, dtype=self.constraints.data_type), None
 
         i = self._current_buffer_positions.min() - 1
-        data = self._data_buffer[i]
+        data = self._data_buffer[:, i]
         timestamp = self._timestamp_buffer[i]
         return data, timestamp
 
@@ -500,15 +505,12 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.warning('Only continuous streaming is supported, ignoring this setting.')
 
         if channel_buffer_size is not None:
-            self.constraints.channel_buffer_size.check(channel_buffer_size)
+            self.constraints.channel_buffer_size.is_valid(channel_buffer_size)
             self._channel_buffer_size = channel_buffer_size
-
-        if sample_rate is not None:
-            self.log.warning('Sample rate is not applicable for a wavemeter and is ignored.')
 
     def _init_buffers(self) -> None:
         """ Initialize buffers and the current buffer position marker. """
         n = len(self._active_switch_channels)
         self._data_buffer = np.zeros([n, self._channel_buffer_size], dtype=self.constraints.data_type)
-        self._timestamp_buffer = np.zeros(n, dtype=np.datetime64)
+        self._timestamp_buffer = np.zeros(self._channel_buffer_size, dtype='datetime64[ms]')
         self._current_buffer_positions = np.zeros(n, dtype=int)
