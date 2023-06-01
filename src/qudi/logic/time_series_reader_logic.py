@@ -19,11 +19,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import time
 import numpy as np
 import datetime as dt
-# import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 from PySide2 import QtCore
+from scipy.signal import decimate
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -33,6 +33,7 @@ from qudi.util.mutex import Mutex
 from qudi.util.helpers import is_integer_type
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.util.datastorage import TextDataStorage
+from qudi.util.units import ScaledFloat
 
 
 class TimeSeriesReaderLogic(LogicBase):
@@ -644,36 +645,60 @@ class TimeSeriesReaderLogic(LogicBase):
                 column_headers.insert(0, 'Time (s)')
 
             storage = TextDataStorage(root_dir=self.module_default_data_dir)
-            storage.save_data(data.transpose(),
-                              metadata=metadata,
-                              nametag=nametag,
-                              column_headers=column_headers)
+            filepath, _, _ = storage.save_data(data.transpose(),
+                                               metadata=metadata,
+                                               nametag=nametag,
+                                               column_headers=column_headers)
+            if save_figure:
+                storage.save_thumbnail(mpl_figure=self._draw_raw_data_thumbnail(),
+                                       file_path=filepath)
         except:
             self.log.exception('Something went wrong while saving raw data:')
             raise
 
-    def _draw_figure(self, data, timebase, y_unit):
-        """ Draw figure to save with data file.
+    def _draw_raw_data_thumbnail(self):
+        """ Draw figure to save with data file """
+        constraints = self.streamer_constraints
+        data = self._recorded_raw_data[:, :self._recorded_sample_count]
+        decimate_factor = 0
+        while data.shape[1] >= 2000:
+            decimate_factor += 2
+            data = decimate(data, q=2, axis=1)
+        if decimate_factor == 0:
+            decimate_factor = 1
+        print(decimate_factor)
 
-        @param: nparray data: a numpy array containing counts vs time for all detectors
+        if constraints.sample_timing == SampleTiming.RANDOM:
+            x = np.arange(data.shape[1])
+            x_label = 'Sample Index'
+        elif constraints.sample_timing == SampleTiming.CONSTANT:
+            x = np.arange(data.shape[1]) / (self.sampling_rate / decimate_factor)
+            x_label = 'Time (s)'
+        else:
+            x = self._recorded_raw_times[:self._recorded_sample_count] - self._recorded_raw_times[0]
+            if decimate_factor > 1:
+                while decimate_factor > 0:
+                    decimate_factor -= 2
+                    x = decimate(x, q=2)
+            x_label = 'Time (s)'
+        # Create figure and scale data
+        max_abs_value = ScaledFloat(max(data.max(), np.abs(data.min())))
+        if max_abs_value.scale:
+            data = data.transpose() / max_abs_value.scale_val
+            y_label = f'Signal ({max_abs_value.scale}arb.u.)'
+        else:
+            data = data.transpose()
+            y_label = 'Signal (arb.u.)'
 
-        @return: fig fig: a matplotlib figure object to be saved to file.
-        """
+        fig, ax = plt.subplots()
+        ax.plot(x, data, linestyle='-', marker='', linewidth=0.5)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        return fig
+
+    def _draw_trace_snapshot_thumbnail(self):
+        """ Draw figure to save with data file """
         pass
-        # # Create figure and scale data
-        # max_abs_value = ScaledFloat(max(data.max(), np.abs(data.min())))
-        # time_data = np.arange(data.shape[1]) / timebase
-        # fig, ax = plt.subplots()
-        # if max_abs_value.scale:
-        #     ax.plot(time_data,
-        #             data.transpose() / max_abs_value.scale_val,
-        #             linestyle=':',
-        #             linewidth=0.5)
-        # else:
-        #     ax.plot(time_data, data.transpose(), linestyle=':', linewidth=0.5)
-        # ax.set_xlabel('Time (s)')
-        # ax.set_ylabel('Signal ({0}{1})'.format(max_abs_value.scale, y_unit))
-        # return fig
 
     @QtCore.Slot()
     def save_trace_snapshot(self, to_file=True, name_tag='', save_figure=True):
