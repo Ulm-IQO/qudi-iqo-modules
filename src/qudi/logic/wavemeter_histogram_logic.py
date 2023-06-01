@@ -16,121 +16,24 @@ from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping
 from lmfit.model import ModelResult as _ModelResult
 from qudi.util.datastorage import TextDataStorage
 
-class HardwarePull(QtCore.QObject):
-    """ Helper class for running the hardware communication in a separate thread. """
-
-    def __init__(self, parentclass):
-        super().__init__()
-
-        # remember the reference to the parent class to access functions ad settings
-        self._parentclass = parentclass
-        self.threadlock = Mutex()
-
-    def connect_to_time_series(self, state_change):
-        """ Threaded method that can be called by a signal from outside to start the timer.
-        @param bool state: (True) starts timer, (False) stops it.
-        """
-
-        if state_change:
-            self._parentclass._time_series_logic.sigDataChangedWavemeter.connect(
-                self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
-
-        else:
-
-            pass
-
-    @QtCore.Slot(object)
-    def _counts_and_wavelength(self, new_count_data):
-        """ This method gets the trace data from the wavemeter hardware and the time series logic.
-            It runs repeatedly in the logic module event loop by being connected
-            to sigDataChangedWavemeter from the time series logic through a queued connection.
-        """
-        with self.threadlock:
-            if self._parentclass.module_state() == 'locked':
-                # check for break condition
-                if self._parentclass._stop_requested:
-                    # terminate the hardware streaming for counts and wavelength #TODO
-                    if self._parentclass._streamer().stop_stream() < 0:
-                        self._parentclass.log.error(
-                            'Error while trying to stop streaming device data acquisition (wavemeter).')
-                    self._parentclass.module_state.unlock()
-                    self._parentclass.sigStatusChanged.emit(False)
-                    #self._parentclass._streamer().sigNewWavelength.disconnect()
-                    self._parentclass._time_series_logic.sigDataChangedWavemeter.disconnect()
-                    self._parentclass._trace_data = np.vstack(((self._parentclass.timings, self._parentclass.counts), (self._parentclass.wavelength, self._parentclass.frequency)))
-                    return
-                    #set the integer samples_to_read to the according value of count instreamer
-                    #and interpolate the wavelength values accordingly
-                    #TODO is the timing of data aquisition below synchronised
-
-                    # Determine samples to read according to new_count_data size (!one channel only!)
-                if new_count_data is not None:
-                    samples_to_read_counts = len(new_count_data[0])
-
-                _data_wavelength = self._parentclass._streamer().read_data(number_of_samples=samples_to_read_counts)
-
-                _data_counts = new_count_data
-
-                if _data_wavelength.shape[1] != samples_to_read_counts or _data_counts.shape[1] != samples_to_read_counts:
-                    self.log.error('Reading data from streamer went wrong; '
-                                   'killing the stream with next data frame.')
-                    self._parentclass._stop_requested = True
-                    return
-
-                # Process data
-                #let time start at 0s
-                if self._parentclass.start_time_bool:
-                    self._parentclass.start_time = _data_wavelength[1, 0]
-                    self._parentclass.start_time_bool = False
-
-                #timings of wavelengths in s
-                _data_wavelength_timings = (_data_wavelength[1] - self._parentclass.start_time)/1000
-
-                #[0] for wavelength only
-                self._process_data_for_histogram(_data_wavelength[0], _data_counts[0], _data_wavelength_timings)
-        return
-
-    def _process_data_for_histogram(self, data_wavelength, data_counts, data_wavelength_timings):
-        """Method for generating whole data set of wavelength and counts (already interpolated)"""
-        #scale counts upon sample rate in order to display counts/s
-        #data_counts *= self._time_series_logic.sampling_rate
-        #Do this alrady in time series file otherwise weird outcome
-
-        data_freq = 3.0e17 / data_wavelength
-        for i in range(len(data_wavelength)):
-            self._parentclass.wavelength.append(data_wavelength[i])
-            self._parentclass.counts.append(data_counts[i])
-            self._parentclass.timings.append(data_wavelength_timings[i])
-            self._parentclass.frequency.append(data_freq[i])
-        return
-
 
 class WavemeterLogic(LogicBase):
 
     # declare signals
-    sigDataChanged = QtCore.Signal(object, object, object, object)
-    sig_new_data_points = QtCore.Signal(object, object)
-    sigStatusChanged = QtCore.Signal(bool) #TODO 2nd boolean for recording?
+    sigDataChanged = QtCore.Signal(object, object, object, object, object, object, object)
+    sigStatusChanged = QtCore.Signal(bool)
     sigSettingsChanged = QtCore.Signal(dict)
     sigNewWavelength2 = QtCore.Signal(object, object)
     sigFitChanged = QtCore.Signal(str, dict)  # fit_name, fit_results
-    sig_start_hard_acq = QtCore.Signal(bool)
-    sig_gui_refresh = QtCore.Signal()
 
     # declare connectors
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
     #access on timeseries logic and thus nidaq instreamer
     _timeserieslogic = Connector(name='counterlogic', interface='TimeSeriesReaderLogic')
 
-    #Adopted (unnecessary) from time series reader logic
     #config options
-    _max_frame_rate = ConfigOption('max_frame_rate', default=10, missing='warn')
-    _calc_digital_freq = ConfigOption('calc_digital_freq', default=True, missing='warn')
+
     # status vars
-    _trace_window_size = StatusVar('trace_window_size', default=6)
-    _moving_average_width = StatusVar('moving_average_width', default=9)
-    _oversampling_factor = StatusVar('oversampling_factor', default=1)
-    _data_rate = StatusVar('data_rate', default=50)
     _active_channels = StatusVar('active_channels', default=None)
 
     _fit_config_model = StatusVar(name='fit_configs', default=list())
@@ -142,14 +45,12 @@ class WavemeterLogic(LogicBase):
 
         # locking for thread safety
         self.threadlock = Mutex()
-        self._samples_per_frame = None
         self._stop_requested = True
         self.start_time_bool = True
         self.complete_histogram = False
         self.start_time = None
         self._fit_container = None
         self.x_axis_hz_bool = False  # by default display wavelength
-        self._gui_refresh_rate = 10 #TODO as config option in Hz
 
         # Data arrays #timings, counts, wavelength, wavelength in Hz
         self._trace_data = np.empty((4, 0), dtype=np.float64)
@@ -164,6 +65,7 @@ class WavemeterLogic(LogicBase):
         self._xmax_histo = 750
         self._xmin = 100000 #default; to be changed upon first iteration
         self._xmax = -1
+        self.number_of_displayed_points = 3000
 
         return
 
@@ -175,7 +77,6 @@ class WavemeterLogic(LogicBase):
 
         # Flag to stop the loop and process variables
         self._stop_requested = True
-        self._data_recording_active = False
         self._record_start_time = None
         self.start_time_bool = True
         self._fit_container = FitContainer(config_model=self._fit_config_model)
@@ -183,6 +84,7 @@ class WavemeterLogic(LogicBase):
 
         # Check valid StatusVar
         # active channels
+
         avail_channels = tuple(ch.name for ch in streamer.available_channels)
         if self._active_channels is None:
             if streamer.active_channels:
@@ -202,7 +104,6 @@ class WavemeterLogic(LogicBase):
         # set settings in streamer hardware
         settings = self.all_settings
         settings['active_channels'] = self._active_channels
-        settings['data_rate'] = self._data_rate
         self.configure_settings(**settings)
 
         # create a new x axis from xmin to xmax with bins points
@@ -216,19 +117,8 @@ class WavemeterLogic(LogicBase):
         self.rawhisto = np.zeros(self._bins)
         self.sumhisto = np.ones(self._bins) * 1.0e-10
 
-
         streamer.sigNewWavelength.connect(
             self.display_current_wavelength, QtCore.Qt.QueuedConnection)
-
-        self.sig_gui_refresh.connect(self._update_data_for_gui, QtCore.Qt.QueuedConnection)
-
-        self.hardware_thread = QtCore.QThread()
-
-        self._hardware_pull = HardwarePull(self)
-        self._hardware_pull.moveToThread(self.hardware_thread)
-        self.sig_start_hard_acq.connect(self._hardware_pull.connect_to_time_series)
-        self.hardware_thread.start()
-
         return
 
     def on_deactivate(self):
@@ -237,10 +127,6 @@ class WavemeterLogic(LogicBase):
         # Stop measurement
         if self.module_state() == 'locked':
             self._stop_reader_wait()
-
-        self.hardware_thread.quit()
-        self.sig_gui_refresh.disconnect()
-        self.sig_start_hard_acq.disconnect()
         self._streamer().sigNewWavelength.disconnect()
         return
 
@@ -262,15 +148,14 @@ class WavemeterLogic(LogicBase):
         self.configure_settings(data_rate=val)
         return
 
-    '''
     @QtCore.Slot(object)
     def _counts_and_wavelength(self, new_count_data):
         """
                 This method gets the available data from both ◘.
 
-                It runs repeatedly by being connected to a QTimer timeout signal.
+                It runs repeatedly by being connected to a QTimer timeout signal from the time series (sigDataChangedWavemeter).
                 """
-        with self.threadlock:
+        with self.threadlock: #TODO lock?
             if self.module_state() == 'locked':
                 # check for break condition
                 if self._stop_requested:
@@ -307,27 +192,22 @@ class WavemeterLogic(LogicBase):
                     self.start_time = _data_wavelength[1, 0]
                     self.start_time_bool = False
 
-                #timings of wavelengths in s
+                #timings of wavelengths in s and start at 0s
                 _data_wavelength_timings = (_data_wavelength[1] - self.start_time)/1000
 
-                #[0] for wavelength only
+                #[0] for wavelength(nm), [1] for timestamp
                 self._process_data_for_histogram(_data_wavelength[0], _data_counts[0], _data_wavelength_timings)
                 self._update_histogram(self.complete_histogram)
 
                 #Emit update signal for Gui
-                self.sigDataChanged.emit(_data_wavelength[0], _data_counts[0])
-
-                #emit time wavelength signal for scatterplot; #TODO redundant
-                #self.sig_new_data_points.emit(_data_wavelength[0], list(_data_wavelength_timings))
+                start = len(self.wavelength)-self.number_of_displayed_points if len(self.wavelength) > self.number_of_displayed_points else 0  # only display self.number_of_displayed_points most recent values
+                self.sigDataChanged.emit(self.timings[start:], self.counts[start:],
+                                         self.wavelength[start:], self.frequency[start:], self.histogram_axis, self.histogram, self.envelope_histogram)
 
         return
-    '''
-    '''
+
     def _process_data_for_histogram(self, data_wavelength, data_counts, data_wavelength_timings):
-        """Method for generating whole data set of wavelength and counts (already interpolated)"""
-        #scale counts upon sample rate in order to display counts/s
-        #data_counts *= self._time_series_logic.sampling_rate
-        #Do this alrady in time series file otherwise weird outcome
+        """Method for appending to to whole data set of wavelength and counts (already interpolated)"""
 
         data_freq = 3.0e17 / data_wavelength
         for i in range(len(data_wavelength)):
@@ -335,21 +215,6 @@ class WavemeterLogic(LogicBase):
             self.counts.append(data_counts[i])
             self.timings.append(data_wavelength_timings[i])
             self.frequency.append(data_freq[i])
-
-        return
-    '''
-
-    @QtCore.Slot()
-    def _update_data_for_gui(self):
-        with self.threadlock:
-            if self._stop_requested:
-                return
-            #TODO implement timing and sig to start again
-            self._update_histogram(self.complete_histogram)
-            if len(self.wavelength) == len(self.counts) == len(self.timings) == len(self.frequency):
-                self.sigDataChanged.emit(self.timings, self.counts, self.wavelength, self.frequency)
-            time.sleep(1 / self._gui_refresh_rate)
-            self.sig_gui_refresh.emit()
         return
 
     def _update_histogram(self, complete_histogram):
@@ -363,8 +228,12 @@ class WavemeterLogic(LogicBase):
             self._data_index = 0
             self.complete_histogram = False
 
+        #n+1-dimensional binning axis, to avoid empty bin when using np.digitize
+        offset = (self.histogram_axis[1]-self.histogram_axis[0])/2
+        binning_axis = np.linspace(self.histogram_axis[0]-offset, self.histogram_axis[-1]+offset, len(self.histogram_axis)+1)
+
         for i in self.wavelength[self._data_index:]:
-            self._data_index += 1
+            self._data_index += 1 #before because of continue
 
             if i < self._xmin:
                 self._xmin = i
@@ -374,16 +243,15 @@ class WavemeterLogic(LogicBase):
                 continue
 
             # calculate the bin the new wavelength needs to go in
-            newbin = np.digitize([i], self.histogram_axis)[0]
+            newbin = np.digitize([i], binning_axis)[0]
 
             # sum the counts in rawhisto and count the occurence of the bin in sumhisto
             self.rawhisto[newbin-1] += self.counts[self._data_index-1]
             self.sumhisto[newbin-1] += 1.0
 
-            #TODO double check newbin-1
             self.envelope_histogram[newbin-1] = np.max([self.counts[self._data_index-1], self.envelope_histogram[newbin-1]])
 
-            # the plot data is the summed counts divided by the occurence of the respective bins
+        # the plot data is the summed counts divided by the occurence of the respective bins
         self.histogram = self.rawhisto / self.sumhisto
         return
 
@@ -394,23 +262,24 @@ class WavemeterLogic(LogicBase):
                 @return error: 0 is OK, -1 is error
                 """
         #with self.threadlock:
-            # Lock module
+        # Lock module
         if self.module_state() == 'locked':
             self.log.warning('Data acquisition already running. "start_scanning" call ignored.')
             self.sigStatusChanged.emit(True)
             return 0
 
+        if not self._time_series_logic.module_state() == 'locked':
+            self.log.warning('Time series data acquisition has to be running!')
+            self.sigStatusChanged.emit(False)
+            return 0
+
         self.module_state.lock()
         self._stop_requested = False
         self.sigStatusChanged.emit(True)
-        self.sig_start_hard_acq.emit(True)
-        self.sig_gui_refresh.emit()
+        self._time_series_logic.sigDataChangedWavemeter.connect(
+            self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
 
-            #TODO check that time series gui has to be running
-            #self._time_series_logic.sigDataChangedWavemeter.connect(
-            #    self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
-
-        if self._streamer().start_stream() < 0:
+        if self._streamer().start_stream() < 0: #TODO start stream never returns -1
             self.log.error('Error while starting streaming device data acquisition.')
             self._stop_requested = True
             return -1
@@ -424,48 +293,13 @@ class WavemeterLogic(LogicBase):
 
                 @return int: error code (0: OK, -1: error)
                 """
-        #with self.threadlock:
-            #TODO
-            #if self._time_series_logic.module_state() == 'locked':
-            #self._time_series_logic._streamer().stop_stream()
         if self.module_state() == 'locked':
             self._stop_requested = True
         return 0
 
-    # TODO modify this method as most of it is just copied from time series logic and redundant for wavemeter
     @property
     def all_settings(self):
-        return {'oversampling_factor': self.oversampling_factor,
-                'active_channels': self.active_channels,
-                #'averaged_channels': self.averaged_channel_names,
-                'moving_average_width': self.moving_average_width,
-                'trace_window_size': self.trace_window_size,
-                'data_rate': self.data_rate}
-
-    @property
-    def oversampling_factor(self):
-        """
-
-        @return int: Oversampling factor (always >= 1). Value of 1 means no oversampling.
-        """
-        return self._oversampling_factor
-
-    @oversampling_factor.setter
-    def oversampling_factor(self, val):
-        """
-
-        @param int val: The oversampling factor to set. Must be >= 1.
-        """
-        self.configure_settings(oversampling_factor=val)
-        return
-
-    @property
-    def data_recording_active(self):
-        return self._data_recording_active
-
-    @property
-    def sampling_rate(self):
-        return self._streamer().sample_rate
+        return {'active_channels': self.active_channels}
 
     @property
     def available_channels(self):
@@ -505,24 +339,6 @@ class WavemeterLogic(LogicBase):
     def number_of_active_channels(self):
         return self._streamer().number_of_channels
 
-    @property
-    def trace_window_size(self):
-        return self._trace_window_size
-
-    @trace_window_size.setter
-    def trace_window_size(self, val):
-        self.configure_settings(trace_window_size=val)
-        return
-
-    @property
-    def moving_average_width(self):
-        return self._moving_average_width
-
-    @moving_average_width.setter
-    def moving_average_width(self, val):
-        self.configure_settings(moving_average_width=val)
-        return
-
     #TODO modify this method as most of it is just copied from time series logic and redundant for wavemeter
     @QtCore.Slot(dict)
     def configure_settings(self, settings_dict=None, **kwargs):
@@ -535,9 +351,6 @@ class WavemeterLogic(LogicBase):
 
         @return dict: The currently configured settings
         """
-        if self.data_recording_active:
-            self.log.warning('Unable to configure settings while data is being recorded.')
-            return self.all_settings
 
         if settings_dict is None:
             settings_dict = kwargs
@@ -553,108 +366,9 @@ class WavemeterLogic(LogicBase):
             self._stop_reader_wait()
 
         with self.threadlock:
-            constraints = self.streamer_constraints
             all_ch = tuple(ch.name for ch in self._streamer().available_channels)
-            data_rate = self.data_rate
+
             active_ch = self.active_channel_names
-
-            if 'oversampling_factor' in settings_dict:
-                new_val = int(settings_dict['oversampling_factor'])
-                if new_val < 1:
-                    self.log.error('Oversampling factor must be integer value >= 1 '
-                                   '(received: {0:d}).'.format(new_val))
-                else:
-                    if self.has_active_analog_channels and self.has_active_digital_channels:
-                        min_val = constraints.combined_sample_rate.min
-                        max_val = constraints.combined_sample_rate.max
-                    elif self.has_active_analog_channels:
-                        min_val = constraints.analog_sample_rate.min
-                        max_val = constraints.analog_sample_rate.max
-                    else:
-                        min_val = constraints.digital_sample_rate.min
-                        max_val = constraints.digital_sample_rate.max
-                    if not (min_val <= (new_val * data_rate) <= max_val):
-                        if 'data_rate' in settings_dict:
-                            self._oversampling_factor = new_val
-                        else:
-                            self.log.error('Oversampling factor to set ({0:d}) would cause '
-                                           'sampling rate outside allowed value range. '
-                                           'Setting not changed.'.format(new_val))
-                    else:
-                        self._oversampling_factor = new_val
-
-            if 'moving_average_width' in settings_dict:
-                new_val = int(settings_dict['moving_average_width'])
-                if new_val < 1:
-                    self.log.error('Moving average width must be integer value >= 1 '
-                                   '(received: {0:d}).'.format(new_val))
-                elif new_val % 2 == 0:
-                    new_val += 1
-                    self.log.warning('Moving average window must be odd integer number in order to '
-                                     'ensure perfect data alignment. Will increase value to {0:d}.'
-                                     ''.format(new_val))
-                if new_val / data_rate > self.trace_window_size:
-                    if 'data_rate' in settings_dict or 'trace_window_size' in settings_dict:
-                        self._moving_average_width = new_val
-                        self.__moving_filter = np.full(shape=self.moving_average_width,
-                                                       fill_value=1.0 / self.moving_average_width)
-                    else:
-                        self.log.warning('Moving average width to set ({0:d}) is smaller than the '
-                                         'trace window size. Will adjust trace window size to '
-                                         'match.'.format(new_val))
-                        self._trace_window_size = float(new_val / data_rate)
-                else:
-                    self._moving_average_width = new_val
-                    self.__moving_filter = np.full(shape=self.moving_average_width,
-                                                   fill_value=1.0 / self.moving_average_width)
-
-            if 'data_rate' in settings_dict:
-                new_val = float(settings_dict['data_rate'])
-                if new_val < 0:
-                    self.log.error('Data rate must be float value > 0.')
-                else:
-                    if self.has_active_analog_channels and self.has_active_digital_channels:
-                        min_val = constraints.combined_sample_rate.min
-                        max_val = constraints.combined_sample_rate.max
-                    elif self.has_active_analog_channels:
-                        min_val = constraints.analog_sample_rate.min
-                        max_val = constraints.analog_sample_rate.max
-                    else:
-                        min_val = constraints.digital_sample_rate.min
-                        max_val = constraints.digital_sample_rate.max
-                    sample_rate = new_val * self.oversampling_factor
-                    if not (min_val <= sample_rate <= max_val):
-                        self.log.warning('Data rate to set ({0:.3e}Hz) would cause sampling rate '
-                                         'outside allowed value range. Will clip data rate to '
-                                         'boundaries.'.format(new_val))
-                        if sample_rate > max_val:
-                            new_val = max_val / self.oversampling_factor
-                        elif sample_rate < min_val:
-                            new_val = min_val / self.oversampling_factor
-
-                    data_rate = new_val
-                    if self.moving_average_width / data_rate > self.trace_window_size:
-                        if 'trace_window_size' not in settings_dict:
-                            self.log.warning('Data rate to set ({0:.3e}Hz) would cause too few '
-                                             'data points within the trace window. Adjusting window'
-                                             ' size.'.format(new_val))
-                            self._trace_window_size = self.moving_average_width / data_rate
-
-            if 'trace_window_size' in settings_dict:
-                new_val = float(settings_dict['trace_window_size'])
-                if new_val < 0:
-                    self.log.error('Trace window size must be float value > 0.')
-                else:
-                    # Round window to match data rate
-                    data_points = int(round(new_val * data_rate))
-                    new_val = data_points / data_rate
-                    # Check if enough points are present
-                    if data_points < self.moving_average_width:
-                        self.log.warning('Requested trace_window_size ({0:.3e}s) would have too '
-                                         'few points for moving average. Adjusting window size.'
-                                         ''.format(new_val))
-                        new_val = self.moving_average_width / data_rate
-                    self._trace_window_size = new_val
 
             if 'active_channels' in settings_dict:
                 new_val = tuple(settings_dict['active_channels'])
@@ -663,28 +377,16 @@ class WavemeterLogic(LogicBase):
                 else:
                     active_ch = new_val
 
-            if 'averaged_channels' in settings_dict:
-                new_val = tuple(ch for ch in settings_dict['averaged_channels'] if ch in active_ch)
-                if any(ch not in all_ch for ch in new_val):
-                    self.log.error('Invalid channel found to set activate moving average for.')
-                else:
-                    self._averaged_channels = new_val
-
             # Apply settings to hardware if needed
-            self._streamer().configure(sample_rate=data_rate * self.oversampling_factor,
+            self._streamer().configure(#sample_rate=data_rate * self.oversampling_factor,
                                        streaming_mode=StreamingMode.CONTINUOUS,
                                        active_channels=active_ch,
                                        buffer_size=10000000,
                                        use_circular_buffer=True)
 
-            self._samples_per_frame = int(round(self.data_rate / self._max_frame_rate))
-            #TODO self._init_data_arrays()
             settings = self.all_settings
             self.sigSettingsChanged.emit(settings)
-            #if not restart:
-            #    self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
-        #if restart:
-            #self.start_reading()
+
         return settings
 
     def get_max_wavelength(self):
@@ -724,11 +426,9 @@ class WavemeterLogic(LogicBase):
         self.sumhisto = np.ones(self._bins) * 1.0e-10
         self.histogram_axis = np.linspace(self._xmin_histo, self._xmax_histo, self._bins)
         self.complete_histogram = True
+        if not self.module_state() == 'locked':
+            self._update_histogram(self.complete_histogram)
         return
-
-    def get_list_values(self):
-        with self.threadlock:
-            return self.timings, self.counts, self.wavelength, self.frequency
 
     @QtCore.Slot(object)
     def display_current_wavelength(self, current_wavelength):
@@ -754,10 +454,7 @@ class WavemeterLogic(LogicBase):
             if self._streamer().stop_stream() < 0:
                 self.log.error(
                     'Error while trying to stop streaming device data acquisition.')
-            #if self._data_recording_active:
-            #    self._save_recorded_data(to_file=True, save_figure=True)
-            #    self._recorded_data = list()
-            #self._data_recording_active = False
+
             self.module_state.unlock()
             self.sigStatusChanged.emit(False)
         return 0
@@ -847,16 +544,19 @@ class WavemeterLogic(LogicBase):
         # Fill array with less values with Nans
         if len(self._trace_data[0]) > len(self.histogram):
             temp = np.full(len(self._trace_data[0])-len(self.histogram), np.nan)
+            temp3 = np.append(self.envelope_histogram, temp)
             temp2 = np.append(self.histogram, temp)
             temp1 = np.append(self.histogram_axis, temp)
             data_set = np.vstack((self._trace_data, temp1))
             data_set = np.vstack((data_set, temp2))
+            data_set = np.vstack((data_set, temp3))
 
         if len(self._trace_data[0]) < len(self.histogram):
             temp = np.full((4, len(self.histogram)-len(self._trace_data[0])), np.nan)
             temp1 = np.append(self._trace_data, temp, axis=1)
             data_set = np.vstack((temp1, self.histogram_axis))
             data_set = np.vstack((data_set, self.histogram))
+            data_set = np.vstack((data_set, self.envelope_histogram))
 
         #TODO set parameters
         parameters = {'Number of Bins '                  : self.get_bins(),
@@ -866,7 +566,7 @@ class WavemeterLogic(LogicBase):
 
         file_label = postfix if postfix else 'qdLaserScanning'
 
-        header = ['Timings (s)', 'Flourescence (counts/s)', 'Wavelength (nm)', 'Wavelength in Hz (Hz)', 'HistogramX', 'HistogramY']
+        header = ['Timings (s)', 'Flourescence (counts/s)', 'Wavelength (nm)', 'Frequency (Hz)', 'HistogramX', 'HistogramY', 'HistogramEnvelope']
 
         ds = TextDataStorage(
             root_dir=self.module_default_data_dir if root_dir is None else root_dir,
@@ -905,7 +605,7 @@ class WavemeterLogic(LogicBase):
         fig, ax1 = plt.subplots()
 
         if not x_axis_bool:
-            ax1.plot(data_set[0],
+            ax1.plot(data_set[2],
                      data_set[1],
                      linestyle=':',
                      linewidth=1,
@@ -914,6 +614,10 @@ class WavemeterLogic(LogicBase):
                      data_set[5],
                      color='y',
                      label='Histogram')
+            ax1.plot(data_set[4],
+                     data_set[6],
+                     color='g',
+                     label='Envelope')
             if fit_data is not None:
                 ax1.plot(fit_data[0],
                          fit_data[1],
@@ -931,6 +635,10 @@ class WavemeterLogic(LogicBase):
                      data_set[5],
                      color='y',
                      label='Histogram')
+            ax1.plot(3.0e17 / data_set[4],
+                     data_set[6],
+                     color='g',
+                     label='Envelope')
             if fit_data is not None:
                 ax1.plot(fit_data[0],
                          fit_data[1],
