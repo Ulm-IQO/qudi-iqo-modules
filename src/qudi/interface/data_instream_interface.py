@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple
+from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence
 from enum import Enum
 from abc import abstractmethod
 from qudi.core.module import Base
@@ -46,7 +46,7 @@ class DataInStreamConstraints:
     """
     def __init__(self,
                  channel_units: Mapping[str, str],
-                 sample_timings: Iterable[Union[SampleTiming, int]],
+                 sample_timing: Union[SampleTiming, int],
                  streaming_modes: Iterable[Union[StreamingMode, int]],
                  data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
                  channel_buffer_size: Optional[ScalarConstraint],
@@ -62,9 +62,9 @@ class DataInStreamConstraints:
                 f'{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance'
             )
         self._channel_units = {**channel_units}
-        self._sample_timings = [SampleTiming(timing) for timing in sample_timings]
+        self._sample_timing = SampleTiming(sample_timing)
         self._streaming_modes = [StreamingMode(mode) for mode in streaming_modes]
-        self._data_type = np.dtype(data_type)
+        self._data_type = np.dtype(data_type).type
         self._channel_buffer_size = channel_buffer_size
         if sample_rate is None:
             if SampleTiming.CONSTANT in self._sample_timings:
@@ -79,8 +79,8 @@ class DataInStreamConstraints:
         return self._channel_units.copy()
 
     @property
-    def sample_timings(self) -> List[SampleTiming]:
-        return self._sample_timings.copy()
+    def sample_timing(self) -> SampleTiming:
+        return self._sample_timing
 
     @property
     def streaming_modes(self) -> List[StreamingMode]:
@@ -125,8 +125,9 @@ class DataInStreamInterface(Base):
     @abstractmethod
     def sample_rate(self) -> float:
         """ Read-only property returning the currently set sample rate in Hz.
-
-        Ignored for anything but SampleTiming.CONSTANT.
+        For SampleTiming.CONSTANT this is the sample rate of the hardware, for any other timing mode
+        this property represents only a hint to the actual hardware timebase and can not be
+        considered accurate.
         """
         pass
 
@@ -150,23 +151,16 @@ class DataInStreamInterface(Base):
 
     @property
     @abstractmethod
-    def sample_timing(self) -> SampleTiming:
-        """ Read-only property returning the currently configured SampleTiming Enum """
-        pass
-
-    @property
-    @abstractmethod
     def active_channels(self) -> List[str]:
         """ Read-only property returning the currently configured active channel names """
         pass
 
     @abstractmethod
     def configure(self,
-                  active_channels: Iterable[str],
+                  active_channels: Sequence[str],
                   streaming_mode: Union[StreamingMode, int],
-                  sample_timing: Union[SampleTiming, int],
                   channel_buffer_size: int,
-                  sample_rate: Optional[float] = None) -> None:
+                  sample_rate: float) -> None:
         """ Configure a data stream. See read-only properties for information on each parameter. """
         pass
 
@@ -183,17 +177,16 @@ class DataInStreamInterface(Base):
     @abstractmethod
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
-                              timestamp_buffer: Optional[np.ndarray] = None,
-                              number_of_samples: Optional[int] = None) -> None:
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
+                              number_of_samples: Optional[int] = None,
+                              timestamp_buffer: Optional[np.ndarray] = None) -> None:
+        """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
         In case of a single data channel the numpy array can be either 1D or 2D. In case of more
         channels the array must be 2D with the first index corresponding to the channel number and
         the second index serving as sample index:
             data_buffer.shape == (<channel_count>, <sample_count>)
         The data_buffer array must have the same data type as self.constraints.data_type.
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
         at least <number_of_samples> in size.
 
@@ -204,21 +197,21 @@ class DataInStreamInterface(Base):
     @abstractmethod
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
-                                        timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
+                                        timestamp_buffer: Optional[np.ndarray] = None) -> int:
+        """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
         In case of a single data channel the numpy array can be either 1D or 2D. In case of more
         channels the array must be 2D with the first index corresponding to the channel number and
         the second index serving as sample index:
             data_buffer.shape == (<channel_count>, <sample_count>)
         The data_buffer array must have the same data type as self.constraints.data_type.
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
         at least <number_of_samples> in size.
 
         This method will read all currently available samples into buffer. If number of available
         samples exceed buffer size, read only as many samples as fit into the buffer.
+        Returns the number of samples read (per channel).
         """
         pass
 
@@ -226,14 +219,13 @@ class DataInStreamInterface(Base):
     def read_data(self,
                   number_of_samples: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
-        """
-        Read data from the stream buffer into a 2D numpy array and return it.
+        """ Read data from the stream buffer into a 2D numpy array and return it.
         The arrays first index corresponds to the channel number and the second index serves as
         sample index:
             return_array.shape == (self.number_of_channels, number_of_samples)
         The numpy arrays data type is the one defined in self.constraints.data_type.
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array will be
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
         If number_of_samples is omitted all currently available samples are read from buffer.
@@ -243,16 +235,15 @@ class DataInStreamInterface(Base):
         pass
 
     @abstractmethod
-    def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.datetime64]]:
-        """
-        This method will initiate a single sample read on each configured data channel.
+    def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
+        """ This method will initiate a single sample read on each configured data channel.
         In general this sample may not be acquired simultaneous for all channels and timing in
         general can not be assured. Us this method if you want to have a non-timing-critical
         snapshot of your current data channel input.
         May not be available for all devices.
         The returned 1D numpy array will contain one sample for each channel.
 
-        In case of SampleTiming.TIMESTAMP a single numpy.datetime64 timestamp value will be
-        returned as well.
+        In case of SampleTiming.TIMESTAMP a single numpy.float64 timestamp value will be returned
+        as well.
         """
         pass
