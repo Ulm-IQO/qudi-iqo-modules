@@ -20,6 +20,8 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+__all__ = ['StreamingMode', 'SampleTiming', 'DataInStreamConstraints', 'DataInStreamInterface']
+
 import numpy as np
 from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence
 from enum import Enum
