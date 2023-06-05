@@ -41,17 +41,15 @@ class FastComtec(DataInStreamInterface):
     fastcomtec_mcs6:
         module.Class: 'fastcomtec.fastcomtecmcs6.FastComtec'
         options:
-            
-
     """
     # config options
     _digital_sources = ConfigOption(name='digital_sources', missing='error') # specify the digital channels on the device that should be used for streaming in data
     _max_read_block_size = ConfigOption(name='max_read_block_size', default=10000, missing='info') # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
     _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
-    _header_length = ConfigOption(name='header_length', default=72, missing='warn')
     _data_type = ConfigOption(name='data_type', default=np.int32, missing='info')
     _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
-    
+
+    # Todo: can be extracted from list file
     _line_size = ConfigOption(name='line_size', default=4, missing='nothing') # how many bytes does one line of measurement data have
 
     def __init__(self, config, **kwargs):
@@ -70,8 +68,6 @@ class FastComtec(DataInStreamInterface):
         self._filename = None
 
         self._constraints = None
-
-        
 
     def on_activate(self):
         self.dll = ctypes.windll.LoadLibrary(self._dll_path)
@@ -159,6 +155,7 @@ class FastComtec(DataInStreamInterface):
         @param int, buffersize: number of lines that should be read into the memory
         """
         # check if buffersize is smaller than 80 % of the available PC's memory
+        # Todo: does this check the memory of the disc where the file will be written on?
         available_memory = virtual_memory().available * 0.8
         if buffersize * self._line_size > available_memory:
             self.log.error(f"The required buffersize ({bytes2human(buffersize)}B) is greater than 80 % of the available memory ({bytes2human(available_memory)}B). Can't set new buffersize.")
@@ -341,7 +338,7 @@ class FastComtec(DataInStreamInterface):
             generator = self._count_generator(fp.raw.read)
             count = sum(buffer.count(b'\n') for buffer in generator)
         return count
-    
+
     def _count_generator(self, reader):
         b = reader(1024 * 1024)
         while b:
@@ -585,7 +582,6 @@ class FastComtec(DataInStreamInterface):
 
 #################################### Methods for saving ###############################################
 
-
     def change_filename(self, name: str):
         """ Changes filelocation to the default data directory and appends the given name as a file name 
 
@@ -658,23 +654,15 @@ class FastComtec(DataInStreamInterface):
             raise TypeError('No filename for data analysis is given.')
         return 0
 
-    def read_data_from_file(self, filename=None, header_length=None,
-                            read_lines=None, chunk_size=None, number_of_samples=None):
+    def read_data_from_file(self, filename=None, read_lines=None, chunk_size=None, number_of_samples=None):
         if filename is None:
             filename = self._filename
-        if header_length is None:
-            header_length = self._header_length
         if read_lines is None:
             read_lines = self._read_lines
         if chunk_size is None:
             chunk_size = self._chunk_size
-
-        data = []
         if read_lines is None:
             read_lines = 0
-        chunk_size = 10000  # chunk the file for faster reading
-
-        # read file and extract data
         if number_of_samples is None:
             number_of_chunks = int(self.buffer.shape[1] / chunk_size)  #float('inf')
             remaining_samples = self.buffer.shape[1] % chunk_size
@@ -684,8 +672,18 @@ class FastComtec(DataInStreamInterface):
 
         extend_data = data.extend  # avoid dots for speed-up
 
+        data = []
+        header_length = _find_header_length(filename)
+        if header_length < 0:
+            self.log.error('Header length could not be determined. Return empty data.')
+            return data
+        channel_bit, edge_bit, timedata_bit = _extract_data_format(filename)
+        if not (channel_bit and edge_bit and timedata_bit):
+            self.log.error('Could not extract format style of file {}'.format(filename))
+            return data
+        timedata_bits = (-(channel_bit + edge_bit + timedata_bit), -(channel_bit + edge_bit))
+
         with open(filename, 'r') as f:
-            # Todo: find a nice way to know the header length
             list(islice(f, int(header_length + read_lines - 1),
                         int(_header_length + read_lines)))  # ignore header and already read lines
             ii = 0
@@ -703,12 +701,34 @@ class FastComtec(DataInStreamInterface):
                 # when this function was called
                 if len(next_lines[-1]) != 9:
                     break
-                # Todo: the attribution of the binary digits depends on something I haven't understood yet
-                # convert arrival time of photons from hex to dex (arrival time is saved in (3rd-7th) entry)
-                new_lines = [int(s[2:7], 16) for s in next_lines]
+                # extract arrival time of photons saved in hex to dex
+                new_lines = [int(bin(int(s, 16))[timedata_bits[0]:timedata_bits[1]], 2) for s in next_lines]
                 extend_data(new_lines)
                 ii = ii + 1
         return data
+
+    def _find_header_length(self, filename):
+        with open(filename) as f:
+            header_length = -1
+            for ii, line in enumerate(f):
+                if '[DATA]' in line:
+                    header_length = ii
+                    break
+        return header_length
+
+    def _extract_data_format(self, filename):
+        with open(filename) as f:
+            channel_bit, edge_bit, timedata_bit = (None, None, None)
+            for line in f:
+                if 'channel' in line:
+                    channel_bit = int(line[line.index("bit", 2) - 3:line.index("bit", 2) - 1])
+                if 'edge' in line:
+                    edge_bit = int(line[line.index("bit", 2) - 3:line.index("bit", 2) - 1])
+                if 'timedata' in line:
+                    timedata_bit = int(line[line.index("bit", 2) - 3:line.index("bit", 2) - 1])
+                if channel_bit and edge_bit and timedata_bit:
+                    break
+        return channel_bit, edge_bit, timedata_bit
 
     def _init_buffer(self):
         self._data_buffer = np.zeros(self.number_of_channels * self.buffer_size,
