@@ -369,7 +369,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             raise RuntimeError('Unable to read data. Device is not running.')
 
         # Check for buffer overflow
-        if self.available_samples > self.buffer_size:
+        if self.available_samples > self.__buffer_size:
             raise OverflowError('Hardware channel buffer has overflown. Please increase readout '
                                 'speed or decrease sample rate.')
 
