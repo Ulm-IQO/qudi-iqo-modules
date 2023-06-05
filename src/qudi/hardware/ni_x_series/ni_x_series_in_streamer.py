@@ -688,7 +688,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
     def _init_analog_task(self):
         """ Set up task for analog voltage measurement. """
         all_channels = list(self._constraints.channel_units)
-        analog_channels = [ch for ch in all_channels[-len(self._analog_sources):] if
+        analog_channels = [ch for ch in all_channels[len(self._digital_sources):] if
                            ch in self.__active_channels]
         if analog_channels:
             if self._ai_task_handle:
