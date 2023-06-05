@@ -51,7 +51,7 @@ class FastComtec(DataInStreamInterface):
     _header_length = ConfigOption(name='header_length', default=72, missing='warn')
     _data_type = ConfigOption(name='data_type', default=np.int32, missing='info')
     _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
-    
+    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing') # relative amount of memory that can be used for reading measurement data into the systems memory
     _line_size = ConfigOption(name='line_size', default=4, missing='nothing') # how many bytes does one line of measurement data have
 
     def __init__(self, config, **kwargs):
@@ -70,6 +70,8 @@ class FastComtec(DataInStreamInterface):
         self._filename = None
 
         self._constraints = None
+
+        self._available_memory = virtual_memory().available * self._memory_ratio
 
         
 
@@ -158,9 +160,7 @@ class FastComtec(DataInStreamInterface):
 
         @param int, buffersize: number of lines that should be read into the memory
         """
-        # check if buffersize is smaller than 80 % of the available PC's memory
-        available_memory = virtual_memory().available * 0.8
-        if buffersize * self._line_size > available_memory:
+        if buffersize * self._line_size > self._available_memory:
             self.log.error(f"The required buffersize ({bytes2human(buffersize)}B) is greater than 80 % of the available memory ({bytes2human(available_memory)}B). Can't set new buffersize.")
             return
         self._buffer_size = buffersize
@@ -186,7 +186,7 @@ class FastComtec(DataInStreamInterface):
         Set the flag indicating if circular sample buffering is being used or not.
         @param bool, flag: indicate if circular sample buffering is used (True) or not (False) 
         """
-        if self._is_not_settable():
+        if self._is_not_settable("circular buffer"):
             return
         if flag:
             self._use_circular_buffer = False
@@ -219,7 +219,7 @@ class FastComtec(DataInStreamInterface):
 
         @param int mode: value that is in the StreamingMode class (StreamingMode.CONTINUOUS: 0, StreamingMode.FINITE: 1)
         """
-        if self._is_not_settable():
+        if self._is_not_settable("streaming mode"):
             return
         mode = StreamingMode(mode)
         if mode not in self._constraints.streaming_modes:
@@ -249,7 +249,7 @@ class FastComtec(DataInStreamInterface):
     
     @stream_length.setter
     def stream_length(self, length: int):
-        if self._is_not_settable():
+        if self._is_not_settable('stream length'):
             return
         length = int(length)
         if length < 1:
@@ -299,8 +299,8 @@ class FastComtec(DataInStreamInterface):
 
     @active_channels.setter
     def active_channels(self, channels: list):
-        # TODO checker for channel settings
-        # if self._check_settings_change():
+        if self._is_not_settable('active channels'):
+            return
         avail_channels = tuple(ch.name for ch in self.available_channels)
         if any(ch not in avail_channels for ch in channels):
             self.log.error('Invalid channel to stream from encountered {0}.\nValid channels '
@@ -331,15 +331,14 @@ class FastComtec(DataInStreamInterface):
 
         @return int: Number of available samples per channel
         """
-        # TODO: how to implement this as we are only reading from a file.
-        # Maybe we can implement this by checking for the number of lines in the file and then returning this value
         if not self._filename:
             self.log.error("No filename has been specified yet. First call the change_filename function to create a file.")
             return
         # open the raw file and count the \n
         with open(self._filename, 'rb') as fp:
             generator = self._count_generator(fp.raw.read)
-            count = sum(buffer.count(b'\n') for buffer in generator)
+            # sum over all lines in the file and subtract the number of header lines
+            count = sum(buffer.count(b'\n') for buffer in generator) - self._header_length
         return count
     
     def _count_generator(self, reader):
@@ -359,7 +358,8 @@ class FastComtec(DataInStreamInterface):
 
         @return bool: Flag indicates if buffer has overflown (True) or not (False)
         """
-        # TODO: we have to decide on this
+        if self._data_buffer.size * self._data_buffer.itemsize > self._available_memory:
+            return True
         return False
 
     @property
@@ -424,8 +424,29 @@ class FastComtec(DataInStreamInterface):
         @return dict: All current settings in a dict. Keywords are the same as kwarg names.
         """
         # TODO: how to handle, if no arguments are passed
+        if sample_rate == None:
+            sample_rate = self._sample_rate
+        if streaming_mode == None:
+            streaming_mode = self._streaming_mode
+        if active_channels == None:
+            active_channels = self._active_channels
+        if total_number_of_samples == None and use_circular_buffer:
+            self.log.error("Set finite sample acquisition, but the total number of samples was not set.")
+            return
+        if buffer_size == None:
+            buffer_size = self.buffer_size
+        if use_circular_buffer == None:
+            use_circular_buffer = False
+
+        # set the settings
+        self.streaming_mode = streaming_mode
+        self.use_circular_buffer = use_circular_buffer
+        self.active_channels = active_channels
+        
+        self.buffer_size = buffer_size
+        self.stream_length = total_number_of_samples
         self.sample_rate = sample_rate
-        # TODO: implement the communication with the hardware for setting the settings
+
         return self.all_settings
 
     def start_stream(self):
@@ -435,8 +456,6 @@ class FastComtec(DataInStreamInterface):
         @return int: error code (0: OK, -1: Error)
         """
         # TODO: implement the correct return code
-        # change the save mode to only write a list file
-        # TODO: can this be moved into the configure method?
         self.change_save_mode(2)
         status = self.dll.Start(0)
         while not self.is_running:
