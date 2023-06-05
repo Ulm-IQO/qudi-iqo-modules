@@ -24,6 +24,7 @@ import datetime as dt
 import matplotlib.pyplot as plt
 from PySide2 import QtCore
 from scipy.signal import decimate
+from typing import Union, Optional, Sequence, Iterable, List, Dict, Mapping, Tuple
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -32,6 +33,7 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.helpers import is_integer_type
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
+from qudi.interface.data_instream_interface import DataInStreamConstraints
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.units import ScaledFloat
 
@@ -111,7 +113,7 @@ class TimeSeriesReaderLogic(LogicBase):
         self._data_recording_active = False
         self._record_start_time = None
 
-    def on_activate(self):
+    def on_activate(self) -> None:
         """ Initialisation performed during activation of the module. """
         # Temp reference to connected hardware module
         streamer = self._streamer()
@@ -125,16 +127,16 @@ class TimeSeriesReaderLogic(LogicBase):
 
         # Check valid StatusVar
         # active channels
-        avail_channels = tuple(streamer.constraints.channel_units)
+        avail_channels = list(streamer.constraints.channel_units)
         if self._active_channels is None:
             if streamer.active_channels:
-                self._active_channels = tuple(streamer.active_channels)
+                self._active_channels = streamer.active_channels.copy()
             else:
                 self._active_channels = avail_channels
         elif any(ch not in avail_channels for ch in self._active_channels):
             self.log.warning('Invalid active channels found in StatusVar. StatusVar ignored.')
             if streamer.active_channels:
-                self._active_channels = tuple(streamer.active_channels)
+                self._active_channels = streamer.active_channels.copy()
             else:
                 self._active_channels = avail_channels
 
@@ -142,9 +144,9 @@ class TimeSeriesReaderLogic(LogicBase):
         if self._averaged_channels is None:
             self._averaged_channels = self._active_channels
         else:
-            self._averaged_channels = tuple(
+            self._averaged_channels = [
                 ch for ch in self._averaged_channels if ch in self._active_channels
-            )
+            ]
 
         # Check for odd moving averaging window
         if self._moving_average_width % 2 == 0:
@@ -159,7 +161,7 @@ class TimeSeriesReaderLogic(LogicBase):
         # set up internal frame loop connection
         self._sigNextDataFrame.connect(self._acquire_data_block, QtCore.Qt.QueuedConnection)
 
-    def on_deactivate(self):
+    def on_deactivate(self) -> None:
         """ De-initialisation performed during deactivation of the module.
         """
         try:
@@ -172,7 +174,7 @@ class TimeSeriesReaderLogic(LogicBase):
             self._data_buffer = None
             self._times_buffer = None
 
-    def _init_data_arrays(self):
+    def _init_data_arrays(self) -> None:
         channel_count = len(self.active_channel_names)
         averaged_channel_count = len(self._averaged_channels)
         window_size = int(round(self._trace_window_size * self.data_rate))
@@ -203,67 +205,92 @@ class TimeSeriesReaderLogic(LogicBase):
             self._times_buffer = None
 
     @property
-    def streamer_constraints(self):
+    def streamer_constraints(self) -> DataInStreamConstraints:
         """ Retrieve the hardware constrains from the counter device """
         return self._streamer().constraints
 
     @property
-    def data_rate(self):
+    def data_rate(self) -> float:
+        """ Data rate in Hz. The data rate describes the effective sample rate of the processed
+        sample trace taking into account oversampling:
+
+            data_rate = hardware_sample_rate / oversampling_factor
+        """
         return self.sampling_rate / self.oversampling_factor
 
     @data_rate.setter
-    def data_rate(self, val):
+    def data_rate(self, val: float) -> None:
         self.set_trace_settings(data_rate=val)
 
     @property
-    def trace_window_size(self):
+    def trace_window_size(self) -> float:
+        """ The size of the running trace window in seconds """
         return self._trace_window_size
 
     @trace_window_size.setter
-    def trace_window_size(self, val):
+    def trace_window_size(self, val: Union[int, float]) -> None:
         self.set_trace_settings(trace_window_size=val)
 
     @property
-    def moving_average_width(self):
+    def moving_average_width(self) -> int:
+        """ The width of the moving average filter in samples. Must be an odd number. """
         return self._moving_average_width
 
     @moving_average_width.setter
-    def moving_average_width(self, val):
+    def moving_average_width(self, val: int) -> None:
         self.set_trace_settings(moving_average_width=val)
 
     @property
-    def data_recording_active(self):
+    def data_recording_active(self) -> bool:
+        """ Read-only bool flag indicating active data logging so it can be saved to file later """
         return self._data_recording_active
 
     @property
-    def oversampling_factor(self):
+    def oversampling_factor(self) -> int:
+        """ This integer value determines how many times more samples are acquired by the hardware
+        and averaged before being processed by the trace logic.
+        An oversampling factor <= 1 means no oversampling is performed.
+        """
         return self._oversampling_factor
 
     @oversampling_factor.setter
-    def oversampling_factor(self, val):
+    def oversampling_factor(self, val: int) -> None:
         self.set_trace_settings(oversampling_factor=val)
 
     @property
-    def sampling_rate(self):
+    def sampling_rate(self) -> float:
+        """ Read-only property returning the actually set sample rate of the streaming hardware.
+        If not oversampling is used, this should be the same value as data_rate.
+        If oversampling is active, this value will be larger (by the oversampling factor) than
+        data_rate.
+        """
         return self._streamer().sample_rate
 
     @property
-    def active_channel_names(self):
-        return tuple(self._streamer().active_channels)
+    def active_channel_names(self) -> List[str]:
+        """ Read-only property returning the currently active channel names """
+        return self._streamer().active_channels.copy()
 
     @property
-    def averaged_channel_names(self):
-        return self._averaged_channels
+    def averaged_channel_names(self) -> List[str]:
+        """ Read-only property returning the currently active and averaged channel names """
+        return self._averaged_channels.copy()
 
     @property
-    def trace_data(self):
+    def trace_data(self) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+        """ Read-only property returning the x-axis of the data trace and a dictionary of the
+        corresponding trace data arrays for each channel
+        """
         data_offset = self._trace_data.shape[1] - self._moving_average_width // 2
         data = {ch: self._trace_data[i, :data_offset] for i, ch in
                 enumerate(self.active_channel_names)}
         return self._trace_times, data
 
     @property
-    def averaged_trace_data(self):
+    def averaged_trace_data(self) -> Tuple[np.ndarray, Dict[str, np.ndarray]]:
+        """ Read-only property returning the x-axis of the averaged data trace and a dictionary of
+        the corresponding averaged trace data arrays for each channel
+        """
         if not self.averaged_channel_names or self.moving_average_width <= 1:
             return None, None
         data = {ch: self._trace_data_averaged[i] for i, ch in
@@ -271,25 +298,32 @@ class TimeSeriesReaderLogic(LogicBase):
         return self._trace_times[-self._trace_data_averaged.shape[1]:], data
 
     @property
-    def trace_settings(self):
+    def trace_settings(self) -> Dict[str, Union[int, float]]:
+        """ Read-only property returning the current trace settings as dictionary """
         return {'oversampling_factor' : self.oversampling_factor,
                 'moving_average_width': self.moving_average_width,
                 'trace_window_size'   : self.trace_window_size,
                 'data_rate'           : self.data_rate}
 
     @property
-    def channel_settings(self):
+    def channel_settings(self) -> Tuple[List[str], List[str]]:
+        """ Read-only property returning the currently active channel names and the currently
+        averaged channel names.
+        """
         return self.active_channel_names, self.averaged_channel_names
 
     @QtCore.Slot(dict)
-    def set_trace_settings(self, settings_dict=None, **kwargs):
-        """ Sets the number of samples to average per data point, i.e. the oversampling factor.
-        The counter is stopped first and restarted afterwards.
+    def set_trace_settings(self,
+                           settings_dict: Optional[Mapping[str, Union[int, float]]] = None,
+                           **kwargs) -> None:
+        """ Method to set new trace settings.
+        Can either provide (a subset of) trace_settings via dict as first positional argument
+        and/or as keyword arguments (**kwargs overwrites settings_dict for duplicate keys).
 
-        @param dict settings_dict: optional, dict containing all parameters to set. Entries will
-                                   be overwritten by conflicting kwargs.
+        See property trace_settings for valid setting keywords.
 
-        @return dict: The currently configured settings
+        Calling this method while a trace is running will stop the trace first and restart after
+        successful application of new settings.
         """
         if self.data_recording_active:
             self.log.warning('Unable to configure settings while data is being recorded.')
@@ -336,7 +370,7 @@ class TimeSeriesReaderLogic(LogicBase):
                 self._streamer().configure(
                     active_channels=self.active_channel_names,
                     streaming_mode=StreamingMode.CONTINUOUS,
-                    channel_buffer_size=1024**2,
+                    channel_buffer_size=self._channel_buffer_size,
                     sample_rate=settings['data_rate'] * settings['oversampling_factor']
                 )
                 # update actually set values
@@ -357,7 +391,14 @@ class TimeSeriesReaderLogic(LogicBase):
             else:
                 self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
 
-    def set_channel_settings(self, enabled, averaged):
+    @QtCore.Slot(list, list)
+    def set_channel_settings(self, enabled: Sequence[str], averaged: Sequence[str]) -> None:
+        """ Method to set new channel settings by providing a sequence of active channel names
+        (enabled) as well as a sequence of channel names to be averaged (averaged).
+
+        Calling this method while a trace is running will stop the trace first and restart after
+        successful application of new settings.
+        """
         if self.data_recording_active:
             self.log.warning('Unable to configure settings while data is being recorded.')
             return
@@ -371,10 +412,10 @@ class TimeSeriesReaderLogic(LogicBase):
             self._streamer().configure(
                 active_channels=enabled,
                 streaming_mode=StreamingMode.CONTINUOUS,
-                channel_buffer_size=1024 ** 2,
+                channel_buffer_size=self._channel_buffer_size,
                 sample_rate=self.sampling_rate
             )
-            self._averaged_channels = tuple(ch for ch in averaged if ch in enabled)
+            self._averaged_channels = [ch for ch in averaged if ch in enabled]
             self._init_data_arrays()
         except:
             self.log.exception('Error while trying to configure new channel settings:')
@@ -387,7 +428,7 @@ class TimeSeriesReaderLogic(LogicBase):
                 self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
 
     @QtCore.Slot()
-    def start_reading(self):
+    def start_reading(self) -> None:
         """ Start data acquisition loop """
         with self._threadlock:
             if self.module_state() == 'locked':
@@ -411,7 +452,7 @@ class TimeSeriesReaderLogic(LogicBase):
                                            self._data_recording_active)
 
     @QtCore.Slot()
-    def stop_reading(self):
+    def stop_reading(self) -> None:
         """ Send a request to stop counting """
         with self._threadlock:
             self._stop()
@@ -428,7 +469,7 @@ class TimeSeriesReaderLogic(LogicBase):
                 self._stop_recording()
 
     @QtCore.Slot()
-    def _acquire_data_block(self):
+    def _acquire_data_block(self) -> None:
         """ This method gets the available data from the hardware. It runs repeatedly by being
         connected to a QTimer timeout signal.
         """
@@ -588,8 +629,10 @@ class TimeSeriesReaderLogic(LogicBase):
 
     @QtCore.Slot()
     def start_recording(self):
-        """ Sets up start-time and initializes data array, if not resuming, and changes saving
-        state. If the counter is not running it will be started in order to have data to save.
+        """ Will start to continuously accumulate raw data from the streaming hardware (without
+        running average and oversampling). Data will be saved to file once the trace acquisition is
+        stopped.
+        If the streamer is not running it will be started in order to have data to save.
         """
         with self._threadlock:
             if self._data_recording_active:
@@ -605,11 +648,8 @@ class TimeSeriesReaderLogic(LogicBase):
 
     @QtCore.Slot()
     def stop_recording(self):
-        """
-        Stop the accumulative data recording and save data to file. Will not stop the data stream.
-        Ignored if stream reading is inactive (module is in idle state).
-
-        @return int: Error code (0: OK, -1: Error)
+        """ Stop the accumulative data recording and save data to file. Will not stop the data
+        streaming. Ignored if no stream is running (module is in idle state).
         """
         with self._threadlock:
             self._stop_recording()
@@ -656,7 +696,7 @@ class TimeSeriesReaderLogic(LogicBase):
             self.log.exception('Something went wrong while saving raw data:')
             raise
 
-    def _draw_raw_data_thumbnail(self):
+    def _draw_raw_data_thumbnail(self) -> plt.Figure:
         """ Draw figure to save with data file """
         constraints = self.streamer_constraints
         data = self._recorded_raw_data[:, :self._recorded_sample_count]
@@ -695,48 +735,65 @@ class TimeSeriesReaderLogic(LogicBase):
         ax.set_ylabel(y_label)
         return fig
 
-    def _draw_trace_snapshot_thumbnail(self):
-        """ Draw figure to save with data file """
-        pass
-
     @QtCore.Slot()
-    def save_trace_snapshot(self, to_file=True, name_tag='', save_figure=True):
-        """
-        The currently displayed data trace will be saved.
+    def save_trace_snapshot(self, name_tag: Optional[str] = '', save_figure: Optional[bool] = True):
+        """ A snapshot of the current data trace window will be saved """
+        try:
+            timestamp = dt.datetime.now()
+            constraints = self.streamer_constraints
+            metadata = {
+                'Timestamp': timestamp.strftime('%d.%m.%Y, %H:%M:%S.%f'),
+                'Data rate (Hz)': self.data_rate,
+                'Oversampling factor (samples)': self.oversampling_factor,
+                'Sampling rate (Hz)': self.sampling_rate
+            }
+            column_headers = [
+                f'{ch} ({constraints.channel_units[ch]})' for ch in self.active_channel_names
+            ]
+            nametag = f'trace_snapshot_{name_tag}' if name_tag else 'trace_snapshot'
 
-        @param bool to_file: optional, whether data should be saved to a text file
-        @param str name_tag: optional, additional description that will be appended to the file name
-        @param bool save_figure: optional, whether a data thumbnail figure should be saved
+            data_offset = self._trace_data.shape[1] - self._moving_average_width // 2
+            data = self._trace_data[:, :data_offset]
+            x = self._trace_times
+            if constraints.sample_timing != SampleTiming.RANDOM:
+                data = np.vstack([x, data])
+                column_headers.insert(0, 'Time (s)')
 
-        @return dict, dict: Data which was saved, Experiment parameters
+            storage = TextDataStorage(root_dir=self.module_default_data_dir)
+            filepath, _, _ = storage.save_data(data.transpose(),
+                                               timestamp=timestamp,
+                                               metadata=metadata,
+                                               nametag=nametag,
+                                               column_headers=column_headers)
+            if save_figure:
+                storage.save_thumbnail(mpl_figure=self._draw_trace_snapshot_thumbnail(x, data),
+                                       file_path=filepath)
+        except:
+            self.log.exception('Something went wrong while saving trace snapshot:')
+            raise
 
-        This method saves the already displayed counts to file and does not accumulate them.
-        """
-        pass
-        # with self._threadlock:
-        #     timestamp = dt.datetime.now()
-        #
-        #     # write the parameters:
-        #     parameters = dict()
-        #     parameters['Time stamp'] = timestamp.strftime('%d.%m.%Y, %H:%M:%S.%f')
-        #     parameters['Data rate (Hz)'] = self.data_rate
-        #     parameters['Oversampling factor (samples)'] = self.oversampling_factor
-        #     parameters['Sampling rate (Hz)'] = self.sampling_rate
-        #
-        #     header = ', '.join(
-        #         '{0} ({1})'.format(ch, unit) for ch, unit in self.active_channel_units.items())
-        #     data_offset = self._trace_data.shape[1] - self.moving_average_width // 2
-        #     data = {header: self._trace_data[:, :data_offset].transpose()}
-        #
-        #     if to_file:
-        #         filepath = self._savelogic.get_path_for_module(module_name='TimeSeriesReader')
-        #         filelabel = 'data_trace_snapshot_{0}'.format(
-        #             name_tag) if name_tag else 'data_trace_snapshot'
-        #         self._savelogic.save_data(data=data,
-        #                                   filepath=filepath,
-        #                                   parameters=parameters,
-        #                                   filelabel=filelabel,
-        #                                   timestamp=timestamp,
-        #                                   delimiter='\t')
-        #         self.log.info('Time series snapshot saved to: {0}'.format(filepath))
-        # return data, parameters
+    def _draw_trace_snapshot_thumbnail(self, x: np.ndarray, data: np.ndarray) -> plt.Figure:
+        """ Draw figure to save with data file """
+        while data.shape[1] >= 2000:
+            data = decimate(data, q=2, axis=1)
+            x = decimate(x, q=2)
+
+        if self.streamer_constraints.sample_timing == SampleTiming.RANDOM:
+            x_label = 'Sample Index'
+        else:
+            x_label = 'Time (s)'
+
+        # Create figure and scale data
+        max_abs_value = ScaledFloat(max(data.max(), np.abs(data.min())))
+        if max_abs_value.scale:
+            data = data.transpose() / max_abs_value.scale_val
+            y_label = f'Signal ({max_abs_value.scale}arb.u.)'
+        else:
+            data = data.transpose()
+            y_label = 'Signal (arb.u.)'
+
+        fig, ax = plt.subplots()
+        ax.plot(x, data, linestyle='-', marker='', linewidth=0.5)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        return fig
