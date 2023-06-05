@@ -48,9 +48,9 @@ class FastComtec(DataInStreamInterface):
     _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
     _data_type = ConfigOption(name='data_type', default=np.int32, missing='info')
     _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
+    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing') # relative amount of memory that can be used for reading measurement data into the systems memory
 
     # Todo: can be extracted from list file
-    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing') # relative amount of memory that can be used for reading measurement data into the systems memory
     _line_size = ConfigOption(name='line_size', default=4, missing='nothing') # how many bytes does one line of measurement data have
 
     def __init__(self, config, **kwargs):
@@ -70,9 +70,8 @@ class FastComtec(DataInStreamInterface):
 
         self._constraints = None
 
+        # Todo: is this the memory of the disc where the file will be written?
         self._available_memory = virtual_memory().available * self._memory_ratio
-
-        
 
     def on_activate(self):
         self.dll = ctypes.windll.LoadLibrary(self._dll_path)
