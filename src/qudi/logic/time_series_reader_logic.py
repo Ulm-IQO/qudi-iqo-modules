@@ -47,11 +47,11 @@ class TimeSeriesReaderLogic(LogicBase):
     time_series_reader_logic:
         module.Class: 'time_series_reader_logic.TimeSeriesReaderLogic'
         options:
-            max_frame_rate: 10  # optional (10Hz by default)
-            calc_digital_freq: True  # optional (True by default)
+            max_frame_rate: 20  # optional (default: 20Hz)
+            channel_buffer_size: 1048576  # optional (default: 1MSample)
+            max_raw_data_bytes: 1073741824  # optional (default: 1GB)
         connect:
-            _streamer_con: <streamer_name>
-            _savelogic_con: <save_logic_name>
+            streamer: <streamer_name>
     """
     # declare signals
     sigDataChanged = QtCore.Signal(object, object, object, object)
@@ -65,7 +65,7 @@ class TimeSeriesReaderLogic(LogicBase):
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
 
     # config options
-    _max_frame_rate = ConfigOption('max_frame_rate', default=10, missing='warn')
+    _max_frame_rate = ConfigOption('max_frame_rate', default=20, missing='warn')
     _channel_buffer_size = ConfigOption(name='channel_buffer_size',
                                         default=1024**2,
                                         missing='info',

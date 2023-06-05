@@ -205,24 +205,22 @@ class InStreamDummy(DataInStreamInterface):
     Example config for copy-paste:
 
     instream_dummy:
-        module.Class: 'data_instream_dummy.InStreamDummy'
+        module.Class: 'dummy.data_instream_dummy.InStreamDummy'
         options:
-            digital_channels:  # optional, must provide at least one digital or analog channel
+            channel_names:
                 - 'digital 1'
-                - 'digital 2'
-                - 'digital 3'
-            analog_channels:  # optional, must provide at least one digital or analog channel
                 - 'analog 1'
-                - 'analog 2'
-            digital_event_rates:  # optional, must have as many entries as digital_channels or just one
-                - 1000
-                - 10000
-                - 100000
-            # digital_event_rates: 100000
-            analog_amplitudes:  # optional, must have as many entries as analog_channels or just one
-                - 5
-                - 10
-            # analog_amplitudes: 10  # optional (10V by default)
+                - 'digital 2'
+            channel_units:
+                - 'Hz'
+                - 'V'
+                - 'Hz'
+            channel_signals:  # Can be 'counts' or 'sine'
+                - 'counts'
+                - 'sine'
+                - 'counts'
+            data_type: 'float64'
+            sample_timing: 'CONSTANT'  # Can be 'CONSTANT', 'TIMESTAMP' or 'RANDOM'
     """
     # config options
     _channel_names = ConfigOption(name='channel_names',
