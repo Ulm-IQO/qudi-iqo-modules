@@ -168,7 +168,7 @@ class PulserDummy(PulserInterface):
         constraints.d_ch_high.default = 5.0
 
         constraints.waveform_length.min = 80
-        constraints.waveform_length.max = 6_000_000_0000
+        constraints.waveform_length.max = 6_000_000_000
         constraints.waveform_length.step = 1
         constraints.waveform_length.default = 80
 
