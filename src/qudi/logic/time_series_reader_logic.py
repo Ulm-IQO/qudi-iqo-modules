@@ -755,19 +755,21 @@ class TimeSeriesReaderLogic(LogicBase):
             data_offset = self._trace_data.shape[1] - self._moving_average_width // 2
             data = self._trace_data[:, :data_offset]
             x = self._trace_times
-            if constraints.sample_timing != SampleTiming.RANDOM:
-                data = np.vstack([x, data])
-                column_headers.insert(0, 'Time (s)')
+            try:
+                fig = self._draw_trace_snapshot_thumbnail(x, data) if save_figure else None
+            finally:
+                if constraints.sample_timing != SampleTiming.RANDOM:
+                    data = np.vstack([x, data])
+                    column_headers.insert(0, 'Time (s)')
 
-            storage = TextDataStorage(root_dir=self.module_default_data_dir)
-            filepath, _, _ = storage.save_data(data.transpose(),
-                                               timestamp=timestamp,
-                                               metadata=metadata,
-                                               nametag=nametag,
-                                               column_headers=column_headers)
-            if save_figure:
-                storage.save_thumbnail(mpl_figure=self._draw_trace_snapshot_thumbnail(x, data),
-                                       file_path=filepath)
+                storage = TextDataStorage(root_dir=self.module_default_data_dir)
+                filepath, _, _ = storage.save_data(data.transpose(),
+                                                   timestamp=timestamp,
+                                                   metadata=metadata,
+                                                   nametag=nametag,
+                                                   column_headers=column_headers)
+            if fig is not None:
+                storage.save_thumbnail(mpl_figure=fig, file_path=filepath)
         except:
             self.log.exception('Something went wrong while saving trace snapshot:')
             raise

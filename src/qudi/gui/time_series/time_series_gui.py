@@ -368,20 +368,23 @@ class TimeSeriesGui(GuiBase):
 
         channel = self._mw.current_value_combobox.currentText()
         if channel and channel != 'None':
-            if channel.startswith('average '):
-                channel = channel.split('average ', 1)[-1]
-                val = smooth_data[channel][-1]
-            else:
-                val = data[channel][-1]
-            constraints = self._time_series_logic_con().streamer_constraints
-            ch_unit = constraints.channel_units[channel]
-            precision = self._current_value_channel_precision[channel]
-            if is_integer_type(constraints.data_type):
-                self._mw.current_value_label.setText(f'{val:,d} {ch_unit}')
-            elif precision is None:
-                self._mw.current_value_label.setText(f'{ScaledFloat(val):.5r}{ch_unit}')
-            else:
-                self._mw.current_value_label.setText(f'{val:,.{precision:d}f} {ch_unit}')
+            try:
+                if channel.startswith('average '):
+                    channel = channel.split('average ', 1)[-1]
+                    val = smooth_data[channel][-1]
+                else:
+                    val = data[channel][-1]
+                constraints = self._time_series_logic_con().streamer_constraints
+                ch_unit = constraints.channel_units[channel]
+                precision = self._current_value_channel_precision[channel]
+                if is_integer_type(constraints.data_type):
+                    self._mw.current_value_label.setText(f'{val:,d} {ch_unit}')
+                elif precision is None:
+                    self._mw.current_value_label.setText(f'{ScaledFloat(val):.5r}{ch_unit}')
+                else:
+                    self._mw.current_value_label.setText(f'{val:,.{precision:d}f} {ch_unit}')
+            except (TypeError, IndexError, KeyError):
+                pass
 
     @QtCore.Slot(bool)
     def _trace_toggled(self, enabled: bool) -> None:
