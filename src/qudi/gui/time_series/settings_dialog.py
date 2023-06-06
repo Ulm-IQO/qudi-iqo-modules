@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ['ChannelSettingsDialog', 'TraceViewDialog']
 
-from typing import Iterable, Mapping, Dict, Tuple
+from typing import Iterable, Mapping, Dict, Tuple, Union
 from PySide2 import QtCore, QtWidgets
 
 
@@ -116,30 +116,54 @@ class TraceViewDialog(QtWidgets.QDialog):
         widget.setLayout(layout)
         self.scroll_area.setWidget(widget)
         layout.setHorizontalSpacing(20)
-        layout.addWidget(QtWidgets.QLabel('Channel Name'), 0, 0)
-        layout.addWidget(QtWidgets.QLabel('Show Data?'), 0, 1)
-        layout.addWidget(QtWidgets.QLabel('Show Average?'), 0, 2)
+        layout.addWidget(QtWidgets.QLabel('Channel Name'), 0, 0, 2, 1)
+        layout.addWidget(QtWidgets.QLabel('Show Data?'), 0, 1, 2, 1)
+        layout.addWidget(QtWidgets.QLabel('Show Average?'), 0, 2, 2, 1)
+        layout.addWidget(QtWidgets.QLabel('Display Precision'), 0, 3, 1, 2)
+        layout.addWidget(QtWidgets.QLabel('Digits'), 1, 3)
+        layout.addWidget(QtWidgets.QLabel('Auto?'), 1, 4)
         line = QtWidgets.QFrame()
         line.setFrameShape(QtWidgets.QFrame.HLine)
         line.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(line, 1, 0, 1, 3)
+        layout.addWidget(line, 2, 0, 1, 5)
 
         self.channel_widgets = dict()
-        for row, ch in enumerate(channels, 2):
+        for row, ch in enumerate(channels, 3):
             label = QtWidgets.QLabel(f'{ch}:')
             label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
             checkbox_1 = QtWidgets.QCheckBox()
             checkbox_2 = QtWidgets.QCheckBox()
+            checkbox_3 = QtWidgets.QCheckBox()
+            spinbox = QtWidgets.QSpinBox()
+            spinbox.setRange(0, 15)
+            spinbox.setValue(5)
             layout.addWidget(label, row, 0)
             layout.addWidget(checkbox_1, row, 1)
             layout.addWidget(checkbox_2, row, 2)
-            self.channel_widgets[ch] = (checkbox_1, checkbox_2)
-        layout.setRowStretch(len(self.channel_widgets) + 2, 1)
+            layout.addWidget(spinbox, row, 3)
+            layout.addWidget(checkbox_3, row, 4)
+            checkbox_3.toggled[bool].connect(spinbox.setDisabled)
+            self.channel_widgets[ch] = (checkbox_1, checkbox_2, spinbox, checkbox_3)
+        layout.setRowStretch(len(self.channel_widgets) + 3, 1)
+        layout.setColumnStretch(5, 1)
 
-    def get_channel_states(self) -> Dict[str, Tuple[bool, bool]]:
-        return {ch: (w[0].isChecked(), w[1].isChecked()) for ch, w in self.channel_widgets.items()}
+        # Restrict width of scroll area to only be needed to scroll vertically
+        self.scroll_area.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.scroll_area.setMinimumWidth(
+            widget.sizeHint().width() +
+            2 * self.scroll_area.frameWidth() +
+            self.scroll_area.verticalScrollBar().sizeHint().width()
+        )
 
-    def set_channel_states(self, channel_states: Mapping[str, Tuple[bool, bool]]) -> None:
+    def get_channel_states(self) -> Dict[str, Tuple[bool, bool, Union[int, None]]]:
+        return {
+            ch: (w[0].isChecked(), w[1].isChecked(), None if w[3].isChecked() else w[2].value()) for
+            ch, w in self.channel_widgets.items()
+        }
+
+    def set_channel_states(self,
+                           channel_states: Mapping[str, Tuple[bool, bool, Union[int, None]]]
+                           ) -> None:
         for ch, state in channel_states.items():
             try:
                 widgets = self.channel_widgets[ch]
@@ -148,3 +172,8 @@ class TraceViewDialog(QtWidgets.QDialog):
             else:
                 widgets[0].setChecked(state[0])
                 widgets[1].setChecked(state[1])
+                if state[2] is None:
+                    widgets[3].setChecked(True)
+                else:
+                    widgets[3].setChecked(False)
+                    widgets[2].setValue(state[2])

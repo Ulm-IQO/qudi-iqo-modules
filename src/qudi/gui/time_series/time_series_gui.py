@@ -20,16 +20,18 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
+__all__ = ['TimeSeriesGui']
+
 import pyqtgraph as pg
 from PySide2 import QtCore, QtWidgets
+from typing import Union, Dict, Tuple
 
 from qudi.core.statusvariable import StatusVar
-from qudi.util.uic import loadUi
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.colordefs import QudiPalettePale as palette
-from qudi.util.helpers import is_integer_type, is_float_type
+from qudi.util.helpers import is_integer_type
+from qudi.util.units import ScaledFloat
 from qudi.core.module import GuiBase
 from qudi.gui.time_series.main_window import TimeSeriesGuiMainWindow
 from qudi.gui.time_series.settings_dialog import TraceViewDialog, ChannelSettingsDialog
@@ -64,7 +66,9 @@ class TimeSeriesGui(GuiBase):
     sigChannelSettingsChanged = QtCore.Signal(list, list)
 
     _current_value_channel = StatusVar(name='current_value_channel', default='None')
-    _visible_traces = StatusVar(name='visible_traces', default=None)
+    _visible_traces = StatusVar(name='visible_traces', default=dict())
+    _current_value_channel_precision = StatusVar(name='current_value_channel_precision',
+                                                 default=dict())
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -82,14 +86,15 @@ class TimeSeriesGui(GuiBase):
         # Get hardware constraints
         logic = self._time_series_logic_con()
         hw_constr = logic.streamer_constraints
+        all_channels = list(hw_constr.channel_units)
 
         # Refine ConfigOptions
-        if self._visible_traces is None:
-            self._visible_traces = {ch: (True, True) for ch in hw_constr.channel_units}
-        else:
-            self._visible_traces = {
-                ch: self._visible_traces.get(ch, (True, True)) for ch in hw_constr.channel_units
-            }
+        self._visible_traces = {
+            ch: self._visible_traces.get(ch, (True, True)) for ch in all_channels
+        }
+        self._current_value_channel_precision = {
+            ch: self._current_value_channel_precision.get(ch, None) for ch in all_channels
+        }
 
         # Configure PlotWidget
         if hw_constr.sample_timing == SampleTiming.RANDOM:
@@ -115,7 +120,7 @@ class TimeSeriesGui(GuiBase):
 
         self.curves = dict()
         self.averaged_curves = dict()
-        for i, ch in enumerate(hw_constr.channel_units):
+        for i, ch in enumerate(all_channels):
             # Determine pen style
             # FIXME: Choosing a pen width != 1px (not cosmetic) causes massive performance drops
             # For mixed signals each signal type (digital or analog) has the same color
@@ -141,28 +146,28 @@ class TimeSeriesGui(GuiBase):
                                                antialias=self._use_antialias)
 
         # Connecting user interactions
-        self._mw.toggle_trace_action.triggered[bool].connect(self.trace_toggled)
-        self._mw.record_trace_action.triggered[bool].connect(self.record_toggled)
+        self._mw.toggle_trace_action.triggered[bool].connect(self._trace_toggled)
+        self._mw.record_trace_action.triggered[bool].connect(self._record_toggled)
         self._mw.snapshot_trace_action.triggered.connect(logic.save_trace_snapshot,
                                                          QtCore.Qt.QueuedConnection)
         self._mw.settings_dockwidget.trace_length_spinbox.editingFinished.connect(
-            self.trace_settings_changed
+            self._trace_settings_changed
         )
         self._mw.settings_dockwidget.data_rate_spinbox.editingFinished.connect(
-            self.trace_settings_changed
+            self._trace_settings_changed
         )
         self._mw.settings_dockwidget.oversampling_spinbox.editingFinished.connect(
-            self.trace_settings_changed
+            self._trace_settings_changed
         )
         self._mw.settings_dockwidget.moving_average_spinbox.editingFinished.connect(
-            self.trace_settings_changed
+            self._trace_settings_changed
         )
         self._mw.current_value_combobox.currentIndexChanged.connect(
-            self.current_value_channel_changed
+            self._current_value_channel_changed
         )
 
         # Connect the default view and settings actions
-        self._mw.restore_default_view_action.triggered.connect(self.restore_default_view)
+        self._mw.restore_default_view_action.triggered.connect(self._restore_default_view)
         self._mw.trace_view_selection_action.triggered.connect(self._exec_trace_view_dialog)
         self._mw.channel_settings_action.triggered.connect(self._exec_channel_settings_dialog)
 
@@ -187,7 +192,7 @@ class TimeSeriesGui(GuiBase):
         self.update_channel_settings(logic.active_channel_names, logic.averaged_channel_names)
         self.update_trace_settings(logic.trace_settings)
         self.update_data(*logic.trace_data, *logic.averaged_trace_data)
-        self.apply_trace_view_settings(self._visible_traces)
+        self._apply_trace_view_settings(self.trace_view_settings)
         index = self._mw.current_value_combobox.findText(self._current_value_channel)
         if index < 0:
             self._mw.current_value_combobox.setCurrentIndex(0)
@@ -229,12 +234,21 @@ class TimeSeriesGui(GuiBase):
         logic.sigStatusChanged.disconnect(self.update_status)
         self._mw.close()
 
+    @property
+    def trace_view_settings(self) -> Dict[str, Tuple[bool, bool, Union[int, None]]]:
+        """ Read-only """
+        return {
+            ch: [*flags, self._current_value_channel_precision[ch]] for ch, flags in
+            self._visible_traces.items()
+        }
+
     def _exec_trace_view_dialog(self):
-        dialog = TraceViewDialog(self._visible_traces.keys(), parent=self._mw)
-        dialog.set_channel_states(self._visible_traces)
+        current_settings = self.trace_view_settings
+        dialog = TraceViewDialog(current_settings.keys(), parent=self._mw)
+        dialog.set_channel_states(current_settings)
         # Show modal dialog and update logic if necessary
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
-            self.apply_trace_view_settings(dialog.get_channel_states())
+            self._apply_trace_view_settings(dialog.get_channel_states())
 
     def _exec_channel_settings_dialog(self):
         logic = self._time_series_logic_con()
@@ -245,7 +259,7 @@ class TimeSeriesGui(GuiBase):
         dialog.set_channel_states(channel_states)
         # Show modal dialog and update logic if necessary
         if dialog.exec_() == QtWidgets.QDialog.Accepted:
-            self.apply_channel_settings(dialog.get_channel_states())
+            self._apply_channel_settings(dialog.get_channel_states())
 
     @QtCore.Slot()
     def __update_viewbox_sync(self):
@@ -257,16 +271,17 @@ class TimeSeriesGui(GuiBase):
             self.log.exception('sdsdasd')
             raise
 
-    def apply_trace_view_settings(self, setting):
+    def _apply_trace_view_settings(self, setting):
         active_channels, averaged_channels = self._time_series_logic_con().channel_settings
-        for chnl, (show_data, show_average) in setting.items():
+        for chnl, (show_data, show_average, precision) in setting.items():
             chnl_active = chnl in active_channels
             data_visible = show_data and chnl_active
             average_visible = show_average and chnl_active and (chnl in averaged_channels)
             self._toggle_channel_data_plot(chnl, data_visible, average_visible)
-        self._visible_traces = setting
+            self._visible_traces[chnl] = (show_data, show_average)
+            self._current_value_channel_precision[chnl] = precision
 
-    def apply_channel_settings(self, setting):
+    def _apply_channel_settings(self, setting):
         self.sigChannelSettingsChanged.emit(
             [ch for ch, (enabled, _) in setting.items() if enabled],
             [ch for ch, (_, averaged) in setting.items() if averaged]
@@ -360,27 +375,29 @@ class TimeSeriesGui(GuiBase):
                 val = data[channel][-1]
             constraints = self._time_series_logic_con().streamer_constraints
             ch_unit = constraints.channel_units[channel]
-            is_integer = is_integer_type(constraints.data_type)
-            if is_integer:
+            precision = self._current_value_channel_precision[channel]
+            if is_integer_type(constraints.data_type):
                 self._mw.current_value_label.setText(f'{val:,d} {ch_unit}')
+            elif precision is None:
+                self._mw.current_value_label.setText(f'{ScaledFloat(val):.5r}{ch_unit}')
             else:
-                self._mw.current_value_label.setText(f'{val:,.6f} {ch_unit}')
+                self._mw.current_value_label.setText(f'{val:,.{precision:d}f} {ch_unit}')
 
     @QtCore.Slot(bool)
-    def trace_toggled(self, enabled: bool) -> None:
+    def _trace_toggled(self, enabled: bool) -> None:
         """ Handling the toggle button to stop and start the stream """
         self._mw.toggle_trace_action.setEnabled(False)
         self._mw.record_trace_action.setEnabled(False)
         self._mw.settings_dockwidget.setEnabled(False)
         self._mw.channel_settings_action.setEnabled(False)
         if enabled:
-            self.trace_settings_changed()
+            self._trace_settings_changed()
             self.sigStartCounter.emit()
         else:
             self.sigStopCounter.emit()
 
     @QtCore.Slot(bool)
-    def record_toggled(self, enabled: bool) -> None:
+    def _record_toggled(self, enabled: bool) -> None:
         """ Handling the save button to save the data into a file """
         self._mw.toggle_trace_action.setEnabled(False)
         self._mw.record_trace_action.setEnabled(False)
@@ -404,7 +421,7 @@ class TimeSeriesGui(GuiBase):
         self._mw.record_trace_action.setEnabled(running)
 
     @QtCore.Slot()
-    def trace_settings_changed(self):
+    def _trace_settings_changed(self):
         """ Handling the change of the count_length and sending it to the measurement.
         """
         settings = {
@@ -416,7 +433,7 @@ class TimeSeriesGui(GuiBase):
         self.sigTraceSettingsChanged.emit(settings)
 
     @QtCore.Slot()
-    def current_value_channel_changed(self):
+    def _current_value_channel_changed(self):
         val = self._mw.current_value_combobox.currentText()
         if val == 'None':
             self._mw.current_value_label.setVisible(False)
@@ -426,7 +443,7 @@ class TimeSeriesGui(GuiBase):
         self._current_value_channel = val
 
     @QtCore.Slot()
-    def restore_default_view(self):
+    def _restore_default_view(self):
         """ Restore the arrangement of DockWidgets to the default
         """
         # Show hidden dock widget and re-dock
