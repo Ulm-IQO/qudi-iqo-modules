@@ -130,11 +130,16 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
         self.__all_counters = tuple(
             ctr.split('/')[-1] for ctr in self._device_handle.co_physical_chans.channel_names if
-            'ctr' in ctr.lower())
+            'ctr' in ctr.lower()
+        )
         self.__all_digital_terminals = tuple(
-            term.rsplit('/', 1)[-1].lower() for term in self._device_handle.terminals if 'PFI' in term)
+            term.rsplit('/', 1)[-1].lower() for term in self._device_handle.terminals if
+            'PFI' in term
+        )
         self.__all_analog_terminals = tuple(
-            term.rsplit('/', 1)[-1].lower() for term in self._device_handle.ai_physical_chans.channel_names)
+            term.rsplit('/', 1)[-1].lower() for term in
+            self._device_handle.ai_physical_chans.channel_names
+        )
 
         # Check digital input terminals
         if self._digital_sources:
@@ -566,7 +571,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
     def _init_digital_tasks(self):
         """ Set up tasks for digital event counting. """
         all_channels = list(self._constraints.channel_units)
-        digital_channels = [ch for ch in all_channels[-len(self._digital_sources):] if
+        digital_channels = [ch for ch in all_channels[:len(self._digital_sources)] if
                             ch in self.__active_channels]
         if digital_channels:
             if self._di_task_handles:
