@@ -383,10 +383,11 @@ class WavemeterHistogramGui(GuiBase):
         if current_wavelength is not None:
             self._mw.wavelengthLabel2.setText('{0:,.6f} nm '.format(current_wavelength))
             self._mw.frequencyLabel.setText('{0:,.6f} Hz '.format(current_freq))
-            if not self._wavemeter_logic.x_axis_hz_bool:
-                self._pw.move_marker_selection((current_wavelength, 0), 0)
-            elif self._wavemeter_logic.x_axis_hz_bool:
-                self._pw.move_marker_selection((current_freq, 0), 0)
+            #if not self._wavemeter_logic.x_axis_hz_bool:
+            #    self._pw.move_marker_selection((current_wavelength, 0), 0)
+            #elif self._wavemeter_logic.x_axis_hz_bool:
+            #    self._pw.move_marker_selection((current_freq, 0), 0)
+
         return
 
     @QtCore.Slot(object, object, object, object)
@@ -399,6 +400,7 @@ class WavemeterHistogramGui(GuiBase):
             if len(wavelength) > 0 and len(wavelength) == len(counts) == len(timings):
                 self.curve_data_points.setData(wavelength, counts)
                 self._scatterplot.setData(wavelength, timings)
+                self._pw.move_marker_selection((wavelength[-1], 0), 0)
                 self._pw.set_data('Histogram', x=histogram_axis, y=histogram)
                 self._pw.set_data('Envelope', x=histogram_axis, y=envelope_histogram)
                 #min = self._wavemeter_logic.get_min_wavelength()
@@ -409,6 +411,7 @@ class WavemeterHistogramGui(GuiBase):
             if len(wavelength) > 0 and len(counts) == len(timings) == len(frequency):
                 self.curve_data_points.setData(frequency, counts)
                 self._scatterplot.setData(frequency, timings)
+                self._pw.move_marker_selection((frequency[-1], 0), 0)
                 self._pw.set_data('Histogram', x=3.0e17 / histogram_axis, y=histogram)
                 self._pw.set_data('Envelope', x=3.0e17 / histogram_axis,
                                   y=envelope_histogram)
@@ -469,17 +472,18 @@ class WavemeterHistogramGui(GuiBase):
 
     @QtCore.Slot()
     def start_clicked_wavemeter(self):
-
         if self._mw.start_trace_Action2.isChecked():
             if self._wavemeter_logic._streamer().start_stream() < 0:
                 self.log.error('Error while starting streaming device data acquisition.')
                 return -1
+            self._wavemeter_logic.start_displaying_current_wavelength()
             self._mw.start_trace_Action2.setText('Stop Wavemeter')
             icon_path = os.path.join(get_artwork_dir(), 'icons')
             icon2 = QtGui.QIcon(os.path.join(icon_path, 'stop-counter'))
             self._mw.start_trace_Action2.setIcon(icon2)
         else:
             self._wavemeter_logic._streamer().stop_stream()
+            self._wavemeter_logic.stop_displaying_current_wavelength()
             self._mw.start_trace_Action2.setText('Start Wavemeter')
             icon_path = os.path.join(get_artwork_dir(), 'icons')
             icon1 = QtGui.QIcon(os.path.join(icon_path, 'record-counter'))

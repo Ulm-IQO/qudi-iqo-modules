@@ -55,7 +55,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
     """
 
     #declare signals
-    sigNewWavelength = QtCore.Signal(object)
+    #sigNewWavelength = QtCore.Signal(object)
 
     # config options
 
@@ -182,7 +182,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                 if mode == high_finesse_constants.cmiWavelength1:
                     self._wavelength.append((intval, dblval))
                     #TODO emit signal for wavelength window
-                    self.sigNewWavelength.emit(dblval)
+                    #self.sigNewWavelength.emit(dblval)
                 elif mode == high_finesse_constants.cmiTemperature:
                     self._temperature.append((intval, dblval))
             return 0

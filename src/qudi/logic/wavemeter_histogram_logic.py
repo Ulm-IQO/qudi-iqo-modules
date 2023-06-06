@@ -12,6 +12,7 @@ from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import StreamChannelType, StreamingMode
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.core.statusvariable import StatusVar
+from qudi.util.network import netobtain
 from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping
 from lmfit.model import ModelResult as _ModelResult
 from qudi.util.datastorage import TextDataStorage
@@ -25,6 +26,7 @@ class WavemeterLogic(LogicBase):
     sigSettingsChanged = QtCore.Signal(dict)
     sigNewWavelength2 = QtCore.Signal(object, object)
     sigFitChanged = QtCore.Signal(str, dict)  # fit_name, fit_results
+    _sigNextWavelength = QtCore.Signal()  # internal signal
 
     # declare connectors
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
@@ -51,6 +53,7 @@ class WavemeterLogic(LogicBase):
         self.start_time = None
         self._fit_container = None
         self.x_axis_hz_bool = False  # by default display wavelength
+        self._is_wavelength_displaying = False
 
         # Data arrays #timings, counts, wavelength, wavelength in Hz
         self._trace_data = np.empty((4, 0), dtype=np.float64)
@@ -117,8 +120,8 @@ class WavemeterLogic(LogicBase):
         self.rawhisto = np.zeros(self._bins)
         self.sumhisto = np.ones(self._bins) * 1.0e-10
 
-        streamer.sigNewWavelength.connect(
-            self.display_current_wavelength, QtCore.Qt.QueuedConnection)
+        #streamer.sigNewWavelength.connect(
+        #    self.display_current_wavelength, QtCore.Qt.QueuedConnection)
         return
 
     def on_deactivate(self):
@@ -127,7 +130,7 @@ class WavemeterLogic(LogicBase):
         # Stop measurement
         if self.module_state() == 'locked':
             self._stop_reader_wait()
-        self._streamer().sigNewWavelength.disconnect()
+        #self._streamer().sigNewWavelength.disconnect()
         return
 
     @property
@@ -177,6 +180,7 @@ class WavemeterLogic(LogicBase):
                     samples_to_read_counts = len(new_count_data[0])
 
                 _data_wavelength = self._streamer().read_data(number_of_samples=samples_to_read_counts)
+                _data_wavelength = netobtain(_data_wavelength)
 
                 _data_counts = new_count_data
 
@@ -200,9 +204,11 @@ class WavemeterLogic(LogicBase):
                 self._update_histogram(self.complete_histogram)
 
                 #Emit update signal for Gui
+                self.sigNewWavelength2.emit(self.wavelength[-1], self.frequency[-1])
                 start = len(self.wavelength)-self.number_of_displayed_points if len(self.wavelength) > self.number_of_displayed_points else 0  # only display self.number_of_displayed_points most recent values
                 self.sigDataChanged.emit(self.timings[start:], self.counts[start:],
-                                         self.wavelength[start:], self.frequency[start:], self.histogram_axis, self.histogram, self.envelope_histogram)
+                                         self.wavelength[start:], self.frequency[start:], self.histogram_axis,
+                                         self.histogram, self.envelope_histogram)
 
         return
 
@@ -276,6 +282,8 @@ class WavemeterLogic(LogicBase):
         self.module_state.lock()
         self._stop_requested = False
         self.sigStatusChanged.emit(True)
+        if self._is_wavelength_displaying:
+            self.stop_displaying_current_wavelength()
         self._time_series_logic.sigDataChangedWavemeter.connect(
             self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
 
@@ -430,10 +438,27 @@ class WavemeterLogic(LogicBase):
             self._update_histogram(self.complete_histogram)
         return
 
-    @QtCore.Slot(object)
-    def display_current_wavelength(self, current_wavelength):
-        current_freq = 3.0e17 / current_wavelength #in GHz
-        self.sigNewWavelength2.emit(current_wavelength, current_freq)
+    def display_current_wavelength(self):
+        current_wavelength = self._streamer()._wavelength  #TODO use read_single_point for this?
+        #netobtain due to remote connection
+        current_wavelength = netobtain(current_wavelength)
+        #current_wavelength = 750
+        #print(current_wavelength[-1])
+        if len(current_wavelength) > 0:
+            current_freq = 3.0e17 / current_wavelength[-1][1] #in Hz
+            self.sigNewWavelength2.emit(current_wavelength[-1][1], current_freq)
+        self._sigNextWavelength.emit()
+        return
+
+    def start_displaying_current_wavelength(self):
+        self._sigNextWavelength.connect(self.display_current_wavelength, QtCore.Qt.QueuedConnection)
+        self._is_wavelength_displaying = True
+        self._sigNextWavelength.emit()
+        return
+
+    def stop_displaying_current_wavelength(self):
+        self._sigNextWavelength.disconnect()
+        self._is_wavelength_displaying = False
         return
 
     def autoscale_histogram(self):
@@ -526,6 +551,7 @@ class WavemeterLogic(LogicBase):
         @param str root_dir: optional, define a deviating folder for the data to be saved into
         @return str: file path the data was saved to
         """
+
         with self.threadlock:
             return self._save_data(postfix, root_dir)
 
