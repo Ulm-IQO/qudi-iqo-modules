@@ -99,6 +99,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._unit_return_type = {}
 
         # Data buffer
+        self._wm_start_time = None
         self._data_buffer = None
         self._timestamp_buffer = None
         self._current_buffer_positions = None
@@ -228,7 +229,12 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                         )
 
                     # wavemeter records timestamps in ms
-                    timestamp = np.datetime64(intval, 'ms')
+                    timestamp = 1e-3 * intval
+                    # in case this is the first recorded measurement,
+                    # set the timing offset to the start of the stream
+                    if self._wm_start_time is None:
+                        self._wm_start_time = timestamp
+                    timestamp -= self._wm_start_time
                     # unit conversion
                     converted_value = self._wavemeterdll.ConvertUnit(
                         dblval, high_finesse_constants.cReturnWavelengthVac, self._unit_return_type[ch]
@@ -276,6 +282,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                     # long P1: function
                     0)  # long P2: callback thread priority, 0 = standard
                 self._callback_function = None
+                self._wm_start_time = None
 
                 self.module_state.unlock()
             else:
@@ -283,49 +290,28 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
-                              number_of_samples: Optional[int] = None,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            data_buffer.shape == (<channel_count>, <sample_count>)
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, <samples_per_channel>])
+
         The data_buffer array must have the same data type as self.constraints.data_type.
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        at least <number_of_samples> in size.
+        exactly of length:
 
-        If number_of_samples is omitted it will be derived from buffer.shape[1]
+            data_buffer // <channel_count>
+
+        This function is blocking until the entire buffer has been filled.
         """
         with self._lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
-            if not isinstance(data_buffer, np.ndarray) or data_buffer.dtype != self.constraints.data_type:
-                self.log.error(f'data_buffer must be numpy.ndarray with dtype {self.constraints.data_type}.')
-
-            if not isinstance(timestamp_buffer, np.ndarray) or not np.issubdtype(timestamp_buffer.dtype, np.datetime64):
-                # TODO: explicit datetime64 unit checking
-                self.log.error(f'timestamp_buffer must be numpy.ndarray with dtype np.datetime64.')
-
-            n_channels = len(self.active_channels)
-            if n_channels > 1:
-                if data_buffer.ndim != 2:
-                    self.log.error('data_buffer must be a 2D numpy.ndarray if more then one channel is active.')
-
-                if data_buffer.shape[0] != n_channels:
-                    self.log.error(f'Configured number of channels ({n_channels}) does not match first '
-                                   f'dimension of 2D data_buffer array ({data_buffer.shape[0]}).')
-
-            if number_of_samples is None:
-                try:
-                    number_of_samples = data_buffer.shape[1]
-                except IndexError:
-                    number_of_samples = data_buffer.shape[0]
-            elif number_of_samples < 1:
-                return
+            number_of_samples = self._validate_buffers(data_buffer, timestamp_buffer)
 
             # wait until requested number of samples is available
             while self.available_samples < number_of_samples:
@@ -334,72 +320,65 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                 # wait for 10 ms
                 time.sleep(0.01)
 
-            data_buffer[:, :number_of_samples] = self._data_buffer[:, :number_of_samples]
-            if timestamp_buffer is not None:
-                timestamp_buffer[:number_of_samples] = self._timestamp_buffer[:number_of_samples]
-
-            # remove samples that have been read from buffer to make space for new samples
-            self._data_buffer = np.roll(self._data_buffer, -number_of_samples, axis=1)
-            self._timestamp_buffer = np.roll(self._timestamp_buffer, -number_of_samples)
-            self._current_buffer_positions -= number_of_samples
+            data_buffer[:number_of_samples] = self._data_buffer[:, :number_of_samples].flatten()
+            timestamp_buffer[:number_of_samples] = self._timestamp_buffer[:number_of_samples]
+            self._remove_samples_from_buffer(number_of_samples)
 
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
                                         timestamp_buffer: Optional[np.ndarray] = None) -> int:
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            data_buffer.shape == (<channel_count>, <sample_count>)
-        The data_buffer array must have the same data type as self.constraints.data_type.
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The number of samples read per channel is returned and can be used to slice out valid data
+        from the buffer arrays like:
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array has to be
-        provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        at least <number_of_samples> in size.
+            valid_data = data_buffer[:<channel_count> * <return_value>]
+            valid_timestamps = timestamp_buffer[:<return_value>]
+
+        See "read_data_into_buffer" documentation for more details.
 
         This method will read all currently available samples into buffer. If number of available
-        samples exceed buffer size, read only as many samples as fit into the buffer.
+        samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
-        available_samples = self.available_samples
-        self.read_data_into_buffer(data_buffer=data_buffer,
-                                   number_of_samples=available_samples,
-                                   timestamp_buffer=timestamp_buffer)
-        return available_samples
+        with self._lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
+
+            requested_samples = self._validate_buffers(data_buffer, timestamp_buffer)
+            read_samples = min(requested_samples, self.available_samples)
+
+            data_buffer[:read_samples] = self._data_buffer[:, :read_samples].flatten()
+            timestamp_buffer[:read_samples] = self._timestamp_buffer[:read_samples]
+            self._remove_samples_from_buffer(read_samples)
+
+        return read_samples
 
     def read_data(self,
                   number_of_samples: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
-        """
-        Read data from the stream buffer into a 2D numpy array and return it.
-        The arrays first index corresponds to the channel number and the second index serves as
-        sample index:
-            return_array.shape == (self.number_of_channels, number_of_samples)
-        The numpy arrays data type is the one defined in self.constraints.data_type.
+        """ Read data from the stream buffer into a 1D numpy array and return it.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The returned data_buffer can be unraveled into channel samples with:
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.datetime64 timestamp_buffer array will be
+            data_buffer.reshape([<channel_count>, number_of_samples])
+
+        The numpy array data type is the one defined in self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
         If number_of_samples is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
-        If no samples are available, this method will immediately return an empty array.
         """
-        data_buffer = np.empty((0, 0), dtype=self.constraints.data_type)
-        timestamp_buffer = np.empty(0, dtype=np.datetime64)
+        with self._lock:
+            if self.module_state() != 'locked':
+                self.log.error('Unable to read data. Device is not running.')
 
-        if self.module_state() != 'locked':
-            self.log.error('Unable to read data. Device is not running.')
+            read_samples = number_of_samples if number_of_samples is not None else self.available_samples
 
-        elif number_of_samples is None:
-            if self.available_samples > 0:
-                data_buffer = np.zeros_like(self._data_buffer)
-                timestamp_buffer = np.zeros_like(self._timestamp_buffer)
-                self.read_available_data_into_buffer(data_buffer, timestamp_buffer)
-
-        else:
-            data_buffer = np.zeros_like(self._data_buffer)[:, :number_of_samples]
-            timestamp_buffer = np.zeros_like(self._timestamp_buffer)[:number_of_samples]
-            self.read_data_into_buffer(data_buffer, number_of_samples, timestamp_buffer)
+            data_buffer = np.empty(read_samples * len(self.active_channels), dtype=self.constraints.data_type)
+            timestamp_buffer = np.emtpy(read_samples, dtype=np.float64)
+            self.read_data_into_buffer(data_buffer, timestamp_buffer)
 
         return data_buffer, timestamp_buffer
 
@@ -512,5 +491,34 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         """ Initialize buffers and the current buffer position marker. """
         n = len(self._active_switch_channels)
         self._data_buffer = np.zeros([n, self._channel_buffer_size], dtype=self.constraints.data_type)
-        self._timestamp_buffer = np.zeros(self._channel_buffer_size, dtype='datetime64[ms]')
+        self._timestamp_buffer = np.zeros(self._channel_buffer_size, dtype=np.float64)
         self._current_buffer_positions = np.zeros(n, dtype=int)
+
+    def _remove_samples_from_buffer(self, number_of_samples: int) -> None:
+        """
+        Remove samples that have been read from buffer to make space for new samples.
+        :param number_of_samples: number of samples to clear off the buffer
+        :return: None
+        """
+        self._data_buffer = np.roll(self._data_buffer, -number_of_samples, axis=1)
+        self._timestamp_buffer = np.roll(self._timestamp_buffer, -number_of_samples)
+        self._current_buffer_positions -= number_of_samples
+
+    def _validate_buffers(self,
+                          data_buffer: np.ndarray,
+                          timestamp_buffer: np.ndarray) -> int:
+        """ Validate arguments for read_[available]_data_into_buffer methods. """
+        if not isinstance(data_buffer, np.ndarray) or data_buffer.dtype != self.constraints.data_type:
+            self.log.error(f'data_buffer must be numpy.ndarray with dtype {self.constraints.data_type}.')
+
+        if not isinstance(timestamp_buffer, np.ndarray) or timestamp_buffer.dtype != np.float64:
+            self.log.error(f'timestamp_buffer must be provided for the wavemeter and '
+                           f'it must be a numpy.ndarray with dtype np.float64.')
+
+        number_of_channels = len(self.active_channels)
+        number_of_samples = data_buffer.size // number_of_channels
+
+        if timestamp_buffer.size != number_of_samples:
+            self.log.error(f'timestamp_buffer must be exactly of length data_buffer // <channel_count>')
+
+        return number_of_samples
