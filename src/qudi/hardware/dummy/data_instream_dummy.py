@@ -412,20 +412,22 @@ class InStreamDummy(DataInStreamInterface):
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
-                              number_of_samples: Optional[int] = None,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            data_buffer.shape == (<channel_count>, <sample_count>)
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, <samples_per_channel>])
+
         The data_buffer array must have the same data type as self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        at least <number_of_samples> in size.
+        exactly of length:
 
-        If number_of_samples is omitted it will be derived from buffer.shape[1]
+            data_buffer // <channel_count>
+
+        This function is blocking until the entire buffer has been filled.
         """
         with self._thread_lock:
             if self.module_state() != 'locked':
@@ -433,18 +435,14 @@ class InStreamDummy(DataInStreamInterface):
             if (self.constraints.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
                 raise RuntimeError('SampleTiming.TIMESTAMP mode requires a timestamp buffer array')
 
-            if data_buffer.ndim == 1:
-                data_buffer = np.expand_dims(data_buffer, axis=0)
-
-            if number_of_samples is None:
-                number_of_samples = data_buffer.shape[1]
-            elif number_of_samples > data_buffer.shape[1]:
-                raise RuntimeError(f'data_buffer too small ({data_buffer.shape[1]:d}) to contain '
-                                   f'all requested samples ({number_of_samples:d})')
-
-            if (timestamp_buffer is not None) and (timestamp_buffer.size < number_of_samples):
-                raise RuntimeError(f'timestamp_buffer too small ({timestamp_buffer.size:d}) to '
-                                   f'contain all requested samples ({number_of_samples:d})')
+            channel_count = len(self.active_channels)
+            number_of_samples = data_buffer.size // channel_count
+            if (timestamp_buffer is not None) and (timestamp_buffer.size != number_of_samples):
+                raise RuntimeError(
+                    f'timestamp_buffer size ({timestamp_buffer.size:d}) must be the same as the '
+                    f'data buffer size divided by the channel count ({number_of_samples:d})'
+                )
+            data_buffer = data_buffer.reshape([channel_count, number_of_samples])
 
             # Return immediately if no samples are requested
             offset = 0
@@ -465,49 +463,51 @@ class InStreamDummy(DataInStreamInterface):
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
                                         timestamp_buffer: Optional[np.ndarray] = None) -> int:
-        """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            data_buffer.shape == (<channel_count>, <sample_count>)
-        The data_buffer array must have the same data type as self.constraints.data_type.
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The number of samples read per channel is returned and can be used to slice out valid data
+        from the buffer arrays like:
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
-        provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        at least <number_of_samples> in size.
+            valid_data = data_buffer[:<channel_count> * <return_value>]
+            valid_timestamps = timestamp_buffer[:<return_value>]
+
+        See "read_data_into_buffer" documentation for more details.
 
         This method will read all currently available samples into buffer. If number of available
-        samples exceed buffer size, read only as many samples as fit into the buffer.
-        Returns the number of samples read (per channel).
+        samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
         with self._thread_lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
-            if (self.constraints.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
-                raise RuntimeError('SampleTiming.TIMESTAMP mode requires a timestamp buffer array')
-
-            if data_buffer.ndim == 1:
-                data_buffer = np.expand_dims(data_buffer, axis=0)
-
             self._sample_generator.generate_samples()
+            available_samples = self._sample_generator.available_samples
+            if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
+                if timestamp_buffer is None:
+                    raise RuntimeError(
+                        'SampleTiming.TIMESTAMP mode requires a timestamp buffer array'
+                    )
+                timestamp_buffer = timestamp_buffer[:available_samples]
+            channel_count = len(self.active_channels)
+            data_buffer = data_buffer[:channel_count * available_samples]
             return self._sample_generator.read_samples(sample_buffer=data_buffer,
                                                        timestamp_buffer=timestamp_buffer)
 
     def read_data(self,
                   number_of_samples: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
-        """ Read data from the stream buffer into a 2D numpy array and return it.
-        The arrays first index corresponds to the channel number and the second index serves as
-        sample index:
-            return_array.shape == (self.number_of_channels, number_of_samples)
-        The numpy arrays data type is the one defined in self.constraints.data_type.
+        """ Read data from the stream buffer into a 1D numpy array and return it.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The returned data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, number_of_samples])
+
+        The numpy array data type is the one defined in self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
         If number_of_samples is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
-        If no samples are available, this method will immediately return an empty array.
         """
         with self._thread_lock:
             if self.module_state() != 'locked':
@@ -519,10 +519,10 @@ class InStreamDummy(DataInStreamInterface):
             else:
                 self._sample_generator.wait_get_available_samples(number_of_samples)
 
-            data_buffer = np.zeros([len(self.active_channels), number_of_samples],
+            data_buffer = np.empty(len(self.active_channels) * number_of_samples,
                                    dtype=self._constraints.data_type)
             if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
-                timestamp_buffer = np.zeros(number_of_samples, dtype=np.float64)
+                timestamp_buffer = np.empty(number_of_samples, dtype=np.float64)
             else:
                 timestamp_buffer = None
             if number_of_samples > 0:
@@ -545,12 +545,12 @@ class InStreamDummy(DataInStreamInterface):
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
-            data_buffer = np.zeros(len(self.active_channels), dtype=self._constraints.data_type)
+            data_buffer = np.empty(len(self.active_channels), dtype=self._constraints.data_type)
             if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
-                timestamp_buffer = np.zeros([1, 1], dtype=np.float64)
+                timestamp_buffer = np.empty(1, dtype=np.float64)
             else:
                 timestamp_buffer = None
             self._sample_generator.wait_get_available_samples(1)
             self._sample_generator.read_samples(sample_buffer=np.expand_dims(data_buffer, axis=0),
                                                 timestamp_buffer=timestamp_buffer)
-            return data_buffer, None if timestamp_buffer is None else timestamp_buffer[0]
+            return data_buffer, timestamp_buffer

@@ -197,20 +197,22 @@ class DataInStreamInterface(Base):
     @abstractmethod
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
-                              number_of_samples: Optional[int] = None,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            data_buffer.shape == (<channel_count>, <sample_count>)
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, <samples_per_channel>])
+
         The data_buffer array must have the same data type as self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        at least <number_of_samples> in size.
+        exactly of length:
 
-        If number_of_samples is omitted it will be derived from buffer.shape[1]
+            data_buffer // <channel_count>
+
+        This function is blocking until the entire buffer has been filled.
         """
         pass
 
@@ -218,20 +220,18 @@ class DataInStreamInterface(Base):
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
                                         timestamp_buffer: Optional[np.ndarray] = None) -> int:
-        """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            data_buffer.shape == (<channel_count>, <sample_count>)
-        The data_buffer array must have the same data type as self.constraints.data_type.
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The number of samples read per channel is returned and can be used to slice out valid data
+        from the buffer arrays like:
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
-        provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        at least <number_of_samples> in size.
+            valid_data = data_buffer[:<channel_count> * <return_value>]
+            valid_timestamps = timestamp_buffer[:<return_value>]
+
+        See "read_data_into_buffer" documentation for more details.
 
         This method will read all currently available samples into buffer. If number of available
-        samples exceed buffer size, read only as many samples as fit into the buffer.
-        Returns the number of samples read (per channel).
+        samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
         pass
 
@@ -239,18 +239,19 @@ class DataInStreamInterface(Base):
     def read_data(self,
                   number_of_samples: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
-        """ Read data from the stream buffer into a 2D numpy array and return it.
-        The arrays first index corresponds to the channel number and the second index serves as
-        sample index:
-            return_array.shape == (self.number_of_channels, number_of_samples)
-        The numpy arrays data type is the one defined in self.constraints.data_type.
+        """ Read data from the stream buffer into a 1D numpy array and return it.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The returned data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, number_of_samples])
+
+        The numpy array data type is the one defined in self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
         If number_of_samples is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
-        If no samples are available, this method will immediately return an empty array.
         """
         pass
 

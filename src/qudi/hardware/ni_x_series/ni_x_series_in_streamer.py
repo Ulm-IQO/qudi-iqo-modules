@@ -355,20 +355,22 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
-                              number_of_samples: Optional[int] = None,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            data_buffer.shape == (<channel_count>, <sample_count>)
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, <samples_per_channel>])
+
         The data_buffer array must have the same data type as self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        at least <number_of_samples> in size.
+        exactly of length:
 
-        If number_of_samples is omitted it will be derived from buffer.shape[1]
+            data_buffer // <channel_count>
+
+        This function is blocking until the entire buffer has been filled.
         """
         if self.module_state() != 'locked':
             raise RuntimeError('Unable to read data. Device is not running.')
@@ -383,44 +385,39 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                 f'data_buffer must be numpy.ndarray with dtype {self._constraints.data_type}'
             )
 
-        if data_buffer.ndim == 1:
-            data_buffer = np.expand_dims(data_buffer, axis=0)
+        channel_count = len(self.__active_channels)
+        digital_count = len(self._di_readers)
+        analog_count = channel_count - digital_count
 
-        if data_buffer.shape[0] != len(self.__active_channels):
-            raise ValueError(
-                f'Configured number of channels ({len(self.__active_channels):d}) does not match '
-                f'first dimension of 2D buffer array ({data_buffer.shape[0]:d}).'
-            )
-
-        if number_of_samples is None:
-            number_of_samples = data_buffer.shape[1]
-        elif number_of_samples > data_buffer.shape[1]:
-            raise RuntimeError(f'data_buffer too small ({data_buffer.shape[1]:d}) to contain '
-                               f'all requested samples ({number_of_samples:d})')
-
+        number_of_samples = data_buffer.size // channel_count
         if number_of_samples > 0:
             try:
+                write_offset = 0
+                data_buffer = data_buffer[:channel_count * number_of_samples]
                 # Read digital channels
                 for i, reader in enumerate(self._di_readers):
                     # read the counter value. This function is blocking.
+                    write_end = write_offset + number_of_samples
                     read_samples = reader.read_many_sample_double(
-                        data_buffer[i, :],
+                        data_buffer[write_offset:write_end],
                         number_of_samples_per_channel=number_of_samples,
                         timeout=self._rw_timeout
                     )
+                    write_offset = write_end
                     if read_samples != number_of_samples:
                         raise RuntimeError('Reading digital channels failed')
                 # Read analog channels
                 if self._ai_reader is not None:
+                    write_end = write_offset + analog_count * number_of_samples
                     read_samples = self._ai_reader.read_many_sample(
-                        data_buffer[len(self._di_readers):, :].ravel(),
+                        data_buffer[write_offset:write_end],
                         number_of_samples_per_channel=number_of_samples,
                         timeout=self._rw_timeout
                     )
                     if read_samples != number_of_samples:
                         raise RuntimeError('Reading analog channels failed')
                 # Scale digital channels by sample rate
-                data_buffer[:len(self._di_readers), :] *= self.__sample_rate
+                data_buffer[:write_offset] *= self.__sample_rate
             except:
                 self.log.exception('Getting samples from streamer failed. Stopping streamer.')
                 self.stop_stream()
@@ -428,49 +425,49 @@ class NIXSeriesInStreamer(DataInStreamInterface):
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
                                         timestamp_buffer: Optional[np.ndarray] = None) -> int:
-        """ Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            data_buffer.shape == (<channel_count>, <sample_count>)
-        The data_buffer array must have the same data type as self.constraints.data_type.
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The number of samples read per channel is returned and can be used to slice out valid data
+        from the buffer arrays like:
 
-        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
-        provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        at least <number_of_samples> in size.
+            valid_data = data_buffer[:<channel_count> * <return_value>]
+            valid_timestamps = timestamp_buffer[:<return_value>]
+
+        See "read_data_into_buffer" documentation for more details.
 
         This method will read all currently available samples into buffer. If number of available
-        samples exceed buffer size, read only as many samples as fit into the buffer.
-        Returns the number of samples read (per channel).
+        samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
-        samples = min(data_buffer.size // len(self.__active_channels), self.available_samples)
-        self.read_data_into_buffer(data_buffer=data_buffer,
-                                   number_of_samples=samples,
-                                   timestamp_buffer=timestamp_buffer)
-        return samples
+        channel_count = len(self.__active_channels)
+        total_samples = channel_count * self.available_samples
+        data_buffer = data_buffer[:total_samples]
+        if timestamp_buffer is not None:
+            timestamp_buffer = timestamp_buffer[:total_samples]
+        self.read_data_into_buffer(data_buffer=data_buffer, timestamp_buffer=timestamp_buffer)
+        return total_samples // channel_count
 
     def read_data(self,
                   number_of_samples: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
-        """ Read data from the stream buffer into a 2D numpy array and return it.
-        The arrays first index corresponds to the channel number and the second index serves as
-        sample index:
-            return_array.shape == (self.number_of_channels, number_of_samples)
-        The numpy arrays data type is the one defined in self.constraints.data_type.
+        """ Read data from the stream buffer into a 1D numpy array and return it.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The returned data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, number_of_samples])
+
+        The numpy array data type is the one defined in self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
         If number_of_samples is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
-        If no samples are available, this method will immediately return an empty array.
         """
         if number_of_samples is None:
-            number_of_samples = self.available_samples
+            number_of_samples = self.available_samples * len(self.__active_channels)
 
-        data_buffer = np.empty([len(self.__active_channels), number_of_samples],
-                               dtype=self._constraints.data_type)
-        self.read_data_into_buffer(data_buffer, number_of_samples=number_of_samples)
+        data_buffer = np.empty(number_of_samples, dtype=self._constraints.data_type)
+        self.read_data_into_buffer(data_buffer=data_buffer, timestamp_buffer=None)
         return data_buffer, None
 
     def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
@@ -487,17 +484,12 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         if self.module_state() != 'locked':
             raise RuntimeError('Unable to read data. Device is not running.')
 
-        dtype = self._constraints.data_type
-        is_float = dtype == np.float64
-        data_buffer = np.empty(len(self.__active_channels), dtype=dtype)
+        data_buffer = np.empty(len(self.__active_channels), dtype=self._constraints.data_type)
         try:
             # Read digital channels
             for i, reader in enumerate(self._di_readers):
                 # read the counter value. This function is blocking.
-                if is_float:
-                    data_buffer[i] = reader.read_one_sample_double(timeout=self._rw_timeout)
-                else:
-                    data_buffer[i] = reader.read_one_sample_uint32(timeout=self._rw_timeout)
+                data_buffer[i] = reader.read_one_sample_double(timeout=self._rw_timeout)
             # Read analog channels
             if self._ai_reader is not None:
                 self._ai_reader.read_one_sample(data_buffer[len(self._di_readers):],
