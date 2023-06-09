@@ -201,6 +201,10 @@ class WavemeterLogic(LogicBase):
 
                 #[0] for wavelength(nm), [1] for timestamp
                 self._process_data_for_histogram(_data_wavelength[0], _data_counts[0], _data_wavelength_timings)
+                #Fail Save
+                #if len(self.wavelength) > 500:
+                #    self.save_data('AutomaticFailSaveOfMoreThan500Values')
+
                 self._update_histogram(self.complete_histogram)
 
                 #Emit update signal for Gui
@@ -551,7 +555,7 @@ class WavemeterLogic(LogicBase):
         @param str root_dir: optional, define a deviating folder for the data to be saved into
         @return str: file path the data was saved to
         """
-
+        self._trace_data = np.vstack(((self.timings, self.counts), (self.wavelength, self.frequency)))
         with self.threadlock:
             return self._save_data(postfix, root_dir)
 

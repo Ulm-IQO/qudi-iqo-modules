@@ -74,6 +74,12 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
 
         self.restore_default_view_action = QtWidgets.QAction('Restore default')
 
+        self.save_tag_LineEdit = QtWidgets.QLineEdit()
+        self.save_tag_LineEdit.setMaximumWidth(400)
+        self.save_tag_LineEdit.setMinimumWidth(150)
+        self.save_tag_LineEdit.setToolTip('Enter a nametag which will be\n'
+                                              'added to the filename.')
+
         # Create menu bar and add actions
         menu_bar = QtWidgets.QMenuBar()
         menu = menu_bar.addMenu('File')
@@ -102,6 +108,7 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
         toolbar.addAction(self.start_trace_Action)
         toolbar.addAction(self.actionClear_trace_data)
         toolbar.addAction(self.action_save)
+        toolbar.addWidget(self.save_tag_LineEdit)
         toolbar.addSeparator()
         toolbar.addAction(self.action_show_fit_configuration)
         toolbar.addAction(self.show_all_data_action)
@@ -442,7 +449,7 @@ class WavemeterHistogramGui(GuiBase):
         self._mw.actionClear_trace_data.setEnabled(not running)
         self._mw.actionToggle_x_axis.setEnabled(not running)
         self._mw.show_all_data_action.setEnabled(not running)
-        self._mw.action_save.setEnabled(not running)
+        #self._mw.action_save.setEnabled(not running)
         self._mw.start_trace_Action2.setEnabled(not running)
         return
 
@@ -453,7 +460,7 @@ class WavemeterHistogramGui(GuiBase):
         self._mw.start_trace_Action.setEnabled(False)
         self._mw.actionClear_trace_data.setEnabled(False)
         self._mw.actionToggle_x_axis.setEnabled(False)
-        self._mw.action_save.setEnabled(False)
+        #self._mw.action_save.setEnabled(False)
         self._mw.show_all_data_action.setEnabled(False)
         if self._wavemeter_logic._time_series_logic.module_state() == 'locked':
             if self._mw.start_trace_Action2.isChecked():
@@ -726,4 +733,5 @@ class WavemeterHistogramGui(GuiBase):
             self._pw.set_fit_data(name='Histogram', x=x_data, y=y_data, pen='r')
 
     def _save_clicked(self) -> None:
-        self.sigSaveData.emit('')
+        filetag = self._mw.save_tag_LineEdit.text()
+        self.sigSaveData.emit(filetag)
