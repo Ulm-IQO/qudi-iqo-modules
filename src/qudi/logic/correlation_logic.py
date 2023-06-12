@@ -644,6 +644,10 @@ class Correlation(ProcessStep):
         # dtype of input arrays for scipy.signal.correlate() defines output dtype -> prevent overflow if e.g. the dtype
         # is 8bit by using a bigger dtype
         dtype = 'uint64'
+        # make sure that values between zero and one are not set to zero by the dtype conversion
+        image_1.array[np.logical_and(image_1.array > 0, image_1.array < 1)] = 1
+        image_2.array[np.logical_and(image_2.array > 0, image_2.array < 1)] = 1
+
         im1 = image_1.array.astype(dtype)
         im2 = image_2.array.astype(dtype)
         correlation_array = scipy.signal.correlate(im2, im1, mode='full')
