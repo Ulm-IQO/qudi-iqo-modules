@@ -587,6 +587,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             # Set up digital counting tasks
             for i, chnl in enumerate(digital_channels):
                 chnl_name = f'/{self._device_name}/{chnl}'
+                print(chnl_name)
                 task_name = f'PeriodCounter_{chnl}'
                 # Try to find available counter
                 for ctr in self.__all_counters:
@@ -680,7 +681,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                             ) from err
 
                         self._di_task_handles.append(task)
-                        return
+                        break
 
     def _init_analog_task(self):
         """ Set up task for analog voltage measurement. """
