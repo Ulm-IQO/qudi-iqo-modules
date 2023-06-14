@@ -68,9 +68,9 @@ class DataInStreamConstraints:
         self._data_type = np.dtype(data_type).type
         self._channel_buffer_size = channel_buffer_size
         if sample_rate is None:
-            if SampleTiming.CONSTANT in self._sample_timings:
+            if self._sample_timing != SampleTiming.RANDOM:
                 raise ValueError('"sample_rate" ScalarConstraint must be provided if '
-                                 'SampleTiming.CONSTANT is permitted')
+                                 '"sample_timing" is not SampleTiming.RANDOM')
             self._sample_rate = ScalarConstraint(default=1, bounds=(1, 1), increment=0)
         else:
             self._sample_rate = sample_rate
