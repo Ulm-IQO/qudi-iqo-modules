@@ -200,7 +200,7 @@ class TimeSeriesReaderLogic(LogicBase):
         self._data_buffer = np.zeros(channel_count * self._channel_buffer_size,
                                      dtype=constraints.data_type)
         if constraints.sample_timing == SampleTiming.TIMESTAMP:
-            self._times_buffer = np.zeros(self._channel_buffer_size, dtype='datetime64[ms]')
+            self._times_buffer = np.zeros(self._channel_buffer_size, dtype=np.float64)
         else:
             self._times_buffer = None
 

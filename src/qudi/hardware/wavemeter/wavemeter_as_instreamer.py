@@ -311,7 +311,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
-            number_of_samples = self._validate_buffers(data_buffer, timestamp_buffer)
+            number_of_channels, number_of_samples = self._validate_buffers(data_buffer, timestamp_buffer)
+            total_samples = number_of_samples * number_of_channels
 
             # wait until requested number of samples is available
             while self.available_samples < number_of_samples:
@@ -320,8 +321,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                 # wait for 10 ms
                 time.sleep(0.01)
 
-            data_buffer[:number_of_samples] = self._data_buffer[:, :number_of_samples].flatten()
-            timestamp_buffer[:number_of_samples] = self._timestamp_buffer[:number_of_samples]
+            data_buffer[:total_samples] = self._data_buffer[:, :number_of_samples].flatten()
+            timestamp_buffer[:total_samples] = self._timestamp_buffer[:number_of_samples]
             self._remove_samples_from_buffer(number_of_samples)
 
     def read_available_data_into_buffer(self,
@@ -344,8 +345,8 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
-            requested_samples = self._validate_buffers(data_buffer, timestamp_buffer)
-            read_samples = min(requested_samples, self.available_samples)
+            number_of_channels, requested_samples = self._validate_buffers(data_buffer, timestamp_buffer)
+            read_samples = number_of_channels * min(requested_samples, self.available_samples)
 
             data_buffer[:read_samples] = self._data_buffer[:, :read_samples].flatten()
             timestamp_buffer[:read_samples] = self._timestamp_buffer[:read_samples]
@@ -512,6 +513,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             self.log.error(f'data_buffer must be numpy.ndarray with dtype {self.constraints.data_type}.')
 
         if not isinstance(timestamp_buffer, np.ndarray) or timestamp_buffer.dtype != np.float64:
+            print(timestamp_buffer.dtype)
             self.log.error(f'timestamp_buffer must be provided for the wavemeter and '
                            f'it must be a numpy.ndarray with dtype np.float64.')
 
@@ -521,4 +523,4 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         if timestamp_buffer.size != number_of_samples:
             self.log.error(f'timestamp_buffer must be exactly of length data_buffer // <channel_count>')
 
-        return number_of_samples
+        return number_of_channels, number_of_samples
