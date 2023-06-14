@@ -461,17 +461,19 @@ class PoiManagerGui(GuiBase):
         self._mw.refind_poi_Action.triggered.connect(
             self._poi_manager_logic.optimise_poi_position, QtCore.Qt.QueuedConnection)
         self._mw.get_confocal_image_PushButton.clicked.connect(
-            lambda: self._poi_manager_logic.set_scan_image(True, self._data_scan_axes), QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic.set_scan_image(True, self._data_scan_axes),
+            QtCore.Qt.QueuedConnection
+        )
         self._mw.set_poi_PushButton.clicked.connect(
             self._poi_manager_logic.add_poi, QtCore.Qt.QueuedConnection)
         self._mw.delete_last_pos_Button.clicked.connect(
-            self._poi_manager_logic.delete_history_entry, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic.delete_history_entry(-1), QtCore.Qt.QueuedConnection)
         self._mw.manual_update_poi_PushButton.clicked.connect(
             self._poi_manager_logic.move_roi_from_poi_position, QtCore.Qt.QueuedConnection)
         self._mw.move_poi_PushButton.clicked.connect(
             self._poi_manager_logic.set_poi_anchor_from_position, QtCore.Qt.QueuedConnection)
         self._mw.delete_poi_PushButton.clicked.connect(
-            self._poi_manager_logic.delete_poi, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic.delete_poi(None), QtCore.Qt.QueuedConnection)
         self._mw.active_poi_ComboBox.activated[str].connect(
             self._poi_manager_logic.set_active_poi, QtCore.Qt.QueuedConnection)
         self._mw.goto_poi_after_update_checkBox.stateChanged.connect(

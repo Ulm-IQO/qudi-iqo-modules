@@ -20,11 +20,16 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+import datetime
+import numpy
+import os
 import time
 
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
+from qudi.util.datastorage import get_timestamp_filename, create_dir_for_file
 from qudi.util.helpers import natural_sort
+from qudi.util.yaml import yaml_dump
 from qudi.interface.pulser_interface import PulserInterface, PulserConstraints, SequenceOption
 
 
@@ -44,6 +49,7 @@ class PulserDummy(PulserInterface):
 
     activation_config = StatusVar(default=None)
     force_sequence_option = ConfigOption('force_sequence_option', default=False)
+    save_samples = ConfigOption('save_samples', default=False)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -162,7 +168,7 @@ class PulserDummy(PulserInterface):
         constraints.d_ch_high.default = 5.0
 
         constraints.waveform_length.min = 80
-        constraints.waveform_length.max = 64800000
+        constraints.waveform_length.max = 6_000_000_000
         constraints.waveform_length.step = 1
         constraints.waveform_length.default = 80
 
@@ -302,14 +308,40 @@ class PulserDummy(PulserInterface):
         # samples included (as it is the case in Tektronix and Keysight AWGs).
         # Simulate a 1Gbit/s transfer speed. Assume each analog waveform sample is 5 bytes large
         # (4 byte float and 1 byte marker bitmask). Assume each digital waveform sample is 1 byte.
-        if len(analog_samples) > 0:
-            for chnl in analog_samples:
-                waveforms.append(name + chnl[1:])
-                time.sleep(number_of_samples * 5 * 8 / 1024 ** 3)
+
+        if not self.save_samples:
+            if len(analog_samples) > 0:
+                for chnl in analog_samples:
+                    waveforms.append(name + chnl[1:])
+                    time.sleep(number_of_samples * 5 * 8 / 1024 ** 3)
+            else:
+                for chnl in digital_samples:
+                    waveforms.append(name + chnl[1:])
+                    time.sleep(number_of_samples * 8 / 1024 ** 3)
         else:
+            dt = datetime.datetime.now()
+
+            if len(analog_samples) > 0:
+                for chnl in analog_samples:
+                    waveforms.append(name + chnl[1:])
+            else:
+                for chnl in digital_samples:
+                    waveforms.append(name + chnl[1:])
+
+            saved = dict()
+            for chnl in analog_samples:
+                saved[name + '_' + chnl] = analog_samples[chnl]
+                self.log.debug(f'Adding channel {name} {chnl} with shape {analog_samples[chnl].shape} and type {analog_samples[chnl].dtype} for saving.')
+
             for chnl in digital_samples:
-                waveforms.append(name + chnl[1:])
-                time.sleep(number_of_samples * 8 / 1024 ** 3)
+                saved[name + '_' + chnl] = digital_samples[chnl]
+                self.log.debug(f'Adding channel {name} {chnl} with shape {digital_samples[chnl].shape} and type {digital_samples[chnl].dtype} for saving.')
+
+            filename = get_timestamp_filename(timestamp=datetime.datetime.now()) + '_waveform.npz'
+            file_path = os.path.join(self.module_default_data_dir, filename)
+            create_dir_for_file(file_path)
+            numpy.savez_compressed(file_path, **saved)
+            self.log.debug(f'Saving {name} took {datetime.datetime.now() - dt}')
 
         self.waveform_set.update(waveforms)
 
@@ -338,7 +370,13 @@ class PulserDummy(PulserInterface):
             del self.sequence_dict[name]
 
         self.sequence_dict[name] = len(sequence_parameter_list[0][0])
-        time.sleep(1)
+        if not self.save_samples:
+            time.sleep(1)
+        else:
+            filename = get_timestamp_filename(timestamp=datetime.datetime.now()) + '_sequence.txt'
+            file_path = os.path.join(self.module_default_data_dir, filename)
+            dump_list = [(tuple(wfm), dict(param)) for wfm, param in sequence_parameter_list]
+            yaml_dump(file_path, dump_list)
 
         self.log.info('Sequence with name "{0}" directly written on dummy pulser.'.format(name))
         return len(sequence_parameter_list)
