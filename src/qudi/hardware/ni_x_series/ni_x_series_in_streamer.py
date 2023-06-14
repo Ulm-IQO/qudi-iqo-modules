@@ -680,7 +680,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                             ) from err
 
                         self._di_task_handles.append(task)
-                        return
+                        break
 
     def _init_analog_task(self):
         """ Set up task for analog voltage measurement. """
