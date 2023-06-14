@@ -94,7 +94,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
 
         # Internal settings
         self._channel_names = None  # dictionary with switch channel numbers as keys, channel names as values
-        self._channel_buffer_size = 1000
+        self._channel_buffer_size = 1024**2
         self._active_switch_channels = None  # list of active switch channel numbers
         self._unit_return_type = {}
 
@@ -103,6 +103,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._data_buffer = None
         self._timestamp_buffer = None
         self._current_buffer_positions = None
+        self._buffer_overflow = False
 
         # Stored hardware constraints
         self._constraints = None
@@ -166,8 +167,10 @@ class WavemeterAsInstreamer(DataInStreamInterface):
             # TODO: implement fixed streaming mode
             streaming_modes=[StreamingMode.CONTINUOUS],
             data_type=np.float64,
-            # TODO: figure out meaningful constraints
-            channel_buffer_size=ScalarConstraint(default=1000, bounds=(100, 1024**2), increment=1, enforce_int=True)
+            channel_buffer_size=ScalarConstraint(default=1024**2,  # 8 MB
+                                                 bounds=(128, 1024**3),  # max = 8 GB
+                                                 increment=1,
+                                                 enforce_int=True),
         )
 
     def on_deactivate(self) -> None:
@@ -213,6 +216,9 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                 self.log.error('Wavemeter acquisition was stopped during stream.')
                 return 0
 
+            if self._buffer_overflow:
+                return 0
+
             # TODO: why does this not work in the lock anymore?
             # with self._lock:
             if True:
@@ -222,7 +228,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                     i = self._active_switch_channels.index(ch)
 
                     if self._current_buffer_positions[i] >= self.channel_buffer_size:
-                        # TODO: what to do after raising this error for the first time?
+                        self._buffer_overflow = True
                         raise OverflowError(
                             'Streaming buffer encountered an overflow while receiving a callback from the wavemeter. '
                             'Please increase the buffer size or speed up data reading.'
@@ -247,7 +253,6 @@ class WavemeterAsInstreamer(DataInStreamInterface):
                         self._timestamp_buffer[self._current_buffer_positions[0]] = timestamp
                     self._current_buffer_positions[i] += 1
 
-                    # TODO emit signal for wavelength window
                     self.sigNewWavelength.emit(converted_value)
             return 0
 
@@ -494,6 +499,7 @@ class WavemeterAsInstreamer(DataInStreamInterface):
         self._data_buffer = np.zeros([n, self._channel_buffer_size], dtype=self.constraints.data_type)
         self._timestamp_buffer = np.zeros(self._channel_buffer_size, dtype=np.float64)
         self._current_buffer_positions = np.zeros(n, dtype=int)
+        self._buffer_overflow = False
 
     def _remove_samples_from_buffer(self, number_of_samples: int) -> None:
         """
