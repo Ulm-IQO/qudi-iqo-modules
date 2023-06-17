@@ -393,7 +393,7 @@ class ScanningProbeLogic(LogicBase):
         lin_transform.translate(shift[0], shift[1], shift[2])
 
         self._tilt_corr_transform = lin_transform
-        self._tilt_corr_axes = [el for idx, el in enumerate(self._scanner().get_constraints().axes) if tilt_axes[idx]]
+        self._tilt_corr_axes = [el for idx, el in enumerate(OrderedDict(sorted(self._scanner().get_constraints().axes.items()))) if tilt_axes[idx]]
 
 
     def __func_debug_transform(self):
