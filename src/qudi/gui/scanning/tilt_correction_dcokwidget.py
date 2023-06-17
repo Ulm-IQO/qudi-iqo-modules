@@ -37,7 +37,7 @@ class TiltCorrectionDockWidget(QDockWidget):
         super(TiltCorrectionDockWidget, self).__init__(parent)
 
         self._n_dim = len(scanner_axes)
-        self._scan_axes = OrderedDict(scanner_axes.items())
+        self._scan_axes = scanner_axes
 
         self.setWindowTitle("Tilt Correction")
         # Create the dock widget contents
@@ -120,30 +120,6 @@ class TiltCorrectionDockWidget(QDockWidget):
                              f"but found: {self.support_vectors[:3]}")
 
         [self.support_vecs_box[idx][idx_ax].setValue(vector[ax]) for idx_ax, ax in dim_idxs]
-
-    def vector_dict_2_array(self, vector):
-        """
-        Convert vectors given as dict (with axes keys) to arrays and ensure correct order.
-        vector: dict or list of dicts
-
-        return: np.array or list of np.array
-        """
-
-        if type(vector) != list:
-            vector = [vector]
-
-        vecs_arr = []
-        for vec in vector:
-            vec_arr = np.ones((len(self._scan_axes)))*np.nan
-            for idx, ax in enumerate(self._scan_axes):
-                vec_arr[idx] = vec[ax]
-
-            assert np.all(~np.isnan(vec_arr))
-            vecs_arr.append(vec_arr)
-
-        if len(vec_arr) == 1:
-            return vecs_arr[0]
-        return vecs_arr
 
     @property
     def auto_origin(self):

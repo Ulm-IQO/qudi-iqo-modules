@@ -1093,10 +1093,10 @@ class ScannerGui(GuiBase):
         self._mw.action_toggle_tilt_correction.setEnabled(False)
 
         if all_vecs_valid:
-            shift_vec_arr = self.tilt_correction_dockwidget.vector_dict_2_array(support_vecs_val[-1])
+            shift_vec_arr = self._scanning_logic().tilt_vector_dict_2_array(support_vecs_val[-1])
             if not np.all([np.isfinite(el) for el in shift_vec_arr]):
                 shift_vec_arr = None
-            support_vecs_arr = self.tilt_correction_dockwidget.vector_dict_2_array(support_vecs_val[:-1])
+            support_vecs_arr = self._scanning_logic().tilt_vector_dict_2_array(support_vecs_val[:-1])
             self._scanning_logic().configure_tilt_correction(support_vecs_arr,
                                                              shift_vec_arr)
             self.toggle_switch_widget.setEnabled(True)

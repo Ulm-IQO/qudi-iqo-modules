@@ -116,6 +116,9 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_timer = QtCore.QTimer()
         self.__scan_poll_timer.setSingleShot(True)
         self.__scan_poll_timer.timeout.connect(self.__scan_poll_loop, QtCore.Qt.QueuedConnection)
+
+        self._scan_axes = OrderedDict(sorted(self._scanner().get_constraints().axes.items()))
+
         return
 
     def on_deactivate(self):
@@ -393,8 +396,33 @@ class ScanningProbeLogic(LogicBase):
         lin_transform.translate(shift[0], shift[1], shift[2])
 
         self._tilt_corr_transform = lin_transform
-        self._tilt_corr_axes = [el for idx, el in enumerate(OrderedDict(sorted(self._scanner().get_constraints().axes.items()))) if tilt_axes[idx]]
+        self._tilt_corr_axes = [el for idx, el in enumerate(self._scan_axes) if tilt_axes[idx]]
 
+    def tilt_vector_dict_2_array(self, vector, reduced_dim=False):
+        """
+        Convert vectors given as dict (with axes keys) to arrays and ensure correct order.
+        vector: dict or list of dicts
+
+        return: np.array or list of np.array
+        """
+
+        if type(vector) != list:
+            vector = [vector]
+
+        axes = self._tilt_corr_axes if reduced_dim else self._scan_axes
+
+        vecs_arr = []
+        for vec in vector:
+            vec_arr = np.ones((len(axes)))*np.nan
+            for idx, ax in enumerate(axes):
+                vec_arr[idx] = vec[ax]
+
+            assert np.all(~np.isnan(vec_arr))
+            vecs_arr.append(vec_arr)
+
+        if len(vecs_arr) == 1:
+            return vecs_arr[0]
+        return vecs_arr
 
     def __func_debug_transform(self):
         def transform_to(coord, inverse=False):
@@ -558,11 +586,11 @@ class ScanningProbeLogic(LogicBase):
 
         # convert from coordinate dict to plain vector
         transform = self._tilt_corr_transform.__call__
-        coord_vec = np.asarray(list(coord_reduced.values())).T
+        coord_vec = self.tilt_vector_dict_2_array(coord_reduced, reduced_dim=True).T
         coord_vec_transf = transform(coord_vec, invert=inverse).T
         # make dict again after vector rotation
         coord_transf = cp.copy(coord)
-        [coord_transf.update({ax: coord_vec_transf[idx]}) for (idx, (ax, val)) in enumerate(coord_reduced.items())]
+        [coord_transf.update({ax: coord_vec_transf[idx]}) for (idx, ax) in enumerate(self._tilt_corr_axes)]
 
         #self.log.debug(f"Tranforming {coord} => {coord_transf}")
 
