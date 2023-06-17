@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('TiltCorrectionDockWidget')
 
 import numpy as np
+from collections import OrderedDict
 
 from PySide2 import QtCore, QtGui, QtWidgets
 from PySide2.QtWidgets import QDockWidget, QWidget,QGridLayout, QLabel, QPushButton,QTableWidget
@@ -31,10 +32,12 @@ from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, Toggle
 #from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 
 class TiltCorrectionDockWidget(QDockWidget):
+
     def __init__(self, parent=None, scanner_axes=None):
         super(TiltCorrectionDockWidget, self).__init__(parent)
 
         self._n_dim = len(scanner_axes)
+        self._scan_axes = OrderedDict(scanner_axes)
 
         self.setWindowTitle("Tilt Correction")
         # Create the dock widget contents
@@ -45,7 +48,7 @@ class TiltCorrectionDockWidget(QDockWidget):
         tiltpoint_label = QLabel("Support Vectors")
         dock_widget_layout.addWidget(tiltpoint_label, 0, 0)
 
-        for idx, ax in enumerate(list(scanner_axes.keys())):
+        for idx, ax in enumerate(list(self._scan_axes.keys())):
             tiltpoint_label = QLabel(ax)
             dock_widget_layout.addWidget(tiltpoint_label, 0, 1+idx)
 
@@ -99,9 +102,48 @@ class TiltCorrectionDockWidget(QDockWidget):
 
         vec_vals = []
         for vec in support_vecs:
-            vec_vals.append([box.value() for box in vec])
+            vals = [box.value() if box.is_valid else np.nan for box in vec]
+            vec_vals.append({list(self._scan_axes.keys())[idx]: vals[idx] for idx, box in enumerate(vec)})
 
         return vec_vals
+
+    def set_support_vector(self, vector, idx):
+        """
+        vector: dict with key= axis and value= vector component.
+        idx: index of support vector in [0,1,2,3]
+        """
+        dim_idxs = [(idx, key) for idx, key in enumerate(self._scan_axes.keys())]
+
+        if idx in [0,1,2] and vector in self.support_vectors[:3]:
+            [self.support_vecs_box[idx][idx_ax].setValue(np.nan) for idx_ax, ax in dim_idxs]
+            raise ValueError(f"Can't set support vector {idx} to {vector}. Vectors need to be distinct, "
+                             f"but found: {self.support_vectors[:3]}")
+
+        [self.support_vecs_box[idx][idx_ax].setValue(vector[ax]) for idx_ax, ax in dim_idxs]
+
+    def vector_dict_2_array(self, vector):
+        """
+        Convert vectors given as dict (with axes keys) to arrays and ensure correct order.
+        vector: dict or list of dicts
+
+        return: np.array or list of np.array
+        """
+
+        if type(vector) != list:
+            vector = [vector]
+
+        vecs_arr = []
+        for vec in vector:
+            vec_arr = np.ones((len(self._scan_axes)))*np.nan
+            for idx, ax in enumerate(self._scan_axes):
+                vec_arr[idx] = vec[ax]
+
+            assert np.all(~np.isnan(vec_arr))
+            vecs_arr.append(vec_arr)
+
+        if len(vec_arr) == 1:
+            return vecs_arr[0]
+        return vecs_arr
 
     @property
     def auto_origin(self):
