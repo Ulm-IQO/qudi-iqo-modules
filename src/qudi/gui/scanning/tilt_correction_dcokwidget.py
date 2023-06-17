@@ -37,7 +37,7 @@ class TiltCorrectionDockWidget(QDockWidget):
         super(TiltCorrectionDockWidget, self).__init__(parent)
 
         self._n_dim = len(scanner_axes)
-        self._scan_axes = OrderedDict(scanner_axes)
+        self._scan_axes = OrderedDict(sorted(scanner_axes.items()))
 
         self.setWindowTitle("Tilt Correction")
         # Create the dock widget contents
