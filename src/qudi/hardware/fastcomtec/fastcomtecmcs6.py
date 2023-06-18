@@ -704,12 +704,7 @@ class FastComtec(FastCounterInterface):
 
         # Turn on or off sequential cycle mode
         if sequential_mode:
-            self.log.debug("Sequential mode enabled. Make sure to set 'checksync=0' in mcs6a.ini. "
-                           "Resyncing can cause issues in sequential mode on some driver versions.")
-            # old settings (dec=1978500) + disable "sweep counter not needed" + disable "allow 6 byte words"
-            raw_bytes_dec = 35528836
-            cmd = 'sweepmode={0}'.format(hex(raw_bytes_dec))
-            self.log.debug(f"Sweepmode set to: {raw_bytes_dec}")
+            cmd = 'sweepmode={0}'.format(hex(1978500))
         else:
             cmd = 'sweepmode={0}'.format(hex(1978496))
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
