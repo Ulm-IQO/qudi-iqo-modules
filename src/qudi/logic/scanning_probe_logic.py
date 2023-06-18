@@ -392,8 +392,12 @@ class ScanningProbeLogic(LogicBase):
         shift = shift_vec
 
         lin_transform = LinearTransformation3D()
+        shift_vec_transform = LinearTransformation3D()
+        lin_transform.translate(-shift[0], -shift[1], -shift[2])
         lin_transform.add_rotation(rot_mat)
-        lin_transform.translate(shift[0], shift[1], shift[2])
+        shift_vec_transform.add_rotation(rot_mat)
+        shift_back = shift_vec_transform(shift)
+        lin_transform.translate(shift_back[0], shift_back[1], shift_back[2])
 
         self._tilt_corr_transform = lin_transform
         self._tilt_corr_axes = [el for idx, el in enumerate(self._scan_axes) if tilt_axes[idx]]
