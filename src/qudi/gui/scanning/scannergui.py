@@ -57,6 +57,11 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
         # Load it
         super().__init__()
         uic.loadUi(ui_file, self)
+
+        self.action_toggle_tilt_correction = ToggleIconsQAction(self, 'Tilt correction',
+                                              "./artwork/icons/correct-tilt_toggle.svg",
+                                              "./artwork/icons/correct-tilt_toggle_off.svg")
+        self.util_toolBar.addAction(self.action_toggle_tilt_correction)
         return
 
     def mouseDoubleClickEvent(self, event):
@@ -66,13 +71,6 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
         else:
             super().mouseDoubleClickEvent(event)
         return
-
-        # Create the tilt correction dock widget
-
-    #tilt_correction_dock_widget = TiltCorrectionDockWidget()
-
-        # Add the dock widget to the main window
-    #self.addDockWidget(Qt.DockWidgetArea(8), tilt_correction_dock_widget)
 
 class SaveDialog(QtWidgets.QDialog):
     """ Dialog to provide feedback and block GUI while saving """
@@ -254,6 +252,7 @@ class ScannerGui(GuiBase):
                                                                        QtCore.Qt.QueuedConnection)
         self.toggle_switch_widget.toggle_switch.sigStateChanged.connect(self.toggle_tilt_correction,
                                                                         QtCore.Qt.QueuedConnection)
+
         self._mw.action_toggle_tilt_correction.triggered.connect(self.toggle_tilt_correction,
                                                                 QtCore.Qt.QueuedConnection)
         [box.valueChanged.connect(self.tilt_corr_support_vector_updated, QtCore.Qt.QueuedConnection)
@@ -1112,11 +1111,18 @@ class ScannerGui(GuiBase):
 
         self._scanning_logic().toggle_tilt_correction(enabled)
 
-        icon_on = QtGui.QIcon(QtGui.QPixmap("./artwork/icons/correct-tilt_toggle.svg"))
-        icon_off = QtGui.QIcon(QtGui.QPixmap("./artwork/icons/correct-tilt_toggle_off.svg"))
+
+class ToggleIconsQAction(QAction):
+
+    def __init__(self, parent, text, icon_on, icon_off):
+        self.icon_on = QtGui.QIcon(QtGui.QPixmap(icon_on))
+        self.icon_off = QtGui.QIcon(QtGui.QPixmap(icon_off))
+        super().__init__(self.icon_off, text, parent, checkable=True)
+
+        self.triggered.connect(self.set_state, QtCore.Qt.QueuedConnection)
+
+    def set_state(self, enabled):
         if enabled:
-            self._mw.action_toggle_tilt_correction.setIcon(icon_on)
+            self.setIcon(self.icon_on)
         else:
-            self._mw.action_toggle_tilt_correction.setIcon(icon_off)
-
-
+            self.setIcon(self.icon_off)

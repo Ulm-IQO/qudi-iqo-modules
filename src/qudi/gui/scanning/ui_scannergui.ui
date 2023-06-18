@@ -95,7 +95,6 @@
    <addaction name="action_utility_full_range"/>
    <addaction name="action_history_back"/>
    <addaction name="action_history_forward"/>
-   <addaction name="action_toggle_tilt_correction"/>
   </widget>
   <action name="action_scanner_settings">
    <property name="icon">
@@ -335,19 +334,6 @@ Shortcut:Alt+T</string>
   <action name="action_view_tilt_correction">
    <property name="checkable">
     <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>Tilt correction</string>
-   </property>
-  </action>
-  <action name="action_toggle_tilt_correction">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="icon">
-    <iconset>
-     <normalon>../../../../../qudi-core/src/qudi/artwork/icons/correct-tilt_off.svg</normalon>
-    </iconset>
    </property>
    <property name="text">
     <string>Tilt correction</string>
