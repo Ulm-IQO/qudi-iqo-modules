@@ -55,7 +55,7 @@ class TimeSeriesReaderLogic(LogicBase):
     """
     # declare signals
     sigDataChanged = QtCore.Signal(object, object, object, object)
-    sigNewRawData = QtCore.Signal(object, object)
+    sigNewRawData = QtCore.Signal(object, object)  # raw data samples, timestamp samples (optional)
     sigStatusChanged = QtCore.Signal(bool, bool)
     sigTraceSettingsChanged = QtCore.Signal(dict)
     sigChannelSettingsChanged = QtCore.Signal(list, list)
@@ -133,17 +133,15 @@ class TimeSeriesReaderLogic(LogicBase):
                 self._active_channels = streamer.active_channels.copy()
             else:
                 self._active_channels = avail_channels
+            self._averaged_channels = self._active_channels
         elif any(ch not in avail_channels for ch in self._active_channels):
             self.log.warning('Invalid active channels found in StatusVar. StatusVar ignored.')
             if streamer.active_channels:
                 self._active_channels = streamer.active_channels.copy()
             else:
                 self._active_channels = avail_channels
-
-        # averaged channels
-        if self._averaged_channels is None:
             self._averaged_channels = self._active_channels
-        else:
+        elif self._averaged_channels is not None:
             self._averaged_channels = [
                 ch for ch in self._averaged_channels if ch in self._active_channels
             ]
@@ -183,11 +181,11 @@ class TimeSeriesReaderLogic(LogicBase):
 
         # processed data arrays
         self._trace_data = np.zeros(
-            [channel_count, window_size + self._moving_average_width // 2],
+            [window_size + self._moving_average_width // 2, channel_count],
             dtype=trace_dtype
         )
         self._trace_data_averaged = np.zeros(
-            [averaged_channel_count, window_size - self._moving_average_width // 2],
+            [window_size - self._moving_average_width // 2, averaged_channel_count],
             dtype=trace_dtype
         )
         self._trace_times = np.arange(window_size, dtype=np.float64)
@@ -197,7 +195,7 @@ class TimeSeriesReaderLogic(LogicBase):
             self._trace_times /= self.data_rate
 
         # raw data buffers
-        self._data_buffer = np.zeros(channel_count * self._channel_buffer_size,
+        self._data_buffer = np.empty(channel_count * self._channel_buffer_size,
                                      dtype=constraints.data_type)
         if constraints.sample_timing == SampleTiming.TIMESTAMP:
             self._times_buffer = np.zeros(self._channel_buffer_size, dtype=np.float64)
@@ -281,8 +279,8 @@ class TimeSeriesReaderLogic(LogicBase):
         """ Read-only property returning the x-axis of the data trace and a dictionary of the
         corresponding trace data arrays for each channel
         """
-        data_offset = self._trace_data.shape[1] - self._moving_average_width // 2
-        data = {ch: self._trace_data[i, :data_offset] for i, ch in
+        data_offset = self._trace_data.shape[0] - self._moving_average_width // 2
+        data = {ch: self._trace_data[:data_offset, i] for i, ch in
                 enumerate(self.active_channel_names)}
         return self._trace_times, data
 
@@ -293,9 +291,9 @@ class TimeSeriesReaderLogic(LogicBase):
         """
         if not self.averaged_channel_names or self.moving_average_width <= 1:
             return None, None
-        data = {ch: self._trace_data_averaged[i] for i, ch in
+        data = {ch: self._trace_data_averaged[:, i] for i, ch in
                 enumerate(self.averaged_channel_names)}
-        return self._trace_times[-self._trace_data_averaged.shape[1]:], data
+        return self._trace_times[-self._trace_data_averaged.shape[0]:], data
 
     @property
     def trace_settings(self) -> Dict[str, Union[int, float]]:
@@ -487,23 +485,21 @@ class TimeSeriesReaderLogic(LogicBase):
                     )
                     # read the current counter values
                     channel_count = len(self.active_channel_names)
-                    total_samples_to_read = samples_to_read * channel_count
-                    data_buffer = self._data_buffer[:total_samples_to_read]
-                    try:
-                        times_buffer = self._times_buffer[:samples_to_read]
-                    except TypeError:
-                        times_buffer = None
-                    streamer.read_data_into_buffer(data_buffer=data_buffer,
-                                                   timestamp_buffer=times_buffer)
+                    streamer.read_data_into_buffer(data_buffer=self._data_buffer,
+                                                   samples_per_channel=samples_to_read,
+                                                   timestamp_buffer=self._times_buffer)
                     # Process data
-                    self._process_trace_data(data_buffer)
-                    if times_buffer is not None:
-                        self._process_trace_times(times_buffer)
+                    data_view = self._data_buffer[:channel_count * samples_to_read]
+                    self._process_trace_data(data_view)
+                    if self._times_buffer is None:
+                        times_view = None
+                    else:
+                        times_view = self._times_buffer[:samples_to_read]
+                        self._process_trace_times(times_view)
 
-                    data_buffer = data_buffer.reshape([channel_count, samples_to_read])
                     if self._data_recording_active:
-                        self._add_to_recording_array(data_buffer, times_buffer)
-                    self.sigNewRawData.emit(times_buffer, data_buffer)
+                        self._add_to_recording_array(data_view, times_view)
+                    self.sigNewRawData.emit(data_view, times_view)
                     # Emit update signal
                     self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
                 except:
@@ -530,36 +526,37 @@ class TimeSeriesReaderLogic(LogicBase):
     def _process_trace_data(self, data_buffer: np.ndarray) -> None:
         """ Processes raw data from the streaming device """
         channel_count = len(self.active_channel_names)
+        samples_per_channel = data_buffer.size // channel_count
+        data_view = data_buffer.reshape([samples_per_channel, channel_count])
         # Down-sample and average according to oversampling factor
         if self.oversampling_factor > 1:
-            data_buffer = data_buffer.reshape(
-                (channel_count,
-                 data_buffer.size // (channel_count * self.oversampling_factor),
-                 self.oversampling_factor)
+            data_view = data_view.reshape(
+                [samples_per_channel // self.oversampling_factor,
+                 self.oversampling_factor,
+                 channel_count]
             )
-            data_buffer = np.mean(data_buffer, axis=2)
+            data_view = np.mean(data_view, axis=1)
 
         # discard data outside time frame
-        data_buffer = data_buffer[-self._trace_data.shape[1] * channel_count:]
-        new_channel_samples = data_buffer.size // channel_count
-        data_buffer = data_buffer.reshape([channel_count, new_channel_samples])
+        data_view = data_view[-self._trace_data.shape[0]:, :]
+        new_channel_samples = data_view.shape[0]
 
         # Roll data array to have a continuously running time trace
-        self._trace_data = np.roll(self._trace_data, -new_channel_samples, axis=1)
+        self._trace_data = np.roll(self._trace_data, -new_channel_samples, axis=0)
         # Insert new data
-        self._trace_data[:, -new_channel_samples:] = data_buffer
+        self._trace_data[-new_channel_samples:, :] = data_view
 
         # Calculate moving average by using numpy.convolve with a normalized uniform filter
         if self.moving_average_width > 1 and self.averaged_channel_names:
             # Only convolve the new data and roll the previously calculated moving average
             self._trace_data_averaged = np.roll(self._trace_data_averaged,
                                                 -new_channel_samples,
-                                                axis=1)
+                                                axis=0)
             offset = new_channel_samples + len(self.__moving_filter) - 1
             for i, ch in enumerate(self.averaged_channel_names):
                 data_index = self.active_channel_names.index(ch)
-                self._trace_data_averaged[i, -new_channel_samples:] = np.convolve(
-                    self._trace_data[data_index, -offset:],
+                self._trace_data_averaged[-new_channel_samples:, i] = np.convolve(
+                    self._trace_data[-offset:, data_index],
                     self.__moving_filter,
                     mode='valid'
                 )
@@ -585,12 +582,14 @@ class TimeSeriesReaderLogic(LogicBase):
             if data_byte_size > self._max_raw_data_bytes:
                 channel_samples = max(1, self._max_raw_data_bytes // (channel_count * sample_bytes))
             self._recorded_raw_times = None
-        self._recorded_raw_data = np.empty([channel_count, channel_samples],
+        self._recorded_raw_data = np.empty(channel_count * channel_samples,
                                            dtype=constraints.data_type)
         self._recorded_sample_count = 0
 
     def _expand_recording_arrays(self) -> int:
-        channel_count, current_samples = self._recorded_raw_data.shape
+        total_samples = self._recorded_raw_data.size
+        channel_count = len(self.active_channel_names)
+        current_samples = total_samples // channel_count
         byte_granularity = channel_count * self._recorded_raw_data.itemsize
         new_byte_size = 2 * current_samples * byte_granularity
         if self._recorded_raw_times is not None:
@@ -600,8 +599,7 @@ class TimeSeriesReaderLogic(LogicBase):
         additional_samples = new_samples_per_channel - current_samples
         self._recorded_raw_data = np.append(
             self._recorded_raw_data,
-            np.empty([channel_count, additional_samples], dtype=self._recorded_raw_data.dtype),
-            axis=1
+            np.empty(channel_count * additional_samples, dtype=self._recorded_raw_data.dtype),
         )
         if self._recorded_raw_times is not None:
             self._recorded_raw_times = np.append(
@@ -611,35 +609,33 @@ class TimeSeriesReaderLogic(LogicBase):
         return additional_samples
 
     def _add_to_recording_array(self, data, times=None) -> None:
-        free_samples = self._recorded_raw_data.shape[1] - self._recorded_sample_count
-        channel_count = self._recorded_raw_data.shape[0]
-        new_samples = data.shape[1]
-        if new_samples > free_samples:
-            free_samples += self._expand_recording_arrays()
-            if new_samples > free_samples:
+        channel_count = len(self.active_channel_names)
+        free_samples_per_channel = (self._recorded_raw_data.size // channel_count) - \
+            self._recorded_sample_count
+        new_samples = data.size // channel_count
+        total_new_samples = new_samples * channel_count
+        if new_samples > free_samples_per_channel:
+            free_samples_per_channel += self._expand_recording_arrays()
+            if new_samples > free_samples_per_channel:
                 self.log.error(
                     f'Configured maximum allowed amount of raw data reached '
                     f'({self._max_raw_data_bytes:d} bytes). Saving raw data so far and terminating '
                     f'data recording.'
                 )
-                begin = self._recorded_sample_count
-                end = begin + free_samples
-                self._recorded_raw_data[:, begin:end] = data[:, :free_samples]
-                try:
-                    self._recorded_raw_times[begin:end] = times[:free_samples]
-                except (AttributeError, TypeError):
-                    pass
-                self._recorded_sample_count += free_samples
+                self._recorded_raw_data[channel_count * self._recorded_sample_count:] = data[:channel_count * free_samples_per_channel]
+                if self._recorded_raw_times is not None:
+                    self._recorded_raw_times[self._recorded_sample_count:] = times[:free_samples_per_channel]
+                self._recorded_sample_count += free_samples_per_channel
                 self._stop_recording()
                 return
 
-        begin = self._recorded_sample_count
-        end = begin + new_samples
-        self._recorded_raw_data[:, begin:end] = data
-        try:
-            self._recorded_raw_times[begin:end] = times
-        except (AttributeError, TypeError):
-            pass
+        begin = self._recorded_sample_count * channel_count
+        end = begin + total_new_samples
+        self._recorded_raw_data[begin:end] = data[:total_new_samples]
+        if self._recorded_raw_times is not None:
+            begin = self._recorded_sample_count
+            end = begin + new_samples
+            self._recorded_raw_times[begin:end] = times[:new_samples]
         self._recorded_sample_count += new_samples
 
     @QtCore.Slot()
@@ -689,19 +685,24 @@ class TimeSeriesReaderLogic(LogicBase):
             column_headers = [
                 f'{ch} ({constraints.channel_units[ch]})' for ch in self.active_channel_names
             ]
+            channel_count = len(column_headers)
             nametag = f'data_trace_{name_tag}' if name_tag else 'data_trace'
 
-            data = self._recorded_raw_data[:, :self._recorded_sample_count]
+            data = self._recorded_raw_data[:channel_count * self._recorded_sample_count].reshape(
+                [self._recorded_sample_count, channel_count]
+            )
             if self._recorded_raw_times is not None:
-                data = np.vstack(
+                print(data.shape)
+                data = np.column_stack(
                     [self._recorded_raw_times[:self._recorded_sample_count], data]
                 )
+                print(data.shape, '\n')
                 column_headers.insert(0, 'Time (s)')
             try:
                 fig = self._draw_raw_data_thumbnail(data) if save_figure else None
             finally:
                 storage = TextDataStorage(root_dir=self.module_default_data_dir)
-                filepath, _, _ = storage.save_data(data.transpose(),
+                filepath, _, _ = storage.save_data(data,
                                                    metadata=metadata,
                                                    nametag=nametag,
                                                    column_headers=column_headers)
@@ -714,31 +715,32 @@ class TimeSeriesReaderLogic(LogicBase):
     def _draw_raw_data_thumbnail(self, data: np.ndarray) -> plt.Figure:
         """ Draw figure to save with data file """
         constraints = self.streamer_constraints
+        # Handle excessive data size for plotting. Artefacts may occur due to IIR decimation filter.
         decimate_factor = 0
-        while data.shape[1] >= 2000:
+        while data.shape[0] >= 20000:
+            print(data.shape[0])
             decimate_factor += 2
-            data = decimate(data, q=2, axis=1)
+            data = decimate(data, q=2, axis=0)
 
         if constraints.sample_timing == SampleTiming.RANDOM:
-            x = np.arange(data.shape[1])
+            x = np.arange(data.shape[0])
             x_label = 'Sample Index'
         elif constraints.sample_timing == SampleTiming.CONSTANT:
             if decimate_factor > 0:
-                x = np.arange(data.shape[1]) / (self.sampling_rate / decimate_factor)
+                x = np.arange(data.shape[0]) / (self.sampling_rate / decimate_factor)
             else:
-                x = np.arange(data.shape[1]) / self.sampling_rate
+                x = np.arange(data.shape[0]) / self.sampling_rate
             x_label = 'Time (s)'
         else:
-            x = data[0, :] - data[0, 0]
-            data = data[1:, :]
+            x = data[:, 0] - data[0, 0]
+            data = data[:, 1:]
             x_label = 'Time (s)'
         # Create figure and scale data
         max_abs_value = ScaledFloat(max(data.max(), np.abs(data.min())))
         if max_abs_value.scale:
-            data = data.transpose() / max_abs_value.scale_val
+            data = data / max_abs_value.scale_val
             y_label = f'Signal ({max_abs_value.scale}arb.u.)'
         else:
-            data = data.transpose()
             y_label = 'Signal (arb.u.)'
 
         fig, ax = plt.subplots()
@@ -764,18 +766,18 @@ class TimeSeriesReaderLogic(LogicBase):
             ]
             nametag = f'trace_snapshot_{name_tag}' if name_tag else 'trace_snapshot'
 
-            data_offset = self._trace_data.shape[1] - self._moving_average_width // 2
-            data = self._trace_data[:, :data_offset]
+            data_offset = self._trace_data.shape[0] - self._moving_average_width // 2
+            data = self._trace_data[:data_offset, :]
             x = self._trace_times
             try:
                 fig = self._draw_trace_snapshot_thumbnail(x, data) if save_figure else None
             finally:
                 if constraints.sample_timing != SampleTiming.RANDOM:
-                    data = np.vstack([x, data])
+                    data = np.column_stack([x, data])
                     column_headers.insert(0, 'Time (s)')
 
                 storage = TextDataStorage(root_dir=self.module_default_data_dir)
-                filepath, _, _ = storage.save_data(data.transpose(),
+                filepath, _, _ = storage.save_data(data,
                                                    timestamp=timestamp,
                                                    metadata=metadata,
                                                    nametag=nametag,
@@ -788,10 +790,6 @@ class TimeSeriesReaderLogic(LogicBase):
 
     def _draw_trace_snapshot_thumbnail(self, x: np.ndarray, data: np.ndarray) -> plt.Figure:
         """ Draw figure to save with data file """
-        while data.shape[1] >= 2000:
-            data = decimate(data, q=2, axis=1)
-            x = decimate(x, q=2)
-
         if self.streamer_constraints.sample_timing == SampleTiming.RANDOM:
             x_label = 'Sample Index'
         else:
@@ -800,10 +798,9 @@ class TimeSeriesReaderLogic(LogicBase):
         # Create figure and scale data
         max_abs_value = ScaledFloat(max(data.max(), np.abs(data.min())))
         if max_abs_value.scale:
-            data = data.transpose() / max_abs_value.scale_val
+            data = data / max_abs_value.scale_val
             y_label = f'Signal ({max_abs_value.scale}arb.u.)'
         else:
-            data = data.transpose()
             y_label = 'Signal (arb.u.)'
 
         fig, ax = plt.subplots()
