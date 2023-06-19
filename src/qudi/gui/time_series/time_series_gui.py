@@ -357,12 +357,17 @@ class TimeSeriesGui(GuiBase):
     @QtCore.Slot(object, object, object, object)
     def update_data(self, data_time, data, smooth_time, smooth_data):
         """ The function that grabs the data and sends it to the plot """
+        shift_time = data_time[0] != 0
         if data is not None:
-            data_time = data_time - data_time[0]
+            if shift_time:
+                data_time = data_time - data_time[0]
             for channel, y_arr in data.items():
                 self.curves[channel].setData(y=y_arr, x=data_time)
         if smooth_data is not None:
-            smooth_time = smooth_time - smooth_time[0]
+            if shift_time:
+                smooth_time = smooth_time + (
+                    data_time[data_time.shape[0] - smooth_time.shape[0]] - smooth_time[0]
+                )
             for channel, y_arr in smooth_data.items():
                 self.averaged_curves[channel].setData(y=y_arr, x=smooth_time)
 

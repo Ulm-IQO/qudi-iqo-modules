@@ -68,9 +68,9 @@ class DataInStreamConstraints:
         self._data_type = np.dtype(data_type).type
         self._channel_buffer_size = channel_buffer_size
         if sample_rate is None:
-            if self._sample_timing == SampleTiming.CONSTANT:
+            if self._sample_timing != SampleTiming.RANDOM:
                 raise ValueError('"sample_rate" ScalarConstraint must be provided if '
-                                 'sample timing is SampleTiming.CONSTANT.')
+                                 '"sample_timing" is not SampleTiming.RANDOM')
             self._sample_rate = ScalarConstraint(default=1, bounds=(1, 1), increment=0)
         else:
             self._sample_rate = sample_rate
@@ -138,6 +138,8 @@ class DataInStreamInterface(Base):
     def available_samples(self) -> int:
         """ Read-only property to return the currently available number of samples per channel ready
         to read from buffer.
+        It must be ensured that each channel can provide at least the number of samples returned
+        by this property.
         """
         pass
 
@@ -197,22 +199,23 @@ class DataInStreamInterface(Base):
     @abstractmethod
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
+                              samples_per_channel: int,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
         """ Read data from the stream buffer into a 1D numpy array given as parameter.
-        All samples for each channel are stored in consecutive blocks one after the other.
-        The data_buffer can be unraveled into channel samples with:
+        Samples of all channels are stored interleaved in contiguous memory.
+        In case of a multidimensional buffer array, this buffer will be flattened before written
+        into.
+        The 1D data_buffer can be unraveled into channel and sample indexing with:
 
-            data_buffer.reshape([<channel_count>, <samples_per_channel>])
+            data_buffer.reshape([<samples_per_channel>, <channel_count>])
 
         The data_buffer array must have the same data type as self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        exactly of length:
+        able to hold at least <samples_per_channel> items:
 
-            data_buffer // <channel_count>
-
-        This function is blocking until the entire buffer has been filled.
+        This function is blocking until the required number of samples has been acquired.
         """
         pass
 

@@ -39,6 +39,7 @@ def _make_sine_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], No
     amp = 1 + np.random.rand() * 9
     noise_lvl = amp * (0.1 + np.random.rand() * 0.4)
     def make_sine(x, y):
+        # y[:] = np.sin(2 * np.pi * freq * x)
         np.sin(2 * np.pi * freq * x, out=y)
         y *= amp
         noise = np.random.rand(x.size)
@@ -81,7 +82,8 @@ class SampleGenerator:
         self.signal_shapes = [SignalShape(shape) for shape in signal_shapes]
         self.buffer_size = buffer_size
 
-        self.__start = 0  # buffer pointer
+        self.__start = 0  # buffer start sample index
+        self.__end = 0  # buffer end sample index
         self.__available_samples = 0
         self._sample_buffer = None
         self._timestamp_buffer = None
@@ -94,14 +96,24 @@ class SampleGenerator:
         self.generate_samples()
         return self.__available_samples
 
+    @property
+    def channel_count(self) -> int:
+        return len(self._generator_functions)
+
+    @property
+    def _buffer_size(self) -> int:
+        return self._sample_buffer.size
+
+    @property
+    def _buffer_sample_size(self) -> int:
+        return self._buffer_size // self.channel_count
+
+    @property
+    def _free_samples(self) -> int:
+        return max(0, self._buffer_sample_size - self.__available_samples)
+
     def restart(self) -> None:
-        self.__start = 0  # buffer pointer
-        self.__available_samples = 0
-        self._sample_buffer = np.zeros([len(self.signal_shapes), self.buffer_size], dtype=self.data_type)
-        if self.sample_timing == SampleTiming.TIMESTAMP:
-            self._timestamp_buffer = np.zeros(self.buffer_size, dtype=np.float64)
-        else:
-            self._timestamp_buffer = None
+        # Init generator functions
         self._generator_functions = list()
         for shape in self.signal_shapes:
             if shape == SignalShape.SINE:
@@ -110,6 +122,15 @@ class SampleGenerator:
                 self._generator_functions.append(_make_counts_func(self.sample_rate))
             else:
                 raise ValueError(f'Invalid SignalShape encountered: {shape}')
+        # Init buffer
+        self.__start = self.__end = 0
+        self.__available_samples = 0
+        self._sample_buffer = np.empty(self.buffer_size * self.channel_count, dtype=self.data_type)
+        if self.sample_timing == SampleTiming.TIMESTAMP:
+            self._timestamp_buffer = np.zeros(self.buffer_size, dtype=np.float64)
+        else:
+            self._timestamp_buffer = None
+        # Set start time
         self._start_time = self._last_time = time.perf_counter()
 
     def generate_samples(self) -> float:
@@ -119,69 +140,75 @@ class SampleGenerator:
         now = time.perf_counter()
         elapsed_time = now - self._last_time
         time_offset = self._last_time - self._start_time
-        insert = self.__start + self.__available_samples
-        buf_size = self._sample_buffer.shape[1]
-        samples = int(elapsed_time * self.sample_rate)  # truncate
+        samples_per_channel = int(elapsed_time * self.sample_rate)  # truncate
         if self.streaming_mode == StreamingMode.FINITE:
-            samples = min(samples, buf_size - insert)
+            samples_per_channel = min(samples_per_channel, self._free_samples)
+        elapsed_time = samples_per_channel / self.sample_rate
+        ch_count = self.channel_count
 
-        if samples > 0:
+        if samples_per_channel > 0:
             # Generate x-axis (time) for sample generation
             if self.sample_timing == SampleTiming.CONSTANT:
-                x = np.arange(samples, dtype=np.float64)
+                x = np.arange(samples_per_channel, dtype=np.float64)
                 x /= self.sample_rate
             else:
                 # randomize ticks within time interval for non-regular sampling
-                x = np.random.rand(samples)
+                x = np.random.rand(samples_per_channel)
                 x.sort()
                 x *= elapsed_time
             x += time_offset
 
+            # ToDo:
             # Generate samples and write into buffer
-            end = insert + samples
-            if end > buf_size:
-                first_samples = buf_size - insert
-                end = end - buf_size
+            buffer = self._sample_buffer.reshape([self._buffer_sample_size, ch_count])
+            end = self.__end + samples_per_channel
+            if end > self._buffer_sample_size:
+                first_samples = self._buffer_sample_size - self.__end
+                end -= self._buffer_sample_size
                 for ch_idx, generator in enumerate(self._generator_functions):
-                    generator(x[:first_samples], self._sample_buffer[ch_idx, insert:])
-                    generator(x[first_samples:], self._sample_buffer[ch_idx, :end])
+                    generator(x[:first_samples], buffer[self.__end:, ch_idx])
+                    generator(x[first_samples:], buffer[:end, ch_idx])
                 if self.sample_timing == SampleTiming.TIMESTAMP:
-                    self._timestamp_buffer[insert:] = x[:first_samples]
+                    self._timestamp_buffer[self.__end:] = x[:first_samples]
                     self._timestamp_buffer[:end] = x[first_samples:]
             else:
                 for ch_idx, generator in enumerate(self._generator_functions):
-                    generator(x, self._sample_buffer[ch_idx, insert:end])
+                    generator(x, buffer[self.__end:end, ch_idx])
                 if self.sample_timing == SampleTiming.TIMESTAMP:
-                    self._timestamp_buffer[insert:end] = x
-
-        # Update pointers
-        self.__available_samples += samples
-        self._last_time += samples / self.sample_rate
-        if self.__available_samples > buf_size:
+                    self._timestamp_buffer[self.__end:end] = x
+            # Update pointers
+            self.__available_samples += samples_per_channel
+            self.__end = end
+        self._last_time += elapsed_time
+        if self.__available_samples > self._buffer_sample_size:
             raise OverflowError('Sample buffer has overflown. Decrease sample rate or increase '
                                 'data readout rate.')
         return self._last_time
 
     def read_samples(self,
                      sample_buffer: np.ndarray,
+                     samples_per_channel: int,
                      timestamp_buffer: Optional[np.ndarray] = None) -> int:
-        buf_size = self._sample_buffer.shape[1]
-        samples = min(self.__available_samples, sample_buffer.shape[1])
-        end = self.__start + samples
+        ch_count = self.channel_count
+        buf_size = self._buffer_size
+        samples = min(self.__available_samples, samples_per_channel) * ch_count
+        start = self.__start * ch_count
+        end = start + samples
         if end > buf_size:
-            first_samples = buf_size - self.__start
-            end = end - buf_size
-            sample_buffer[:, :first_samples] = self._sample_buffer[:, self.__start:]
-            sample_buffer[:, first_samples:samples] = self._sample_buffer[:, :end]
+            first_samples = buf_size - start
+            end -= buf_size
+            sample_buffer[:first_samples] = self._sample_buffer[start:]
+            sample_buffer[first_samples:first_samples + end] = self._sample_buffer[:end]
             if timestamp_buffer is not None:
-                timestamp_buffer[:, :first_samples] = self._timestamp_buffer[:, self.__start:]
-                timestamp_buffer[:, first_samples:samples] = self._timestamp_buffer[:, :end]
+                timestamp_buffer[:first_samples // ch_count] = self._timestamp_buffer[self.__start:]
+                timestamp_buffer[first_samples // ch_count:(first_samples + end) // ch_count] = self._timestamp_buffer[:end // ch_count]
         else:
-            sample_buffer[:, :samples] = self._sample_buffer[:, self.__start:end]
+            sample_buffer[:samples] = self._sample_buffer[start:end]
             if timestamp_buffer is not None:
-                timestamp_buffer[:samples] = self._timestamp_buffer[self.__start:end]
+                timestamp_buffer[:samples // ch_count] = self._timestamp_buffer[self.__start:end // ch_count]
         # Update pointers
-        self.__start = end
+        samples //= ch_count
+        self.__start = end // ch_count
         self.__available_samples -= samples
         return samples
 
@@ -412,22 +439,23 @@ class InStreamDummy(DataInStreamInterface):
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
+                              samples_per_channel: int,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
         """ Read data from the stream buffer into a 1D numpy array given as parameter.
-        All samples for each channel are stored in consecutive blocks one after the other.
-        The data_buffer can be unraveled into channel samples with:
+        Samples of all channels are stored interleaved in contiguous memory.
+        In case of a multidimensional buffer array, this buffer will be flattened before written
+        into.
+        The 1D data_buffer can be unraveled into channel and sample indexing with:
 
-            data_buffer.reshape([<channel_count>, <samples_per_channel>])
+            data_buffer.reshape([<samples_per_channel>, <channel_count>])
 
         The data_buffer array must have the same data type as self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        exactly of length:
+        able to hold at least <samples_per_channel> items:
 
-            data_buffer // <channel_count>
-
-        This function is blocking until the entire buffer has been filled.
+        This function is blocking until the required number of samples has been acquired.
         """
         with self._thread_lock:
             if self.module_state() != 'locked':
@@ -436,28 +464,34 @@ class InStreamDummy(DataInStreamInterface):
                 raise RuntimeError('SampleTiming.TIMESTAMP mode requires a timestamp buffer array')
 
             channel_count = len(self.active_channels)
-            number_of_samples = data_buffer.size // channel_count
-            if (timestamp_buffer is not None) and (timestamp_buffer.size != number_of_samples):
+            if data_buffer.size < samples_per_channel * channel_count:
                 raise RuntimeError(
-                    f'timestamp_buffer size ({timestamp_buffer.size:d}) must be the same as the '
-                    f'data buffer size divided by the channel count ({number_of_samples:d})'
+                    f'data_buffer too small ({data_buffer.size:d}) to hold all requested '
+                    f'samples for all channels ({channel_count:d} * {samples_per_channel:d} = '
+                    f'{samples_per_channel * channel_count:d})'
                 )
-            data_buffer = data_buffer.reshape([channel_count, number_of_samples])
+            if (timestamp_buffer is not None) and (timestamp_buffer.size < samples_per_channel):
+                raise RuntimeError(
+                    f'timestamp_buffer too small ({timestamp_buffer.size:d}) to hold all requested '
+                    f'samples ({samples_per_channel:d})'
+                )
 
             # Return immediately if no samples are requested
             offset = 0
-            while number_of_samples > 0:
+            while samples_per_channel > offset:
                 self._sample_generator.wait_get_available_samples(1)
                 if timestamp_buffer is None:
                     read_samples = self._sample_generator.read_samples(
-                        sample_buffer=data_buffer[:, offset:offset + number_of_samples]
+                        sample_buffer=data_buffer[offset * channel_count:],
+                        samples_per_channel=samples_per_channel
                     )
                 else:
                     read_samples = self._sample_generator.read_samples(
-                        sample_buffer=data_buffer[:, offset:offset + number_of_samples],
-                        timestamp_buffer=timestamp_buffer[offset:offset + number_of_samples]
+                        sample_buffer=data_buffer[offset * channel_count:],
+                        samples_per_channel=samples_per_channel,
+                        timestamp_buffer=timestamp_buffer[offset:]
                     )
-                number_of_samples -= read_samples
+                # samples_per_channel -= read_samples
                 offset += read_samples
 
     def read_available_data_into_buffer(self,
