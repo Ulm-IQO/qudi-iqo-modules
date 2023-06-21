@@ -36,6 +36,7 @@ except ImportError:
     pass
 
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.util.helpers import natural_sort
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
@@ -329,7 +330,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
         """ Configure a data stream. See read-only properties for information on each parameter. """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             raise RuntimeError('Unable to configure data stream while it is already running')
         streaming_mode = StreamingMode(streaming_mode)
         channel_buffer_size = int(round(channel_buffer_size))
@@ -360,7 +361,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         """ Read-only property to return the currently available number of samples per channel ready
         to read from buffer.
         """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             if self._ai_task_handle is None:
                 return self._di_task_handles[0].in_stream.avail_samp_per_chan
             else:
@@ -370,10 +371,10 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
     def start_stream(self) -> None:
         """ Start the data acquisition/streaming """
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             self.log.warning('Unable to start input stream. It is already running.')
         else:
-            self.module_state.lock()
+            self._lock_module()
             try:
                 self._init_sample_clock()
                 self._init_digital_tasks()
@@ -385,7 +386,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                 for task in self._di_task_handles:
                     task.start()
             except:
-                self.module_state.unlock()
+                self._unlock_module()
                 self._terminate_all_tasks()
                 raise
 
@@ -394,8 +395,8 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         try:
             self._terminate_all_tasks()
         finally:
-            if self.module_state() == 'locked':
-                self.module_state.unlock()
+            if self.module_state == ModuleState.LOCKED:
+                self._unlock_module()
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
@@ -417,7 +418,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
         This function is blocking until the required number of samples has been acquired.
         """
-        if self.module_state() != 'locked':
+        if self.module_state != ModuleState.LOCKED:
             raise RuntimeError('Unable to read data. Device is not running.')
         # Check for buffer overflow
         if self.available_samples > self.__buffer_size:
@@ -533,7 +534,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         In case of SampleTiming.TIMESTAMP a single numpy.float64 timestamp value will be returned
         as well.
         """
-        if self.module_state() != 'locked':
+        if self.module_state != ModuleState.LOCKED:
             raise RuntimeError('Unable to read data. Device is not running.')
 
         data_buffer = np.empty(len(self.__active_channels), dtype=self._constraints.data_type)
