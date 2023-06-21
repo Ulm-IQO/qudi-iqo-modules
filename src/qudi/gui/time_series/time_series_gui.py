@@ -32,7 +32,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.helpers import is_integer_type
 from qudi.util.units import ScaledFloat
-from qudi.core.module import GuiBase
+from qudi.core.module import GuiBase, ModuleState
 from qudi.gui.time_series.main_window import TimeSeriesGuiMainWindow
 from qudi.gui.time_series.settings_dialog import TraceViewDialog, ChannelSettingsDialog
 from qudi.interface.data_instream_interface import SampleTiming
@@ -147,8 +147,10 @@ class TimeSeriesGui(GuiBase):
         # Connecting user interactions
         self._mw.toggle_trace_action.triggered[bool].connect(self._trace_toggled)
         self._mw.record_trace_action.triggered[bool].connect(self._record_toggled)
-        self._mw.snapshot_trace_action.triggered.connect(logic.save_trace_snapshot,
-                                                         QtCore.Qt.QueuedConnection)
+        self._mw.snapshot_trace_action.triggered.connect(
+            self._time_series_logic.save_trace_snapshot,
+            QtCore.Qt.QueuedConnection
+        )
         self._mw.settings_dockwidget.trace_length_spinbox.editingFinished.connect(
             self._trace_settings_changed
         )
@@ -171,26 +173,35 @@ class TimeSeriesGui(GuiBase):
         self._mw.channel_settings_action.triggered.connect(self._exec_channel_settings_dialog)
 
         # Connect signals to/from logic
-        self.sigStartCounter.connect(logic.start_reading, QtCore.Qt.QueuedConnection)
-        self.sigStopCounter.connect(logic.stop_reading, QtCore.Qt.QueuedConnection)
-        self.sigStartRecording.connect(logic.start_recording, QtCore.Qt.QueuedConnection)
-        self.sigStopRecording.connect(logic.stop_recording, QtCore.Qt.QueuedConnection)
-        self.sigTraceSettingsChanged.connect(logic.set_trace_settings, QtCore.Qt.QueuedConnection)
-        self.sigChannelSettingsChanged.connect(logic.set_channel_settings,
+        self.sigStartCounter.connect(self._time_series_logic.start_reading,
+                                     QtCore.Qt.QueuedConnection)
+        self.sigStopCounter.connect(self._time_series_logic.stop_reading,
+                                    QtCore.Qt.QueuedConnection)
+        self.sigStartRecording.connect(self._time_series_logic.start_recording,
+                                       QtCore.Qt.QueuedConnection)
+        self.sigStopRecording.connect(self._time_series_logic.stop_recording,
+                                      QtCore.Qt.QueuedConnection)
+        self.sigTraceSettingsChanged.connect(self._time_series_logic.set_trace_settings,
+                                             QtCore.Qt.QueuedConnection)
+        self.sigChannelSettingsChanged.connect(self._time_series_logic.set_channel_settings,
                                                QtCore.Qt.QueuedConnection)
 
-        logic.sigDataChanged.connect(self.update_data, QtCore.Qt.QueuedConnection)
-        logic.sigTraceSettingsChanged.connect(self.update_trace_settings,
-                                              QtCore.Qt.QueuedConnection)
-        logic.sigChannelSettingsChanged.connect(self.update_channel_settings,
-                                                QtCore.Qt.QueuedConnection)
-        logic.sigStatusChanged.connect(self.update_status, QtCore.Qt.QueuedConnection)
+        self._time_series_logic.sigDataChanged.connect(self.update_data,
+                                                       QtCore.Qt.QueuedConnection)
+        self._time_series_logic.sigTraceSettingsChanged.connect(self.update_trace_settings,
+                                                                QtCore.Qt.QueuedConnection)
+        self._time_series_logic.sigChannelSettingsChanged.connect(self.update_channel_settings,
+                                                                  QtCore.Qt.QueuedConnection)
+        self._time_series_logic.sigStatusChanged.connect(self.update_status,
+                                                         QtCore.Qt.QueuedConnection)
 
-        self.update_status(running=logic.module_state() == 'locked',
-                           recording=logic.data_recording_active)
-        self.update_channel_settings(logic.active_channel_names, logic.averaged_channel_names)
-        self.update_trace_settings(logic.trace_settings)
-        self.update_data(*logic.trace_data, *logic.averaged_trace_data)
+        self.update_status(running=self._time_series_logic.module_state == ModuleState.LOCKED,
+                           recording=self._time_series_logic.data_recording_active)
+        self.update_channel_settings(self._time_series_logic.active_channel_names,
+                                     self._time_series_logic.averaged_channel_names)
+        self.update_trace_settings(self._time_series_logic.trace_settings)
+        self.update_data(*self._time_series_logic.trace_data,
+                         *self._time_series_logic.averaged_trace_data)
         self._apply_trace_view_settings(self.trace_view_settings)
         index = self._mw.current_value_combobox.findText(self._current_value_channel)
         if index < 0:
@@ -458,7 +469,7 @@ class TimeSeriesGui(GuiBase):
         self._mw.toolbar.show()
         self._mw.addToolBar(QtCore.Qt.TopToolBarArea, self._mw.toolbar)
         # Restore status if something went wrong
-        self.update_status(running=self._time_series_logic.module_state() == 'locked',
+        self.update_status(running=self._time_series_logic.module_state == ModuleState.LOCKED,
                            recording=self._time_series_logic.data_recording_active)
 
     @QtCore.Slot(dict)

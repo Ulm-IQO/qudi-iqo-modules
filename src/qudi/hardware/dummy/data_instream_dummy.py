@@ -27,6 +27,7 @@ from enum import Enum
 from typing import List, Iterable, Union, Optional, Tuple, Callable, Sequence
 
 from qudi.core.configoption import ConfigOption
+from qudi.core.module import ModuleState
 from qudi.util.constraints import ScalarConstraint
 from qudi.util.mutex import Mutex
 from qudi.util.helpers import is_integer_type
@@ -326,7 +327,7 @@ class InStreamDummy(DataInStreamInterface):
         to read from buffer.
         """
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 return self._sample_generator.available_samples
             return 0
 
@@ -367,7 +368,7 @@ class InStreamDummy(DataInStreamInterface):
                   sample_rate: float) -> None:
         """ Configure a data stream. See read-only properties for information on each parameter. """
         with self._thread_lock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 raise RuntimeError('Unable to configure data stream while it is already running')
 
             # Cache current values to restore them if configuration fails
@@ -421,12 +422,12 @@ class InStreamDummy(DataInStreamInterface):
     def start_stream(self) -> None:
         """ Start the data acquisition/streaming """
         with self._thread_lock:
-            if self.module_state() == 'idle':
-                self.module_state.lock()
+            if self.module_state == ModuleState.IDLE:
+                self._lock_module()
                 try:
                     self._sample_generator.restart()
                 except:
-                    self.module_state.unlock()
+                    self._unlock_module()
                     raise
             else:
                 self.log.warning('Unable to start input stream. It is already running.')
@@ -434,8 +435,8 @@ class InStreamDummy(DataInStreamInterface):
     def stop_stream(self) -> None:
         """ Stop the data acquisition/streaming """
         with self._thread_lock:
-            if self.module_state() == 'locked':
-                self.module_state.unlock()
+            if self.module_state == ModuleState.LOCKED:
+                self._unlock_module()
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
@@ -458,7 +459,7 @@ class InStreamDummy(DataInStreamInterface):
         This function is blocking until the required number of samples has been acquired.
         """
         with self._thread_lock:
-            if self.module_state() != 'locked':
+            if self.module_state != ModuleState.LOCKED:
                 raise RuntimeError('Unable to read data. Stream is not running.')
             if (self.constraints.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
                 raise RuntimeError('SampleTiming.TIMESTAMP mode requires a timestamp buffer array')
@@ -511,7 +512,7 @@ class InStreamDummy(DataInStreamInterface):
         samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
         with self._thread_lock:
-            if self.module_state() != 'locked':
+            if self.module_state != ModuleState.LOCKED:
                 raise RuntimeError('Unable to read data. Stream is not running.')
             self._sample_generator.generate_samples()
             available_samples = self._sample_generator.available_samples
@@ -544,7 +545,7 @@ class InStreamDummy(DataInStreamInterface):
         This method will not return until all requested samples have been read or a timeout occurs.
         """
         with self._thread_lock:
-            if self.module_state() != 'locked':
+            if self.module_state != ModuleState.LOCKED:
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
             self._sample_generator.generate_samples()
@@ -576,7 +577,7 @@ class InStreamDummy(DataInStreamInterface):
                                indicates error.
         """
         with self._thread_lock:
-            if self.module_state() != 'locked':
+            if self.module_state != ModuleState.LOCKED:
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
             data_buffer = np.empty(len(self.active_channels), dtype=self._constraints.data_type)

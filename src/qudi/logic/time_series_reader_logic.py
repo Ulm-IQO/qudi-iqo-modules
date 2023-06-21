@@ -115,9 +115,6 @@ class TimeSeriesReaderLogic(LogicBase):
 
     def on_activate(self) -> None:
         """ Initialisation performed during activation of the module. """
-        # Temp reference to connected hardware module
-        streamer = self._streamer()
-
         # Flag to stop the loop and process variables
         self._recorded_raw_data = None
         self._recorded_raw_times = None
@@ -127,17 +124,17 @@ class TimeSeriesReaderLogic(LogicBase):
 
         # Check valid StatusVar
         # active channels
-        avail_channels = list(streamer.constraints.channel_units)
+        avail_channels = list(self._streamer.constraints.channel_units)
         if self._active_channels is None:
-            if streamer.active_channels:
-                self._active_channels = streamer.active_channels.copy()
+            if self._streamer.active_channels:
+                self._active_channels = self._streamer.active_channels.copy()
             else:
                 self._active_channels = avail_channels
             self._averaged_channels = self._active_channels
         elif any(ch not in avail_channels for ch in self._active_channels):
             self.log.warning('Invalid active channels found in StatusVar. StatusVar ignored.')
-            if streamer.active_channels:
-                self._active_channels = streamer.active_channels.copy()
+            if self._streamer.active_channels:
+                self._active_channels = self._streamer.active_channels.copy()
             else:
                 self._active_channels = avail_channels
             self._averaged_channels = self._active_channels
@@ -165,7 +162,7 @@ class TimeSeriesReaderLogic(LogicBase):
         try:
             self._sigNextDataFrame.disconnect()
             # Stop measurement
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self._stop()
         finally:
             # Free (potentially) large raw data buffers
@@ -205,7 +202,7 @@ class TimeSeriesReaderLogic(LogicBase):
     @property
     def streamer_constraints(self) -> DataInStreamConstraints:
         """ Retrieve the hardware constrains from the counter device """
-        return self._streamer().constraints
+        return self._streamer.constraints
 
     @property
     def data_rate(self) -> float:
@@ -262,12 +259,12 @@ class TimeSeriesReaderLogic(LogicBase):
         If oversampling is active, this value will be larger (by the oversampling factor) than
         data_rate.
         """
-        return self._streamer().sample_rate
+        return self._streamer.sample_rate
 
     @property
     def active_channel_names(self) -> List[str]:
         """ Read-only property returning the currently active channel names """
-        return self._streamer().active_channels.copy()
+        return self._streamer.active_channels.copy()
 
     @property
     def averaged_channel_names(self) -> List[str]:
@@ -365,7 +362,7 @@ class TimeSeriesReaderLogic(LogicBase):
 
             with self._threadlock:
                 # Apply settings to hardware if needed
-                self._streamer().configure(
+                self._streamer.configure(
                     active_channels=self.active_channel_names,
                     streaming_mode=StreamingMode.CONTINUOUS,
                     channel_buffer_size=self._channel_buffer_size,
@@ -402,12 +399,12 @@ class TimeSeriesReaderLogic(LogicBase):
             return
 
         # Flag indicating if the stream should be restarted
-        restart = self.module_state() == 'locked'
+        restart = self.module_state == ModuleState.LOCKED
         if restart:
             self._stop()
 
         try:
-            self._streamer().configure(
+            self._streamer.configure(
                 active_channels=enabled,
                 streaming_mode=StreamingMode.CONTINUOUS,
                 channel_buffer_size=self._channel_buffer_size,
@@ -429,24 +426,24 @@ class TimeSeriesReaderLogic(LogicBase):
     def start_reading(self) -> None:
         """ Start data acquisition loop """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 self.log.warning('Data acquisition already running. "start_reading" call ignored.')
                 self.sigStatusChanged.emit(True, self._data_recording_active)
                 return
 
-            self.module_state.lock()
+            self._lock_module()
             try:
                 if self._data_recording_active:
                     self._init_recording_arrays()
                     self._record_start_time = dt.datetime.now()
-                self._streamer().start_stream()
+                self._streamer.start_stream()
             except:
-                self.module_state.unlock()
+                self._unlock_module()
                 self.log.exception('Error while starting stream reader:')
                 raise
             finally:
                 self._sigNextDataFrame.emit()
-                self.sigStatusChanged.emit(self.module_state() == 'locked',
+                self.sigStatusChanged.emit(self.module_state == ModuleState.LOCKED,
                                            self._data_recording_active)
 
     @QtCore.Slot()
@@ -456,14 +453,14 @@ class TimeSeriesReaderLogic(LogicBase):
             self._stop()
 
     def _stop(self) -> None:
-        if self.module_state() == 'locked':
+        if self.module_state == ModuleState.LOCKED:
             try:
-                self._streamer().stop_stream()
+                self._streamer.stop_stream()
             except:
                 self.log.exception('Error while trying to stop stream reader:')
                 raise
             finally:
-                self.module_state.unlock()
+                self._unlock_module()
                 self._stop_recording()
 
     @QtCore.Slot()
@@ -472,11 +469,10 @@ class TimeSeriesReaderLogic(LogicBase):
         connected to a QTimer timeout signal.
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
+            if self.module_state == ModuleState.LOCKED:
                 try:
-                    streamer = self._streamer()
                     samples_to_read = max(
-                        (streamer.available_samples // self._oversampling_factor) * self._oversampling_factor,
+                        (self._streamer.available_samples // self._oversampling_factor) * self._oversampling_factor,
                         self._samples_per_frame * self._oversampling_factor
                     )
                     samples_to_read = min(
@@ -485,9 +481,9 @@ class TimeSeriesReaderLogic(LogicBase):
                     )
                     # read the current counter values
                     channel_count = len(self.active_channel_names)
-                    streamer.read_data_into_buffer(data_buffer=self._data_buffer,
-                                                   samples_per_channel=samples_to_read,
-                                                   timestamp_buffer=self._times_buffer)
+                    self._streamer.read_data_into_buffer(data_buffer=self._data_buffer,
+                                                         samples_per_channel=samples_to_read,
+                                                         timestamp_buffer=self._times_buffer)
                     # Process data
                     data_view = self._data_buffer[:channel_count * samples_to_read]
                     self._process_trace_data(data_view)
@@ -647,10 +643,10 @@ class TimeSeriesReaderLogic(LogicBase):
         """
         with self._threadlock:
             if self._data_recording_active:
-                self.sigStatusChanged.emit(self.module_state() == 'locked', True)
+                self.sigStatusChanged.emit(self.module_state == ModuleState.LOCKED, True)
             else:
                 self._data_recording_active = True
-                if self.module_state() == 'locked':
+                if self.module_state == ModuleState.LOCKED:
                     self._init_recording_arrays()
                     self._record_start_time = dt.datetime.now()
                     self.sigStatusChanged.emit(True, True)
@@ -671,7 +667,7 @@ class TimeSeriesReaderLogic(LogicBase):
                 self._save_recorded_data(save_figure=True)
         finally:
             self._data_recording_active = False
-            self.sigStatusChanged.emit(self.module_state() == 'locked', False)
+            self.sigStatusChanged.emit(self.module_state == ModuleState.LOCKED, False)
 
     def _save_recorded_data(self, name_tag='', save_figure=True):
         """ Save the recorded counter trace data and writes it to a file """
