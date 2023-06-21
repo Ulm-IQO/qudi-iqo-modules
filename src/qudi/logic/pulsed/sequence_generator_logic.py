@@ -215,6 +215,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         # Get instance of PulseObjectGenerator which takes care of collecting all predefined methods
         self._pog = PulseObjectGenerator(sequencegeneratorlogic=self)
+        self._pog.activate_plugins()
 
         self.__sequence_generation_in_progress = False
         return
