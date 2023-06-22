@@ -26,6 +26,7 @@ import sys
 import inspect
 import importlib
 import numpy as np
+import warnings
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
 from qudi.util.helpers import natural_sort, iter_modules_recursive
@@ -1035,6 +1036,15 @@ class PredefinedGeneratorBase:
     def generation_parameters(self):
         return self.__sequencegeneratorlogic.generation_parameters
 
+    @generation_parameters.setter
+    def generation_parameters(self, param_dict):
+        """
+        Update the generation parameters with a given dict.
+        """
+        gen_params = self.generation_parameters
+        gen_params.update(param_dict)
+        self.__sequencegeneratorlogic.generation_parameters = gen_params
+
     @property
     def pulse_generator_constraints(self):
         return self.__sequencegeneratorlogic.pulse_generator_constraints
@@ -1558,6 +1568,7 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
         # create an instance of each class and put them in a temporary list
         generator_instances = [cls(sequencegeneratorlogic) for cls in generator_classes]
+        self._generator_instances = generator_instances
 
         # add references to all generate methods in each instance to a dict
         self.__populate_method_dict(instance_list=generator_instances)
@@ -1641,5 +1652,25 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         @return bool: True if obj is a valid generator class, False otherwise
         """
         if inspect.isclass(obj):
-            return PredefinedGeneratorBase in obj.__bases__ and len(obj.__bases__) == 1
+            return PredefinedGeneratorBase in obj.__bases__# and len(obj.__bases__) == 1
         return False
+
+    def activate_plugins(self):
+        [gen.activate_plugin() for gen in self._generator_instances if hasattr(gen, 'activate_plugin')]
+
+
+class PredefinedGeneratorPlugin():
+    """
+    PredefinedGeneratorPlugin is a PredefinedGenerator that can run code after the PulseObjectGenerator
+    in order to manipulate all loaded predefined methods.
+    """
+    def __init__(self, *args, **kwargs):
+        # should by of type DeprecationWarning, currently broken
+        warnings.warn(f'PredefinedGeneratorPlugin is an experimental feature and can be deprecated any time in future.')
+        super().__init__(*args, **kwargs)
+
+    def activate_plugin(self):
+        # allow plugins to invoke code after the PulseObjectGenerator is fully initialized
+        pass
+
+

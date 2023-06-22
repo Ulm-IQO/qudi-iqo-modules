@@ -445,10 +445,10 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                         number_of_samples_per_channel=samples_per_channel,
                         timeout=self._rw_timeout
                     )
-                    channel_offset += 1
                     self.__tmp_buffer[:samples_per_channel] *= self.__sample_rate
                     data_buffer[channel_offset:total_samples:channel_count] = self.__tmp_buffer[
                         :samples_per_channel]
+                    channel_offset += 1
                 # Read analog channels
                 if self._ai_reader is not None:
                     if channel_offset == 0:

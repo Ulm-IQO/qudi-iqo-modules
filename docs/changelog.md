@@ -16,8 +16,9 @@ docstrings.
 constraints to allow non-uniform sampling mode.
 
 ### Other
-- Bumped `qudi-core` package minimum version requirement to v1.3.0
+- Bumped `qudi-core` package minimum version requirement to v1.4.0
 - Got rid of deprecated `qudi.core.interface` module usage
+- Support for Python 3.10
 
 ## Version 0.4.0
 ### Breaking Changes
