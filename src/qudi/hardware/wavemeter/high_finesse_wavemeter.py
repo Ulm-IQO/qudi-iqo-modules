@@ -27,7 +27,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 from ctypes import cast, c_double, c_int, c_long, POINTER, windll, WINFUNCTYPE
-from typing import Union, Optional, List, Tuple, Sequence
+from typing import Union, Optional, List, Tuple, Sequence, Any
 
 import numpy as np
 from PySide2 import QtCore
@@ -102,7 +102,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._wm_start_time = None
         self._data_buffer = None
         self._timestamp_buffer = None
-        self._current_buffer_positions = None
+        self._current_buffer_position = 0
         self._buffer_overflow = False
 
         # Stored hardware constraints
@@ -227,7 +227,8 @@ class HighFinesseWavemeter(DataInStreamInterface):
                 if ch in self._active_switch_channels:
                     i = self._active_switch_channels.index(ch)
 
-                    if self._current_buffer_positions[i] >= self.channel_buffer_size:
+                    current_timestamp_buffer_position = self._current_buffer_position // len(self.active_channels)
+                    if current_timestamp_buffer_position >= self.channel_buffer_size:
                         self._buffer_overflow = True
                         raise OverflowError(
                             'Streaming buffer encountered an overflow while receiving a callback from the wavemeter. '
@@ -236,22 +237,26 @@ class HighFinesseWavemeter(DataInStreamInterface):
 
                     # wavemeter records timestamps in ms
                     timestamp = 1e-3 * intval
-                    # in case this is the first recorded measurement,
-                    # set the timing offset to the start of the stream
-                    if self._wm_start_time is None:
-                        self._wm_start_time = timestamp
-                    timestamp -= self._wm_start_time
                     # unit conversion
                     converted_value = self._wavemeterdll.ConvertUnit(
                         dblval, high_finesse_constants.cReturnWavelengthVac, self._unit_return_type[ch]
                     )
 
+                    # check if this is the first time this callback runs during a stream
+                    if self._wm_start_time is None:
+                        if i != 0:
+                            # the first recorded data must be from the first channel
+                            return 0
+                        # set the timing offset to the start of the stream
+                        self._wm_start_time = timestamp
+
+                    timestamp -= self._wm_start_time
                     # insert the new data into the buffers
-                    self._data_buffer[i, self._current_buffer_positions[i]] = converted_value
+                    self._data_buffer[self._current_buffer_position] = converted_value
                     if i == 0:
                         # only record the timestamp of the first active channel
-                        self._timestamp_buffer[self._current_buffer_positions[0]] = timestamp
-                    self._current_buffer_positions[i] += 1
+                        self._timestamp_buffer[current_timestamp_buffer_position] = timestamp
+                    self._current_buffer_position += 1
 
                     self.sigNewWavelength.emit(converted_value)
             return 0
@@ -295,40 +300,41 @@ class HighFinesseWavemeter(DataInStreamInterface):
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
+                              samples_per_channel: int,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
         """ Read data from the stream buffer into a 1D numpy array given as parameter.
-        All samples for each channel are stored in consecutive blocks one after the other.
-        The data_buffer can be unraveled into channel samples with:
+        Samples of all channels are stored interleaved in contiguous memory.
+        In case of a multidimensional buffer array, this buffer will be flattened before written
+        into.
+        The 1D data_buffer can be unraveled into channel and sample indexing with:
 
-            data_buffer.reshape([<channel_count>, <samples_per_channel>])
+            data_buffer.reshape([<samples_per_channel>, <channel_count>])
 
         The data_buffer array must have the same data type as self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
         provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        exactly of length:
+        able to hold at least <samples_per_channel> items:
 
-            data_buffer // <channel_count>
-
-        This function is blocking until the entire buffer has been filled.
+        This function is blocking until the required number of samples has been acquired.
         """
         with self._lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
-            number_of_channels, number_of_samples = self._validate_buffers(data_buffer, timestamp_buffer)
-            total_samples = number_of_samples * number_of_channels
+            self._validate_buffers(data_buffer, timestamp_buffer)
 
             # wait until requested number of samples is available
-            while self.available_samples < number_of_samples:
+            while self.available_samples < samples_per_channel:
                 if self.module_state() != 'locked':
                     break
                 # wait for 10 ms
                 time.sleep(0.01)
 
-            data_buffer[:total_samples] = self._data_buffer[:, :number_of_samples].flatten()
-            timestamp_buffer[:total_samples] = self._timestamp_buffer[:number_of_samples]
-            self._remove_samples_from_buffer(number_of_samples)
+            total_samples = samples_per_channel * len(self.active_channels)
+            data_buffer[:total_samples] = self._data_buffer[:total_samples]
+            timestamp_buffer[:samples_per_channel] = self._timestamp_buffer[:samples_per_channel]
+            self._remove_samples_from_buffer(samples_per_channel)
 
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
@@ -350,40 +356,43 @@ class HighFinesseWavemeter(DataInStreamInterface):
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
-            number_of_channels, requested_samples = self._validate_buffers(data_buffer, timestamp_buffer)
-            read_samples = number_of_channels * min(requested_samples, self.available_samples)
+            req_samples_per_channel = self._validate_buffers(data_buffer, timestamp_buffer)
+            number_of_channels = len(self.active_channels)
+            samples_per_channel = min(req_samples_per_channel, self.available_samples)
+            total_samples = number_of_channels * samples_per_channel
 
-            data_buffer[:read_samples] = self._data_buffer[:, :read_samples].flatten()
-            timestamp_buffer[:read_samples] = self._timestamp_buffer[:read_samples]
-            self._remove_samples_from_buffer(read_samples)
+            data_buffer[:total_samples] = self._data_buffer[:total_samples]
+            timestamp_buffer[:samples_per_channel] = self._timestamp_buffer[:samples_per_channel]
+            self._remove_samples_from_buffer(samples_per_channel)
 
-        return read_samples
+        return samples_per_channel
 
     def read_data(self,
-                  number_of_samples: Optional[int] = None
+                  samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
         """ Read data from the stream buffer into a 1D numpy array and return it.
         All samples for each channel are stored in consecutive blocks one after the other.
         The returned data_buffer can be unraveled into channel samples with:
 
-            data_buffer.reshape([<channel_count>, number_of_samples])
+            data_buffer.reshape([<channel_count>, samples_per_channel])
 
         The numpy array data type is the one defined in self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
-        If number_of_samples is omitted all currently available samples are read from buffer.
+        If samples_per_channel is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
         """
         with self._lock:
             if self.module_state() != 'locked':
                 self.log.error('Unable to read data. Device is not running.')
 
-            read_samples = number_of_samples if number_of_samples is not None else self.available_samples
+            samples_per_channel = samples_per_channel if samples_per_channel is not None else self.available_samples
+            total_samples = len(self.active_channels) * samples_per_channel
 
-            data_buffer = np.empty(read_samples * len(self.active_channels), dtype=self.constraints.data_type)
-            timestamp_buffer = np.emtpy(read_samples, dtype=np.float64)
+            data_buffer = np.empty(total_samples, dtype=self.constraints.data_type)
+            timestamp_buffer = np.emtpy(samples_per_channel, dtype=np.float64)
             self.read_data_into_buffer(data_buffer, timestamp_buffer)
 
         return data_buffer, timestamp_buffer
@@ -403,9 +412,12 @@ class HighFinesseWavemeter(DataInStreamInterface):
             self.log.error('Unable to read data. Device is not running.')
             return np.empty(0, dtype=self.constraints.data_type), None
 
-        i = self._current_buffer_positions.min() - 1
-        data = self._data_buffer[:, i]
-        timestamp = self._timestamp_buffer[i]
+        n = len(self.active_channels)
+        # get the most recent samples for each channel
+        data = self._data_buffer[-n:]
+        # roll the array to bring the channels in order
+        data = np.roll(data, self._current_buffer_position % n)
+        timestamp = self._timestamp_buffer[self._current_buffer_position]
         return data, timestamp
 
     @property
@@ -455,7 +467,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
             return 0
 
         # all channels must have been read out in order to count as an available sample
-        return min(self._current_buffer_positions)
+        return self._current_buffer_position // len(self.active_channels)
 
     @property
     def channel_buffer_size(self) -> int:
@@ -496,37 +508,37 @@ class HighFinesseWavemeter(DataInStreamInterface):
     def _init_buffers(self) -> None:
         """ Initialize buffers and the current buffer position marker. """
         n = len(self._active_switch_channels)
-        self._data_buffer = np.zeros([n, self._channel_buffer_size], dtype=self.constraints.data_type)
+        self._data_buffer = np.zeros(n * self._channel_buffer_size, dtype=self.constraints.data_type)
         self._timestamp_buffer = np.zeros(self._channel_buffer_size, dtype=np.float64)
-        self._current_buffer_positions = np.zeros(n, dtype=int)
+        self._current_buffer_position = 0
         self._buffer_overflow = False
 
-    def _remove_samples_from_buffer(self, number_of_samples: int) -> None:
+    def _remove_samples_from_buffer(self, samples_per_channel: int) -> None:
         """
         Remove samples that have been read from buffer to make space for new samples.
-        :param number_of_samples: number of samples to clear off the buffer
+        :param samples_per_channel: number of samples per channel to clear off the buffer
         :return: None
         """
-        self._data_buffer = np.roll(self._data_buffer, -number_of_samples, axis=1)
-        self._timestamp_buffer = np.roll(self._timestamp_buffer, -number_of_samples)
-        self._current_buffer_positions -= number_of_samples
+        total_samples = len(self.active_channels) * samples_per_channel
+        self._data_buffer = np.roll(self._data_buffer, -total_samples)
+        self._timestamp_buffer = np.roll(self._timestamp_buffer, -samples_per_channel)
+        self._current_buffer_position -= total_samples
 
     def _validate_buffers(self,
                           data_buffer: np.ndarray,
-                          timestamp_buffer: np.ndarray) -> int:
+                          timestamp_buffer: np.ndarray) -> Tuple[int, Union[int, Any]]:
         """ Validate arguments for read_[available]_data_into_buffer methods. """
         if not isinstance(data_buffer, np.ndarray) or data_buffer.dtype != self.constraints.data_type:
             self.log.error(f'data_buffer must be numpy.ndarray with dtype {self.constraints.data_type}.')
 
         if not isinstance(timestamp_buffer, np.ndarray) or timestamp_buffer.dtype != np.float64:
-            print(timestamp_buffer.dtype)
             self.log.error(f'timestamp_buffer must be provided for the wavemeter and '
                            f'it must be a numpy.ndarray with dtype np.float64.')
 
         number_of_channels = len(self.active_channels)
-        number_of_samples = data_buffer.size // number_of_channels
+        samples_per_channel = data_buffer.size // number_of_channels
 
-        if timestamp_buffer.size != number_of_samples:
+        if timestamp_buffer.size != samples_per_channel:
             self.log.error(f'timestamp_buffer must be exactly of length data_buffer // <channel_count>')
 
-        return number_of_channels, number_of_samples
+        return samples_per_channel
