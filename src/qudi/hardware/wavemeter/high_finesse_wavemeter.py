@@ -52,25 +52,14 @@ class HighFinesseWavemeter(DataInStreamInterface):
         module.Class: 'wavemeter.high_finesse_wavemeter.HighFinesseWavemeter'
         options:
             channels:
-                red_laser_1:
+                red_laser:
                     switch_ch: 1    # channel on the wavemeter switch
-                    unit: 'nm'    # wavelength (nm) or frequency (THz)
+                    unit: 'm'    # wavelength (m) or frequency (Hz)
                     medium: 'vac' # for wavelength: air or vac
                     exposure: 10  # exposure time in ms
-                red_laser_2:
-                    switch_ch: 2
-                    unit: 'nm'
-                    medium: 'vac'
-                    exposure: 10
                 green_laser:
-                    switch_ch: 3
-                    unit: 'nm'
-                    medium: 'vac'
-                    exposure: 10
-                yellow_laser:
-                    switch_ch: 4
-                    unit: 'nm'
-                    medium: 'vac'
+                    switch_ch: 2
+                    unit: 'Hz'
                     exposure: 10
     """
 
@@ -81,7 +70,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
     _wavemeter_ch_config = ConfigOption(
         name='channels',
         default={
-            'default_channel': {'switch_ch': 1, 'unit': 'nm', 'medium': 'vac', 'exposure': 10}
+            'default_channel': {'switch_ch': 1, 'unit': 'm', 'medium': 'vac', 'exposure': 10}
         },
         missing='info'
     )
@@ -133,14 +122,14 @@ class HighFinesseWavemeter(DataInStreamInterface):
         for ch_name, info in self._wavemeter_ch_config.items():
             ch = info['switch_ch']
             unit = info['unit']
-            medium = info['medium']
+            medium = info.get('medium')
             self._channel_names[ch] = ch_name
 
             if unit == 'THz' or unit == 'Hz':
-                channel_units[ch_name] = unit
+                channel_units[ch_name] = 'Hz'
                 self._unit_return_type[ch] = high_finesse_constants.cReturnFrequency
             elif unit == 'nm' or unit == 'm':
-                channel_units[ch_name] = unit
+                channel_units[ch_name] = 'm'
                 if medium == 'vac':
                     self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
                 elif medium == 'air':
@@ -161,6 +150,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._active_switch_channels = list(self._channel_names)
 
         # set up constraints
+        sample_rate = self.sample_rate
         self._constraints = DataInStreamConstraints(
             channel_units=channel_units,
             sample_timing=SampleTiming.TIMESTAMP,
@@ -171,6 +161,8 @@ class HighFinesseWavemeter(DataInStreamInterface):
                                                  bounds=(128, 1024**3),  # max = 8 GB
                                                  increment=1,
                                                  enforce_int=True),
+            sample_rate=ScalarConstraint(default=sample_rate,
+                                         bounds=(0.01, 1e3))
         )
 
     def on_deactivate(self) -> None:
@@ -219,15 +211,14 @@ class HighFinesseWavemeter(DataInStreamInterface):
             if self._buffer_overflow:
                 return 0
 
-            # TODO: why does this not work in the lock anymore?
-            # with self._lock:
-            if True:
+            with self._lock:
                 # see if new data is from one of the active channels
                 ch = high_finesse_constants.cmi_wavelength_n.get(mode)
+                number_of_channels = len(self.active_channels)
                 if ch in self._active_switch_channels:
                     i = self._active_switch_channels.index(ch)
 
-                    current_timestamp_buffer_position = self._current_buffer_position // len(self.active_channels)
+                    current_timestamp_buffer_position = self._current_buffer_position // number_of_channels
                     if current_timestamp_buffer_position >= self.channel_buffer_size:
                         self._buffer_overflow = True
                         raise OverflowError(
@@ -238,17 +229,23 @@ class HighFinesseWavemeter(DataInStreamInterface):
                     # wavemeter records timestamps in ms
                     timestamp = 1e-3 * intval
                     # unit conversion
+                    unit_ret_type = self._unit_return_type[ch]
                     converted_value = self._wavemeterdll.ConvertUnit(
-                        dblval, high_finesse_constants.cReturnWavelengthVac, self._unit_return_type[ch]
+                        dblval, high_finesse_constants.cReturnWavelengthVac, unit_ret_type
                     )
+                    if unit_ret_type == high_finesse_constants.cReturnFrequency:
+                        converted_value *= 1e12  # value is in THz
+                    else:
+                        converted_value *= 1e-9  # value is in nm
 
                     # check if this is the first time this callback runs during a stream
                     if self._wm_start_time is None:
-                        if i != 0:
-                            # the first recorded data must be from the first channel
-                            return 0
                         # set the timing offset to the start of the stream
                         self._wm_start_time = timestamp
+
+                    if i != self._current_buffer_position % number_of_channels:
+                        # discard the sample if a sample was missed before and the buffer position is off
+                        return 0
 
                     timestamp -= self._wm_start_time
                     # insert the new data into the buffers
@@ -318,18 +315,18 @@ class HighFinesseWavemeter(DataInStreamInterface):
 
         This function is blocking until the required number of samples has been acquired.
         """
+        self._validate_buffers(data_buffer, timestamp_buffer)
+
+        # wait until requested number of samples is available
+        while self.available_samples < samples_per_channel:
+            if self.module_state() != 'locked':
+                break
+            # wait for 10 ms
+            time.sleep(0.01)
+
         with self._lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
-
-            self._validate_buffers(data_buffer, timestamp_buffer)
-
-            # wait until requested number of samples is available
-            while self.available_samples < samples_per_channel:
-                if self.module_state() != 'locked':
-                    break
-                # wait for 10 ms
-                time.sleep(0.01)
 
             total_samples = samples_per_channel * len(self.active_channels)
             data_buffer[:total_samples] = self._data_buffer[:total_samples]
