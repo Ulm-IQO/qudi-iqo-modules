@@ -15,6 +15,7 @@ from lmfit.model import ModelResult as _ModelResult
 from qudi.util.widgets.fitting import FitWidget
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.widgets.plotting.interactive_curve import InteractiveCurvesWidget
+from scipy import constants
 
 class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
     """ Create the Main Window for Wavemeter """
@@ -69,8 +70,12 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
         self.show_hist_region = QtWidgets.QAction('Show histogram region')
         self.show_hist_region.setCheckable(True)
 
+        self.action_fit_envelope_histogram = QtWidgets.QAction('Fit envelope')
+        self.action_fit_envelope_histogram.setCheckable(True)
+        self.action_fit_envelope_histogram.setToolTip('Either fit the mean histogram or envelope histogram. Default is mean histogram. ')
+
         self.show_all_data_action = QtWidgets.QAction('Show all data')
-        self.show_all_data_action.setToolTip('Show all data since due to Gui performace during acquisition only most recent *3000* points are displayed.')
+        self.show_all_data_action.setToolTip('Show all data since due to Gui performace during acquisition only most recent *2000* points are displayed.')
 
         self.restore_default_view_action = QtWidgets.QAction('Restore default')
 
@@ -97,6 +102,7 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
         menu.addAction(self.actionToggle_x_axis)
         menu.addAction(self.action_autoscale_hist)
         menu.addAction(self.show_hist_region)
+        menu.addAction(self.action_fit_envelope_histogram)
         menu.addSeparator()
         menu.addAction(self.restore_default_view_action)
 
@@ -309,6 +315,7 @@ class WavemeterHistogramGui(GuiBase):
         self._mw.show_hist_region.triggered.connect(self.histogram_region)
         self._mw.restore_default_view_action.triggered.connect(self.restore_default_view)
         self._mw.show_all_data_action.triggered.connect(self.show_all_data)
+        self._mw.action_fit_envelope_histogram.triggered.connect(self.fit_which_histogram)
 
         # Connect signals to logic
         self.sigStartCounter.connect(
@@ -362,6 +369,7 @@ class WavemeterHistogramGui(GuiBase):
         self._mw.show_hist_region.triggered.disconnect()
         self._mw.restore_default_view_action.triggered.disconnect()
         self._mw.show_all_data_action.triggered.disconnect()
+        self._mw.action_fit_envelope_histogram.triggered.disconnect()
 
         self._mw.binSpinBox.editingFinished.disconnect()
         self._mw.maxDoubleSpinBox.editingFinished.disconnect()
@@ -419,8 +427,8 @@ class WavemeterHistogramGui(GuiBase):
                 self.curve_data_points.setData(frequency, counts)
                 self._scatterplot.setData(frequency, timings)
                 self._pw.move_marker_selection((frequency[-1], 0), 0)
-                self._pw.set_data('Histogram', x=3.0e17 / histogram_axis, y=histogram)
-                self._pw.set_data('Envelope', x=3.0e17 / histogram_axis,
+                self._pw.set_data('Histogram', x=constants.speed_of_light*1e9 / histogram_axis, y=histogram)
+                self._pw.set_data('Envelope', x=constants.speed_of_light*1e9 / histogram_axis,
                                   y=envelope_histogram)
 
         self._wavemeter_logic.sigDataChanged.connect(
@@ -508,7 +516,7 @@ class WavemeterHistogramGui(GuiBase):
             self._pw.clear_fits()
             # Change the curve plot
             self._wavemeter_logic.x_axis_hz_bool = True
-            x_axis_hz = 3.0e17 / self._wavemeter_logic.histogram_axis
+            x_axis_hz = constants.speed_of_light*1e9 / self._wavemeter_logic.histogram_axis
             self._pw.set_data('Histogram', x=x_axis_hz, y=self._wavemeter_logic.histogram)
             self._pw.set_data('Envelope', x=x_axis_hz, y=self._wavemeter_logic.envelope_histogram)
             data = self._wavemeter_logic._trace_data
@@ -525,12 +533,12 @@ class WavemeterHistogramGui(GuiBase):
             #change dockwidget
             self._mw.minLabel.setText("Minimum Frequency (THz)")
             temp = self._mw.minDoubleSpinBox.value()
-            self._mw.minDoubleSpinBox.setValue(3.0e5 / self._mw.maxDoubleSpinBox.value())
+            self._mw.minDoubleSpinBox.setValue(constants.speed_of_light*1e-3 / self._mw.maxDoubleSpinBox.value())
             self._mw.maxLabel.setText('Maximum Frequency (Thz)')
-            self._mw.maxDoubleSpinBox.setValue(3.0e5 / temp)
+            self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light*1e-3 / temp)
             if self._mw.show_hist_region.isChecked():
                 min, max = self.region.getRegion()
-                self.region.setRegion([3.0e17/max, 3.0e17/min])
+                self.region.setRegion([constants.speed_of_light*1e9/max, constants.speed_of_light*1e9/min])
 
         else:
             self._mw.actionToggle_x_axis.setText('Change to frequency')
@@ -553,15 +561,25 @@ class WavemeterHistogramGui(GuiBase):
             #change dockwidget
             self._mw.minLabel.setText("Minimum Wavelength (nm)")
             temp = self._mw.minDoubleSpinBox.value()
-            self._mw.minDoubleSpinBox.setValue(3.0e5 / self._mw.maxDoubleSpinBox.value())
+            self._mw.minDoubleSpinBox.setValue(constants.speed_of_light*1e-3 / self._mw.maxDoubleSpinBox.value())
             self._mw.maxLabel.setText('Maximum Wavelength (nm)')
-            self._mw.maxDoubleSpinBox.setValue(3.0e5 / temp)
+            self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light*1e-3 / temp)
             if self._mw.show_hist_region.isChecked():
                 min, max = self.region.getRegion()
-                self.region.setRegion([3.0e17 / max, 3.0e17 / min])
+                self.region.setRegion([constants.speed_of_light*1e9 / max, constants.speed_of_light*1e9 / min])
 
         self._mw.actionToggle_x_axis.setEnabled(True)
         return
+
+    def fit_which_histogram(self) -> None:
+        self._mw.action_fit_envelope_histogram.setEnabled(False)
+        if self._mw.action_fit_envelope_histogram.isChecked():
+            self._mw.action_fit_envelope_histogram.setText('Fit histogram')
+            self._wavemeter_logic.fit_histogram = False
+        else:
+            self._mw.action_fit_envelope_histogram.setText('Fit envelope')
+            self._wavemeter_logic.fit_histogram = True
+        self._mw.action_fit_envelope_histogram.setEnabled(True)
 
     @QtCore.Slot()
     def histogram_region(self):
@@ -574,7 +592,7 @@ class WavemeterHistogramGui(GuiBase):
                 self.region = pg.LinearRegionItem(values=(self._wavemeter_logic._xmin_histo, self._wavemeter_logic._xmax_histo), orientation='vertical')
             else:
                 self.region = pg.LinearRegionItem(
-                    values=(3.0e17/self._wavemeter_logic._xmin_histo, 3.0e17/self._wavemeter_logic._xmax_histo),
+                    values=(constants.speed_of_light*1e9/self._wavemeter_logic._xmin_histo, constants.speed_of_light*1e9/self._wavemeter_logic._xmax_histo),
                     orientation='vertical'
                     )
             self._pw._plot_widget.addItem(self.region)
@@ -629,8 +647,8 @@ class WavemeterHistogramGui(GuiBase):
         else: #when in Hz return value into nm wavelength
             self._wavemeter_logic.recalculate_histogram(
                 bins=self._mw.binSpinBox.value(),
-                xmin=3.0e5 / self._mw.maxDoubleSpinBox.value(),
-                xmax=3.0e5 / self._mw.minDoubleSpinBox.value()
+                xmin=constants.speed_of_light*1e-3 / self._mw.maxDoubleSpinBox.value(),
+                xmax=constants.speed_of_light*1e-3 / self._mw.minDoubleSpinBox.value()
             )
         if not self._wavemeter_logic.module_state() == 'locked':
             self.update_histogram_only()
@@ -643,8 +661,8 @@ class WavemeterHistogramGui(GuiBase):
             self._mw.minDoubleSpinBox.setValue(self._wavemeter_logic._xmin_histo)
             self._mw.maxDoubleSpinBox.setValue(self._wavemeter_logic._xmax_histo)
         else:
-            self._mw.minDoubleSpinBox.setValue(3.0e5 / self._wavemeter_logic._xmax_histo)
-            self._mw.maxDoubleSpinBox.setValue(3.0e5 / self._wavemeter_logic._xmin_histo)
+            self._mw.minDoubleSpinBox.setValue(constants.speed_of_light*1e-3 / self._wavemeter_logic._xmax_histo)
+            self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light*1e-3 / self._wavemeter_logic._xmin_histo)
 
     def update_histogram_only(self) -> None:
         if not self._wavemeter_logic.x_axis_hz_bool:
@@ -652,7 +670,7 @@ class WavemeterHistogramGui(GuiBase):
             self._pw.set_data('Histogram', x=x_axis, y=self._wavemeter_logic.histogram)
             self._pw.set_data('Envelope', x=x_axis, y=self._wavemeter_logic.envelope_histogram)
         else:
-            x_axis_hz = 3.0e17 / self._wavemeter_logic.histogram_axis
+            x_axis_hz = constants.speed_of_light*1e9 / self._wavemeter_logic.histogram_axis
             self._pw.set_data('Histogram', x=x_axis_hz, y=self._wavemeter_logic.histogram)
             self._pw.set_data('Envelope', x=x_axis_hz, y=self._wavemeter_logic.envelope_histogram)
 

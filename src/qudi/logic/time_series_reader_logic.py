@@ -52,6 +52,7 @@ class TimeSeriesReaderLogic(LogicBase):
     sigStatusChanged = QtCore.Signal(bool, bool)
     sigSettingsChanged = QtCore.Signal(dict)
     sigDataChangedWavemeter = QtCore.Signal(object)
+    sigStopWavemeter = QtCore.Signal()
     _sigNextDataFrame = QtCore.Signal()  # internal signal
 
     # declare connectors
@@ -542,6 +543,7 @@ class TimeSeriesReaderLogic(LogicBase):
                     if self._data_recording_active:
                         self._save_recorded_data(to_file=True, save_figure=True)
                         self._recorded_data = list()
+                    self.sigStopWavemeter.emit()
                     self._data_recording_active = False
                     self.module_state.unlock()
                     self.sigStatusChanged.emit(False, False)

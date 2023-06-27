@@ -16,6 +16,7 @@ from qudi.util.network import netobtain
 from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping
 from lmfit.model import ModelResult as _ModelResult
 from qudi.util.datastorage import TextDataStorage
+from scipy import constants
 
 
 class WavemeterLogic(LogicBase):
@@ -68,7 +69,8 @@ class WavemeterLogic(LogicBase):
         self._xmax_histo = 750
         self._xmin = 100000 #default; to be changed upon first iteration
         self._xmax = -1
-        self.number_of_displayed_points = 3000
+        self.number_of_displayed_points = 2000
+        self.fit_histogram = True
 
         return
 
@@ -122,6 +124,8 @@ class WavemeterLogic(LogicBase):
 
         #streamer.sigNewWavelength.connect(
         #    self.display_current_wavelength, QtCore.Qt.QueuedConnection)
+        self._time_series_logic.sigStopWavemeter.connect(
+            self.stop_scanning_through_time_series, QtCore.Qt.QueuedConnection)
         return
 
     def on_deactivate(self):
@@ -131,6 +135,7 @@ class WavemeterLogic(LogicBase):
         if self.module_state() == 'locked':
             self._stop_reader_wait()
         #self._streamer().sigNewWavelength.disconnect()
+        self._time_series_logic.sigStopWavemeter.disconnect()
         return
 
     @property
@@ -219,7 +224,7 @@ class WavemeterLogic(LogicBase):
     def _process_data_for_histogram(self, data_wavelength, data_counts, data_wavelength_timings):
         """Method for appending to to whole data set of wavelength and counts (already interpolated)"""
 
-        data_freq = 3.0e17 / data_wavelength
+        data_freq = constants.speed_of_light*1e9 / data_wavelength
         for i in range(len(data_wavelength)):
             self.wavelength.append(data_wavelength[i])
             self.counts.append(data_counts[i])
@@ -288,6 +293,10 @@ class WavemeterLogic(LogicBase):
         self.sigStatusChanged.emit(True)
         if self._is_wavelength_displaying:
             self.stop_displaying_current_wavelength()
+            if self._streamer().stop_stream() < 0:
+                self.log.error(
+                    'Error while trying to stop streaming device data acquisition (wavemeter).')
+
         self._time_series_logic.sigDataChangedWavemeter.connect(
             self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
 
@@ -308,6 +317,19 @@ class WavemeterLogic(LogicBase):
         if self.module_state() == 'locked':
             self._stop_requested = True
         return 0
+
+    @QtCore.Slot()
+    def stop_scanning_through_time_series(self):
+        if self.module_state() == 'locked':
+            # terminate the hardware streaming for wavelength
+            if self._streamer().stop_stream() < 0:
+                self.log.error(
+                    'Error while trying to stop streaming device data acquisition (wavemeter).')
+            self.module_state.unlock()
+            self.sigStatusChanged.emit(False)
+            self._time_series_logic.sigDataChangedWavemeter.disconnect()
+            self._trace_data = np.vstack(((self.timings, self.counts), (self.wavelength, self.frequency)))
+            return
 
     @property
     def all_settings(self):
@@ -449,7 +471,7 @@ class WavemeterLogic(LogicBase):
         #current_wavelength = 750
         #print(current_wavelength[-1])
         if len(current_wavelength) > 0:
-            current_freq = 3.0e17 / current_wavelength[-1][1] #in Hz
+            current_freq = constants.speed_of_light*1e9 / current_wavelength[-1][1] #in Hz
             self.sigNewWavelength2.emit(current_wavelength[-1][1], current_freq)
         self._sigNextWavelength.emit()
         return
@@ -529,10 +551,10 @@ class WavemeterLogic(LogicBase):
         #fit the histogram
         if not self.x_axis_hz_bool:
             fit_results = fit_container.fit_data(fit_config=fit_config, x=self.histogram_axis,
-                                             data=self.histogram)[1]
+                                             data=self.histogram if self.fit_histogram else self.envelope_histogram)[1]
         elif self.x_axis_hz_bool:
-            fit_results = fit_container.fit_data(fit_config=fit_config, x=3.0e17 / self.histogram_axis,
-                                                 data=self.histogram)[1]
+            fit_results = fit_container.fit_data(fit_config=fit_config, x=constants.speed_of_light*1e9 / self.histogram_axis,
+                                                 data=self.histogram if self.fit_histogram else self.envelope_histogram)[1]
         fit_config = fit_container._last_fit_config
         self._last_fit_result = fit_results
 
@@ -661,11 +683,11 @@ class WavemeterLogic(LogicBase):
                      linestyle=':',
                      linewidth=1,
                      label='RawData')
-            ax1.plot(3.0e17/data_set[4],
+            ax1.plot(constants.speed_of_light*1e9/data_set[4],
                      data_set[5],
                      color='y',
                      label='Histogram')
-            ax1.plot(3.0e17 / data_set[4],
+            ax1.plot(constants.speed_of_light*1e9 / data_set[4],
                      data_set[6],
                      color='g',
                      label='Envelope')
