@@ -1101,10 +1101,20 @@ class ScannerGui(GuiBase):
             self.toggle_switch_widget.setEnabled(True)
             self._mw.action_toggle_tilt_correction.setEnabled(True)
 
-    def toggle_tilt_correction(self, state):
+
+    def toggle_tilt_correction(self, state): # Connect activation with saving trafo
         # toggle switch
         if type(state) == str:
             enabled = True if state == 'Tilt_Correction:ON' else False
+
+            if enabled:
+                shift_vec_arr = self._scanning_logic().tilt_vector_dict_2_array(self._tilt_correction_vectors[-1])
+                if not np.all([np.isfinite(el) for el in shift_vec_arr]):
+                    shift_vec_arr = None
+                support_vecs_arr = self._scanning_logic().tilt_vector_dict_2_array(self._tilt_correction_vectors[0:3])
+                self._scanning_logic().save_trafo_func(new_root_dir=self._data_logic().module_default_data_dir,
+                                                       supp_vec=support_vecs_arr,
+                                                       shift_vec=shift_vec_arr)  # It should be saved directly with the confocal
         # button
         if type(state) == bool:
             enabled = state

@@ -164,30 +164,6 @@ class ScanningProbeInterface(Base):
         """
         pass
 
-    def _expand_coordinate(self, coord):
-        """
-        Expand coord dict to all scanner dimensions, setting missing axes to current scanner target.
-        """
-
-        scanner_axes = self.get_constraints().axes
-        current_target = self.get_target()
-        len_coord = 0
-        axes_unused = scanner_axes.keys()
-
-        if coord:
-            len_coord = np.asarray((list(coord.values())[0])).size
-            axes_unused = [ax for ax in scanner_axes.keys() if ax not in coord.keys()]
-        coord_unused = {}
-
-        for ax in axes_unused:
-            target_coord = current_target[ax]
-            coords = np.ones(len_coord)*target_coord if len_coord > 1 else target_coord
-            coord_unused[ax] = coords
-
-        coord.update(coord_unused)
-
-        return coord
-
 
 class ScanData:
     """
@@ -277,6 +253,16 @@ class ScanData:
         attrs = ('_timestamp', '_scan_frequency', '_scan_axes', '_scan_range', '_scan_resolution',
                  '_channels', '_position_feedback_axes', '_data', '_position_data', '_timestamp')
         return all(getattr(self, a) == getattr(other, a) for a in attrs)
+
+    # ToDo: Roberto Create the methode save_trafo_func to save the trafomatrix/function
+    def save_trafo_func(self):
+        """ Save the current transformation matrix created by tilt correction
+                @return dict: dictionary with the trafomatrix the degree of rotation and translationvector.
+        """
+
+        #data_dictionary = self.to_dict() # This contains the position data and other measurement data
+        #trafo_dict = get_coordinate_transform_as_matrix() # This is for obtaining the trafomatrix. My idea is to split the trafo in a dict, where one is for translation and the other is for rotation
+        pass
 
     @property
     def scan_axes(self):
@@ -655,12 +641,10 @@ class CoordinateTransformMixin:
         self._coordinate_transform = transform_func
 
     def move_absolute(self, position, velocity=None, blocking=False):
-        new_pos_bare = super().move_absolute(self.coordinate_transform(position), velocity, blocking)
-        return self.coordinate_transform(new_pos_bare, inverse=True)
+        return super().move_absolute(self.coordinate_transform(position), velocity, blocking)
 
     def move_relative(self, distance, velocity=None, blocking=False):
-        new_pos_bare =  super().move_relative(self.coordinate_transform(distance), velocity, blocking)
-        return self.coordinate_transform(new_pos_bare, inverse=True)
+        return super().move_relative(self.coordinate_transform(distance), velocity, blocking)
 
     def get_target(self):
         return self.coordinate_transform(super().get_target(), inverse=True)
