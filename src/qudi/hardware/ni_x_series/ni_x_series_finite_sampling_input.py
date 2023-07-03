@@ -210,6 +210,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
         # initialize default settings
         self._sample_rate = self._constraints.max_sample_rate
+        # TODO: Get real sample rate limits depending on specified channels (see NI FSIO), or include in "ni helper".
         self._frame_size = 0
 
         self.set_active_channels(digital_sources.union(analog_sources))
