@@ -693,9 +693,10 @@ class CoordinateTransformMixin:
         if scan_data:
             # todo: transform_func not needed, replace with valuable info (matrix, angle, ..)
             tilt_info = {'enabled': self.coordinate_transform_enabled,
-                         'transform_func': self._coordinate_transform}
+                         'transform_func': self._coordinate_transform,
+                         'transform_matrix':self.trafo_func['Trafo_matrix'],'rotation_angle':self.trafo_func['rotation/deg'],'translation_vec':self.trafo_func['Translation'] }
             scan_data.tilt_correction_info = tilt_info
 
-            self.log.debug(f"Get scan data for titl corrected hw called. Info: {tilt_info}")
+            self.log.debug(f"Get scan data for tilt corrected hw called. Info: {tilt_info}")
 
         return scan_data
