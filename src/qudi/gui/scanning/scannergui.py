@@ -36,14 +36,13 @@ from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
 from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 from qudi.gui.scanning.tilt_correction_dcokwidget import TiltCorrectionDockWidget
-from qudi.gui.scanning.Tilt_correction_toggle_switch import ActivateTiltCorrection
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
 from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
 from qudi.util.widgets.toggle_switch import ToggleSwitch
-from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, ToggleSwitchWidget
+from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
@@ -250,9 +249,6 @@ class ScannerGui(GuiBase):
                                                                        QtCore.Qt.QueuedConnection)
         tilt_widget.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.tilt_corr_support_vector_updated,
                                                                        QtCore.Qt.QueuedConnection)
-        self.toggle_switch_widget.toggle_switch.sigStateChanged.connect(self.toggle_tilt_correction,
-                                                                        QtCore.Qt.QueuedConnection)
-
         self._mw.action_toggle_tilt_correction.triggered.connect(self.toggle_tilt_correction,
                                                                 QtCore.Qt.QueuedConnection)
         [box.valueChanged.connect(self.tilt_corr_support_vector_updated, QtCore.Qt.QueuedConnection)
@@ -310,7 +306,6 @@ class ScannerGui(GuiBase):
         for scan in tuple(self.scan_2d_dockwidgets):
             self._remove_scan_dockwidget(scan)
 
-        self.toggle_switch_widget.toggle_switch.sigStateChanged.disconnect()
         tilt_widget = self.tilt_correction_dockwidget
         tilt_widget.tilt_set_01_pushButton.clicked.disconnect()
         tilt_widget.tilt_set_02_pushButton.clicked.disconnect()
@@ -408,15 +403,6 @@ class ScannerGui(GuiBase):
         self.optimizer_dockwidget.visibilityChanged.connect(self._mw.action_view_optimizer.setChecked)
         self._mw.action_view_optimizer.triggered[bool].connect(self.optimizer_dockwidget.setVisible)
 
-        # Create a ToggleSwitchWidget
-        self.toggle_switch_widget = ToggleSwitchWidget(switch_states=('Tilt_Correction:OFF',
-                                                                      'Tilt_Correction:ON'))
-
-        # Set size policy for the ToggleSwitchWidget
-        self.toggle_switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
-        #toggle_switch_widget.setStyleSheet("QToolButton { height: 20px; width: 80px; }")
-
-        self._mw.util_toolBar.addWidget(self.toggle_switch_widget)
         self._mw.util_toolBar.visibilityChanged.connect(self._mw.action_view_toolbar.setChecked)
         self._mw.action_view_toolbar.triggered[bool].connect(self._mw.util_toolBar.setVisible)
 
@@ -1087,8 +1073,6 @@ class ScannerGui(GuiBase):
         self.toggle_tilt_correction(False)
         self._scanning_logic().configure_tilt_correction(None, None)
 
-        self.toggle_switch_widget.set_state('Tilt_Correction:OFF')
-        self.toggle_switch_widget.setEnabled(False)
         self._mw.action_toggle_tilt_correction.setEnabled(False)
 
         if all_vecs_valid:
@@ -1098,19 +1082,13 @@ class ScannerGui(GuiBase):
             support_vecs_arr = self._scanning_logic().tilt_vector_dict_2_array(support_vecs_val[:-1])
             self._scanning_logic().configure_tilt_correction(support_vecs_arr,
                                                              shift_vec_arr)
-            self.toggle_switch_widget.setEnabled(True)
             self._mw.action_toggle_tilt_correction.setEnabled(True)
 
+    def toggle_tilt_correction(self, state):
+        if type(state) != bool:
+            raise ValueError
 
-    def toggle_tilt_correction(self, state): # Connect activation with saving trafo
-        # toggle switch
-        if type(state) == str:
-            enabled = True if state == 'Tilt_Correction:ON' else False
-        # button
-        if type(state) == bool:
-            enabled = state
-
-        self._scanning_logic().toggle_tilt_correction(enabled)
+        self._scanning_logic().toggle_tilt_correction(state)
 
 
 class ToggleIconsQAction(QAction):
