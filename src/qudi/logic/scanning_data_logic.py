@@ -313,6 +313,7 @@ class ScanningDataLogic(LogicBase):
                 parameters["pixel frequency"] = scan_data.scan_frequency
                 parameters[f"scanner target at start"] = scan_data.scanner_target_at_start
                 parameters['measurement start'] = str(scan_data._timestamp)
+                parameters['tilt correction info'] = scan_data.tilt_correction_info
 
                 # add meta data for axes in full target, but not scan axes
                 if scan_data.scanner_target_at_start:

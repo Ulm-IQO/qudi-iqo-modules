@@ -320,7 +320,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_target" called.')
+            #self.log.debug('Scanning probe dummy "get_target" called.')
             return self._current_position.copy()
 
     def get_position(self):
@@ -329,7 +329,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_position" called.')
+            #self.log.debug('Scanning probe dummy "get_position" called.')
             position = {ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in
                         self._current_position.items()}
             return position
@@ -447,7 +447,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             # if self.thread() is not QtCore.QThread.currentThread():
             #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
             if self._scan_data is None:
-                print('nope, no scan data in hardware')
+                self.log.debug('No scan data in hardware, returning None')
                 return None
 
             if self.module_state() != 'idle':

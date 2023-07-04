@@ -250,6 +250,7 @@ class ScanData:
         self._data = None
         self._position_data = None
         self._target_at_start = target_at_start
+        self._tilt_correction_info = {'enabled': False}
         # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
         return
 
@@ -413,6 +414,14 @@ class ScanData:
         if dict_repr['timestamp'] is not None:
             new_inst._timestamp = datetime.datetime.fromtimestamp(dict_repr['timestamp'])
         return new_inst
+
+    @property
+    def tilt_correction_info(self):
+        return self._tilt_correction_info
+
+    @tilt_correction_info.setter
+    def tilt_correction_info(self, info_dict):
+        self._tilt_correction_info = info_dict
 
 
 class ScannerChannel:
@@ -667,3 +676,16 @@ class CoordinateTransformMixin:
 
     def get_position(self):
         return self.coordinate_transform(super().get_position(), inverse=True)
+
+    def get_scan_data(self):
+
+        scan_data = super().get_scan_data()
+        if scan_data:
+            # todo: transform_func not needed, replace with valuable info (matrix, angle, ..)
+            tilt_info = {'enabled': self.coordinate_transform_enabled,
+                         'transform_func': self._coordinate_transform}
+            scan_data.tilt_correction_info = tilt_info
+
+            self.log.debug(f"Get scan data for titl corrected hw called. Info: {tilt_info}")
+
+        return scan_data
