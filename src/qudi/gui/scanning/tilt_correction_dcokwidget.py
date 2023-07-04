@@ -28,18 +28,15 @@ from PySide2 import QtCore, QtGui, QtWidgets
 from PySide2.QtWidgets import QDockWidget, QWidget,QGridLayout, QLabel, QPushButton,QTableWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, ToggleSwitchWidget
-#from qudi.interface.scanning_probe_interface import ScanData
-#from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 
 class TiltCorrectionDockWidget(QDockWidget):
 
-    def __init__(self, parent=None, scanner_axes=None):
-        super(TiltCorrectionDockWidget, self).__init__(parent)
+    def __init__(self, scanner_axes=None, **kwargs):
+        super().__init__('Tilt Correction', objectName='Tilt Correction', **kwargs)
 
         self._n_dim = len(scanner_axes)
         self._scan_axes = scanner_axes
 
-        self.setWindowTitle("Tilt Correction")
         # Create the dock widget contents
         dock_widget_contents = QWidget()
         dock_widget_layout = QGridLayout(dock_widget_contents)
@@ -64,10 +61,9 @@ class TiltCorrectionDockWidget(QDockWidget):
         self.tilt_set_03_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(self.tilt_set_03_pushButton, 3, 0)
 
-        origin_switch_label = QLabel("Auto origin")
+        origin_switch_label = QLabel("Auto rotation origin")
         dock_widget_layout.addWidget(origin_switch_label, 4, 0)
         self.auto_origin_switch = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
-        # todo: disconnect  self.auto_origin_switch.toggle_switch.sigStateChanged
         self.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.auto_origin_changed,
                                                                     QtCore.Qt.QueuedConnection)
         self.auto_origin_switch.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
