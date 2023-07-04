@@ -35,7 +35,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
 from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
-from qudi.gui.scanning.tilt_correction_dcokwidget import TiltCorrectionDockWidget
+from qudi.gui.scanning.tilt_correction_dockwidget import TiltCorrectionDockWidget
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
 from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog

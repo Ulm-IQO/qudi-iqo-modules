@@ -447,7 +447,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             # if self.thread() is not QtCore.QThread.currentThread():
             #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
             if self._scan_data is None:
-                print('nope, no scan data in hardware')
+                self.log.debug('No scan data in hardware, returning None')
                 return None
 
             if self.module_state() != 'idle':
