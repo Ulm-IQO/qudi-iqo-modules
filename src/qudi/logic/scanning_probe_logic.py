@@ -453,7 +453,7 @@ class ScanningProbeLogic(LogicBase):
 
         return transform_to
 
-    def save_trafo_func(self,new_root_dir='C:\SoftwareforExperiment',supp_vec = None,shift_vec = None):
+    def save_trafo_func(self,new_root_dir='C:\\',supp_vec = None,shift_vec = None):
 
 
             # This is used for saving the transformation function/matrix in a txt.file (Possibly or another file format)
