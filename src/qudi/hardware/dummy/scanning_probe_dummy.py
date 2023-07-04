@@ -320,7 +320,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_target" called.')
+            #self.log.debug('Scanning probe dummy "get_target" called.')
             return self._current_position.copy()
 
     def get_position(self):
@@ -329,7 +329,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_position" called.')
+            #self.log.debug('Scanning probe dummy "get_position" called.')
             position = {ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in
                         self._current_position.items()}
             return position
@@ -527,13 +527,16 @@ class ScanningProbeDummy(ScanningProbeInterface):
 class ScanningProbeDummyCorrected(CoordinateTransformMixin, ScanningProbeDummy):
 
     def _init_scan_grid(self, x_values, y_values):
-        # todo: this is demonstration only, not really a transformation
+        # todo: this is fake transformation, as only 2 coordinates of the scan_grid are taken
 
-        vectors = {'x': x_values, 'y': y_values, 'z': np.zeros(len(x_values))}
+        vectors = {'x': x_values, 'y': y_values}
+        vectors = self._expand_coordinate(vectors)
         vectors_tilted = self.coordinate_transform(vectors)
 
         grid = np.meshgrid(vectors_tilted['x'], vectors_tilted['y'], indexing='ij')
-        print(f"Transforming grid: {grid}")
+
+        if self.coordinate_transform_enabled:
+            self.log.debug(f"Transforming scan grid: {grid}")
 
         return grid
 
