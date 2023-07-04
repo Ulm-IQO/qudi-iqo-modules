@@ -487,19 +487,20 @@ class ScanningProbeLogic(LogicBase):
         # self.log.info('Saving of the follwing transformation: Translation:'+str()+'um and Rotation of'+str()+'in rad')
         self.log.info('Saving Trafo is:' + str(trafo_matrix))
         # For testing if the save works. It works
-        if trafo_matrix is not None: # If no trafomatrix exists, there's no necessary to save it
-            data_storage = TextDataStorage(root_dir=new_root_dir, comments='# ',
-                                           delimiter='\t',
-                                           file_extension='.dat',
-                                           include_global_metadata=True)  # creates an object for saving the trafo function
-            file_path, timestamp, _ = data_storage.save_data(trafo_matrix,
-                                                             metadata={'rotation_mat':data_dictionary['rotationmatrix'] ,'rotation(deg)':data_dictionary['rotation/deg'], 'translation(um)':data_dictionary['Translation']},# as placeholder
-                                                             notes='Test for saving the trafo function',
-                                                             nametag='first_trafo_saving',
-                                                             column_dtypes=(float, float))
-            self.log.info('Saving of trafomatrix')
+        #if trafo_matrix is not None: # If no trafomatrix exists, there's no necessary to save it
+         #   data_storage = TextDataStorage(root_dir=new_root_dir, comments='# ',
+          #                                 delimiter='\t',
+           #                                file_extension='.dat',
+            #                               include_global_metadata=True)  # creates an object for saving the trafo function
+            #file_path, timestamp, _ = data_storage.save_data(trafo_matrix,
+             #                                                metadata={'rotation_mat':data_dictionary['rotationmatrix'] ,'rotation(deg)':data_dictionary['rotation/deg'], 'translation(um)':data_dictionary['Translation']},# as placeholder
+              #                                               notes='Test for saving the trafo function',
+               #                                              nametag='first_trafo_saving',
+                #                                             column_dtypes=(float, float))
+            #self.log.info('Saving of trafomatrix')
             # string_dict = str(data_dictionary)
-        #return data_dictionary
+
+        return data_dictionary
 
 
     def _update_scan_settings(self, scan_axes, settings):
