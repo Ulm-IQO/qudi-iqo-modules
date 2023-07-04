@@ -410,23 +410,28 @@ class ScanningProbeLogic(LogicBase):
     def tilt_vector_dict_2_array(self, vector, reduced_dim=False):
         """
         Convert vectors given as dict (with axes keys) to arrays and ensure correct order.
-        vector: dict or list of dicts
+        vector: dict (single coord or arrays per key) or list of dicts
 
         return: np.array or list of np.array
         """
 
-        if type(vector) != list:
-            vector = [vector]
+        axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
 
-        axes = self._tilt_corr_axes if reduced_dim else self._scan_axes
+        if type(vector) != list:
+            vectors = [vector]
+        else:
+            vectors = vector
 
         vecs_arr = []
-        for vec in vector:
-            vec_arr = np.ones((len(axes)))*np.nan
-            for idx, ax in enumerate(axes):
-                vec_arr[idx] = vec[ax]
+        for vec in vectors:
+            if not isinstance(vec, dict):
+                raise ValueError
 
-            assert np.all(~np.isnan(vec_arr))
+            # vec_sorted dict has correct order (defined by order in axes). Then converted to array
+            vec_sorted = {ax: np.nan for ax in axes}
+            vec_sorted.update(vec)
+            vec_arr = np.asarray(list(vec_sorted.values()))
+
             vecs_arr.append(vec_arr)
 
         if len(vecs_arr) == 1:
@@ -588,10 +593,9 @@ class ScanningProbeLogic(LogicBase):
         :param inverse:
         :return:
         """
-        # todo: double check: reduce dimension to 3d
+
         coord_reduced = {key:val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}
         coord_reduced = OrderedDict(sorted(coord_reduced.items()))
-        #ax_2_idx_map = {key:idx for (idx, (key, val)) in enumerate(list(coord.items())) if key in self._tilt_corr_axes}
 
         # convert from coordinate dict to plain vector
         transform = self._tilt_corr_transform.__call__
@@ -600,7 +604,5 @@ class ScanningProbeLogic(LogicBase):
         # make dict again after vector rotation
         coord_transf = cp.copy(coord)
         [coord_transf.update({ax: coord_vec_transf[idx]}) for (idx, ax) in enumerate(self._tilt_corr_axes)]
-
-        #self.log.debug(f"Tranforming {coord} => {coord_transf}")
 
         return coord_transf
