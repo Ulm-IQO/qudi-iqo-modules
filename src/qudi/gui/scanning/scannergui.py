@@ -1089,6 +1089,8 @@ class ScannerGui(GuiBase):
             raise ValueError
 
         self._scanning_logic().toggle_tilt_correction(state)
+        self._mw.action_toggle_tilt_correction.set_state(state)
+        self._mw.action_toggle_tilt_correction.setChecked(state)
 
 
 class ToggleIconsQAction(QAction):
