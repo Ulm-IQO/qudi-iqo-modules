@@ -56,7 +56,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
                     switch_ch: 1    # channel on the wavemeter switch
                     unit: 'm'    # wavelength (m) or frequency (Hz)
                     medium: 'vac' # for wavelength: air or vac
-                    exposure: 10  # exposure time in ms
+                    exposure: 10  # exposure time in ms, optional
                 green_laser:
                     switch_ch: 2
                     unit: 'Hz'
@@ -381,16 +381,12 @@ class HighFinesseWavemeter(DataInStreamInterface):
         If samples_per_channel is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
         """
-        with self._lock:
-            if self.module_state() != 'locked':
-                self.log.error('Unable to read data. Device is not running.')
+        samples_per_channel = samples_per_channel if samples_per_channel is not None else self.available_samples
+        total_samples = len(self.active_channels) * samples_per_channel
 
-            samples_per_channel = samples_per_channel if samples_per_channel is not None else self.available_samples
-            total_samples = len(self.active_channels) * samples_per_channel
-
-            data_buffer = np.empty(total_samples, dtype=self.constraints.data_type)
-            timestamp_buffer = np.emtpy(samples_per_channel, dtype=np.float64)
-            self.read_data_into_buffer(data_buffer, timestamp_buffer)
+        data_buffer = np.empty(total_samples, dtype=self.constraints.data_type)
+        timestamp_buffer = np.empty(samples_per_channel, dtype=np.float64)
+        self.read_data_into_buffer(data_buffer, samples_per_channel, timestamp_buffer)
 
         return data_buffer, timestamp_buffer
 
@@ -411,10 +407,11 @@ class HighFinesseWavemeter(DataInStreamInterface):
 
         n = len(self.active_channels)
         # get the most recent samples for each channel
-        data = self._data_buffer[-n:]
+        data = self._data_buffer[self._current_buffer_position-n:self._current_buffer_position]
         # roll the array to bring the channels in order
         data = np.roll(data, self._current_buffer_position % n)
-        timestamp = self._timestamp_buffer[self._current_buffer_position]
+        current_timestamp_buffer_position = self._current_buffer_position // n - 1
+        timestamp = self._timestamp_buffer[current_timestamp_buffer_position]
         return data, timestamp
 
     @property
