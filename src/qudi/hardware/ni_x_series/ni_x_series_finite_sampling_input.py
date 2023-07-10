@@ -425,9 +425,10 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                     timeout=self._rw_timeout)
                 if read_samples != number_of_samples:
                     return data
-                data[reader._task.name.split('_')[-1]] = data_buffer * self._sample_rate
+                data_buffer *= self._sample_rate
                 # TODO Multiplication by self._sample_rate to convert to c/s, from counts/clock cycle
                 #  What if unit not c/s?
+                data[reader._task.name.split('_')[-1]] = data_buffer
 
             # Read analog channels
             if self._ai_reader is not None:
