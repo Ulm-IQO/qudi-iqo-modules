@@ -2,17 +2,23 @@
 
 ## Pre-Release
 ### Breaking Changes
-None
+- Major rework of `qudi.interface.data_instream_interface.DataInStreamInterface`. Time series 
+toolchain and NI x-series hardware module have been adapted but custom modules relying on this 
+interface will break.  
+Configuration for time series toolchain needs changes as well. See `default.cfg` or module 
+docstrings.
 
 ### Bugfixes
-None
+- Basic data saving in `TimeSeriesReaderLogic` works now.
 
 ### New Features
-None
+- New `qudi.interface.data_instream_interface.SampleTiming` Enum added to `DataInStreamInterface` 
+constraints to allow non-uniform sampling mode.
 
 ### Other
-- Bumped `qudi-core` package minimum version requirement to v1.3.0
+- Bumped `qudi-core` package minimum version requirement to v1.4.0
 - Got rid of deprecated `qudi.core.interface` module usage
+- Support for Python 3.10
 
 ## Version 0.4.0
 ### Breaking Changes
