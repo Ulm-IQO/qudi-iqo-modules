@@ -406,12 +406,10 @@ class HighFinesseWavemeter(DataInStreamInterface):
             return np.empty(0, dtype=self.constraints.data_type), None
 
         n = len(self.active_channels)
+        available_samples = self.available_samples
         # get the most recent samples for each channel
-        data = self._data_buffer[self._current_buffer_position-n:self._current_buffer_position]
-        # roll the array to bring the channels in order
-        data = np.roll(data, self._current_buffer_position % n)
-        current_timestamp_buffer_position = self._current_buffer_position // n - 1
-        timestamp = self._timestamp_buffer[current_timestamp_buffer_position]
+        data = self._data_buffer[(n - 1) * available_samples:n * available_samples]
+        timestamp = self._timestamp_buffer[available_samples - 1]
         return data, timestamp
 
     @property
