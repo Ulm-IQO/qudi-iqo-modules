@@ -545,7 +545,7 @@ class OptimizerScanSequence:
                     out_comb.append(combine(old_list, seq))
 
             if not old_comb:
-                return new_seqs
+                return [[seq] for seq in new_seqs]
             if not out_comb:
                 return old_comb
 
