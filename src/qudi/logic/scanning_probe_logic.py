@@ -66,8 +66,8 @@ class ScanningProbeLogic(LogicBase):
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigScanSettingsChanged = QtCore.Signal(dict)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = RecursiveMutex()
 
@@ -288,7 +288,7 @@ class ScanningProbeLogic(LogicBase):
             self.sigScanSettingsChanged.emit({'frequency': new_freq})
             return new_freq
 
-    def set_target_position(self, pos_dict, caller_id=None):
+    def set_target_position(self, pos_dict, caller_id=None, move_blocking=False):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to change scanner target position while a scan is running.')
@@ -310,10 +310,10 @@ class ScanningProbeLogic(LogicBase):
                     self.log.warning('Scanner position target value out of bounds for axis "{0}". '
                                      'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
 
-            new_pos = self._scanner().move_absolute(new_pos)
+            new_pos = self._scanner().move_absolute(new_pos, blocking=move_blocking)
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
-            #self.log.debug(f"Logic issuing with id {caller_id}: {new_pos}")
+            #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
             self.sigScannerTargetChanged.emit(
                 new_pos,
                 self.module_uuid if caller_id is None else caller_id

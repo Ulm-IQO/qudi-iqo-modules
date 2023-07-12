@@ -260,7 +260,9 @@ class PoiManagerGui(GuiBase):
     _poi_manager_logic = Connector(name='poi_manager_logic', interface='PoiManagerLogic')
 
     # config options
-    _data_scan_axes = ConfigOption(name='data_scan_axes', default=('x', 'y'), converter=tuple)
+    _data_scan_axes = ConfigOption(name='data_scan_axes',
+                                   default=('x', 'y'),
+                                   constructor=lambda x: tuple(x))
 
     # declare signals
     sigTrackPeriodChanged = QtCore.Signal(float)
@@ -271,8 +273,8 @@ class PoiManagerGui(GuiBase):
     sigRoiNameChanged = QtCore.Signal(str)
     sigAddPoiByClick = QtCore.Signal(np.ndarray)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._mw = None             # QMainWindow handle
         self.x_shift_plot = None    # pyqtgraph PlotDataItem for ROI history plot
@@ -282,7 +284,6 @@ class PoiManagerGui(GuiBase):
         self._markers = dict()      # dict to hold handles for the POI markers
 
         self.__poi_selector_active = False  # Flag indicating if the poi selector is active
-        return
 
     def on_activate(self):
         """
@@ -464,13 +465,13 @@ class PoiManagerGui(GuiBase):
         self._mw.set_poi_PushButton.clicked.connect(
             self._poi_manager_logic().add_poi, QtCore.Qt.QueuedConnection)
         self._mw.delete_last_pos_Button.clicked.connect(
-            self._poi_manager_logic().delete_history_entry, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().delete_history_entry(-1), QtCore.Qt.QueuedConnection)
         self._mw.manual_update_poi_PushButton.clicked.connect(
             self._poi_manager_logic().move_roi_from_poi_position, QtCore.Qt.QueuedConnection)
         self._mw.move_poi_PushButton.clicked.connect(
             self._poi_manager_logic().set_poi_anchor_from_position, QtCore.Qt.QueuedConnection)
         self._mw.delete_poi_PushButton.clicked.connect(
-            self._poi_manager_logic().delete_poi, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().delete_poi(None), QtCore.Qt.QueuedConnection)
         self._mw.active_poi_ComboBox.activated[str].connect(
             self._poi_manager_logic().set_active_poi, QtCore.Qt.QueuedConnection)
         self._mw.goto_poi_after_update_checkBox.stateChanged.connect(
@@ -782,7 +783,7 @@ class PoiManagerGui(GuiBase):
         """ Load a saved ROI from file."""
         this_file = QtWidgets.QFileDialog.getOpenFileName(self._mw,
                                                           'Open ROI',
-                                                          self._poi_manager_logic().data_directory,
+                                                          self._poi_manager_logic().module_default_data_dir,
                                                           'Data files (*.dat)')[0]
         if this_file:
             self._poi_manager_logic().load_roi(complete_path=this_file)

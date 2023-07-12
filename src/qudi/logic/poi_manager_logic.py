@@ -34,6 +34,7 @@ from PySide2 import QtCore
 
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
+from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
@@ -362,6 +363,8 @@ class PoiManagerLogic(LogicBase):
 
     poi_manager_logic:
         module.Class: 'poi_manager_logic.PoiManagerLogic'
+        options:
+            data_scan_axes: xy
         connect:
             scanning_logic: <scanning_probe_logic>
             optimize_logic: <scanning_optimize_logic>
@@ -372,10 +375,12 @@ class PoiManagerLogic(LogicBase):
     _optimizelogic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
     _scanninglogic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
     _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
-    #savelogic = Connector(interface='SaveLogic')
+
+    # config options
+    _scan_axes = tuple(str(ConfigOption('data_scan_axes', default='xy', missing='info')))
 
     # status vars
-    _roi = StatusVar(default=dict())  # Notice constructor and representer further below
+    _roi = StatusVar(default=RegionOfInterest())  # Notice constructor and representer further below
     _refocus_period = StatusVar(default=120)
     _active_poi = StatusVar(default=None)
     _move_scanner_after_optimization = StatusVar(default=True)
@@ -395,8 +400,8 @@ class PoiManagerLogic(LogicBase):
     __sigStartPeriodicRefocus = QtCore.Signal()
     __sigStopPeriodicRefocus = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # timer for the periodic refocus
         self.__timer = None
@@ -432,7 +437,7 @@ class PoiManagerLogic(LogicBase):
 
         # Initialise the ROI scan image (xy confocal image) if not present
         if self._roi.scan_image is None:
-            self.set_scan_image(False)
+            self.set_scan_image(False, self._scan_axes)
 
         self.sigRoiUpdated.emit({'name': self.roi_name,
                                  'poi_nametag': self.poi_nametag,
@@ -644,7 +649,6 @@ class PoiManagerLogic(LogicBase):
                     return
                 else:
                     name = self.active_poi
-
             self._roi.delete_poi(name)
 
             if self.active_poi == name:
@@ -859,7 +863,6 @@ class PoiManagerLogic(LogicBase):
     def set_scan_image(self, emit_change=True, scan_axes=None):
         """ Get the current xy scan data and set as scan_image of ROI. """
         with self._thread_lock:
-
             scan_data = self._data_logic().get_current_scan_data(scan_axes)
             if scan_data:
                 self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
@@ -875,7 +878,7 @@ class PoiManagerLogic(LogicBase):
         with self._thread_lock:
             self.stop_periodic_refocus()
             self._roi = RegionOfInterest()
-            self.set_scan_image(False)
+            self.set_scan_image(False, self._scan_axes)
             self.sigRoiUpdated.emit({'name': self.roi_name,
                                      'poi_nametag': self.poi_nametag,
                                      'pois': self.poi_positions,
@@ -1098,7 +1101,8 @@ class PoiManagerLogic(LogicBase):
             data = [[poi_name, poi_positions[ii, 0], poi_positions[ii, 1], poi_positions[ii, 2]] for ii, poi_name in
                     enumerate(list(poi_dict))]
 
-            data_storage.save_data(data, metadata=parameters, nametag=pois_filename, timestamp=timestamp)
+            data_storage.save_data(data, metadata=parameters, nametag=pois_filename, timestamp=timestamp,
+                                   column_dtypes=float)
 
             ############################################
             # Save ROI history to second file (binary) if present
@@ -1138,11 +1142,11 @@ class PoiManagerLogic(LogicBase):
             filetag = filename.rsplit('_poi_list.dat', 1)[0]
 
         # Read POI data as well as roi metadata from textfile
-        poi_names = np.loadtxt(complete_path, delimiter='\t', usecols=0, dtype=str)
+        poi_names = np.loadtxt(complete_path, delimiter='\t', usecols=0, dtype=str, ndmin=1)
         if is_legacy_format:
-            poi_coords = np.loadtxt(complete_path, delimiter='\t', usecols=(2, 3, 4), dtype=float)
+            poi_coords = np.loadtxt(complete_path, delimiter='\t', usecols=(2, 3, 4), dtype=float, ndmin=2)
         else:
-            poi_coords = np.loadtxt(complete_path, delimiter='\t', usecols=(1, 2, 3), dtype=float)
+            poi_coords = np.loadtxt(complete_path, delimiter='\t', usecols=(1, 2, 3), dtype=float, ndmin=2)
 
         # Create list of POI instances
         poi_list = [PointOfInterest(pos, poi_names[i]) for i, pos in enumerate(poi_coords)]
@@ -1197,7 +1201,6 @@ class PoiManagerLogic(LogicBase):
                                      scan_image_extent=scan_extent,
                                      poi_list=poi_list,
                                      poi_nametag=poi_nametag)
-        print(poi_nametag, self.poi_nametag)
         self.sigRoiUpdated.emit({'name': self.roi_name,
                                  'poi_nametag': self.poi_nametag,
                                  'pois': self.poi_positions,
@@ -1209,6 +1212,8 @@ class PoiManagerLogic(LogicBase):
 
     @_roi.constructor
     def dict_to_roi(self, roi_dict):
+        if isinstance(roi_dict, RegionOfInterest):
+            return roi_dict
         return RegionOfInterest.from_dict(roi_dict)
 
     @_roi.representer

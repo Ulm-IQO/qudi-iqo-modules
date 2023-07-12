@@ -137,7 +137,7 @@ class CameraGui(GuiBase):
         self.sigCaptureFrameTriggered.disconnect()
         self.sigStartStopVideoToggled.disconnect()
         logic.sigAcquisitionFinished.disconnect(self._acquisition_finished)
-        logic.sigUpdateDisplay.disconnect(self._update_frame)
+        logic.sigFrameChanged.disconnect(self._update_frame)
         self._mw.action_save_frame.triggered.disconnect()
         self._mw.action_show_settings.triggered.disconnect()
         self._mw.action_capture_frame.triggered.disconnect()

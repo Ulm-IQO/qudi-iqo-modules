@@ -70,8 +70,8 @@ class NVCalculatorLogic(LogicBase):
     sigManualFieldUpdated = QtCore.Signal(float)
     sigNMRUpdated = QtCore.Signal(list, list)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.threadlock = Mutex()
 
     def on_activate(self):

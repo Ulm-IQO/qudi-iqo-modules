@@ -23,7 +23,14 @@ The last step in the qudi-core installation instructions briefly explains settin
 Now you qudi-core installation will know about the measurement modules and it's time to set up a proper qudi configuration file.
 
 ## ⚠ Troubleshooting
- 
+
+- Installing according to this guide will leave you with the most recent version of qudi and all dependency packages. 
+  If you encounter bugs, especially ones that relate to dependency packages, you can roll back to the latest stable release by:
+
+        cd C:/Software/qudi-iqo-modules
+        git checkout tags/v0.4.0
+        python -m pip install -e .
+
 - In rare cases and mostly with old versions of qudi-core, qudi-iqo-modules can be incompatible with qudi-core. If you encounter errors related to this, try to update manually to the latest qudi-core github release via `python -m pip install git+https://github.com/Ulm-IQO/qudi-core.git@main`.
 
 ## Configure Pycharm
