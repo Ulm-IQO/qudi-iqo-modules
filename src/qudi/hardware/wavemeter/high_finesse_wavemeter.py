@@ -405,11 +405,13 @@ class HighFinesseWavemeter(DataInStreamInterface):
             self.log.error('Unable to read data. Device is not running.')
             return np.empty(0, dtype=self.constraints.data_type), None
 
-        n = len(self.active_channels)
-        available_samples = self.available_samples
-        # get the most recent samples for each channel
-        data = self._data_buffer[(n - 1) * available_samples:n * available_samples]
-        timestamp = self._timestamp_buffer[available_samples - 1]
+        with self._lock:
+            n = len(self.active_channels)
+            available_samples = self.available_samples
+            # get the most recent samples for each channel
+            data = self._data_buffer[n * (available_samples - 1):n * available_samples]
+            timestamp = self._timestamp_buffer[available_samples - 1]
+
         return data, timestamp
 
     @property
