@@ -199,7 +199,7 @@ class AWG70K(PulserInterface):
         if self.awg_model == 'AWG70002A':
             constraints.waveform_length.step = 1
             constraints.waveform_length.default = self.__min_waveform_length
-        elif self.awg_model == 'AWG70001A':
+        elif self.awg_model in ['AWG70001A', 'AWG70001B']:
             constraints.waveform_length.step = 2
             constraints.waveform_length.default = self.__min_waveform_length
 
