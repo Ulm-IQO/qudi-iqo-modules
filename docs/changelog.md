@@ -15,6 +15,7 @@ docstrings.
 ### New Features
 - New `qudi.interface.data_instream_interface.SampleTiming` Enum added to `DataInStreamInterface` 
 constraints to allow non-uniform sampling mode.
+- New `Scanning2DLogic` added, which is capable of finding the translation and rotation between two scan images. This is done by a correlation between the two scan images. For now can be used with the `Correlation_notebook` in repo `qudi-iqo-notebooks`.
 
 ### Other
 - Bumped `qudi-core` package minimum version requirement to v1.4.0
