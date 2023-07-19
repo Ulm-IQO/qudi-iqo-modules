@@ -27,7 +27,7 @@ import inspect
 import copy
 import logging
 import numpy as np
-from enum import Enum
+from enum import Enum, EnumMeta
 
 from qudi.util.helpers import iter_modules_recursive
 
@@ -219,6 +219,46 @@ class SamplingFunctions:
         if inspect.isclass(obj):
             return SamplingBase in inspect.getmro(obj) and object not in obj.__bases__
         return False
+
+
+class PulseEnvelopeTypeMeta(EnumMeta):
+    # hide special enum types containing '_'
+    def __iter__(self):
+        for x in super().__iter__():
+            if not '_' == x.value[0]:
+                yield x
+
+class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
+
+    rectangle = 'rectangle'
+    sin_n = 'sin_n'
+    parabola = 'parabola'
+    optimal = 'optimal'
+    from_gen_settings = '_from_gen_settings'
+
+    def __init__(self, *args):
+        self._parameters = self.default_parameters
+
+    @property
+    def default_parameters(self):
+        defaults = {'rectangle': {},
+                    'parabola': {'order_P': 1},
+                    'optimal': {},
+                    'sin_n': {'order_n': 2},
+                    '_from_gen_settings': {}}
+
+        return defaults[self.value]
+
+    @property
+    def parameters(self):
+        return self._parameters
+
+    @parameters.setter
+    def parameters(self, param_dict):
+        self._parameters = param_dict
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.value}))"
 
 
 
