@@ -9,20 +9,16 @@ from qudi.util import paths
 from qudi.util.datastorage import TextDataStorage
 
 
-class CorrelationLogic(LogicBase):
+class Scanning2DCorrelationLogic(LogicBase):
     """
     Correlate confocal scan images in order to find the translation and rotation between two images. This is done by
     successively applying different process steps.
+
+    Example config:
+    
+    scanning_2d_correlation_logic:
+        module.Class: 'scanning_2d_correlation_logic.Scanning2DCorrelationLogic'
     """
-
-    # declare connectors
-    # _camera = Connector(name='camera', interface='CameraInterface')
-    # declare config options
-    # _minimum_exposure_time = ConfigOption(name='minimum_exposure_time',
-    #                                      default=0.05,
-    #                                      missing='warn')
-
-    # signals
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
