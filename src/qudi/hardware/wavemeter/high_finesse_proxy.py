@@ -81,25 +81,27 @@ def deactivate_channel(ch):
 
 def _start_callback():
     """ Start the callback procedure. """
-    __callback_function = _get_callback_function()
+    global _callback_function
+    _callback_function = _get_callback_function()
     _wavemeter_dll.Instantiate(
         high_finesse_constants.cInstNotification,  # long ReasonForCall
         high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
-        cast(__callback_function, POINTER(c_long)),  # long P1: function
+        cast(_callback_function, POINTER(c_long)),  # long P1: function
         0  # long P2: callback thread priority, 0 = standard
     )
     _log.debug('Started callback procedure.')
-    return __callback_function
 
 
 def _stop_callback():
     """ Stop the callback procedure. """
+    global _callback_function
     _wavemeter_dll.Instantiate(
         high_finesse_constants.cInstNotification,  # long ReasonForCall
         high_finesse_constants.cNotifyRemoveCallback,  # long mode
         cast(_callback_function, POINTER(c_long)),
         # long P1: function
         0)  # long P2: callback thread priority, 0 = standard
+    _callback_function = None
     _log.debug('Stopped callback procedure.')
 
 
@@ -184,6 +186,8 @@ def connect_instreamer(module):
     """
     if module not in _connected_instream_modules:
         _connected_instream_modules.append(module)
+        if _callback_function is None:
+            _start_callback()
     else:
         _log.warning('Instream module is already connected.')
 
@@ -192,6 +196,8 @@ def disconnect_instreamer(module):
     """ Disconnect an instreamer module from the proxy. """
     if module in _connected_instream_modules:
         _connected_instream_modules.remove(module)
+        if not _connected_instream_modules:
+            _stop_callback()
     else:
         _log.warning('Instream module is not connected and can therefore not be disconnected.')
 
@@ -200,15 +206,4 @@ def disconnect_instreamer(module):
 _wavemeter_dll.SetSwitcherMode(True)
 _existing_channels = get_existing_channels()
 _connected_instream_modules = []
-
-# main loop
-while True:
-    while not _connected_instream_modules:
-        # as long as no instream modules are connected, there is nothing to do
-        pass
-    # an instream module was connected, start the callback procedure
-    _callback_function = _start_callback()
-    while _connected_instream_modules:
-        pass
-    # no instream modules are connected anymore, stop the callback procedure
-    _stop_callback()
+_callback_function = None
