@@ -22,34 +22,22 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from ctypes import cast, c_double, c_int, c_long, POINTER, windll, WINFUNCTYPE
+from ctypes import cast, c_double, c_int, c_long, POINTER, WINFUNCTYPE
 from logging import getLogger
 
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
+from qudi.hardware.wavemeter.high_finesse_wrapper import load_dll
+
 
 _log = getLogger(__name__)
 
 try:
     # load wavemeter DLL
-    _wavemeter_dll = windll.LoadLibrary('wlmData.dll')
+    _wavemeter_dll = load_dll()
 except FileNotFoundError:
     _log.error('There is no wavemeter installed on this computer.\n'
                'Please install a High Finesse wavemeter and try again.')
     raise
-
-# define function header for a later call
-_wavemeter_dll.Instantiate.argtypes = [c_long, c_long, POINTER(c_long), c_long]
-_wavemeter_dll.Instantiate.restype = POINTER(c_long)
-_wavemeter_dll.SetExposureNum.restype = c_long
-_wavemeter_dll.SetExposureNum.argtypes = [c_long, c_long, c_long]
-_wavemeter_dll.GetExposureNum.restype = c_long
-_wavemeter_dll.GetExposureNum.argtypes = [c_long, c_long, c_long]
-_wavemeter_dll.GetSwitcherSignalStates.restype = c_long
-_wavemeter_dll.GetSwitcherSignalStates.argtypes = [c_long, POINTER(c_long), POINTER(c_long)]
-_wavemeter_dll.SetSwitcherSignalStates.restype = c_long
-_wavemeter_dll.SetSwitcherSignalStates.argtypes = [c_long, c_long, c_long]
-_wavemeter_dll.SetSwitcherMode.restype = c_long
-_wavemeter_dll.SetSwitcherMode.argtypes = [c_long]
 
 
 def get_existing_channels(max_ch=16):
