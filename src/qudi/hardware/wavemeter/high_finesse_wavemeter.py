@@ -26,7 +26,6 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-from ctypes import cast, c_double, c_int, c_long, POINTER, windll, WINFUNCTYPE
 from typing import Union, Optional, List, Tuple, Sequence, Any
 
 import numpy as np
@@ -38,8 +37,7 @@ from qudi.util.mutex import Mutex
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode, \
     SampleTiming
-
-_CALLBACK = WINFUNCTYPE(c_int, c_long, c_long, c_long, c_double, c_long)
+import qudi.hardware.wavemeter.high_finesse_callback_handler as callback_handler
 
 
 class HighFinesseWavemeter(DataInStreamInterface):
@@ -78,8 +76,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._lock = Mutex()
-        self._callback_function = None
-        self._wavemeterdll = None
 
         # Internal settings
         self._channel_names = None  # dictionary with switch channel numbers as keys, channel names as values
@@ -98,24 +94,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._constraints = None
 
     def on_activate(self) -> None:
-        try:
-            # load wavemeter DLL
-            self._wavemeterdll = windll.LoadLibrary('wlmData.dll')
-        except FileNotFoundError:
-            self.log.error('There is no wavemeter installed on this computer.\n'
-                           'Please install a High Finesse wavemeter and try again.')
-            return
-
-        # define function header for a later call
-        self._wavemeterdll.Instantiate.argtypes = [c_long, c_long, POINTER(c_long), c_long]
-        self._wavemeterdll.Instantiate.restype = POINTER(c_long)
-        self._wavemeterdll.ConvertUnit.restype = c_double
-        self._wavemeterdll.ConvertUnit.argtypes = [c_double, c_long, c_long]
-        self._wavemeterdll.SetExposureNum.restype = c_long
-        self._wavemeterdll.SetExposureNum.argtypes = [c_long, c_long, c_long]
-        self._wavemeterdll.GetExposureNum.restype = c_long
-        self._wavemeterdll.GetExposureNum.argtypes = [c_long, c_long, c_long]
-
         # configure wavemeter channels
         self._channel_names = {}
         channel_units = {}
@@ -143,9 +121,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
 
             exp_time = info.get('exposure')
             if exp_time is not None:
-                res = self._wavemeterdll.SetExposureNum(ch, 1, exp_time)
-                if res != 0:
-                    self.log.warning('Wavemeter error while setting exposure time.')
+                callback_handler.set_exposure_time(ch, exp_time)
 
         self._active_switch_channels = list(self._channel_names)
 
@@ -172,109 +148,18 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._data_buffer = None
         self._timestamp_buffer = None
 
-        # clean up by removing reference to the ctypes library object
-        del self._wavemeterdll
-
     @property
     def constraints(self) -> DataInStreamConstraints:
         """ Read-only property returning the constraints on the settings for this data streamer. """
         return self._constraints
-
-    def _get_callback_ex(self):
-        """
-        Define the callback procedure that should be called by the dll every time a new measurement result
-        is available or any of the wavelength meter's states changes.
-        :return: callback function
-        """
-
-        def handle_callback(version, mode, intval, dblval, res1):
-            """
-            Function called upon wavelength meter state change or if a new measurement result is available.
-            See wavemeter manual section on CallbackProc for details.
-
-            In this implementation, the new wavelength is converted to the desired unit and
-            appended to a list together with the current timestamp.
-
-            :param version: Device version number which called the procedure.
-            Only relevant if multiple wavemeter applications are running.
-            :param mode: Indicates which state has changed or what new result is available.
-            :param intval: Contains the time stamp rounded to ms if mode indicates that the new value is in dblval.
-            If not, it contains the new value itself.
-            :param dblval: May contain the new value (e.g. wavelength), depending on mode.
-            :param res1: Mostly meaningless.
-            :return: 0
-            """
-            if mode == high_finesse_constants.cmiOperation and intval == high_finesse_constants.cStop:
-                self.log.error('Wavemeter acquisition was stopped during stream.')
-                return 0
-
-            if self._buffer_overflow:
-                return 0
-
-            with self._lock:
-                # see if new data is from one of the active channels
-                ch = high_finesse_constants.cmi_wavelength_n.get(mode)
-                number_of_channels = len(self.active_channels)
-                if ch in self._active_switch_channels:
-                    i = self._active_switch_channels.index(ch)
-
-                    current_timestamp_buffer_position = self._current_buffer_position // number_of_channels
-                    if current_timestamp_buffer_position >= self.channel_buffer_size:
-                        self._buffer_overflow = True
-                        raise OverflowError(
-                            'Streaming buffer encountered an overflow while receiving a callback from the wavemeter. '
-                            'Please increase the buffer size or speed up data reading.'
-                        )
-
-                    # wavemeter records timestamps in ms
-                    timestamp = 1e-3 * intval
-                    # unit conversion
-                    unit_ret_type = self._unit_return_type[ch]
-                    converted_value = self._wavemeterdll.ConvertUnit(
-                        dblval, high_finesse_constants.cReturnWavelengthVac, unit_ret_type
-                    )
-                    if unit_ret_type == high_finesse_constants.cReturnFrequency:
-                        converted_value *= 1e12  # value is in THz
-                    else:
-                        converted_value *= 1e-9  # value is in nm
-
-                    # check if this is the first time this callback runs during a stream
-                    if self._wm_start_time is None:
-                        # set the timing offset to the start of the stream
-                        self._wm_start_time = timestamp
-
-                    if i != self._current_buffer_position % number_of_channels:
-                        # discard the sample if a sample was missed before and the buffer position is off
-                        return 0
-
-                    timestamp -= self._wm_start_time
-                    # insert the new data into the buffers
-                    self._data_buffer[self._current_buffer_position] = converted_value
-                    if i == 0:
-                        # only record the timestamp of the first active channel
-                        self._timestamp_buffer[current_timestamp_buffer_position] = timestamp
-                    self._current_buffer_position += 1
-
-                    self.sigNewWavelength.emit(converted_value)
-            return 0
-
-        self._callback_function = _CALLBACK(handle_callback)
-        return self._callback_function
 
     def start_stream(self) -> None:
         """ Start the data acquisition/streaming """
         with self._lock:
             if self.module_state() == 'idle':
                 self.module_state.lock()
-
-                # start callback procedure
-                self._wavemeterdll.Instantiate(
-                    high_finesse_constants.cInstNotification,  # long ReasonForCall
-                    high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
-                    cast(self._get_callback_ex(), POINTER(c_long)),  # long P1: function
-                    0)  # long P2: callback thread priority, 0 = standard
-
                 self._init_buffers()
+                callback_handler.add_instreamer(self)
             else:
                 self.log.warning('Unable to start input stream. It is already running.')
 
@@ -282,15 +167,8 @@ class HighFinesseWavemeter(DataInStreamInterface):
         """ Stop the data acquisition/streaming """
         with self._lock:
             if self.module_state() == 'locked':
-                self._wavemeterdll.Instantiate(
-                    high_finesse_constants.cInstNotification,  # long ReasonForCall
-                    high_finesse_constants.cNotifyRemoveCallback,  # long mode
-                    cast(self._callback_function, POINTER(c_long)),
-                    # long P1: function
-                    0)  # long P2: callback thread priority, 0 = standard
-                self._callback_function = None
+                callback_handler.remove_instreamer(self)
                 self._wm_start_time = None
-
                 self.module_state.unlock()
             else:
                 self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
@@ -424,21 +302,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         For the wavemeter, it is estimated by the exposure times per channel and switching times if
         more than one channel is active.
         """
-        exposure_times = []
-        for ch in self._active_switch_channels:
-            t = self._wavemeterdll.GetExposureNum(ch, 1, 0)
-            exposure_times.append(t)
-        total_exposure_time = sum(exposure_times)
-
-        switching_time = 12
-        n_channels = len(self._active_switch_channels)
-        if n_channels > 1:
-            turnaround_time_ms = total_exposure_time + n_channels * switching_time
-        else:
-            turnaround_time_ms = total_exposure_time
-
-        sample_rate = 1e3 / turnaround_time_ms
-        return sample_rate
+        return callback_handler.sample_rate()
 
     @property
     def streaming_mode(self) -> StreamingMode:
@@ -498,6 +362,47 @@ class HighFinesseWavemeter(DataInStreamInterface):
         if channel_buffer_size is not None:
             self.constraints.channel_buffer_size.is_valid(channel_buffer_size)
             self._channel_buffer_size = channel_buffer_size
+
+    def add_sample(self, ch, sample, timestamp):
+        with self._lock:
+            try:
+                i = self._active_switch_channels.index(ch)
+            except ValueError:
+                # channel is not active on this instreamer
+                return
+
+            number_of_channels = len(self.active_channels)
+            current_timestamp_buffer_position = self._current_buffer_position // number_of_channels
+            if current_timestamp_buffer_position >= self.channel_buffer_size:
+                self._buffer_overflow = True
+                raise OverflowError(
+                    'Streaming buffer encountered an overflow while receiving a callback from the wavemeter. '
+                    'Please increase the buffer size or speed up data reading.'
+                )
+
+            # unit conversion
+            unit_ret_type = self._unit_return_type[ch]
+            converted_value = callback_handler.convert_unit(
+                sample, high_finesse_constants.cReturnWavelengthVac, unit_ret_type)
+
+            # check if this is the first time this callback runs during a stream
+            if self._wm_start_time is None:
+                # set the timing offset to the start of the stream
+                self._wm_start_time = timestamp
+
+            if i != self._current_buffer_position % number_of_channels:
+                # discard the sample if a sample was missed before and the buffer position is off
+                return
+
+            timestamp -= self._wm_start_time
+            # insert the new data into the buffers
+            self._data_buffer[self._current_buffer_position] = converted_value
+            if i == 0:
+                # only record the timestamp of the first active channel
+                self._timestamp_buffer[current_timestamp_buffer_position] = timestamp
+            self._current_buffer_position += 1
+
+        self.sigNewWavelength.emit(converted_value)
 
     def _init_buffers(self) -> None:
         """ Initialize buffers and the current buffer position marker. """
