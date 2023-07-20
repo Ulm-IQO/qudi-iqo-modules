@@ -298,6 +298,8 @@ class WavemeterLogic(LogicBase):
                 """
         if self.module_state() == 'locked':
             self._stop_requested = True
+            time.sleep(0.5)
+            self._counts_and_wavelength()
         return 0
 
     @QtCore.Slot()
@@ -431,7 +433,7 @@ class WavemeterLogic(LogicBase):
             fit_results = fit_container.fit_data(fit_config=fit_config, x=self.histogram_axis,
                                              data=self.histogram if self.fit_histogram else self.envelope_histogram)[1]
         elif self.x_axis_hz_bool:
-            fit_results = fit_container.fit_data(fit_config=fit_config, x=constants.speed_of_light*1e9 / self.histogram_axis,
+            fit_results = fit_container.fit_data(fit_config=fit_config, x=constants.speed_of_light / self.histogram_axis,
                                                  data=self.histogram if self.fit_histogram else self.envelope_histogram)[1]
         fit_config = fit_container._last_fit_config
         self._last_fit_result = fit_results
@@ -561,11 +563,11 @@ class WavemeterLogic(LogicBase):
                      linestyle=':',
                      linewidth=1,
                      label='RawData')
-            ax1.plot(constants.speed_of_light*1e9/data_set[4],
+            ax1.plot(constants.speed_of_light/data_set[4],
                      data_set[5],
                      color='y',
                      label='Histogram')
-            ax1.plot(constants.speed_of_light*1e9 / data_set[4],
+            ax1.plot(constants.speed_of_light/data_set[4],
                      data_set[6],
                      color='g',
                      label='Envelope')
