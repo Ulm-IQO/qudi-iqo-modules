@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the callback handler for the HighFinesse wavemeter. It directly communicates
-with the hardware. Being a module, there should only ever be a single instance running in one
-qudi process.
+This module acts as a proxy for the HighFinesse wavemeter. It directly communicates
+with the hardware and can process callbacks from it. Being a module, there should only
+ever be a single instance running in one qudi process.
 
 Copyright (c) 2023, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -31,83 +31,88 @@ _log = getLogger(__name__)
 
 try:
     # load wavemeter DLL
-    _wavemeterdll = windll.LoadLibrary('wlmData.dll')
+    _wavemeter_dll = windll.LoadLibrary('wlmData.dll')
 except FileNotFoundError:
     _log.error('There is no wavemeter installed on this computer.\n'
                'Please install a High Finesse wavemeter and try again.')
     raise
 
 # define function header for a later call
-_wavemeterdll.Instantiate.argtypes = [c_long, c_long, POINTER(c_long), c_long]
-_wavemeterdll.Instantiate.restype = POINTER(c_long)
-_wavemeterdll.ConvertUnit.restype = c_double
-_wavemeterdll.ConvertUnit.argtypes = [c_double, c_long, c_long]
-_wavemeterdll.SetExposureNum.restype = c_long
-_wavemeterdll.SetExposureNum.argtypes = [c_long, c_long, c_long]
-_wavemeterdll.GetExposureNum.restype = c_long
-_wavemeterdll.GetExposureNum.argtypes = [c_long, c_long, c_long]
-_wavemeterdll.GetSwitcherSignalStates.restype = c_long
-_wavemeterdll.GetSwitcherSignalStates.argtypes = [c_long, POINTER(c_long), POINTER(c_long)]
-_wavemeterdll.SetSwitcherSignalStates.restype = c_long
-_wavemeterdll.SetSwitcherSignalStates.argtypes = [c_long, c_long, c_long]
-_wavemeterdll.SetSwitcherMode.restype = c_long
-_wavemeterdll.SetSwitcherMode.argtypes = [c_long]
+_wavemeter_dll.Instantiate.argtypes = [c_long, c_long, POINTER(c_long), c_long]
+_wavemeter_dll.Instantiate.restype = POINTER(c_long)
+_wavemeter_dll.SetExposureNum.restype = c_long
+_wavemeter_dll.SetExposureNum.argtypes = [c_long, c_long, c_long]
+_wavemeter_dll.GetExposureNum.restype = c_long
+_wavemeter_dll.GetExposureNum.argtypes = [c_long, c_long, c_long]
+_wavemeter_dll.GetSwitcherSignalStates.restype = c_long
+_wavemeter_dll.GetSwitcherSignalStates.argtypes = [c_long, POINTER(c_long), POINTER(c_long)]
+_wavemeter_dll.SetSwitcherSignalStates.restype = c_long
+_wavemeter_dll.SetSwitcherSignalStates.argtypes = [c_long, c_long, c_long]
+_wavemeter_dll.SetSwitcherMode.restype = c_long
+_wavemeter_dll.SetSwitcherMode.argtypes = [c_long]
 
 
-def _reset_channels():
+def get_existing_channels(max_ch=16):
     """
-    Deactivate all channels of the multi-channel switch.
+    Get all channels available on the multi-channel switch.
+    :param max_ch: highest channel number to query
     :return: list of available channels
     """
-    ch = 1
-    available_channels = []
-    while True:
-        # do not use or show this channel
-        err = _wavemeterdll.SetSwitcherSignalStates(ch, False, False)
-        print(err)
-        if err == high_finesse_constants.ResERR_ChannelNotAvailable:
-            break
-        else:
-            available_channels.append(ch)
-        ch += 1
-    return available_channels
+    existing_channels = []
+    active = 0
+    for ch in range(1, max_ch):
+        err = _wavemeter_dll.GetSwitcherSignalStates(ch, active, 0)
+        if err != high_finesse_constants.ResERR_ChannelNotAvailable:
+            existing_channels.append(ch)
+    return existing_channels
 
 
-def _get_active_channels():
-    ch = 1
+def get_active_channels():
+    """
+    Get a list of all active channels on the multi-channel switch.
+    :return: list of active channels
+    """
     active_channels = []
-    while True:
-        # do not use or show this channel
-        # TODO continue here
-        active = False
-        _ = False
-        err = _wavemeterdll.GetSwitcherSignalStates(ch, active, _)
-        if err == high_finesse_constants.ResERR_ChannelNotAvailable:
-            break
-        else:
-            available_channels.append(ch)
-        ch += 1
-    return available_channels
+    active = 0
+    for ch in _existing_channels:
+        _wavemeter_dll.GetSwitcherSignalStates(ch, active, 0)
+        if active:
+            active_channels.append(ch)
+    return active_channels
 
 
-def start_callback():
+def activate_channel(ch):
+    """ Activate a channel on the multi-channel switch. """
+    _wavemeter_dll.SetSwitcherSignalStates(ch, 1, 1)
+
+
+def deactivate_channel(ch):
+    """ Deactivate a channel on the multi-channel switch. """
+    _wavemeter_dll.SetSwitcherSignalStates(ch, 0, 0)
+
+
+def _start_callback():
+    """ Start the callback procedure. """
     __callback_function = _get_callback_function()
-    _wavemeterdll.Instantiate(
+    _wavemeter_dll.Instantiate(
         high_finesse_constants.cInstNotification,  # long ReasonForCall
         high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
         cast(__callback_function, POINTER(c_long)),  # long P1: function
         0  # long P2: callback thread priority, 0 = standard
     )
+    _log.debug('Started callback procedure.')
     return __callback_function
 
 
-def stop_callback():
-    _wavemeterdll.Instantiate(
+def _stop_callback():
+    """ Stop the callback procedure. """
+    _wavemeter_dll.Instantiate(
         high_finesse_constants.cInstNotification,  # long ReasonForCall
         high_finesse_constants.cNotifyRemoveCallback,  # long mode
         cast(_callback_function, POINTER(c_long)),
         # long P1: function
         0)  # long P2: callback thread priority, 0 = standard
+    _log.debug('Stopped callback procedure.')
 
 
 def _get_callback_function():
@@ -144,10 +149,10 @@ def _get_callback_function():
             # not a new sample, something else happened at the wavemeter
             return 0
 
-        sample = dblval
+        wavelength = 1e-9 * dblval  # measurement is in nm
         timestamp = 1e-3 * intval  # wavemeter records timestamps in ms
-        for instreamer in _running_instream_modules:
-            instreamer.add_sample(ch, sample, timestamp)
+        for instreamer in _connected_instream_modules:
+            instreamer.process_new_wavelength(ch, wavelength, timestamp)
         return 0
 
     _CALLBACK = WINFUNCTYPE(c_int, c_long, c_long, c_long, c_double, c_long)
@@ -161,14 +166,14 @@ def sample_rate() -> float:
     :return: sample rate in Hz
     """
     exposure_times = []
-    # TODO get active switch channels every time
-    for ch in _active_switch_channels:
-        t = _wavemeterdll.GetExposureNum(ch, 1, 0)
+    active_channels = get_active_channels()
+    for ch in active_channels:
+        t = _wavemeter_dll.GetExposureNum(ch, 1, 0)
         exposure_times.append(t)
     total_exposure_time = sum(exposure_times)
 
     switching_time = 12
-    n_channels = len(_active_switch_channels)
+    n_channels = len(active_channels)
     if n_channels > 1:
         turnaround_time_ms = total_exposure_time + n_channels * switching_time
     else:
@@ -178,45 +183,44 @@ def sample_rate() -> float:
 
 
 def set_exposure_time(ch, exp_time):
-    res = _wavemeterdll.SetExposureNum(ch, 1, exp_time)
+    """ Set the exposure time for a specific switch channel. """
+    res = _wavemeter_dll.SetExposureNum(ch, 1, exp_time)
     if res != 0:
         _log.warning(f'Wavemeter error while setting exposure time of channel {ch}.')
 
 
-def add_instreamer(module):
-    if module not in _running_instream_modules:
-        _running_instream_modules.append(module)
+def connect_instreamer(module):
+    """
+    Connect an instreamer module to the proxy.
+    The proxy will start to put new samples into the instreamer buffer.
+    """
+    if module not in _connected_instream_modules:
+        _connected_instream_modules.append(module)
     else:
-        _log.warning('Instream module is already known to be running.')
+        _log.warning('Instream module is already connected.')
 
 
-def remove_instreamer(module):
-    if module in _running_instream_modules:
-        _running_instream_modules.remove(module)
+def disconnect_instreamer(module):
+    """ Disconnect an instreamer module from the proxy. """
+    if module in _connected_instream_modules:
+        _connected_instream_modules.remove(module)
     else:
-        _log.warning('Instream module is not known to be running.')
+        _log.warning('Instream module is not connected and can therefore not be disconnected.')
 
 
-def convert_unit(value, unit, target_unit):
-    # TODO accept human-readable units here
-    converted_value = _wavemeterdll.ConvertUnit(value, unit, target_unit)
-    if target_unit == high_finesse_constants.cReturnFrequency:
-        converted_value *= 1e12  # value is in THz
-    else:
-        converted_value *= 1e-9  # value is in nm
-    return converted_value
+# activate the multi-channel switch
+_wavemeter_dll.SetSwitcherMode(True)
+_existing_channels = get_existing_channels()
+_connected_instream_modules = []
 
-
-_running_instream_modules = []
-
-err = _wavemeterdll.SetSwitcherMode(True)
-print(err)
-
-# TODO should there be an exit condition out of this loop?
+# main loop
 while True:
-    while not _running_instream_modules:
+    while not _connected_instream_modules:
+        # as long as no instream modules are connected, there is nothing to do
         pass
-    _callback_function = start_callback()
-    while _running_instream_modules:
+    # an instream module was connected, start the callback procedure
+    _callback_function = _start_callback()
+    while _connected_instream_modules:
         pass
-    stop_callback()
+    # no instream modules are connected anymore, stop the callback procedure
+    _stop_callback()

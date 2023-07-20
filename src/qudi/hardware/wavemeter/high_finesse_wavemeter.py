@@ -29,15 +29,15 @@ import time
 from typing import Union, Optional, List, Tuple, Sequence, Any
 
 import numpy as np
+from scipy.constants import lambda2nu
 from PySide2 import QtCore
 
 from qudi.core.configoption import ConfigOption
-import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
 from qudi.util.mutex import Mutex
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode, \
     SampleTiming
-import qudi.hardware.wavemeter.high_finesse_callback_handler as callback_handler
+import qudi.hardware.wavemeter.high_finesse_proxy as wavemeter_proxy
 
 
 class HighFinesseWavemeter(DataInStreamInterface):
@@ -53,7 +53,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
                 red_laser:
                     switch_ch: 1    # channel on the wavemeter switch
                     unit: 'm'    # wavelength (m) or frequency (Hz)
-                    medium: 'vac' # for wavelength: air or vac
                     exposure: 10  # exposure time in ms, optional
                 green_laser:
                     switch_ch: 2
@@ -68,7 +67,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
     _wavemeter_ch_config = ConfigOption(
         name='channels',
         default={
-            'default_channel': {'switch_ch': 1, 'unit': 'm', 'medium': 'vac', 'exposure': 10}
+            'default_channel': {'switch_ch': 1, 'unit': 'm', 'exposure': None}
         },
         missing='info'
     )
@@ -77,58 +76,50 @@ class HighFinesseWavemeter(DataInStreamInterface):
         super().__init__(*args, **kwargs)
         self._lock = Mutex()
 
-        # Internal settings
-        self._channel_names = None  # dictionary with switch channel numbers as keys, channel names as values
+        # internal settings
+        self._channel_names = {}  # dictionary with switch channel numbers as keys, channel names as values
+        self._channel_units = {}
         self._channel_buffer_size = 1024**2
         self._active_switch_channels = None  # list of active switch channel numbers
-        self._unit_return_type = {}
 
-        # Data buffer
+        # data buffer
         self._wm_start_time = None
         self._data_buffer = None
         self._timestamp_buffer = None
         self._current_buffer_position = 0
         self._buffer_overflow = False
 
-        # Stored hardware constraints
+        # stored hardware constraints
         self._constraints = None
 
     def on_activate(self) -> None:
         # configure wavemeter channels
-        self._channel_names = {}
-        channel_units = {}
         for ch_name, info in self._wavemeter_ch_config.items():
             ch = info['switch_ch']
             unit = info['unit']
-            medium = info.get('medium')
             self._channel_names[ch] = ch_name
 
+            # make sure the channel is active on the multi-channel switch
+            wavemeter_proxy.activate_channel(ch)
+
             if unit == 'THz' or unit == 'Hz':
-                channel_units[ch_name] = 'Hz'
-                self._unit_return_type[ch] = high_finesse_constants.cReturnFrequency
+                self._channel_units[ch] = 'Hz'
             elif unit == 'nm' or unit == 'm':
-                channel_units[ch_name] = 'm'
-                if medium == 'vac':
-                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
-                elif medium == 'air':
-                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthAir
-                else:
-                    self.log.error(f'Invalid medium: {medium}. Valid media are vac and air.')
-                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
+                self._channel_units[ch] = 'm'
             else:
-                self.log.error(f'Invalid unit: {unit}. Valid units are THz and nm.')
-                channel_units[ch_name] = None
+                self.log.error(f'Invalid unit: {unit}. Valid units are Hz and m.')
+                self._channel_units[ch] = 'm'
 
             exp_time = info.get('exposure')
             if exp_time is not None:
-                callback_handler.set_exposure_time(ch, exp_time)
+                wavemeter_proxy.set_exposure_time(ch, exp_time)
 
         self._active_switch_channels = list(self._channel_names)
 
         # set up constraints
         sample_rate = self.sample_rate
         self._constraints = DataInStreamConstraints(
-            channel_units=channel_units,
+            channel_units={self._channel_names[ch]: self._channel_units[ch] for ch in self._active_switch_channels},
             sample_timing=SampleTiming.TIMESTAMP,
             # TODO: implement fixed streaming mode
             streaming_modes=[StreamingMode.CONTINUOUS],
@@ -159,7 +150,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
             if self.module_state() == 'idle':
                 self.module_state.lock()
                 self._init_buffers()
-                callback_handler.add_instreamer(self)
+                wavemeter_proxy.connect_instreamer(self)
             else:
                 self.log.warning('Unable to start input stream. It is already running.')
 
@@ -167,7 +158,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         """ Stop the data acquisition/streaming """
         with self._lock:
             if self.module_state() == 'locked':
-                callback_handler.remove_instreamer(self)
+                wavemeter_proxy.disconnect_instreamer(self)
                 self._wm_start_time = None
                 self.module_state.unlock()
             else:
@@ -302,7 +293,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         For the wavemeter, it is estimated by the exposure times per channel and switching times if
         more than one channel is active.
         """
-        return callback_handler.sample_rate()
+        return wavemeter_proxy.sample_rate()
 
     @property
     def streaming_mode(self) -> StreamingMode:
@@ -363,7 +354,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
             self.constraints.channel_buffer_size.is_valid(channel_buffer_size)
             self._channel_buffer_size = channel_buffer_size
 
-    def add_sample(self, ch, sample, timestamp):
+    def process_new_wavelength(self, ch, wavelength, timestamp):
         with self._lock:
             try:
                 i = self._active_switch_channels.index(ch)
@@ -381,9 +372,10 @@ class HighFinesseWavemeter(DataInStreamInterface):
                 )
 
             # unit conversion
-            unit_ret_type = self._unit_return_type[ch]
-            converted_value = callback_handler.convert_unit(
-                sample, high_finesse_constants.cReturnWavelengthVac, unit_ret_type)
+            if self._channel_units[ch] == 'Hz':
+                converted_value = lambda2nu(wavelength)
+            else:
+                converted_value = wavelength
 
             # check if this is the first time this callback runs during a stream
             if self._wm_start_time is None:
