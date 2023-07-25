@@ -654,3 +654,5 @@ def load_dll(dll_path='wlmData.dll'):
     # long SetScale(unsigned short S)
     dll.SetScale.argtypes = [ ctypes.c_ushort ]
     dll.SetScale.restype = ctypes.c_long
+
+    return dll

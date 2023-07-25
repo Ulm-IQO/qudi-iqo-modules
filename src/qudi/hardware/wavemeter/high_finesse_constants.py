@@ -15,6 +15,8 @@
 # v0.1 - Initial release
 #/
 
+from enum import Enum
+
 ## ###########  Constants  ##############################################
 ## Instantiating Constants for 'RFC' parameter
 cInstCheckForWLM = -1
@@ -35,28 +37,30 @@ cNotifyRemoveWaitEvent = 3
 cNotifyInstallCallbackEx = 4
 cNotifyInstallWaitEventEx = 5
 
-## ResultError Constants of Set...-functions
-ResERR_NoErr = 0
-ResERR_WlmMissing = -1
-ResERR_CouldNotSet = -2
-ResERR_ParmOutOfRange = -3
-ResERR_WlmOutOfResources = -4
-ResERR_WlmInternalError = -5
-ResERR_NotAvailable = -6
-ResERR_WlmBusy = -7
-ResERR_NotInMeasurementMode = -8
-ResERR_OnlyInMeasurementMode = -9
-ResERR_ChannelNotAvailable = -10
-ResERR_ChannelTemporarilyNotAvailable = -11
-ResERR_CalOptionNotAvailable = -12
-ResERR_CalWavelengthOutOfRange = -13
-ResERR_BadCalibrationSignal = -14
-ResERR_UnitNotAvailable = -15
-ResERR_FileNotFound = -16
-ResERR_FileCreation = -17
-ResERR_TriggerPending = -18
-ResERR_TriggerWaiting = -19
-ResERR_NoLegitimation = -20
+
+class ResultError(Enum):
+    """ ResultError Constants of Set...-functions """
+    NoErr = 0
+    WlmMissing = -1
+    CouldNotSet = -2
+    ParmOutOfRange = -3
+    WlmOutOfResources = -4
+    WlmInternalError = -5
+    NotAvailable = -6
+    WlmBusy = -7
+    NotInMeasurementMode = -8
+    OnlyInMeasurementMode = -9
+    ChannelNotAvailable = -10
+    ChannelTemporarilyNotAvailable = -11
+    CalOptionNotAvailable = -12
+    CalWavelengthOutOfRange = -13
+    BadCalibrationSignal = -14
+    UnitNotAvailable = -15
+    FileNotFound = -16
+    FileCreation = -17
+    TriggerPending = -18
+    TriggerWaiting = -19
+    NoLegitimation = -20
 
 ## Mode Constants for Callback-Export and WaitForWLMEvent-function
 cmiResultMode = 1

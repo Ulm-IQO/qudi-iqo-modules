@@ -22,8 +22,9 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from ctypes import cast, c_double, c_int, c_long, POINTER, WINFUNCTYPE
+from ctypes import byref, cast, c_double, c_int, c_long, POINTER, WINFUNCTYPE
 from logging import getLogger
+import numpy as np
 
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
 from qudi.hardware.wavemeter.high_finesse_wrapper import load_dll
@@ -38,21 +39,8 @@ except FileNotFoundError:
     _log.error('There is no wavemeter installed on this computer.\n'
                'Please install a High Finesse wavemeter and try again.')
     raise
-
-
-def get_existing_channels(max_ch=16):
-    """
-    Get all channels available on the multi-channel switch.
-    :param max_ch: highest channel number to query
-    :return: list of available channels
-    """
-    existing_channels = []
-    active = 0
-    for ch in range(1, max_ch):
-        err = _wavemeter_dll.GetSwitcherSignalStates(ch, active, 0)
-        if err != high_finesse_constants.ResERR_ChannelNotAvailable:
-            existing_channels.append(ch)
-    return existing_channels
+else:
+    _log.debug('Successfully loaded wavemeter DLL.')
 
 
 def get_active_channels():
@@ -61,22 +49,41 @@ def get_active_channels():
     :return: list of active channels
     """
     active_channels = []
-    active = 0
-    for ch in _existing_channels:
-        _wavemeter_dll.GetSwitcherSignalStates(ch, active, 0)
+    active = c_long()
+    err = 0
+    ch = 1
+    while err != high_finesse_constants.ResultError.ChannelNotAvailable.value:
+        err = _wavemeter_dll.GetSwitcherSignalStates(ch, byref(active), byref(c_long()))
         if active:
             active_channels.append(ch)
+        ch += 1
     return active_channels
 
 
 def activate_channel(ch):
     """ Activate a channel on the multi-channel switch. """
-    _wavemeter_dll.SetSwitcherSignalStates(ch, 1, 1)
+    err = _wavemeter_dll.SetSwitcherSignalStates(ch, 1, 1)
+    if err:
+        _log.error(f'Wavemeter error while activating channel {ch}: {high_finesse_constants.ResultError(err)}')
 
 
 def deactivate_channel(ch):
     """ Deactivate a channel on the multi-channel switch. """
-    _wavemeter_dll.SetSwitcherSignalStates(ch, 0, 0)
+    err = _wavemeter_dll.SetSwitcherSignalStates(ch, 0, 0)
+    if err:
+        _log.error(f'Wavemeter error while deactivating channel {ch}: {high_finesse_constants.ResultError(err)}')
+
+
+def start_measurement():
+    err = _wavemeter_dll.Operation(high_finesse_constants.cCtrlStartMeasurement)
+    if err:
+        _log.error(f'Wavemeter error while starting measurement: {high_finesse_constants.ResultError(err)}')
+
+
+def stop_measurement():
+    err = _wavemeter_dll.Operation(high_finesse_constants.cCtrlStopAll)
+    if err:
+        _log.error(f'Wavemeter error while stopping measurement: {high_finesse_constants.ResultError(err)}')
 
 
 def _start_callback():
@@ -139,6 +146,10 @@ def _get_callback_function():
             # not a new sample, something else happened at the wavemeter
             return 0
 
+        if dblval < 0:
+            # the wavemeter is either over- or underexposed
+            dblval = np.nan
+
         wavelength = 1e-9 * dblval  # measurement is in nm
         timestamp = 1e-3 * intval  # wavemeter records timestamps in ms
         for instreamer in _connected_instream_modules:
@@ -174,9 +185,10 @@ def sample_rate() -> float:
 
 def set_exposure_time(ch, exp_time):
     """ Set the exposure time for a specific switch channel. """
-    res = _wavemeter_dll.SetExposureNum(ch, 1, exp_time)
-    if res != 0:
-        _log.warning(f'Wavemeter error while setting exposure time of channel {ch}.')
+    err = _wavemeter_dll.SetExposureNum(ch, 1, exp_time)
+    if err:
+        _log.error(f'Wavemeter error while setting exposure time of channel {ch}: '
+                   f'{high_finesse_constants.ResultError(err)}')
 
 
 def connect_instreamer(module):
@@ -187,6 +199,7 @@ def connect_instreamer(module):
     if module not in _connected_instream_modules:
         _connected_instream_modules.append(module)
         if _callback_function is None:
+            start_measurement()
             _start_callback()
     else:
         _log.warning('Instream module is already connected.')
@@ -198,12 +211,14 @@ def disconnect_instreamer(module):
         _connected_instream_modules.remove(module)
         if not _connected_instream_modules:
             _stop_callback()
+            stop_measurement()
     else:
         _log.warning('Instream module is not connected and can therefore not be disconnected.')
 
 
 # activate the multi-channel switch
 _wavemeter_dll.SetSwitcherMode(True)
-_existing_channels = get_existing_channels()
+stop_measurement()
+
 _connected_instream_modules = []
 _callback_function = None
