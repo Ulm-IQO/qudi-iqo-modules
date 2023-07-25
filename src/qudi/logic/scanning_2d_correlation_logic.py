@@ -4,10 +4,11 @@ from scipy import ndimage
 import skimage
 import math
 import copy
+
 from qudi.core.module import LogicBase
 from qudi.util import paths
 from qudi.util.datastorage import TextDataStorage
-
+from qudi.core.connector import Connector
 
 class Scanning2DCorrelationLogic(LogicBase):
     """
@@ -19,6 +20,8 @@ class Scanning2DCorrelationLogic(LogicBase):
     scanning_2d_correlation_logic:
         module.Class: 'scanning_2d_correlation_logic.Scanning2DCorrelationLogic'
     """
+
+    _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -103,6 +106,16 @@ class Scanning2DCorrelationLogic(LogicBase):
                 step.update_parameters(parameters)
         self.sort_process_steps()
 
+    def _set_image(self, image, number):
+        if number == 1:
+            self._image_1 = image
+            self._display_image_1 = self._image_1
+        elif number == 2:
+            self._image_2 = image
+            self._display_image_2 = self._image_2
+        else:
+            raise ValueError(f"Importing image to image number {number} failed. Number should be 1 or 2.")
+
     def import_image(self, number, path):
         """Import an image from a .dat file into the correlation logic.
         @param int number: Defines whether the image is imported into the first image or second image of the correlation
@@ -110,12 +123,22 @@ class Scanning2DCorrelationLogic(LogicBase):
         @param str path: Absolute path to the image file
         """
         image = Image(datastorage=self._datastorage, path=path)
-        if number == 1:
-            self._image_1 = image
-        elif number == 2:
-            self._image_2 = image
-        else:
-            raise ValueError(f"Importing image to image number {number} failed. Number should be 1 or 2.")
+        self._set_image(image, number)
+
+    def get_scan_image(self, number, scan_axes=None, channel=None):
+        scan_data = self._data_logic().get_current_scan_data(scan_axes)
+
+        if channel is None:
+            channel = list(scan_data.data.keys())[0]
+
+        scan_arr = scan_data.data[channel]
+
+        image = Image()
+        range_xy = np.asarray(scan_data.scan_range)
+        range_xy = [range_xy[0][1]-range_xy[0][0], range_xy[1][1]-range_xy[1][0]]
+        image.import_from_array(scan_arr, range_xy=range_xy)
+
+        self._set_image(image, number)
 
     def reset(self):
         """Resets the images and the result dict of the logic."""
@@ -290,24 +313,30 @@ class Image:
         if path is not None:
             self.import_image(path)
 
+    def _set_img_array(self, array):
+        # set NaN-values to zero
+        self._array_raw = array.copy()
+        self._array_raw[np.isnan(self._array_raw)] = 0
+        self.array = self.array_raw.copy()
+
     def import_image(self, path):
         """Import image from an absolute file path.
         @param str path: Absolute path to the image file
         """
         # import raw image from file
-        self._array_raw, self.metadata, self.general = self._datastorage.load_data(path)
-        # set NaN-values to zero
-        self._array_raw[np.isnan(self._array_raw)] = 0
-        self.array = self.array_raw
+        img_array, self.metadata, self.general = self._datastorage.load_data(path)
+        self._set_img_array(img_array)
+
         # get range for image
         range_x = np.abs(self.metadata['x scan range'][1] - self.metadata['x scan range'][0])
         range_y = np.abs(self.metadata['y scan range'][1] - self.metadata['y scan range'][0])
         self._range_xy_raw = [range_x, range_y]
-        self.range_xy = self.range_xy_raw
-        resolution_x = self.array.shape[1] / self.range_xy[0]
-        resolution_y = self.array.shape[0] / self.range_xy[1]
+        resolution_x = img_array.shape[1] / self._range_xy_raw[0]
+        resolution_y = img_array.shape[0] / self._range_xy_raw[1]
         self._resolution_xy_raw = [resolution_x, resolution_y]
-        self.resolution_xy = self.resolution_xy_raw
+
+        self.range_xy = self._range_xy_raw
+        self.resolution_xy = self._resolution_xy_raw
 
     def import_from_array(self, array, resolution_xy=None, range_xy=None):
         """Import image from an array and a given range or a given resolution.
@@ -315,17 +344,20 @@ class Image:
         @param list resolution_xy: Resolution of the image in pixel/meter
         @param range_xy: Image range in meters
         """
-        self._array_raw = array.copy()
-        self.array = array.copy()
+        self._set_img_array(array)
+
         y_length, x_length = array.shape
         if resolution_xy is not None:
-            self.resolution_xy = resolution_xy.copy()
-            self._resolution_xy_raw = resolution_xy.copy()
-            self._range_xy_raw = [x_length / resolution_xy[0], y_length / resolution_xy[1]]
-            self.range_xy = self._range_xy_raw.copy()
+            self.resolution_xy = resolution_xy
+            self.range_xy = [x_length / resolution_xy[0], y_length / resolution_xy[1]]
         elif range_xy is not None:
-            self.range_xy = range_xy.copy()
+            self.range_xy = range_xy
             self.resolution_xy = [x_length / range_xy[0], y_length / range_xy[1]]
+        if resolution_xy is not None and range_xy is not None:
+            raise ValueError(f"Do only specify resolution {resolution_xy} or range {range_xy}, not both!")
+
+        self._resolution_xy_raw = self.resolution_xy
+        self._range_xy_raw = self.range_xy
 
     def reset_image(self):
         """Resets the image array to the raw image array."""
