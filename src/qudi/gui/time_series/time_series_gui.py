@@ -23,6 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ['TimeSeriesGui']
 
 import pyqtgraph as pg
+import numpy as np
 from PySide2 import QtCore, QtWidgets
 from typing import Union, Dict, Tuple
 
@@ -382,7 +383,9 @@ class TimeSeriesGui(GuiBase):
                 constraints = self._time_series_logic_con().streamer_constraints
                 ch_unit = constraints.channel_units[channel]
                 precision = self._current_value_channel_precision[channel]
-                if is_integer_type(constraints.data_type):
+                if np.isnan(val):
+                    self._mw.current_value_label.setText(f'{val} {ch_unit}')
+                elif is_integer_type(constraints.data_type):
                     self._mw.current_value_label.setText(f'{val:,d} {ch_unit}')
                 elif precision is None:
                     self._mw.current_value_label.setText(f'{ScaledFloat(val):.5r}{ch_unit}')
