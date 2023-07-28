@@ -228,15 +228,12 @@ class WavemeterHistogramGui(GuiBase):
     GUI module to be used in conjunction with WavemeterHistogramLogic.
 
     Example config for copy-paste:
-    #TODO
+
     wavemeter_histogram_logic:
         module.Class: 'wavemeter.wavemeter_histogram_gui_2.WavemeterHistogramGui'
-        options:
-            use_antialias: True  # optional, set to False if you encounter performance issues
         connect:
             _wavemeter_histogram_logic_con: wavemeter_histogram_logic
     """
-    #TODO declare signals
     sigStartCounter = QtCore.Signal()
     sigStopCounter = QtCore.Signal()
     sigDoFit = QtCore.Signal(str)  # fit_config_name
@@ -481,7 +478,9 @@ class WavemeterHistogramGui(GuiBase):
     @QtCore.Slot()
     def start_clicked_wavemeter(self):
         if self._mw.start_trace_Action2.isChecked():
-            self._wavemeter_logic.start_displaying_current_wavelength()
+            if self._wavemeter_logic.start_displaying_current_wavelength() < 0:
+                self._mw.start_trace_Action2.setChecked(False)
+                return
             self._mw.start_trace_Action2.setText('Stop Wavemeter')
             icon_path = os.path.join(get_artwork_dir(), 'icons')
             icon2 = QtGui.QIcon(os.path.join(icon_path, 'stop-counter'))
@@ -492,7 +491,6 @@ class WavemeterHistogramGui(GuiBase):
             icon_path = os.path.join(get_artwork_dir(), 'icons')
             icon1 = QtGui.QIcon(os.path.join(icon_path, 'record-counter'))
             self._mw.start_trace_Action2.setIcon(icon1)
-
         return
 
     @QtCore.Slot()
