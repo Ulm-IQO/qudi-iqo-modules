@@ -10,6 +10,7 @@ docstrings.
 
 ### Bugfixes
 - Basic data saving in `TimeSeriesReaderLogic` works now.
+- Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle 
 
 ### New Features
 - New `qudi.interface.data_instream_interface.SampleTiming` Enum added to `DataInStreamInterface` 
