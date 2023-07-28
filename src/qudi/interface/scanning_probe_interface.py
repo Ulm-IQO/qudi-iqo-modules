@@ -154,6 +154,9 @@ class ScanningProbeInterface(Base):
 
         @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
         """
+        scan_data = ScanData
+
+        scan_data._trafo_func
         pass
 
     @abstractmethod
@@ -280,13 +283,12 @@ class ScanData:
         return all(getattr(self, a) == getattr(other, a) for a in attrs)
 
     # ToDo: Roberto Create the methode save_trafo_func to save the trafomatrix/function
-    def trafo_func(self):
+    @property
+    def _trafo_func(self):
         """ Save the current transformation matrix created by tilt correction
                 @return dict: dictionary with the trafomatrix the degree of rotation and translationvector.
-        """
 
-        #data_dictionary = self.to_dict() # This contains the position data and other measurement data
-        #trafo_dict = get_coordinate_transform_as_matrix() # This is for obtaining the trafomatrix. My idea is to split the trafo in a dict, where one is for translation and the other is for rotation
+        """
         pass
 
     @property
@@ -694,9 +696,12 @@ class CoordinateTransformMixin:
             # todo: transform_func not needed, replace with valuable info (matrix, angle, ..)
             tilt_info = {'enabled': self.coordinate_transform_enabled,
                          'transform_func': self._coordinate_transform,
-                         'transform_matrix':self.trafo_func['Trafo_matrix'],'rotation_angle':self.trafo_func['rotation/deg'],'translation_vec':self.trafo_func['Translation'] }
-            scan_data.tilt_correction_info = tilt_info
+                         'transform_matrix':,
+                         'rotation_angle':,
+                         'translation_vec':}
 
-            self.log.debug(f"Get scan data for tilt corrected hw called. Info: {tilt_info}")
+            scan_data._tilt_correction_info = tilt_info
+
+            self.log.info(f"Get scan data for tilt corrected hw called. Info: {tilt_info}")
 
         return scan_data

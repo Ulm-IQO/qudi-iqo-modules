@@ -346,6 +346,7 @@ class ScanningProbeLogic(LogicBase):
         target_pos = self._scanner().get_target()
         is_enabled = self._scanner().coordinate_transform_enabled
 
+
         if debug_func:
             func = self.__func_debug_transform()
             self.log.info("Set test functions for coord transform")
@@ -463,18 +464,15 @@ class ScanningProbeLogic(LogicBase):
 
         return transform_to
 
-    def save_trafo_func(self,new_root_dir='C:\\',supp_vec = None,shift_vec = None):
-
+    def save_trafo_func(self,supp_vec=None,shift_vec = None):
 
             # This is used for saving the transformation function/matrix in a txt.file (Possibly or another file format)
             # 1) Use to_dict function to obtain the dictionary about the data of the position
             # 2) Obtain the transformation matrix
             # 3) Look for the translation and rotation degeree
 
-        #supp_vec = [[0,1,2],[0,1,2],[0,1,2]] # Obtain it from the positions from the interface
-        #shift_vec = [0,1,1] # Obtain it from the positions from the interface
-
-
+        if not np.all([np.isfinite(el) for el in shift_vec]):
+            shift_vec = None
 
         theta = compute_rotation_mat_rodriguez(supp_vec[0], supp_vec[1], supp_vec[2])[1]
 
@@ -490,7 +488,7 @@ class ScanningProbeLogic(LogicBase):
         #print(self.scanner()._position_data)
         #self.log.debug('The dictionary for saving has the following form', str(data_dictionary))
         # self.log.info('Saving of the follwing transformation: Translation:'+str()+'um and Rotation of'+str()+'in rad')
-        self.log.info('Saving Trafo is:' + str(trafo_matrix))
+
         # For testing if the save works. It works
         #if trafo_matrix is not None: # If no trafomatrix exists, there's no necessary to save it
          #   data_storage = TextDataStorage(root_dir=new_root_dir, comments='# ',
@@ -503,8 +501,8 @@ class ScanningProbeLogic(LogicBase):
                #                                              nametag='first_trafo_saving',
                 #                                             column_dtypes=(float, float))
             #self.log.info('Saving of trafomatrix')
-            # string_dict = str(data_dictionary)
-
+        # string_dict = str(data_dictionary)
+        self.log.info('Saving Trafo is:' + str(trafo_matrix))
         return data_dictionary
 
 
