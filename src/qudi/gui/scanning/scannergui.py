@@ -544,9 +544,11 @@ class ScannerGui(GuiBase):
                 except KeyError:
                     cbar_range = None
 
-                vector_dict = self._tilt_correction_vectors
 
-                if self._scanning_logic().scan_data._tilt_correction_info['enabled']:
+                vector_dict = self._tilt_correction_vectors
+                tilt_corr_enabled =self._mw.action_toggle_tilt_correction.isChecked()
+                #print(tilt_corr_enabled)
+                if tilt_corr_enabled:
                     array = self._scanning_logic().tilt_vector_dict_2_array(vector_dict)# obtain the tilt_correction vectors
                     trafo_data_dict =self._scanning_logic().save_trafo_func(supp_vec=array[0:3],shift_vec=array[-1]) # obtaining the dictionary
                     # send it to scanData Interface
