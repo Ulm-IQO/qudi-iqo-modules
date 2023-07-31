@@ -154,10 +154,9 @@ class ScanningProbeInterface(Base):
 
         @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
         """
-        scan_data = ScanData
 
-        scan_data._trafo_func
-        pass
+        #scan_data.save_trafo_func()
+        return CoordinateTransformMixin.get_scan_data
 
     @abstractmethod
     def emergency_stop(self):
@@ -284,7 +283,7 @@ class ScanData:
 
     # ToDo: Roberto Create the methode save_trafo_func to save the trafomatrix/function
     @property
-    def _trafo_func(self):
+    def save_trafo_func(self):
         """ Save the current transformation matrix created by tilt correction
                 @return dict: dictionary with the trafomatrix the degree of rotation and translationvector.
 
@@ -695,10 +694,10 @@ class CoordinateTransformMixin:
         if scan_data:
             # todo: transform_func not needed, replace with valuable info (matrix, angle, ..)
             tilt_info = {'enabled': self.coordinate_transform_enabled,
-                         'transform_func': self._coordinate_transform,
-                         'transform_matrix':,
-                         'rotation_angle':,
-                         'translation_vec':}
+                         'transform_func': self._coordinate_transform}
+                        #'transform_matrix':scan_data.save_trafo_func,
+                        # 'rotation_angle':,
+                        # 'translation_vec':}
 
             scan_data._tilt_correction_info = tilt_info
 
