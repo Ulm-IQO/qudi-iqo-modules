@@ -302,9 +302,9 @@ class Ts_buffer_command():
 
 class Configure_acquisition_mode():
 
-    def set_STD_trigger_mode(self, card, acq_mode, post_trig_S, seg_size_S, mem_size_S):
+    def set_STD_trigger_mode(self, card, acq_mode, post_trigs_S, seg_size_S, mem_size_S):
         if acq_mode == 'STD_SINGLE':
-            mem_size_S = post_trig_S
+            mem_size_S = post_trigs_S
             self._mode_STD_SINGLE(card, post_trigs_S, mem_size_S)
 
         elif acq_mode == 'STD_MULTI':

@@ -64,17 +64,18 @@ class Card_settings:
 
     def _calc_acq_params(self, seg_size_S, seq_size_S, reps, total_gate):
         if 'STD' in self.acq_mode:
-            self.acq_mem_size_S = seq_size_S * reps
+            self.acq_mem_size_S = int(seq_size_S * reps)
             if not 'GATE' in self.acq_mode:
-                self.acq_post_trigs_S = seg_size_S - self.acq_pre_trigs_S
+                self.acq_seg_size_S = int(seg_size_S)
+                self.acq_post_trigs_S = int(seg_size_S - self.acq_pre_trigs_S)
 
         elif 'FIFO' in self.acq_mode:
             if 'GATE' in self.acq_mode:
-                self.acq_loops = reps * total_gate
+                self.acq_loops = int(reps * total_gate)
             else:
-                self.acq_seg_size_S = seg_size_S
-                self.acq_post_trigs_S = self.acq_seg_size_S - self.acq_pre_trigs_S
-                self.acq_loops = reps
+                self.acq_seg_size_S = int(seg_size_S)
+                self.acq_post_trigs_S = int(self.acq_seg_size_S - self.acq_pre_trigs_S)
+                self.acq_loops = int(reps)
 
     def get_buf_size_B(self, seq_size_B, reps_per_buf, total_pulse=1):
         """
