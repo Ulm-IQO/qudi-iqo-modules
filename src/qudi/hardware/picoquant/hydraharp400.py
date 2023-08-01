@@ -80,16 +80,10 @@ class HydraHarp400(FastCounterInterface):
     aom_delay = ConfigOption('aom_delay', 390e-9, missing='warn')
     minimal_binwidth = ConfigOption('minimal_binwidth', 1e-12, missing='warn')
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self._set_constants()
         self.connected_to_device = False
-
-        self.log.debug('The following configuration was found.')
-
-        # checking for the right configuration
-        for key in config.keys():
-            self.log.info('{0}: {1}'.format(key, config[key]))
 
         self.stopped_or_halt = "stopped"
         self.bins_num = 0

@@ -5,7 +5,7 @@ from setuptools import setup, find_namespace_packages
 
 
 unix_dep = [
-    'qudi-core>=1.2.0',
+    'qudi-core>=1.4.1',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
@@ -21,14 +21,14 @@ unix_dep = [
 ]
 
 windows_dep = [
-    'qudi-core>=1.2.0',
+    'qudi-core>=1.4.1',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
     'lxml>=4.9.1',
     'matplotlib>=3.6.0',
     'nidaqmx>=0.5.7',
-    'numpy>>=1.23.3',
+    'numpy>=1.23.3',
     'pyqtgraph>=0.13.1',
     'PySide2>=5.15.2',
     'PyVisa>=1.12.0',
@@ -71,7 +71,7 @@ setup(
               'modular',
               'measurement',
               ],
-    classifiers=['Development Status :: 3 - Alpha',
+    classifiers=['Development Status :: 4 - Beta',
 
                  'Environment :: Win32 (MS Windows)',
                  'Environment :: X11 Applications',
@@ -93,11 +93,12 @@ setup(
 
                  'Programming Language :: Python :: 3.8',
                  'Programming Language :: Python :: 3.9',
+                 'Programming Language :: Python :: 3.10',
 
                  'Topic :: Scientific/Engineering',
                  ],
     license='LGPLv3',
     install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
-    python_requires='>=3.8, <3.10',
+    python_requires='>=3.8, <3.11',
     zip_safe=False
 )

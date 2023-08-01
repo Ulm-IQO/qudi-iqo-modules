@@ -71,14 +71,8 @@ class SoftPIDController(PIDControllerInterface):
 
     sigNewValue = QtCore.Signal(str, float)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-        self.log.debug('The following configuration was found.')
-
-        # checking for the right configuration
-        for key in config.keys():
-            self.log.debug('{0}: {1}'.format(key, config[key]))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # initialize attributes
         self._process = None

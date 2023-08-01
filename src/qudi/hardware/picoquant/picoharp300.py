@@ -106,8 +106,8 @@ class PicoHarp300(FastCounterInterface):
     sigAnalyzeData = QtCore.Signal(object, object)
     sigStart = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.errorcode = self._create_errorcode()
         self._set_constants()
