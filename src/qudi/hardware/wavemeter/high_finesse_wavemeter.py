@@ -347,7 +347,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
                     self.log.error(f'Channel {ch} is not set up in the config file. Available channels '
                                    f'are {list(self._channel_names.keys())}.')
 
-        if streaming_mode is not None and streaming_mode != StreamingMode.CONTINUOUS:
+        if streaming_mode is not None and streaming_mode.value != StreamingMode.CONTINUOUS.value:
             self.log.warning('Only continuous streaming is supported, ignoring this setting.')
 
         if channel_buffer_size is not None:

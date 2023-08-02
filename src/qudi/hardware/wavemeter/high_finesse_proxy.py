@@ -74,6 +74,17 @@ def deactivate_channel(ch):
         _log.error(f'Wavemeter error while deactivating channel {ch}: {high_finesse_constants.ResultError(err)}')
 
 
+def deactivate_all_but_lowest_channel():
+    """
+    Deactivate all channels except the channel with the lowest index.
+    The wavemeter does not allow deactivation of all channels.
+    """
+    active_channels = get_active_channels()
+    active_channels.sort()
+    for i in active_channels[:-1]:
+        deactivate_channel(i)
+
+
 def start_measurement():
     err = _wavemeter_dll.Operation(high_finesse_constants.cCtrlStartMeasurement)
     if err:
@@ -219,6 +230,8 @@ def disconnect_instreamer(module):
 # activate the multi-channel switch
 _wavemeter_dll.SetSwitcherMode(True)
 stop_measurement()
+# deactivate all channels during activation - fixes issues with incorrect sample rate estimation
+deactivate_all_but_lowest_channel()
 
 _connected_instream_modules = []
 _callback_function = None
