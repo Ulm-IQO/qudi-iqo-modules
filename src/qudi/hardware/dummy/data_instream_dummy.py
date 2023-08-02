@@ -528,7 +528,7 @@ class InStreamDummy(DataInStreamInterface):
                                                        timestamp_buffer=timestamp_buffer)
 
     def read_data(self,
-                  number_of_samples: Optional[int] = None
+                  samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
         """ Read data from the stream buffer into a 1D numpy array and return it.
         All samples for each channel are stored in consecutive blocks one after the other.
@@ -549,20 +549,20 @@ class InStreamDummy(DataInStreamInterface):
                 raise RuntimeError('Unable to read data. Stream is not running.')
 
             self._sample_generator.generate_samples()
-            if number_of_samples is None:
-                number_of_samples = self._sample_generator.available_samples
+            if samples_per_channel is None:
+                samples_per_channel = self._sample_generator.available_samples
             else:
-                self._sample_generator.wait_get_available_samples(number_of_samples)
+                self._sample_generator.wait_get_available_samples(samples_per_channel)
 
-            data_buffer = np.empty(len(self.active_channels) * number_of_samples,
+            data_buffer = np.empty(len(self.active_channels) * samples_per_channel,
                                    dtype=self._constraints.data_type)
             if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
-                timestamp_buffer = np.empty(number_of_samples, dtype=np.float64)
+                timestamp_buffer = np.empty(samples_per_channel, dtype=np.float64)
             else:
                 timestamp_buffer = None
-            if number_of_samples > 0:
+            if samples_per_channel > 0:
                 self._sample_generator.read_samples(sample_buffer=data_buffer,
-                                                    samples_per_channel=number_of_samples,
+                                                    samples_per_channel=samples_per_channel,
                                                     timestamp_buffer=timestamp_buffer)
             return data_buffer, timestamp_buffer
 
