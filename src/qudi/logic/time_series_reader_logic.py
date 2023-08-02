@@ -32,6 +32,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.helpers import is_integer_type
+from qudi.util.network import netobtain
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.interface.data_instream_interface import DataInStreamConstraints
 from qudi.util.datastorage import TextDataStorage
@@ -47,6 +48,7 @@ class TimeSeriesReaderLogic(LogicBase):
     time_series_reader_logic:
         module.Class: 'time_series_reader_logic.TimeSeriesReaderLogic'
         options:
+            use_own_data_buffer: True  # can improve performance - set to False if using a remote instreamer
             max_frame_rate: 20  # optional (default: 20Hz)
             channel_buffer_size: 1048576  # optional (default: 1MSample)
             max_raw_data_bytes: 1073741824  # optional (default: 1GB)
@@ -65,6 +67,7 @@ class TimeSeriesReaderLogic(LogicBase):
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
 
     # config options
+    _use_own_data_buffer = ConfigOption('use_own_data_buffer', default=True, missing='info')
     _max_frame_rate = ConfigOption('max_frame_rate', default=20, missing='warn')
     _channel_buffer_size = ConfigOption(name='channel_buffer_size',
                                         default=1024**2,
@@ -205,7 +208,8 @@ class TimeSeriesReaderLogic(LogicBase):
     @property
     def streamer_constraints(self) -> DataInStreamConstraints:
         """ Retrieve the hardware constrains from the counter device """
-        return self._streamer().constraints
+        # netobtain is required if streamer is a remote module
+        return netobtain(self._streamer().constraints)
 
     @property
     def data_rate(self) -> float:
@@ -267,7 +271,7 @@ class TimeSeriesReaderLogic(LogicBase):
     @property
     def active_channel_names(self) -> List[str]:
         """ Read-only property returning the currently active channel names """
-        return self._streamer().active_channels.copy()
+        return netobtain(self._streamer().active_channels.copy())
 
     @property
     def averaged_channel_names(self) -> List[str]:
@@ -484,11 +488,17 @@ class TimeSeriesReaderLogic(LogicBase):
                         (self._channel_buffer_size // self._oversampling_factor) * self._oversampling_factor
                     )
                     # read the current counter values
-                    channel_count = len(self.active_channel_names)
-                    streamer.read_data_into_buffer(data_buffer=self._data_buffer,
-                                                   samples_per_channel=samples_to_read,
-                                                   timestamp_buffer=self._times_buffer)
+                    if self._use_own_data_buffer:
+                        streamer.read_data_into_buffer(data_buffer=self._data_buffer,
+                                                       samples_per_channel=samples_to_read,
+                                                       timestamp_buffer=self._times_buffer)
+                    else:
+                        self._data_buffer, self._times_buffer = streamer.read_data(samples_per_channel=samples_to_read)
+                        self._data_buffer = netobtain(self._data_buffer)
+                        self._times_buffer = netobtain(self._times_buffer)
+
                     # Process data
+                    channel_count = len(self.active_channel_names)
                     data_view = self._data_buffer[:channel_count * samples_to_read]
                     self._process_trace_data(data_view)
                     if self._times_buffer is None:
