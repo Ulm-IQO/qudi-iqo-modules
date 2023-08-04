@@ -69,7 +69,6 @@ class TimeTagBasedEstimatorSettings:
     count_mode: str = 'Average'
     count_length: int = 2000
     start_count: int = 0
-    stop_count: int = 0
     count_threshold: int = 90000
     weight: list = field(default_factory=list)
 
@@ -80,10 +79,14 @@ class TimeTagBasedEstimatorSettings:
 
 class TimeTagBasedEstimator(StateEstimator):
     def __init__(self):
+        super().__init__()
         self.stg = None
 
     def input_settings(self, settings: TimeTagBasedEstimatorSettings) -> None:
         self.stg = settings
+
+    def extract(self, raw_data):
+        pass
 
     def estimate(self, time_tag_data):
         if self._count_mode == 'Average':
@@ -131,9 +134,19 @@ class StateEstimator:
 
 
     def __init__(self):
+        self._method = None
         self.estimator = None
 
-    def configure_method(self, method):
+    @property
+    def method(self):
+        return self._method
+
+    @method.setter
+    def method(self, method):
+        self._method = method
+        self._configure_method(self._method)
+
+    def _configure_method(self, method):
         if method == 'TimeSeries':
             self.estimator = TimeSeriesBasedEstimator()
         elif method == 'TimeTag':

@@ -119,12 +119,20 @@ class FourierAnalyzer(Analyzer):
 class TimeTraceAnalyzer:
     method_lists = ['Fourier', "aurocorr"]
 
-
     def __init__(self):
         self.analyzer = None
-        self.method = 'Fourier'
+        self._method = 'Fourier'
 
-    def configure_method(self, method):
+    @property
+    def method(self):
+        return self._method
+
+    @method.setter
+    def method(self, method):
+        self._method = method
+        self._configure_method(method)
+
+    def _configure_method(self, method):
         if method == 'Fourier':
             self.analyzer = FourierAnalyzer()
 
