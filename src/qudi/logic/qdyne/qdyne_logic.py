@@ -26,6 +26,8 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 
+from qudi.logic.qdyne.qdyne_measurement import (
+    QdyneMeasurement, QdyneMeasurementSettings)
 from qudi.logic.qdyne.qdyne_state_estimator import (
     StateEstimator, TimeTagBasedEstimatorSettings, TimeSeriesBasedEstimatorSettings)
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import (
@@ -40,27 +42,37 @@ class MainDataClass:
     signal: np.ndarray = np.array([], dtype=float)
     spectrum: np.ndarray = np.array([], dtype=float)
 
-class QdyneLogic:
+class QdyneLogic(LogicBase):
+
+    pmaster = Connector(interface='PulsedMasterLogic')
+    pmeasure = Connector(interface='PulsedMeasurementLogic')
 
     estimator_method = ConfigOption(name='estimator_method', default='TimeTag', missing='warn')
     analyzer_method = ConfigOption(name='analyzer_method', default='Fourier', missing='nothing')
     data_save_dir = ConfigOption(name='data_save_dir')
     data_storage_class = ConfigOption(name='data_storage_class', default='text', missing='nothing')
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    def __init__(self):
+        self.measure = None
         self.estimator = None
         self.analyzer = None
         self.settings = None
         self.data = None
         self.save = None
 
-    def on_activete(self):
+    def on_activate(self):
+        self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
         self.estimator = StateEstimator()
         self.analyzer = TimeTraceAnalyzer()
         self.settings = QdyneSettings()
         self.data = MainDataClass()
         self.save = QdyneSave(self.data_save_dir, self.data_storage_class)
+        return
+
+    def on_deactivate(self):
+        return
 
 
     def configure(self):
@@ -111,7 +123,7 @@ class QdyneSettings:
 
 
     def on_activate(self):
-        self.measurement_stg =
+        self.measurement_stg = None
         self.state_estimator_stg = self.get_state_estimator_stg(self.state_estimator_method)
         self.time_trace_analysis_stg = self.get_time_trace_analysis_stg(self.time_trace_analysis_method)
         self.save_stg = QdyneSaveSettings()
