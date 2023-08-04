@@ -43,7 +43,7 @@ class TimeSeriesBasedEstimatorSettings:
 
 class TimeSeriesBasedEstimator(StateEstimator):
 
-    def __init__(self):
+    def __init__(self, extractor, estimator):
         self.on_activate()
 
     def on_activate(self):
@@ -86,7 +86,7 @@ class TimeTagBasedEstimator(StateEstimator):
         self.stg = settings
 
     def extract(self, raw_data):
-        pass
+        return raw_data
 
     def estimate(self, time_tag_data):
         if self._count_mode == 'Average':

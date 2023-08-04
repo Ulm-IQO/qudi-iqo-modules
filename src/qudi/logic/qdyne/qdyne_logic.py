@@ -38,6 +38,7 @@ from qudi.logic.qdyne.qdyne_save import (
 @dataclass
 class MainDataClass:
     raw_data: np.ndarray = np.array([], dtype=int)
+    extracted_data: np.ndarray = np.array([], dtype=int)
     time_trace: np.ndarray = np.array([], dtype=float)
     signal: np.ndarray = np.array([], dtype=float)
     spectrum: np.ndarray = np.array([], dtype=float)
@@ -134,8 +135,11 @@ class QdyneLogic(LogicBase):
     def get_raw_data(self):
         pass
 
-    def process_raw_data(self):
-        self.data.time_trace = self.estimator.estimate(self.data.raw_data)
+    def extract_data(self):
+        self.data.extracted_data = self.estimator.extract(self.data.raw_data)
+
+    def process_extracted_data(self):
+        self.data.time_trace = self.estimator.estimate(self.data.extracted_data)
 
     def analyze_time_trace(self):
         self.data.signal = self.analyzer.analyze(self.data.time_trace)
