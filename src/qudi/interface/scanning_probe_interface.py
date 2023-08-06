@@ -241,7 +241,7 @@ class ScanData:
         self._data = None
         self._position_data = None
         self._target_at_start = target_at_start
-        self._tilt_correction_info = {'enabled': False}
+        self._coord_transform_info = {'enabled': False}
         # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
         return
 
@@ -407,12 +407,12 @@ class ScanData:
         return new_inst
 
     @property
-    def tilt_correction_info(self):
-        return self._tilt_correction_info
+    def coord_transform_info(self):
+        return self._coord_transform_info
 
-    @tilt_correction_info.setter
-    def tilt_correction_info(self, info_dict):
-        self._tilt_correction_info = info_dict
+    @coord_transform_info.setter
+    def coord_transform_info(self, info_dict):
+        self._coord_transform_info = info_dict
 
 
 class ScannerChannel:
@@ -683,10 +683,10 @@ class CoordinateTransformMixin:
                          }
             if self.coordinate_transform_enabled:
                 transform_info = {'transform_func': self._coordinate_transform,
-                         'tansform_matrix': self._coordinate_transform_matrix.matrix}
+                                  'tansform_matrix': self._coordinate_transform_matrix.matrix}
                 tilt_info.update(transform_info)
 
-            scan_data.tilt_correction_info = tilt_info
+            scan_data.coord_transform_info = tilt_info
             self.log.debug(f"Get scan data for titl corrected hw called. Info: {tilt_info}")
 
         return scan_data
