@@ -34,13 +34,14 @@ class ScanningProbeInterface(Base):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._coordinate_transform = None
+        self._coordinate_transform_matrix = None
 
     def coordinate_transform(self, val, inverse=False):
         if self._coordinate_transform is None:
             return val
         return self._coordinate_transform(val, inverse)
 
-    def set_coordinate_transform(self, transform_func):
+    def set_coordinate_transform(self, transform_func, transform_matrix=None):
         if transform_func is not None:
             raise ValueError('Coordinate transformation not supported by scanning hardware.')
 
@@ -656,12 +657,13 @@ class CoordinateTransformMixin:
         MyTransformationScanner(CoordinateTransformMixin, MyScanner):
             pass
     """
-    def set_coordinate_transform(self, transform_func):
+    def set_coordinate_transform(self, transform_func, transform_matrix=None):
         # ToDo: Proper sanity checking here, e.g. function signature etc.
         if transform_func is not None and not callable(transform_func):
             raise ValueError('Coordinate transformation function must be callable with '
                              'signature "coordinate_transform(value, inverse=False)"')
         self._coordinate_transform = transform_func
+        self._coordinate_transform_matrix = transform_matrix
 
     def move_absolute(self, position, velocity=None, blocking=False):
         new_pos_bare = super().move_absolute(self.coordinate_transform(position), velocity, blocking)
@@ -683,9 +685,13 @@ class CoordinateTransformMixin:
         if scan_data:
             # todo: transform_func not needed, replace with valuable info (matrix, angle, ..)
             tilt_info = {'enabled': self.coordinate_transform_enabled,
-                         'transform_func': self._coordinate_transform}
-            scan_data.tilt_correction_info = tilt_info
+                         }
+            if self.coordinate_transform_enabled:
+                transform_info = {'transform_func': self._coordinate_transform,
+                         'tansform_matrix': self._coordinate_transform_matrix.matrix}
+                tilt_info.update(transform_info)
 
+            scan_data.tilt_correction_info = tilt_info
             self.log.debug(f"Get scan data for titl corrected hw called. Info: {tilt_info}")
 
         return scan_data
