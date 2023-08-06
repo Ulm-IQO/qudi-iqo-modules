@@ -51,17 +51,7 @@ class ScanningProbeInterface(Base):
 
     @property
     def supports_coordinate_transform(self):
-        # todo: this should be part of the scanconstraints
-        # however this function is general for every scanner, but can't live
-        # in ScanContraints, as no handle to set_coordinate_transform
-        flag = False
-        try:
-            self.set_coordinate_transform(lambda x, inverse:  x)
-            self.set_coordinate_transform(None)
-            flag = True
-        except ValueError:
-            pass
-        return flag
+        return self.get_constraints().allow_coordinate_transform
 
     @abstractmethod
     def get_constraints(self):
@@ -599,7 +589,7 @@ class ScanConstraints:
     """
 
     def __init__(self, axes, channels, backscan_configurable, has_position_feedback,
-                 square_px_only, allow_coordinate_transform):
+                 square_px_only):
         """
         """
         if not all(isinstance(ax, ScannerAxis) for ax in axes):
@@ -612,15 +602,13 @@ class ScanConstraints:
             raise TypeError('Parameter "has_position_feedback" must be of type bool.')
         if not isinstance(square_px_only, bool):
             raise TypeError('Parameter "square_px_only" must be of type bool.')
-        if not isinstance(allow_coordinate_transform, bool):
-            raise TypeError('Parameter "allow_coordinate_transform" must be of type bool.')
+
         self._axes = {ax.name: ax for ax in axes}
         self._channels = {ch.name: ch for ch in channels}
         self._backscan_configurable = bool(backscan_configurable)
         self._has_position_feedback = bool(has_position_feedback)
         self._square_px_only = bool(square_px_only)
-        # todo: do we need this in the ScanContraints or is in scan interface enough?
-        self._allow_coordinate_transform = bool(allow_coordinate_transform)
+        self._allow_coordinate_transform = False  # overwritten in CoordinateTransformMixin
 
     @property
     def axes(self):
@@ -657,6 +645,13 @@ class CoordinateTransformMixin:
         MyTransformationScanner(CoordinateTransformMixin, MyScanner):
             pass
     """
+
+    def get_constraints(self):
+        constr = super().get_constraints()
+        constr._allow_coordinate_transform = True
+
+        return constr
+
     def set_coordinate_transform(self, transform_func, transform_matrix=None):
         # ToDo: Proper sanity checking here, e.g. function signature etc.
         if transform_func is not None and not callable(transform_func):
