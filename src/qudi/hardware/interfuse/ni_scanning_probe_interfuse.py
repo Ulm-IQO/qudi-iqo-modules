@@ -160,8 +160,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             channels=channels,
                                             backscan_configurable=False,  # TODO incorporate in scanning_probe toolchain
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
-                                            square_px_only=False,
-                                            allow_coordinate_transform=self.supports_coordinate_transform)  # TODO incorporate in scanning_probe toolchain
+                                            square_px_only=False)
 #
         self._target_pos = self._get_position()  # get voltages/pos from ni_ao
         self._toggle_ao_setpoint_channels(False)  # And free ao resources after that

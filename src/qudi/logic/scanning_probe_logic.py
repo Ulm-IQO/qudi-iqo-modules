@@ -352,7 +352,7 @@ class ScanningProbeLogic(LogicBase):
             func = self.__transform_func if self._tilt_corr_transform else None
 
         if enable:
-            self._scanner().set_coordinate_transform(func)
+            self._scanner().set_coordinate_transform(func, self._tilt_corr_transform)
         else:
             self._scanner().set_coordinate_transform(None)
 
