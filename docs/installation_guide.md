@@ -105,7 +105,7 @@ Whenever you make changes to your configuration, you should create such an commi
 ### Remote
 
 Qudi allows to access modules (including hardware) that run on a different computer that is connected to the same LAN network.
-Please find the instruction to configure the [server](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#remote_modules_server) and each of the [remote modules](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#Remote%20Module).
+Please find the [configuration instructions](https://ulm-iqo.github.io/qudi-core/design_concepts/remote_modules.html) in the qudi-core docs. 
 
 
 ## Jupyter notebooks/ measurement scripts
