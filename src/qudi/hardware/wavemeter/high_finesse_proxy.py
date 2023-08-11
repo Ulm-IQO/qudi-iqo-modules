@@ -48,6 +48,9 @@ def get_active_channels():
     Get a list of all active channels on the multi-channel switch.
     :return: list of active channels
     """
+    if not _wm_has_switch:
+        return [1]
+
     active_channels = []
     active = c_long()
     err = 0
@@ -62,6 +65,12 @@ def get_active_channels():
 
 def activate_channel(ch):
     """ Activate a channel on the multi-channel switch. """
+    if not _wm_has_switch:
+        if ch == 1:
+            return
+        else:
+            _log.error(f'Cannot activate channel {ch}: wavemeter does not have a multi-channel switch.')
+
     err = _wavemeter_dll.SetSwitcherSignalStates(ch, 1, 1)
     if err:
         _log.error(f'Wavemeter error while activating channel {ch}: {high_finesse_constants.ResultError(err)}')
@@ -69,6 +78,12 @@ def activate_channel(ch):
 
 def deactivate_channel(ch):
     """ Deactivate a channel on the multi-channel switch. """
+    if not _wm_has_switch:
+        if ch == 1:
+            return
+        else:
+            _log.error(f'Cannot deactivate channel {ch}: wavemeter does not have a multi-channel switch.')
+
     err = _wavemeter_dll.SetSwitcherSignalStates(ch, 0, 0)
     if err:
         _log.error(f'Wavemeter error while deactivating channel {ch}: {high_finesse_constants.ResultError(err)}')
@@ -227,8 +242,14 @@ def disconnect_instreamer(module):
         _log.warning('Instream module is not connected and can therefore not be disconnected.')
 
 
-# activate the multi-channel switch
+# try to activate the multi-channel switch and check if switch is present
 _wavemeter_dll.SetSwitcherMode(True)
+is_active = _wavemeter_dll.GetSwitcherMode(0)
+if is_active:
+    _wm_has_switch = True
+else:
+    _wm_has_switch = False
+
 stop_measurement()
 # deactivate all channels during activation - fixes issues with incorrect sample rate estimation
 deactivate_all_but_lowest_channel()
