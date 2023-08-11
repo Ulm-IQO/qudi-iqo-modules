@@ -15,7 +15,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+import numpy as np
 
+from qudi.util.network import netobtain
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
 
@@ -76,6 +78,15 @@ class TimeTagBasedEstimatorSettings:
     def stop_count(self):
         return self.start_count + self.count_length
 
+    def get_histogram(self, time_tag_data):
+        count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
+        return count_hist
+
+    def set_start_count(self, time_tag_data):
+        count_hist = self.get_histogram(time_tag_data)
+        self.start_count = int(np.where(count_hist[1:] > len(time_tag_data) / 2e5)[0][0]) #TODO what is 2e5?
+
+
 
 class TimeTagBasedEstimator(StateEstimator):
     def __init__(self):
@@ -86,15 +97,16 @@ class TimeTagBasedEstimator(StateEstimator):
         self.stg = settings
 
     def extract(self, raw_data):
-        return raw_data
+        return raw_data.tolist()
 
     def estimate(self, time_tag_data):
-        if self._count_mode == 'Average':
+        if self.stg.count_mode == 'Average':
+            self.stg.set_start_count(time_tag_data)
             counts_time_trace = self._photon_count(time_tag_data,
                                                    self.stg.start_count,
                                                    self.stg.stop_count,
                                                    self.stg.count_threshold)
-        elif self._count_mode == 'WeightedAverage':
+        elif self.stg.count_mode == 'WeightedAverage':
             counts_time_trace = self._weighted_photon_count(time_tag_data,
                                                             self.stg.weight,
                                                             self.stg.start_count,
@@ -102,7 +114,7 @@ class TimeTagBasedEstimator(StateEstimator):
                                                             self.stg.count_threshold)
         return counts_time_trace
 
-    def _photon_count(self, time_tag, start_count, stop_count, count_threshold=90000):
+    def _photon_count(self, time_tag, start_count, stop_count, count_threshold):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
@@ -160,5 +172,6 @@ class StateEstimator:
         return extracted_data
 
     def estimate(self, extracted_data):
+        extracted_data = netobtain(extracted_data)
         state_time_trace = self.estimator.estimate(extracted_data)
         return state_time_trace

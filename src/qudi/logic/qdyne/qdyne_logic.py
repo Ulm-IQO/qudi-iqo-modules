@@ -68,7 +68,6 @@ class QdyneLogic(LogicBase):
         self.data = None
         self.save = None
 
-
     def on_activate(self):
         def activate_classes():
             self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
