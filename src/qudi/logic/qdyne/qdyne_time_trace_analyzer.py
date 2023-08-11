@@ -17,6 +17,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
 
+from qudi.util.network import netobtain
+
 
 class Analyzer(ABC):
     @abstractmethod
@@ -37,7 +39,7 @@ class FourierSettings:
     range_around_peak: int = 30
     padding_parameter: int = 1
     cut_time_trace: bool = False
-    spectrum_type: str = 'FT'
+    spectrum_type: str = 'amp'
     sequence_length_s: float = 0
 
     def ceil_log(self, sample_size, base=2):
@@ -64,6 +66,8 @@ class FourierAnalyzer(Analyzer):
             spectrum = self.get_norm_amp_spectrum(ft_signal)
         elif self.stg.spectrum_type == 'power':
             spectrum = self.get_norm_psd(ft_signal)
+        else:
+            print('{}_is not defined'.format(self.stg.spectrum_type))
         return spectrum
 
     def do_fft(self, time_trace, cut_time_trace=False, padding_param=0):
@@ -107,7 +111,7 @@ class FourierAnalyzer(Analyzer):
         """
         get the normalized power sepctrum density
         """
-        psd = np.square(ft)
+        psd = abs(ft)*2
         norm_psd = psd / (len(psd))**2
         return norm_psd
 
@@ -140,10 +144,11 @@ class TimeTraceAnalyzer:
         self.analyzer.input_settings(settings)
 
     def analyze(self, time_trace):
+        time_trace = netobtain(time_trace)
         signal = self.analyzer.analyze(time_trace)
-
         return signal
 
     def get_spectrum(self, signal):
+        signal = netobtain(signal)
         spectrum = self.analyzer.get_spectrum(signal)
         return spectrum
