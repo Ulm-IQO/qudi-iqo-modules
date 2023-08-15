@@ -136,7 +136,7 @@ class Scanning2DCorrelationLogic(LogicBase):
         image = Image()
         range_xy = np.asarray(scan_data.scan_range)
         range_xy = [range_xy[0][1]-range_xy[0][0], range_xy[1][1]-range_xy[1][0]]
-        image.import_from_array(scan_arr, range_xy=range_xy)
+        image.import_from_array(scan_arr.T, range_xy=range_xy)
 
         self._set_image(image, number)
 
