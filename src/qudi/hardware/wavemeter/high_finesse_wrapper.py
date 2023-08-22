@@ -21,12 +21,18 @@
 # v0.4 - GetPattern... and GetAnalysisData argtypes adapted
 # /
 
+import warnings
 from ctypes import c_bool, c_double, c_char_p, c_long, c_longlong, c_short, c_ulong, c_ushort, POINTER, windll
+
+MIN_VERSION = 65330
 
 
 def load_dll(dll_path='wlmData.dll'):
     dll = windll.LoadLibrary(dll_path)
+    return dll
 
+
+def setup_dll(dll):
     # LONG_PTR Instantiate(long RFC, long Mode, LONG_PTR P1, long P2)
     dll.Instantiate.argtypes = [c_long, c_long, POINTER(c_long), c_long]
     dll.Instantiate.restype = POINTER(c_long)
@@ -656,5 +662,3 @@ def load_dll(dll_path='wlmData.dll'):
     # long SetScale(unsigned short S)
     dll.SetScale.argtypes = [c_ushort]
     dll.SetScale.restype = c_long
-
-    return dll

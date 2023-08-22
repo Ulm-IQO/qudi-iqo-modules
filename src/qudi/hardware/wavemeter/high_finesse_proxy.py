@@ -27,7 +27,7 @@ from logging import getLogger
 import numpy as np
 
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
-from qudi.hardware.wavemeter.high_finesse_wrapper import load_dll
+from qudi.hardware.wavemeter.high_finesse_wrapper import load_dll, setup_dll, MIN_VERSION
 
 
 _log = getLogger(__name__)
@@ -40,7 +40,19 @@ except FileNotFoundError:
                'Please install a High Finesse wavemeter and try again.')
     raise
 else:
-    _log.debug('Successfully loaded wavemeter DLL.')
+    v = [_wavemeter_dll.GetWLMVersion(i) for i in range(4)]
+    _log.info(f'Successfully loaded wavemeter DLL of WS{v[0]} {v[1]},'
+              f' software revision {v[2]}, compilation number {v[3]}.')
+
+software_rev = v[2]
+if software_rev < MIN_VERSION:
+    _log.warning(f'The wavemeter DLL software revision {software_rev} is older than the lowest revision '
+                 f'tested to be working with the wrapper ({MIN_VERSION}). Setting up the wavemeter DLL might fail.')
+
+try:
+    setup_dll(_wavemeter_dll)
+except AttributeError:
+    _log.error('One or more function is not available. The wavemeter version is likely outdated.')
 
 
 def get_active_channels():
