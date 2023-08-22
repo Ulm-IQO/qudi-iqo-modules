@@ -240,20 +240,20 @@ class DataInStreamInterface(Base):
 
     @abstractmethod
     def read_data(self,
-                  samples_per_channel: Optional[int] = None
+                  number_of_samples: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
         """ Read data from the stream buffer into a 1D numpy array and return it.
         All samples for each channel are stored in consecutive blocks one after the other.
         The returned data_buffer can be unraveled into channel samples with:
 
-            data_buffer.reshape([<channel_count>, samples_per_channel])
+            data_buffer.reshape([<channel_count>, number_of_samples])
 
         The numpy array data type is the one defined in self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
-        If samples_per_channel is omitted all currently available samples are read from buffer.
+        If number_of_samples is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
         """
         pass
