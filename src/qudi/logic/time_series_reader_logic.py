@@ -48,7 +48,6 @@ class TimeSeriesReaderLogic(LogicBase):
     time_series_reader_logic:
         module.Class: 'time_series_reader_logic.TimeSeriesReaderLogic'
         options:
-            use_own_data_buffer: True  # can improve performance - set to False if using a remote instreamer
             max_frame_rate: 20  # optional (default: 20Hz)
             channel_buffer_size: 1048576  # optional (default: 1MSample)
             max_raw_data_bytes: 1073741824  # optional (default: 1GB)
@@ -67,7 +66,6 @@ class TimeSeriesReaderLogic(LogicBase):
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
 
     # config options
-    _use_own_data_buffer = ConfigOption('use_own_data_buffer', default=True, missing='info')
     _max_frame_rate = ConfigOption('max_frame_rate', default=20, missing='warn')
     _channel_buffer_size = ConfigOption(name='channel_buffer_size',
                                         default=1024**2,
@@ -116,10 +114,19 @@ class TimeSeriesReaderLogic(LogicBase):
         self._data_recording_active = False
         self._record_start_time = None
 
+        # important to know for method of reading the buffer
+        self._streamer_is_remote = False
+
     def on_activate(self) -> None:
         """ Initialisation performed during activation of the module. """
         # Temp reference to connected hardware module
         streamer = self._streamer()
+
+        # check if streamer is a remote module
+        constraints = streamer.constraints
+        if type(constraints) != type(netobtain(constraints)):
+            self._streamer_is_remote = True
+            self.log.debug('Streamer is a remote module. Do not use a shared buffer.')
 
         # Flag to stop the loop and process variables
         self._recorded_raw_data = None
@@ -130,7 +137,7 @@ class TimeSeriesReaderLogic(LogicBase):
 
         # Check valid StatusVar
         # active channels
-        avail_channels = list(streamer.constraints.channel_units)
+        avail_channels = list(constraints.channel_units)
         if self._active_channels is None:
             if streamer.active_channels:
                 self._active_channels = streamer.active_channels.copy()
@@ -488,11 +495,13 @@ class TimeSeriesReaderLogic(LogicBase):
                         (self._channel_buffer_size // self._oversampling_factor) * self._oversampling_factor
                     )
                     # read the current counter values
-                    if self._use_own_data_buffer:
+                    if not self._streamer_is_remote:
+                        # we can use the more efficient method of using a shared buffer
                         streamer.read_data_into_buffer(data_buffer=self._data_buffer,
                                                        samples_per_channel=samples_to_read,
                                                        timestamp_buffer=self._times_buffer)
                     else:
+                        # streamer is remote, we need to have a new buffer created and passed to us
                         self._data_buffer, self._times_buffer = streamer.read_data(number_of_samples=samples_to_read)
                         self._data_buffer = netobtain(self._data_buffer)
                         self._times_buffer = netobtain(self._times_buffer)

@@ -10,6 +10,7 @@ docstrings.
 
 ### Bugfixes
 - Basic data saving in `TimeSeriesReaderLogic` works now.
+- Added remote streamer support to `TimeSeriesReaderLogic`.
 - Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle 
 
 ### New Features
