@@ -111,23 +111,7 @@ Please find the [configuration instructions](https://ulm-iqo.github.io/qudi-core
 ## Jupyter notebooks/ measurement scripts
 
 Qudi runs a IPython kernel that can be accessed from a jupyter notebook. In this way you can write your own measurements
-scripts that employ qudi modules just from their configured names (like in the qudi manager.)
-
-- Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
-- Change to the folder where you store your jupyter notebooks. `cd C:\Users\quantumguy\qudi\notebooks`
-- Type `jupyter notebook` to start the notebook server
-- Open a browser and navigate to http://localhost:8888/
-
-Now you can create a new notebook that has access to all qudi modules and variables. A first example might be outputting
-the current countrate to the qudi log:
-
-```python
-    counter = time_series_reader_logic
-    ch = 'pfi3'
-    last_sample = counter.trace_data[1][ch][-1]
-    
-    logger.info(f"I am a confocal microsopce and counted {last_sample} photons.")
-```
+scripts as described [here](https://ulm-iqo.github.io/qudi-core/setup/jupyter.html).
 
 ### Comparing notebooks
 Pycharm lets you easily compare text based files (like .py) between different branches or versions by right-clicking 
