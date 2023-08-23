@@ -38,7 +38,8 @@ from qudi.interface.scanning_probe_interface import ScanData
 
 class ScanningOptimizeLogic(LogicBase):
     """
-    ToDo: Write documentation
+    This module is responsible for performing scanning probe measurements in order to find some optimal
+    position and move the scanner there.
 
     Example config for copy-paste:
 

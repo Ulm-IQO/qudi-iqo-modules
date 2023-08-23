@@ -141,7 +141,14 @@ class LaserMainWindow(QtWidgets.QMainWindow):
 
 
 class LaserGui(GuiBase):
-    """ FIXME: Please document
+    """ Main gui class for controlling a laser.
+
+    Example config for copy-paste:
+
+    laser_gui:
+        module.Class: 'laser.laser_gui.LaserGui'
+        connect:
+            laser_logic: laser_logic
     """
 
     # declare connectors
