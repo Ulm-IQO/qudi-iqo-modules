@@ -24,7 +24,7 @@
 import warnings
 from ctypes import c_bool, c_double, c_char_p, c_long, c_longlong, c_short, c_ulong, c_ushort, POINTER, windll
 
-MIN_VERSION = 65330
+MIN_VERSION = 6491
 
 
 def load_dll(dll_path='wlmData.dll'):
