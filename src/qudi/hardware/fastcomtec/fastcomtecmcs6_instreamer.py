@@ -43,12 +43,12 @@ class FastComtec(DataInStreamInterface):
         options:
     """
     # config options
-    _digital_sources = ConfigOption(name='digital_sources', missing='error') # specify the digital channels on the device that should be used for streaming in data
-    _max_read_block_size = ConfigOption(name='max_read_block_size', default=10000, missing='info') # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
+    _digital_sources = ConfigOption(name='digital_sources', default='ch1', missing='warn')  # specify the digital channels on the device that should be used for streaming in data
+    _max_read_block_size = ConfigOption(name='max_read_block_size', default=10000, missing='info')  # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
     _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
     _data_type = ConfigOption(name='data_type', default=np.int32, missing='info')
     _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
-    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing') # relative amount of memory that can be used for reading measurement data into the systems memory
+    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing')  # relative amount of memory that can be used for reading measurement data into the systems memory
 
     # Todo: can be extracted from list file
     _line_size = ConfigOption(name='line_size', default=4, missing='nothing') # how many bytes does one line of measurement data have
@@ -292,8 +292,7 @@ class FastComtec(DataInStreamInterface):
                       and values being the corresponding StreamChannel instances.
         """
         constr = self._constraints
-        return(*(ch.copy() for ch in constr.digital_channels if ch.name in self._active_channels),
-               *(ch.copy() for ch in constr.analog_channels if ch.name in self._active_channels))
+        return(ch.copy() for ch in constr.digital_channels if ch.name in self._active_channels)
 
     @active_channels.setter
     def active_channels(self, channels: list):
@@ -318,8 +317,7 @@ class FastComtec(DataInStreamInterface):
         @return dict: data channel properties for all available channels with keys being the channel
                       names and values being the corresponding StreamChannel instances.
         """
-        return (*(ch.copy() for ch in self._constraints.digital_channels),
-                *(ch.copy() for ch in self._constraints.analog_channels))
+        return (ch.copy() for ch in self._constraints.digital_channels)
 
     @property
     def available_samples(self):

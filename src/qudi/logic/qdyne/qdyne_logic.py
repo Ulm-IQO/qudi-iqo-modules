@@ -40,13 +40,26 @@ class MainDataClass:
     signal: np.ndarray = np.array([], dtype=float)
     spectrum: np.ndarray = np.array([], dtype=float)
 
-class QdyneLogic:
+class QdyneLogic(LogicBase):
+    """
+    This is the Logic class for Qdyne measurements.
 
+    example config for copy-paste:
+
+    qdyne_logic:
+        module.Class: 'qdyne.qdyne_logic.QdyneLogic'
+        connect:
+            data_streamer: <instreamer_name>
+    """
+
+    # declare connectors
+    _data_streamer = Connector(name='data_streamer', interface='DataInstreamInterface')
+
+    # declare config options
     estimator_method = ConfigOption(name='estimator_method', default='TimeTag', missing='warn')
     analyzer_method = ConfigOption(name='analyzer_method', default='Fourier', missing='nothing')
-    data_save_dir = ConfigOption(name='data_save_dir')
+    #data_save_dir = ConfigOption(name='data_save_dir')
     data_storage_class = ConfigOption(name='data_storage_class', default='text', missing='nothing')
-
 
     def __init__(self):
         self.estimator = None
@@ -60,14 +73,11 @@ class QdyneLogic:
         self.analyzer = TimeTraceAnalyzer()
         self.settings = QdyneSettings()
         self.data = MainDataClass()
-        self.save = QdyneSave(self.data_save_dir, self.data_storage_class)
-
+        self.save = QdyneSave(self.module_default_data_dir, self.data_storage_class)
 
     def configure(self):
         self.estimator.configure_method(self.estimator_method)
         self.analyzer.configure_method(self.analyzer_method)
-
-
         pass
 
     def input_estimator_settings(self):
@@ -109,9 +119,8 @@ class QdyneSettings:
         self.time_trace_analysis_stg = None
         self.save_stg = None
 
-
     def on_activate(self):
-        self.measurement_stg =
+        self.measurement_stg = None
         self.state_estimator_stg = self.get_state_estimator_stg(self.state_estimator_method)
         self.time_trace_analysis_stg = self.get_time_trace_analysis_stg(self.time_trace_analysis_method)
         self.save_stg = QdyneSaveSettings()
@@ -139,11 +148,3 @@ class QdyneSettings:
             self.time_trace_analysis_stg = None
 
         return self.time_trace_analysis_stg
-
-
-
-
-
-
-
-
