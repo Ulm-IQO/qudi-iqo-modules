@@ -131,12 +131,8 @@ class SequenceGeneratorLogic(LogicBase):
 
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-        self.log.debug('The following configuration was found.')
-        for key in config.keys():
-            self.log.debug('{0}: {1}'.format(key, config[key]))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # current pulse generator settings that are frequently used by this logic.
         # Save them here since reading them from device every time they are used may take some time.
@@ -163,7 +159,6 @@ class SequenceGeneratorLogic(LogicBase):
         self._saved_pulse_blocks = dict()
         self._saved_pulse_block_ensembles = dict()
         self._saved_pulse_sequences = dict()
-        return
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -220,6 +215,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         # Get instance of PulseObjectGenerator which takes care of collecting all predefined methods
         self._pog = PulseObjectGenerator(sequencegeneratorlogic=self)
+        self._pog.activate_plugins()
 
         self.__sequence_generation_in_progress = False
         return

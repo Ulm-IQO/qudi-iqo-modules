@@ -38,7 +38,8 @@ from qudi.interface.scanning_probe_interface import ScanData
 
 class ScanningOptimizeLogic(LogicBase):
     """
-    ToDo: Write documentation
+    This module is responsible for performing scanning probe measurements in order to find some optimal
+    position and move the scanner there.
 
     Example config for copy-paste:
 
@@ -67,8 +68,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     _sigNextSequenceStep = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = RecursiveMutex()
         self._result_lock = Mutex()
@@ -545,7 +546,7 @@ class OptimizerScanSequence:
                     out_comb.append(combine(old_list, seq))
 
             if not old_comb:
-                return new_seqs
+                return [[seq] for seq in new_seqs]
             if not out_comb:
                 return old_comb
 

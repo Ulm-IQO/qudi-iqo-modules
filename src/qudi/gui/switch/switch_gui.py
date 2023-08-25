@@ -92,7 +92,12 @@ class SwitchGui(GuiBase):
     """
     A graphical interface to switch a hardware by hand.
 
-    Todo: Example config for copy-paste:
+    Example config for copy-paste:
+
+        switch_gui:
+        module.Class: 'switch.switch_gui.SwitchGui'
+        connect:
+            switchlogic: 'switch_logic'
 
     """
 
