@@ -56,18 +56,16 @@ class QdyneLogic(LogicBase):
     """
 
     # declare connectors
+    pmaster = Connector(interface='PulsedMasterLogic')
+    pmeasure = Connector(interface='PulsedMeasurementLogic')
     _data_streamer = Connector(name='data_streamer', interface='DataInstreamInterface')
 
     # declare config options
     estimator_method = ConfigOption(name='estimator_method', default='TimeTag', missing='warn')
     analyzer_method = ConfigOption(name='analyzer_method', default='Fourier', missing='nothing')
-    #data_save_dir = ConfigOption(name='data_save_dir')
-    pmaster = Connector(interface='PulsedMasterLogic')
-    pmeasure = Connector(interface='PulsedMeasurementLogic')
-
     default_estimator_method = ConfigOption(name='default_estimator_method', default='TimeTag', missing='warn')
     default_analyzer_method = ConfigOption(name='analyzer_method', default='Fourier', missing='nothing')
-    data_save_dir = ConfigOption(name='data_save_dir')
+    #data_save_dir = ConfigOption(name='data_save_dir')
     data_storage_class = ConfigOption(name='data_storage_class', default='text', missing='nothing')
 
 #    estimator_method = StatusVar(default='TimeTag')
@@ -85,12 +83,6 @@ class QdyneLogic(LogicBase):
         self.data = None
         self.save = None
 
-    def on_activete(self):
-        self.estimator = StateEstimator()
-        self.analyzer = TimeTraceAnalyzer()
-        self.settings = QdyneSettings()
-        self.data = MainDataClass()
-        self.save = QdyneSave(self.module_default_data_dir, self.data_storage_class)
     def on_activate(self):
         def activate_classes():
             self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
@@ -108,7 +100,6 @@ class QdyneLogic(LogicBase):
         set_default_values()
 
         return
-
 
     @property
     def estimator_method(self):
@@ -130,17 +121,12 @@ class QdyneLogic(LogicBase):
         self.settings.time_trace_analysis_method = self._analysis_method
         self.analyzer.method = self._analysis_method
 
-
     def on_deactivate(self):
         return
-
 
     def configure(self):
         self.estimator.configure_method(self.estimator_method)
         self.analyzer.configure_method(self.analysis_method)
-
-
-        self.analyzer.configure_method(self.analyzer_method)
         pass
 
     def input_estimator_settings(self):
@@ -229,4 +215,3 @@ class QdyneSettings:
 
         else:
             self.time_trace_analysis_stg = None
-
