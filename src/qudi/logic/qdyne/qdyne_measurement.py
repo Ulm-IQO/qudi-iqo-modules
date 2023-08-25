@@ -28,16 +28,12 @@ class QdyneMeasurementSettings:
 class QdyneMeasurementStatus:
     running: bool = False
 
-
-
-
 class QdyneMeasurement:
-    pmaster = Connector(interface='PulsedMasterLogic')
-    pmeasure = Connector(interface='PulsedMeasurementLogic')
-
     data_type_lists = ['TimeSeries', 'TimeTag']
 
-    def __init__(self):
+    def __init__(self, pmaster, pmeasure):
+        self.pmaster = pmaster
+        self.pmeasure = pmeasure
         self.stg = None
 
     def input_settings(self, settings: QdyneMeasurementSettings) -> None:
