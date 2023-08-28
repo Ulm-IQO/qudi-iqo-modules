@@ -174,7 +174,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         into.
         The 1D data_buffer can be unraveled into channel and sample indexing with:
 
-            data_buffer.reshape([<samples_per_channel>, <channel_count>])
+            data_buffer.reshape([<number_of_samples>, <channel_count>])
 
         The data_buffer array must have the same data type as self.constraints.data_type.
 
