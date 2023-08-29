@@ -19,6 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 import ctypes
 import numpy as np
 import time
@@ -28,7 +29,9 @@ from psutil._common import bytes2human
 
 from qudi.util.datastorage import create_dir_for_file
 from qudi.core.configoption import ConfigOption
-from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode, StreamChannel, StreamChannelType
+from qudi.util.mutex import Mutex
+from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
+from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.hardware.fastcomtec.fastcomtecmcs6 import AcqStatus, BOARDSETTING, ACQDATA, AcqSettings
 
 class FastComtec(DataInStreamInterface):
@@ -43,25 +46,44 @@ class FastComtec(DataInStreamInterface):
         options:
     """
     # config options
-    _digital_sources = ConfigOption(name='digital_sources', default='ch1', missing='warn')  # specify the digital channels on the device that should be used for streaming in data
+    _channel_names = ConfigOption(name='channel_names',
+                                  missing='error',
+                                  constructor=lambda names: [str(x) for x in names])
+    _channel_units = ConfigOption(name='channel_units',
+                                  missing='error',
+                                  constructor=lambda units: [str(x) for x in units])
+    _channel_signals = ConfigOption(
+        name='channel_signals',
+        missing='error',
+        constructor=lambda signals: [SignalShape[x.upper()] for x in signals]
+    )
+    _data_type = ConfigOption(name='data_type',
+                              default='int32',
+                              missing='info',
+                              constructor=lambda typ: np.dtype(typ).type)
+    _sample_timing = ConfigOption(name='sample_timing',
+                                  default='RANDOM',
+                                  missing='info',
+                                  constructor=lambda timing: SampleTiming[timing.upper()])
+
     _max_read_block_size = ConfigOption(name='max_read_block_size', default=10000, missing='info')  # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
     _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
-    _data_type = ConfigOption(name='data_type', default=np.int32, missing='info')
     _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
-    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing')  # relative amount of memory that can be used for reading measurement data into the systems memory
+    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing')  # relative amount of memory that can be used for reading measurement data into the system's memory
 
     # Todo: can be extracted from list file
     _line_size = ConfigOption(name='line_size', default=4, missing='nothing') # how many bytes does one line of measurement data have
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
+
+        self._thread_lock = Mutex()
+        self._active_channels = list()
         self._sample_rate = None
         self._buffer_size = None
         self._use_circular_buffer = None
-        #self._data_type = None
         self._streaming_mode = None
         self._stream_length = None
-        self._active_channels = tuple()
 
         self._data_buffer = np.empty(0, dtype=self._data_type)
         self._has_overflown = False
@@ -79,28 +101,18 @@ class FastComtec(DataInStreamInterface):
         
         # Create constraints
         self._constraints = DataInStreamConstraints(
-            digital_channels=tuple(
-                StreamChannel(name=src,
-                              type=StreamChannelType.DIGITAL,
-                              unit='counts') for src in self._digital_sources
-            ),
-            # TODO correctly implement the minimal sample_rate
-            digital_sample_rate={'default'    : 1,
-                                 'bounds'     : (0.1, 1/200e-12),
-                                 'increment'  : 0.1,
-                                 'enforce_int': False},
-            combined_sample_rate={'default'    : 1,
-                                 'bounds'     : (0.1, 1/100e-12),
-                                 'increment'  : 0.1,
-                                 'enforce_int': False},
-            read_block_size={'default'    : 1,
-                             'bounds'     : (1, int(self._max_read_block_size)),
-                             'increment'  : 1,
-                             'enforce_int': True},
-            streaming_modes=(StreamingMode.CONTINUOUS,),  # TODO: Implement FINITE streaming mode
-            data_type=np.int32,  #np.float64
-            allow_circular_buffer=True
+            channel_units=dict(zip(self._channel_names, self._channel_units)),
+            sample_timing=self._sample_timing,
+            streaming_modes=[StreamingMode.CONTINUOUS,],  # TODO: Implement FINITE streaming mode
+            data_type=self._data_type,
+            channel_buffer_size=ScalarConstraint(default=1024 ** 2,
+                                                 bounds=(128, self._available_memory),
+                                                 increment=1,
+                                                 enforce_int=True),
+            sample_rate=ScalarConstraint(default=1, bounds=(0.1, 1/200e-12), increment=0.1, enforce_int=False)
         )
+        self._active_channels = list(self._constraints.channel_units)
+
         # TODO implement the constraints for the fastcomtec max_bins, max_sweep_len and hardware_binwidth_list
         # Reset data buffer
         self._data_buffer = np.empty(0, dtype=self._data_type)
@@ -113,219 +125,14 @@ class FastComtec(DataInStreamInterface):
         return
 
     @property
-    def sample_rate(self) -> float:
-        """
-        The currently set sample rate
-
-        @return float: current sample rate in Hz
-        """
-        return self._sample_rate
-
-    @sample_rate.setter
-    def sample_rate(self, samplerate: float):
-        """
-        Set the sample rate
-
-        @param float, samplerate: samplerate that should be set
-        """
-        self._sample_rate = samplerate
+    def constraints(self) -> DataInStreamConstraints:
+        """ Read-only property returning the constraints on the settings for this data streamer. """
+        return self._constraints
 
     @property
-    def data_type(self) -> type:
-        """
-        Read-only property.
-        The data type of the stream data. Must be numpy type.
-
-        @return type: stream data type (numpy type)
-        """
-        return self._data_type
-
-    @property
-    def buffer_size(self) -> int:
-        """
-        The currently set buffer size.
-        Buffer size corresponds to the number of samples that can be buffered. 
-        It determines the number of lines than can be read by from the measurement file to the internal memory of the PC.
-
-        @return int: current buffer size in samples per channel
-        """
-        return self._buffer_size
-
-    @buffer_size.setter
-    def buffer_size(self, buffersize: int):
-        """
-        Sets number of lines that can be read from the measurement file into the memory of the PC.
-
-        @param int, buffersize: number of lines that should be read into the memory
-        """
-        if buffersize * self._line_size > self._available_memory:
-            self.log.error(f"The required buffersize ({bytes2human(buffersize)}B) is greater than 80 % of the available memory ({bytes2human(available_memory)}B). Can't set new buffersize.")
-            return
-        self._buffer_size = buffersize
-
-    @property
-    def use_circular_buffer(self) -> bool:
-        """
-        A flag indicating if circular sample buffering is being used or not.
-
-        @return bool: indicate if circular sample buffering is used (True) or not (False)
-        """
-        bsetting=BOARDSETTING()
-        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
-        if bsetting.sweepmode == 1978500:
-            self._use_circular_buffer = True
-        if bsetting.sweepmode == 1978496:
-            self._use_circular_buffer = False
-        return self._use_circular_buffer
-
-    @use_circular_buffer.setter
-    def use_circular_buffer(self, flag: bool):
-        """
-        Set the flag indicating if circular sample buffering is being used or not.
-        @param bool, flag: indicate if circular sample buffering is used (True) or not (False) 
-        """
-        if self._is_not_settable("circular buffer"):
-            return
-        if flag:
-            self._use_circular_buffer = False
-            self.log.error("No circular buffer implemented. Circular buffer is switched off.")
-            return
-        self._use_circular_buffer = flag
-        cmd = 'sweepmode={0}'.format(hex(1978496))
-        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-        
-    @property
-    def streaming_mode(self) -> StreamingMode:
-        """
-        The currently configured streaming mode Enum.
-
-        @return StreamingMode: Finite (StreamingMode.FINITE) or continuous
-                               (StreamingMode.CONTINUOUS) data acquisition
-        """
-        bsetting=BOARDSETTING()
-        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
-        if bsetting.sweepmode == 1880272:
-            self._streaming_mode = StreamingMode.CONTINUOUS
-            return self._streaming_mode
-        self._streaming_mode = StreamingMode.FINITE
-        return self._streaming_mode
-
-    @streaming_mode.setter
-    def streaming_mode(self, mode: int):
-        """
-        Method to set the streaming mode
-
-        @param int mode: value that is in the StreamingMode class (StreamingMode.CONTINUOUS: 0, StreamingMode.FINITE: 1)
-        """
-        if self._is_not_settable("streaming mode"):
-            return
-        mode = StreamingMode(mode)
-        if mode not in self._constraints.streaming_modes:
-            self.log.error('Unknown streaming mode "{0}" encountered.\nValid modes are: {1}.'
-                           ''.format(mode, self._constraints.streaming_modes))
-            return
-        if mode == StreamingMode.FINITE:
-            cmd = 'sweepmode={0}'.format(hex(1978496))
-        else:
-            cmd = 'sweepmode={0}'.format(hex(1978500))
-        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-        self._streaming_mode = mode
-        return mode.value
-
-    @property
-    def stream_length(self) -> int:
-        """
-        Property holding the total number of samples per channel to be acquired by this stream.
-        This number is only relevant if the streaming mode is set to StreamingMode.FINITE.
-
-        @return int: The number of samples to acquire per channel. Ignored for continuous streaming.
-        """
-        setting = AcqSettings()
-        self.dll.GetSettingData(ctypes.byref(setting), 0)
-        self._stream_length = setting.range
-        return self._stream_length
-    
-    @stream_length.setter
-    def stream_length(self, length: int):
-        if self._is_not_settable('stream length'):
-            return
-        length = int(length)
-        if length < 1:
-            self.log.error('Stream_length must be a positive integer >= 1.')
-            return
-        cmd = 'range={0}'.format(int(length))
-        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-        self._stream_length = length
-
-    @property
-    def all_settings(self) -> dict:
-        """
-        Read-only property to return a dict containing all current settings and values that can be
-        configured using the method "configure". Basically returns the same as "configure".
-
-        @return dict: Dictionary containing all configurable settings
-        """
-        return {'sample_rate': self._sample_rate,
-                'streaming_mode': self._streaming_mode,
-                'active_channels': self.active_channels,
-                'stream_length': self._stream_length,
-                'buffer_size': self._buffer_size,
-                'use_circular_buffer': self._use_circular_buffer}
-
-    @property
-    def number_of_channels(self) -> int:
-        """
-        Read-only property to return the currently configured number of active data channels.
-
-        @return int: the currently set number of channels
-        """
-        return len(self._active_channels)
-
-    @property
-    def active_channels(self) -> tuple:
-        """
-        The currently configured data channel properties.
-        Returns a dict with channel names as keys and corresponding StreamChannel instances as
-        values.
-
-        @return dict: currently active data channel properties with keys being the channel names
-                      and values being the corresponding StreamChannel instances.
-        """
-        constr = self._constraints
-        return(ch.copy() for ch in constr.digital_channels if ch.name in self._active_channels)
-
-    @active_channels.setter
-    def active_channels(self, channels: list):
-        if self._is_not_settable('active channels'):
-            return
-        avail_channels = tuple(ch.name for ch in self.available_channels)
-        if any(ch not in avail_channels for ch in channels):
-            self.log.error('Invalid channel to stream from encountered {0}.\nValid channels '
-                           'are: {1}'
-                           ''.format(tuple(channels), tuple(ch.name for ch in self.available_channels)))
-            return
-        self._active_channels = tuple(channels)
-        return
-
-    @property
-    def available_channels(self):
-        """
-        Read-only property to return the currently used data channel properties.
-        Returns a dict with channel names as keys and corresponding StreamChannel instances as
-        values.
-
-        @return dict: data channel properties for all available channels with keys being the channel
-                      names and values being the corresponding StreamChannel instances.
-        """
-        return (ch.copy() for ch in self._constraints.digital_channels)
-
-    @property
-    def available_samples(self):
-        """
-        Read-only property to return the currently available number of samples per channel ready
+    def available_samples(self) -> int:
+        """ Read-only property to return the currently available number of samples per channel ready
         to read from buffer.
-
-        @return int: Number of available samples per channel
         """
         if not self._filename:
             self.log.error("No filename has been specified yet. First call the change_filename function to create a file.")
@@ -337,28 +144,264 @@ class FastComtec(DataInStreamInterface):
             count = sum(buffer.count(b'\n') for buffer in generator) - self._header_length
         return count
 
-    def _count_generator(self, reader):
-        b = reader(1024 * 1024)
-        while b:
-            yield b
-            b = reader(1024 * 1024)
 
     @property
-    def buffer_overflown(self):
+    def sample_rate(self) -> float:
+        """ Read-only property returning the currently set sample rate in Hz.
+        As here it is not timing mode SampleTiming.CONSTANT this property represents only a
+        hint to the actual hardware timebase and can not be considered accurate.
         """
-        Read-only flag to check if the read buffer has overflown.
-        In case of a circular buffer it indicates data loss.
-        In case of a non-circular buffer the data acquisition should have stopped if this flag is
-        coming up.
-        Flag will only be reset after starting a new data acquisition.
+        return self._sample_rate
 
-        @return bool: Flag indicates if buffer has overflown (True) or not (False)
+    @property
+    def channel_buffer_size(self) -> int:
+        """ Read-only property returning the currently set buffer size in samples per channel.
+        The total buffer size in bytes can be estimated by:
+            <buffer_size> * <channel_count> * numpy.nbytes[<data_type>]
+
+        For StreamingMode.FINITE this will also be the total number of samples to acquire per
+        channel.
         """
-        if self._data_buffer.size * self._data_buffer.itemsize > self._available_memory:
+        return self._buffer_size
+
+    @property
+    def streaming_mode(self) -> StreamingMode:
+        """ Read-only property returning the currently configured StreamingMode Enum """
+        bsetting = BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
+        if bsetting.sweepmode == 1880272:
+            self._streaming_mode = StreamingMode.CONTINUOUS
+            return self._streaming_mode
+        self._streaming_mode = StreamingMode.FINITE
+        return self._streaming_mode
+
+    @property
+    def active_channels(self) -> List[str]:
+        """ Read-only property returning the currently configured active channel names """
+        return self._active_channels.copy()
+
+    def configure(self,
+                  active_channels: Sequence[str],
+                  streaming_mode: Union[StreamingMode, int],
+                  channel_buffer_size: int,
+                  sample_rate: float) -> None:
+        """ Configure a data stream. See read-only properties for information on each parameter. """
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                raise RuntimeError('Unable to configure data stream while it is already running')
+
+            # Cache current values to restore them if configuration fails
+            old_channels = self.active_channels
+            old_streaming_mode = self.streaming_mode
+            old_buffer_size = self.channel_buffer_size
+            old_sample_rate = self.sample_rate
+            try:
+                self._set_active_channels(active_channels)
+                self._set_streaming_mode(streaming_mode)
+                self._set_channel_buffer_size(channel_buffer_size)
+                self._set_sample_rate(sample_rate)
+            except Exception as err:
+                self._set_active_channels(old_channels)
+                self._set_streaming_mode(old_streaming_mode)
+                self._set_channel_buffer_size(old_buffer_size)
+                self._set_sample_rate(old_sample_rate)
+                raise RuntimeError('Error while trying to configure data in-streamer') from err
+
+    def _set_active_channels(self, channels: Iterable[str]) -> None:
+        if self._is_not_settable('active channels'):
+            return
+        channels = set(channels)
+        if not channels.issubset(self._constraints.channel_units):
+            raise ValueError(f'Invalid channels to set active {channels}. Allowed channels are '
+                             f'{set(self._constraints.channel_units)}')
+        channel_shapes = {ch: self._channel_signals[idx] for idx, ch in
+                          enumerate(self._constraints.channel_units) if ch in channels}
+        self._active_channels = list(channel_shapes)
+
+    def _set_streaming_mode(self, mode: Union[StreamingMode, int]) -> None:
+        if self._is_not_settable("streaming mode"):
+            return
+        try:
+            mode = StreamingMode(mode.value)
+        except AttributeError:
+            mode = StreamingMode(mode)
+        if (mode == StreamingMode.INVALID) or mode not in self._constraints.streaming_modes:
+            raise ValueError(
+                f'Invalid streaming mode to set ({mode}). Allowed StreamingMode values are '
+                f'[{", ".join(str(mod) for mod in self._constraints.streaming_modes)}]'
+            )
+        if mode == StreamingMode.FINITE:
+            cmd = 'sweepmode={0}'.format(hex(1978496))
+        else:
+            cmd = 'sweepmode={0}'.format(hex(1978500))
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+        self._streaming_mode = mode
+
+    def _set_channel_buffer_size(self, samples: int) -> None:
+        self._constraints.channel_buffer_size.check(samples)
+        self._buffer_size = buffersize
+
+    def _set_sample_rate(self, rate: Union[int, float]) -> None:
+        rate = float(rate)
+        self._constraints.sample_rate.check(rate)
+        self._sample_rate = rate
+    
+    def _is_not_settable(self, option: str = ""):
+        """
+        Method that checks whether the FastComtec is running. Throws an error if it is running.
+        @return bool: True - device is running, can't set options: False - Device not running, can set options
+        """
+        if self.module_state() == 'locked':
+            if option:
+                self.log.error(f"Can't set {option} as an acquisition is currently running.")
+            else:
+                self.log.error(f"Can't set option as an acquisition is currently running.")
             return True
         return False
 
-    @property
+    def start_stream(self):
+        """ Start the data acquisition/streaming """
+        with self._thread_lock:
+            if self.module_state() == 'idle':
+                self.module_state.lock()
+            self.change_save_mode(2)
+            status = self.dll.Start(0)
+            while not self.is_running():
+                time.sleep(0.05)
+
+    def stop_stream(self):
+        """ Stop the data acquisition/streaming """
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                self.module_state.unlock()
+            status = self.dll.Halt(0)
+            while self.is_running():
+                time.sleep(0.05)
+            # set the fastcounter save mode back to standard again
+            self.change_save_mode(0)
+        return status
+
+    def read_data_into_buffer(self,
+                              data_buffer: np.ndarray,
+                              samples_per_channel: int,
+                              timestamp_buffer: Optional[np.ndarray] = None) -> None:
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        Samples of all channels are stored interleaved in contiguous memory.
+        In case of a multidimensional buffer array, this buffer will be flattened before written
+        into.
+        The 1D data_buffer can be unraveled into channel and sample indexing with:
+
+            data_buffer.reshape([<samples_per_channel>, <channel_count>])
+
+        The data_buffer array must have the same data type as self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
+        provided to be filled with timestamps corresponding to the data_buffer array. It must be
+        able to hold at least <samples_per_channel> items:
+
+        This function is blocking until the required number of samples has been acquired.
+        """
+        with self._thread_lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
+            if read_data_sanity_check(data_buffer) < 0:
+                raise
+
+        if data_buffer.ndim == 2:
+            data_buffer = data_buffer.flatten()
+        if samples_per_channel is None:
+            samples_per_channel = data_buffer.size // self.number_of_channels
+
+        if samples_per_channel < 1:
+            return
+
+        data = read_data_from_file(number_of_samples=samples_per_channel)
+        if len(data) < samples_per_channel:
+            # Todo: find better solution when you have to wait for more data
+            read_data_into_buffer(data_buffer, samples_per_channel)
+        data_buffer = np.append(data_buffer, data)
+        self._read_lines += samples_per_channel
+
+    def read_available_data_into_buffer(self,
+                                        data_buffer: np.ndarray,
+                                        timestamp_buffer: Optional[np.ndarray] = None) -> int:
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The number of samples read per channel is returned and can be used to slice out valid data
+        from the buffer arrays like:
+
+            valid_data = data_buffer[:<channel_count> * <return_value>]
+            valid_timestamps = timestamp_buffer[:<return_value>]
+
+        See "read_data_into_buffer" documentation for more details.
+
+        This method will read all currently available samples into buffer. If number of available
+        samples exceeds buffer size, read only as many samples as fit into the buffer.
+        """
+        with self._thread_lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
+            if read_data_sanity_check(data_buffer) < 0:
+                raise
+
+            if data_buffer.ndim == 2:
+                data_buffer = data_buffer.flatten()
+
+            data = read_data_from_file()
+            number_of_samples = len(data)
+            data_buffer = np.append(data_buffer, data)
+            self._read_lines += number_of_samples
+            return number_of_samples
+
+    def read_data(self,
+                  number_of_samples: Optional[int] = None
+                  ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
+        """ Read data from the stream buffer into a 1D numpy array and return it.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The returned data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, number_of_samples])
+
+        The numpy array data type is the one defined in self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
+        returned as well with timestamps corresponding to the data_buffer array.
+
+        If number_of_samples is omitted all currently available samples are read from buffer.
+        This method will not return until all requested samples have been read or a timeout occurs.
+        """
+        with self._thread_lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
+
+            if number_of_samples is None:
+                read_samples = self.read_available_data_into_buffer(self._data_buffer)
+                if read_samples < 0:
+                    return np.empty((0, 0), dtype=self._data_type), None
+            else:
+                read_samples = self.read_data_into_buffer(self._data_buffer,
+                                                          samples_per_channel=number_of_samples)
+                if read_samples != number_of_samples:
+                    return np.empty((0, 0), dtype=self._data_type), None
+
+            total_samples = self.number_of_channels * read_samples
+            return self._data_buffer, None
+
+    def read_single_point(self):
+        """
+        This method will initiate a single sample read on each configured data channel.
+        In general this sample may not be acquired simultaneous for all channels and timing in
+        general can not be assured. Us this method if you want to have a non-timing-critical
+        snapshot of your current data channel input.
+        May not be available for all devices.
+        The returned 1D numpy array will contain one sample for each channel.
+
+        @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
+                               indicates error.
+        """
+        # TODO: Read only the last line from the file or next line to last that was read
+        pass
+
     def is_running(self):
         """
         Read-only flag indicating if the data acquisition is running.
@@ -380,225 +423,17 @@ class FastComtec(DataInStreamInterface):
                 }
         # what values are returned from the dll?
         status=AcqStatus()
-        self.dll.GetStatusData(ctypes.byref(status), 0) 
-        # self.log.warn(f"status.started = {status.started}") 
+        self.dll.GetStatusData(ctypes.byref(status), 0)
+        # self.log.warn(f"status.started = {status.started}")
         try:
             return return_dict[status.started]
         except KeyError:
             self.log.error(
                 'There is an unknown status from FastComtec. The status message was %s' % (str(status.started)))
             return
-    
-    def _is_not_settable(self, option: str = ""):
-        """
-        Method that checks whether the FastComtec is running. Throws an error if it is running.
-        @return bool: True - device is running, can't set options: False - Device not running, can set options
-        """
-        if self.is_running:
-            if option:
-                self.log.error(f"Can't set {option} as an acquisition is currently running.")
-            else:
-                self.log.error(f"Can't set option as an acquisition is currently running.")
-            return True
-        return False
 
 
-    def configure(self, sample_rate=None, streaming_mode=None, active_channels=None,
-                  total_number_of_samples=None, buffer_size=None, use_circular_buffer=None):
-        """
-        Method to configure all possible settings of the data input stream.
-
-        @param float sample_rate: The sample rate in Hz at which data points are acquired
-        @param StreamingMode streaming_mode: The streaming mode to use (finite or continuous)
-        @param iterable active_channels: Iterable of channel names (str) to be read from.
-        @param int total_number_of_samples: In case of a finite data stream, the total number of
-                                            samples to read per channel
-        @param int buffer_size: The size of the data buffer to pre-allocate in samples per channel
-        @param bool use_circular_buffer: Use circular buffering (True) or stop upon buffer overflow
-                                         (False)
-
-        @return dict: All current settings in a dict. Keywords are the same as kwarg names.
-        """
-        # TODO: how to handle, if no arguments are passed
-        if sample_rate == None:
-            sample_rate = self._sample_rate
-        if streaming_mode == None:
-            streaming_mode = self._streaming_mode
-        if active_channels == None:
-            active_channels = self._active_channels
-        if total_number_of_samples == None and use_circular_buffer:
-            self.log.error("Set finite sample acquisition, but the total number of samples was not set.")
-            return
-        if buffer_size == None:
-            buffer_size = self.buffer_size
-        if use_circular_buffer == None:
-            use_circular_buffer = False
-
-        # set the settings
-        self.streaming_mode = streaming_mode
-        self.use_circular_buffer = use_circular_buffer
-        self.active_channels = active_channels
-
-        self.buffer_size = buffer_size
-        self.stream_length = total_number_of_samples
-        self.sample_rate = sample_rate
-
-        return self.all_settings
-
-    def start_stream(self):
-        """
-        Start the data acquisition and data stream.
-
-        @return int: error code (0: OK, -1: Error)
-        """
-        # TODO: implement the correct return code
-        self.change_save_mode(2)
-        status = self.dll.Start(0)
-        while not self.is_running:
-            time.sleep(0.05)
-        return status
-
-    def stop_stream(self):
-        """
-        Stop the data acquisition and data stream.
-
-        @return int: error code (0: OK, -1: Error)
-        """
-        # TODO: implement the correct return code
-        status = self.dll.Halt(0)
-        while self.is_running:
-            time.sleep(0.05)
-        # set the fastcounter save mode back to standard again
-        self.change_save_mode(0)
-        return status
-
-    def read_data_into_buffer(self, buffer, number_of_samples=None):
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
-        If number_of_samples is omitted it will be derived from buffer.shape[1]
-
-        This method will not return until all requested samples have been read or a timeout occurs.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      this number will be derived from buffer axis 1 size.
-
-        @return int: Number of samples read into buffer; negative value indicates error
-                     (e.g. read timeout)
-        """
-        if read_data_sanity_check(buffer, number_of_samples) < 1:
-            return -1
-
-        if buffer.ndim == 2:
-            number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
-            buffer = buffer.flatten()
-        else:
-            if number_of_samples is None:
-                number_of_samples = buffer.size // self.number_of_channels
-
-        if number_of_samples < 1:
-            return 0
-
-        data = read_data_from_file(number_of_samples=number_of_samples)
-        if len(data) < number_of_samples:
-            # Todo: find better solution when you have to wait for more data
-            read_data_into_buffer(buffer, number_of_samples)
-        buffer[:number_of_samples] = data
-        self._read_lines += number_of_samples
-        return number_of_samples
-
-    def read_available_data_into_buffer(self, buffer):
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
-
-        This method will read all currently available samples into buffer. If number of available
-        samples exceed buffer size, read only as many samples as fit into the buffer.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-
-        @return int: Number of samples read into buffer; negative value indicates error
-                     (e.g. read timeout)
-        """
-        if read_data_sanity_check(buffer) < 0:
-            return -1
-
-        data = read_data_from_file()
-        number_of_samples = len(data)
-        buffer[:number_of_samples] = data
-        self._read_lines += number_of_samples
-        return number_of_samples
-
-    def read_data(self, number_of_samples=None):
-        """
-        Read data from the stream buffer into a 2D numpy array and return it.
-        The arrays first index corresponds to the channel number and the second index serves as
-        sample index:
-            return_array.shape == (self.number_of_channels, number_of_samples)
-        The numpy arrays data type is the one defined in self.data_type.
-        If number_of_samples is omitted all currently available samples are read from buffer.
-
-        This method will not return until all requested samples have been read or a timeout occurs.
-
-        If no samples are available, this method will immediately return an empty array.
-        You can check for a failed data read if number_of_samples != <return_array>.shape[1].
-
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      all available samples are read from buffer.
-
-        @return numpy.ndarray: The read samples in a numpy array
-        """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return np.empty((0, 0), dtype=self._data_type)
-
-        if number_of_samples is None:
-            read_samples = self.read_available_data_into_buffer(self._data_buffer)
-            if read_samples < 0:
-                return np.empty((0, 0), dtype=self._data_type)
-        else:
-            read_samples = self.read_data_into_buffer(self._data_buffer,
-                                                      number_of_samples=number_of_samples)
-            if read_samples != number_of_samples:
-                return np.empty((0, 0), dtype=self._data_type)
-
-        total_samples = self.number_of_channels * read_samples
-        return self._data_buffer[:total_samples].reshape((self.number_of_channels,
-                                                          number_of_samples))
-
-    def read_single_point(self):
-        """
-        This method will initiate a single sample read on each configured data channel.
-        In general this sample may not be acquired simultaneous for all channels and timing in
-        general can not be assured. Us this method if you want to have a non-timing-critical
-        snapshot of your current data channel input.
-        May not be available for all devices.
-        The returned 1D numpy array will contain one sample for each channel.
-
-        @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
-                               indicates error.
-        """
-        # TODO: Read only the last line from the file or next line to last that was read
-        pass
-    
-    def get_constraints(self):
-        """
-        Return the constraints on the settings for this data streamer.
-
-        @return DataInStreamConstraints: Instance of DataInStreamConstraints containing constraints
-        """
-        return self._constraints
-
-#################################### Methods for saving ###############################################
+    ################################ Methods for saving ################################
 
     def change_filename(self, name: str):
         """ Changes filelocation to the default data directory and appends the given name as a file name 
@@ -641,12 +476,9 @@ class FastComtec(DataInStreamInterface):
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return filelocation
 
+
     # =============================================================================================
     def read_data_sanity_check(self, buffer, number_of_samples=None):
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return -1
-
         if not isinstance(buffer, np.ndarray) or buffer.dtype != self._data_type:
             self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
                            ''.format(self._data_type))
@@ -753,3 +585,62 @@ class FastComtec(DataInStreamInterface):
                                      dtype=self._data_type)
         self._has_overflown = False
         return
+
+
+    ################################ old interface methods ################################
+    def use_circular_buffer(self) -> bool:
+        """
+        A flag indicating if circular sample buffering is being used or not.
+
+        @return bool: indicate if circular sample buffering is used (True) or not (False)
+        """
+        bsetting=BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
+        if bsetting.sweepmode == 1978500:
+            self._use_circular_buffer = True
+        if bsetting.sweepmode == 1978496:
+            self._use_circular_buffer = False
+        return self._use_circular_buffer
+
+    def use_circular_buffer(self, flag: bool):
+        """
+        Set the flag indicating if circular sample buffering is being used or not.
+        @param bool, flag: indicate if circular sample buffering is used (True) or not (False)
+        """
+        if self._is_not_settable("circular buffer"):
+            return
+        if flag:
+            self._use_circular_buffer = False
+            self.log.error("No circular buffer implemented. Circular buffer is switched off.")
+            return
+        self._use_circular_buffer = flag
+        cmd = 'sweepmode={0}'.format(hex(1978496))
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+
+    def number_of_channels(self) -> int:
+        """
+        Read-only property to return the currently configured number of active data channels.
+
+        @return int: the currently set number of channels
+        """
+        return len(self._active_channels)
+
+    def _count_generator(self, reader):
+        b = reader(1024 * 1024)
+        while b:
+            yield b
+            b = reader(1024 * 1024)
+
+    def buffer_overflown(self):
+        """
+        Read-only flag to check if the read buffer has overflown.
+        In case of a circular buffer it indicates data loss.
+        In case of a non-circular buffer the data acquisition should have stopped if this flag is
+        coming up.
+        Flag will only be reset after starting a new data acquisition.
+
+        @return bool: Flag indicates if buffer has overflown (True) or not (False)
+        """
+        if self._data_buffer.size * self._data_buffer.itemsize > self._available_memory:
+            return True
+        return False
