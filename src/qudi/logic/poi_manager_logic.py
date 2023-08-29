@@ -1082,15 +1082,16 @@ class PoiManagerLogic(LogicBase):
                 timestamp.strftime('%Y%m%d-%H%M-%S'), roi_name_no_blanks)
 
             # Metadata to save in both file headers
-            x_extent, y_extent = self.roi_scan_image_extent
             parameters = OrderedDict()
             if self.active_poi:
                 parameters['Active POI'] = self.active_poi
             parameters['roi_name'] = self.roi_name
             parameters['poi_nametag'] = '' if self.poi_nametag is None else self.poi_nametag
             parameters['roi_creation_time'] = self.roi_creation_time_as_str
-            parameters['scan_image_x_extent'] = '{0:.9e},{1:.9e}'.format(*x_extent)
-            parameters['scan_image_y_extent'] = '{0:.9e},{1:.9e}'.format(*y_extent)
+            if self.roi_scan_image:
+                x_extent, y_extent = self.roi_scan_image_extent
+                parameters['scan_image_x_extent'] = '{0:.9e},{1:.9e}'.format(*x_extent)
+                parameters['scan_image_y_extent'] = '{0:.9e},{1:.9e}'.format(*y_extent)
             parameters['data format'] = 'name   X (m)   Y (m)   Z (m)'
 
             ##################################
