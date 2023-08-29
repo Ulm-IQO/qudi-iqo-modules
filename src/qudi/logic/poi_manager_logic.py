@@ -1088,7 +1088,7 @@ class PoiManagerLogic(LogicBase):
             parameters['roi_name'] = self.roi_name
             parameters['poi_nametag'] = '' if self.poi_nametag is None else self.poi_nametag
             parameters['roi_creation_time'] = self.roi_creation_time_as_str
-            if self.roi_scan_image:
+            if self.roi_scan_image is not None:
                 x_extent, y_extent = self.roi_scan_image_extent
                 parameters['scan_image_x_extent'] = '{0:.9e},{1:.9e}'.format(*x_extent)
                 parameters['scan_image_y_extent'] = '{0:.9e},{1:.9e}'.format(*y_extent)
