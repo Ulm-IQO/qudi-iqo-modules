@@ -281,7 +281,7 @@ class SpectrometerLogic(LogicBase):
 
     @property
     def differential_spectrum_available(self):
-        return self.modulation_device.is_connected
+        return self.modulation_device() is not None
 
     @property
     def differential_spectrum(self):

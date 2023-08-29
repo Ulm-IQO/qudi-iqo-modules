@@ -55,8 +55,8 @@ class PulseStreamer(PulserInterface):
     __current_waveform_name = StatusVar(name='current_waveform_name', default='')
     __sample_rate = StatusVar(name='sample_rate', default=1e9)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.__current_status = -1
         self.__currently_loaded_waveform = ''  # loaded and armed waveform name

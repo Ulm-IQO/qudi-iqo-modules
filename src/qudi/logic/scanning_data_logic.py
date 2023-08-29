@@ -71,8 +71,8 @@ class ScanningDataLogic(LogicBase):
     sigHistoryScanDataRestored = QtCore.Signal(object)
     sigSaveStateChanged = QtCore.Signal(bool)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = RecursiveMutex()
 

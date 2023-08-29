@@ -32,8 +32,16 @@ from qudi.core.module import LogicBase
 
 
 class CameraLogic(LogicBase):
-    """
-    Control a camera.
+    """ Logic class for controlling a camera.
+
+    Example config for copy-paste:
+
+    camera_logic:
+        module.Class: 'camera_logic.CameraLogic'
+        connect:
+            camera: camera_dummy
+        options:
+            minimum_exposure_time: 0.05
     """
 
     # declare connectors
@@ -47,8 +55,8 @@ class CameraLogic(LogicBase):
     sigFrameChanged = QtCore.Signal(object)
     sigAcquisitionFinished = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.__timer = None
         self._thread_lock = RecursiveMutex()
         self._exposure = -1

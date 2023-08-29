@@ -139,8 +139,8 @@ class FastCounterFPGAQO(FastCounterInterface):
 
     __internal_clock_hz = 950e6  # that is a fixed number, 950MHz
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self.threadlock = Mutex()
 

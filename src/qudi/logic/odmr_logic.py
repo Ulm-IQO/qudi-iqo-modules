@@ -106,8 +106,8 @@ class OdmrLogic(LogicBase):
          'custom_parameters': None},
     )
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._threadlock = RecursiveMutex()
 

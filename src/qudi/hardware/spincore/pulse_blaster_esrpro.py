@@ -2008,7 +2008,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         @return str: The name of the hardware
         """
-        return self._meta['name']
+        return self.module_name
 
     @property
     def available_states(self):
