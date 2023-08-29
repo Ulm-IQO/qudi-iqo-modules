@@ -37,7 +37,8 @@ class CameraDummy(CameraInterface):
         options:
             support_live: True
             camera_name: 'Dummy camera'
-            resolution: (1280, 720)
+            # FIXME: resolution config option causes no image
+            # resolution: (1280, 720)
             exposure: 0.1
             gain: 1.0
     """
