@@ -1330,3 +1330,196 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # append ensemble to created ensembles
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
+
+    def generate_pulsedodmr_seq(self, name='pulsedODMRseq', freq_start=2870.0e6, freq_step=0.2e6,
+                                num_of_points=50):
+        """
+
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # Create frequency array
+        freq_array = freq_start + np.arange(num_of_points) * freq_step
+
+        # create the elements
+        waiting_element = self._get_idle_element(length=self.wait_time,
+                                                 increment=0)
+        laser_element = self._get_laser_gate_element(length=self.laser_length,
+                                                     increment=0)
+        delay_element = self._get_delay_gate_element()
+
+        # Create block and append to created_blocks list
+        pulsedodmr_block = PulseBlock(name=name)
+        pulsedodmr_block.append(laser_element)
+        pulsedodmr_block.append(delay_element)
+        created_blocks.append(pulsedodmr_block)
+
+        # Create block ensemble and append block to it
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble.append((pulsedodmr_block.name, 0))
+        created_ensembles.append(block_ensemble)
+
+        if self.sync_channel:
+            # Create the last readout PulseBlockEnsemble including a sync trigger
+            # Get necessary PulseBlockElements
+            sync_element = self._get_sync_element()
+            # Create PulseBlock and append PulseBlockElements
+            sync_readout_block = PulseBlock(name='{0}_readout_sync'.format(name))
+            sync_readout_block.append(laser_element)
+            sync_readout_block.append(delay_element)
+            sync_readout_block.append(sync_element)
+            created_blocks.append(sync_readout_block)
+            # Create PulseBlockEnsemble and append block to it
+            sync_readout_ensemble = PulseBlockEnsemble(name='{0}_readout_sync'.format(name),
+                                                       rotating_frame=False)
+            sync_readout_ensemble.append((sync_readout_block.name, 0))
+            created_ensembles.append(sync_readout_ensemble)
+
+        # Create the PulseSequence and append the PulseBlockEnsemble names as sequence steps
+        # together with the necessary parameters.
+        pulsedodmr_sequence = PulseSequence(name=name, rotating_frame=False)
+        count_length = 0.0
+        for freq in freq_array:
+            MW_block = PulseBlock(name='{0}{1}_mw'.format(name, freq))
+            mw_element = self._get_mw_element(length=self.rabi_period / 2,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=freq,
+                                              phase=0)
+            MW_block.append(mw_element)
+            MW_block.append(waiting_element)  # TODO, as this should be before laser_element, but due to minimal bin constrains from awg we write it after the MW
+            created_blocks.append(MW_block)
+            MW_ensemble = PulseBlockEnsemble(name='{0}{1}_mw'.format(name, freq), rotating_frame=False)
+            MW_ensemble.append((MW_block.name, 0))
+            created_ensembles.append(MW_ensemble)
+            pulsedodmr_sequence.append(MW_ensemble.name)
+            if self.sync_channel and freq == freq_array[-1]:
+                pulsedodmr_sequence.append(sync_readout_ensemble.name)
+            else:
+                pulsedodmr_sequence.append(block_ensemble.name)
+            count_length += self._get_ensemble_count_length(ensemble=MW_ensemble,
+                                                            created_blocks=created_blocks)
+            count_length += self._get_ensemble_count_length(ensemble=block_ensemble,
+                                                            created_blocks=created_blocks)
+
+        # Make the sequence loop infinitely by setting the go_to parameter of the last sequence
+        # step to the first step.
+        pulsedodmr_sequence[-1].go_to = 1
+
+        # Trigger the calculation of parameters in the PulseSequence instance
+        pulsedodmr_sequence.refresh_parameters()
+
+        # add metadata to invoke settings later on
+        pulsedodmr_sequence.measurement_information['alternating'] = False
+        pulsedodmr_sequence.measurement_information['laser_ignore_list'] = list()
+        pulsedodmr_sequence.measurement_information['controlled_variable'] = freq_array
+        pulsedodmr_sequence.measurement_information['units'] = ('Hz', '')
+        pulsedodmr_sequence.measurement_information['labels'] = ('Frequency', 'Signal')
+        pulsedodmr_sequence.measurement_information['number_of_lasers'] = num_of_points
+        if self.gate_channel:
+            pulsedodmr_sequence.measurement_information['counting_length'] = self._get_ensemble_count_length(
+                                                                                block_ensemble, created_blocks)
+        else:
+            pulsedodmr_sequence.measurement_information['counting_length'] = count_length
+
+        # Append PulseSequence to created_sequences list
+        created_sequences.append(pulsedodmr_sequence)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_rabi_seq(self, name='rabi_seq', tau_start=10.0e-9, tau_step=10.0e-9, num_of_points=50):
+        """
+
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # get tau array for measurement ticks
+        tau_array = tau_start + np.arange(num_of_points) * tau_step
+
+        waiting_element = self._get_idle_element(length=self.wait_time,
+                                                 increment=0)
+        laser_element = self._get_laser_gate_element(length=self.laser_length,
+                                                     increment=0)
+        delay_element = self._get_delay_gate_element()
+
+        # Create block and append to created_blocks list
+        rabi_seq_block = PulseBlock(name=name)
+        rabi_seq_block.append(laser_element)
+        rabi_seq_block.append(delay_element)
+        created_blocks.append(rabi_seq_block)
+
+        # Create block ensemble and append block to it
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble.append((rabi_seq_block.name, 0))
+        created_ensembles.append(block_ensemble)
+
+        if self.sync_channel:
+            # Create the last readout PulseBlockEnsemble including a sync trigger
+            # Get necessary PulseBlockElements
+            sync_element = self._get_sync_element()
+            # Create PulseBlock and append PulseBlockElements
+            sync_readout_block = PulseBlock(name='{0}_readout_sync'.format(name))
+            sync_readout_block.append(laser_element)
+            sync_readout_block.append(delay_element)
+            sync_readout_block.append(sync_element)
+            created_blocks.append(sync_readout_block)
+            # Create PulseBlockEnsemble and append block to it
+            sync_readout_ensemble = PulseBlockEnsemble(name='{0}_readout_sync'.format(name),
+                                                       rotating_frame=False)
+            sync_readout_ensemble.append((sync_readout_block.name, 0))
+            created_ensembles.append(sync_readout_ensemble)
+
+        # Create the PulseSequence and append the PulseBlockEnsemble names as sequence steps
+        # together with the necessary parameters.
+        rabi_sequence = PulseSequence(name=name, rotating_frame=False)
+        count_length = 0.0
+        for tau in tau_array:
+            MW_block = PulseBlock(name='{0}{1}_mw'.format(name, tau))
+            mw_element = self._get_mw_element(length=tau,
+                                              increment=0,
+                                              amp=self.microwave_amplitude,
+                                              freq=self.microwave_frequency,
+                                              phase=0)
+            MW_block.append(mw_element)
+            MW_block.append(waiting_element)  # TODO, as this should be before laser_element,
+            # but due to minimal bin constrains from awg we write it after the MW
+            created_blocks.append(MW_block)
+            MW_ensemble = PulseBlockEnsemble(name='{0}{1}_mw'.format(name, tau), rotating_frame=False)
+            MW_ensemble.append((MW_block.name, 0))
+            created_ensembles.append(MW_ensemble)
+            rabi_sequence.append(MW_ensemble.name)
+            if self.sync_channel and tau == tau_array[-1]:
+                rabi_sequence.append(sync_readout_ensemble.name)
+            else:
+                rabi_sequence.append(block_ensemble.name)
+            count_length += self._get_ensemble_count_length(ensemble=MW_ensemble,
+                                                            created_blocks=created_blocks)
+            count_length += self._get_ensemble_count_length(ensemble=block_ensemble,
+                                                            created_blocks=created_blocks)
+
+        # Make the sequence loop infinitely by setting the go_to parameter of the last sequence
+        # step to the first step.
+        rabi_sequence[-1].go_to = 1
+
+        # Trigger the calculation of parameters in the PulseSequence instance
+        rabi_sequence.refresh_parameters()
+
+        # add metadata to invoke settings later on
+        rabi_sequence.measurement_information['alternating'] = False
+        rabi_sequence.measurement_information['laser_ignore_list'] = list()
+        rabi_sequence.measurement_information['controlled_variable'] = tau_array
+        rabi_sequence.measurement_information['units'] = ('s', '')
+        rabi_sequence.measurement_information['labels'] = ('Tau', 'Signal')
+        rabi_sequence.measurement_information['number_of_lasers'] = num_of_points
+        if self.gate_channel:
+            rabi_sequence.measurement_information['counting_length'] = self._get_ensemble_count_length(
+                                                                                block_ensemble, created_blocks)
+        else:
+            rabi_sequence.measurement_information['counting_length'] = count_length
+
+        # Append PulseSequence to created_sequences list
+        created_sequences.append(rabi_sequence)
+        return created_blocks, created_ensembles, created_sequences
