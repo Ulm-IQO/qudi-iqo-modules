@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from dataclasses import dataclass, field, InitVar
 import datetime
 import numpy as np
 from abc import abstractmethod
@@ -135,6 +136,7 @@ class ScanningProbeInterface(Base):
         pass
 
 
+# TODO: make this a data class
 class ScanData:
     """
     Object representing all data associated to a SPM measurement.
@@ -361,139 +363,95 @@ class ScanData:
         return new_inst
 
 
+@dataclass(frozen=True)
 class ScannerChannel:
-    """
-    """
-    def __init__(self, name, unit='', dtype=np.float64):
-        if not isinstance(name, str):
+    name: str
+    unit: str = ''
+    dtype: type = np.float64
+
+    def __post_init__(self):
+        if not isinstance(self.name, str):
             raise TypeError('Parameter "name" must be of type str.')
-        if len(name) < 1:
+        if len(self.name) < 1:
             raise ValueError('Parameter "name" must be non-empty str.')
-        if not isinstance(unit, str):
+        if not isinstance(self.unit, str):
             raise TypeError('Parameter "unit" must be of type str.')
         # FIXME: Implement proper numpy type checking
-        if not isinstance(dtype, type):
+        if not isinstance(self.dtype, type):
             raise TypeError('Parameter "dtype" must be numpy-compatible type.')
-        self._name = name
-        self._unit = unit
-        self._dtype = dtype
 
-    def __eq__(self, other):
-        if not isinstance(other, ScannerChannel):
-            raise NotImplemented
-        attrs = ('_name', '_unit', '_dtype')
-        return all(getattr(self, a) == getattr(other, a) for a in attrs)
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def unit(self):
-        return self._unit
-
-    @property
-    def dtype(self):
-        return self._dtype
-
+    # TODO: maybe not necessary anymore
     def to_dict(self):
-        return {'name': self._name, 'unit': self._unit, 'dtype': self._dtype.__name__}
+        return {'name': self.name, 'unit': self.unit, 'dtype': self.dtype.__name__}
 
     @classmethod
+    # TODO: is this necessary?
     def from_dict(cls, dict_repr):
         dict_repr['dtype'] = getattr(np, dict_repr['dtype'])
         return ScannerChannel(**dict_repr)
 
 
+@dataclass(frozen=True)
 class ScannerAxis:
     """
     """
+    name: str
+    unit: str
+    value_range: tuple = (-np.inf, np.inf)
+    step_range: tuple = (0, np.inf)
+    resolution_range: tuple = (1, np.inf)
+    frequency_range: tuple = (0, np.inf)
 
-    def __init__(self, name, unit='', value_range=(-np.inf, np.inf), step_range=(0, np.inf),
-                 resolution_range=(1, np.inf), frequency_range=(0, np.inf)):
-        if not isinstance(name, str):
+    def __post_init__(self):
+        if not isinstance(self.name, str):
             raise TypeError('Parameter "name" must be of type str.')
-        if name == '':
+        if self.name == '':
             raise ValueError('Parameter "name" must be non-empty str.')
-        if not isinstance(unit, str):
+        if not isinstance(self.unit, str):
             raise TypeError('Parameter "unit" must be of type str.')
-        if not (len(value_range) == len(step_range) == len(resolution_range) == len(
-                frequency_range) == 2):
-            raise ValueError('Range parameters must be iterables of length 2')
-
-        self._name = name
-        self._unit = unit
-        self._resolution_range = (int(min(resolution_range)), int(max(resolution_range))) #TODO np.inf cannot be casted as an int
-        self._step_range = (float(min(step_range)), float(max(step_range)))
-        self._value_range = (float(min(value_range)), float(max(value_range)))
-        self._frequency_range = (float(min(frequency_range)), float(max(frequency_range)))
-
-    def __eq__(self, other):
-        if not isinstance(other, ScannerAxis):
-            raise NotImplemented
-        attrs = ('_name',
-                 '_unit',
-                 '_resolution_range',
-                 '_step_range',
-                 '_value_range',
-                 '_frequency_range')
-        return all(getattr(self, a) == getattr(other, a) for a in attrs)
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def unit(self):
-        return self._unit
-
-    @property
-    def resolution_range(self):
-        return self._resolution_range
+        if not (len(self.value_range) == len(self.step_range) == len(self.resolution_range) == len(
+                self.frequency_range) == 2):
+            raise ValueError('Range parameters must be iterables of length 2.')
+        if not self.min_resolution <= self.max_resolution:
+            raise ValueError('Resolution range must be in ascending order.')
+        if not self.min_step <= self.max_step:
+            raise ValueError('Step range must be in ascending order.')
+        if not self.min_value <= self.max_value:
+            raise ValueError('Value range must be in ascending order.')
+        if not self.min_frequency <= self.max_frequency:
+            raise ValueError('Frequency range must be in ascending order.')
 
     @property
     def min_resolution(self):
-        return self._resolution_range[0]
+        return self.resolution_range[0]
 
     @property
     def max_resolution(self):
-        return self._resolution_range[1]
-
-    @property
-    def step_range(self):
-        return self._step_range
+        return self.resolution_range[1]
 
     @property
     def min_step(self):
-        return self._step_range[0]
+        return self.step_range[0]
 
     @property
     def max_step(self):
-        return self._step_range[1]
-
-    @property
-    def value_range(self):
-        return self._value_range
+        return self.step_range[1]
 
     @property
     def min_value(self):
-        return self._value_range[0]
+        return self.value_range[0]
 
     @property
     def max_value(self):
-        return self._value_range[1]
-
-    @property
-    def frequency_range(self):
-        return self._frequency_range
+        return self.value_range[1]
 
     @property
     def min_frequency(self):
-        return self._frequency_range[0]
+        return self.frequency_range[0]
 
     @property
     def max_frequency(self):
-        return self._frequency_range[1]
+        return self.frequency_range[1]
 
     def clip_value(self, value):
         if value < self.min_value:
@@ -516,60 +474,47 @@ class ScannerAxis:
             return self.max_frequency
         return freq
 
+    # TODO: remove
     def to_dict(self):
-        dict_repr = {'name': self._name,
-                     'unit': self._unit,
-                     'value_range': self._value_range,
-                     'step_range': self._step_range,
-                     'resolution_range': self._resolution_range,
-                     'frequency_range': self._frequency_range}
+        dict_repr = {'name': self.name,
+                     'unit': self.unit,
+                     'value_range': self.value_range,
+                     'step_range': self.step_range,
+                     'resolution_range': self.resolution_range,
+                     'frequency_range': self.frequency_range}
         return dict_repr
 
+    # TODO: unnecessary?
     @classmethod
     def from_dict(cls, dict_repr):
         return ScannerAxis(**dict_repr)
 
 
+@dataclass(frozen=True)
 class ScanConstraints:
     """
     """
+    # TODO: axes and channels are not dictionaries anymore!
+    axes: list[ScannerAxis]
+    channels: list[ScannerChannel]
+    backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
+    has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
+    square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
 
-    def __init__(self, axes, channels, backscan_configurable, has_position_feedback,
-                 square_px_only):
-        """
-        """
-        if not all(isinstance(ax, ScannerAxis) for ax in axes):
-            raise TypeError('Parameter "axes" must be of type ScannerAxis.')
-        if not all(isinstance(ch, ScannerChannel) for ch in channels):
-            raise TypeError('Parameter "channels" must be of type ScannerChannel.')
-        if not isinstance(backscan_configurable, bool):
+    def __post_init__(self):
+        if not all(isinstance(ax, ScannerAxis) for ax in self.axes):
+            raise TypeError('Parameter "in_axes" must be of type ScannerAxis.')
+        if not all(isinstance(ch, ScannerChannel) for ch in self.channels):
+            raise TypeError('Parameter "in_channels" must be of type ScannerChannel.')
+        if not isinstance(self.backscan_configurable, bool):
             raise TypeError('Parameter "backscan_configurable" must be of type bool.')
-        if not isinstance(has_position_feedback, bool):
+        if not isinstance(self.has_position_feedback, bool):
             raise TypeError('Parameter "has_position_feedback" must be of type bool.')
-        if not isinstance(square_px_only, bool):
+        if not isinstance(self.square_px_only, bool):
             raise TypeError('Parameter "square_px_only" must be of type bool.')
-        self._axes = {ax.name: ax for ax in axes}
-        self._channels = {ch.name: ch for ch in channels}
-        self._backscan_configurable = bool(backscan_configurable)
-        self._has_position_feedback = bool(has_position_feedback)
-        self._square_px_only = bool(square_px_only)
 
-    @property
-    def axes(self):
-        return self._axes.copy()
+    def axis_dict(self):
+        return {ax.name: ax for ax in self.axes}
 
-    @property
-    def channels(self):
-        return self._channels.copy()
-
-    @property
-    def backscan_configurable(self):  # TODO Incorporate in gui/logic toolchain?
-        return self._backscan_configurable
-
-    @property
-    def has_position_feedback(self):  # TODO Incorporate in gui/logic toolchain?
-        return self._has_position_feedback
-
-    @property
-    def square_px_only(self):  # TODO Incorporate in gui/logic toolchain?
-        return self._square_px_only
+    def channel_dict(self):
+        return {ch.name: ch for ch in self.channels}
