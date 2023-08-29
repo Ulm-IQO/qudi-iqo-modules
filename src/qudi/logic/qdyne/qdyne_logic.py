@@ -58,7 +58,7 @@ class QdyneLogic(LogicBase):
     # declare connectors
     pmaster = Connector(interface='PulsedMasterLogic')
     pmeasure = Connector(interface='PulsedMeasurementLogic')
-    _data_streamer = Connector(name='data_streamer', interface='DataInstreamInterface')
+    _data_streamer = Connector(name='data_streamer', interface='DataInStreamInterface')
 
     # declare config options
     estimator_method = ConfigOption(name='estimator_method', default='TimeTag', missing='warn')
@@ -90,7 +90,7 @@ class QdyneLogic(LogicBase):
             self.analyzer = TimeTraceAnalyzer()
             self.settings = QdyneSettings()
             self.data = MainDataClass()
-            self.save = QdyneSave(self.data_save_dir, self.data_storage_class)
+            self.save = QdyneSave(self.module_default_data_dir, self.data_storage_class)
 
         def set_default_values():
             self.estimator_method = self._estimator_method

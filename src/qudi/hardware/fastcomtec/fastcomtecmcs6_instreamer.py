@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import ctypes
 import numpy as np
+from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence
 import time
 from os import path
 from psutil import virtual_memory
@@ -29,20 +30,20 @@ from psutil._common import bytes2human
 
 from qudi.util.datastorage import create_dir_for_file
 from qudi.core.configoption import ConfigOption
+from qudi.util.constraints import ScalarConstraint
 from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.hardware.fastcomtec.fastcomtecmcs6 import AcqStatus, BOARDSETTING, ACQDATA, AcqSettings
 
-class FastComtec(DataInStreamInterface):
-    """ Hardware Class for the FastComtec Card.
 
-    stable: Jochen Scheuer, Simon Schmitt
+class FastComtecInstreamer(DataInStreamInterface):
+    """ Hardware Class for the FastComtec Card.
 
     Example config for copy-paste:
 
-    fastcomtec_mcs6:
-        module.Class: 'fastcomtec.fastcomtecmcs6.FastComtec'
+    fastcomtec_mcs6_instreamer:
+        module.Class: 'fastcomtec.fastcomtecmcs6_instreamer.FastComtecInstreamer'
         options:
     """
     # config options
@@ -52,11 +53,6 @@ class FastComtec(DataInStreamInterface):
     _channel_units = ConfigOption(name='channel_units',
                                   missing='error',
                                   constructor=lambda units: [str(x) for x in units])
-    _channel_signals = ConfigOption(
-        name='channel_signals',
-        missing='error',
-        constructor=lambda signals: [SignalShape[x.upper()] for x in signals]
-    )
     _data_type = ConfigOption(name='data_type',
                               default='int32',
                               missing='info',
@@ -66,16 +62,19 @@ class FastComtec(DataInStreamInterface):
                                   missing='info',
                                   constructor=lambda timing: SampleTiming[timing.upper()])
 
-    _max_read_block_size = ConfigOption(name='max_read_block_size', default=10000, missing='info')  # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
+    _max_read_block_size = ConfigOption(name='max_read_block_size', default=10000,
+                                        missing='info')  # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
     _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
     _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
-    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing')  # relative amount of memory that can be used for reading measurement data into the system's memory
+    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8,
+                                 missing='nothing')  # relative amount of memory that can be used for reading measurement data into the system's memory
 
     # Todo: can be extracted from list file
-    _line_size = ConfigOption(name='line_size', default=4, missing='nothing') # how many bytes does one line of measurement data have
+    _line_size = ConfigOption(name='line_size', default=4,
+                              missing='nothing')  # how many bytes does one line of measurement data have
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = Mutex()
         self._active_channels = list()
@@ -93,12 +92,12 @@ class FastComtec(DataInStreamInterface):
         self._constraints = None
 
         # Todo: is this the memory of the disc where the file will be written?
-        self._available_memory = virtual_memory().available * self._memory_ratio
+        self._available_memory = int(virtual_memory().available * self._memory_ratio)
 
     def on_activate(self):
         self.dll = ctypes.windll.LoadLibrary(self._dll_path)
         self._streaming_mode = StreamingMode.CONTINUOUS
-        
+
         # Create constraints
         self._constraints = DataInStreamConstraints(
             channel_units=dict(zip(self._channel_names, self._channel_units)),
@@ -109,7 +108,7 @@ class FastComtec(DataInStreamInterface):
                                                  bounds=(128, self._available_memory),
                                                  increment=1,
                                                  enforce_int=True),
-            sample_rate=ScalarConstraint(default=1, bounds=(0.1, 1/200e-12), increment=0.1, enforce_int=False)
+            sample_rate=ScalarConstraint(default=1, bounds=(0.1, 1 / 200e-12), increment=0.1, enforce_int=False)
         )
         self._active_channels = list(self._constraints.channel_units)
 
@@ -135,7 +134,8 @@ class FastComtec(DataInStreamInterface):
         to read from buffer.
         """
         if not self._filename:
-            self.log.error("No filename has been specified yet. First call the change_filename function to create a file.")
+            self.log.error(
+                "No filename has been specified yet. First call the change_filename function to create a file.")
             return
         # open the raw file and count the \n
         with open(self._filename, 'rb') as fp:
@@ -143,7 +143,6 @@ class FastComtec(DataInStreamInterface):
             # sum over all lines in the file and subtract the number of header lines
             count = sum(buffer.count(b'\n') for buffer in generator) - self._header_length
         return count
-
 
     @property
     def sample_rate(self) -> float:
@@ -245,8 +244,8 @@ class FastComtec(DataInStreamInterface):
         rate = float(rate)
         self._constraints.sample_rate.check(rate)
         self._sample_rate = rate
-    
-    def _is_not_settable(self, option: str = ""):
+
+    def _is_not_settable(self, option: str = "") -> bool:
         """
         Method that checks whether the FastComtec is running. Throws an error if it is running.
         @return bool: True - device is running, can't set options: False - Device not running, can set options
@@ -259,7 +258,7 @@ class FastComtec(DataInStreamInterface):
             return True
         return False
 
-    def start_stream(self):
+    def start_stream(self) -> None:
         """ Start the data acquisition/streaming """
         with self._thread_lock:
             if self.module_state() == 'idle':
@@ -269,7 +268,7 @@ class FastComtec(DataInStreamInterface):
             while not self.is_running():
                 time.sleep(0.05)
 
-    def stop_stream(self):
+    def stop_stream(self) -> None:
         """ Stop the data acquisition/streaming """
         with self._thread_lock:
             if self.module_state() == 'locked':
@@ -348,7 +347,7 @@ class FastComtec(DataInStreamInterface):
                 data_buffer = data_buffer.flatten()
 
             data = read_data_from_file()
-            number_of_samples = len(data)
+            number_of_samples = len(data) // self.number_of_channels()
             data_buffer = np.append(data_buffer, data)
             self._read_lines += number_of_samples
             return number_of_samples
@@ -387,7 +386,7 @@ class FastComtec(DataInStreamInterface):
             total_samples = self.number_of_channels * read_samples
             return self._data_buffer, None
 
-    def read_single_point(self):
+    def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
         """
         This method will initiate a single sample read on each configured data channel.
         In general this sample may not be acquired simultaneous for all channels and timing in
@@ -400,7 +399,7 @@ class FastComtec(DataInStreamInterface):
                                indicates error.
         """
         # TODO: Read only the last line from the file or next line to last that was read
-        pass
+        return (np.array(0, dtype=self._data_type), None)
 
     def is_running(self):
         """
@@ -417,21 +416,19 @@ class FastComtec(DataInStreamInterface):
         """
         # dict that specifies the values the DLL returns and their associated is_running outputs.
         return_dict = {
-                0: False, # stopped
-                1: True, # running
-                3: False, # read out in progress
-                }
+            0: False,  # stopped
+            1: True,  # running
+            3: False,  # read out in progress
+        }
         # what values are returned from the dll?
-        status=AcqStatus()
+        status = AcqStatus()
         self.dll.GetStatusData(ctypes.byref(status), 0)
         # self.log.warn(f"status.started = {status.started}")
         try:
             return return_dict[status.started]
         except KeyError:
-            self.log.error(
+            raise KeyError(
                 'There is an unknown status from FastComtec. The status message was %s' % (str(status.started)))
-            return
-
 
     ################################ Methods for saving ################################
 
@@ -443,7 +440,7 @@ class FastComtec(DataInStreamInterface):
         @return str filelocation: complete path to the file
         """
         # join the default data dir with the file name
-        filelocation =  path.normpath(path.join(self.module_default_data_dir, name))
+        filelocation = path.normpath(path.join(self.module_default_data_dir, name))
         # create the directories to the filelocation
         create_dir_for_file(filelocation)
         # send the command for the filelocation to the dll
@@ -475,7 +472,6 @@ class FastComtec(DataInStreamInterface):
         cmd = 'savempa'
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return filelocation
-
 
     # =============================================================================================
     def read_data_sanity_check(self, buffer, number_of_samples=None):
@@ -514,7 +510,7 @@ class FastComtec(DataInStreamInterface):
         if read_lines is None:
             read_lines = 0
         if number_of_samples is None:
-            number_of_chunks = int(self.buffer.shape[1] / chunk_size)  #float('inf')
+            number_of_chunks = int(self.buffer.shape[1] / chunk_size)  # float('inf')
             remaining_samples = self.buffer.shape[1] % chunk_size
         else:
             number_of_chunks = int(number_of_samples / chunk_size)
@@ -586,7 +582,6 @@ class FastComtec(DataInStreamInterface):
         self._has_overflown = False
         return
 
-
     ################################ old interface methods ################################
     def use_circular_buffer(self) -> bool:
         """
@@ -594,7 +589,7 @@ class FastComtec(DataInStreamInterface):
 
         @return bool: indicate if circular sample buffering is used (True) or not (False)
         """
-        bsetting=BOARDSETTING()
+        bsetting = BOARDSETTING()
         self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
         if bsetting.sweepmode == 1978500:
             self._use_circular_buffer = True
