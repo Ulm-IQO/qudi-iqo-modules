@@ -108,7 +108,7 @@ def deactivate_all_but_lowest_channel():
     """
     active_channels = get_active_channels()
     active_channels.sort()
-    for i in active_channels[:-1]:
+    for i in active_channels[1:]:
         deactivate_channel(i)
 
 
@@ -200,8 +200,7 @@ def _get_callback_function():
 
 def sample_rate() -> float:
     """
-    Estimate the current sample rate by the exposure times per channel and switching times if
-    more than one channel is active.
+    Estimate the current sample rate by the exposure times per channel and switching times.
     :return: sample rate in Hz
     """
     exposure_times = []
@@ -213,10 +212,7 @@ def sample_rate() -> float:
 
     switching_time = 12
     n_channels = len(active_channels)
-    if n_channels > 1:
-        turnaround_time_ms = total_exposure_time + n_channels * switching_time
-    else:
-        turnaround_time_ms = total_exposure_time
+    turnaround_time_ms = total_exposure_time + n_channels * switching_time
 
     return 1e3 / turnaround_time_ms
 
