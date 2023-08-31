@@ -19,6 +19,7 @@ import time
 from collections import OrderedDict
 from PySide2 import QtCore
 from dataclasses import dataclass
+import datetime
 
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
@@ -56,8 +57,8 @@ class QdyneLogic(LogicBase):
     """
 
     # declare connectors
-    pmaster = Connector(interface='PulsedMasterLogic')
-    pmeasure = Connector(interface='PulsedMeasurementLogic')
+    #pmaster = Connector(interface='PulsedMasterLogic')
+    #pmeasure = Connector(interface='PulsedMeasurementLogic')
     _data_streamer = Connector(name='data_streamer', interface='DataInStreamInterface')
 
     # declare config options
@@ -85,7 +86,7 @@ class QdyneLogic(LogicBase):
 
     def on_activate(self):
         def activate_classes():
-            self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
+            #self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
             self.estimator = StateEstimator()
             self.analyzer = TimeTraceAnalyzer()
             self.settings = QdyneSettings()
@@ -135,14 +136,18 @@ class QdyneLogic(LogicBase):
     def input_analyzer_settings(self):
         self.analyzer.input_settings(self.settings.time_trace_analysis_stg)
 
-    def start_measurement(self):
-        pass
+    def start_measurement(self, fname=None):
+        timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
+        fname = timestamp + fname if fname else timestamp
+        self._data_streamer().change_filename(fname)
+        self._data_streamer().start_stream()
 
     def stop_measurement(self):
-        pass
+        self._data_streamer().stop_stream()
 
     def get_raw_data(self):
-        pass
+        new_data, _ = self._data_streamer().read_data()
+        self.data.raw_data = np.append(self.data.raw_data, new_data)
 
     def extract_data(self):
         self.data.extracted_data = self.estimator.extract(self.data.raw_data)

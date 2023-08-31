@@ -27,6 +27,7 @@ import time
 from os import path
 from psutil import virtual_memory
 from psutil._common import bytes2human
+from itertools import islice
 
 from qudi.util.datastorage import create_dir_for_file
 from qudi.core.configoption import ConfigOption
@@ -77,7 +78,7 @@ class FastComtecInstreamer(DataInStreamInterface):
         super().__init__(*args, **kwargs)
 
         self._thread_lock = Mutex()
-        self._active_channels = list()
+        self._active_channels = tuple()
         self._sample_rate = None
         self._buffer_size = None
         self._use_circular_buffer = None
@@ -110,13 +111,17 @@ class FastComtecInstreamer(DataInStreamInterface):
                                                  enforce_int=True),
             sample_rate=ScalarConstraint(default=1, bounds=(0.1, 1 / 200e-12), increment=0.1, enforce_int=False)
         )
-        self._active_channels = list(self._constraints.channel_units)
 
         # TODO implement the constraints for the fastcomtec max_bins, max_sweep_len and hardware_binwidth_list
         # Reset data buffer
         self._data_buffer = np.empty(0, dtype=self._data_type)
         self._has_overflown = False
         self._read_lines = 0
+
+        self.configure(active_channels=self._constraints.channel_units,
+                       streaming_mode=self._streaming_mode,
+                       channel_buffer_size=self._available_memory,
+                       sample_rate=self._constraints.sample_rate.default)
 
     def on_deactivate(self):
         # Free memory if possible while module is inactive
@@ -141,7 +146,7 @@ class FastComtecInstreamer(DataInStreamInterface):
         with open(self._filename, 'rb') as fp:
             generator = self._count_generator(fp.raw.read)
             # sum over all lines in the file and subtract the number of header lines
-            count = sum(buffer.count(b'\n') for buffer in generator) - self._header_length
+            count = sum(buffer.count(b'\n') for buffer in generator) - self._find_header_length(self._filename)
         return count
 
     @property
@@ -166,18 +171,19 @@ class FastComtecInstreamer(DataInStreamInterface):
     @property
     def streaming_mode(self) -> StreamingMode:
         """ Read-only property returning the currently configured StreamingMode Enum """
-        bsetting = BOARDSETTING()
-        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
-        if bsetting.sweepmode == 1880272:
-            self._streaming_mode = StreamingMode.CONTINUOUS
-            return self._streaming_mode
-        self._streaming_mode = StreamingMode.FINITE
+        #bsetting = BOARDSETTING()
+        #self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
+        #if bsetting.sweepmode == 1880272:
+        #    self._streaming_mode = StreamingMode.CONTINUOUS
+        #    return self._streaming_mode
+        #self._streaming_mode = StreamingMode.FINITE
+        self._streaming_mode = StreamingMode.CONTINUOUS
         return self._streaming_mode
 
     @property
     def active_channels(self) -> List[str]:
         """ Read-only property returning the currently configured active channel names """
-        return self._active_channels.copy()
+        return list(self._active_channels)
 
     def configure(self,
                   active_channels: Sequence[str],
@@ -206,16 +212,15 @@ class FastComtecInstreamer(DataInStreamInterface):
                 self._set_sample_rate(old_sample_rate)
                 raise RuntimeError('Error while trying to configure data in-streamer') from err
 
-    def _set_active_channels(self, channels: Iterable[str]) -> None:
+    def _set_active_channels(self, channels: Sequence[str]) -> None:
         if self._is_not_settable('active channels'):
             return
-        channels = set(channels)
-        if not channels.issubset(self._constraints.channel_units):
-            raise ValueError(f'Invalid channels to set active {channels}. Allowed channels are '
-                             f'{set(self._constraints.channel_units)}')
-        channel_shapes = {ch: self._channel_signals[idx] for idx, ch in
-                          enumerate(self._constraints.channel_units) if ch in channels}
-        self._active_channels = list(channel_shapes)
+        if any(ch not in self._constraints.channel_units for ch in channels):
+            raise ValueError(
+                f'Invalid channel to stream from encountered {tuple(channels)}. \n'
+                f'Valid channels are: {tuple(self._constraints.channel_units)}'
+            )
+        self._active_channels = tuple(channels)
 
     def _set_streaming_mode(self, mode: Union[StreamingMode, int]) -> None:
         if self._is_not_settable("streaming mode"):
@@ -238,7 +243,7 @@ class FastComtecInstreamer(DataInStreamInterface):
 
     def _set_channel_buffer_size(self, samples: int) -> None:
         self._constraints.channel_buffer_size.check(samples)
-        self._buffer_size = buffersize
+        self._buffer_size = samples
 
     def _set_sample_rate(self, rate: Union[int, float]) -> None:
         rate = float(rate)
@@ -301,24 +306,22 @@ class FastComtecInstreamer(DataInStreamInterface):
         This function is blocking until the required number of samples has been acquired.
         """
         with self._thread_lock:
-            if self.module_state() != 'locked':
-                raise RuntimeError('Unable to read data. Stream is not running.')
-            if read_data_sanity_check(data_buffer) < 0:
+            if self.read_data_sanity_check(data_buffer) < 0:
                 raise
 
         if data_buffer.ndim == 2:
             data_buffer = data_buffer.flatten()
         if samples_per_channel is None:
-            samples_per_channel = data_buffer.size // self.number_of_channels
+            samples_per_channel = data_buffer.size // self.number_of_channels()
 
         if samples_per_channel < 1:
             return
 
-        data = read_data_from_file(number_of_samples=samples_per_channel)
+        data = self.read_data_from_file(number_of_samples=samples_per_channel)
         if len(data) < samples_per_channel:
             # Todo: find better solution when you have to wait for more data
-            read_data_into_buffer(data_buffer, samples_per_channel)
-        data_buffer = np.append(data_buffer, data)
+            self.read_data_into_buffer(data_buffer, samples_per_channel)
+        data_buffer[:] = data
         self._read_lines += samples_per_channel
 
     def read_available_data_into_buffer(self,
@@ -338,17 +341,22 @@ class FastComtecInstreamer(DataInStreamInterface):
         samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
         with self._thread_lock:
-            if self.module_state() != 'locked':
-                raise RuntimeError('Unable to read data. Stream is not running.')
-            if read_data_sanity_check(data_buffer) < 0:
+            if self.read_data_sanity_check(data_buffer) < 0:
                 raise
 
             if data_buffer.ndim == 2:
                 data_buffer = data_buffer.flatten()
 
-            data = read_data_from_file()
-            number_of_samples = len(data) // self.number_of_channels()
-            data_buffer = np.append(data_buffer, data)
+            data = self.read_data_from_file(read_lines=0)
+            number_of_samples = len(data)
+            if len(data_buffer) < number_of_samples:
+                self.log.warning(f'Buffer of length {len(data_buffer)} too small for read samples '
+                                 f'({number_of_samples}). Output only first {len(data_buffer)} samples.')
+                data_buffer[:] = data[:len(data_buffer)]
+                self._read_lines += len(data_buffer)
+                return len(data_buffer)
+
+            data_buffer[:number_of_samples] = data
             self._read_lines += number_of_samples
             return number_of_samples
 
@@ -369,22 +377,16 @@ class FastComtecInstreamer(DataInStreamInterface):
         If number_of_samples is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
         """
-        with self._thread_lock:
-            if self.module_state() != 'locked':
-                raise RuntimeError('Unable to read data. Stream is not running.')
+        if number_of_samples is None:
+            data_buffer = np.zeros(int(self.available_samples * 1.2), dtype=self._data_type)
+            number_of_samples = self.read_available_data_into_buffer(data_buffer)
+            #data_buffer = data_buffer[:number_of_samples]
+        else:
+            data_buffer = np.zeros(number_of_samples, dtype=self._data_type)
+            self.read_data_into_buffer(data_buffer, number_of_samples)
 
-            if number_of_samples is None:
-                read_samples = self.read_available_data_into_buffer(self._data_buffer)
-                if read_samples < 0:
-                    return np.empty((0, 0), dtype=self._data_type), None
-            else:
-                read_samples = self.read_data_into_buffer(self._data_buffer,
-                                                          samples_per_channel=number_of_samples)
-                if read_samples != number_of_samples:
-                    return np.empty((0, 0), dtype=self._data_type), None
-
-            total_samples = self.number_of_channels * read_samples
-            return self._data_buffer, None
+        total_samples = self.number_of_channels() * number_of_samples
+        return data_buffer[:number_of_samples], None
 
     def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
         """
@@ -423,7 +425,6 @@ class FastComtecInstreamer(DataInStreamInterface):
         # what values are returned from the dll?
         status = AcqStatus()
         self.dll.GetStatusData(ctypes.byref(status), 0)
-        # self.log.warn(f"status.started = {status.started}")
         try:
             return return_dict[status.started]
         except KeyError:
@@ -481,20 +482,18 @@ class FastComtecInstreamer(DataInStreamInterface):
             return -1
 
         if buffer.ndim == 2:
-            if buffer.shape[0] != self.number_of_channels:
+            if buffer.shape[0] != self.number_of_channels():
                 self.log.error('Configured number of channels ({0:d}) does not match first '
                                'dimension of 2D buffer array ({1:d}).'
-                               ''.format(self.number_of_channels, buffer.shape[0]))
+                               ''.format(self.number_of_channels(), buffer.shape[0]))
                 return -1
-        elif buffer.ndim == 1:
-            pass
-        else:
+        elif buffer.ndim != 1:
             self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
             return -1
 
         # Check for buffer overflow
-        if self.available_samples > self.buffer_size:
-            self._has_overflown = True
+        #if self.available_samples > self.channel_buffer_size:
+        #    self._has_overflown = True
 
         if self._filename is None:
             raise TypeError('No filename for data analysis is given.')
@@ -510,20 +509,19 @@ class FastComtecInstreamer(DataInStreamInterface):
         if read_lines is None:
             read_lines = 0
         if number_of_samples is None:
-            number_of_chunks = int(self.buffer.shape[1] / chunk_size)  # float('inf')
-            remaining_samples = self.buffer.shape[1] % chunk_size
+            number_of_chunks = int(self.channel_buffer_size / chunk_size)  # float('inf')
+            remaining_samples = self.channel_buffer_size % chunk_size
         else:
             number_of_chunks = int(number_of_samples / chunk_size)
             remaining_samples = number_of_samples % chunk_size
 
-        extend_data = data.extend  # avoid dots for speed-up
-
         data = []
-        header_length = _find_header_length(filename)
+        extend_data = data.extend  # avoid dots for speed-up
+        header_length = self._find_header_length(filename)
         if header_length < 0:
             self.log.error('Header length could not be determined. Return empty data.')
             return data
-        channel_bit, edge_bit, timedata_bit = _extract_data_format(filename)
+        channel_bit, edge_bit, timedata_bit, _ = self._extract_data_format(filename)
         if not (channel_bit and edge_bit and timedata_bit):
             self.log.error('Could not extract format style of file {}'.format(filename))
             return data
@@ -531,7 +529,7 @@ class FastComtecInstreamer(DataInStreamInterface):
 
         with open(filename, 'r') as f:
             list(islice(f, int(header_length + read_lines - 1),
-                        int(_header_length + read_lines)))  # ignore header and already read lines
+                        int(header_length + read_lines)))  # ignore header and already read lines
             ii = 0
             while True:
                 if ii < number_of_chunks:
@@ -548,7 +546,8 @@ class FastComtecInstreamer(DataInStreamInterface):
                 if len(next_lines[-1]) != 9:
                     break
                 # extract arrival time of photons saved in hex to dex
-                new_lines = [int(bin(int(s, 16))[timedata_bits[0]:timedata_bits[1]], 2) for s in next_lines]
+                new_lines = [int('0' + format(int(s, 16), 'b')[timedata_bits[0]:timedata_bits[1]], 2) for s in
+                             next_lines]
                 extend_data(new_lines)
                 ii = ii + 1
         return data
@@ -558,14 +557,16 @@ class FastComtecInstreamer(DataInStreamInterface):
             header_length = -1
             for ii, line in enumerate(f):
                 if '[DATA]' in line:
-                    header_length = ii
+                    header_length = ii + 1
                     break
         return header_length
 
     def _extract_data_format(self, filename):
         with open(filename) as f:
-            channel_bit, edge_bit, timedata_bit = (None, None, None)
+            channel_bit, edge_bit, timedata_bit, data_length = (None, None, None, None)
             for line in f:
+                if 'datalength' in line:
+                    data_length = int(line[line.index("datalength") + 11:line.index("datalength") + 12])
                 if 'channel' in line:
                     channel_bit = int(line[line.index("bit", 2) - 3:line.index("bit", 2) - 1])
                 if 'edge' in line:
@@ -574,10 +575,11 @@ class FastComtecInstreamer(DataInStreamInterface):
                     timedata_bit = int(line[line.index("bit", 2) - 3:line.index("bit", 2) - 1])
                 if channel_bit and edge_bit and timedata_bit:
                     break
-        return channel_bit, edge_bit, timedata_bit
+        return channel_bit, edge_bit, timedata_bit, data_length
 
     def _init_buffer(self):
-        self._data_buffer = np.zeros(self.number_of_channels * self.buffer_size,
+        # Todo properly
+        self._data_buffer = np.zeros(self.number_of_channels * self.channel_buffer_size,
                                      dtype=self._data_type)
         self._has_overflown = False
         return
