@@ -65,7 +65,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
         super().__init__(*args, **kwargs)
 
         self.axes_widgets = dict()
-        self._backscan_configurable = scanner_constraints._backscan_configurable
+        self._backscan_configurable = scanner_constraints.backscan_configurable
 
         font = QtGui.QFont()
         font.setBold(True)
