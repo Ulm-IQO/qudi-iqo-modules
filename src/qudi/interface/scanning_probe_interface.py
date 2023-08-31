@@ -380,9 +380,8 @@ class ScannerChannel:
         if not isinstance(self.dtype, type):
             raise TypeError('Parameter "dtype" must be numpy-compatible type.')
 
-    # TODO: maybe not necessary anymore
     def to_dict(self):
-        return {'name': self.name, 'unit': self.unit, 'dtype': self.dtype.__name__}
+        return self.__dict__
 
     @classmethod
     # TODO: is this necessary?
@@ -474,15 +473,8 @@ class ScannerAxis:
             return self.max_frequency
         return freq
 
-    # TODO: remove
     def to_dict(self):
-        dict_repr = {'name': self.name,
-                     'unit': self.unit,
-                     'value_range': self.value_range,
-                     'step_range': self.step_range,
-                     'resolution_range': self.resolution_range,
-                     'frequency_range': self.frequency_range}
-        return dict_repr
+        return self.__dict__
 
     # TODO: unnecessary?
     @classmethod
