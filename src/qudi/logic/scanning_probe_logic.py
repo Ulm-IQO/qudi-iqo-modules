@@ -32,7 +32,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.basis_transformations.basis_transformation \
-    import compute_rotation_mat_rodriguez, compute_reduced_vectors, det_changing_axes
+    import compute_rotation_matrix_to_plane, compute_reduced_vectors, find_changing_axes
 
 class ScanningProbeLogic(LogicBase):
     """
@@ -377,14 +377,14 @@ class ScanningProbeLogic(LogicBase):
             red_support_vecs = red_vecs[:-1,:]
             shift_vec = red_vecs[-1,:]
 
-        tilt_axes = det_changing_axes(support_vecs)
+        tilt_axes = find_changing_axes(support_vecs)
 
         if red_support_vecs.shape != (3,3) or shift_vec.shape[0] != 3:
             n_dim = support_vecs.shape[1]
             raise ValueError(f"Can't calculate tilt in >3 dimensions. "
                              f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. ")
 
-        rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
+        rot_mat = compute_rotation_matrix_to_plane(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec
 
         # shift coord system to origin, rotate and shift shift back according to LT(x) = (R+s)*x - R*s
