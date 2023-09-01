@@ -340,16 +340,12 @@ class ScanningProbeLogic(LogicBase):
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
 
-    def toggle_tilt_correction(self, enable=True, debug_func=False):
+    def toggle_tilt_correction(self, enable=True):
 
         target_pos = self._scanner().get_target()
         is_enabled = self._scanner().coordinate_transform_enabled
 
-        if debug_func:
-            func = self.__func_debug_transform()
-            self.log.info("Set test functions for coord transform")
-        else:
-            func = self.__transform_func if self._tilt_corr_transform else None
+        func = self.__transform_func if self._tilt_corr_transform else None
 
         if enable:
             self._scanner().set_coordinate_transform(func, self._tilt_corr_transform)
@@ -391,6 +387,7 @@ class ScanningProbeLogic(LogicBase):
         rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec
 
+        # shift coord system to origin, rotate and shift shift back according to LT(x) = (R+s)*x - R*s
         lin_transform = LinearTransformation3D()
         shift_vec_transform = LinearTransformation3D()
         
@@ -437,30 +434,6 @@ class ScanningProbeLogic(LogicBase):
         if len(vecs_arr) == 1:
             return vecs_arr[0]
         return vecs_arr
-
-    def __func_debug_transform(self):
-        def transform_to(coord, inverse=False):
-            # this is a stub function
-            if inverse:
-                return {key: 0.5 * val for key, val in coord.items()}
-            else:
-                return {key: 2 * val for key, val in coord.items()}
-
-        def transform_to(coord, inverse=False):
-
-            ax_2_idx = lambda ch: ord(ch) - 120  # x->0, y->1, z->2; todo only for these axes
-            transform = LinearTransformation3D()
-
-            transform.rotate(0, 0, np.pi/10)
-            # todo: LinearTransformation expects vectors as row (not column) vectors
-            coord_vec = np.asarray(list(coord.values())).T
-            coord_transf = transform(coord_vec, invert=inverse).T
-            # make dict again after vector rotation
-            coord_transf = {ax: coord_transf[ax_2_idx(ax)] for (ax, val) in coord.items()}
-
-            return coord_transf
-
-        return transform_to
 
     def _update_scan_settings(self, scan_axes, settings):
         for ax_index, ax in enumerate(scan_axes):
