@@ -122,6 +122,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._thread_lock_cursor = Mutex()
         self._thread_lock_data = Mutex()
 
+        # handle to the uncorrected scanner instance, not wrapped by a potential CoordinateTransformMixin
+        self.bare_scanner = ScanningProbeDummy
+
     def on_activate(self):
 
         # Sanity checks for ni_ao and ni finite sampling io
@@ -162,7 +165,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
                                             square_px_only=False)
 #
-        self._target_pos = self._get_position()  # get voltages/pos from ni_ao
+        self._target_pos = self.bare_scanner.get_position(self)  # get voltages/pos from ni_ao
         self._toggle_ao_setpoint_channels(False)  # And free ao resources after that
         self._t_last_move = time.perf_counter()
         self.__init_ao_timer()
@@ -303,7 +306,27 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         Log error and return current target position if something fails or a scan is in progress.
         """
 
-        return self._move_absolute(position, velocity, blocking)
+        # assert not self.is_running, 'Cannot move the scanner while, scan is running'
+        if self.is_scan_running:
+            self.log.error('Cannot move the scanner while, scan is running')
+            return self.bare_scanner.get_target(self)
+
+        if not set(position).issubset(self.get_constraints().axes):
+            self.log.error('Invalid axes name in position')
+            return self.bare_scanner.get_target(self)
+
+        try:
+            self._prepare_movement(position, velocity=velocity)
+
+            self.__start_ao_write_timer()
+            if blocking:
+                self.__wait_on_move_done()
+
+            self._t_last_move = time.perf_counter()
+
+            return self.bare_scanner.get_target(self)
+        except:
+            self.log.exception("Couldn't move: ")
 
     def __wait_on_move_done(self):
         try:
@@ -324,7 +347,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         Log error and return current target position if something fails or a 1D/2D scan is in
         progress.
         """
-        current_position = self._get_position()
+        current_position = self.bare_scanner.get_position(self)
         end_pos = {ax: current_position[ax] + distance[ax] for ax in distance}
         self.move_absolute(end_pos, velocity=velocity, blocking=blocking)
 
@@ -336,7 +359,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current target position per axis.
         """
-        return self._get_target()
+        if self.is_scan_running:
+            return self._stored_target_pos
+        else:
+            return self._target_pos
 
     def get_position(self):
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
@@ -347,7 +373,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         @return dict: current position per axis.
         """
-        return self._get_position()
+        with self._thread_lock_cursor:
+            if not self._ao_setpoint_channels_active:
+                self._toggle_ao_setpoint_channels(True)
+
+            pos = self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
+
+            return pos
 
     def start_scan(self):
         try:
@@ -383,7 +415,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             with self._thread_lock_data:
                 self._scan_data.new_scan()
                 #self.log.debug(f"New scan data: {self._scan_data.data}, position {self._scan_data._position_data}")
-                self._stored_target_pos = self._get_target().copy()
+                self._stored_target_pos = self.bare_scanner.get_target(self) .copy()
                 self.log.debug(f"Target pos at scan start: {self._stored_target_pos}")
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
 
@@ -432,7 +464,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # self.log.debug("Module unlocked")
 
         self.log.debug(f"Finished scan, move to stored target: {self._stored_target_pos}")
-        self._move_absolute(self._stored_target_pos)
+        self.bare_scanner.move_absolute(self, self._stored_target_pos)
         self._stored_target_pos = dict()
 
     def get_scan_data(self):
@@ -689,7 +721,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         t_start = time.perf_counter()
         try:
-            current_pos_vec = self._pos_dict_to_vec(self._get_position())
+            current_pos_vec = self._pos_dict_to_vec(self.bare_scanner.get_position(self))
 
             with self._thread_lock_cursor:
                 stop_loop = self._abort_cursor_move
@@ -760,7 +792,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
 
         #self.log.debug(f"Aborting move.")
-        self._target_pos = self._get_position()
+        self._target_pos = self.bare_scanner.get_position(self)
 
         with self._thread_lock_cursor:
 
@@ -818,55 +850,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         #self.log.debug("Movement prepared")
         # TODO Keep other axis constant?
-
-    def _get_position(self):
-        """
-        Raw position of scanner hardware. Interface method .get_position() might
-        get wrapped by tilt correction and transform to a virtual coord system.
-        """
-        with self._thread_lock_cursor:
-            if not self._ao_setpoint_channels_active:
-                self._toggle_ao_setpoint_channels(True)
-
-            pos = self._voltage_dict_to_position_dict(self._ni_ao().setpoints)
-            return pos
-
-    def _get_target(self):
-        """ Raw target position of the scanner hardware. Interface method .get_target() might
-        get wrapped by tilt correction and transform to a virtual coord system.
-
-        """
-        if self.is_scan_running:
-            return self._stored_target_pos
-        else:
-            return self._target_pos
-
-    def _move_absolute(self, position, velocity=None, blocking=False):
-        """ Move to raw target position of the scanner hardware. Interface method .move absolute() might
-        get wrapped by tilt correction and transform to a virtual coord system.
-
-        """
-        # assert not self.is_running, 'Cannot move the scanner while, scan is running'
-        if self.is_scan_running:
-            self.log.error('Cannot move the scanner while, scan is running')
-            return self._get_target()
-
-        if not set(position).issubset(self.get_constraints().axes):
-            self.log.error('Invalid axes name in position')
-            return self._get_target()
-
-        try:
-            self._prepare_movement(position, velocity=velocity)
-
-            self.__start_ao_write_timer()
-            if blocking:
-                self.__wait_on_move_done()
-
-            self._t_last_move = time.perf_counter()
-
-            return self._get_target()
-        except:
-            self.log.exception("Couldn't move: ")
 
     def __init_ao_timer(self):
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
