@@ -398,13 +398,13 @@ class ScanningProbeDummy(ScanningProbeInterface):
             else:
                 feedback_axes = None
             self._scan_data = ScanData(
-                channels=tuple(self._constraints.channels.values()),
-                scan_axes=tuple(self._constraints.axes[ax] for ax in self._current_scan_axes),
+                channels_obj=tuple(self._constraints.channels.values()),
+                scan_axes_obj=tuple(self._constraints.axes[ax] for ax in self._current_scan_axes),
                 scan_range=self._current_scan_ranges,
                 scan_resolution=self._current_scan_resolution,
                 scan_frequency=self._current_scan_frequency,
                 position_feedback_axes=feedback_axes,
-                target_at_start=self.get_target()
+                scanner_target_at_start=self.get_target()
             )
 
             self._scan_data.new_scan()
@@ -446,8 +446,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             # if self.thread() is not QtCore.QThread.currentThread():
             #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
             if self._scan_data is None:
-                print('nope, no scan data in hardware')
-                return None
+                raise RuntimeError('No scan data in hardware.')
 
             if self.module_state() != 'idle':
                 elapsed = time.time() - self.__scan_start

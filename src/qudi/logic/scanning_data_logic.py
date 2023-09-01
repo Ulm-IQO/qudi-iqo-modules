@@ -281,6 +281,7 @@ class ScanningDataLogic(LogicBase):
         return fig
 
     def save_scan(self, scan_data, color_range=None):
+        print('here')
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
@@ -311,7 +312,7 @@ class ScanningDataLogic(LogicBase):
 
                 parameters["pixel frequency"] = scan_data.scan_frequency
                 parameters[f"scanner target at start"] = scan_data.scanner_target_at_start
-                parameters['measurement start'] = str(scan_data._timestamp)
+                parameters['measurement start'] = str(scan_data.timestamp)
 
                 # add meta data for axes in full target, but not scan axes
                 if scan_data.scanner_target_at_start:
@@ -346,6 +347,7 @@ class ScanningDataLogic(LogicBase):
             finally:
                 self.module_state.unlock()
                 self.sigSaveStateChanged.emit(False)
+            print('done')
             return
 
     def save_scan_by_axis(self, scan_axes=None, color_range=None):

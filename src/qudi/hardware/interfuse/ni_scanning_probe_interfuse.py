@@ -253,8 +253,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             with self._thread_lock_data:
                 try:
                     self._scan_data = ScanData(
-                        channels=tuple(self._constraints.channels.values()),
-                        scan_axes=tuple(self._constraints.axes[ax] for ax in axes),
+                        channels_obj=tuple(self._constraints.channels.values()),
+                        scan_axes_obj=tuple(self._constraints.axes[ax] for ax in axes),
                         scan_range=ranges,
                         scan_resolution=tuple(resolution),
                         scan_frequency=frequency,
