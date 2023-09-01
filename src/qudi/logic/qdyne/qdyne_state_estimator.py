@@ -71,7 +71,8 @@ class TimeTagBasedEstimatorSettings:
     count_mode: str = 'Average'
     count_length: int = 2000
     start_count: int = 0
-    count_threshold: int = 90000
+    count_threshold: int = 10  # Todo: this has to be either estimated or set somewhere from the logic
+    max_bins: int = 90000  # Todo: this should be the maximum number of bins of the counter record length
     weight: list = field(default_factory=list)
 
     @property
@@ -82,9 +83,9 @@ class TimeTagBasedEstimatorSettings:
         count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
         return count_hist
 
-    def set_start_count(self, time_tag_data):
+    def set_start_count(self, time_tag_data):  # Todo: or maybe this can be taken from the pulseextractor?
         count_hist = self.get_histogram(time_tag_data)
-        self.start_count = int(np.where(count_hist[1:] > len(time_tag_data) / 2e5)[0][0]) #TODO what is 2e5?
+        self.start_count = int(np.where(count_hist[1:] > self.count_threshold)[0][0])
 
 
 
@@ -105,36 +106,44 @@ class TimeTagBasedEstimator(StateEstimator):
             counts_time_trace = self._photon_count(time_tag_data,
                                                    self.stg.start_count,
                                                    self.stg.stop_count,
-                                                   self.stg.count_threshold)
+                                                   self.stg.max_bins)
         elif self.stg.count_mode == 'WeightedAverage':
             counts_time_trace = self._weighted_photon_count(time_tag_data,
                                                             self.stg.weight,
                                                             self.stg.start_count,
                                                             self.stg.stop_count,
-                                                            self.stg.count_threshold)
+                                                            self.stg.max_bins)
         return counts_time_trace
 
-    def _photon_count(self, time_tag, start_count, stop_count, count_threshold):
+    def _photon_count(self, time_tag, start_count, stop_count, max_bins):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
         for i in range(len(time_tag)):  # count and filter the photons here
-            if time_tag[i] != 0 and time_tag[i] < count_threshold:
-                if start_count < time_tag[i] < stop_count:
-                    photon_counts = photon_counts + 1
+            if time_tag[i] != 0:
+                if time_tag[i] > max_bins:
+                    self.log.debug(f'Encountered time bin {time_tag[i]} larger than counter '
+                                   f'record length ({max_bins} bins). Handle this as 0.')
+                else:
+                    if start_count <= time_tag[i] < stop_count:
+                        photon_counts = photon_counts + 1
             else:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
         return counts_time_trace
 
-    def _weighted_photon_count(self, time_tag, weight, start_count, stop_count, count_threshold=90000):
+    def _weighted_photon_count(self, time_tag, weight, start_count, stop_count, max_bins=90000):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
         for i in range(len(time_tag)):  # count and filter the photons here
-            if time_tag[i] != 0 and time_tag[i] < count_threshold:
-                if start_count < time_tag[i] < stop_count:
-                    photon_counts = photon_counts + weight[i]
+            if time_tag[i] != 0:
+                if time_tag[i] > max_bins:
+                    self.log.debug(f'Encountered time bin {time_tag[i]} larger than counter '
+                                   f'record length ({max_bins} bins). Handle this as 0.')
+                else:
+                    if start_count < time_tag[i] < stop_count:
+                        photon_counts = photon_counts + weight[i]
             else:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
