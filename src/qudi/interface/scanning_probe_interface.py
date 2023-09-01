@@ -136,6 +136,153 @@ class ScanningProbeInterface(Base):
         pass
 
 
+@dataclass(frozen=True)
+class ScannerChannel:
+    name: str
+    unit: str = ''
+    # saving this as str instead of e.g. np.float64 object eases __dict__ representation
+    dtype: str = 'float64'
+
+    def __post_init__(self):
+        if not isinstance(self.name, str):
+            raise TypeError('Parameter "name" must be of type str.')
+        if len(self.name) < 1:
+            raise ValueError('Parameter "name" must be non-empty str.')
+        if not isinstance(self.unit, str):
+            raise TypeError('Parameter "unit" must be of type str.')
+        # check if dtype can be understood as a compatible type by numpy
+        try:
+            np.dtype(self.dtype)
+        except TypeError:
+            raise TypeError('Parameter "dtype" must be numpy-compatible type.')
+
+    def to_dict(self):
+        return self.__dict__
+
+    @classmethod
+    # TODO: is this necessary?
+    def from_dict(cls, dict_repr):
+        return ScannerChannel(**dict_repr)
+
+
+@dataclass(frozen=True)
+class ScannerAxis:
+    """
+    """
+    name: str
+    unit: str
+    value_range: tuple = (-np.inf, np.inf)
+    step_range: tuple = (0, np.inf)
+    resolution_range: tuple = (1, np.inf)
+    frequency_range: tuple = (0, np.inf)
+
+    def __post_init__(self):
+        if not isinstance(self.name, str):
+            raise TypeError('Parameter "name" must be of type str.')
+        if self.name == '':
+            raise ValueError('Parameter "name" must be non-empty str.')
+        if not isinstance(self.unit, str):
+            raise TypeError('Parameter "unit" must be of type str.')
+        if not (len(self.value_range) == len(self.step_range) == len(self.resolution_range) == len(
+                self.frequency_range) == 2):
+            raise ValueError('Range parameters must be iterables of length 2.')
+        if not self.min_resolution <= self.max_resolution:
+            raise ValueError('Resolution range must be in ascending order.')
+        if not self.min_step <= self.max_step:
+            raise ValueError('Step range must be in ascending order.')
+        if not self.min_value <= self.max_value:
+            raise ValueError('Value range must be in ascending order.')
+        if not self.min_frequency <= self.max_frequency:
+            raise ValueError('Frequency range must be in ascending order.')
+
+    @property
+    def min_resolution(self):
+        return self.resolution_range[0]
+
+    @property
+    def max_resolution(self):
+        return self.resolution_range[1]
+
+    @property
+    def min_step(self):
+        return self.step_range[0]
+
+    @property
+    def max_step(self):
+        return self.step_range[1]
+
+    @property
+    def min_value(self):
+        return self.value_range[0]
+
+    @property
+    def max_value(self):
+        return self.value_range[1]
+
+    @property
+    def min_frequency(self):
+        return self.frequency_range[0]
+
+    @property
+    def max_frequency(self):
+        return self.frequency_range[1]
+
+    def clip_value(self, value):
+        if value < self.min_value:
+            return self.min_value
+        elif value > self.max_value:
+            return self.max_value
+        return value
+
+    def clip_resolution(self, res):
+        if res < self.min_resolution:
+            return self.min_resolution
+        elif res > self.max_resolution:
+            return self.max_resolution
+        return res
+
+    def clip_frequency(self, freq):
+        if freq < self.min_frequency:
+            return self.min_frequency
+        elif freq > self.max_frequency:
+            return self.max_frequency
+        return freq
+
+    def to_dict(self):
+        return self.__dict__
+
+    # TODO: unnecessary?
+    @classmethod
+    def from_dict(cls, dict_repr):
+        return ScannerAxis(**dict_repr)
+
+
+@dataclass(frozen=True)
+class ScanConstraints:
+    """
+    """
+    in_axes: InitVar[list[ScannerAxis]]
+    in_channels: InitVar[list[ScannerChannel]]
+    backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
+    has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
+    square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
+
+    def __post_init__(self, in_axes, in_channels):
+        if not all(isinstance(ax, ScannerAxis) for ax in in_axes):
+            raise TypeError('Parameter "in_axes" must be of type ScannerAxis.')
+        if not all(isinstance(ch, ScannerChannel) for ch in in_channels):
+            raise TypeError('Parameter "in_channels" must be of type ScannerChannel.')
+        if not isinstance(self.backscan_configurable, bool):
+            raise TypeError('Parameter "backscan_configurable" must be of type bool.')
+        if not isinstance(self.has_position_feedback, bool):
+            raise TypeError('Parameter "has_position_feedback" must be of type bool.')
+        if not isinstance(self.square_px_only, bool):
+            raise TypeError('Parameter "square_px_only" must be of type bool.')
+
+        object.__setattr__(self, 'axes', {ax.name: ax for ax in in_axes})
+        object.__setattr__(self, 'channels', {ch.name: ch for ch in in_channels})
+
+
 # TODO: make this a data class
 class ScanData:
     """
@@ -361,150 +508,3 @@ class ScanData:
         if dict_repr['timestamp'] is not None:
             new_inst._timestamp = datetime.datetime.fromtimestamp(dict_repr['timestamp'])
         return new_inst
-
-
-@dataclass(frozen=True)
-class ScannerChannel:
-    name: str
-    unit: str = ''
-    # saving this as str instead of e.g. np.float64 object eases __dict__ representation
-    dtype: str = 'float64'
-
-    def __post_init__(self):
-        if not isinstance(self.name, str):
-            raise TypeError('Parameter "name" must be of type str.')
-        if len(self.name) < 1:
-            raise ValueError('Parameter "name" must be non-empty str.')
-        if not isinstance(self.unit, str):
-            raise TypeError('Parameter "unit" must be of type str.')
-        # check if dtype can be understood as a compatible type by numpy
-        try:
-            np.dtype(self.dtype)
-        except TypeError:
-            raise TypeError('Parameter "dtype" must be numpy-compatible type.')
-
-    def to_dict(self):
-        return self.__dict__
-
-    @classmethod
-    # TODO: is this necessary?
-    def from_dict(cls, dict_repr):
-        return ScannerChannel(**dict_repr)
-
-
-@dataclass(frozen=True)
-class ScannerAxis:
-    """
-    """
-    name: str
-    unit: str
-    value_range: tuple = (-np.inf, np.inf)
-    step_range: tuple = (0, np.inf)
-    resolution_range: tuple = (1, np.inf)
-    frequency_range: tuple = (0, np.inf)
-
-    def __post_init__(self):
-        if not isinstance(self.name, str):
-            raise TypeError('Parameter "name" must be of type str.')
-        if self.name == '':
-            raise ValueError('Parameter "name" must be non-empty str.')
-        if not isinstance(self.unit, str):
-            raise TypeError('Parameter "unit" must be of type str.')
-        if not (len(self.value_range) == len(self.step_range) == len(self.resolution_range) == len(
-                self.frequency_range) == 2):
-            raise ValueError('Range parameters must be iterables of length 2.')
-        if not self.min_resolution <= self.max_resolution:
-            raise ValueError('Resolution range must be in ascending order.')
-        if not self.min_step <= self.max_step:
-            raise ValueError('Step range must be in ascending order.')
-        if not self.min_value <= self.max_value:
-            raise ValueError('Value range must be in ascending order.')
-        if not self.min_frequency <= self.max_frequency:
-            raise ValueError('Frequency range must be in ascending order.')
-
-    @property
-    def min_resolution(self):
-        return self.resolution_range[0]
-
-    @property
-    def max_resolution(self):
-        return self.resolution_range[1]
-
-    @property
-    def min_step(self):
-        return self.step_range[0]
-
-    @property
-    def max_step(self):
-        return self.step_range[1]
-
-    @property
-    def min_value(self):
-        return self.value_range[0]
-
-    @property
-    def max_value(self):
-        return self.value_range[1]
-
-    @property
-    def min_frequency(self):
-        return self.frequency_range[0]
-
-    @property
-    def max_frequency(self):
-        return self.frequency_range[1]
-
-    def clip_value(self, value):
-        if value < self.min_value:
-            return self.min_value
-        elif value > self.max_value:
-            return self.max_value
-        return value
-
-    def clip_resolution(self, res):
-        if res < self.min_resolution:
-            return self.min_resolution
-        elif res > self.max_resolution:
-            return self.max_resolution
-        return res
-
-    def clip_frequency(self, freq):
-        if freq < self.min_frequency:
-            return self.min_frequency
-        elif freq > self.max_frequency:
-            return self.max_frequency
-        return freq
-
-    def to_dict(self):
-        return self.__dict__
-
-    # TODO: unnecessary?
-    @classmethod
-    def from_dict(cls, dict_repr):
-        return ScannerAxis(**dict_repr)
-
-
-@dataclass(frozen=True)
-class ScanConstraints:
-    """
-    """
-    in_axes: InitVar[list[ScannerAxis]]
-    in_channels: InitVar[list[ScannerChannel]]
-    backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
-    has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
-    square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
-
-    def __post_init__(self, in_axes, in_channels):
-        if not all(isinstance(ax, ScannerAxis) for ax in in_axes):
-            raise TypeError('Parameter "in_axes" must be of type ScannerAxis.')
-        if not all(isinstance(ch, ScannerChannel) for ch in in_channels):
-            raise TypeError('Parameter "in_channels" must be of type ScannerChannel.')
-        if not isinstance(self.backscan_configurable, bool):
-            raise TypeError('Parameter "backscan_configurable" must be of type bool.')
-        if not isinstance(self.has_position_feedback, bool):
-            raise TypeError('Parameter "has_position_feedback" must be of type bool.')
-        if not isinstance(self.square_px_only, bool):
-            raise TypeError('Parameter "square_px_only" must be of type bool.')
-
-        object.__setattr__(self, 'axes', {ax.name: ax for ax in in_axes})
-        object.__setattr__(self, 'channels', {ch.name: ch for ch in in_channels})
