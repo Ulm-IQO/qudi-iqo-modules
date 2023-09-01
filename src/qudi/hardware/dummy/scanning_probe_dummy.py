@@ -120,8 +120,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                     step_range=(0, dist),
                                     resolution_range=self._resolution_ranges[ax],
                                     frequency_range=self._frequency_ranges[ax]))
-        channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype=np.float64),
-                    ScannerChannel(name='APD events', unit='count', dtype=np.float64)]
+        channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype='float64'),
+                    ScannerChannel(name='APD events', unit='count', dtype='float64')]
 
         self._constraints = ScanConstraints(in_axes=axes,
                                             in_channels=channels,

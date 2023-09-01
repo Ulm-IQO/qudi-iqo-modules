@@ -154,7 +154,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         for channel, unit in self._input_channel_units.items():
             channels.append(ScannerChannel(name=channel,
                                            unit=unit,
-                                           dtype=np.float64))
+                                           dtype='float64'))
 
         self._constraints = ScanConstraints(in_axes=axes,
                                             in_channels=channels,

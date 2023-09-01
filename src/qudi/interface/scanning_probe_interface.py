@@ -367,7 +367,8 @@ class ScanData:
 class ScannerChannel:
     name: str
     unit: str = ''
-    dtype: type = np.float64
+    # saving this as str instead of e.g. np.float64 object eases __dict__ representation
+    dtype: str = 'float64'
 
     def __post_init__(self):
         if not isinstance(self.name, str):
@@ -376,8 +377,10 @@ class ScannerChannel:
             raise ValueError('Parameter "name" must be non-empty str.')
         if not isinstance(self.unit, str):
             raise TypeError('Parameter "unit" must be of type str.')
-        # FIXME: Implement proper numpy type checking
-        if not isinstance(self.dtype, type):
+        # check if dtype can be understood as a compatible type by numpy
+        try:
+            np.dtype(self.dtype)
+        except TypeError:
             raise TypeError('Parameter "dtype" must be numpy-compatible type.')
 
     def to_dict(self):
@@ -386,7 +389,6 @@ class ScannerChannel:
     @classmethod
     # TODO: is this necessary?
     def from_dict(cls, dict_repr):
-        dict_repr['dtype'] = getattr(np, dict_repr['dtype'])
         return ScannerChannel(**dict_repr)
 
 
