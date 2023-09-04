@@ -26,6 +26,7 @@ import datetime
 import numpy as np
 from abc import abstractmethod
 from qudi.core.module import Base
+from qudi.util.constraints import ScalarConstraint
 
 
 class ScanningProbeInterface(Base):
@@ -169,85 +170,75 @@ class ScannerChannel:
 @dataclass(frozen=True)
 class ScannerAxis:
     """
+    Data class representing a scan axis and its constraints.
     """
     name: str
     unit: str
-    value_range: tuple = (-np.inf, np.inf)
-    step_range: tuple = (0, np.inf)
-    resolution_range: tuple = (1, np.inf)
-    frequency_range: tuple = (0, np.inf)
+    position: ScalarConstraint
+    step: ScalarConstraint
+    resolution: ScalarConstraint
+    frequency: ScalarConstraint
 
     def __post_init__(self):
-        if not isinstance(self.name, str):
-            raise TypeError('Parameter "name" must be of type str.')
         if self.name == '':
             raise ValueError('Parameter "name" must be non-empty str.')
-        if not isinstance(self.unit, str):
-            raise TypeError('Parameter "unit" must be of type str.')
-        if not (len(self.value_range) == len(self.step_range) == len(self.resolution_range) == len(
-                self.frequency_range) == 2):
-            raise ValueError('Range parameters must be iterables of length 2.')
-        if not self.min_resolution <= self.max_resolution:
-            raise ValueError('Resolution range must be in ascending order.')
-        if not self.min_step <= self.max_step:
-            raise ValueError('Step range must be in ascending order.')
-        if not self.min_value <= self.max_value:
-            raise ValueError('Value range must be in ascending order.')
-        if not self.min_frequency <= self.max_frequency:
-            raise ValueError('Frequency range must be in ascending order.')
+
+    @property
+    def value_range(self):
+        return self.position.bounds
+
+    @property
+    def step_range(self):
+        return self.step.bounds
+
+    @property
+    def resolution_range(self):
+        return self.resolution.bounds
+
+    @property
+    def frequency_range(self):
+        return self.frequency.bounds
 
     @property
     def min_resolution(self):
-        return self.resolution_range[0]
+        return self.resolution.minimum
 
     @property
     def max_resolution(self):
-        return self.resolution_range[1]
+        return self.resolution.maximum
 
     @property
     def min_step(self):
-        return self.step_range[0]
+        return self.step.minimum
 
     @property
     def max_step(self):
-        return self.step_range[1]
+        return self.step.maximum
 
     @property
     def min_value(self):
-        return self.value_range[0]
+        return self.position.minimum
 
     @property
     def max_value(self):
-        return self.value_range[1]
+        return self.position.maximum
 
     @property
     def min_frequency(self):
-        return self.frequency_range[0]
+        return self.frequency.minimum
 
     @property
     def max_frequency(self):
-        return self.frequency_range[1]
+        return self.frequency.maximum
 
     def clip_value(self, value):
-        if value < self.min_value:
-            return self.min_value
-        elif value > self.max_value:
-            return self.max_value
-        return value
+        return self.position.clip(value)
 
     def clip_resolution(self, res):
-        if res < self.min_resolution:
-            return self.min_resolution
-        elif res > self.max_resolution:
-            return self.max_resolution
-        return res
+        return self.resolution.clip(res)
 
     def clip_frequency(self, freq):
-        if freq < self.min_frequency:
-            return self.min_frequency
-        elif freq > self.max_frequency:
-            return self.max_frequency
-        return freq
+        return self.frequency.clip(freq)
 
     def to_dict(self):
         return self.__dict__

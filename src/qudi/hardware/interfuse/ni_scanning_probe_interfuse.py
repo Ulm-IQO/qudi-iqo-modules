@@ -34,6 +34,7 @@ from qudi.core.connector import Connector
 from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.helpers import in_range
+from qudi.util.constraints import ScalarConstraint
 
 
 
@@ -143,12 +144,22 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # Constraints
         axes = list()
         for axis in self._position_ranges:
+            position_range = tuple(self._position_ranges[axis])
+            resolution_range = tuple(self._resolution_ranges[axis])
+            frequency_range = tuple(self._frequency_ranges[axis])
+            max_step = abs(position_range[1] - position_range[0])
+
+            position = ScalarConstraint(default=min(position_range), bounds=position_range)
+            resolution = ScalarConstraint(default=min(resolution_range), bounds=resolution_range, enforce_int=True)
+            frequency = ScalarConstraint(default=min(frequency_range), bounds=frequency_range)
+            step = ScalarConstraint(default=0, bounds=(0, max_step))
+
             axes.append(ScannerAxis(name=axis,
                                     unit='m',
-                                    value_range=self._position_ranges[axis],
-                                    step_range=(0, abs(np.diff(self._position_ranges[axis]))),
-                                    resolution_range=self._resolution_ranges[axis],
-                                    frequency_range=self._frequency_ranges[axis])
+                                    position=position,
+                                    step=step,
+                                    resolution=resolution,
+                                    frequency=frequency,)
                         )
         channels = list()
         for channel, unit in self._input_channel_units.items():

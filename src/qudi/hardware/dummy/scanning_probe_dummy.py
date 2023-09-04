@@ -25,6 +25,7 @@ from PySide2 import QtCore
 from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
+from qudi.util.constraints import ScalarConstraint
 from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData
 from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
 
@@ -112,14 +113,21 @@ class ScanningProbeDummy(ScanningProbeInterface):
 
         # Generate static constraints
         axes = list()
-        for ax, ax_range in self._position_ranges.items():
+        for axis, ax_range in self._position_ranges.items():
             dist = max(ax_range) - min(ax_range)
-            axes.append(ScannerAxis(name=ax,
+            resolution_range = tuple(self._resolution_ranges[axis])
+            frequency_range = tuple(self._frequency_ranges[axis])
+
+            position = ScalarConstraint(default=min(ax_range), bounds=ax_range)
+            resolution = ScalarConstraint(default=min(resolution_range), bounds=resolution_range, enforce_int=True)
+            frequency = ScalarConstraint(default=min(frequency_range), bounds=frequency_range)
+            step = ScalarConstraint(default=0, bounds=(0, dist))
+            axes.append(ScannerAxis(name=axis,
                                     unit='m',
-                                    value_range=ax_range,
-                                    step_range=(0, dist),
-                                    resolution_range=self._resolution_ranges[ax],
-                                    frequency_range=self._frequency_ranges[ax]))
+                                    position=position,
+                                    step=step,
+                                    resolution=resolution,
+                                    frequency=frequency, ))
         channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype='float64'),
                     ScannerChannel(name='APD events', unit='count', dtype='float64')]
 
