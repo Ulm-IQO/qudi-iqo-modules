@@ -100,14 +100,6 @@ class ScanningDataLogic(LogicBase):
         self._scan_logic().sigScanStateChanged.disconnect(self._update_scan_state)
         self._curr_data_per_scan = dict()
 
-    @_scan_history.representer
-    def __scan_history_to_dicts(self, history):
-        return [data.to_dict() for data in history]
-
-    @_scan_history.constructor
-    def __scan_history_from_dicts(self, history_dicts):
-        return [ScanData.from_dict(hist_dict) for hist_dict in history_dicts]
-
     def get_current_scan_data(self, scan_axes=None):
         """
         Get the most recent scan data for a certain (or the most recent) scan axes.

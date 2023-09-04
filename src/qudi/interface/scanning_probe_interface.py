@@ -27,6 +27,7 @@ import numpy as np
 from abc import abstractmethod
 from qudi.core.module import Base
 from qudi.util.constraints import ScalarConstraint
+from qudi.util.yaml import yaml_object, get_yaml
 
 
 class ScanningProbeInterface(Base):
@@ -139,6 +140,7 @@ class ScanningProbeInterface(Base):
 
 
 @dataclass(frozen=True)
+@yaml_object(get_yaml())
 class ScannerChannel:
     name: str
     unit: str = ''
@@ -158,16 +160,9 @@ class ScannerChannel:
         except TypeError:
             raise TypeError('Parameter "dtype" must be numpy-compatible type.')
 
-    def to_dict(self):
-        return self.__dict__
-
-    @classmethod
-    # TODO: is this necessary?
-    def from_dict(cls, dict_repr):
-        return ScannerChannel(**dict_repr)
-
 
 @dataclass(frozen=True)
+@yaml_object(get_yaml())
 class ScannerAxis:
     """
     Data class representing a scan axis and its constraints.
@@ -240,14 +235,6 @@ class ScannerAxis:
     def clip_frequency(self, freq):
         return self.frequency.clip(freq)
 
-    def to_dict(self):
-        return self.__dict__
-
-    # TODO: unnecessary?
-    @classmethod
-    def from_dict(cls, dict_repr):
-        return ScannerAxis(**dict_repr)
-
 
 @dataclass(frozen=True)
 class ScanConstraints:
@@ -270,6 +257,7 @@ class ScanConstraints:
 
 
 @dataclass(frozen=True)
+@yaml_object(get_yaml())
 class ScanSettings:
     """
     Data class representing all settings specifying a scanning probe measurement.
@@ -318,6 +306,7 @@ class ScanSettings:
 
 
 @dataclass
+@yaml_object(get_yaml())
 class ScanData:
     """
     Object representing all data associated to a SPM measurement.
@@ -465,23 +454,3 @@ class ScanData:
             ch.name: np.full(self.scan_resolution, np.nan, dtype=ch.dtype) for ch in self.channels_obj
         }
         return
-
-    def to_dict(self):
-        return asdict(self)
-
-    @classmethod
-    def from_dict(cls, dict_repr):
-        channels_obj = tuple(ScannerChannel.from_dict(ch) for ch in dict_repr['channels_obj'])
-        scan_axes_obj = tuple(ScannerAxis.from_dict(ax) for ax in dict_repr['scan_axes_obj'])
-
-        new_inst = cls(channels_obj=channels_obj,
-                       scan_axes_obj=scan_axes_obj,
-                       scan_range=dict_repr['scan_range'],
-                       scan_resolution=dict_repr['scan_resolution'],
-                       scan_frequency=dict_repr['scan_frequency'],
-                       scanner_target_at_start=dict_repr['scanner_target_at_start'],
-                       position_feedback_axes=dict_repr['position_feedback_axes'])
-        new_inst.data = dict_repr['_data']
-        new_inst.position_data = dict_repr['position_data']
-        new_inst.timestamp = dict_repr['timestamp']
-        return new_inst
