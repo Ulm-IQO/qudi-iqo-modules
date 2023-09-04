@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from dataclasses import dataclass, field, InitVar, asdict
+from dataclasses import dataclass, field
 from typing import Sequence, Union
 import datetime
 import numpy as np
@@ -142,18 +142,19 @@ class ScanningProbeInterface(Base):
 @dataclass(frozen=True)
 @yaml_object(get_yaml())
 class ScannerChannel:
+    """
+    Data class representing a scanner channel and its constraints.
+    A scanner channel is the probe device of a scanning probe measurement,
+    e.g. a counter connected to an APD or other single-photon counting module.
+    """
     name: str
     unit: str = ''
     # saving this as str instead of e.g. np.float64 object eases __dict__ representation
     dtype: str = 'float64'
 
     def __post_init__(self):
-        if not isinstance(self.name, str):
-            raise TypeError('Parameter "name" must be of type str.')
         if len(self.name) < 1:
             raise ValueError('Parameter "name" must be non-empty str.')
-        if not isinstance(self.unit, str):
-            raise TypeError('Parameter "unit" must be of type str.')
         # check if dtype can be understood as a compatible type by numpy
         try:
             np.dtype(self.dtype)
@@ -166,6 +167,7 @@ class ScannerChannel:
 class ScannerAxis:
     """
     Data class representing a scan axis and its constraints.
+    Then scan axes are swept during a scanning probe measurement.
     """
     name: str
     unit: str
@@ -177,6 +179,8 @@ class ScannerAxis:
     def __post_init__(self):
         if self.name == '':
             raise ValueError('Parameter "name" must be non-empty str.')
+
+    # properties for legacy support
 
     @property
     def value_range(self):
@@ -239,7 +243,7 @@ class ScannerAxis:
 @dataclass(frozen=True)
 class ScanConstraints:
     """
-    Data class representing constraints of a scanning probe measurement.
+    Data class representing the complete constraints of a scanning probe measurement.
     """
     channel_objects: Sequence[ScannerChannel]
     axis_objects: Sequence[ScannerAxis]
