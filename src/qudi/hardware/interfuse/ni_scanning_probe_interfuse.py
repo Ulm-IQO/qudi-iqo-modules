@@ -123,7 +123,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._thread_lock_data = Mutex()
 
         # handle to the uncorrected scanner instance, not wrapped by a potential CoordinateTransformMixin
-        self.bare_scanner = ScanningProbeDummy
+        self.bare_scanner = NiScanningProbeInterfuse
 
     def on_activate(self):
 
