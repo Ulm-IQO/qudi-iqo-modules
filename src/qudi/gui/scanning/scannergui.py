@@ -945,6 +945,8 @@ class ScannerGui(GuiBase):
             self._mw.action_history_forward.setEnabled(enable)
         if exclude_action is not self._mw.action_optimize_position:
             self._mw.action_optimize_position.setEnabled(enable)
+        if exclude_action is not self._mw.action_toggle_tilt_correction:
+            self._mw.action_toggle_tilt_correction.setEnabled(enable)
 
     def __get_marker_update_func(self, axes: Union[Tuple[str], Tuple[str, str]]):
         def update_func(pos: Union[float, Tuple[float, float]]):

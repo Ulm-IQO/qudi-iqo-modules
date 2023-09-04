@@ -32,9 +32,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.basis_transformations.basis_transformation \
-    import compute_rotation_mat_rodriguez, compute_reduced_vectors, det_changing_axes
-from qudi.util.datastorage import TextDataStorage
-
+    import compute_rotation_matrix_to_plane, compute_reduced_vectors, find_changing_axes
 
 class ScanningProbeLogic(LogicBase):
     """
@@ -304,6 +302,7 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
+            #self.log.debug(f"Requested Set pos to= {pos_dict}")
             ax_constr = self.scanner_constraints.axes
             pos_dict = self._scanner()._expand_coordinate(cp.copy(pos_dict))
             #self.log.debug(f"Expand to= {pos_dict}")
@@ -341,20 +340,15 @@ class ScanningProbeLogic(LogicBase):
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
 
-    def toggle_tilt_correction(self, enable=True, debug_func=False):
+    def toggle_tilt_correction(self, enable=True):
 
         target_pos = self._scanner().get_target()
         is_enabled = self._scanner().coordinate_transform_enabled
 
-
-        if debug_func:
-            func = self.__func_debug_transform()
-            self.log.info("Set test functions for coord transform")
-        else:
-            func = self.__transform_func if self._tilt_corr_transform else None
+        func = self.__transform_func if self._tilt_corr_transform else None
 
         if enable:
-            self._scanner().set_coordinate_transform(func)
+            self._scanner().set_coordinate_transform(func, self._tilt_corr_transform)
         else:
             self._scanner().set_coordinate_transform(None)
 
@@ -383,16 +377,17 @@ class ScanningProbeLogic(LogicBase):
             red_support_vecs = red_vecs[:-1,:]
             shift_vec = red_vecs[-1,:]
 
-        tilt_axes = det_changing_axes(support_vecs)
+        tilt_axes = find_changing_axes(support_vecs)
 
         if red_support_vecs.shape != (3,3) or shift_vec.shape[0] != 3:
             n_dim = support_vecs.shape[1]
             raise ValueError(f"Can't calculate tilt in >3 dimensions. "
                              f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. ")
 
-        rot_mat = compute_rotation_mat_rodriguez(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])[0]
+        rot_mat = compute_rotation_matrix_to_plane(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])[0]
         shift = shift_vec
 
+        # shift coord system to origin, rotate and shift shift back according to LT(x) = (R+s)*x - R*s
         lin_transform = LinearTransformation3D()
         shift_vec_transform = LinearTransformation3D()
         
@@ -439,72 +434,6 @@ class ScanningProbeLogic(LogicBase):
         if len(vecs_arr) == 1:
             return vecs_arr[0]
         return vecs_arr
-
-    def __func_debug_transform(self):
-        def transform_to(coord, inverse=False):
-            # this is a stub function
-            if inverse:
-                return {key: 0.5 * val for key, val in coord.items()}
-            else:
-                return {key: 2 * val for key, val in coord.items()}
-
-        def transform_to(coord, inverse=False):
-
-            ax_2_idx = lambda ch: ord(ch) - 120  # x->0, y->1, z->2; todo only for these axes
-            transform = LinearTransformation3D()
-
-            transform.rotate(0, 0, np.pi/10)
-            # todo: LinearTransformation expects vectors as row (not column) vectors
-            coord_vec = np.asarray(list(coord.values())).T
-            coord_transf = transform(coord_vec, invert=inverse).T
-            # make dict again after vector rotation
-            coord_transf = {ax: coord_transf[ax_2_idx(ax)] for (ax, val) in coord.items()}
-
-            return coord_transf
-
-        return transform_to
-
-    def save_trafo_func(self,supp_vec=None,shift_vec = None):
-
-            # This is used for saving the transformation function/matrix in a txt.file (Possibly or another file format)
-            # 1) Use to_dict function to obtain the dictionary about the data of the position
-            # 2) Obtain the transformation matrix
-            # 3) Look for the translation and rotation degeree
-
-        if not np.all([np.isfinite(el) for el in shift_vec]):
-            shift_vec = None
-
-        theta = compute_rotation_mat_rodriguez(supp_vec[0], supp_vec[1], supp_vec[2])[1]
-
-        self.configure_tilt_correction(support_vecs=supp_vec,shift_vec=shift_vec)
-
-        trafo_matrix = self._tilt_corr_transform.matrix  # Obtain the trafomatrix from class ScanningProbeLogic
-        data_dictionary = dict()#self.scan_data  # This is the dictionary, which will be saved
-        data_dictionary['Trafo_matrix'] = trafo_matrix  # self.scan_data # The inserted Transformation matrix
-        data_dictionary['Translation'] = trafo_matrix[:,3][0:3] # The first part of the total trafo matrix gives the translation vector
-        data_dictionary['rotationmatrix'] = trafo_matrix[0:3,0:3]
-        data_dictionary['rotation/deg'] = np.rad2deg(theta)# in deg
-
-        #print(self.scanner()._position_data)
-        #self.log.debug('The dictionary for saving has the following form', str(data_dictionary))
-        # self.log.info('Saving of the follwing transformation: Translation:'+str()+'um and Rotation of'+str()+'in rad')
-
-        # For testing if the save works. It works
-        #if trafo_matrix is not None: # If no trafomatrix exists, there's no necessary to save it
-         #   data_storage = TextDataStorage(root_dir=new_root_dir, comments='# ',
-          #                                 delimiter='\t',
-           #                                file_extension='.dat',
-            #                               include_global_metadata=True)  # creates an object for saving the trafo function
-            #file_path, timestamp, _ = data_storage.save_data(trafo_matrix,
-             #                                                metadata={'rotation_mat':data_dictionary['rotationmatrix'] ,'rotation(deg)':data_dictionary['rotation/deg'], 'translation(um)':data_dictionary['Translation']},# as placeholder
-              #                                               notes='Test for saving the trafo function',
-               #                                              nametag='first_trafo_saving',
-                #                                             column_dtypes=(float, float))
-            #self.log.info('Saving of trafomatrix')
-        # string_dict = str(data_dictionary)
-        self.log.info('Saving Trafo is:' + str(trafo_matrix))
-        return data_dictionary
-
 
     def _update_scan_settings(self, scan_axes, settings):
         for ax_index, ax in enumerate(scan_axes):

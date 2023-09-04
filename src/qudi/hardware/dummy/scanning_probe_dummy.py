@@ -127,8 +127,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                             channels=channels,
                                             backscan_configurable=False,
                                             has_position_feedback=False,
-                                            square_px_only=False,
-                                            allow_coordinate_transform=self.supports_coordinate_transform)
+                                            square_px_only=False)
         self.__scan_start = 0
         self.__last_line = -1
         self.__update_timer = QtCore.QTimer()

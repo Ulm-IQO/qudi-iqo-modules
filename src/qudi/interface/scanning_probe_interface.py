@@ -34,13 +34,14 @@ class ScanningProbeInterface(Base):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._coordinate_transform = None
+        self._coordinate_transform_matrix = None
 
     def coordinate_transform(self, val, inverse=False):
         if self._coordinate_transform is None:
             return val
         return self._coordinate_transform(val, inverse)
 
-    def set_coordinate_transform(self, transform_func):
+    def set_coordinate_transform(self, transform_func, transform_matrix=None):
         if transform_func is not None:
             raise ValueError('Coordinate transformation not supported by scanning hardware.')
 
@@ -50,17 +51,7 @@ class ScanningProbeInterface(Base):
 
     @property
     def supports_coordinate_transform(self):
-        # todo: this should be part of the scanconstraints
-        # however this function is general for every scanner, but can't live
-        # in ScanContraints, as no handle to set_coordinate_transform
-        flag = False
-        try:
-            self.set_coordinate_transform(lambda x, inverse:  x)
-            self.set_coordinate_transform(None)
-            flag = True
-        except ValueError:
-            pass
-        return flag
+        return self.get_constraints().allow_coordinate_transform
 
     @abstractmethod
     def get_constraints(self):
@@ -252,7 +243,7 @@ class ScanData:
         self._data = None
         self._position_data = None
         self._target_at_start = target_at_start
-        self._tilt_correction_info = {'enabled': False}
+        self._coord_transform_info = {'enabled': False}
         # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
         return
 
@@ -280,15 +271,6 @@ class ScanData:
         attrs = ('_timestamp', '_scan_frequency', '_scan_axes', '_scan_range', '_scan_resolution',
                  '_channels', '_position_feedback_axes', '_data', '_position_data', '_timestamp')
         return all(getattr(self, a) == getattr(other, a) for a in attrs)
-
-    # ToDo: Roberto Create the methode save_trafo_func to save the trafomatrix/function
-    @property
-    def save_trafo_func(self):
-        """ Save the current transformation matrix created by tilt correction
-                @return dict: dictionary with the trafomatrix the degree of rotation and translationvector.
-
-        """
-        pass
 
     @property
     def scan_axes(self):
@@ -427,12 +409,12 @@ class ScanData:
         return new_inst
 
     @property
-    def tilt_correction_info(self):
-        return self._tilt_correction_info
+    def coord_transform_info(self):
+        return self._coord_transform_info
 
-    @tilt_correction_info.setter
-    def tilt_correction_info(self, info_dict):
-        self._tilt_correction_info = info_dict
+    @coord_transform_info.setter
+    def coord_transform_info(self, info_dict):
+        self._coord_transform_info = info_dict
 
 
 class ScannerChannel:
@@ -609,7 +591,7 @@ class ScanConstraints:
     """
 
     def __init__(self, axes, channels, backscan_configurable, has_position_feedback,
-                 square_px_only, allow_coordinate_transform):
+                 square_px_only):
         """
         """
         if not all(isinstance(ax, ScannerAxis) for ax in axes):
@@ -622,15 +604,13 @@ class ScanConstraints:
             raise TypeError('Parameter "has_position_feedback" must be of type bool.')
         if not isinstance(square_px_only, bool):
             raise TypeError('Parameter "square_px_only" must be of type bool.')
-        if not isinstance(allow_coordinate_transform, bool):
-            raise TypeError('Parameter "allow_coordinate_transform" must be of type bool.')
+
         self._axes = {ax.name: ax for ax in axes}
         self._channels = {ch.name: ch for ch in channels}
         self._backscan_configurable = bool(backscan_configurable)
         self._has_position_feedback = bool(has_position_feedback)
         self._square_px_only = bool(square_px_only)
-        # todo: do we need this in the ScanContraints or is in scan interface enough?
-        self._allow_coordinate_transform = bool(allow_coordinate_transform)
+        self._allow_coordinate_transform = False  # overwritten in CoordinateTransformMixin
 
     @property
     def axes(self):
@@ -667,12 +647,20 @@ class CoordinateTransformMixin:
         MyTransformationScanner(CoordinateTransformMixin, MyScanner):
             pass
     """
-    def set_coordinate_transform(self, transform_func):
+
+    def get_constraints(self):
+        constr = super().get_constraints()
+        constr._allow_coordinate_transform = True
+
+        return constr
+
+    def set_coordinate_transform(self, transform_func, transform_matrix=None):
         # ToDo: Proper sanity checking here, e.g. function signature etc.
         if transform_func is not None and not callable(transform_func):
             raise ValueError('Coordinate transformation function must be callable with '
                              'signature "coordinate_transform(value, inverse=False)"')
         self._coordinate_transform = transform_func
+        self._coordinate_transform_matrix = transform_matrix
 
     def move_absolute(self, position, velocity=None, blocking=False):
         new_pos_bare = super().move_absolute(self.coordinate_transform(position), velocity, blocking)
@@ -694,13 +682,13 @@ class CoordinateTransformMixin:
         if scan_data:
             # todo: transform_func not needed, replace with valuable info (matrix, angle, ..)
             tilt_info = {'enabled': self.coordinate_transform_enabled,
-                         'transform_func': self._coordinate_transform}
-                        #'transform_matrix':scan_data.save_trafo_func,
-                        # 'rotation_angle':,
-                        # 'translation_vec':}
+                         }
+            if self.coordinate_transform_enabled:
+                transform_info = {'transform_func': self._coordinate_transform,
+                                  'transform_matrix': self._coordinate_transform_matrix.matrix}
+                tilt_info.update(transform_info)
 
-            scan_data._tilt_correction_info = tilt_info
-
-            self.log.info(f"Get scan data for tilt corrected hw called. Info: {tilt_info}")
+            scan_data.coord_transform_info = tilt_info
+            self.log.debug(f"Get scan data for titl corrected hw called. Info: {tilt_info}")
 
         return scan_data
