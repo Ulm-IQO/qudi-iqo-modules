@@ -261,27 +261,21 @@ class ScannerAxis:
 @dataclass(frozen=True)
 class ScanConstraints:
     """
+    Data class representing constraints of a scanning probe measurement.
     """
-    in_axes: InitVar[list[ScannerAxis]]
-    in_channels: InitVar[list[ScannerChannel]]
+    channel_objects: Sequence[ScannerChannel]
+    axis_objects: Sequence[ScannerAxis]
     backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
     has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
     square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
 
-    def __post_init__(self, in_axes, in_channels):
-        if not all(isinstance(ax, ScannerAxis) for ax in in_axes):
-            raise TypeError('Parameter "in_axes" must be of type ScannerAxis.')
-        if not all(isinstance(ch, ScannerChannel) for ch in in_channels):
-            raise TypeError('Parameter "in_channels" must be of type ScannerChannel.')
-        if not isinstance(self.backscan_configurable, bool):
-            raise TypeError('Parameter "backscan_configurable" must be of type bool.')
-        if not isinstance(self.has_position_feedback, bool):
-            raise TypeError('Parameter "has_position_feedback" must be of type bool.')
-        if not isinstance(self.square_px_only, bool):
-            raise TypeError('Parameter "square_px_only" must be of type bool.')
+    @property
+    def channels(self) -> dict[str, ScannerChannel]:
+        return {ch.name: ch for ch in self.channel_objects}
 
-        object.__setattr__(self, 'axes', {ax.name: ax for ax in in_axes})
-        object.__setattr__(self, 'channels', {ch.name: ch for ch in in_channels})
+    @property
+    def axes(self) -> dict[str, ScannerAxis]:
+        return {ax.name: ax for ax in self.axis_objects}
 
 
 @dataclass(frozen=True)

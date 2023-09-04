@@ -123,8 +123,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
         channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype='float64'),
                     ScannerChannel(name='APD events', unit='count', dtype='float64')]
 
-        self._constraints = ScanConstraints(in_axes=axes,
-                                            in_channels=channels,
+        self._constraints = ScanConstraints(axis_objects=axes,
+                                            channel_objects=channels,
                                             backscan_configurable=False,
                                             has_position_feedback=False,
                                             square_px_only=False)
