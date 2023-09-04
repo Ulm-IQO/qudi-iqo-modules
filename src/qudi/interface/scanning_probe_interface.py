@@ -284,6 +284,54 @@ class ScanConstraints:
         object.__setattr__(self, 'channels', {ch.name: ch for ch in in_channels})
 
 
+@dataclass(frozen=True)
+class ScanSettings:
+    """
+    Data class representing all settings specifying a scanning probe measurement.
+
+    @param str[] channels: names of scanner channels involved in this scan
+    @param str[] axes: names of scanner axes involved in this scan
+    @param float[][2] range: inclusive range for each scan axis
+    @param int[] resolution: planned number of points for each scan axis
+    @param float frequency: Scan pixel frequency of the fast axis
+    @param str[] position_feedback_axes: optional, names of axes for which to acquire position
+                                         feedback during the scan.
+    """
+
+    channels: Sequence[str]
+    axes: Sequence[str]
+    range: Sequence[tuple[float, float]]
+    resolution: Sequence[int]
+    frequency: float
+    position_feedback_axes: Sequence[str] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        # Sanity checking
+        if not (0 < len(self.axes) <= 2):
+            raise ValueError('Only 1D and 2D scans are implemented.')
+        if len(self.channels) < 1:
+            raise ValueError('At least one data channel must be specified for a valid scan.')
+        if len(self.axes) != len(self.range):
+            raise ValueError(f'Parameters "axes" and "range" must have same len. Given '
+                             f'{len(self.axes)} and {len(self.range)}, respectively.')
+        if len(self.axes) != len(self.resolution):
+            raise ValueError(f'Parameters "axes" and "resolution" must have same len. '
+                             f'Given {len(self.axes)} and {len(self.resolution)}, respectively.')
+
+        if not set(self.position_feedback_axes).issubset(self.axes):
+            raise TypeError(
+                'The "position_feedback_axes" must be a subset of scan axes.'
+            )
+
+    @property
+    def has_position_feedback(self) -> bool:
+        return bool(self.position_feedback_axes)
+
+    @property
+    def scan_dimension(self) -> int:
+        return len(self.axes)
+
+
 @dataclass
 class ScanData:
     """
