@@ -241,26 +241,6 @@ class ScannerAxis:
 
 
 @dataclass(frozen=True)
-class ScanConstraints:
-    """
-    Data class representing the complete constraints of a scanning probe measurement.
-    """
-    channel_objects: Sequence[ScannerChannel]
-    axis_objects: Sequence[ScannerAxis]
-    backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
-    has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
-    square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
-
-    @property
-    def channels(self) -> dict[str, ScannerChannel]:
-        return {ch.name: ch for ch in self.channel_objects}
-
-    @property
-    def axes(self) -> dict[str, ScannerAxis]:
-        return {ax.name: ax for ax in self.axis_objects}
-
-
-@dataclass(frozen=True)
 @yaml_object(get_yaml())
 class ScanSettings:
     """
@@ -307,6 +287,26 @@ class ScanSettings:
     @property
     def scan_dimension(self) -> int:
         return len(self.axes)
+
+
+@dataclass(frozen=True)
+class ScanConstraints:
+    """
+    Data class representing the complete constraints of a scanning probe measurement.
+    """
+    channel_objects: Sequence[ScannerChannel]
+    axis_objects: Sequence[ScannerAxis]
+    backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
+    has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
+    square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
+
+    @property
+    def channels(self) -> dict[str, ScannerChannel]:
+        return {ch.name: ch for ch in self.channel_objects}
+
+    @property
+    def axes(self) -> dict[str, ScannerAxis]:
+        return {ax.name: ax for ax in self.axis_objects}
 
 
 @dataclass
