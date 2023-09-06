@@ -199,6 +199,59 @@ class ScanConstraints:
     def axes(self) -> dict[str, ScannerAxis]:
         return {ax.name: ax for ax in self.axis_objects}
 
+    def has_required_channels(self, scan_settings: ScanSettings) -> bool:
+        return set(scan_settings.channels).issubset(self.channels)
+
+    def has_required_axes(self, scan_settings: ScanSettings) -> bool:
+        return set(scan_settings.axes).issubset(self.axes)
+
+    def has_requirements(self, scan_settings: ScanSettings) -> bool:
+        conditions = [
+            self.has_required_channels(scan_settings),
+            self.has_required_axes(scan_settings),
+            scan_settings.has_position_feedback and not self.has_position_feedback,
+        ]
+        return all(conditions)
+
+    def clip(self, scan_settings: ScanSettings) -> ScanSettings:
+        if not self.has_required_axes(scan_settings):
+            raise ValueError('Not all axes specified in the scan settings are known to the scan constraints.')
+        clipped_range = []
+        clipped_resolution = []
+        for axis, _range, resolution in zip(scan_settings.axes, scan_settings.range, scan_settings.resolution):
+            clipped_range.append((float(self.axes[axis].position.clip(_range[0])),
+                                  float(self.axes[axis].position.clip(_range[1]))))
+            clipped_resolution.append(self.axes[axis].resolution.clip(resolution))
+        # frequency needs to be within bounds for all axes
+        clipped_frequency = scan_settings.frequency
+        for axis in scan_settings.axes:
+            clipped_frequency = self.axes[axis].frequency.clip(clipped_frequency)
+
+        clipped_settings = ScanSettings(
+            channels=scan_settings.channels,
+            axes=scan_settings.axes,
+            range=clipped_range,
+            resolution=clipped_resolution,
+            frequency=clipped_frequency,
+            position_feedback_axes=scan_settings.position_feedback_axes
+        )
+        return clipped_settings
+
+    def is_compatible(self, scan_settings: ScanSettings) -> bool:
+        if not self.has_requirements(scan_settings):
+            return False
+
+        axis_conditions = []
+        for axis, _range, resolution in zip(scan_settings.axes, scan_settings.range, scan_settings.resolution):
+            axis_conditions.append(
+                all([self.axes[axis].position.check(_range[0]),
+                     self.axes[axis].position.check(_range[1])])
+            )
+            axis_conditions.append(self.axes[axis].resolution.check(resolution))
+            # there is only a single frequency
+            axis_conditions.append(self.axes[axis].resolution.check(scan_settings.frequency))
+        return all(axis_conditions)
+
 
 @dataclass
 @yaml_object(get_yaml())
