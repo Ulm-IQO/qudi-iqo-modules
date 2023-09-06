@@ -453,7 +453,7 @@ class AWGM819X(PulserInterface):
               further processing.
         """
         sample_rate_GHz = (sample_rate * self._sample_rate_div) / 1e9
-        self.write(':FREQ:RAST {0:.4G}GHz\n'.format(sample_rate_GHz))
+        self.write(':FREQ:RAST {0:.13G}GHz\n'.format(sample_rate_GHz))
         while int(self.query('*OPC?')) != 1:
             time.sleep(0.25)
         time.sleep(0.2)
