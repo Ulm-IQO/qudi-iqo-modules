@@ -30,115 +30,6 @@ from qudi.util.constraints import ScalarConstraint
 from qudi.util.yaml import yaml_object, get_yaml
 
 
-class ScanningProbeInterface(Base):
-    """ This is the Interface class to define the controls for a scanning probe device
-
-    A scanner device is hardware that can move multiple axes.
-    """
-
-    @abstractmethod
-    def get_constraints(self):
-        """ Get hardware constraints/limitations.
-
-        @return dict: scanner constraints
-        """
-        pass
-
-    @abstractmethod
-    def reset(self):
-        """ Hard reset of the hardware.
-        """
-        pass
-
-    @abstractmethod
-    def configure_scan(self, settings):
-        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
-
-        @param ScanSettings settings: ScanSettings instance holding all parameters # TODO update me!
-
-        @return (bool, ScanSettings): Failure indicator (fail=True),
-                                      altered ScanSettings instance (same as "settings")
-        """
-        pass
-
-    @abstractmethod
-    def move_absolute(self, position, velocity=None, blocking=False):
-        """ Move the scanning probe to an absolute position as fast as possible or with a defined
-        velocity.
-
-        Log error and return current target position if something fails or a scan is in progress.
-
-        @param bool blocking: If True this call returns only after the final position is reached.
-        """
-        pass
-
-    @abstractmethod
-    def move_relative(self, distance, velocity=None, blocking=False):
-        """ Move the scanning probe by a relative distance from the current target position as fast
-        as possible or with a defined velocity.
-
-        Log error and return current target position if something fails or a 1D/2D scan is in
-        progress.
-
-        @param bool blocking: If True this call returns only after the final position is reached.
-
-        """
-        pass
-
-    @abstractmethod
-    def get_target(self):
-        """ Get the current target position of the scanner hardware
-        (i.e. the "theoretical" position).
-
-        @return dict: current target position per axis.
-        """
-        pass
-
-    @abstractmethod
-    def get_position(self):
-        """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
-        For the same target this value can fluctuate according to the scanners positioning accuracy.
-
-        For scanning devices that do not have position feedback sensors, simply return the target
-        position (see also: ScanningProbeInterface.get_target).
-
-        @return dict: current position per axis.
-        """
-        pass
-
-    @abstractmethod
-    def start_scan(self):
-        """
-
-        @return (bool): Failure indicator (fail=True)
-        """
-        pass
-
-    @abstractmethod
-    def stop_scan(self):
-        """
-
-        @return bool: Failure indicator (fail=True)
-        """
-        pass
-
-    @abstractmethod
-    def get_scan_data(self):
-        """
-
-        @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
-        """
-        pass
-
-    @abstractmethod
-    def emergency_stop(self):
-        """
-
-        @return:
-        """
-        pass
-
-
 @dataclass(frozen=True)
 @yaml_object(get_yaml())
 class ScannerChannel:
@@ -458,3 +349,112 @@ class ScanData:
             ch.name: np.full(self.scan_resolution, np.nan, dtype=ch.dtype) for ch in self.channels_obj
         }
         return
+
+
+class ScanningProbeInterface(Base):
+    """ This is the Interface class to define the controls for a scanning probe device
+
+    A scanner device is hardware that can move multiple axes.
+    """
+
+    @abstractmethod
+    def get_constraints(self):
+        """ Get hardware constraints/limitations.
+
+        @return dict: scanner constraints
+        """
+        pass
+
+    @abstractmethod
+    def reset(self):
+        """ Hard reset of the hardware.
+        """
+        pass
+
+    @abstractmethod
+    def configure_scan(self, settings):
+        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
+
+        @param ScanSettings settings: ScanSettings instance holding all parameters # TODO update me!
+
+        @return (bool, ScanSettings): Failure indicator (fail=True),
+                                      altered ScanSettings instance (same as "settings")
+        """
+        pass
+
+    @abstractmethod
+    def move_absolute(self, position, velocity=None, blocking=False):
+        """ Move the scanning probe to an absolute position as fast as possible or with a defined
+        velocity.
+
+        Log error and return current target position if something fails or a scan is in progress.
+
+        @param bool blocking: If True this call returns only after the final position is reached.
+        """
+        pass
+
+    @abstractmethod
+    def move_relative(self, distance, velocity=None, blocking=False):
+        """ Move the scanning probe by a relative distance from the current target position as fast
+        as possible or with a defined velocity.
+
+        Log error and return current target position if something fails or a 1D/2D scan is in
+        progress.
+
+        @param bool blocking: If True this call returns only after the final position is reached.
+
+        """
+        pass
+
+    @abstractmethod
+    def get_target(self):
+        """ Get the current target position of the scanner hardware
+        (i.e. the "theoretical" position).
+
+        @return dict: current target position per axis.
+        """
+        pass
+
+    @abstractmethod
+    def get_position(self):
+        """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
+        For the same target this value can fluctuate according to the scanners positioning accuracy.
+
+        For scanning devices that do not have position feedback sensors, simply return the target
+        position (see also: ScanningProbeInterface.get_target).
+
+        @return dict: current position per axis.
+        """
+        pass
+
+    @abstractmethod
+    def start_scan(self):
+        """
+
+        @return (bool): Failure indicator (fail=True)
+        """
+        pass
+
+    @abstractmethod
+    def stop_scan(self):
+        """
+
+        @return bool: Failure indicator (fail=True)
+        """
+        pass
+
+    @abstractmethod
+    def get_scan_data(self):
+        """
+
+        @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
+        """
+        pass
+
+    @abstractmethod
+    def emergency_stop(self):
+        """
+
+        @return:
+        """
+        pass
