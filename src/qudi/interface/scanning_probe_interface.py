@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from dataclasses import dataclass, field
-from typing import Sequence, Union
+from typing import Sequence, Union, Optional
 import datetime
 import numpy as np
 from abc import abstractmethod
@@ -411,7 +411,7 @@ class ScanningProbeInterface(Base):
     """
 
     @abstractmethod
-    def get_constraints(self):
+    def get_constraints(self) -> ScanConstraints:
         """ Get hardware constraints/limitations.
 
         @return dict: scanner constraints
@@ -419,48 +419,55 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def reset(self):
+    def reset(self) -> None:
         """ Hard reset of the hardware.
         """
         pass
 
     @abstractmethod
-    def configure_scan(self, settings):
+    def configure_scan(self, settings: ScanSettings) -> ScanSettings:
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
 
-        @param ScanSettings settings: ScanSettings instance holding all parameters # TODO update me!
+        @param ScanSettings settings: ScanSettings instance holding all parameters
 
-        @return (bool, ScanSettings): Failure indicator (fail=True),
-                                      altered ScanSettings instance (same as "settings")
+        @return ScanSettings: actually set ScanSettings complying with constraints
         """
         pass
 
     @abstractmethod
-    def move_absolute(self, position, velocity=None, blocking=False):
+    def move_absolute(self, position: dict[str: float],
+                      velocity: Optional[float] = None, blocking: bool = False) -> dict[str: float]:
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
         Log error and return current target position if something fails or a scan is in progress.
 
+        @param dict position: absolute positions for all axes to move to, axis names as keys
+        @param float velocity: movement velocity
         @param bool blocking: If True this call returns only after the final position is reached.
+
+        @return dict: new position of all axes
         """
         pass
 
     @abstractmethod
-    def move_relative(self, distance, velocity=None, blocking=False):
+    def move_relative(self, distance: dict[str: float],
+                      velocity: Optional[float] = None, blocking: bool = False) -> dict[str: float]:
         """ Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 
-        Log error and return current target position if something fails or a 1D/2D scan is in
-        progress.
+        Log error if something fails or a 1D/2D scan is in progress.
 
+        @param dict distance: relative distance for all axes to move by, axis names as keys
+        @param float velocity: movement velocity
         @param bool blocking: If True this call returns only after the final position is reached.
 
+        @return dict: new position of all axes
         """
         pass
 
     @abstractmethod
-    def get_target(self):
+    def get_target(self) -> dict[str: float]:
         """ Get the current target position of the scanner hardware
         (i.e. the "theoretical" position).
 
@@ -469,7 +476,7 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def get_position(self):
+    def get_position(self) -> dict[str: float]:
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
         For the same target this value can fluctuate according to the scanners positioning accuracy.
 
@@ -481,33 +488,31 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def start_scan(self):
+    def start_scan(self) -> None:
         """
-
-        @return (bool): Failure indicator (fail=True)
-        """
-        pass
-
-    @abstractmethod
-    def stop_scan(self):
-        """
-
-        @return bool: Failure indicator (fail=True)
+        Start a scan as configured beforehand.
+        Log an error if something fails or a 1D/2D scan is in progress.
         """
         pass
 
     @abstractmethod
-    def get_scan_data(self):
+    def stop_scan(self) -> None:
         """
-
-        @return (bool, ScanData): Failure indicator (fail=True), ScanData instance used in the scan
+        Stop the currently running scan.
+        Log an error if something fails or no 1D/2D scan is in progress.
         """
         pass
 
     @abstractmethod
-    def emergency_stop(self):
+    def get_scan_data(self) -> ScanData:
         """
+        Get the ScanData instance used in the scan.
+        """
+        pass
 
-        @return:
+    @abstractmethod
+    def emergency_stop(self) -> None:
+        """
+        TODO: document what this should to differently than stop_scan.
         """
         pass
