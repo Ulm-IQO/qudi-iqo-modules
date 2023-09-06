@@ -206,10 +206,9 @@ class ScanningProbeDummy(ScanningProbeInterface):
             self.log.debug('Scanning probe dummy has been reset.')
             return 0
 
-    def get_constraints(self):
-        """
-
-        @return:
+    @property
+    def constraints(self) -> ScanConstraints:
+        """ Read-only property returning the constraints of this scanning probe hardware.
         """
         #self.log.debug('Scanning probe dummy "get_constraints" called.')
         return self._constraints
@@ -446,13 +445,13 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self.log.warning('Scanner has been emergency stopped.')
         return 0
 
-    def get_scan_data(self):
-        """
-        @return ScanData: ScanData instance used in the scan
+    @property
+    def scan_data(self) -> ScanData:
+        """ Read-only property returning the ScanData instance used in the scan.
         """
         with self._thread_lock:
             # if self.thread() is not QtCore.QThread.currentThread():
-            #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
+            #     self.log.debug('Scanning probe dummy "scan_data" called.')
             if self._scan_data is None:
                 raise RuntimeError('No scan data in hardware.')
 
@@ -497,6 +496,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
                         elif self.thread() is QtCore.QThread.currentThread():
                             self.__start_timer()
             return self._scan_data
+
+    def get_scan_data(self):
+        # required to connect a Qt signal
+        return self.scan_data
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():

@@ -410,11 +410,10 @@ class ScanningProbeInterface(Base):
     A scanner device is hardware that can move multiple axes.
     """
 
+    @property
     @abstractmethod
-    def get_constraints(self) -> ScanConstraints:
-        """ Get hardware constraints/limitations.
-
-        @return dict: scanner constraints
+    def constraints(self) -> ScanConstraints:
+        """ Read-only property returning the constraints of this scanning probe hardware.
         """
         pass
 
@@ -424,13 +423,20 @@ class ScanningProbeInterface(Base):
         """
         pass
 
+    @property
     @abstractmethod
-    def configure_scan(self, settings: ScanSettings) -> ScanSettings:
+    def scan_settings(self) -> ScanSettings:
+        """ Property returning all parameters needed for a 1D or 2D scan.
+        """
+        pass
+
+    @scan_settings.setter
+    @abstractmethod
+    def scan_settings(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
+        Log error if the settings are invalid and do not comply with the hardware constraints.
 
         @param ScanSettings settings: ScanSettings instance holding all parameters
-
-        @return ScanSettings: actually set ScanSettings complying with constraints
         """
         pass
 
@@ -503,10 +509,10 @@ class ScanningProbeInterface(Base):
         """
         pass
 
+    @property
     @abstractmethod
-    def get_scan_data(self) -> ScanData:
-        """
-        Get the ScanData instance used in the scan.
+    def scan_data(self) -> ScanData:
+        """ Read-only property returning the ScanData instance used in the scan.
         """
         pass
 

@@ -127,7 +127,7 @@ class ScanningProbeLogic(LogicBase):
     @property
     def scan_data(self):
         with self._thread_lock:
-            return self._scanner().get_scan_data()
+            return self._scanner().scan_data
 
     @property
     def scanner_position(self):
@@ -149,7 +149,7 @@ class ScanningProbeLogic(LogicBase):
 
     @property
     def scanner_constraints(self):
-        return self._scanner().get_constraints()
+        return self._scanner().constraints
 
     @property
     def scan_ranges(self):

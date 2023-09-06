@@ -201,10 +201,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if self._ni_finite_sampling_io().is_running:
             self._ni_finite_sampling_io().stop_buffered_frame()
 
-    def get_constraints(self):
-        """ Get hardware constraints/limitations.
-
-        @return dict: scanner constraints
+    @property
+    def constraints(self) -> ScanConstraints:
+        """ Read-only property returning the constraints of this scanning probe hardware.
         """
         return self._constraints
 
@@ -472,11 +471,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.move_absolute(self._stored_target_pos)
         self._stored_target_pos = dict()
 
-    def get_scan_data(self):
-        """
-
-        @return (ScanData): ScanData instance used in the scan
-        #  TODO change interface
+    @property
+    def scan_data(self) -> ScanData:
+        """ Read-only property returning the ScanData instance used in the scan.
         """
 
         if self._scan_data is None:
@@ -665,7 +662,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                                  self._position_to_voltage(axis, scan_data.scan_range[0][0]),
                                                  self.__backwards_line_resolution)
             # TODO Return line for 1d included due to possible hysteresis. Might be able to drop it,
-            #  but then get_scan_data needs to be changed accordingly
+            #  but then scan_data needs to be changed accordingly
 
             horizontal_single_line = np.concatenate((horizontal,
                                                      horizontal_return_line))
