@@ -199,58 +199,81 @@ class ScanConstraints:
     def axes(self) -> dict[str, ScannerAxis]:
         return {ax.name: ax for ax in self.axis_objects}
 
-    def has_required_channels(self, scan_settings: ScanSettings) -> bool:
-        return set(scan_settings.channels).issubset(self.channels)
+    def is_valid(self, settings: ScanSettings) -> bool:
+        try:
+            self.check_settings(settings)
+        except (ValueError, TypeError):
+            return False
+        return True
 
-    def has_required_axes(self, scan_settings: ScanSettings) -> bool:
-        return set(scan_settings.axes).issubset(self.axes)
+    def check_settings(self, settings: ScanSettings) -> None:
+        self.check_channels(settings)
+        self.check_axes(settings)
+        self.check_feedback(settings)
 
-    def has_requirements(self, scan_settings: ScanSettings) -> bool:
-        conditions = [
-            self.has_required_channels(scan_settings),
-            self.has_required_axes(scan_settings),
-            scan_settings.has_position_feedback and not self.has_position_feedback,
-        ]
-        return all(conditions)
+    def check_channels(self, settings: ScanSettings) -> None:
+        if not set(settings.channels).issubset(self.channels):
+            raise ValueError(f'Unknown channel names encountered. '
+                             f'Valid channel names are {self.channels}.')
 
-    def clip(self, scan_settings: ScanSettings) -> ScanSettings:
-        if not self.has_required_axes(scan_settings):
-            raise ValueError('Not all axes specified in the scan settings are known to the scan constraints.')
+    def check_axes(self, settings: ScanSettings) -> None:
+        if not set(settings.axes).issubset(self.axes):
+            raise ValueError(f'Unknown axis names encountered. '
+                             f'Valid axis names are {self.channels}.')
+
+        for axis_name, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
+            axis = self.axes[axis_name]
+            try:
+                axis.position.check(_range[0])
+                axis.position.check(_range[1])
+            except ValueError as e:
+                raise ValueError(f'Scan range out of bounds for axis "{axis_name}".') from e
+            except TypeError as e:
+                raise TypeError(f'Scan range type check failed for axis "{axis_name}".') from e
+
+            try:
+                axis.resolution.check(resolution)
+            except ValueError as e:
+                raise ValueError(f'Scan resolution out of bounds for axis "{axis_name}".') from e
+            except TypeError as e:
+                raise TypeError(f'Scan resolution type check failed for axis "{axis_name}".') from e
+
+        # frequency is only relevant for the first (fast) axis
+        fast_axis_name = settings.axes[0]
+        fast_axis = self.axes[fast_axis_name]
+        try:
+            fast_axis.frequency.check(settings.frequency)
+        except ValueError as e:
+            raise ValueError(f'Scan frequency out of bounds for fast axis "{fast_axis_name}".') from e
+        except TypeError as e:
+            raise TypeError(f'Scan frequency type check failed for fast axis "{fast_axis_name}".') from e
+
+    def check_feedback(self, settings: ScanSettings) -> None:
+        if settings.has_position_feedback and not self.has_position_feedback:
+            raise ValueError(f'Scanner does not support position feedback.')
+
+    def clip(self, settings: ScanSettings) -> ScanSettings:
+        self.check_axes(settings)
         clipped_range = []
         clipped_resolution = []
-        for axis, _range, resolution in zip(scan_settings.axes, scan_settings.range, scan_settings.resolution):
+        for axis, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
             clipped_range.append((float(self.axes[axis].position.clip(_range[0])),
                                   float(self.axes[axis].position.clip(_range[1]))))
             clipped_resolution.append(self.axes[axis].resolution.clip(resolution))
         # frequency needs to be within bounds for all axes
-        clipped_frequency = scan_settings.frequency
-        for axis in scan_settings.axes:
+        clipped_frequency = settings.frequency
+        for axis in settings.axes:
             clipped_frequency = self.axes[axis].frequency.clip(clipped_frequency)
 
         clipped_settings = ScanSettings(
-            channels=scan_settings.channels,
-            axes=scan_settings.axes,
+            channels=settings.channels,
+            axes=settings.axes,
             range=clipped_range,
             resolution=clipped_resolution,
             frequency=clipped_frequency,
-            position_feedback_axes=scan_settings.position_feedback_axes
+            position_feedback_axes=settings.position_feedback_axes
         )
         return clipped_settings
-
-    def is_compatible(self, scan_settings: ScanSettings) -> bool:
-        if not self.has_requirements(scan_settings):
-            return False
-
-        axis_conditions = []
-        for axis, _range, resolution in zip(scan_settings.axes, scan_settings.range, scan_settings.resolution):
-            axis_conditions.append(
-                all([self.axes[axis].position.check(_range[0]),
-                     self.axes[axis].position.check(_range[1])])
-            )
-            axis_conditions.append(self.axes[axis].resolution.check(resolution))
-            # there is only a single frequency
-            axis_conditions.append(self.axes[axis].resolution.check(scan_settings.frequency))
-        return all(axis_conditions)
 
 
 @dataclass
@@ -425,8 +448,8 @@ class ScanningProbeInterface(Base):
 
     @property
     @abstractmethod
-    def scan_settings(self) -> ScanSettings:
-        """ Property returning all parameters needed for a 1D or 2D scan.
+    def scan_settings(self) -> Optional[ScanSettings]:
+        """ Property returning all parameters needed for a 1D or 2D scan. Returns None if not configured.
         """
         pass
 
@@ -434,7 +457,7 @@ class ScanningProbeInterface(Base):
     @abstractmethod
     def scan_settings(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
-        Log error if the settings are invalid and do not comply with the hardware constraints.
+        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
 
         @param ScanSettings settings: ScanSettings instance holding all parameters
         """
@@ -511,8 +534,9 @@ class ScanningProbeInterface(Base):
 
     @property
     @abstractmethod
-    def scan_data(self) -> ScanData:
-        """ Read-only property returning the ScanData instance used in the scan.
+    def scan_data(self) -> Optional[ScanData]:
+        """ Read-only property returning the ScanData instance used in the scan. Returns None if no scan has run yet.
+        TODO: think about returning None or raising an exception
         """
         pass
 
