@@ -29,6 +29,7 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
+from qudi.interface.scanning_probe_interface import ScanSettings
 
 
 class ScanningProbeLogic(LogicBase):
@@ -326,28 +327,6 @@ class ScanningProbeLogic(LogicBase):
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
 
-    def _update_scan_settings(self, scan_axes, settings):
-        for ax_index, ax in enumerate(scan_axes):
-            # Update scan ranges if needed
-            new = tuple(settings['range'][ax_index])
-            if self._scan_ranges[ax] != new:
-                self._scan_ranges[ax] = new
-                self.sigScanSettingsChanged.emit({'range': {ax: self._scan_ranges[ax]}})
-
-            # Update scan resolution if needed
-            new = int(settings['resolution'][ax_index])
-            if self._scan_resolution[ax] != new:
-                self._scan_resolution[ax] = new
-                self.sigScanSettingsChanged.emit(
-                    {'resolution': {ax: self._scan_resolution[ax]}}
-                )
-
-        # Update scan frequency if needed
-        new = float(settings['frequency'])
-        if self._scan_frequency[scan_axes[0]] != new:
-            self._scan_frequency[scan_axes[0]] = new
-            self.sigScanSettingsChanged.emit({'frequency': {scan_axes[0]: new}})
-
     def start_scan(self, scan_axes, caller_id=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -359,19 +338,20 @@ class ScanningProbeLogic(LogicBase):
 
             self.module_state.lock()
 
-            settings = {'axes': scan_axes,
-                        'range': tuple(self._scan_ranges[ax] for ax in scan_axes),
-                        'resolution': tuple(self._scan_resolution[ax] for ax in scan_axes),
-                        'frequency': self._scan_frequency[scan_axes[0]]}
-            fail, new_settings = self._scanner().configure_scan(settings)
-            if fail:
+            settings = ScanSettings(
+                channels=list(self.scanner_channels),
+                axes=scan_axes,
+                range=tuple(self._scan_ranges[ax] for ax in scan_axes),
+                resolution=tuple(self._scan_resolution[ax] for ax in scan_axes),
+                frequency=self._scan_frequency[scan_axes[0]],
+            )
+            try:
+                self._scanner().scan_settings = settings
+            except (TypeError, ValueError) as e:
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
-                self.log.error(f"Couldn't configure scan: {settings}")
+                self.log.error('Could not set scan settings on scanning probe hardware.')
                 return -1
-
-            self._update_scan_settings(scan_axes, new_settings)
-            #self.log.debug("Applied new scan settings")
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
             line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1

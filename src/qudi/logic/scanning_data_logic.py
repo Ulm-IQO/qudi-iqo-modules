@@ -273,7 +273,6 @@ class ScanningDataLogic(LogicBase):
         return fig
 
     def save_scan(self, scan_data, color_range=None):
-        print('here')
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
@@ -339,7 +338,6 @@ class ScanningDataLogic(LogicBase):
             finally:
                 self.module_state.unlock()
                 self.sigSaveStateChanged.emit(False)
-            print('done')
             return
 
     def save_scan_by_axis(self, scan_axes=None, color_range=None):
