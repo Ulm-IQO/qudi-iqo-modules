@@ -31,7 +31,7 @@ from qudi.util.linear_transform import LinearTransformation, LinearTransformatio
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.util.basis_transformations.basis_transformation \
+from qudi.util.linear_transform \
     import compute_rotation_matrix_to_plane, compute_reduced_vectors, find_changing_axes
 
 class ScanningProbeLogic(LogicBase):
