@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from dataclasses import dataclass, field, InitVar
-from typing import Union, Optional
+from typing import Optional
 import datetime
 import numpy as np
 from abc import abstractmethod
@@ -280,48 +280,46 @@ class ScanConstraints:
 @yaml_object(get_yaml())
 class ScanData:
     """
-    Object representing all data associated to a SPM measurement.
-
-    @param ScannerChannel[] channels_obj: ScannerChannel objects involved in this scan
-    @param ScannerAxis[] scan_axes_obj: ScannerAxis instances involved in the scan
-    @param float[][2] scan_range: inclusive range for each scan axis
-    @param int[] scan_resolution: planned number of points for each scan axis
-    @param float scan_frequency: Scan pixel frequency of the fast axis
-    @param dict scanner_target_at_start: optional, save scanner target (all axes) at beginning of scan
-    @param str[] position_feedback_axes: optional, names of axes for which to acquire position
-                                         feedback during the scan.
+    Object representing all data associated to an SPM measurement.
     """
 
     settings: ScanSettings
-    constraints: InitVar[ScanConstraints]
-
+    # units and dtypes can either be inferred from constraints...
+    constraints: InitVar[Optional[ScanConstraints]] = None
+    # ... or handed over manually.
+    channel_units: Optional[dict[str, str]] = None
+    channel_dtypes: Optional[dict[str, str]] = None
+    axis_units: Optional[dict[str, str]] = None
     scanner_target_at_start: dict = None
-
-    timestamp: Union[datetime.datetime, None] = field(default=None, init=False)
-    _data: Union[dict, None] = field(default=None, init=False)
+    timestamp: Optional[datetime.datetime] = None
+    _data: Optional[dict[str, np.ndarray]] = None
     # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
-    position_data: Union[dict, None] = field(default=None, init=False)
+    position_data: Optional[dict[str, np.ndarray]] = None
 
     def __post_init__(self, constraints):
-        constraints.check_settings(self.settings)
+        if constraints is not None:
+            constraints.check_settings(self.settings)
 
-        self.channel_units: dict[str: str] = {ch: constraints.channels[ch].unit for ch in self.settings.channels}
-        self.channel_dtypes: dict[str: str] = {ch: constraints.channels[ch].dtype for ch in self.settings.channels}
-        self.axis_units: dict[str: str] = {ax: constraints.axes[ax].unit for ax in self.settings.axes}
+            self.channel_units = {ch: constraints.channels[ch].unit for ch in self.settings.channels}
+            self.channel_dtypes = {ch: constraints.channels[ch].dtype for ch in self.settings.channels}
+            self.axis_units = {ax: constraints.axes[ax].unit for ax in self.settings.axes}
+        else:
+            if self.channel_units is None or self.channel_dtypes is None or self.axis_units is None:
+                raise ValueError('If no constraints are given, channel_units, channel_dtypes '
+                                 'and axis_units must not be None.')
 
     @property
-    def data(self) -> dict[str: np.ndarray]:
-        """ Dict of data arrays with channel names as keys. """
+    def data(self) -> dict[str, np.ndarray]:
+        """ Dict of channel data arrays with channel names as keys. """
         return self._data
 
     @data.setter
-    def data(self, data_dict: dict[str: np.ndarray]) -> None:
+    def data(self, data_dict: dict[str, np.ndarray]) -> None:
         channels = tuple(data_dict.keys())
         if channels != self.settings.channels:
             raise ValueError(f'Unknown channel names encountered in {channels}. '
                              f'Valid channel names are {self.settings.channels}.')
         if not all([val.shape == self.settings.resolution for val in data_dict.values()]):
-            print('here')
             raise ValueError(f'Data shapes do not match resolution {self.settings.resolution}.')
         self._data = data_dict
 
@@ -359,7 +357,7 @@ class ScanData:
         return tuple(self.settings.channels)
 
     @property
-    def axes_units(self) -> dict[str: str]:
+    def axes_units(self) -> dict[str, str]:
         return self.axis_units
 
     @property
@@ -424,8 +422,8 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def move_absolute(self, position: dict[str: float],
-                      velocity: Optional[float] = None, blocking: bool = False) -> dict[str: float]:
+    def move_absolute(self, position: dict[str, float],
+                      velocity: Optional[float] = None, blocking: bool = False) -> dict[str, float]:
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
@@ -440,8 +438,8 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def move_relative(self, distance: dict[str: float],
-                      velocity: Optional[float] = None, blocking: bool = False) -> dict[str: float]:
+    def move_relative(self, distance: dict[str, float],
+                      velocity: Optional[float] = None, blocking: bool = False) -> dict[str, float]:
         """ Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 
@@ -456,7 +454,7 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def get_target(self) -> dict[str: float]:
+    def get_target(self) -> dict[str, float]:
         """ Get the current target position of the scanner hardware
         (i.e. the "theoretical" position).
 
@@ -465,7 +463,7 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def get_position(self) -> dict[str: float]:
+    def get_position(self) -> dict[str, float]:
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
         For the same target this value can fluctuate according to the scanners positioning accuracy.
 
