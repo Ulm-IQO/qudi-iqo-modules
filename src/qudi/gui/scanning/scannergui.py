@@ -834,12 +834,12 @@ class ScannerGui(GuiBase):
         self.scanner_control_dockwidget.set_target(pos_dict)
 
     @QtCore.Slot(object)
-    def _update_from_history(self, scan_data):
+    def _update_from_history(self, scan_data: ScanData):
         self._update_scan_data(scan_data)
         self.set_active_tab(scan_data.scan_axes)
 
     @QtCore.Slot(object)
-    def _update_scan_data(self, scan_data):
+    def _update_scan_data(self, scan_data: ScanData):
         """
         @param ScanData scan_data:
         """

@@ -83,7 +83,7 @@ class _BaseScanWidget(QtWidgets.QWidget):
         layout.setColumnStretch(2, 1)
         layout.setColumnStretch(3, 1)
 
-        self._scan_data = None
+        self._scan_data: Optional[ScanData] = None
 
 
 class Scan1DWidget(_BaseScanWidget):
