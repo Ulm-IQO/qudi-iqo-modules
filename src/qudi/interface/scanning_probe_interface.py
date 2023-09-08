@@ -142,12 +142,12 @@ class ScanSettings:
                                          feedback during the scan.
     """
 
-    channels: tuple[str]
-    axes: tuple[str]
-    range: tuple[tuple[float, float]]
-    resolution: tuple[int]
+    channels: tuple[str, ...]
+    axes: tuple[str, ...]
+    range: tuple[tuple[float, float], ...]
+    resolution: tuple[int, ...]
     frequency: float
-    position_feedback_axes: tuple[str] = field(default_factory=tuple)
+    position_feedback_axes: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         # Sanity checking
@@ -181,8 +181,8 @@ class ScanConstraints:
     """
     Data class representing the complete constraints of a scanning probe measurement.
     """
-    channel_objects: tuple[ScannerChannel]
-    axis_objects: tuple[ScannerAxis]
+    channel_objects: tuple[ScannerChannel, ...]
+    axis_objects: tuple[ScannerAxis, ...]
     backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
     has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
     square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
@@ -275,7 +275,7 @@ class ScanConstraints:
 @dataclass
 class ScanData:
     """
-    Object representing all data associated to an SPM measurement.
+    Data class representing settings and results of a scanning probe measurement.
     """
 
     settings: ScanSettings
@@ -320,7 +320,7 @@ class ScanData:
 
     def new_scan(self, timestamp=None):
         """
-
+        Reset data and position data and update the timestamp.
         @param timestamp:
         """
         if timestamp is None:
@@ -344,11 +344,11 @@ class ScanData:
     # properties for legacy support
 
     @property
-    def scan_axes(self) -> tuple[str]:
+    def scan_axes(self) -> tuple[str, ...]:
         return tuple(self.settings.axes)
 
     @property
-    def channels(self) -> tuple[str]:
+    def channels(self) -> tuple[str, ...]:
         return tuple(self.settings.channels)
 
     @property
@@ -364,19 +364,19 @@ class ScanData:
         return self.settings.scan_dimension
 
     @property
-    def position_feedback_axes(self):
+    def position_feedback_axes(self) -> tuple[str, ...]:
         return self.settings.position_feedback_axes
 
     @property
-    def scan_range(self):
+    def scan_range(self) -> tuple[tuple[float, float], ...]:
         return self.settings.range
 
     @property
-    def scan_resolution(self):
+    def scan_resolution(self) -> tuple[int, ...]:
         return self.settings.resolution
 
     @property
-    def scan_frequency(self):
+    def scan_frequency(self) -> float:
         return self.settings.frequency
 
 
