@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from dataclasses import dataclass, field, InitVar
-from typing import Sequence, Union, Optional
+from typing import Union, Optional
 import datetime
 import numpy as np
 from abc import abstractmethod
@@ -146,13 +146,12 @@ class ScanSettings:
                                          feedback during the scan.
     """
 
-    # TODO: make strict (tuples)
-    channels: Sequence[str]
-    axes: Sequence[str]
-    range: Sequence[tuple[float, float]]
-    resolution: Sequence[int]
+    channels: tuple[str]
+    axes: tuple[str]
+    range: tuple[tuple[float, float]]
+    resolution: tuple[int]
     frequency: float
-    position_feedback_axes: Sequence[str] = field(default_factory=list)
+    position_feedback_axes: tuple[str] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         # Sanity checking
@@ -186,8 +185,8 @@ class ScanConstraints:
     """
     Data class representing the complete constraints of a scanning probe measurement.
     """
-    channel_objects: Sequence[ScannerChannel]
-    axis_objects: Sequence[ScannerAxis]
+    channel_objects: tuple[ScannerChannel]
+    axis_objects: tuple[ScannerAxis]
     backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
     has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
     square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
@@ -260,7 +259,7 @@ class ScanConstraints:
         for axis, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
             clipped_range.append((float(self.axes[axis].position.clip(_range[0])),
                                   float(self.axes[axis].position.clip(_range[1]))))
-            clipped_resolution.append(self.axes[axis].resolution.clip(resolution))
+            clipped_resolution.append(int(self.axes[axis].resolution.clip(resolution)))
         # frequency needs to be within bounds for all axes
         clipped_frequency = settings.frequency
         for axis in settings.axes:
@@ -269,8 +268,8 @@ class ScanConstraints:
         clipped_settings = ScanSettings(
             channels=settings.channels,
             axes=settings.axes,
-            range=clipped_range,
-            resolution=clipped_resolution,
+            range=tuple(clipped_range),
+            resolution=tuple(clipped_resolution),
             frequency=clipped_frequency,
             position_feedback_axes=settings.position_feedback_axes
         )

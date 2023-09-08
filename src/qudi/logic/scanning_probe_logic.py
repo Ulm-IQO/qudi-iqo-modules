@@ -339,7 +339,7 @@ class ScanningProbeLogic(LogicBase):
             self.module_state.lock()
 
             settings = ScanSettings(
-                channels=list(self.scanner_channels),
+                channels=tuple(self.scanner_channels),
                 axes=scan_axes,
                 range=tuple(self._scan_ranges[ax] for ax in scan_axes),
                 resolution=tuple(self._scan_resolution[ax] for ax in scan_axes),

@@ -164,8 +164,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                            unit=unit,
                                            dtype='float64'))
 
-        self._constraints = ScanConstraints(axis_objects=axes,
-                                            channel_objects=channels,
+        self._constraints = ScanConstraints(axis_objects=tuple(axes),
+                                            channel_objects=tuple(channels),
                                             backscan_configurable=False,  # TODO incorporate in scanning_probe toolchain
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
                                             square_px_only=False)  # TODO incorporate in scanning_probe toolchain
