@@ -27,11 +27,9 @@ import numpy as np
 from abc import abstractmethod
 from qudi.core.module import Base
 from qudi.util.constraints import ScalarConstraint
-from qudi.util.yaml import yaml_object, get_yaml
 
 
 @dataclass(frozen=True)
-@yaml_object(get_yaml())
 class ScannerChannel:
     """
     Data class representing a scanner channel and its constraints.
@@ -54,7 +52,6 @@ class ScannerChannel:
 
 
 @dataclass(frozen=True)
-@yaml_object(get_yaml())
 class ScannerAxis:
     """
     Data class representing a scan axis and its constraints.
@@ -132,7 +129,6 @@ class ScannerAxis:
 
 
 @dataclass(frozen=True)
-@yaml_object(get_yaml())
 class ScanSettings:
     """
     Data class representing all settings specifying a scanning probe measurement.
@@ -277,7 +273,6 @@ class ScanConstraints:
 
 
 @dataclass
-@yaml_object(get_yaml())
 class ScanData:
     """
     Object representing all data associated to an SPM measurement.
