@@ -282,12 +282,12 @@ class ScanData:
     # units and dtypes can either be inferred from constraints...
     constraints: InitVar[Optional[ScanConstraints]] = None
     # ... or handed over manually.
-    channel_units: Optional[dict[str, str]] = None
-    channel_dtypes: Optional[dict[str, str]] = None
-    axis_units: Optional[dict[str, str]] = None
-    scanner_target_at_start: dict = None
+    _channel_units: Optional[tuple[str, ...]] = None
+    _channel_dtypes: Optional[tuple[str, ...]] = None
+    _axis_units: Optional[tuple[str, ...]] = None
+    _scanner_target_at_start: tuple[float, ...] = None
     timestamp: Optional[datetime.datetime] = None
-    _data: Optional[dict[str, np.ndarray]] = None
+    _data: Optional[tuple[np.ndarray, ...]] = None
     # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
     position_data: Optional[dict[str, np.ndarray]] = None
 
@@ -295,18 +295,34 @@ class ScanData:
         if constraints is not None:
             constraints.check_settings(self.settings)
 
-            self.channel_units = {ch: constraints.channels[ch].unit for ch in self.settings.channels}
-            self.channel_dtypes = {ch: constraints.channels[ch].dtype for ch in self.settings.channels}
-            self.axis_units = {ax: constraints.axes[ax].unit for ax in self.settings.axes}
+            self._channel_units = tuple(constraints.channels[ch].unit for ch in self.settings.channels)
+            self._channel_dtypes = tuple(constraints.channels[ch].dtype for ch in self.settings.channels)
+            self._axis_units = tuple(constraints.axes[ax].unit for ax in self.settings.axes)
         else:
-            if self.channel_units is None or self.channel_dtypes is None or self.axis_units is None:
+            if self._channel_units is None or self._channel_dtypes is None or self._axis_units is None:
                 raise ValueError('If no constraints are given, channel_units, channel_dtypes '
                                  'and axis_units must not be None.')
 
     @property
+    def channel_units(self) -> dict[str, str]:
+        return {ch: unit for ch, unit in zip(self.settings.channels, self._channel_units)}
+
+    @property
+    def channel_dtypes(self) -> dict[str, str]:
+        return {ch: dtype for ch, dtype in zip(self.settings.channels, self._channel_dtypes)}
+
+    @property
+    def axis_units(self) -> dict[str, str]:
+        return {ax: unit for ax, unit in zip(self.settings.axes, self._axis_units)}
+
+    @property
+    def scanner_target_at_start(self) -> dict[str, float]:
+        return {ax: pos for ax, pos in zip(self.settings.axes, self._scanner_target_at_start)}
+
+    @property
     def data(self) -> dict[str, np.ndarray]:
         """ Dict of channel data arrays with channel names as keys. """
-        return self._data
+        return {ch: data for ch, data in zip(self.settings.channels, self._data)}
 
     @data.setter
     def data(self, data_dict: dict[str, np.ndarray]) -> None:
@@ -316,7 +332,7 @@ class ScanData:
                              f'Valid channel names are {self.settings.channels}.')
         if not all([val.shape == self.settings.resolution for val in data_dict.values()]):
             raise ValueError(f'Data shapes do not match resolution {self.settings.resolution}.')
-        self._data = data_dict
+        self._data = tuple(data for data in data_dict.values())
 
     def new_scan(self, timestamp=None):
         """
