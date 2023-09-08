@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, InitVar
 from typing import Sequence, Union, Optional
 import datetime
 import numpy as np
@@ -146,6 +146,7 @@ class ScanSettings:
                                          feedback during the scan.
     """
 
+    # TODO: make strict (tuples)
     channels: Sequence[str]
     axes: Sequence[str]
     range: Sequence[tuple[float, float]]
@@ -213,13 +214,13 @@ class ScanConstraints:
 
     def check_channels(self, settings: ScanSettings) -> None:
         if not set(settings.channels).issubset(self.channels):
-            raise ValueError(f'Unknown channel names encountered. '
-                             f'Valid channel names are {self.channels}.')
+            raise ValueError(f'Unknown channel names encountered in {settings.channels}. '
+                             f'Valid channel names are {list(self.channels.keys())}.')
 
     def check_axes(self, settings: ScanSettings) -> None:
         if not set(settings.axes).issubset(self.axes):
-            raise ValueError(f'Unknown axis names encountered. '
-                             f'Valid axis names are {self.channels}.')
+            raise ValueError(f'Unknown axis names encountered in {settings.axes}. '
+                             f'Valid axis names are {list(self.axes.keys())}.')
 
         for axis_name, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
             axis = self.axes[axis_name]
@@ -292,117 +293,38 @@ class ScanData:
                                          feedback during the scan.
     """
 
-    channels_obj: Sequence[ScannerChannel]
-    scan_axes_obj: Sequence[ScannerAxis]
-    scan_range: Sequence[tuple[float, float]]
-    scan_resolution: Sequence[int]
-    scan_frequency: Union[int, float]
+    settings: ScanSettings
+    constraints: InitVar[ScanConstraints]
+
     scanner_target_at_start: dict = None
-    position_feedback_axes: Union[Sequence[str], None] = None
 
     timestamp: Union[datetime.datetime, None] = field(default=None, init=False)
     _data: Union[dict, None] = field(default=None, init=False)
     # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
     position_data: Union[dict, None] = field(default=None, init=False)
 
-    def __post_init__(self):
-        # Sanity checking
-        if not (0 < len(self.scan_axes_obj) <= 2):
-            raise ValueError('ScanData can only be used for 1D or 2D scans.')
-        if len(self.channels_obj) < 1:
-            raise ValueError('At least one data channel must be specified for a valid scan.')
-        if len(self.scan_axes_obj) != len(self.scan_range):
-            raise ValueError('Parameters "scan_axes_obj" and "scan_range" must have same len. Given '
-                             '{0:d} and {1:d}, respectively.'.format(len(self.scan_axes_obj),
-                                                                     len(self.scan_range)))
-        if len(self.scan_axes_obj) != len(self.scan_resolution):
-            raise ValueError('Parameters "scan_axes_obj" and "scan_resolution" must have same len. '
-                             'Given {0:d} and {1:d}, respectively.'.format(len(self.scan_axes_obj),
-                                                                           len(self.scan_resolution)))
-        if not all(isinstance(ax, ScannerAxis) for ax in self.scan_axes_obj):
-            raise TypeError(
-                'Parameter "scan_axes_obj" must be Sequence containing only ScannerAxis objects')
-        if not all(len(ax_range) == 2 for ax_range in self.scan_range):
-            raise TypeError(
-                'Parameter "scan_range" must be Sequence containing only value pairs (len=2).')
-        if not all(isinstance(res, int) for res in self.scan_resolution):
-            raise TypeError(
-                'Parameter "scan_resolution" must be Sequence containing only integers.')
-        if not all(isinstance(ch, ScannerChannel) for ch in self.channels_obj):
-            raise TypeError(
-                'Parameter "channels_obj" must be Sequence containing only ScannerChannel objects.')
-        if not all(np.issubdtype(ch.dtype, np.floating) for ch in self.channels_obj):
-            raise TypeError('channel dtypes must be either builtin or numpy floating types')
+    def __post_init__(self, constraints):
+        constraints.check_settings(self.settings)
 
-        self.scan_axes_obj = tuple(self.scan_axes_obj)
-        self.channels_obj = tuple(self.channels_obj)
-        self.scan_range = tuple(self.scan_range)
-        self.scan_resolution = tuple(self.scan_resolution)
-        self.scan_frequency = float(self.scan_frequency)
-        if self.position_feedback_axes is not None:
-            if not set(self.position_feedback_axes).issubset(self.scan_axes):
-                raise TypeError(
-                    'The "position_feedback_axes" must be a subset of scan axes.'
-                )
-            self.position_feedback_axes = tuple(self.position_feedback_axes)
-
-    def __copy__(self):
-        new_inst = ScanData(channels_obj=self.channels_obj,
-                            scan_axes_obj=self.scan_axes_obj,
-                            scan_range=self.scan_range,
-                            scan_resolution=self.scan_resolution,
-                            scan_frequency=self.scan_frequency,
-                            scanner_target_at_start=self.scanner_target_at_start,
-                            position_feedback_axes=self.position_feedback_axes)
-        new_inst.timestamp = self.timestamp
-        if self._data is not None:
-            new_inst.data = {ch: arr.copy() for ch, arr in self._data.items()}
-        if self.position_data is not None:
-            new_inst.position_data = {ch: arr.copy() for ch, arr in self.position_data.items()}
-        return new_inst
-
-    def __deepcopy__(self, memo=None):
-        return self.__copy__()
-
-    def copy(self):
-        return self.__copy__()
+        self.channel_units: dict[str: str] = {ch: constraints.channels[ch].unit for ch in self.settings.channels}
+        self.channel_dtypes: dict[str: str] = {ch: constraints.channels[ch].dtype for ch in self.settings.channels}
+        self.axis_units: dict[str: str] = {ax: constraints.axes[ax].unit for ax in self.settings.axes}
 
     @property
-    def scan_axes(self):
-        return tuple(ax.name for ax in self.scan_axes_obj)
-
-    @property
-    def channels(self):
-        return tuple(ch.name for ch in self.channels_obj)
-
-    @property
-    def channel_units(self):
-        return {ch.name: ch.unit for ch in self.channels_obj}
-
-    @property
-    def axes_units(self):
-        units = {ax.name: ax.unit for ax in self.scan_axes_obj}
-        if self.has_position_feedback:
-            units.update({ax.name: ax.unit for ax in self.position_feedback_axes})
-        return units
-
-    @property
-    def data(self):
+    def data(self) -> dict[str: np.ndarray]:
+        """ Dict of data arrays with channel names as keys. """
         return self._data
 
     @data.setter
-    def data(self, data_dict):
-        assert tuple(data_dict.keys()) == self.channels
-        assert all([val.shape == self.scan_resolution for val in data_dict.values()])
+    def data(self, data_dict: dict[str: np.ndarray]) -> None:
+        channels = tuple(data_dict.keys())
+        if channels != self.settings.channels:
+            raise ValueError(f'Unknown channel names encountered in {channels}. '
+                             f'Valid channel names are {self.settings.channels}.')
+        if not all([val.shape == self.settings.resolution for val in data_dict.values()]):
+            print('here')
+            raise ValueError(f'Data shapes do not match resolution {self.settings.resolution}.')
         self._data = data_dict
-
-    @property
-    def has_position_feedback(self):
-        return bool(self.position_feedback_axes)
-
-    @property
-    def scan_dimension(self):
-        return len(self.scan_axes)
 
     def new_scan(self, timestamp=None):
         """
@@ -417,14 +339,53 @@ class ScanData:
             raise TypeError('Optional parameter "timestamp" must be datetime.datetime object.')
 
         if self.has_position_feedback:
-            self.position_data = {ax.name: np.full(self.scan_resolution, np.nan) for ax in
-                                  self.position_feedback_axes}
+            self.position_data = {ax: np.full(self.settings.resolution, np.nan) for ax in
+                                  self.settings.position_feedback_axes}
         else:
             self.position_data = None
         self.data = {
-            ch.name: np.full(self.scan_resolution, np.nan, dtype=ch.dtype) for ch in self.channels_obj
+            ch: np.full(self.settings.resolution, np.nan,
+                        dtype=self.channel_dtypes[ch]) for ch in self.settings.channels
         }
         return
+
+    # properties for legacy support
+
+    @property
+    def scan_axes(self) -> tuple[str]:
+        return tuple(self.settings.axes)
+
+    @property
+    def channels(self) -> tuple[str]:
+        return tuple(self.settings.channels)
+
+    @property
+    def axes_units(self) -> dict[str: str]:
+        return self.axis_units
+
+    @property
+    def has_position_feedback(self) -> bool:
+        return self.settings.has_position_feedback
+
+    @property
+    def scan_dimension(self) -> int:
+        return self.settings.scan_dimension
+
+    @property
+    def position_feedback_axes(self):
+        return self.settings.position_feedback_axes
+
+    @property
+    def scan_range(self):
+        return self.settings.range
+
+    @property
+    def scan_resolution(self):
+        return self.settings.resolution
+
+    @property
+    def scan_frequency(self):
+        return self.settings.frequency
 
 
 class ScanningProbeInterface(Base):
@@ -534,9 +495,8 @@ class ScanningProbeInterface(Base):
 
     @property
     @abstractmethod
-    def scan_data(self) -> Optional[ScanData]:
-        """ Read-only property returning the ScanData instance used in the scan. Returns None if no scan has run yet.
-        TODO: think about returning None or raising an exception
+    def scan_data(self) -> ScanData:
+        """ Read-only property returning the ScanData instance used in the scan.
         """
         pass
 

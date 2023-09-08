@@ -38,7 +38,6 @@ from qudi.util.helpers import in_range
 from qudi.util.constraints import ScalarConstraint
 
 
-
 class NiScanningProbeInterfuse(ScanningProbeInterface):
     """
     This interfuse combines modules of a National Instrument device to make up a scanning probe hardware.
@@ -104,7 +103,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         self._scan_settings: Optional[ScanSettings] = None
 
-        self._scan_data = None
+        self._scan_data: Optional[ScanData] = None
         self.raw_data_container = None
 
         self._constraints: Optional[ScanConstraints] = None
@@ -233,12 +232,8 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         with self._thread_lock_data:
             self._scan_data = ScanData(
-                channels_obj=tuple(self._constraints.channels.values()),
-                scan_axes_obj=tuple(self._constraints.axes[ax] for ax in settings.axes),
-                scan_range=settings.range,
-                scan_resolution=tuple(settings.resolution),
-                scan_frequency=settings.frequency,
-                position_feedback_axes=None
+                settings=settings,
+                constraints=self.constraints
             )
             self.raw_data_container = RawDataContainer(self._scan_data.channels,
                                                        settings.resolution[
@@ -434,7 +429,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             raise RuntimeError('ScanData is not yet configured, please set scan settings first')
         try:
             with self._thread_lock_data:
-                return self._scan_data.copy()
+                return self._scan_data
         except:
             self.log.exception("")
 

@@ -388,7 +388,7 @@ class ScanningOptimizeLogic(LogicBase):
 
                     self._optimal_position.update(position_update)
                     with self._result_lock:
-                        self._last_scans.append(data.copy())
+                        self._last_scans.append(cp.copy(data))
                         self._last_fits.append(fit_res)
                     self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
 

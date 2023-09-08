@@ -304,6 +304,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
             if self.module_state() != 'idle':
                 self.log.error('Can not start scan. Scan already in progress.')
                 return -1
+            if not self.scan_settings:
+                raise RuntimeError('No scan settings configured. Cannot start scan.')
             self.module_state.lock()
             if self.scan_settings.scan_dimension == 1:
                 for axes, d in self._spots.items():
@@ -355,18 +357,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 else:
                     self._scan_image += gauss
 
-            if self._constraints.has_position_feedback:
-                feedback_axes = tuple(self._constraints.axes.values())
-            else:
-                feedback_axes = None
             self._scan_data = ScanData(
-                channels_obj=tuple(self._constraints.channels.values()),
-                scan_axes_obj=tuple(self._constraints.axes[ax] for ax in self.scan_settings.axes),
-                scan_range=self.scan_settings.range,
-                scan_resolution=self.scan_settings.resolution,
-                scan_frequency=self.scan_settings.frequency,
-                position_feedback_axes=feedback_axes,
-                scanner_target_at_start=self.get_target()
+                settings=self.scan_settings,
+                constraints=self.constraints,
+                scanner_target_at_start=self.get_target(),
             )
 
             self._scan_data.new_scan()
