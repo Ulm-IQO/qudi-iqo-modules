@@ -7,6 +7,7 @@ toolchain and NI x-series hardware module have been adapted but custom modules r
 interface will break.  
 Configuration for time series toolchain needs changes as well. See `default.cfg` or module 
 docstrings.
+- Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Legacy support for some but not all methods.
 
 ### Bugfixes
 - Basic data saving in `TimeSeriesReaderLogic` works now.
@@ -15,6 +16,7 @@ docstrings.
 ### New Features
 - New `qudi.interface.data_instream_interface.SampleTiming` Enum added to `DataInStreamInterface` 
 constraints to allow non-uniform sampling mode.
+- New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added
 
 ### Other
 - Bumped `qudi-core` package minimum version requirement to v1.4.0
