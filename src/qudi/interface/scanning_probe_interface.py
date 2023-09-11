@@ -692,7 +692,7 @@ class CoordinateTransformMixin:
             if self.coordinate_transform_enabled:
                 transform_info = {'transform_func': self._coordinate_transform,
                                   'transform_matrix': self._coordinate_transform_matrix.matrix,
-                                  'tilt_angle':get_matr_2_tiltangle(),'translation':self._coordinate_transform_matrix.matrix[:,2]}
+                                  'tilt_angle':get_matr_2_tiltangle(),'translation':self._coordinate_transform_matrix.matrix[0:3,-1]}
                 tilt_info.update(transform_info)
 
             scan_data.coord_transform_info = tilt_info
