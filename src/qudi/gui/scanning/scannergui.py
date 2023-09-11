@@ -543,17 +543,6 @@ class ScannerGui(GuiBase):
                     cbar_range = self.scan_2d_dockwidgets[ax].scan_widget.image_widget.levels
                 except KeyError:
                     cbar_range = None
-
-
-                vector_dict = self._tilt_correction_vectors
-                tilt_corr_enabled =self._mw.action_toggle_tilt_correction.isChecked()
-                #print(tilt_corr_enabled)
-                if tilt_corr_enabled:
-                    array = self._scanning_logic().tilt_vector_dict_2_array(vector_dict)# obtain the tilt_correction vectors
-                    trafo_data_dict =self._scanning_logic().save_trafo_func(supp_vec=array[0:3],shift_vec=array[-1]) # obtaining the dictionary
-                    # send it to scanData Interface
-                    ScanData.tilt_correction_info = trafo_data_dict
-                    self.log.info(f'Method save_scan_data save the trafo dict:{trafo_data_dict}')
                 self.sigSaveScan.emit(ax, cbar_range)
         finally:
             pass
