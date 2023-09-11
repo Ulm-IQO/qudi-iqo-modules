@@ -679,7 +679,7 @@ class CoordinateTransformMixin:
     def get_matr_2_tiltangle(self):
         "Calculates the tilt angle of a given rotation matrix. Formula from the website https://en.wikipedia.org/wiki/Rotation_matrix"
         rotation_matrix = self._coordinate_transform_matrix.matrix[0:3,0:3]
-        Trace = np.trace(rotation_matrix)
+        trace = np.trace(rotation_matrix)
         tilt_angle_abs = np.arccos((Trace-1)/2)
         return tilt_angle_abs
 
