@@ -384,7 +384,7 @@ class ScanningProbeLogic(LogicBase):
             raise ValueError(f"Can't calculate tilt in >3 dimensions. "
                              f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. ")
 
-        rot_mat = compute_rotation_matrix_to_plane(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])[0]
+        rot_mat = compute_rotation_matrix_to_plane(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec
 
         # shift coord system to origin, rotate and shift shift back according to LT(x) = (R+s)*x - R*s
