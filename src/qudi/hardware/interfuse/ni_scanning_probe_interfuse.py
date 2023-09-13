@@ -214,8 +214,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def scan_settings(self):
         return self._scan_settings
 
-    @scan_settings.setter
-    def scan_settings(self, settings: ScanSettings) -> None:
+    def configure_scan(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
 
@@ -421,8 +420,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.move_absolute(self._stored_target_pos)
         self._stored_target_pos = dict()
 
-    @property
-    def scan_data(self) -> ScanData:
+    def get_scan_data(self) -> ScanData:
         """ Read-only property returning the ScanData instance used in the scan.
         """
 
@@ -604,7 +602,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                                                  self._position_to_voltage(axis, scan_data.scan_range[0][0]),
                                                  self.__backwards_line_resolution)
             # TODO Return line for 1d included due to possible hysteresis. Might be able to drop it,
-            #  but then scan_data needs to be changed accordingly
+            #  but then get_scan_data needs to be changed accordingly
 
             horizontal_single_line = np.concatenate((horizontal,
                                                      horizontal_return_line))

@@ -434,9 +434,8 @@ class ScanningProbeInterface(Base):
         """
         pass
 
-    @scan_settings.setter
     @abstractmethod
-    def scan_settings(self, settings: ScanSettings) -> None:
+    def configure_scan(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
 
@@ -513,10 +512,9 @@ class ScanningProbeInterface(Base):
         """
         pass
 
-    @property
     @abstractmethod
-    def scan_data(self) -> ScanData:
-        """ Read-only property returning the ScanData instance used in the scan.
+    def get_scan_data(self) -> ScanData:
+        """ Retrieve the ScanData instance used in the scan.
         """
         pass
 

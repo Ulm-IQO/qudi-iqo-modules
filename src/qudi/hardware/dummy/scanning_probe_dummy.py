@@ -205,15 +205,14 @@ class ScanningProbeDummy(ScanningProbeInterface):
         #self.log.debug('Scanning probe dummy "get_constraints" called.')
         return self._constraints
 
-    @scan_settings.setter
-    def scan_settings(self, settings: ScanSettings) -> None:
+    def configure_scan(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
 
         @param ScanSettings settings: ScanSettings instance holding all parameters
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "scan_settings" setter called.')
+            self.log.debug('Scanning probe dummy "configure_scan" called.')
             # Sanity checking
             if self.module_state() != 'idle':
                 raise RuntimeError('Unable to configure scan parameters while scan is running. '
@@ -394,9 +393,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self.log.warning('Scanner has been emergency stopped.')
         return 0
 
-    @property
-    def scan_data(self) -> ScanData:
-        """ Read-only property returning the ScanData instance used in the scan.
+    def get_scan_data(self) -> ScanData:
+        """ Retrieve the ScanData instance used in the scan.
         """
         with self._thread_lock:
             # if self.thread() is not QtCore.QThread.currentThread():
@@ -445,10 +443,6 @@ class ScanningProbeDummy(ScanningProbeInterface):
                         elif self.thread() is QtCore.QThread.currentThread():
                             self.__start_timer()
             return self._scan_data
-
-    def get_scan_data(self):
-        # required to connect a Qt signal
-        return self.scan_data
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():

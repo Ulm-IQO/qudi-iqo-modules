@@ -128,7 +128,7 @@ class ScanningProbeLogic(LogicBase):
     @property
     def scan_data(self):
         with self._thread_lock:
-            return self._scanner().scan_data
+            return self._scanner().get_scan_data()
 
     @property
     def scanner_position(self):
@@ -346,7 +346,7 @@ class ScanningProbeLogic(LogicBase):
                 frequency=self._scan_frequency[scan_axes[0]],
             )
             try:
-                self._scanner().scan_settings = settings
+                self._scanner().configure_scan(settings)
             except (TypeError, ValueError) as e:
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
