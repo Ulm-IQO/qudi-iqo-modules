@@ -279,29 +279,28 @@ class ScanData:
     """
 
     settings: ScanSettings
-    # units and dtypes can either be inferred from constraints...
-    constraints: InitVar[Optional[ScanConstraints]] = None
-    # ... or handed over manually.
-    _channel_units: Optional[tuple[str, ...]] = None
-    _channel_dtypes: Optional[tuple[str, ...]] = None
-    _axis_units: Optional[tuple[str, ...]] = None
-    _scanner_target_at_start: tuple[float, ...] = None
+    _channel_units: tuple[str, ...]
+    _channel_dtypes: tuple[str, ...]
+    _axis_units: tuple[str, ...]
+    _scanner_target_at_start: Optional[tuple[float, ...]] = None
     timestamp: Optional[datetime.datetime] = None
     _data: Optional[tuple[np.ndarray, ...]] = None
     # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
     position_data: Optional[dict[str, np.ndarray]] = None
 
-    def __post_init__(self, constraints):
-        if constraints is not None:
-            constraints.check_settings(self.settings)
-
-            self._channel_units = tuple(constraints.channels[ch].unit for ch in self.settings.channels)
-            self._channel_dtypes = tuple(constraints.channels[ch].dtype for ch in self.settings.channels)
-            self._axis_units = tuple(constraints.axes[ax].unit for ax in self.settings.axes)
-        else:
-            if self._channel_units is None or self._channel_dtypes is None or self._axis_units is None:
-                raise ValueError('If no constraints are given, channel_units, channel_dtypes '
-                                 'and axis_units must not be None.')
+    @classmethod
+    def from_constraints(cls, settings: ScanSettings, constraints: ScanConstraints, **kwargs):
+        constraints.check_settings(settings)
+        _channel_units = tuple(constraints.channels[ch].unit for ch in settings.channels)
+        _channel_dtypes = tuple(constraints.channels[ch].dtype for ch in settings.channels)
+        _axis_units = tuple(constraints.axes[ax].unit for ax in settings.axes)
+        return cls(
+            settings=settings,
+            _channel_units=_channel_units,
+            _channel_dtypes=_channel_dtypes,
+            _axis_units=_axis_units,
+            **kwargs
+        )
 
     @property
     def channel_units(self) -> dict[str, str]:

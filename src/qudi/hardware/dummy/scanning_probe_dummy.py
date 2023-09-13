@@ -357,7 +357,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 else:
                     self._scan_image += gauss
 
-            self._scan_data = ScanData(
+            self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
                 constraints=self.constraints,
                 _scanner_target_at_start=tuple(i for i in self.get_target().values()),

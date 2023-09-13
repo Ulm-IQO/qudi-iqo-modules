@@ -232,7 +232,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self._scan_settings = settings
 
         with self._thread_lock_data:
-            self._scan_data = ScanData(
+            self._scan_data = ScanData.from_constraints(
                 settings=settings,
                 constraints=self.constraints
             )
