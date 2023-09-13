@@ -21,7 +21,6 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
-from dataclasses import asdict
 import datetime
 import numpy as np
 from functools import reduce
@@ -39,7 +38,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import ImageFormat, NpyDataStorage, TextDataStorage
 from qudi.util.units import ScaledFloat
 
-from qudi.interface.scanning_probe_interface import ScanData, ScanSettings
+from qudi.interface.scanning_probe_interface import ScanData
 
 
 class ScanningDataLogic(LogicBase):
@@ -101,23 +100,11 @@ class ScanningDataLogic(LogicBase):
 
     @_scan_history.representer
     def __scan_history_to_dicts(self, history: list[ScanData]):
-        # ScanData is a dataclass, convert to dict
-        return [asdict(data) for data in history]
+        return [data.to_dict() for data in history]
 
     @_scan_history.constructor
-    def __scan_history_from_dicts(self, dumped_dicts: list[dict]):
-        reconstructed = []
-        for dumped_dict in dumped_dicts:
-            # ScanData contains ScanSettings, which is itself a dataclass and needs
-            # to be reconstructed separately
-            settings = dumped_dict['settings']
-            del dumped_dict['settings']
-            reconstructed.append(
-                ScanData(settings=ScanSettings(**settings),
-                         **dumped_dict)
-            )
-
-        return reconstructed
+    def __scan_history_from_dicts(self, history_dicts):
+        return [ScanData.from_dict(hist_dict) for hist_dict in history_dicts]
 
     def get_current_scan_data(self, scan_axes=None):
         """

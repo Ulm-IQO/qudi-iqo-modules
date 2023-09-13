@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from dataclasses import dataclass, field, InitVar
+from dataclasses import dataclass, field, asdict
 from typing import Optional
 import datetime
 import numpy as np
@@ -301,6 +301,19 @@ class ScanData:
             _axis_units=_axis_units,
             **kwargs
         )
+
+    @classmethod
+    def from_dict(cls, dict_repr):
+        """ Create a class instance from a dictionary.
+        ScanData contains ScanSettings, which is itself a dataclass
+        and needs to be reconstructed separately. """
+        settings = dict_repr['settings']
+        dict_repr_without_settings = dict_repr.copy()
+        del dict_repr_without_settings['settings']
+        return cls(settings=ScanSettings(**settings), **dict_repr_without_settings)
+
+    def to_dict(self):
+        return asdict(self)
 
     @property
     def channel_units(self) -> dict[str, str]:
