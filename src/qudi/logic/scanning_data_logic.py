@@ -25,6 +25,7 @@ import datetime
 import numpy as np
 from functools import reduce
 import operator
+from typing import List
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -99,7 +100,7 @@ class ScanningDataLogic(LogicBase):
         self._curr_data_per_scan = dict()
 
     @_scan_history.representer
-    def __scan_history_to_dicts(self, history: list[ScanData]):
+    def __scan_history_to_dicts(self, history: List[ScanData]):
         return [data.to_dict() for data in history]
 
     @_scan_history.constructor

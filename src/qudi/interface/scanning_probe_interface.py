@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from dataclasses import dataclass, field, asdict
-from typing import Optional
+from typing import Optional, Tuple, Dict
 import datetime
 import numpy as np
 from abc import abstractmethod
@@ -142,12 +142,12 @@ class ScanSettings:
                                          feedback during the scan.
     """
 
-    channels: tuple[str, ...]
-    axes: tuple[str, ...]
-    range: tuple[tuple[float, float], ...]
-    resolution: tuple[int, ...]
+    channels: Tuple[str, ...]
+    axes: Tuple[str, ...]
+    range: Tuple[Tuple[float, float], ...]
+    resolution: Tuple[int, ...]
     frequency: float
-    position_feedback_axes: tuple[str, ...] = field(default_factory=tuple)
+    position_feedback_axes: Tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         # Sanity checking
@@ -181,18 +181,18 @@ class ScanConstraints:
     """
     Data class representing the complete constraints of a scanning probe measurement.
     """
-    channel_objects: tuple[ScannerChannel, ...]
-    axis_objects: tuple[ScannerAxis, ...]
+    channel_objects: Tuple[ScannerChannel, ...]
+    axis_objects: Tuple[ScannerAxis, ...]
     backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
     has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
     square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
 
     @property
-    def channels(self) -> dict[str, ScannerChannel]:
+    def channels(self) -> Dict[str, ScannerChannel]:
         return {ch.name: ch for ch in self.channel_objects}
 
     @property
-    def axes(self) -> dict[str, ScannerAxis]:
+    def axes(self) -> Dict[str, ScannerAxis]:
         return {ax.name: ax for ax in self.axis_objects}
 
     def is_valid(self, settings: ScanSettings) -> bool:
@@ -279,14 +279,14 @@ class ScanData:
     """
 
     settings: ScanSettings
-    _channel_units: tuple[str, ...]
-    _channel_dtypes: tuple[str, ...]
-    _axis_units: tuple[str, ...]
-    _scanner_target_at_start: Optional[tuple[float, ...]] = None
+    _channel_units: Tuple[str, ...]
+    _channel_dtypes: Tuple[str, ...]
+    _axis_units: Tuple[str, ...]
+    _scanner_target_at_start: Optional[Tuple[float, ...]] = None
     timestamp: Optional[datetime.datetime] = None
-    _data: Optional[tuple[np.ndarray, ...]] = None
+    _data: Optional[Tuple[np.ndarray, ...]] = None
     # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
-    position_data: Optional[dict[str, np.ndarray]] = None
+    position_data: Optional[Dict[str, np.ndarray]] = None
 
     @classmethod
     def from_constraints(cls, settings: ScanSettings, constraints: ScanConstraints, **kwargs):
@@ -316,28 +316,28 @@ class ScanData:
         return asdict(self)
 
     @property
-    def channel_units(self) -> dict[str, str]:
+    def channel_units(self) -> Dict[str, str]:
         return {ch: unit for ch, unit in zip(self.settings.channels, self._channel_units)}
 
     @property
-    def channel_dtypes(self) -> dict[str, str]:
+    def channel_dtypes(self) -> Dict[str, str]:
         return {ch: dtype for ch, dtype in zip(self.settings.channels, self._channel_dtypes)}
 
     @property
-    def axis_units(self) -> dict[str, str]:
+    def axis_units(self) -> Dict[str, str]:
         return {ax: unit for ax, unit in zip(self.settings.axes, self._axis_units)}
 
     @property
-    def scanner_target_at_start(self) -> dict[str, float]:
+    def scanner_target_at_start(self) -> Dict[str, float]:
         return {ax: pos for ax, pos in zip(self.settings.axes, self._scanner_target_at_start)}
 
     @property
-    def data(self) -> dict[str, np.ndarray]:
+    def data(self) -> Dict[str, np.ndarray]:
         """ Dict of channel data arrays with channel names as keys. """
         return {ch: data for ch, data in zip(self.settings.channels, self._data)}
 
     @data.setter
-    def data(self, data_dict: dict[str, np.ndarray]) -> None:
+    def data(self, data_dict: Dict[str, np.ndarray]) -> None:
         channels = tuple(data_dict.keys())
         if channels != self.settings.channels:
             raise ValueError(f'Unknown channel names encountered in {channels}. '
@@ -372,15 +372,15 @@ class ScanData:
     # properties for legacy support
 
     @property
-    def scan_axes(self) -> tuple[str, ...]:
+    def scan_axes(self) -> Tuple[str, ...]:
         return tuple(self.settings.axes)
 
     @property
-    def channels(self) -> tuple[str, ...]:
+    def channels(self) -> Tuple[str, ...]:
         return tuple(self.settings.channels)
 
     @property
-    def axes_units(self) -> dict[str, str]:
+    def axes_units(self) -> Dict[str, str]:
         return self.axis_units
 
     @property
@@ -392,15 +392,15 @@ class ScanData:
         return self.settings.scan_dimension
 
     @property
-    def position_feedback_axes(self) -> tuple[str, ...]:
+    def position_feedback_axes(self) -> Tuple[str, ...]:
         return self.settings.position_feedback_axes
 
     @property
-    def scan_range(self) -> tuple[tuple[float, float], ...]:
+    def scan_range(self) -> Tuple[Tuple[float, float], ...]:
         return self.settings.range
 
     @property
-    def scan_resolution(self) -> tuple[int, ...]:
+    def scan_resolution(self) -> Tuple[int, ...]:
         return self.settings.resolution
 
     @property
@@ -445,8 +445,8 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def move_absolute(self, position: dict[str, float],
-                      velocity: Optional[float] = None, blocking: bool = False) -> dict[str, float]:
+    def move_absolute(self, position: Dict[str, float],
+                      velocity: Optional[float] = None, blocking: bool = False) -> Dict[str, float]:
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
@@ -461,8 +461,8 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def move_relative(self, distance: dict[str, float],
-                      velocity: Optional[float] = None, blocking: bool = False) -> dict[str, float]:
+    def move_relative(self, distance: Dict[str, float],
+                      velocity: Optional[float] = None, blocking: bool = False) -> Dict[str, float]:
         """ Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 
@@ -477,7 +477,7 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def get_target(self) -> dict[str, float]:
+    def get_target(self) -> Dict[str, float]:
         """ Get the current target position of the scanner hardware
         (i.e. the "theoretical" position).
 
@@ -486,7 +486,7 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def get_position(self) -> dict[str, float]:
+    def get_position(self) -> Dict[str, float]:
         """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
         For the same target this value can fluctuate according to the scanners positioning accuracy.
 
