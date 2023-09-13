@@ -1,3 +1,25 @@
+# -*- coding: utf-8 -*-
+"""
+This file contains the qudi gui to continuously display data from a wavemeter device and eventually displays the
+ acquired data with the simultaneously obtained counts from a time_series_reader_logic.
+
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
+
+This file is part of qudi.
+
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import os
 from PySide2 import QtCore, QtWidgets, QtGui
 import time
@@ -170,7 +192,7 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
         self.minDoubleSpinBox.setDecimals(7)
         self.minDoubleSpinBox.setMinimum(1.0)
         self.minDoubleSpinBox.setMaximum(10000.0)
-        self.minDoubleSpinBox.setProperty("value", 600.0)
+        self.minDoubleSpinBox.setProperty("value", 550.0)
 
         self.maxDoubleSpinBox = QtWidgets.QDoubleSpinBox(self.dockWidgetContents)
         self.maxDoubleSpinBox.setDecimals(7)
@@ -225,14 +247,14 @@ class WavemeterHistogramMainWindow(QtWidgets.QMainWindow):
 
 class WavemeterHistogramGui(GuiBase):
     """
-    GUI module to be used in conjunction with WavemeterHistogramLogic.
+    GUI module to be used in conjunction with WavemeterLogic.
 
     Example config for copy-paste:
 
-    wavemeter_histogram_logic:
-        module.Class: 'wavemeter.wavemeter_histogram_gui_2.WavemeterHistogramGui'
+    wavemeter_scanning_gui:
+        module.Class: 'wavemeter.wavemeter_scanning_gui.WavemeterHistogramGui'
         connect:
-            _wavemeter_histogram_logic_con: wavemeter_histogram_logic
+            _wavemeter_histogram_logic_con: wavemeter_scanning_logic
     """
     sigStartCounter = QtCore.Signal()
     sigStopCounter = QtCore.Signal()
@@ -268,13 +290,6 @@ class WavemeterHistogramGui(GuiBase):
         self._pw = self._mw.PlotWidget
         self._pw.set_labels('Wavelength', 'Fluorescence')
         self._pw.set_units('m', 'counts/s')
-
-        #self._top_axis = pg.ViewBox() #TODO for relative values
-        #self._pw._plot_widget.showAxis('top')
-        #self._pw._plot_widget.scene().addItem(self._top_axis)
-        #self._pw._plot_widget.getAxis('top').linkToView(self._top_axis)
-        #self._top_axis.setYLink(self._pw._plot_widget)
-        #self._pw._plot_widget.setLabel('top', 'Relative wavelength', units='m')
 
         # Create an empty plot curve to be filled later, set its pen
         self.curve_data_points = pg.ScatterPlotItem(
@@ -335,9 +350,7 @@ class WavemeterHistogramGui(GuiBase):
         #Double spin box actions
         self._mw.binSpinBox.setValue(self._wavemeter_logic.get_bins())
         self._mw.binSpinBox.editingFinished.connect(self.recalculate_histogram)
-        #self._mw.minDoubleSpinBox.setValue(self._wavemeter_logic._xmin_histo)
         self._mw.minDoubleSpinBox.editingFinished.connect(self.recalculate_histogram)
-        #self._mw.maxDoubleSpinBox.setValue(self._wavemeter_logic._xmax_histo)
         self._mw.maxDoubleSpinBox.editingFinished.connect(self.recalculate_histogram)
 
         self.show()
@@ -355,7 +368,6 @@ class WavemeterHistogramGui(GuiBase):
         # Connect the main window restore view actions
 
         # disconnect signals
-        #self._pw.plotItem.vb.sigResized.disconnect()
         self._mw.action_save.triggered.disconnect()
         self._mw.start_trace_Action.triggered.disconnect()
         self._mw.start_trace_Action2.triggered.disconnect()
@@ -447,7 +459,6 @@ class WavemeterHistogramGui(GuiBase):
         self._mw.actionClear_trace_data.setEnabled(not running)
         self._mw.actionToggle_x_axis.setEnabled(not running)
         self._mw.show_all_data_action.setEnabled(not running)
-        #self._mw.action_save.setEnabled(not running)
         self._mw.start_trace_Action2.setEnabled(not running)
         return
 
@@ -497,7 +508,9 @@ class WavemeterHistogramGui(GuiBase):
     def toggle_axis(self):
         self._mw.actionToggle_x_axis.setEnabled(False)
 
-        if self._mw.actionToggle_x_axis.isChecked():  # if true toggle to Hz and change boolean x_axis_hz_bool to True and change gui dispaly
+        if self._mw.actionToggle_x_axis.isChecked():
+            # if true toggle to Hz and change boolean x_axis_hz_bool to True and change gui dispaly
+
             self._mw.actionToggle_x_axis.setText('Change to wavelength')
             #clear any fits
             self._pw.clear_fits()
@@ -615,7 +628,8 @@ class WavemeterHistogramGui(GuiBase):
 
         self.curve_data_points.clear()
         self._scatterplot.clear()
-        self._wavemeter_logic._streamer()._wm_start_time = None
+        self._wavemeter_logic._reset_start_time = True
+        self._wavemeter_logic._initial_wm_start_time = None
         self._pw.clear_fits()
 
         self._wavemeter_logic.histogram = np.zeros(self._wavemeter_logic.histogram_axis.shape)

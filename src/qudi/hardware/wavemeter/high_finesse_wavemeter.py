@@ -26,20 +26,18 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-from ctypes import cast, c_double, c_int, c_long, POINTER, windll, WINFUNCTYPE
 from typing import Union, Optional, List, Tuple, Sequence, Any
 
 import numpy as np
+from scipy.constants import lambda2nu
 from PySide2 import QtCore
 
 from qudi.core.configoption import ConfigOption
-import qudi.hardware.wavemeter.high_finesse_constants_2 as high_finesse_constants
 from qudi.util.mutex import Mutex
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode, \
     SampleTiming
-
-_CALLBACK = WINFUNCTYPE(c_int, c_long, c_long, c_long, c_double, c_long)
+import qudi.hardware.wavemeter.high_finesse_proxy as wavemeter_proxy
 
 
 class HighFinesseWavemeter(DataInStreamInterface):
@@ -55,7 +53,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
                 red_laser:
                     switch_ch: 1    # channel on the wavemeter switch
                     unit: 'm'    # wavelength (m) or frequency (Hz)
-                    medium: 'vac' # for wavelength: air or vac
                     exposure: 10  # exposure time in ms, optional
                 green_laser:
                     switch_ch: 2
@@ -70,7 +67,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
     _wavemeter_ch_config = ConfigOption(
         name='channels',
         default={
-            'default_channel': {'switch_ch': 1, 'unit': 'm', 'medium': 'vac', 'exposure': 10}
+            'default_channel': {'switch_ch': 1, 'unit': 'm', 'exposure': None}
         },
         missing='info'
     )
@@ -78,81 +75,51 @@ class HighFinesseWavemeter(DataInStreamInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._lock = Mutex()
-        self._callback_function = None
-        self._wavemeterdll = None
 
-        # Internal settings
-        self._channel_names = None  # dictionary with switch channel numbers as keys, channel names as values
+        # internal settings
+        self._channel_names = {}  # dictionary with switch channel numbers as keys, channel names as values
+        self._channel_units = {}
         self._channel_buffer_size = 1024**2
         self._active_switch_channels = None  # list of active switch channel numbers
-        self._unit_return_type = {}
 
-        # Data buffer
+        # data buffer
         self._wm_start_time = None
         self._data_buffer = None
         self._timestamp_buffer = None
         self._current_buffer_position = 0
         self._buffer_overflow = False
 
-        # Stored hardware constraints
+        # stored hardware constraints
         self._constraints = None
 
     def on_activate(self) -> None:
-        try:
-            # load wavemeter DLL
-            self._wavemeterdll = windll.LoadLibrary('wlmData.dll')
-        except FileNotFoundError:
-            self.log.error('There is no wavemeter installed on this computer.\n'
-                           'Please install a High Finesse wavemeter and try again.')
-            return
-
-        # define function header for a later call
-        self._wavemeterdll.Instantiate.argtypes = [c_long, c_long, POINTER(c_long), c_long]
-        self._wavemeterdll.Instantiate.restype = POINTER(c_long)
-        self._wavemeterdll.ConvertUnit.restype = c_double
-        self._wavemeterdll.ConvertUnit.argtypes = [c_double, c_long, c_long]
-        self._wavemeterdll.SetExposureNum.restype = c_long
-        self._wavemeterdll.SetExposureNum.argtypes = [c_long, c_long, c_long]
-        self._wavemeterdll.GetExposureNum.restype = c_long
-        self._wavemeterdll.GetExposureNum.argtypes = [c_long, c_long, c_long]
-
         # configure wavemeter channels
-        self._channel_names = {}
-        channel_units = {}
         for ch_name, info in self._wavemeter_ch_config.items():
             ch = info['switch_ch']
             unit = info['unit']
-            medium = info.get('medium')
             self._channel_names[ch] = ch_name
 
+            # make sure the channel is active on the multi-channel switch
+            wavemeter_proxy.activate_channel(ch)
+
             if unit == 'THz' or unit == 'Hz':
-                channel_units[ch_name] = 'Hz'
-                self._unit_return_type[ch] = high_finesse_constants.cReturnFrequency
+                self._channel_units[ch] = 'Hz'
             elif unit == 'nm' or unit == 'm':
-                channel_units[ch_name] = 'm'
-                if medium == 'vac':
-                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
-                elif medium == 'air':
-                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthAir
-                else:
-                    self.log.error(f'Invalid medium: {medium}. Valid media are vac and air.')
-                    self._unit_return_type[ch] = high_finesse_constants.cReturnWavelengthVac
+                self._channel_units[ch] = 'm'
             else:
-                self.log.error(f'Invalid unit: {unit}. Valid units are THz and nm.')
-                channel_units[ch_name] = None
+                self.log.error(f'Invalid unit: {unit}. Valid units are Hz and m.')
+                self._channel_units[ch] = 'm'
 
             exp_time = info.get('exposure')
             if exp_time is not None:
-                res = self._wavemeterdll.SetExposureNum(ch, 1, exp_time)
-                if res != 0:
-                    self.log.warning('Wavemeter error while setting exposure time.')
+                wavemeter_proxy.set_exposure_time(ch, exp_time)
 
         self._active_switch_channels = list(self._channel_names)
 
         # set up constraints
         sample_rate = self.sample_rate
         self._constraints = DataInStreamConstraints(
-            channel_units=channel_units,
+            channel_units={self._channel_names[ch]: self._channel_units[ch] for ch in self._active_switch_channels},
             sample_timing=SampleTiming.TIMESTAMP,
             # TODO: implement fixed streaming mode
             streaming_modes=[StreamingMode.CONTINUOUS],
@@ -171,111 +138,19 @@ class HighFinesseWavemeter(DataInStreamInterface):
         # free memory
         self._data_buffer = None
         self._timestamp_buffer = None
-        self._wm_start_time = None
-
-        # clean up by removing reference to the ctypes library object
-        del self._wavemeterdll
 
     @property
     def constraints(self) -> DataInStreamConstraints:
         """ Read-only property returning the constraints on the settings for this data streamer. """
         return self._constraints
 
-    def _get_callback_ex(self):
-        """
-        Define the callback procedure that should be called by the dll every time a new measurement result
-        is available or any of the wavelength meter's states changes.
-        :return: callback function
-        """
-
-        def handle_callback(version, mode, intval, dblval, res1):
-            """
-            Function called upon wavelength meter state change or if a new measurement result is available.
-            See wavemeter manual section on CallbackProc for details.
-
-            In this implementation, the new wavelength is converted to the desired unit and
-            appended to a list together with the current timestamp.
-
-            :param version: Device version number which called the procedure.
-            Only relevant if multiple wavemeter applications are running.
-            :param mode: Indicates which state has changed or what new result is available.
-            :param intval: Contains the time stamp rounded to ms if mode indicates that the new value is in dblval.
-            If not, it contains the new value itself.
-            :param dblval: May contain the new value (e.g. wavelength), depending on mode.
-            :param res1: Mostly meaningless.
-            :return: 0
-            """
-            if mode == high_finesse_constants.cmiOperation and intval == high_finesse_constants.cStop:
-                self.log.error('Wavemeter acquisition was stopped during stream.')
-                return 0
-
-            if self._buffer_overflow:
-                return 0
-
-            with self._lock:
-                # see if new data is from one of the active channels
-                ch = high_finesse_constants.cmi_wavelength_n.get(mode)
-                number_of_channels = len(self.active_channels)
-                if ch in self._active_switch_channels:
-                    i = self._active_switch_channels.index(ch)
-
-                    current_timestamp_buffer_position = self._current_buffer_position // number_of_channels
-                    if current_timestamp_buffer_position >= self.channel_buffer_size:
-                        self._buffer_overflow = True
-                        raise OverflowError(
-                            'Streaming buffer encountered an overflow while receiving a callback from the wavemeter. '
-                            'Please increase the buffer size or speed up data reading.'
-                        )
-
-                    # wavemeter records timestamps in ms
-                    timestamp = 1e-3 * intval
-                    # unit conversion
-                    unit_ret_type = self._unit_return_type[ch]
-                    converted_value = self._wavemeterdll.ConvertUnit(
-                        dblval, high_finesse_constants.cReturnWavelengthVac, unit_ret_type
-                    )
-                    if unit_ret_type == high_finesse_constants.cReturnFrequency:
-                        converted_value *= 1e12  # value is in THz
-                    else:
-                        converted_value *= 1e-9  # value is in nm
-
-                    # check if this is the first time this callback runs during a stream
-                    if self._wm_start_time is None:
-                        # set the timing offset to the start of the stream
-                        self._wm_start_time = timestamp
-
-                    if i != self._current_buffer_position % number_of_channels:
-                        # discard the sample if a sample was missed before and the buffer position is off
-                        return 0
-
-                    timestamp -= self._wm_start_time
-                    # insert the new data into the buffers
-                    self._data_buffer[self._current_buffer_position] = converted_value
-                    if i == 0:
-                        # only record the timestamp of the first active channel
-                        self._timestamp_buffer[current_timestamp_buffer_position] = timestamp
-                    self._current_buffer_position += 1
-
-                    self.sigNewWavelength.emit(converted_value)
-            return 0
-
-        self._callback_function = _CALLBACK(handle_callback)
-        return self._callback_function
-
     def start_stream(self) -> None:
         """ Start the data acquisition/streaming """
         with self._lock:
             if self.module_state() == 'idle':
                 self.module_state.lock()
-
-                # start callback procedure
-                self._wavemeterdll.Instantiate(
-                    high_finesse_constants.cInstNotification,  # long ReasonForCall
-                    high_finesse_constants.cNotifyInstallCallbackEx,  # long Mode
-                    cast(self._get_callback_ex(), POINTER(c_long)),  # long P1: function
-                    0)  # long P2: callback thread priority, 0 = standard
-
                 self._init_buffers()
+                wavemeter_proxy.connect_instreamer(self)
             else:
                 self.log.warning('Unable to start input stream. It is already running.')
 
@@ -283,15 +158,8 @@ class HighFinesseWavemeter(DataInStreamInterface):
         """ Stop the data acquisition/streaming """
         with self._lock:
             if self.module_state() == 'locked':
-                self._wavemeterdll.Instantiate(
-                    high_finesse_constants.cInstNotification,  # long ReasonForCall
-                    high_finesse_constants.cNotifyRemoveCallback,  # long mode
-                    cast(self._callback_function, POINTER(c_long)),
-                    # long P1: function
-                    0)  # long P2: callback thread priority, 0 = standard
-                self._callback_function = None
-                #self._wm_start_time = None
-
+                wavemeter_proxy.disconnect_instreamer(self)
+                self._wm_start_time = None
                 self.module_state.unlock()
             else:
                 self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
@@ -306,7 +174,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         into.
         The 1D data_buffer can be unraveled into channel and sample indexing with:
 
-            data_buffer.reshape([<samples_per_channel>, <channel_count>])
+            data_buffer.reshape([<number_of_samples>, <channel_count>])
 
         The data_buffer array must have the same data type as self.constraints.data_type.
 
@@ -366,28 +234,28 @@ class HighFinesseWavemeter(DataInStreamInterface):
         return samples_per_channel
 
     def read_data(self,
-                  samples_per_channel: Optional[int] = None
+                  number_of_samples: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
         """ Read data from the stream buffer into a 1D numpy array and return it.
         All samples for each channel are stored in consecutive blocks one after the other.
         The returned data_buffer can be unraveled into channel samples with:
 
-            data_buffer.reshape([<channel_count>, samples_per_channel])
+            data_buffer.reshape([<channel_count>, number_of_samples])
 
         The numpy array data type is the one defined in self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
-        If samples_per_channel is omitted all currently available samples are read from buffer.
+        If number_of_samples is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
         """
-        samples_per_channel = samples_per_channel if samples_per_channel is not None else self.available_samples
-        total_samples = len(self.active_channels) * samples_per_channel
+        number_of_samples = number_of_samples if number_of_samples is not None else self.available_samples
+        total_samples = len(self.active_channels) * number_of_samples
 
         data_buffer = np.empty(total_samples, dtype=self.constraints.data_type)
-        timestamp_buffer = np.empty(samples_per_channel, dtype=np.float64)
-        self.read_data_into_buffer(data_buffer, samples_per_channel, timestamp_buffer)
+        timestamp_buffer = np.empty(number_of_samples, dtype=np.float64)
+        self.read_data_into_buffer(data_buffer, number_of_samples, timestamp_buffer)
 
         return data_buffer, timestamp_buffer
 
@@ -425,21 +293,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         For the wavemeter, it is estimated by the exposure times per channel and switching times if
         more than one channel is active.
         """
-        exposure_times = []
-        for ch in self._active_switch_channels:
-            t = self._wavemeterdll.GetExposureNum(ch, 1, 0)
-            exposure_times.append(t)
-        total_exposure_time = sum(exposure_times)
-
-        switching_time = 12
-        n_channels = len(self._active_switch_channels)
-        if n_channels > 1:
-            turnaround_time_ms = total_exposure_time + n_channels * switching_time
-        else:
-            turnaround_time_ms = total_exposure_time
-
-        sample_rate = 1e3 / turnaround_time_ms
-        return sample_rate
+        return wavemeter_proxy.sample_rate()
 
     @property
     def streaming_mode(self) -> StreamingMode:
@@ -493,12 +347,54 @@ class HighFinesseWavemeter(DataInStreamInterface):
                     self.log.error(f'Channel {ch} is not set up in the config file. Available channels '
                                    f'are {list(self._channel_names.keys())}.')
 
-        if streaming_mode is not None and streaming_mode != StreamingMode.CONTINUOUS:
+        if streaming_mode is not None and streaming_mode.value != StreamingMode.CONTINUOUS.value:
             self.log.warning('Only continuous streaming is supported, ignoring this setting.')
 
         if channel_buffer_size is not None:
             self.constraints.channel_buffer_size.is_valid(channel_buffer_size)
             self._channel_buffer_size = channel_buffer_size
+
+    def process_new_wavelength(self, ch, wavelength, timestamp):
+        with self._lock:
+            try:
+                i = self._active_switch_channels.index(ch)
+            except ValueError:
+                # channel is not active on this instreamer
+                return
+
+            number_of_channels = len(self.active_channels)
+            current_timestamp_buffer_position = self._current_buffer_position // number_of_channels
+            if current_timestamp_buffer_position >= self.channel_buffer_size:
+                self._buffer_overflow = True
+                raise OverflowError(
+                    'Streaming buffer encountered an overflow while receiving a callback from the wavemeter. '
+                    'Please increase the buffer size or speed up data reading.'
+                )
+
+            # unit conversion
+            if self._channel_units[ch] == 'Hz':
+                converted_value = lambda2nu(wavelength)
+            else:
+                converted_value = wavelength
+
+            # check if this is the first time this callback runs during a stream
+            if self._wm_start_time is None:
+                # set the timing offset to the start of the stream
+                self._wm_start_time = timestamp
+
+            if i != self._current_buffer_position % number_of_channels:
+                # discard the sample if a sample was missed before and the buffer position is off
+                return
+
+            timestamp -= self._wm_start_time
+            # insert the new data into the buffers
+            self._data_buffer[self._current_buffer_position] = converted_value
+            if i == 0:
+                # only record the timestamp of the first active channel
+                self._timestamp_buffer[current_timestamp_buffer_position] = timestamp
+            self._current_buffer_position += 1
+
+        self.sigNewWavelength.emit(converted_value)
 
     def _init_buffers(self) -> None:
         """ Initialize buffers and the current buffer position marker. """

@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
 This file contains the qudi logic to continuously read data from a wavemeter device and eventually interpolates the
- acquired data with the simultaneously obtained counts from a time_series_reader_logic.
-
+ acquired data with the simultaneously obtained counts from a time_series_reader_logic. It is intended to be used in
+ conjunction with the high_finesse_wavemeter.py.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -43,7 +43,15 @@ from scipy import constants
 
 
 class WavemeterLogic(LogicBase):
+    """
+    Example config for copy-paste:
 
+    wavemeter_scanning_logic:
+        module.Class: 'wavemeter_scanning_logic_3.WavemeterLogic'
+        connect:
+            streamer: wavemeter
+            counterlogic: time_series_reader_logic
+    """
     # declare signals
     sigDataChanged = QtCore.Signal(object, object, object, object, object, object, object)
     sigStatusChanged = QtCore.Signal(bool)
@@ -71,6 +79,8 @@ class WavemeterLogic(LogicBase):
         self._fit_container = None
         self.x_axis_hz_bool = False  # by default display wavelength
         self._is_wavelength_displaying = False
+        self._reset_start_time = True
+        self._initial_wm_start_time = None
 
         # Data arrays #timings, counts, wavelength, wavelength in Hz
         self._trace_data = np.empty((4, 0), dtype=np.float64)
@@ -81,7 +91,7 @@ class WavemeterLogic(LogicBase):
 
         self._bins = 200
         self._data_index = 0
-        self._xmin_histo = 600.0e-9 #in SI units
+        self._xmin_histo = 550.0e-9 #in SI units, assure that yout wavelength lies in this interval
         self._xmax_histo = 750.0e-9
         self._xmin = 1 #default; to be changed upon first iteration
         self._xmax = -1
@@ -101,13 +111,9 @@ class WavemeterLogic(LogicBase):
         self._time_series_logic = self._timeserieslogic()
 
         # create a new x axis from xmin to xmax with bins points
-        self.histogram_axis = np.arange(
-            self._xmin_histo,
-            self._xmax_histo,
-            (self._xmax_histo - self._xmin_histo) / self._bins
-        )
-        self.histogram = np.zeros(self.histogram_axis.shape)
-        self.envelope_histogram = np.zeros(self.histogram_axis.shape)
+        self.histogram_axis = np.linspace(self._xmin_histo, self._xmax_histo, self._bins)
+        self.histogram = np.zeros(self._bins)
+        self.envelope_histogram = np.zeros(self._bins)
         self.rawhisto = np.zeros(self._bins)
         self.sumhisto = np.ones(self._bins) * 1.0e-10
 
@@ -130,11 +136,9 @@ class WavemeterLogic(LogicBase):
     @property
     def streamer_constraints(self):
         """
-        Retrieve the hardware constrains from the counter device.
-
-        @return SlowCounterConstraints: object with constraints for the counter
+        Retrieve the hardware constrains from the wavemeter device.
         """
-        return self._streamer().constraints()
+        return self._streamer().constraints
 
     @QtCore.Slot(object)
     def _counts_and_wavelength(self, new_count_data=None, new_count_timings=None):
@@ -151,11 +155,10 @@ class WavemeterLogic(LogicBase):
                     samples_to_read_counts = len(new_count_data)
 
                 n = self._streamer().available_samples if self._streamer().available_samples > 1 else 1
-
-                raw_data_wavelength, raw_timings = self._streamer().read_data(samples_per_channel=n)
+                raw_data_wavelength, raw_timings = self._streamer().read_data(number_of_samples=n)
                 raw_data_wavelength = netobtain(raw_data_wavelength) #netobtain due to remote connection
                 raw_timings = netobtain(raw_timings)
-                #TODO Here, above buffers as an option to save the raw wavemeter values
+                #Above buffers as an option to save the raw wavemeter values
 
                 #Here the interpolation is performed to match the counts onto wavelength
                 if n == 1:
@@ -188,8 +191,7 @@ class WavemeterLogic(LogicBase):
         return
 
     def _process_data_for_histogram(self, data_wavelength, data_counts, data_wavelength_timings):
-        """Method for appending to to whole data set of wavelength and counts (already interpolated)"""
-
+        """Method for appending to whole data set of wavelength and counts (already interpolated)"""
         data_freq = constants.speed_of_light / data_wavelength
         for i in range(len(data_wavelength)):
             self.wavelength.append(data_wavelength[i])
@@ -246,22 +248,28 @@ class WavemeterLogic(LogicBase):
         if self.module_state() == 'locked':
             self.log.warning('Data acquisition already running. "start_scanning" call ignored.')
             self.sigStatusChanged.emit(True)
-            return 0
+            return
 
         if not self._time_series_logic.module_state() == 'locked':
             self.log.warning('Time series data acquisition has to be running!')
             self.sigStatusChanged.emit(False)
-            return 0
+            return
 
         if not len(self._time_series_logic.active_channel_names) == 1:
             self.log.warning('Number of channels of time series data acquisition has to be 1!')
             self.sigStatusChanged.emit(False)
-            return 0
+            return
 
-        if len(self._streamer()._unit_return_type) != 1 or self._streamer()._unit_return_type[1] != 0:
-            self.log.warning('Only a single wavemeter channel supported currently. Further make sure acquisition is in nm/m and medium vac')
+        if len(self._streamer()._active_switch_channels) != 1:
+            self.log.warning('Only a single wavemeter channel supported currently.')
             self.sigStatusChanged.emit(False)
-            return 0
+            return
+
+        unit = self._streamer()._channel_units[self._streamer()._active_switch_channels[0]]
+        if unit != 'm':
+            self.log.warning('Make sure acquisition is in unit m!')
+            self.sigStatusChanged.emit(False)
+            return
 
         self.module_state.lock()
 
@@ -269,11 +277,11 @@ class WavemeterLogic(LogicBase):
 
         if self._is_wavelength_displaying:
             self.stop_displaying_current_wavelength()
-            self._streamer()._wm_start_time = None
 
         self._time_series_logic.sigNewRawData.connect(
             self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
 
+        self._streamer()._wm_start_time = self._initial_wm_start_time
         self._streamer().start_stream()
         return 0
 
@@ -287,9 +295,11 @@ class WavemeterLogic(LogicBase):
         if self.module_state() == 'locked':
             # disconnect to time series signal
             self._time_series_logic.sigNewRawData.disconnect()
-            # terminate the hardware streaming device
-            while self._streamer().available_samples == 0:
-                time.sleep(0.1)
+            #save start_time information of high finesse wavemeter
+            if self._reset_start_time:
+                self._initial_wm_start_time = self._streamer()._wm_start_time
+                self._reset_start_time = False
+            # terminate the hardware streaming device #TODO test with remote module
             self._streamer().stop_stream()
             self.module_state.unlock()
             self.sigStatusChanged.emit(False)
@@ -344,12 +354,19 @@ class WavemeterLogic(LogicBase):
         if current_wavelength > 0:
             current_freq = constants.speed_of_light / current_wavelength #in Hz
             self.sigNewWavelength2.emit(current_wavelength[0], current_freq[0])
+        #display data at a rate of 10Hz
         time.sleep(0.1)
         self._sigNextWavelength.emit()
 
     def start_displaying_current_wavelength(self):
-        if len(self._streamer()._unit_return_type) != 1 or self._streamer()._unit_return_type[1] != 0:
-            self.log.warning('Only a single wavemeter channel supported currently. Further make sure acquisition is in nm/m and medium vac')
+        if len(self._streamer()._active_switch_channels) != 1:
+            self.log.warning('Only a single wavemeter channel supported currently.')
+            self.sigStatusChanged.emit(False)
+            return -1
+
+        unit = self._streamer()._channel_units[self._streamer()._active_switch_channels[0]]
+        if unit != 'm':
+            self.log.warning('Make sure acquisition is in unit m!')
             self.sigStatusChanged.emit(False)
             return -1
 
