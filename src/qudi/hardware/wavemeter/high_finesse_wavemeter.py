@@ -38,6 +38,7 @@ from qudi.util.constraints import ScalarConstraint
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode, \
     SampleTiming
 import qudi.hardware.wavemeter.high_finesse_proxy as wavemeter_proxy
+from qudi.hardware.wavemeter.high_finesse_constants import GetFrequencyError
 
 
 class HighFinesseWavemeter(DataInStreamInterface):
@@ -81,6 +82,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._channel_units = {}
         self._channel_buffer_size = 1024**2
         self._active_switch_channels = None  # list of active switch channel numbers
+        self._last_measurement_error: Optional[float] = None
 
         # data buffer
         self._wm_start_time = None
@@ -150,6 +152,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
             if self.module_state() == 'idle':
                 self.module_state.lock()
                 self._init_buffers()
+                self._last_measurement_error = None
                 wavemeter_proxy.connect_instreamer(self)
             else:
                 self.log.warning('Unable to start input stream. It is already running.')
@@ -362,6 +365,21 @@ class HighFinesseWavemeter(DataInStreamInterface):
                 # channel is not active on this instreamer
                 return
 
+        if self._last_measurement_error is not None:
+            if wavelength > 0:
+                # reset error flag
+                self._last_measurement_error = None
+
+        if wavelength <= 0:
+            # negative values indicate an error
+            if self._last_measurement_error != wavelength:
+                # error is new
+                self._last_measurement_error = wavelength
+                self.log.warning(f'The last wavemeter measurement of channel {ch} was unsuccessful '
+                                 f'due to {GetFrequencyError(wavelength).name}.')
+            wavelength = np.nan
+
+        with self._lock:
             number_of_channels = len(self.active_channels)
             current_timestamp_buffer_position = self._current_buffer_position // number_of_channels
             if current_timestamp_buffer_position >= self.channel_buffer_size:

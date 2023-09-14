@@ -23,14 +23,13 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from ctypes import byref, cast, c_double, c_int, c_long, POINTER, WINFUNCTYPE
-from logging import getLogger
-import numpy as np
+from qudi.core.logger import get_logger
 
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
 from qudi.hardware.wavemeter.high_finesse_wrapper import load_dll, setup_dll, MIN_VERSION
 
 
-_log = getLogger(__name__)
+_log = get_logger(__name__)
 
 try:
     # load wavemeter DLL
@@ -186,9 +185,10 @@ def _get_callback_function():
 
         if dblval < 0:
             # the wavemeter is either over- or underexposed
-            dblval = np.nan
-
-        wavelength = 1e-9 * dblval  # measurement is in nm
+            # retain error code for further processing
+            wavelength = dblval
+        else:
+            wavelength = 1e-9 * dblval  # measurement is in nm
         timestamp = 1e-3 * intval  # wavemeter records timestamps in ms
         for instreamer in _connected_instream_modules:
             instreamer.process_new_wavelength(ch, wavelength, timestamp)

@@ -450,33 +450,35 @@ cAvrgSucceeding = 2
 cAvrgSimple = 0
 cAvrgPattern = 1
 
-## Return errorvalues of GetFrequency, GetWavelength and GetWLMVersion
-ErrNoValue = 0
-ErrNoSignal = -1
-ErrBadSignal = -2
-ErrLowSignal = -3
-ErrBigSignal = -4
-ErrWlmMissing = -5
-ErrNotAvailable = -6
-InfNothingChanged = -7
-ErrNoPulse = -8
-ErrChannelNotAvailable = -10
-ErrDiv0 = -13
-ErrOutOfRange = -14
-ErrUnitNotAvailable = -15
-ErrMaxErr = ErrUnitNotAvailable
+
+class GetFrequencyError(Enum):
+    """ Return error values of GetFrequency, GetWavelength and GetWLMVersion
+    """
+    ErrNoValue = 0
+    ErrNoSignal = -1
+    ErrBadSignal = -2
+    ErrLowSignal = -3
+    ErrBigSignal = -4
+    ErrWlmMissing = -5
+    ErrNotAvailable = -6
+    InfNothingChanged = -7
+    ErrNoPulse = -8
+    ErrChannelNotAvailable = -10
+    ErrDiv0 = -13
+    ErrOutOfRange = -14
+    ErrUnitNotAvailable_ErrMaxErr = -15
 
 ## Return errorvalues of GetTemperature and GetPressure
 ErrTemperature = -1000
-ErrTempNotMeasured = ErrTemperature + ErrNoValue
-ErrTempNotAvailable = ErrTemperature + ErrNotAvailable
-ErrTempWlmMissing = ErrTemperature + ErrWlmMissing
+ErrTempNotMeasured = ErrTemperature + GetFrequencyError.ErrNoValue.value
+ErrTempNotAvailable = ErrTemperature + GetFrequencyError.ErrNotAvailable.value
+ErrTempWlmMissing = ErrTemperature + GetFrequencyError.ErrWlmMissing.value
 
 ## Return errorvalues of GetDistance
 ## real errorvalues are ErrDistance combined with those of GetWavelength
 ErrDistance = -1000000000
-ErrDistanceNotAvailable = ErrDistance + ErrNotAvailable
-ErrDistanceWlmMissing = ErrDistance + ErrWlmMissing
+ErrDistanceNotAvailable = ErrDistance + GetFrequencyError.ErrNotAvailable.value
+ErrDistanceWlmMissing = ErrDistance + GetFrequencyError.ErrWlmMissing.value
 
 ## Return flags of ControlWLMEx in combination with Show or Hide, Wait and Res = 1
 flServerStarted           = 0x00000001
