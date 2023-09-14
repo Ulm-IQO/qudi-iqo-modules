@@ -34,10 +34,9 @@ _log = get_logger(__name__)
 try:
     # load wavemeter DLL
     _wavemeter_dll = load_dll()
-except FileNotFoundError:
-    _log.error('There is no wavemeter installed on this computer.\n'
-               'Please install a High Finesse wavemeter and try again.')
-    raise
+except FileNotFoundError as e:
+    raise ValueError('There is no wavemeter installed on this computer.\n'
+                     'Please install a High Finesse wavemeter and try again.') from e
 else:
     v = [_wavemeter_dll.GetWLMVersion(i) for i in range(4)]
     _log.info(f'Successfully loaded wavemeter DLL of WS{v[0]} {v[1]},'
@@ -51,7 +50,7 @@ if software_rev < MIN_VERSION:
 try:
     setup_dll(_wavemeter_dll)
 except AttributeError:
-    _log.error('One or more function is not available. The wavemeter version is likely outdated.')
+    _log.warning('One or more function is not available. The wavemeter version is likely outdated.')
 
 
 def get_active_channels():
@@ -80,11 +79,11 @@ def activate_channel(ch):
         if ch == 1:
             return
         else:
-            _log.error(f'Cannot activate channel {ch}: wavemeter does not have a multi-channel switch.')
+            raise RuntimeError(f'Cannot activate channel {ch}: wavemeter does not have a multi-channel switch.')
 
     err = _wavemeter_dll.SetSwitcherSignalStates(ch, 1, 1)
     if err:
-        _log.error(f'Wavemeter error while activating channel {ch}: {high_finesse_constants.ResultError(err)}')
+        raise RuntimeError(f'Wavemeter error while activating channel {ch}: {high_finesse_constants.ResultError(err)}')
 
 
 def deactivate_channel(ch):
@@ -93,11 +92,12 @@ def deactivate_channel(ch):
         if ch == 1:
             return
         else:
-            _log.error(f'Cannot deactivate channel {ch}: wavemeter does not have a multi-channel switch.')
+            raise RuntimeError(f'Cannot deactivate channel {ch}: wavemeter does not have a multi-channel switch.')
 
     err = _wavemeter_dll.SetSwitcherSignalStates(ch, 0, 0)
     if err:
-        _log.error(f'Wavemeter error while deactivating channel {ch}: {high_finesse_constants.ResultError(err)}')
+        raise RuntimeError(f'Wavemeter error while deactivating channel {ch}: '
+                           f'{high_finesse_constants.ResultError(err)}')
 
 
 def deactivate_all_but_lowest_channel():
@@ -114,13 +114,13 @@ def deactivate_all_but_lowest_channel():
 def start_measurement():
     err = _wavemeter_dll.Operation(high_finesse_constants.cCtrlStartMeasurement)
     if err:
-        _log.error(f'Wavemeter error while starting measurement: {high_finesse_constants.ResultError(err)}')
+        raise RuntimeError(f'Wavemeter error while starting measurement: {high_finesse_constants.ResultError(err)}')
 
 
 def stop_measurement():
     err = _wavemeter_dll.Operation(high_finesse_constants.cCtrlStopAll)
     if err:
-        _log.error(f'Wavemeter error while stopping measurement: {high_finesse_constants.ResultError(err)}')
+        raise RuntimeError(f'Wavemeter error while stopping measurement: {high_finesse_constants.ResultError(err)}')
 
 
 def _start_callback():
@@ -174,7 +174,7 @@ def _get_callback_function():
         :return: 0
         """
         if mode == high_finesse_constants.cmiOperation and intval == high_finesse_constants.cStop:
-            _log.error('Wavemeter acquisition was stopped during stream.')
+            _log.warning('Wavemeter acquisition was stopped during stream.')
             return 0
 
         # see if new data is from one of the active channels
@@ -221,8 +221,8 @@ def set_exposure_time(ch, exp_time):
     """ Set the exposure time for a specific switch channel. """
     err = _wavemeter_dll.SetExposureNum(ch, 1, exp_time)
     if err:
-        _log.error(f'Wavemeter error while setting exposure time of channel {ch}: '
-                   f'{high_finesse_constants.ResultError(err)}')
+        raise RuntimeError(f'Wavemeter error while setting exposure time of channel {ch}: '
+                           f'{high_finesse_constants.ResultError(err)}')
 
 
 def connect_instreamer(module):
