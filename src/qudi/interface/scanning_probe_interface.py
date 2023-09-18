@@ -675,7 +675,11 @@ class CoordinateTransformMixin:
         return self.coordinate_transform(super().get_position(), inverse=True)
 
     def get_matr_2_tiltangle(self):
-        "Calculates the tilt angle of a given rotation matrix. Formula from the website https://en.wikipedia.org/wiki/Rotation_matrix"
+        """
+        Calculates the tilt angle of a given rotation matrix.
+        Formula from https://en.wikipedia.org/wiki/Rotation_matrix
+        """
+
         rotation_matrix = self._coordinate_transform_matrix.matrix[0:3,0:3]
         trace = np.trace(rotation_matrix)
         tilt_angle_abs = np.arccos((trace-1)/2)
@@ -693,6 +697,6 @@ class CoordinateTransformMixin:
                 tilt_info.update(transform_info)
 
             scan_data.coord_transform_info = tilt_info
-            self.log.info(f"Get scan data for titl corrected hw called. Info: {tilt_info}")
+            #self.log.info(f"Get scan data for titl corrected hw called. Info: {tilt_info}")
 
         return scan_data
