@@ -94,6 +94,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self.__last_line = -1
         self.__update_timer = None
 
+        # handle to the uncorrected scanner instance, not wrapped by a potential CoordinateTransformMixin
+        # that transforms to a tilted, virtual coordinate system.
+        self.bare_scanner = ScanningProbeDummy
+
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
@@ -526,7 +530,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
 class ScanningProbeDummyCorrected(CoordinateTransformMixin, ScanningProbeDummy):
 
     def _init_scan_grid(self, x_values, y_values):
-        # todo: this is fake transformation, as only 2 coordinates of the scan_grid are taken
+        # this is fake transformation, as only 2 coordinates of the scan_grid are taken
 
         vectors = {'x': x_values, 'y': y_values}
         vectors = self._expand_coordinate(vectors)
@@ -534,8 +538,8 @@ class ScanningProbeDummyCorrected(CoordinateTransformMixin, ScanningProbeDummy):
 
         grid = np.meshgrid(vectors_tilted['x'], vectors_tilted['y'], indexing='ij')
 
-        if self.coordinate_transform_enabled:
-            self.log.debug(f"Transforming scan grid: {grid}")
+        #if self.coordinate_transform_enabled:
+        #    self.log.debug(f"Transforming scan grid: {grid}")
 
         return grid
 
