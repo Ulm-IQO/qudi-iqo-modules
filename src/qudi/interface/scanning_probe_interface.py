@@ -380,7 +380,8 @@ class ScanData:
             'timestamp': None if self._timestamp is None else self._timestamp.timestamp(),
             'data': None if self._data is None else {ch: d.copy() for ch, d in self._data.items()},
             'position_data': None if self._position_data is None else {ax: d.copy() for ax, d in
-                                                                       self._position_data.items()}
+                                                                       self._position_data.items()},
+            'coord_transform_info': self.coord_transform_info
         }
         return dict_repr
 
@@ -404,6 +405,9 @@ class ScanData:
         new_inst._position_data = dict_repr['position_data']
         if dict_repr['timestamp'] is not None:
             new_inst._timestamp = datetime.datetime.fromtimestamp(dict_repr['timestamp'])
+        if dict_repr['coord_transform_info'] is not None:
+            new_inst.coord_transform_info = dict_repr['coord_transform_info']
+
         return new_inst
 
     @property
@@ -674,9 +678,9 @@ class CoordinateTransformMixin:
     def get_position(self):
         return self.coordinate_transform(super().get_position(), inverse=True)
 
-    def get_matr_2_tiltangle(self):
+    def _calc_matr_2_tiltangle(self):
         """
-        Calculates the tilt angle of a given rotation matrix.
+        Calculates the tilt angle in radians of a given rotation matrix.
         Formula from https://en.wikipedia.org/wiki/Rotation_matrix
         """
 
@@ -691,12 +695,12 @@ class CoordinateTransformMixin:
         if scan_data:
             tilt_info = {'enabled': self.coordinate_transform_enabled}
             if self.coordinate_transform_enabled:
+                rad_2_deg = lambda phi: phi/np.pi * 180
                 transform_info = {'transform_matrix': self._coordinate_transform_matrix.matrix,
-                                  'tilt_angle': self.get_matr_2_tiltangle(),
+                                  'tilt_angle (deg)': rad_2_deg(self._calc_matr_2_tiltangle()),
                                   'translation': self._coordinate_transform_matrix.matrix[0:3,-1]}
                 tilt_info.update(transform_info)
 
             scan_data.coord_transform_info = tilt_info
-            #self.log.info(f"Get scan data for titl corrected hw called. Info: {tilt_info}")
 
         return scan_data
