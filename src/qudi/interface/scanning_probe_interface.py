@@ -286,7 +286,7 @@ class ScanData:
     timestamp: Optional[datetime.datetime] = None
     _data: Optional[Tuple[np.ndarray, ...]] = None
     # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
-    position_data: Optional[Dict[str, np.ndarray]] = None
+    _position_data: Optional[Tuple[np.ndarray, ...]] = None
 
     @classmethod
     def from_constraints(cls, settings: ScanSettings, constraints: ScanConstraints, **kwargs):
@@ -346,6 +346,23 @@ class ScanData:
             raise ValueError(f'Data shapes do not match resolution {self.settings.resolution}.')
         self._data = tuple(data for data in data_dict.values())
 
+    @property
+    def position_data(self) -> Dict[str, np.ndarray]:
+        """ Dict of (axis) position data arrays with axis names as keys. """
+        return {ax: data for ax, data in zip(self.settings.position_feedback_axes, self._position_data)}
+
+    @position_data.setter
+    def position_data(self, position_data_dict: Dict[str, np.ndarray]) -> None:
+        if not self.has_position_feedback:
+            raise ValueError('Scanner does not have position feedback. Cannot set position data.')
+        axes = tuple(position_data_dict.keys())
+        if axes != self.settings.position_feedback_axes:
+            raise ValueError(f'Unknown axis names encountered in {axes} or axes do not have position feedback. '
+                             f'Valid axis names are {self.settings.position_feedback_axes}.')
+        if not all([val.shape == self.settings.resolution for val in position_data_dict.values()]):
+            raise ValueError(f'Data shapes do not match resolution {self.settings.resolution}.')
+        self._position_data = tuple(data for data in position_data_dict.values())
+
     def new_scan(self, timestamp=None):
         """
         Reset data and position data and update the timestamp.
@@ -362,7 +379,7 @@ class ScanData:
             self.position_data = {ax: np.full(self.settings.resolution, np.nan) for ax in
                                   self.settings.position_feedback_axes}
         else:
-            self.position_data = None
+            self._position_data = None
         self.data = {
             ch: np.full(self.settings.resolution, np.nan,
                         dtype=self.channel_dtypes[ch]) for ch in self.settings.channels
