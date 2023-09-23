@@ -211,13 +211,13 @@ class ScanningOptimizeLogic(LogicBase):
         for key, val in settings.items():
             if not check_valid(settings, key):
                 if key == 'scan_range':
-                    settings['scan_range'] = {ax.name: abs(ax.value_range[1] - ax.value_range[0]) / 100 for ax in
+                    settings['scan_range'] = {ax.name: abs(ax.position.bounds[1] - ax.position.bounds[0]) / 100 for ax in
                                               hw_axes.values()}
                 if key == 'scan_resolution':
-                    settings['scan_resolution'] = {ax.name: max(ax.min_resolution, min(16, ax.max_resolution))
+                    settings['scan_resolution'] = {ax.name: max(ax.resolution.minimum, min(16, ax.resolution.maximum))
                                                    for ax in hw_axes.values()}
                 if key == 'scan_frequency':
-                    settings['scan_frequency'] = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
+                    settings['scan_frequency'] = {ax.name: max(ax.frequency.minimum, min(50, ax.frequency.maximum)) for ax
                                                   in hw_axes.values()}
                 if key == 'data_channel':
                     settings['data_channel'] = list(sig_channels.keys())[0]

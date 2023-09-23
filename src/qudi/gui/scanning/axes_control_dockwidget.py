@@ -22,9 +22,11 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('AxesControlDockWidget', 'AxesControlWidget')
 
+from typing import Tuple
 from PySide2 import QtCore, QtGui, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.widgets.slider import DoubleSlider
+from qudi.interface.scanning_probe_interface import ScannerAxis
 
 
 class AxesControlDockWidget(QtWidgets.QDockWidget):
@@ -36,7 +38,7 @@ class AxesControlDockWidget(QtWidgets.QDockWidget):
                                       'get_range', 'set_range', 'get_target', 'set_target',
                                       'set_assumed_unit_prefix'})
 
-    def __init__(self, scanner_axes):
+    def __init__(self, scanner_axes: Tuple[ScannerAxis]):
         super().__init__('Axes Control')
         self.setObjectName('axes_control_dockWidget')
         widget = AxesControlWidget(scanner_axes=scanner_axes)
@@ -59,7 +61,7 @@ class AxesControlWidget(QtWidgets.QWidget):
     sigTargetChanged = QtCore.Signal(str, float)
     sigSliderMoved = QtCore.Signal(str, float)
 
-    def __init__(self, *args, scanner_axes, **kwargs):
+    def __init__(self, *args, scanner_axes: Tuple[ScannerAxis], **kwargs):
         super().__init__(*args, **kwargs)
 
         self.axes_widgets = dict()
@@ -102,8 +104,8 @@ class AxesControlWidget(QtWidgets.QWidget):
 
             res_spinbox = QtWidgets.QSpinBox()
             res_spinbox.setObjectName('{0}_resolution_spinBox'.format(ax_name))
-            res_spinbox.setRange(axis.min_resolution, min(2 ** 31 - 1, axis.max_resolution))
-            res_spinbox.setValue(axis.min_resolution)
+            res_spinbox.setRange(axis.resolution.minimum, min(2 ** 31 - 1, axis.resolution.maximum))
+            res_spinbox.setValue(axis.resolution.minimum)
             res_spinbox.setSuffix(' px')
             res_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             res_spinbox.setMinimumSize(50, 0)
@@ -112,8 +114,8 @@ class AxesControlWidget(QtWidgets.QWidget):
 
             min_spinbox = ScienDSpinBox()
             min_spinbox.setObjectName('{0}_min_range_scienDSpinBox'.format(ax_name))
-            min_spinbox.setRange(*axis.value_range)
-            min_spinbox.setValue(axis.min_value)
+            min_spinbox.setRange(*axis.position.bounds)
+            min_spinbox.setValue(axis.position.minimum)
             min_spinbox.setSuffix(axis.unit)
             min_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             min_spinbox.setMinimumSize(75, 0)
@@ -122,23 +124,23 @@ class AxesControlWidget(QtWidgets.QWidget):
 
             max_spinbox = ScienDSpinBox()
             max_spinbox.setObjectName('{0}_max_range_scienDSpinBox'.format(ax_name))
-            max_spinbox.setRange(*axis.value_range)
-            max_spinbox.setValue(axis.max_value)
+            max_spinbox.setRange(*axis.position.bounds)
+            max_spinbox.setValue(axis.position.maximum)
             max_spinbox.setSuffix(axis.unit)
             max_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             max_spinbox.setMinimumSize(75, 0)
             max_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                       QtWidgets.QSizePolicy.Preferred)
 
-            init_pos = (axis.max_value - axis.min_value) / 2 + axis.min_value
+            init_pos = (axis.position.maximum - axis.position.minimum) / 2 + axis.position.minimum
 
             slider = DoubleSlider(QtCore.Qt.Horizontal)
             slider.setObjectName('{0}_position_doubleSlider'.format(ax_name))
-            slider.setRange(*axis.value_range)
+            slider.setRange(*axis.position.bounds)
             granularity = 2 ** 31 - 1
-            if axis.min_step > 0:
+            if axis.step.minimum > 0:
                 granularity = min(granularity,
-                                  round((axis.max_value - axis.min_value) / axis.min_step) + 1)
+                                  round((axis.position.maximum - axis.position.minimum) / axis.step.minimum) + 1)
             slider.set_granularity(granularity)
             slider.setValue(init_pos)
             slider.setMinimumSize(150, 0)
@@ -146,7 +148,7 @@ class AxesControlWidget(QtWidgets.QWidget):
 
             pos_spinbox = ScienDSpinBox()
             pos_spinbox.setObjectName('{0}_position_scienDSpinBox'.format(ax_name))
-            pos_spinbox.setRange(*axis.value_range)
+            pos_spinbox.setRange(*axis.position.bounds)
             pos_spinbox.setValue(init_pos)
             pos_spinbox.setSuffix(axis.unit)
             pos_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)

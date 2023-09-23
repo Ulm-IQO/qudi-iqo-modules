@@ -96,11 +96,11 @@ class ScanningProbeLogic(LogicBase):
 
         if not self._min_poll_interval:
             # defaults to maximum scan frequency of scanner
-            self._min_poll_interval = 1/np.max([constr.axes[ax].frequency_range for ax in constr.axes])
+            self._min_poll_interval = 1/np.max([constr.axes[ax].frequency.bounds for ax in constr.axes])
 
         """
         if not isinstance(self._scan_ranges, dict):
-            self._scan_ranges = {ax.name: ax.value_range for ax in constr.axes.values()}
+            self._scan_ranges = {ax.name: ax.position.bounds for ax in constr.axes.values()}
         if not isinstance(self._scan_resolution, dict):
             self._scan_resolution = {ax.name: max(ax.min_resolution, min(128, ax.max_resolution))  # TODO Hardcoded 128?
                                      for ax in constr.axes.values()}
@@ -213,12 +213,12 @@ class ScanningProbeLogic(LogicBase):
         for key, val in settings.items():
             if not check_valid(settings, key):
                 if key == 'range':
-                    settings['range'] = {ax.name: ax.value_range for ax in constr.axes.values()}
+                    settings['range'] = {ax.name: ax.position.bounds for ax in constr.axes.values()}
                 if key == 'resolution':
-                    settings['resolution'] = {ax.name: max(ax.min_resolution, min(128, ax.max_resolution))  # TODO Hardcoded 128?
+                    settings['resolution'] = {ax.name: max(ax.resolution.minimum, min(128, ax.resolution.maximum))  # TODO Hardcoded 128?
                                               for ax in constr.axes.values()}
                 if key == 'frequency':
-                    settings['frequency'] = {ax.name: ax.max_frequency for ax in constr.axes.values()}
+                    settings['frequency'] = {ax.name: ax.frequency.maximum for ax in constr.axes.values()}
 
         return settings
 
@@ -238,8 +238,8 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'range': new_ranges})
                     return new_ranges
 
-                self._scan_ranges[ax] = (constr.axes[ax].clip_value(float(min(ax_range))),
-                                         constr.axes[ax].clip_value(float(max(ax_range))))
+                self._scan_ranges[ax] = (constr.axes[ax].position.clip(float(min(ax_range))),
+                                         constr.axes[ax].position.clip(float(max(ax_range))))
 
             new_ranges = {ax: self._scan_ranges[ax] for ax in ranges}
             self.sigScanSettingsChanged.emit({'range': new_ranges})
@@ -261,7 +261,7 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'resolution': new_res})
                     return new_res
 
-                self._scan_resolution[ax] = constr.axes[ax].clip_resolution(int(ax_res))
+                self._scan_resolution[ax] = constr.axes[ax].resolution.clip(int(ax_res))
 
             new_resolution = {ax: self._scan_resolution[ax] for ax in resolution}
             self.sigScanSettingsChanged.emit({'resolution': new_resolution})
@@ -283,7 +283,7 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'frequency': new_freq})
                     return new_freq
 
-                self._scan_frequency[ax] = constr.axes[ax].clip_frequency(float(ax_freq))
+                self._scan_frequency[ax] = constr.axes[ax].frequency.clip(float(ax_freq))
 
             new_freq = {ax: self._scan_frequency[ax] for ax in frequency}
             self.sigScanSettingsChanged.emit({'frequency': new_freq})
@@ -306,7 +306,7 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                     return new_pos
 
-                new_pos[ax] = ax_constr[ax].clip_value(pos)
+                new_pos[ax] = ax_constr[ax].position.clip(pos)
                 if pos != new_pos[ax]:
                     self.log.warning('Scanner position target value out of bounds for axis "{0}". '
                                      'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
@@ -410,7 +410,7 @@ class ScanningProbeLogic(LogicBase):
             return
 
     def set_full_scan_ranges(self):
-        scan_range = {ax: axis.value_range for ax, axis in self.scanner_constraints.axes.items()}
+        scan_range = {ax: axis.position.bounds for ax, axis in self.scanner_constraints.axes.items()}
         return self.set_scan_range(scan_range)
 
     def __start_timer(self):

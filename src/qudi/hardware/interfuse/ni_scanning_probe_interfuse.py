@@ -511,7 +511,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         ni_channel = self._ni_channel_mapping[axis]
         voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
-        position_range = self.get_constraints().axes[axis].value_range
+        position_range = self.get_constraints().axes[axis].position.bounds
 
         slope = np.diff(voltage_range) / np.diff(position_range)
         intercept = voltage_range[1] - position_range[1] * slope
@@ -555,7 +555,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             try:
                 axis = reverse_routing[ni_channel]
                 voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
-                position_range = self.get_constraints().axes[axis].value_range
+                position_range = self.get_constraints().axes[axis].position.bounds
 
                 slope = np.diff(position_range) / np.diff(voltage_range)
                 intercept = position_range[1] - voltage_range[1] * slope
@@ -768,10 +768,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             constr = self.get_constraints()
 
             for axis, pos in position.items():
-                in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
+                in_range_flag, _ = in_range(pos, *constr.axes[axis].position.bounds)
                 if not in_range_flag:
-                    position[axis] = float(constr.axes[axis].clip_value(position[axis]))
-                    self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
+                    position[axis] = float(constr.axes[axis].position.clip(position[axis]))
+                    self.log.warning(f'Position {pos} out of range {constr.axes[axis].position.bounds} '
                                      f'for axis {axis}. Value clipped to {position[axis]}')
                 # TODO Adapt interface to use "in_range"?
                 self._target_pos[axis] = position[axis]

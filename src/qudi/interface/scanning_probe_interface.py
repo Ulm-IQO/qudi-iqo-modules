@@ -68,65 +68,6 @@ class ScannerAxis:
         if self.name == '':
             raise ValueError('Parameter "name" must be non-empty str.')
 
-    # properties for legacy support
-
-    @property
-    def value_range(self):
-        return self.position.bounds
-
-    @property
-    def step_range(self):
-        return self.step.bounds
-
-    @property
-    def resolution_range(self):
-        return self.resolution.bounds
-
-    @property
-    def frequency_range(self):
-        return self.frequency.bounds
-
-    @property
-    def min_resolution(self):
-        return self.resolution.minimum
-
-    @property
-    def max_resolution(self):
-        return self.resolution.maximum
-
-    @property
-    def min_step(self):
-        return self.step.minimum
-
-    @property
-    def max_step(self):
-        return self.step.maximum
-
-    @property
-    def min_value(self):
-        return self.position.minimum
-
-    @property
-    def max_value(self):
-        return self.position.maximum
-
-    @property
-    def min_frequency(self):
-        return self.frequency.minimum
-
-    @property
-    def max_frequency(self):
-        return self.frequency.maximum
-
-    def clip_value(self, value):
-        return self.position.clip(value)
-
-    def clip_resolution(self, res):
-        return self.resolution.clip(res)
-
-    def clip_frequency(self, freq):
-        return self.frequency.clip(freq)
-
 
 @dataclass(frozen=True)
 class ScanSettings:

@@ -90,8 +90,8 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
 
             forward_spinbox = ScienDSpinBox()
             forward_spinbox.setObjectName('{0}_forward_scienDSpinBox'.format(ax_name))
-            forward_spinbox.setRange(*axis.frequency_range)
-            forward_spinbox.setValue(max(axis.min_frequency, axis.max_frequency / 100))
+            forward_spinbox.setRange(*axis.frequency.bounds)
+            forward_spinbox.setValue(max(axis.frequency.minimum, axis.frequency.maximum / 100))
             forward_spinbox.setSuffix('Hz')
             forward_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             forward_spinbox.setMinimumSize(75, 0)
@@ -100,8 +100,8 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
 
             backward_spinbox = ScienDSpinBox()
             backward_spinbox.setObjectName('{0}_backward_scienDSpinBox'.format(ax_name))
-            backward_spinbox.setRange(*axis.frequency_range)
-            backward_spinbox.setValue(max(axis.min_frequency, axis.max_frequency / 100))
+            backward_spinbox.setRange(*axis.frequency.bounds)
+            backward_spinbox.setValue(max(axis.frequency.minimum, axis.frequency.maximum / 100))
             backward_spinbox.setSuffix('Hz')
             backward_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             backward_spinbox.setMinimumSize(75, 0)

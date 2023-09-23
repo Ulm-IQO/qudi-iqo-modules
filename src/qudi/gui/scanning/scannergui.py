@@ -532,10 +532,10 @@ class ScannerGui(GuiBase):
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            marker_bounds = (axes_constr[0].value_range, (None, None))
+            marker_bounds = (axes_constr[0].position.bounds, (None, None))
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
-            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range)
+            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].position.bounds)
             self.scan_1d_dockwidgets[axes] = dockwidget
         else:
             if axes in self.scan_2d_dockwidgets:
@@ -543,13 +543,13 @@ class ScannerGui(GuiBase):
                                'already created. Remove old widget first.'.format(axes))
                 return
             marker_size = tuple(abs(optimizer_range[ax]) for ax in axes)
-            marker_bounds = (axes_constr[0].value_range, axes_constr[1].value_range)
+            marker_bounds = (axes_constr[0].position.bounds, axes_constr[1].position.bounds)
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr,
                                         xy_region_min_size_percentile=self._min_crosshair_size_fraction)
             dockwidget.scan_widget.set_marker_size(marker_size)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
-            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range,
-                                                  y_range=axes_constr[1].value_range)
+            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].position.bounds,
+                                                  y_range=axes_constr[1].position.bounds)
             self.scan_2d_dockwidgets[axes] = dockwidget
 
         dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
@@ -928,8 +928,8 @@ class ScannerGui(GuiBase):
         for ax, dockwidget in self.scan_2d_dockwidgets.items():
             width = self._osd.settings['scan_range'][ax[0]]
             height = self._osd.settings['scan_range'][ax[1]]
-            x_min, x_max = axes_constr[ax[0]].value_range
-            y_min, y_max = axes_constr[ax[1]].value_range
+            x_min, x_max = axes_constr[ax[0]].position.bounds
+            y_min, y_max = axes_constr[ax[1]].position.bounds
             marker_bounds = (
                 (x_min - width / 2, x_max + width / 2),
                 (y_min - height / 2, y_max + height / 2)
