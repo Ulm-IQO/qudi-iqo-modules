@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from dataclasses import dataclass, field, asdict
+from dataclasses import dataclass, field, asdict, replace
 from typing import Optional, Tuple, Dict
 import datetime
 import numpy as np
@@ -314,6 +314,19 @@ class ScanData:
 
     def to_dict(self):
         return asdict(self)
+
+    def copy(self):
+        """Create a copy of this object.
+        Take care to copy all (immutable) arrays."""
+        if self._data:
+            _data_copy = tuple(a.copy() for a in self._data)
+        else:
+            _data_copy = None
+        if self._position_data:
+            _position_data_copy = tuple(a.copy() for a in self._position_data)
+        else:
+            _position_data_copy = None
+        return replace(self, _data=_data_copy, _position_data=_position_data_copy)
 
     @property
     def channel_units(self) -> Dict[str, str]:

@@ -442,7 +442,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                             self.module_state.unlock()
                         elif self.thread() is QtCore.QThread.currentThread():
                             self.__start_timer()
-            return self._scan_data
+            return self._scan_data.copy()
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():

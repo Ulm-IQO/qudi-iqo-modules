@@ -23,7 +23,6 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
 import time
-import copy
 from typing import Optional
 
 from PySide2 import QtCore
@@ -428,8 +427,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             raise RuntimeError('ScanData is not yet configured, please set scan settings first')
         try:
             with self._thread_lock_data:
-                # a shallow copy is enough since ScanData only contains immutables
-                return copy.copy(self._scan_data)
+                return self._scan_data.copy()
         except:
             self.log.exception("")
 
