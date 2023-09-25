@@ -108,6 +108,18 @@ class ScanSettings:
                 'The "position_feedback_axes" must be a subset of scan axes.'
             )
 
+    @classmethod
+    def from_dict(cls, dict_repr):
+        """Create instance from dict taking care to convert arguments to tuples."""
+        return cls(
+            channels=tuple(dict_repr['channels']),
+            axes=tuple(dict_repr['axes']),
+            range=tuple((i[0], i[1]) for i in dict_repr['range']),
+            resolution=tuple(dict_repr['resolution']),
+            frequency=dict_repr['frequency'],
+            position_feedback_axes=tuple(dict_repr['position_feedback_axes'])
+        )
+
     @property
     def has_position_feedback(self) -> bool:
         return bool(self.position_feedback_axes)
@@ -251,7 +263,7 @@ class ScanData:
         settings = dict_repr['settings']
         dict_repr_without_settings = dict_repr.copy()
         del dict_repr_without_settings['settings']
-        return cls(settings=ScanSettings(**settings), **dict_repr_without_settings)
+        return cls(settings=ScanSettings.from_dict(settings), **dict_repr_without_settings)
 
     def to_dict(self):
         return asdict(self)
@@ -344,11 +356,11 @@ class ScanData:
 
     @property
     def scan_axes(self) -> Tuple[str, ...]:
-        return tuple(self.settings.axes)
+        return self.settings.axes
 
     @property
     def channels(self) -> Tuple[str, ...]:
-        return tuple(self.settings.channels)
+        return self.settings.channels
 
     @property
     def axes_units(self) -> Dict[str, str]:
