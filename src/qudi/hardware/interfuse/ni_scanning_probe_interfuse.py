@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
 import time
-from typing import Optional
+from typing import Optional, Dict
 
 from PySide2 import QtCore
 from PySide2.QtGui import QGuiApplication
@@ -32,7 +32,7 @@ from qudi.interface.scanning_probe_interface import ScanningProbeInterface, Scan
     ScannerAxis, ScannerChannel, ScanData, ScanSettings
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
-from qudi.util.mutex import RecursiveMutex, Mutex
+from qudi.util.mutex import Mutex
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.helpers import in_range
 from qudi.util.constraints import ScalarConstraint
@@ -85,14 +85,14 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     _ni_finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
     _ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
 
-    _ni_channel_mapping = ConfigOption(name='ni_channel_mapping', missing='error')
-    _position_ranges = ConfigOption(name='position_ranges', missing='error')
-    _frequency_ranges = ConfigOption(name='frequency_ranges', missing='error')
-    _resolution_ranges = ConfigOption(name='resolution_ranges', missing='error')
-    _input_channel_units = ConfigOption(name='input_channel_units', missing='error')
+    _ni_channel_mapping: Dict[str, str] = ConfigOption(name='ni_channel_mapping', missing='error')
+    _position_ranges: Dict[str, list[float]] = ConfigOption(name='position_ranges', missing='error')
+    _frequency_ranges: Dict[str, list[float]] = ConfigOption(name='frequency_ranges', missing='error')
+    _resolution_ranges: Dict[str, list[float]] = ConfigOption(name='resolution_ranges', missing='error')
+    _input_channel_units: Dict[str, str] = ConfigOption(name='input_channel_units', missing='error')
 
-    __backwards_line_resolution = ConfigOption(name='backwards_line_resolution', default=50)
-    __max_move_velocity = ConfigOption(name='maximum_move_velocity', default=400e-6)
+    __backwards_line_resolution: int = ConfigOption(name='backwards_line_resolution', default=50)
+    __max_move_velocity: float = ConfigOption(name='maximum_move_velocity', default=400e-6)
 
     _threaded = True  # Interfuse is by default not threaded.
 
@@ -210,7 +210,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         pass
 
     @property
-    def scan_settings(self):
+    def scan_settings(self) -> ScanSettings:
         return self._scan_settings
 
     def configure_scan(self, settings: ScanSettings) -> None:
@@ -377,7 +377,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.module_state.lock()
 
             first_scan_position = {ax: pos[0] for ax, pos
-                                   in zip(self.scan_settings['axes'], self.scan_settings['range'])}
+                                   in zip(self.scan_settings.axes, self.scan_settings.range)}
             self._move_to_and_start_scan(first_scan_position)
 
         except Exception:
@@ -593,11 +593,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             axis = scan_data.settings.axes[0]
             horizontal_resolution = scan_data.settings.resolution[0]
 
-            horizontal = np.linspace(*self._position_to_voltage(axis, scan_data.settings.scan_range[0]),
+            horizontal = np.linspace(*self._position_to_voltage(axis, scan_data.settings.range[0]),
                                      horizontal_resolution)
 
-            horizontal_return_line = np.linspace(self._position_to_voltage(axis, scan_data.settings.scan_range[0][1]),
-                                                 self._position_to_voltage(axis, scan_data.settings.scan_range[0][0]),
+            horizontal_return_line = np.linspace(self._position_to_voltage(axis, scan_data.settings.range[0][1]),
+                                                 self._position_to_voltage(axis, scan_data.settings.range[0][0]),
                                                  self.__backwards_line_resolution)
             # TODO Return line for 1d included due to possible hysteresis. Might be able to drop it,
             #  but then get_scan_data needs to be changed accordingly
@@ -617,11 +617,11 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             # horizontal scan array / "fast axis"
             horizontal_axis = scan_data.settings.axes[0]
 
-            horizontal = np.linspace(*self._position_to_voltage(horizontal_axis, scan_data.settings.scan_range[0]),
+            horizontal = np.linspace(*self._position_to_voltage(horizontal_axis, scan_data.settings.range[0]),
                                      horizontal_resolution)
 
-            horizontal_return_line = np.linspace(self._position_to_voltage(horizontal_axis, scan_data.settings.scan_range[0][1]),
-                                                 self._position_to_voltage(horizontal_axis, scan_data.settings.scan_range[0][0]),
+            horizontal_return_line = np.linspace(self._position_to_voltage(horizontal_axis, scan_data.settings.range[0][1]),
+                                                 self._position_to_voltage(horizontal_axis, scan_data.settings.range[0][0]),
                                                  self.__backwards_line_resolution)
             # a single back and forth line
             horizontal_single_line = np.concatenate((horizontal, horizontal_return_line))
@@ -632,7 +632,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             vertical_axis = scan_data.settings.axes[1]
 
-            vertical = np.linspace(*self._position_to_voltage(vertical_axis, scan_data.settings.scan_range[1]),
+            vertical = np.linspace(*self._position_to_voltage(vertical_axis, scan_data.settings.range[1]),
                                    vertical_resolution)
 
             # during horizontal line, the vertical line keeps its value
