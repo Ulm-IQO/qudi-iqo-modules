@@ -85,7 +85,7 @@ class ScanningDataLogic(LogicBase):
         """
         self._shrink_history()
         if self._scan_history:
-            self._curr_data_per_scan = {sd.scan_axes: sd for sd in self._scan_history}
+            self._curr_data_per_scan = {sd.settings.axes: sd for sd in self._scan_history}
             self.restore_from_history(-1)
         else:
             self._curr_history_index = 0
@@ -116,7 +116,7 @@ class ScanningDataLogic(LogicBase):
         with self._thread_lock:
             if scan_axes is None:
                 try:
-                    scan_axes = self._scan_history[-1].scan_axes
+                    scan_axes = self._scan_history[-1].settings.axes
                 except IndexError:
                     return None
             return self._curr_data_per_scan.get(scan_axes, None)
@@ -130,7 +130,7 @@ class ScanningDataLogic(LogicBase):
             ret_id = np.nan
             idx_i = -1
             for scan_data in reversed(self._scan_history):
-                if scan_data.scan_axes == scan_axes or scan_axes is None:
+                if scan_data.settings.axes == scan_axes or scan_axes is None:
                     ret_id = idx_i
                     break
                 idx_i -= 1
@@ -179,25 +179,25 @@ class ScanningDataLogic(LogicBase):
                 return
 
             settings = {
-                'range': {ax: data.scan_range[i] for i, ax in enumerate(data.scan_axes)},
-                'resolution': {ax: data.scan_resolution[i] for i, ax in enumerate(data.scan_axes)},
-                'frequency': {data.scan_axes[0]: data.scan_frequency}
+                'range': {ax: data.settings.range[i] for i, ax in enumerate(data.settings.axes)},
+                'resolution': {ax: data.settings.resolution[i] for i, ax in enumerate(data.settings.axes)},
+                'frequency': {data.settings.axes[0]: data.settings.frequency}
             }
             self._scan_logic().set_scan_settings(settings)
 
             #self.log.debug(f"Restoring hist settings from index {index} with {settings}")
 
             self._curr_history_index = index
-            self._curr_data_per_scan[data.scan_axes] = data
+            self._curr_data_per_scan[data.settings.axes] = data
             self.sigHistoryScanDataRestored.emit(data)
             return
 
     def _update_scan_state(self, running, data, caller_id):
 
         settings = {
-            'range': {ax: data.scan_range[i] for i, ax in enumerate(data.scan_axes)},
-            'resolution': {ax: data.scan_resolution[i] for i, ax in enumerate(data.scan_axes)},
-            'frequency': {data.scan_axes[0]: data.scan_frequency}
+            'range': {ax: data.settings.range[i] for i, ax in enumerate(data.settings.axes)},
+            'resolution': {ax: data.settings.resolution[i] for i, ax in enumerate(data.settings.axes)},
+            'frequency': {data.settings.axes[0]: data.settings.frequency}
         }
 
         with self._thread_lock:
@@ -205,7 +205,7 @@ class ScanningDataLogic(LogicBase):
                 #self.log.debug(f"Adding to data history with settings {settings}")
                 self._scan_history.append(data)
                 self._shrink_history()
-                self._curr_data_per_scan[data.scan_axes] = data
+                self._curr_data_per_scan[data.settings.axes] = data
                 self._curr_history_index = len(self._scan_history) - 1
                 self.sigHistoryScanDataRestored.emit(data)
 
@@ -225,11 +225,11 @@ class ScanningDataLogic(LogicBase):
         @return fig: a matplotlib figure object to be saved to file.
         """
         data = scan_data.data[channel]
-        axis = scan_data.scan_axes[0]
+        axis = scan_data.settings.axes[0]
         scanner_pos = self._scan_logic().scanner_target
 
         # Scale axes and data
-        scan_range_x = (scan_data.scan_range[0][0], scan_data.scan_range[0][1])
+        scan_range_x = (scan_data.settings.range[0][0], scan_data.settings.range[0][1])
         si_prefix_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale
         si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
         si_prefix_data = ScaledFloat(np.nanmax(data)-np.nanmin(data)).scale
@@ -239,9 +239,9 @@ class ScanningDataLogic(LogicBase):
         fig, ax = plt.subplots()
 
         # Create image plot
-        x_axis = np.linspace(scan_data.scan_range[0][0],
-                             scan_data.scan_range[0][1],
-                             scan_data.scan_resolution[0])
+        x_axis = np.linspace(scan_data.settings.range[0][0],
+                             scan_data.settings.range[0][1],
+                             scan_data.settings.resolution[0])
         x_axis = x_axis[~np.isnan(data)]
         data = data[~np.isnan(data)]
 
@@ -249,8 +249,8 @@ class ScanningDataLogic(LogicBase):
                           data/si_factor_data)
 
         # Axes labels
-        if scan_data.axes_units[axis]:
-            x_label = axis + f' position ({si_prefix_x}{scan_data.axes_units[axis]})'
+        if scan_data.axis_units[axis]:
+            x_label = axis + f' position ({si_prefix_x}{scan_data.axis_units[axis]})'
         else:
             x_label = axis + f' position ({si_prefix_x})'
         if scan_data.channel_units[channel]:
@@ -296,10 +296,10 @@ class ScanningDataLogic(LogicBase):
 
                 # ToDo: Add meaningful metadata if missing:
                 parameters = {}
-                for range, resolution, unit, axis in zip(scan_data.scan_range,
-                                      scan_data.scan_resolution,
-                                      scan_data.axes_units.values(),
-                                      scan_data.scan_axes):
+                for range, resolution, unit, axis in zip(scan_data.settings.range,
+                                      scan_data.settings.resolution,
+                                      scan_data.axis_units.values(),
+                                      scan_data.settings.axes):
 
                     parameters[f"{axis} axis name"] = axis
                     parameters[f"{axis} axis unit"] = unit
@@ -308,14 +308,14 @@ class ScanningDataLogic(LogicBase):
                     parameters[f"{axis} axis min"] = range[0]
                     parameters[f"{axis} axis max"] = range[1]
 
-                parameters["pixel frequency"] = scan_data.scan_frequency
+                parameters["pixel frequency"] = scan_data.settings.frequency
                 parameters[f"scanner target at start"] = scan_data.scanner_target_at_start
                 parameters['measurement start'] = str(scan_data.timestamp)
 
                 # add meta data for axes in full target, but not scan axes
                 if scan_data.scanner_target_at_start:
                     for new_ax in scan_data.scanner_target_at_start.keys():
-                        if new_ax not in scan_data.scan_axes:
+                        if new_ax not in scan_data.settings.axes:
                             ax_info = self._scan_logic().scanner_constraints.axes[new_ax]
                             ax_name = ax_info.name
                             ax_unit = ax_info.unit
@@ -325,7 +325,7 @@ class ScanningDataLogic(LogicBase):
                 # Save data and thumbnail to file
                 for channel, data in scan_data.data.items():
                     # data
-                    # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.scan_axes)
+                    # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.settings.axes)
                     tag = self.create_tag_from_scan_data(scan_data, channel)
                     file_path, _, _ = ds.save_data(data,
                                                    metadata=parameters,
@@ -333,10 +333,10 @@ class ScanningDataLogic(LogicBase):
                                                    timestamp=timestamp,
                                                    column_headers='Image (columns is X, rows is Y)')
                     # thumbnail
-                    if len(scan_data.scan_axes) == 1:
+                    if len(scan_data.settings.axes) == 1:
                         figure = self.draw_1d_scan_figure(scan_data, channel)
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
-                    elif len(scan_data.scan_axes) == 2:
+                    elif len(scan_data.settings.axes) == 2:
                         figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
                     else:
@@ -353,7 +353,7 @@ class ScanningDataLogic(LogicBase):
         self.save_scan(scan, color_range=color_range)
 
     def create_tag_from_scan_data(self, scan_data, channel):
-        axes = scan_data.scan_axes
+        axes = scan_data.settings.axes
         axis_dim = len(axes)
         axes_code = reduce(operator.add, axes)
         tag = f"{axis_dim}D-scan with {axes_code} axes from channel {channel}"
@@ -365,7 +365,7 @@ class ScanningDataLogic(LogicBase):
         @return fig: a matplotlib figure object to be saved to file.
         """
         image_arr = scan_data.data[channel]
-        scan_axes = scan_data.scan_axes
+        scan_axes = scan_data.settings.axes
         scanner_pos = self._scan_logic().scanner_target
 
 
@@ -377,8 +377,8 @@ class ScanningDataLogic(LogicBase):
         fig, ax = plt.subplots()
 
         # Scale axes and data
-        scan_range_x = (scan_data.scan_range[0][1], scan_data.scan_range[0][0])
-        scan_range_y =  (scan_data.scan_range[1][1], scan_data.scan_range[1][0])
+        scan_range_x = (scan_data.settings.range[0][1], scan_data.settings.range[0][0])
+        scan_range_y =  (scan_data.settings.range[1][1], scan_data.settings.range[1][0])
         si_prefix_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale
         si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
         si_prefix_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale
@@ -394,12 +394,12 @@ class ScanningDataLogic(LogicBase):
                             vmin=cbar_range[0]/si_factor_cb,
                             vmax=cbar_range[1]/si_factor_cb,
                             interpolation='none',
-                            extent=(*np.asarray(scan_data.scan_range[0])/si_factor_x,
-                                    *np.asarray(scan_data.scan_range[1])/si_factor_y))
+                            extent=(*np.asarray(scan_data.settings.range[0])/si_factor_x,
+                                    *np.asarray(scan_data.settings.range[1])/si_factor_y))
 
         ax.set_aspect(1)
-        ax.set_xlabel(scan_axes[0] + f' position ({si_prefix_x}{scan_data.axes_units[scan_axes[0]]})')
-        ax.set_ylabel(scan_axes[1] + f' position ({si_prefix_y}{scan_data.axes_units[scan_axes[1]]})')
+        ax.set_xlabel(scan_axes[0] + f' position ({si_prefix_x}{scan_data.axis_units[scan_axes[0]]})')
+        ax.set_ylabel(scan_axes[1] + f' position ({si_prefix_y}{scan_data.axis_units[scan_axes[1]]})')
         ax.spines['bottom'].set_position(('outward', 10))
         ax.spines['left'].set_position(('outward', 10))
         ax.spines['top'].set_visible(False)
@@ -451,7 +451,7 @@ class ScanningDataLogic(LogicBase):
         metainfo_str = "Scanner target:\n"
         for axis in scan_axes:
             val = scanner_pos[axis]
-            unit = scan_data.axes_units[axis]
+            unit = scan_data.axis_units[axis]
             metainfo_str += f"{axis}: {ScaledFloat(val):.3r}{unit}\n"
 
         # annotate the (all axes) scanner start target

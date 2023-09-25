@@ -362,22 +362,22 @@ class ScanningOptimizeLogic(LogicBase):
                 #self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
 
                 try:
-                    if data.scan_dimension == 1:
-                        x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
+                    if data.settings.scan_dimension == 1:
+                        x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
                         opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
                             x,
                             data.data[self._data_channel]
                         )
                     else:
-                        x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
-                        y = np.linspace(*data.scan_range[1], data.scan_resolution[1])
+                        x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
+                        y = np.linspace(*data.settings.range[1], data.settings.resolution[1])
                         xy = np.meshgrid(x, y, indexing='ij')
                         opt_pos, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
                             xy,
                             data.data[self._data_channel].ravel()
                         )
 
-                    position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
+                    position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.settings.axes)}
                     #self.log.debug(f"Optimizer issuing position update: {position_update}")
                     if fit_data is not None:
                         new_pos = self._scan_logic().set_target_position(position_update, move_blocking=True)

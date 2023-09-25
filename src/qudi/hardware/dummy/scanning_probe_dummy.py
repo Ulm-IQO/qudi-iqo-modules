@@ -406,7 +406,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 elapsed = time.time() - self.__scan_start
                 line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
 
-                if self._scan_data.scan_dimension == 2:
+                if self._scan_data.settings.scan_dimension == 2:
                     acquired_lines = min(int(np.floor(elapsed / line_time)),
                                          self.scan_settings.resolution[1])
                     if acquired_lines > 0:

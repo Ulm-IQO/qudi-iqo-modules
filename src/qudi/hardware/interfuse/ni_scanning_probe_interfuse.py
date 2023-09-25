@@ -236,7 +236,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             )
             self.raw_data_container = RawDataContainer(self._scan_data.channels,
                                                        settings.resolution[
-                                                           1] if self._scan_data.scan_dimension == 2 else 1,
+                                                           1] if self._scan_data.settings.scan_dimension == 2 else 1,
                                                        settings.resolution[0],
                                                        self.__backwards_line_resolution)
             # self.log.debug(f"New scanData created: {self._scan_data.data}")
@@ -469,7 +469,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def _fetch_data_chunk(self):
         try:
             # self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
-            # chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
+            # chunk_size = self._scan_data.settings.resolution[0] + self.__backwards_line_resolution
             chunk_size = 10  # TODO Hardcode or go line by line as commented out above?
             # Request a minimum of chunk_size samples per loop
             try:
@@ -588,16 +588,16 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         assert isinstance(scan_data, ScanData), 'This function requires a scan_data object as input'
 
-        if scan_data.scan_dimension == 1:
+        if scan_data.settings.scan_dimension == 1:
 
-            axis = scan_data.scan_axes[0]
-            horizontal_resolution = scan_data.scan_resolution[0]
+            axis = scan_data.settings.axes[0]
+            horizontal_resolution = scan_data.settings.resolution[0]
 
-            horizontal = np.linspace(*self._position_to_voltage(axis, scan_data.scan_range[0]),
+            horizontal = np.linspace(*self._position_to_voltage(axis, scan_data.settings.scan_range[0]),
                                      horizontal_resolution)
 
-            horizontal_return_line = np.linspace(self._position_to_voltage(axis, scan_data.scan_range[0][1]),
-                                                 self._position_to_voltage(axis, scan_data.scan_range[0][0]),
+            horizontal_return_line = np.linspace(self._position_to_voltage(axis, scan_data.settings.scan_range[0][1]),
+                                                 self._position_to_voltage(axis, scan_data.settings.scan_range[0][0]),
                                                  self.__backwards_line_resolution)
             # TODO Return line for 1d included due to possible hysteresis. Might be able to drop it,
             #  but then get_scan_data needs to be changed accordingly
@@ -609,19 +609,19 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             return voltage_dict
 
-        elif scan_data.scan_dimension == 2:
+        elif scan_data.settings.scan_dimension == 2:
 
-            horizontal_resolution = scan_data.scan_resolution[0]
-            vertical_resolution = scan_data.scan_resolution[1]
+            horizontal_resolution = scan_data.settings.resolution[0]
+            vertical_resolution = scan_data.settings.resolution[1]
 
             # horizontal scan array / "fast axis"
-            horizontal_axis = scan_data.scan_axes[0]
+            horizontal_axis = scan_data.settings.axes[0]
 
-            horizontal = np.linspace(*self._position_to_voltage(horizontal_axis, scan_data.scan_range[0]),
+            horizontal = np.linspace(*self._position_to_voltage(horizontal_axis, scan_data.settings.scan_range[0]),
                                      horizontal_resolution)
 
-            horizontal_return_line = np.linspace(self._position_to_voltage(horizontal_axis, scan_data.scan_range[0][1]),
-                                                 self._position_to_voltage(horizontal_axis, scan_data.scan_range[0][0]),
+            horizontal_return_line = np.linspace(self._position_to_voltage(horizontal_axis, scan_data.settings.scan_range[0][1]),
+                                                 self._position_to_voltage(horizontal_axis, scan_data.settings.scan_range[0][0]),
                                                  self.__backwards_line_resolution)
             # a single back and forth line
             horizontal_single_line = np.concatenate((horizontal, horizontal_return_line))
@@ -630,9 +630,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             # vertical scan array / "slow axis"
 
-            vertical_axis = scan_data.scan_axes[1]
+            vertical_axis = scan_data.settings.axes[1]
 
-            vertical = np.linspace(*self._position_to_voltage(vertical_axis, scan_data.scan_range[1]),
+            vertical = np.linspace(*self._position_to_voltage(vertical_axis, scan_data.settings.scan_range[1]),
                                    vertical_resolution)
 
             # during horizontal line, the vertical line keeps its value

@@ -319,7 +319,7 @@ class ScanData:
 
     @position_data.setter
     def position_data(self, position_data_dict: Dict[str, np.ndarray]) -> None:
-        if not self.has_position_feedback:
+        if not self.settings.has_position_feedback:
             raise ValueError('Scanner does not have position feedback. Cannot set position data.')
         axes = tuple(position_data_dict.keys())
         if axes != self.settings.position_feedback_axes:
@@ -341,7 +341,7 @@ class ScanData:
         else:
             raise TypeError('Optional parameter "timestamp" must be datetime.datetime object.')
 
-        if self.has_position_feedback:
+        if self.settings.has_position_feedback:
             self.position_data = {ax: np.full(self.settings.resolution, np.nan) for ax in
                                   self.settings.position_feedback_axes}
         else:
@@ -351,44 +351,6 @@ class ScanData:
                         dtype=self.channel_dtypes[ch]) for ch in self.settings.channels
         }
         return
-
-    # properties for legacy support
-
-    @property
-    def scan_axes(self) -> Tuple[str, ...]:
-        return self.settings.axes
-
-    @property
-    def channels(self) -> Tuple[str, ...]:
-        return self.settings.channels
-
-    @property
-    def axes_units(self) -> Dict[str, str]:
-        return self.axis_units
-
-    @property
-    def has_position_feedback(self) -> bool:
-        return self.settings.has_position_feedback
-
-    @property
-    def scan_dimension(self) -> int:
-        return self.settings.scan_dimension
-
-    @property
-    def position_feedback_axes(self) -> Tuple[str, ...]:
-        return self.settings.position_feedback_axes
-
-    @property
-    def scan_range(self) -> Tuple[Tuple[float, float], ...]:
-        return self.settings.range
-
-    @property
-    def scan_resolution(self) -> Tuple[int, ...]:
-        return self.settings.resolution
-
-    @property
-    def scan_frequency(self) -> float:
-        return self.settings.frequency
 
 
 class ScanningProbeInterface(Base):

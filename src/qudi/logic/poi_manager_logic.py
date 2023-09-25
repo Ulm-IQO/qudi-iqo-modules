@@ -38,6 +38,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
+from qudi.interface.scanning_probe_interface import ScanData
 
 
 class RegionOfInterest:
@@ -863,10 +864,10 @@ class PoiManagerLogic(LogicBase):
     def set_scan_image(self, emit_change=True, scan_axes=None):
         """ Get the current xy scan data and set as scan_image of ROI. """
         with self._thread_lock:
-            scan_data = self._data_logic().get_current_scan_data(scan_axes)
+            scan_data: ScanData = self._data_logic().get_current_scan_data(scan_axes)
             if scan_data:
                 self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
-                                         scan_data.scan_range)
+                                         scan_data.settings.range)
 
             if emit_change:
                 self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
