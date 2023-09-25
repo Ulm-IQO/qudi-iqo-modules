@@ -26,7 +26,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-from typing import Union, Optional, List, Tuple, Sequence, Any
+from typing import Union, Optional, List, Tuple, Sequence, Any, Dict
 
 import numpy as np
 from scipy.constants import lambda2nu
@@ -82,7 +82,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._channel_units = {}
         self._channel_buffer_size = 1024**2
         self._active_switch_channels = None  # list of active switch channel numbers
-        self._last_measurement_error: Optional[float] = None
+        self._last_measurement_error: Dict[int, float] = {}
 
         # data buffer
         self._wm_start_time = None
@@ -152,7 +152,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
             if self.module_state() == 'idle':
                 self.module_state.lock()
                 self._init_buffers()
-                self._last_measurement_error = None
+                self._last_measurement_error = {ch: 0 for ch in self._active_switch_channels}
                 wavemeter_proxy.connect_instreamer(self)
             else:
                 self.log.warning('Unable to start input stream. It is already running.')
@@ -364,16 +364,16 @@ class HighFinesseWavemeter(DataInStreamInterface):
                 # channel is not active on this instreamer
                 return
 
-        if self._last_measurement_error is not None:
+        if self._last_measurement_error[ch] != 0:
             if wavelength > 0:
                 # reset error flag
-                self._last_measurement_error = None
+                self._last_measurement_error[ch] = 0
 
         if wavelength <= 0:
             # negative values indicate an error
-            if self._last_measurement_error != wavelength:
+            if self._last_measurement_error[ch] != wavelength:
                 # error is new
-                self._last_measurement_error = wavelength
+                self._last_measurement_error[ch] = wavelength
                 self.log.warning(f'The last wavemeter measurement of channel {ch} was unsuccessful '
                                  f'due to {GetFrequencyError(wavelength).name}.')
             wavelength = np.nan
