@@ -80,7 +80,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     """
 
     # TODO What about channels which are not "calibrated" to 'm', e.g. just use 'V'?
-    # TODO Bool indicators deprecated; Change in scanning probe toolchain
 
     _ni_finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
     _ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
@@ -336,6 +335,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             return pos
 
     def start_scan(self):
+        """Start a scan as configured beforehand.
+        Log an error if something fails or a 1D/2D scan is in progress.
+        """
         try:
 
             #self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
@@ -348,16 +350,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         except:
             self.log.exception("")
-            return -1
-
-        return 0
 
     @QtCore.Slot()
     def _start_scan(self):
-        """
-
-        @return (bool): Failure indicator (fail=True)
-        """
         try:
             if self._scan_data is None:
                 # todo: raising would be better, but from this delegated thread exceptions get lost
@@ -384,13 +379,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.module_state.unlock()
             self.log.exception("Starting scan failed: ")
 
-
     def stop_scan(self):
+        """Stop the currently running scan.
+        Log an error if something fails or no 1D/2D scan is in progress.
         """
-        @return bool: Failure indicator (fail=True)
-        # todo: return values as error codes are deprecated
-        """
-
         #self.log.debug("Stopping scan")
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
@@ -398,10 +390,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             self._stop_scan()
 
-        return 0
-
     @QtCore.Slot()
     def _stop_scan(self):
+        if not self.is_scan_running:
+            self.log.error('No scan in progress. Cannot stop scan.')
 
         # self.log.debug("Stopping scan...")
         self._start_scan_after_cursor = False  # Ensure Scan HW is not started after movement

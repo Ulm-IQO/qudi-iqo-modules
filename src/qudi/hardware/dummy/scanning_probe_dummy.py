@@ -58,8 +58,6 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 y: 10e-9
                 z: 50e-9
     """
-    # TODO Bool indicators deprecated; Change in scanning probe toolchain
-
     _threaded = True
 
     # config options
@@ -188,15 +186,12 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 self._spots[(x_axis, y_axis)] = spot_dict
 
     def reset(self):
-        """ Resets the hardware, so the connection is lost and other programs can access it.
-
-        @return int: error code (0:OK, -1:error)
+        """ Hard reset of the hardware.
         """
         with self._thread_lock:
             if self.module_state() == 'locked':
                 self.module_state.unlock()
             self.log.debug('Scanning probe dummy has been reset.')
-            return 0
 
     @property
     def constraints(self) -> ScanConstraints:
@@ -295,14 +290,13 @@ class ScanningProbeDummy(ScanningProbeInterface):
             return position
 
     def start_scan(self):
-        """
-        @return:
+        """Start a scan as configured beforehand.
+        Log an error if something fails or a 1D/2D scan is in progress.
         """
         with self._thread_lock:
             self.log.debug('Scanning probe dummy "start_scan" called.')
             if self.module_state() != 'idle':
                 self.log.error('Can not start scan. Scan already in progress.')
-                return -1
             if not self.scan_settings:
                 raise RuntimeError('No scan settings configured. Cannot start scan.')
             self.module_state.lock()
@@ -368,19 +362,18 @@ class ScanningProbeDummy(ScanningProbeInterface):
             line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
             self.__update_timer.setInterval(int(round(line_time * 1000)))
             self.__start_timer()
-            return 0
 
     def stop_scan(self):
-        """ Closes the scanner and cleans up afterwards.
-
-        @return int: error code (0:OK, -1:error)
+        """Stop the currently running scan.
+        Log an error if something fails or no 1D/2D scan is in progress.
         """
         with self._thread_lock:
             self.log.debug('Scanning probe dummy "stop_scan" called.')
             if self.module_state() == 'locked':
                 self._scan_image = None
                 self.module_state.unlock()
-            return 0
+            else:
+                self.log.error('No scan in progress. Cannot stop scan.')
 
     def emergency_stop(self):
         """
@@ -391,7 +384,6 @@ class ScanningProbeDummy(ScanningProbeInterface):
             pass
         self._scan_image = None
         self.log.warning('Scanner has been emergency stopped.')
-        return 0
 
     def get_scan_data(self) -> ScanData:
         """ Retrieve the ScanData instance used in the scan.
