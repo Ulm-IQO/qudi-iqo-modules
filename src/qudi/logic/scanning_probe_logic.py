@@ -324,14 +324,15 @@ class ScanningProbeLogic(LogicBase):
     def toggle_scan(self, start, scan_axes, caller_id=None):
         with self._thread_lock:
             if start:
-                return self.start_scan(scan_axes, caller_id)
-            return self.stop_scan()
+                self.start_scan(scan_axes, caller_id)
+            else:
+                self.stop_scan()
 
     def start_scan(self, scan_axes, caller_id=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
-                return 0
+                return
 
             self.log.debug('Starting scan.')
             scan_axes = tuple(scan_axes)
@@ -367,37 +368,31 @@ class ScanningProbeLogic(LogicBase):
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error("Couldn't start scan.")
-                return -1
 
             self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
             self.__start_timer()
-            return 0
+            return
 
     def stop_scan(self):
         with self._thread_lock:
             if self.module_state() == 'idle':
                 self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
-                return 0
+                return
 
             self.__stop_timer()
 
-            if self._scanner().module_state() != 'idle':
-                try:
+            try:
+                if self._scanner().module_state() != 'idle':
                     self._scanner().stop_scan()
-                except:
-                    err = -1
-            else:
-                err = 0
+            finally:
+                self.module_state.unlock()
 
-            self.module_state.unlock()
+                if self.scan_settings['save_to_history']:
+                    # module_uuid signals data-ready to data logic
+                    self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
+                else:
+                    self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
 
-            if self.scan_settings['save_to_history']:
-                # module_uuid signals data-ready to data logic
-                self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
-            else:
-                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
-
-            return err
 
     def __scan_poll_loop(self):
         with self._thread_lock:

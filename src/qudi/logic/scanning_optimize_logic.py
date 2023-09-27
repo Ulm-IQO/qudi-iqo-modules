@@ -275,14 +275,15 @@ class ScanningOptimizeLogic(LogicBase):
 
     def toggle_optimize(self, start):
         if start:
-            return self.start_optimize()
-        return self.stop_optimize()
+            self.start_optimize()
+        else:
+            self.stop_optimize()
 
     def start_optimize(self):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
-                return 0
+                return
 
             # ToDo: Sanity checks for settings go here
             self.module_state.lock()
@@ -334,7 +335,7 @@ class ScanningOptimizeLogic(LogicBase):
             self._optimal_position = dict()
             self.sigOptimizeStateChanged.emit(True, self.optimal_position, None)
             self._sigNextSequenceStep.emit()
-            return 0
+            return
 
     def _next_sequence_step(self):
         with self._thread_lock:
@@ -414,18 +415,17 @@ class ScanningOptimizeLogic(LogicBase):
         with self._thread_lock:
             if self.module_state() == 'idle':
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
-                return 0
+                return
 
-            if self._scan_logic().module_state() != 'idle':
-                # optimizer scans are never saved in scanning history
-                err = self._scan_logic().stop_scan()
-            else:
-                err = 0
-            self._scan_logic().set_scan_settings(self._stashed_scan_settings)
-            self._stashed_scan_settings = dict()
-            self.module_state.unlock()
-            self.sigOptimizeStateChanged.emit(False, dict(), None)
-            return err
+            try:
+                if self._scan_logic().module_state() != 'idle':
+                    # optimizer scans are never saved in scanning history
+                    self._scan_logic().stop_scan()
+            finally:
+                self._scan_logic().set_scan_settings(self._stashed_scan_settings)
+                self._stashed_scan_settings = dict()
+                self.module_state.unlock()
+                self.sigOptimizeStateChanged.emit(False, dict(), None)
 
     def _get_pos_from_2d_gauss_fit(self, xy, data):
         model = Gaussian2D()
