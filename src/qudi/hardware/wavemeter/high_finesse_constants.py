@@ -15,6 +15,8 @@
 # v0.1 - Initial release
 #/
 
+from enum import Enum
+
 ## ###########  Constants  ##############################################
 ## Instantiating Constants for 'RFC' parameter
 cInstCheckForWLM = -1
@@ -35,28 +37,30 @@ cNotifyRemoveWaitEvent = 3
 cNotifyInstallCallbackEx = 4
 cNotifyInstallWaitEventEx = 5
 
-## ResultError Constants of Set...-functions
-ResERR_NoErr = 0
-ResERR_WlmMissing = -1
-ResERR_CouldNotSet = -2
-ResERR_ParmOutOfRange = -3
-ResERR_WlmOutOfResources = -4
-ResERR_WlmInternalError = -5
-ResERR_NotAvailable = -6
-ResERR_WlmBusy = -7
-ResERR_NotInMeasurementMode = -8
-ResERR_OnlyInMeasurementMode = -9
-ResERR_ChannelNotAvailable = -10
-ResERR_ChannelTemporarilyNotAvailable = -11
-ResERR_CalOptionNotAvailable = -12
-ResERR_CalWavelengthOutOfRange = -13
-ResERR_BadCalibrationSignal = -14
-ResERR_UnitNotAvailable = -15
-ResERR_FileNotFound = -16
-ResERR_FileCreation = -17
-ResERR_TriggerPending = -18
-ResERR_TriggerWaiting = -19
-ResERR_NoLegitimation = -20
+
+class ResultError(Enum):
+    """ ResultError Constants of Set...-functions """
+    NoErr = 0
+    WlmMissing = -1
+    CouldNotSet = -2
+    ParmOutOfRange = -3
+    WlmOutOfResources = -4
+    WlmInternalError = -5
+    NotAvailable = -6
+    WlmBusy = -7
+    NotInMeasurementMode = -8
+    OnlyInMeasurementMode = -9
+    ChannelNotAvailable = -10
+    ChannelTemporarilyNotAvailable = -11
+    CalOptionNotAvailable = -12
+    CalWavelengthOutOfRange = -13
+    BadCalibrationSignal = -14
+    UnitNotAvailable = -15
+    FileNotFound = -16
+    FileCreation = -17
+    TriggerPending = -18
+    TriggerWaiting = -19
+    NoLegitimation = -20
 
 ## Mode Constants for Callback-Export and WaitForWLMEvent-function
 cmiResultMode = 1
@@ -283,6 +287,27 @@ cmiAveragingCount = 1524
 cmiAveragingMode = 1525
 cmiAveragingType = 1526
 
+# Helper dictionary for multichannel wavelength readout
+cmi_wavelength_n = {
+    cmiWavelength1: 1,
+    cmiWavelength2: 2,
+    cmiWavelength3: 3,
+    cmiWavelength4: 4,
+    cmiWavelength5: 5,
+    cmiWavelength6: 6,
+    cmiWavelength7: 7,
+    cmiWavelength8: 8,
+    cmiWavelength9: 9,
+    cmiWavelength10: 10,
+    cmiWavelength11: 11,
+    cmiWavelength12: 12,
+    cmiWavelength13: 13,
+    cmiWavelength14: 14,
+    cmiWavelength15: 15,
+    cmiWavelength16: 16,
+    cmiWavelength17: 17
+}
+
 ## Index constants for Get- and SetExtraSetting
 cesCalculateLive = 4501
 
@@ -425,33 +450,35 @@ cAvrgSucceeding = 2
 cAvrgSimple = 0
 cAvrgPattern = 1
 
-## Return errorvalues of GetFrequency, GetWavelength and GetWLMVersion
-ErrNoValue = 0
-ErrNoSignal = -1
-ErrBadSignal = -2
-ErrLowSignal = -3
-ErrBigSignal = -4
-ErrWlmMissing = -5
-ErrNotAvailable = -6
-InfNothingChanged = -7
-ErrNoPulse = -8
-ErrChannelNotAvailable = -10
-ErrDiv0 = -13
-ErrOutOfRange = -14
-ErrUnitNotAvailable = -15
-ErrMaxErr = ErrUnitNotAvailable
+
+class GetFrequencyError(Enum):
+    """ Return error values of GetFrequency, GetWavelength and GetWLMVersion
+    """
+    ErrNoValue = 0
+    ErrNoSignal = -1
+    ErrBadSignal = -2
+    ErrLowSignal = -3
+    ErrBigSignal = -4
+    ErrWlmMissing = -5
+    ErrNotAvailable = -6
+    InfNothingChanged = -7
+    ErrNoPulse = -8
+    ErrChannelNotAvailable = -10
+    ErrDiv0 = -13
+    ErrOutOfRange = -14
+    ErrUnitNotAvailable_ErrMaxErr = -15
 
 ## Return errorvalues of GetTemperature and GetPressure
 ErrTemperature = -1000
-ErrTempNotMeasured = ErrTemperature + ErrNoValue
-ErrTempNotAvailable = ErrTemperature + ErrNotAvailable
-ErrTempWlmMissing = ErrTemperature + ErrWlmMissing
+ErrTempNotMeasured = ErrTemperature + GetFrequencyError.ErrNoValue.value
+ErrTempNotAvailable = ErrTemperature + GetFrequencyError.ErrNotAvailable.value
+ErrTempWlmMissing = ErrTemperature + GetFrequencyError.ErrWlmMissing.value
 
 ## Return errorvalues of GetDistance
 ## real errorvalues are ErrDistance combined with those of GetWavelength
 ErrDistance = -1000000000
-ErrDistanceNotAvailable = ErrDistance + ErrNotAvailable
-ErrDistanceWlmMissing = ErrDistance + ErrWlmMissing
+ErrDistanceNotAvailable = ErrDistance + GetFrequencyError.ErrNotAvailable.value
+ErrDistanceWlmMissing = ErrDistance + GetFrequencyError.ErrWlmMissing.value
 
 ## Return flags of ControlWLMEx in combination with Show or Hide, Wait and Res = 1
 flServerStarted           = 0x00000001
