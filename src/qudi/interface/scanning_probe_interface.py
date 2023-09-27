@@ -227,15 +227,16 @@ class ScanConstraints:
 
 @dataclass
 class ScanData:
-    """
-    Data class representing settings and results of a scanning probe measurement.
+    """Data class representing settings and results of a scanning probe measurement.
+
+    scanner_target_at_start may contain positions of axes other than the axes used in this scan.
     """
 
     settings: ScanSettings
     _channel_units: Tuple[str, ...]
     _channel_dtypes: Tuple[str, ...]
     _axis_units: Tuple[str, ...]
-    _scanner_target_at_start: Optional[Tuple[float, ...]] = None
+    scanner_target_at_start: Optional[Dict[str, float]] = None
     timestamp: Optional[datetime.datetime] = None
     _data: Optional[Tuple[np.ndarray, ...]] = None
     # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
@@ -270,7 +271,7 @@ class ScanData:
 
     def copy(self):
         """Create a copy of this object.
-        Take care to copy all (immutable) arrays."""
+        Take care to copy all (mutable) arrays and dicts."""
         if self._data:
             _data_copy = tuple(a.copy() for a in self._data)
         else:
@@ -279,7 +280,12 @@ class ScanData:
             _position_data_copy = tuple(a.copy() for a in self._position_data)
         else:
             _position_data_copy = None
-        return replace(self, _data=_data_copy, _position_data=_position_data_copy)
+        return replace(
+            self,
+            _data=_data_copy,
+            _position_data=_position_data_copy,
+            scanner_target_at_start=self.scanner_target_at_start.copy()
+        )
 
     @property
     def channel_units(self) -> Dict[str, str]:
@@ -294,12 +300,10 @@ class ScanData:
         return {ax: unit for ax, unit in zip(self.settings.axes, self._axis_units)}
 
     @property
-    def scanner_target_at_start(self) -> Dict[str, float]:
-        return {ax: pos for ax, pos in zip(self.settings.axes, self._scanner_target_at_start)}
-
-    @property
-    def data(self) -> Dict[str, np.ndarray]:
+    def data(self) -> Optional[Dict[str, np.ndarray]]:
         """ Dict of channel data arrays with channel names as keys. """
+        if self._data is None:
+            return None
         return {ch: data for ch, data in zip(self.settings.channels, self._data)}
 
     @data.setter
@@ -313,8 +317,10 @@ class ScanData:
         self._data = tuple(data for data in data_dict.values())
 
     @property
-    def position_data(self) -> Dict[str, np.ndarray]:
+    def position_data(self) -> Optional[Dict[str, np.ndarray]]:
         """ Dict of (axis) position data arrays with axis names as keys. """
+        if self._position_data is None:
+            return None
         return {ax: data for ax, data in zip(self.settings.position_feedback_axes, self._position_data)}
 
     @position_data.setter

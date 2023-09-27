@@ -353,7 +353,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
                 constraints=self.constraints,
-                _scanner_target_at_start=tuple(i for i in self.get_target().values()),
+                scanner_target_at_start=self.get_target(),
             )
 
             self._scan_data.new_scan()
