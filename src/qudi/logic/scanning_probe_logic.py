@@ -333,6 +333,7 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
                 return 0
 
+            self.log.debug('Starting scan.')
             scan_axes = tuple(scan_axes)
             self._curr_caller_id = self.module_uuid if caller_id is None else caller_id
 
@@ -345,13 +346,14 @@ class ScanningProbeLogic(LogicBase):
                 resolution=tuple(self._scan_resolution[ax] for ax in scan_axes),
                 frequency=self._scan_frequency[scan_axes[0]],
             )
+            self.log.debug('Attempting to configure scanner...')
             try:
                 self._scanner().configure_scan(settings)
             except (TypeError, ValueError) as e:
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error('Could not set scan settings on scanning probe hardware.')
-                return -1
+            self.log.debug('Successfully configured scanner.')
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
             line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
@@ -359,7 +361,9 @@ class ScanningProbeLogic(LogicBase):
                                             line_points / self._scan_frequency[scan_axes[0]])
             self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
 
-            if self._scanner().start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
+            try:
+                self._scanner().start_scan()
+            except:
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error("Couldn't start scan.")
@@ -377,7 +381,13 @@ class ScanningProbeLogic(LogicBase):
 
             self.__stop_timer()
 
-            err = self._scanner().stop_scan() if self._scanner().module_state() != 'idle' else 0
+            if self._scanner().module_state() != 'idle':
+                try:
+                    self._scanner().stop_scan()
+                except:
+                    err = -1
+            else:
+                err = 0
 
             self.module_state.unlock()
 
