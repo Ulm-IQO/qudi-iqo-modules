@@ -474,8 +474,11 @@ class TimeSeriesReaderLogic(LogicBase):
                 self.log.exception('Error while trying to stop stream reader:')
                 raise
             finally:
-                self.module_state.unlock()
-                self._stop_recording()
+                self._stop_cleanup()
+
+    def _stop_cleanup(self) -> None:
+        self.module_state.unlock()
+        self._stop_recording()
 
     @QtCore.Slot()
     def _acquire_data_block(self) -> None:
@@ -521,10 +524,10 @@ class TimeSeriesReaderLogic(LogicBase):
                     self.sigNewRawData.emit(data_view, times_view)
                     # Emit update signal
                     self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
-                except:
-                    self.log.exception('Reading data from streamer went wrong:')
-                    self._stop()
-                    raise
+                except Exception as e:
+                    self.log.warning(f'Reading data from streamer went wrong: {e}')
+                    self._stop_cleanup()
+                    return
                 self._sigNextDataFrame.emit()
 
     def _process_trace_times(self, times_buffer: np.ndarray) -> None:
