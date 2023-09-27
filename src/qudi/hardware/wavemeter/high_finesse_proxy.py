@@ -22,7 +22,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+import time
 from ctypes import byref, cast, c_double, c_int, c_long, POINTER, WINFUNCTYPE
+from PySide2.QtCore import QObject
+from qudi.core.threadmanager import ThreadManager
 from qudi.core.logger import get_logger
 
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
@@ -112,6 +115,8 @@ def deactivate_all_but_lowest_channel():
 
 
 def start_measurement():
+    if _wm_has_switch:
+        _wavemeter_dll.SetSwitcherMode(True)
     err = _wavemeter_dll.Operation(high_finesse_constants.cCtrlStartMeasurement)
     if err:
         raise RuntimeError(f'Wavemeter error while starting measurement: {high_finesse_constants.ResultError(err)}')
@@ -173,8 +178,19 @@ def _get_callback_function():
         :param res1: Mostly meaningless.
         :return: 0
         """
+        global _error_in_callback
+        # check if an evil user messed with the manufacturer GUI
         if mode == high_finesse_constants.cmiOperation and intval == high_finesse_constants.cStop:
             _log.warning('Wavemeter acquisition was stopped during stream.')
+            _error_in_callback = True
+            return 0
+        elif mode == high_finesse_constants.cmiSwitcherMode:
+            _log.warning('Wavemeter switcher mode was changed during stream.')
+            _error_in_callback = True
+            return 0
+        elif mode == high_finesse_constants.cmiPulseMode:
+            _log.warning('Wavemeter pulse mode was changed during stream.')
+            _error_in_callback = True
             return 0
 
         # see if new data is from one of the active channels
@@ -196,6 +212,36 @@ def _get_callback_function():
 
     _CALLBACK = WINFUNCTYPE(c_int, c_long, c_long, c_long, c_double, c_long)
     return _CALLBACK(handle_callback)
+
+
+class CallbackErrorWatchdog(QObject):
+    """A watchdog that can take care of errors in the callback function."""
+    def wait_for_error(self) -> None:
+        while True:
+            while not _error_in_callback:
+                time.sleep(1)
+            self.handle_error()
+
+    @staticmethod
+    def handle_error() -> None:
+        global _error_in_callback
+        _log.warning('Error in callback function. Stopping all streams.')
+        streamers = _connected_instream_modules.copy()
+        for streamer in streamers:
+            # stopping all streams should also stop callback and measurement
+            streamer.stop_stream()
+        _error_in_callback = False
+
+
+def create_watchdog():
+    """This function will create a watchdog in its own thread."""
+    thread_manager = ThreadManager.instance()
+    thread = thread_manager.get_new_thread('wavemeter_callback_error_watchdog')
+    watchdog = CallbackErrorWatchdog()
+    watchdog.moveToThread(thread)
+    thread.started.connect(watchdog.wait_for_error)
+    thread.start()
+    return watchdog
 
 
 def sample_rate() -> float:
@@ -249,6 +295,9 @@ def disconnect_instreamer(module):
     else:
         _log.warning('Instream module is not connected and can therefore not be disconnected.')
 
+
+_watchdog = create_watchdog()
+_error_in_callback = False
 
 # try to activate the multi-channel switch and check if switch is present
 _wavemeter_dll.SetSwitcherMode(True)
