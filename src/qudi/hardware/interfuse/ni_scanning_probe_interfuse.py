@@ -225,6 +225,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         # check settings - will raise appropriate exceptions if something is not right
         self.constraints.check_settings(settings)
+        self.log.debug('Scan settings fulfill constraints.')
 
         self._scan_settings = settings
 
@@ -233,12 +234,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
                 settings=settings,
                 constraints=self.constraints
             )
-            self.raw_data_container = RawDataContainer(self._scan_data.channels,
+            self.log.debug(f'New ScanData created.')
+            self.raw_data_container = RawDataContainer(settings.channels,
                                                        settings.resolution[
-                                                           1] if self._scan_data.settings.scan_dimension == 2 else 1,
+                                                           1] if settings.scan_dimension == 2 else 1,
                                                        settings.resolution[0],
                                                        self.__backwards_line_resolution)
-            # self.log.debug(f"New scanData created: {self._scan_data.data}")
+            self.log.debug(f'New RawDataContainer created.')
 
         self._ni_finite_sampling_io().set_sample_rate(settings.frequency)
         self._ni_finite_sampling_io().set_active_channels(
@@ -265,7 +267,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error('Cannot move the scanner while, scan is running')
             return self.get_target()
 
-        if not set(position).issubset(self.get_constraints().axes):
+        if not set(position).issubset(self.constraints.axes):
             self.log.error('Invalid axes name in position')
             return self.get_target()
 
@@ -503,7 +505,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         ni_channel = self._ni_channel_mapping[axis]
         voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
-        position_range = self.get_constraints().axes[axis].position.bounds
+        position_range = self.constraints.axes[axis].position.bounds
 
         slope = np.diff(voltage_range) / np.diff(position_range)
         intercept = voltage_range[1] - position_range[1] * slope
@@ -528,7 +530,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if isinstance(position_vec, dict):
             raise ValueError(f"Position can't be provided as dict.")
 
-        axes = sorted(self.get_constraints().axes.keys())
+        axes = sorted(self.constraints.axes.keys())
         return {axes[idx]: pos for idx, pos in enumerate(position_vec)}
 
     def _voltage_dict_to_position_dict(self, voltages):
@@ -547,7 +549,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             try:
                 axis = reverse_routing[ni_channel]
                 voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
-                position_range = self.get_constraints().axes[axis].position.bounds
+                position_range = self.constraints.axes[axis].position.bounds
 
                 slope = np.diff(position_range) / np.diff(voltage_range)
                 intercept = position_range[1] - voltage_range[1] * slope
@@ -757,7 +759,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             if not self._ao_setpoint_channels_active:
                 self._toggle_ao_setpoint_channels(True)
 
-            constr = self.get_constraints()
+            constr = self.constraints
 
             for axis, pos in position.items():
                 in_range_flag, _ = in_range(pos, *constr.axes[axis].position.bounds)
