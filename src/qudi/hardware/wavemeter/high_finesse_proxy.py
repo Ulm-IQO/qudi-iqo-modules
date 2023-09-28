@@ -23,12 +23,13 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-from typing import Optional, List, Set, TYPE_CHECKING
+from typing import Optional, List, Set, TYPE_CHECKING, Tuple, Dict
 from ctypes import byref, cast, c_double, c_int, c_long, POINTER, WINFUNCTYPE, WinDLL
 from PySide2.QtCore import QObject
 from qudi.core.threadmanager import ThreadManager
 from qudi.core.logger import get_logger
 from qudi.core.module import Base
+from qudi.util.mutex import Mutex
 
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
 from qudi.hardware.wavemeter.high_finesse_wrapper import load_dll, setup_dll, MIN_VERSION
@@ -45,29 +46,26 @@ class CallbackErrorWatchdog(QObject):
 
     def wait_for_error(self) -> None:
         while True:
-            while not self._proxy._error_in_callback:
+            while not self._proxy.error_in_callback:
                 time.sleep(1)
-                self.check_for_channel_activation_change()
+                if self._proxy.module_state() == 'locked':
+                    self.check_for_channel_activation_change()
             self.handle_error()
 
     def check_for_channel_activation_change(self):
-        actual_active_channels = set(self._proxy._get_active_channels())
-        if self._proxy._currently_active_channels != actual_active_channels:
+        actual_active_channels = set(self._proxy.get_active_channels())
+        if self._proxy.get_connected_channels() != actual_active_channels:
             self.log.warning('Channel was deactivated or activated through GUI.')
-            # append channel to be able to start stream again
-            self._proxy._currently_active_channels.update(actual_active_channels)
             self.stop_everything()
-            for ch in self._proxy._currently_active_channels:
-                self._proxy.activate_channel(ch)
 
     def handle_error(self) -> None:
         self.log.warning('Error in callback function.')
         self.stop_everything()
-        self._proxy._error_in_callback = False
+        self._proxy.error_in_callback = False
 
     def stop_everything(self):
         self.log.warning('Stopping all streams.')
-        streamers = self._proxy._connected_instream_modules.copy()
+        streamers = list(self._proxy._connected_instream_modules).copy()
         for streamer in streamers:
             # stopping all streams should also stop callback and measurement
             streamer.stop_stream()
@@ -83,16 +81,16 @@ class HighFinesseProxy(Base):
     """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._lock = Mutex()
         
         self._wavemeter_dll: Optional[WinDLL] = None
         self._watchdog: Optional[CallbackErrorWatchdog] = None
         self._thread_manager: ThreadManager = ThreadManager.instance()
-        self._error_in_callback: bool = False
-        self._wm_has_switch: bool = False
-        self._currently_active_channels: Set = set()
-
-        self._connected_instream_modules: List['HighFinesseWavemeter'] = []
         self._callback_function: Optional[callable] = None
+        self.error_in_callback: bool = False
+        self._wm_has_switch: bool = False
+
+        self._connected_instream_modules: Dict['HighFinesseWavemeter', Set[int]] = {}
     
     def on_activate(self) -> None:
         # load and prepare the wavemeter DLL
@@ -125,24 +123,27 @@ class HighFinesseProxy(Base):
             self._wm_has_switch = False
 
         self._stop_measurement()
-        # deactivate all channels during activation - fixes issues with incorrect sample rate estimation
-        self.deactivate_all_but_lowest_channel()
 
-        self._currently_active_channels = set(self._get_active_channels())
         self._set_up_watchdog()
 
     def on_deactivate(self) -> None:
         self._tear_down_watchdog()
         del self._wavemeter_dll
 
-    def connect_instreamer(self, module: 'HighFinesseWavemeter'):
+    def connect_instreamer(self, module: 'HighFinesseWavemeter', channels: List[int]):
         """
         Connect an instreamer module to the proxy.
         The proxy will start to put new samples into the instreamer buffer.
         """
         if module not in self._connected_instream_modules:
-            self._connected_instream_modules.append(module)
+            with self._lock:
+                # do channel activation in a lock to prevent the watchdog from stopping things
+                not_connected_yet = set(channels) - self.get_connected_channels()
+                for ch in not_connected_yet:
+                    self._activate_channel(ch)
+                self._connected_instream_modules[module] = set(channels)
             if self._callback_function is None:
+                self._activate_only_connected_channels()
                 self._start_measurement()
                 self._start_callback()
         else:
@@ -151,7 +152,7 @@ class HighFinesseProxy(Base):
     def disconnect_instreamer(self, module: 'HighFinesseWavemeter'):
         """ Disconnect an instreamer module from the proxy. """
         if module in self._connected_instream_modules:
-            self._connected_instream_modules.remove(module)
+            del self._connected_instream_modules[module]
             if not self._connected_instream_modules:
                 self._stop_callback()
                 self._stop_measurement()
@@ -164,7 +165,7 @@ class HighFinesseProxy(Base):
         :return: sample rate in Hz
         """
         exposure_times = []
-        active_channels = self._get_active_channels()
+        active_channels = self.get_active_channels()
         for ch in active_channels:
             t = self._wavemeter_dll.GetExposureNum(ch, 1, 0)
             exposure_times.append(t)
@@ -183,9 +184,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Wavemeter error while setting exposure time of channel {ch}: '
                                f'{high_finesse_constants.ResultError(err)}')
 
-    # --- protected methods ---
-
-    def _get_active_channels(self) -> List[int]:
+    def get_active_channels(self) -> List[int]:
         """
         Get a list of all active channels on the multi-channel switch.
         :return: list of active channels
@@ -204,7 +203,16 @@ class HighFinesseProxy(Base):
             ch += 1
         return active_channels
 
-    def activate_channel(self, ch: int) -> None:
+    def get_connected_channels(self) -> Set[int]:
+        """Channels on the multi-channel switch which are active on a connected instreamer."""
+        channels = set()
+        for i in self._connected_instream_modules.values():
+            channels = channels | i
+        return channels
+
+    # --- protected methods ---
+
+    def _activate_channel(self, ch: int) -> None:
         """ Activate a channel on the multi-channel switch. """
         if not self._wm_has_switch:
             if ch == 1:
@@ -217,9 +225,8 @@ class HighFinesseProxy(Base):
             raise RuntimeError(
                 f'Wavemeter error while activating channel {ch}: {high_finesse_constants.ResultError(err)}'
             )
-        self._currently_active_channels.add(ch)
 
-    def deactivate_channel(self, ch: int) -> None:
+    def _deactivate_channel(self, ch: int) -> None:
         """ Deactivate a channel on the multi-channel switch. """
         if not self._wm_has_switch:
             if ch == 1:
@@ -232,15 +239,17 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Wavemeter error while deactivating channel {ch}: '
                                f'{high_finesse_constants.ResultError(err)}')
 
-    def deactivate_all_but_lowest_channel(self) -> None:
-        """
-        Deactivate all channels except the channel with the lowest index.
-        The wavemeter does not allow deactivation of all channels.
-        """
-        active_channels = self._get_active_channels()
-        active_channels.sort()
-        for i in active_channels[1:]:
-            self.deactivate_channel(i)
+    def _activate_only_connected_channels(self) -> None:
+        """Activate all channels active on a connected instreamer and disable all others."""
+        connected_channels = self.get_connected_channels()
+        if not connected_channels:
+            raise RuntimeError('Cannot deactivate all channels.')
+
+        for ch in connected_channels:
+            self._activate_channel(ch)
+        for ch in self.get_active_channels():
+            if ch not in connected_channels:
+                self._deactivate_channel(ch)
 
     def _start_measurement(self) -> None:
         if self._wm_has_switch:
@@ -274,6 +283,7 @@ class HighFinesseProxy(Base):
             cast(self._callback_function, POINTER(c_long)),  # long P1: function
             0  # long P2: callback thread priority, 0 = standard
         )
+        self.module_state.lock()
         self.log.debug('Started callback procedure.')
 
     def _stop_callback(self) -> None:
@@ -285,6 +295,7 @@ class HighFinesseProxy(Base):
             # long P1: function
             0)  # long P2: callback thread priority, 0 = standard
         self._callback_function = None
+        self.module_state.unlock()
         self.log.debug('Stopped callback procedure.')
 
     def _get_callback_function(self) -> WINFUNCTYPE:
@@ -313,15 +324,15 @@ class HighFinesseProxy(Base):
             # check if an evil user messed with the manufacturer GUI
             if mode == high_finesse_constants.cmiOperation and intval == high_finesse_constants.cStop:
                 self.log.warning('Wavemeter acquisition was stopped during stream.')
-                self._error_in_callback = True
+                self.error_in_callback = True
                 return 0
             elif mode == high_finesse_constants.cmiSwitcherMode:
                 self.log.warning('Wavemeter switcher mode was changed during stream.')
-                self._error_in_callback = True
+                self.error_in_callback = True
                 return 0
             elif mode == high_finesse_constants.cmiPulseMode:
                 self.log.warning('Wavemeter pulse mode was changed during stream.')
-                self._error_in_callback = True
+                self.error_in_callback = True
                 return 0
 
             # see if new data is from one of the active channels
@@ -337,8 +348,9 @@ class HighFinesseProxy(Base):
             else:
                 wavelength = 1e-9 * dblval  # measurement is in nm
             timestamp = 1e-3 * intval  # wavemeter records timestamps in ms
-            for instreamer in self._connected_instream_modules:
-                instreamer.process_new_wavelength(ch, wavelength, timestamp)
+            for instreamer, channels in self._connected_instream_modules.items():
+                if ch in channels:
+                    instreamer.process_new_wavelength(ch, wavelength, timestamp)
             return 0
 
         _CALLBACK = WINFUNCTYPE(c_int, c_long, c_long, c_long, c_double, c_long)

@@ -109,9 +109,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
             unit = info['unit']
             self._channel_names[ch] = ch_name
 
-            # make sure the channel is active on the multi-channel switch
-            self._proxy().activate_channel(ch)
-
             if unit == 'THz' or unit == 'Hz':
                 self._channel_units[ch] = 'Hz'
             elif unit == 'nm' or unit == 'm':
@@ -161,7 +158,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
                 self.module_state.lock()
                 self._init_buffers()
                 self._last_measurement_error = {ch: 0 for ch in self._active_switch_channels}
-                self._proxy().connect_instreamer(self)
+                self._proxy().connect_instreamer(self, self._active_switch_channels)
             else:
                 self.log.warning('Unable to start input stream. It is already running.')
 
