@@ -38,6 +38,9 @@ if TYPE_CHECKING:
     from qudi.hardware.wavemeter.high_finesse_wavemeter import HighFinesseWavemeter
 
 
+THREAD_NAME_WATCHDOG = 'wavemeter_callback_error_watchdog'
+
+
 class Watchdog(QObject):
     """A watchdog that can take care of errors in the callback function and checks for other changes."""
     def __init__(self, proxy: 'HighFinesseProxy', watch_interval: float):
@@ -97,6 +100,10 @@ class HighFinesseProxy(Base):
         self._connected_instream_modules: Dict['HighFinesseWavemeter', Set[int]] = {}
 
     def on_activate(self) -> None:
+        if self._check_for_second_instance():
+            raise RuntimeError('There is already a running proxy instance. '
+                               'Did you configure more than a single instance of this proxy?')
+
         # load and prepare the wavemeter DLL
         try:
             self._wavemeter_dll = load_dll()
@@ -107,7 +114,7 @@ class HighFinesseProxy(Base):
             v = [self._wavemeter_dll.GetWLMVersion(i) for i in range(4)]
             self.log.info(f'Successfully loaded wavemeter DLL of WS{v[0]} {v[1]},'
                           f' software revision {v[2]}, compilation number {v[3]}.')
-        # TODO: catch an error if this module is loaded twice
+
         software_rev = v[2]
         if software_rev < MIN_VERSION:
             self.log.warning(f'The wavemeter DLL software revision {software_rev} is older than the lowest revision '
@@ -233,6 +240,10 @@ class HighFinesseProxy(Base):
 
     # --- protected methods ---
 
+    def _check_for_second_instance(self) -> bool:
+        """Check if there already is a proxy running."""
+        return THREAD_NAME_WATCHDOG in self._thread_manager.thread_names
+
     def _activate_channel(self, ch: int) -> None:
         """ Activate a channel on the multi-channel switch. """
         if not self._wm_has_switch:
@@ -285,7 +296,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Wavemeter error while stopping measurement: {high_finesse_constants.ResultError(err)}')
 
     def _set_up_watchdog(self) -> None:
-        self._watchdog_thread = self._thread_manager.get_new_thread('wavemeter_callback_error_watchdog')
+        self._watchdog_thread = self._thread_manager.get_new_thread(THREAD_NAME_WATCHDOG)
         self._watchdog = Watchdog(self, self._watchdog_interval)
         self._watchdog.moveToThread(self._watchdog_thread)
         self._watchdog_thread.started.connect(self._watchdog.loop)
