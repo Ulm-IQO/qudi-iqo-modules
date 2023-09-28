@@ -72,7 +72,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
     _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
 
     # config options
-    _wavemeter_ch_config = ConfigOption(
+    _wavemeter_ch_config: Dict[str, Dict[str, Any]] = ConfigOption(
         name='channels',
         default={
             'default_channel': {'switch_ch': 1, 'unit': 'm', 'exposure': None}
@@ -85,21 +85,22 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._lock = Mutex()
 
         # internal settings
-        self._channel_names = {}  # dictionary with switch channel numbers as keys, channel names as values
-        self._channel_units = {}
+        # dictionary with switch channel numbers as keys, channel names as values
+        self._channel_names: Dict[int, str] = {}
+        self._channel_units: Dict[int, str] = {}
         self._channel_buffer_size = 1024**2
-        self._active_switch_channels = None  # list of active switch channel numbers
+        self._active_switch_channels: Optional[List[int]] = None  # list of active switch channel numbers
         self._last_measurement_error: Dict[int, float] = {}
 
         # data buffer
-        self._wm_start_time = None
-        self._data_buffer = None
-        self._timestamp_buffer = None
+        self._wm_start_time: Optional[float] = None
+        self._data_buffer: Optional[np.ndarray] = None
+        self._timestamp_buffer: Optional[np.ndarray] = None
         self._current_buffer_position = 0
         self._buffer_overflow = False
 
         # stored hardware constraints
-        self._constraints = None
+        self._constraints: Optional[DataInStreamConstraints] = None
 
     def on_activate(self) -> None:
         # configure wavemeter channels
