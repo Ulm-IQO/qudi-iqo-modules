@@ -175,6 +175,8 @@ def _get_callback_function():
         """
         if mode == high_finesse_constants.cmiOperation and intval == high_finesse_constants.cStop:
             _log.warning('Wavemeter acquisition was stopped during stream.')
+            for instreamer in _connected_instream_modules:
+                instreamer.let_flag_stop(True)
             return 0
 
         # see if new data is from one of the active channels

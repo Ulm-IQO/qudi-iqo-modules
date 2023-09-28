@@ -342,6 +342,8 @@ class WavemeterHistogramGui(GuiBase):
             self.update_data, QtCore.Qt.QueuedConnection)
         self._wavemeter_logic.sigStatusChanged.connect(
             self.update_status, QtCore.Qt.QueuedConnection)
+        self._wavemeter_logic.sigStatusChangedDisplaying.connect(
+            self.start_clicked_wavemeter, QtCore.Qt.QueuedConnection)
         self._wavemeter_logic.sigFitChanged.connect(self._update_fit_data, QtCore.Qt.QueuedConnection)
 
         # signal for current wavelength
@@ -404,10 +406,12 @@ class WavemeterHistogramGui(GuiBase):
 
     @QtCore.Slot(object, object)
     def display_current_wavelength(self, current_wavelength, current_freq):
-        if current_wavelength is not None:
+        if np.isnan(current_wavelength):
+            self._mw.wavelengthLabel2.setText(f'{current_wavelength} nm')
+            self._mw.frequencyLabel.setText(f'{current_freq} THz')
+        elif current_wavelength is not None:
             self._mw.wavelengthLabel2.setText('{0:,.6f} nm '.format(current_wavelength*1.0e9))
             self._mw.frequencyLabel.setText('{0:,.9f} THz '.format(current_freq/1.0e12))
-
         return
 
     @QtCore.Slot(object, object, object, object)
@@ -420,7 +424,8 @@ class WavemeterHistogramGui(GuiBase):
             if len(wavelength) > 0 and len(wavelength) == len(counts) == len(timings):
                 self.curve_data_points.setData(wavelength, counts)
                 self._scatterplot.setData(wavelength, timings)
-                self._pw.move_marker_selection((wavelength[-1], 0), 0)
+                if not np.isnan(wavelength[-1]):
+                    self._pw.move_marker_selection((wavelength[-1], 0), 0)
                 self._pw.set_data('Histogram', x=histogram_axis, y=histogram)
                 self._pw.set_data('Envelope', x=histogram_axis, y=envelope_histogram)
 
@@ -428,7 +433,8 @@ class WavemeterHistogramGui(GuiBase):
             if len(wavelength) > 0 and len(counts) == len(timings) == len(frequency):
                 self.curve_data_points.setData(frequency, counts)
                 self._scatterplot.setData(frequency, timings)
-                self._pw.move_marker_selection((frequency[-1], 0), 0)
+                if not np.isnan(frequency[-1]):
+                    self._pw.move_marker_selection((frequency[-1], 0), 0)
                 self._pw.set_data('Histogram', x=constants.speed_of_light / histogram_axis, y=histogram)
                 self._pw.set_data('Envelope', x=constants.speed_of_light / histogram_axis,
                                   y=envelope_histogram)
@@ -443,7 +449,6 @@ class WavemeterHistogramGui(GuiBase):
         Function to ensure that the GUI displays the current measurement status
 
         @param bool running: True if the data trace streaming is running
-        @missing param bool recording: True if the data trace recording is active
         """
         if running is None:
             running = self._wavemeter_logic.module_state() == 'locked'
@@ -488,6 +493,10 @@ class WavemeterHistogramGui(GuiBase):
 
     @QtCore.Slot()
     def start_clicked_wavemeter(self):
+        if self._wavemeter_logic._streamer().stop_flag:
+            self._mw.start_trace_Action2.setChecked(False)
+            self._wavemeter_logic._streamer().stop_flag = False
+
         if self._mw.start_trace_Action2.isChecked():
             if self._wavemeter_logic.start_displaying_current_wavelength() < 0:
                 self._mw.start_trace_Action2.setChecked(False)

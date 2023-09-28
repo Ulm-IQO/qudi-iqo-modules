@@ -55,6 +55,7 @@ class WavemeterLogic(LogicBase):
     # declare signals
     sigDataChanged = QtCore.Signal(object, object, object, object, object, object, object)
     sigStatusChanged = QtCore.Signal(bool)
+    sigStatusChangedDisplaying = QtCore.Signal()
     sigNewWavelength2 = QtCore.Signal(object, object)
     sigFitChanged = QtCore.Signal(str, dict)  # fit_name, fit_results
     _sigNextWavelength = QtCore.Signal()  # internal signal
@@ -155,25 +156,32 @@ class WavemeterLogic(LogicBase):
                     samples_to_read_counts = len(new_count_data)
 
                 n = self._streamer().available_samples if self._streamer().available_samples > 1 else 1
-                raw_data_wavelength, raw_timings = self._streamer().read_data(number_of_samples=n)
-                raw_data_wavelength = netobtain(raw_data_wavelength) #netobtain due to remote connection
-                raw_timings = netobtain(raw_timings)
-                #Above buffers as an option to save the raw wavemeter values
-
-                #Here the interpolation is performed to match the counts onto wavelength
-                if n == 1:
-                    wavemeter_data, new_timings = np.ones(samples_to_read_counts) * raw_data_wavelength, np.ones(
-                        samples_to_read_counts) * raw_timings
+                if self._streamer().stop_flag:
+                    self.log.error('Reading data from streamers went wrong; '
+                                   'stopping the stream.')
+                    self.stop_scanning()
+                    self._streamer().stop_flag = False
+                    return
                 else:
-                    arr_interp = interpolate.interp1d(raw_timings, raw_data_wavelength)
-                    new_timings = np.linspace(raw_timings[0],
-                                              raw_timings[-1],
-                                              samples_to_read_counts) if samples_to_read_counts > 1 else np.ones(1)*np.mean(raw_timings)
-                    wavemeter_data = arr_interp(new_timings)
+                    raw_data_wavelength, raw_timings = self._streamer().read_data(number_of_samples=n)
+                    raw_data_wavelength = netobtain(raw_data_wavelength) #netobtain due to remote connection
+                    raw_timings = netobtain(raw_timings)
+                    #Above buffers as an option to save the raw wavemeter values
+
+                    #Here the interpolation is performed to match the counts onto wavelength
+                    if n == 1:
+                        wavemeter_data, new_timings = np.ones(samples_to_read_counts) * raw_data_wavelength, np.ones(
+                            samples_to_read_counts) * raw_timings
+                    else:
+                        arr_interp = interpolate.interp1d(raw_timings, raw_data_wavelength)
+                        new_timings = np.linspace(raw_timings[0],
+                                                  raw_timings[-1],
+                                                  samples_to_read_counts) if samples_to_read_counts > 1 else np.ones(1)*np.mean(raw_timings)
+                        wavemeter_data = arr_interp(new_timings)
 
                 if len(wavemeter_data) != len(new_timings) != len(new_count_data) != samples_to_read_counts:
                     self.log.error('Reading data from streamers went wrong; '
-                                   'killing the stream with next data frame.')
+                                   'stopping the stream.')
                     self.stop_scanning()
                     return
 
@@ -222,7 +230,7 @@ class WavemeterLogic(LogicBase):
                 self._xmin = i
             if i > self._xmax:
                 self._xmax = i
-            if i < self._xmin_histo or i > self._xmax_histo:
+            if i < self._xmin_histo or i > self._xmax_histo or np.isnan(i):
                 continue
 
             # calculate the bin the new wavelength needs to go in
@@ -348,15 +356,20 @@ class WavemeterLogic(LogicBase):
         return
 
     def display_current_wavelength(self) -> None:
-        current_wavelength, trash_time = self._streamer().read_single_point()
-        #netobtain due to remote connection
-        current_wavelength = netobtain(current_wavelength)
-        if current_wavelength > 0:
-            current_freq = constants.speed_of_light / current_wavelength #in Hz
-            self.sigNewWavelength2.emit(current_wavelength[0], current_freq[0])
-        #display data at a rate of 10Hz
-        time.sleep(0.1)
-        self._sigNextWavelength.emit()
+        if self._streamer().stop_flag:
+            self.log.error('Reading data from streamers went wrong; '
+                           'stopping the stream.')
+            self.sigStatusChangedDisplaying.emit()
+        else:
+            current_wavelength, trash_time = self._streamer().read_single_point()
+            #netobtain due to remote connection
+            current_wavelength = netobtain(current_wavelength)
+            if current_wavelength > 0:
+                current_freq = constants.speed_of_light / current_wavelength #in Hz
+                self.sigNewWavelength2.emit(current_wavelength[0], current_freq[0])
+            #display data at a rate of 10Hz
+            time.sleep(0.1)
+            self._sigNextWavelength.emit()
 
     def start_displaying_current_wavelength(self):
         if len(self._streamer()._active_switch_channels) != 1:

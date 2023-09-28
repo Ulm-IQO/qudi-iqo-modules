@@ -83,6 +83,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._channel_buffer_size = 1024**2
         self._active_switch_channels = None  # list of active switch channel numbers
         self._last_measurement_error: Dict[int, float] = {}
+        self.stop_flag = False
 
         # data buffer
         self._wm_start_time = None
@@ -450,3 +451,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
             raise ValueError(f'timestamp_buffer must be exactly of length data_buffer // <channel_count>')
 
         return samples_per_channel
+
+    def let_flag_stop(self, stop_flag) -> None:
+        self.stop_flag = stop_flag
