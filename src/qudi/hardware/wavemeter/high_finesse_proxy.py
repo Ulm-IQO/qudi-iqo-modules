@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-from typing import Optional, List, Set, TYPE_CHECKING, Tuple, Dict
+from typing import Optional, List, Set, TYPE_CHECKING, Dict
 from ctypes import byref, cast, c_double, c_int, c_long, POINTER, WINFUNCTYPE, WinDLL
 from PySide2.QtCore import QObject
 from qudi.core.threadmanager import ThreadManager
@@ -37,6 +37,7 @@ if TYPE_CHECKING:
     from qudi.hardware.wavemeter.high_finesse_wavemeter import HighFinesseWavemeter
 
 
+# TODO: rename to something more general
 class CallbackErrorWatchdog(QObject):
     """A watchdog that can take care of errors in the callback function."""
     def __init__(self, proxy: 'HighFinesseProxy'):
@@ -46,29 +47,22 @@ class CallbackErrorWatchdog(QObject):
 
     def wait_for_error(self) -> None:
         while True:
-            while not self._proxy.error_in_callback:
-                time.sleep(1)
-                if self._proxy.module_state() == 'locked':
-                    self.check_for_channel_activation_change()
-            self.handle_error()
+            if self._proxy.error_in_callback:
+                self.handle_error()
+            if self._proxy.module_state() == 'locked':
+                self.check_for_channel_activation_change()
+            time.sleep(1)
 
-    def check_for_channel_activation_change(self):
+    def check_for_channel_activation_change(self) -> None:
         actual_active_channels = set(self._proxy.get_active_channels())
         if self._proxy.get_connected_channels() != actual_active_channels:
             self.log.warning('Channel was deactivated or activated through GUI.')
-            self.stop_everything()
+            self._proxy.stop_everything()
 
     def handle_error(self) -> None:
         self.log.warning('Error in callback function.')
-        self.stop_everything()
+        self._proxy.stop_everything()
         self._proxy.error_in_callback = False
-
-    def stop_everything(self):
-        self.log.warning('Stopping all streams.')
-        streamers = list(self._proxy._connected_instream_modules).copy()
-        for streamer in streamers:
-            # stopping all streams should also stop callback and measurement
-            streamer.stop_stream()
 
 
 class HighFinesseProxy(Base):
@@ -91,7 +85,7 @@ class HighFinesseProxy(Base):
         self._wm_has_switch: bool = False
 
         self._connected_instream_modules: Dict['HighFinesseWavemeter', Set[int]] = {}
-    
+
     def on_activate(self) -> None:
         # load and prepare the wavemeter DLL
         try:
@@ -152,10 +146,16 @@ class HighFinesseProxy(Base):
     def disconnect_instreamer(self, module: 'HighFinesseWavemeter'):
         """ Disconnect an instreamer module from the proxy. """
         if module in self._connected_instream_modules:
-            del self._connected_instream_modules[module]
-            if not self._connected_instream_modules:
-                self._stop_callback()
-                self._stop_measurement()
+            channels_disconnecting_instreamer = self._connected_instream_modules[module]
+            with self._lock:
+                del self._connected_instream_modules[module]
+                if not self._connected_instream_modules:
+                    self._stop_callback()
+                    self._stop_measurement()
+                else:
+                    # deactivate channels that are not connected by other instreamers
+                    for ch in (channels_disconnecting_instreamer - self.get_connected_channels()):
+                        self._deactivate_channel(ch)
         else:
             self.log.warning('Instream module is not connected and can therefore not be disconnected.')
 
@@ -209,6 +209,17 @@ class HighFinesseProxy(Base):
         for i in self._connected_instream_modules.values():
             channels = channels | i
         return channels
+
+    def stop_everything(self) -> None:
+        """Meant to be called from watchdog."""
+        self.log.warning('Stopping all streams.')
+        streamers = list(self._connected_instream_modules).copy()
+        self._stop_callback()
+        self._stop_measurement()
+        self._connected_instream_modules = {}
+        for streamer in streamers:
+            # stop all streams without them triggering the proxy disconnect
+            streamer.stop_stream_watchdog()
 
     # --- protected methods ---
 
@@ -271,6 +282,7 @@ class HighFinesseProxy(Base):
         self._watchdog_thread.start()
 
     def _tear_down_watchdog(self) -> None:
+        # TODO: not working reliably
         self._thread_manager.quit_thread(self._watchdog_thread)
         del self._watchdog
 

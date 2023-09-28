@@ -172,6 +172,15 @@ class HighFinesseWavemeter(DataInStreamInterface):
             else:
                 self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
 
+    def stop_stream_watchdog(self) -> None:
+        """Meant to be called from proxy watchdog only. Skips the disconnecting."""
+        with self._lock:
+            if self.module_state() == 'locked':
+                self._wm_start_time = None
+                self.module_state.unlock()
+            else:
+                self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
+
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
                               samples_per_channel: int,
