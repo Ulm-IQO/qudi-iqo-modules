@@ -87,6 +87,7 @@ def activate_channel(ch):
     err = _wavemeter_dll.SetSwitcherSignalStates(ch, 1, 1)
     if err:
         raise RuntimeError(f'Wavemeter error while activating channel {ch}: {high_finesse_constants.ResultError(err)}')
+    _currently_active_channels.add(ch)
 
 
 def deactivate_channel(ch):
@@ -220,17 +221,34 @@ class CallbackErrorWatchdog(QObject):
         while True:
             while not _error_in_callback:
                 time.sleep(1)
+                print(_currently_active_channels)
+                self.check_for_channel_activation_change()
             self.handle_error()
 
-    @staticmethod
-    def handle_error() -> None:
+    def check_for_channel_activation_change(self):
+        actual_active_channels = set(get_active_channels())
+        if _currently_active_channels != actual_active_channels:
+            print(_currently_active_channels)
+            _log.warning('Channel was deactivated or activated through GUI.')
+            # append channel to be able to start stream again
+            _currently_active_channels.update(actual_active_channels)
+            self.stop_everything()
+            for ch in _currently_active_channels:
+                activate_channel(ch)
+
+    def handle_error(self) -> None:
         global _error_in_callback
-        _log.warning('Error in callback function. Stopping all streams.')
+        _log.warning('Error in callback function.')
+        self.stop_everything()
+        _error_in_callback = False
+
+    @staticmethod
+    def stop_everything():
+        _log.warning('Stopping all streams.')
         streamers = _connected_instream_modules.copy()
         for streamer in streamers:
             # stopping all streams should also stop callback and measurement
             streamer.stop_stream()
-        _error_in_callback = False
 
 
 def create_watchdog():
@@ -310,6 +328,8 @@ else:
 stop_measurement()
 # deactivate all channels during activation - fixes issues with incorrect sample rate estimation
 deactivate_all_but_lowest_channel()
+
+_currently_active_channels = set(get_active_channels())
 
 _connected_instream_modules = []
 _callback_function = None
