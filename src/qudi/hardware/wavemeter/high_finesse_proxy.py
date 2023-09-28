@@ -29,6 +29,7 @@ from PySide2.QtCore import QObject
 from qudi.core.threadmanager import ThreadManager
 from qudi.core.logger import get_logger
 from qudi.core.module import Base
+from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 
 import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
@@ -37,21 +38,25 @@ if TYPE_CHECKING:
     from qudi.hardware.wavemeter.high_finesse_wavemeter import HighFinesseWavemeter
 
 
-# TODO: rename to something more general
-class CallbackErrorWatchdog(QObject):
-    """A watchdog that can take care of errors in the callback function."""
-    def __init__(self, proxy: 'HighFinesseProxy'):
+class Watchdog(QObject):
+    """A watchdog that can take care of errors in the callback function and checks for other changes."""
+    def __init__(self, proxy: 'HighFinesseProxy', watch_interval: float):
         super().__init__()
         self._proxy = proxy
         self.log = get_logger(__name__)
+        self._watch_interval = watch_interval
+        self._stop = False
 
-    def wait_for_error(self) -> None:
-        while True:
+    def loop(self) -> None:
+        while not self._stop:
             if self._proxy.error_in_callback:
                 self.handle_error()
             if self._proxy.module_state() == 'locked':
                 self.check_for_channel_activation_change()
-            time.sleep(1)
+            time.sleep(self._watch_interval)
+
+    def stop_loop(self) -> None:
+        self._stop = True
 
     def check_for_channel_activation_change(self) -> None:
         actual_active_channels = set(self._proxy.get_active_channels())
@@ -72,13 +77,18 @@ class HighFinesseProxy(Base):
 
     wavemeter_proxy:
         module.Class: 'wavemeter.high_finesse_proxy.HighFinesseProxy'
+        options:
+            watchdog_interval: 1.0  # how often the watchdog checks for errors/changes in s
     """
+
+    _watchdog_interval: float = ConfigOption(name='watchdog_interval', default=1.0)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._lock = Mutex()
-        
+
         self._wavemeter_dll: Optional[WinDLL] = None
-        self._watchdog: Optional[CallbackErrorWatchdog] = None
+        self._watchdog: Optional[Watchdog] = None
         self._thread_manager: ThreadManager = ThreadManager.instance()
         self._callback_function: Optional[callable] = None
         self.error_in_callback: bool = False
@@ -276,13 +286,13 @@ class HighFinesseProxy(Base):
 
     def _set_up_watchdog(self) -> None:
         self._watchdog_thread = self._thread_manager.get_new_thread('wavemeter_callback_error_watchdog')
-        self._watchdog = CallbackErrorWatchdog(self)
+        self._watchdog = Watchdog(self, self._watchdog_interval)
         self._watchdog.moveToThread(self._watchdog_thread)
-        self._watchdog_thread.started.connect(self._watchdog.wait_for_error)
+        self._watchdog_thread.started.connect(self._watchdog.loop)
         self._watchdog_thread.start()
 
     def _tear_down_watchdog(self) -> None:
-        # TODO: not working reliably
+        self._watchdog.stop_loop()
         self._thread_manager.quit_thread(self._watchdog_thread)
         del self._watchdog
 
