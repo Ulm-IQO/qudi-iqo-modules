@@ -493,9 +493,9 @@ class WavemeterHistogramGui(GuiBase):
 
     @QtCore.Slot()
     def start_clicked_wavemeter(self):
-        if self._wavemeter_logic._streamer().stop_flag:
+        if self._wavemeter_logic._stop_flag:
             self._mw.start_trace_Action2.setChecked(False)
-            self._wavemeter_logic._streamer().stop_flag = False
+            self._wavemeter_logic._stop_flag = False
 
         if self._mw.start_trace_Action2.isChecked():
             if self._wavemeter_logic.start_displaying_current_wavelength() < 0:

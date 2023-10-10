@@ -82,6 +82,7 @@ class WavemeterLogic(LogicBase):
         self._is_wavelength_displaying = False
         self._reset_start_time = True
         self._initial_wm_start_time = None
+        self._stop_flag = False
 
         # Data arrays #timings, counts, wavelength, wavelength in Hz
         self._trace_data = np.empty((4, 0), dtype=np.float64)
@@ -104,7 +105,6 @@ class WavemeterLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        # Flag to stop the loop and process variables
         self._fit_container = FitContainer(config_model=self._fit_config_model)
         self._last_fit_result = None
 
@@ -142,7 +142,7 @@ class WavemeterLogic(LogicBase):
         return self._streamer().constraints
 
     @QtCore.Slot(object)
-    def _counts_and_wavelength(self, new_count_data=None, new_count_timings=None):
+    def _counts_and_wavelength(self, new_count_data=None, new_count_timings=None) -> None:
         """
                 This method synchronizes (interpolates) the available data from both the timeseries logic and the wavemeter hardware module.
                 It runs repeatedly by being connected to a QTimer timeout signal from the time series (sigNewRawData).
@@ -155,20 +155,15 @@ class WavemeterLogic(LogicBase):
                 if new_count_data is not None:
                     samples_to_read_counts = len(new_count_data)
 
-                n = self._streamer().available_samples if self._streamer().available_samples > 1 else 1
-                if self._streamer().stop_flag:
-                    self.log.error('Reading data from streamers went wrong; '
-                                   'stopping the stream.')
-                    self.stop_scanning()
-                    self._streamer().stop_flag = False
-                    return
-                else:
-                    raw_data_wavelength, raw_timings = self._streamer().read_data(number_of_samples=n)
-                    raw_data_wavelength = netobtain(raw_data_wavelength) #netobtain due to remote connection
-                    raw_timings = netobtain(raw_timings)
-                    #Above buffers as an option to save the raw wavemeter values
+                try:
+                    n = self._streamer().available_samples if self._streamer().available_samples > 1 else 1
 
-                    #Here the interpolation is performed to match the counts onto wavelength
+                    raw_data_wavelength, raw_timings = self._streamer().read_data(number_of_samples=n)
+                    raw_data_wavelength = netobtain(raw_data_wavelength) # netobtain due to remote connection
+                    raw_timings = netobtain(raw_timings)
+                    # Above buffers as an option to save the raw wavemeter values
+
+                    # Here the interpolation is performed to match the counts onto wavelength
                     if n == 1:
                         wavemeter_data, new_timings = np.ones(samples_to_read_counts) * raw_data_wavelength, np.ones(
                             samples_to_read_counts) * raw_timings
@@ -179,24 +174,28 @@ class WavemeterLogic(LogicBase):
                                                   samples_to_read_counts) if samples_to_read_counts > 1 else np.ones(1)*np.mean(raw_timings)
                         wavemeter_data = arr_interp(new_timings)
 
-                if len(wavemeter_data) != len(new_timings) != len(new_count_data) != samples_to_read_counts:
-                    self.log.error('Reading data from streamers went wrong; '
-                                   'stopping the stream.')
-                    self.stop_scanning()
+                    if len(wavemeter_data) != len(new_timings) != len(new_count_data) != samples_to_read_counts:
+                        self.log.error('Reading data from streamers went wrong; '
+                                       'stopping the stream.')
+                        self.stop_scanning()
+                        return
+
+                    # Process data
+                    self._process_data_for_histogram(wavemeter_data, new_count_data, new_timings)
+                    self._update_histogram(self.complete_histogram)
+
+                    # Emit update signal for Gui
+                    self.sigNewWavelength2.emit(self.wavelength[-1], self.frequency[-1])
+                    # only display self.number_of_displayed_points most recent values
+                    start = len(self.wavelength) - self.number_of_displayed_points if len(self.wavelength) > self.number_of_displayed_points else 0
+                    self.sigDataChanged.emit(self.timings[start:], self.counts[start:],
+                                             self.wavelength[start:], self.frequency[start:], self.histogram_axis,
+                                             self.histogram, self.envelope_histogram)
+                except Exception as e:
+                    self.log.warning(f'Reading data from streamer went wrong: {e}')
+                    self._time_series_logic.sigNewRawData.disconnect()
+                    self._stop_cleanup()
                     return
-
-                # Process data
-                self._process_data_for_histogram(wavemeter_data, new_count_data, new_timings)
-                self._update_histogram(self.complete_histogram)
-
-                #Emit update signal for Gui
-                self.sigNewWavelength2.emit(self.wavelength[-1], self.frequency[-1])
-                # only display self.number_of_displayed_points most recent values
-                start = len(self.wavelength) - self.number_of_displayed_points if len(self.wavelength) > self.number_of_displayed_points else 0
-                self.sigDataChanged.emit(self.timings[start:], self.counts[start:],
-                                         self.wavelength[start:], self.frequency[start:], self.histogram_axis,
-                                         self.histogram, self.envelope_histogram)
-        return
 
     def _process_data_for_histogram(self, data_wavelength, data_counts, data_wavelength_timings):
         """Method for appending to whole data set of wavelength and counts (already interpolated)"""
@@ -301,18 +300,26 @@ class WavemeterLogic(LogicBase):
                 @return int: error code (0: OK, -1: error)
                 """
         if self.module_state() == 'locked':
-            # disconnect to time series signal
-            self._time_series_logic.sigNewRawData.disconnect()
-            #save start_time information of high finesse wavemeter
-            if self._reset_start_time:
-                self._initial_wm_start_time = self._streamer()._wm_start_time
-                self._reset_start_time = False
-            # terminate the hardware streaming device #TODO test with remote module
-            self._streamer().stop_stream()
-            self.module_state.unlock()
-            self.sigStatusChanged.emit(False)
-            self._trace_data = np.vstack(((self.timings, self.counts), (self.wavelength, self.frequency)))
+            try:
+                # disconnect to time series signal
+                self._time_series_logic.sigNewRawData.disconnect()
+                if self._reset_start_time:
+                    self._initial_wm_start_time = self._streamer()._wm_start_time
+                    self._reset_start_time = False
+                # terminate the hardware streaming device #TODO test with remote module
+                self._streamer().stop_stream()
+            except:
+                self.log.exception('Error while trying to stop stream reader:')
+                raise
+            finally:
+                self._stop_cleanup()
         return 0
+
+    def _stop_cleanup(self) -> None:
+        # save start_time information of high finesse wavemeter
+        self.module_state.unlock()
+        self.sigStatusChanged.emit(False)
+        self._trace_data = np.vstack(((self.timings, self.counts), (self.wavelength, self.frequency)))
 
     def get_max_wavelength(self):
         """ Current maximum wavelength of the scan.
@@ -356,20 +363,21 @@ class WavemeterLogic(LogicBase):
         return
 
     def display_current_wavelength(self) -> None:
-        if self._streamer().stop_flag:
-            self.log.error('Reading data from streamers went wrong; '
-                           'stopping the stream.')
-            self.sigStatusChangedDisplaying.emit()
-        else:
+        try:
             current_wavelength, trash_time = self._streamer().read_single_point()
-            #netobtain due to remote connection
+            # netobtain due to remote connection
             current_wavelength = netobtain(current_wavelength)
-            if current_wavelength > 0:
-                current_freq = constants.speed_of_light / current_wavelength #in Hz
+            if len(current_wavelength) > 0:
+                current_freq = constants.speed_of_light / current_wavelength  # in Hz
                 self.sigNewWavelength2.emit(current_wavelength[0], current_freq[0])
-            #display data at a rate of 10Hz
+            # display data at a rate of 10Hz
             time.sleep(0.1)
             self._sigNextWavelength.emit()
+        except Exception as e:
+            self.log.warning(f'Reading data from streamer went wrong: {e}')
+            self._stop_flag = True
+            self.sigStatusChangedDisplaying.emit()
+            return
 
     def start_displaying_current_wavelength(self):
         if len(self._streamer()._active_switch_channels) != 1:
@@ -393,6 +401,7 @@ class WavemeterLogic(LogicBase):
         self._sigNextWavelength.disconnect()
         self._is_wavelength_displaying = False
         self._streamer().stop_stream()
+        # TODO
 
     def autoscale_histogram(self):
         self._xmax_histo = self._xmax

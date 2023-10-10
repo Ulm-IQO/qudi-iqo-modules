@@ -33,11 +33,12 @@ from scipy.constants import lambda2nu
 from PySide2 import QtCore
 
 from qudi.core.configoption import ConfigOption
+from qudi.core.connector import Connector
 from qudi.util.mutex import Mutex
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, StreamingMode, \
     SampleTiming
-import qudi.hardware.wavemeter.high_finesse_proxy as wavemeter_proxy
+from qudi.hardware.wavemeter.high_finesse_proxy import HighFinesseProxy
 from qudi.hardware.wavemeter.high_finesse_constants import GetFrequencyError
 
 
@@ -45,10 +46,14 @@ class HighFinesseWavemeter(DataInStreamInterface):
     """
     HighFinesse wavelength meter as an in-streaming device.
 
+    The HighFinesseProxy hardware module is required. It takes care of all communication with the hardware.
+
     Example config for copy-paste:
 
     wavemeter:
         module.Class: 'wavemeter.high_finesse_wavemeter.HighFinesseWavemeter'
+        connect:
+            proxy: wavemeter_proxy
         options:
             channels:
                 red_laser:
@@ -64,8 +69,10 @@ class HighFinesseWavemeter(DataInStreamInterface):
     # declare signals
     sigNewWavelength = QtCore.Signal(object)
 
+    _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
+
     # config options
-    _wavemeter_ch_config = ConfigOption(
+    _wavemeter_ch_config: Dict[str, Dict[str, Any]] = ConfigOption(
         name='channels',
         default={
             'default_channel': {'switch_ch': 1, 'unit': 'm', 'exposure': None}
@@ -78,22 +85,22 @@ class HighFinesseWavemeter(DataInStreamInterface):
         self._lock = Mutex()
 
         # internal settings
-        self._channel_names = {}  # dictionary with switch channel numbers as keys, channel names as values
-        self._channel_units = {}
+        # dictionary with switch channel numbers as keys, channel names as values
+        self._channel_names: Dict[int, str] = {}
+        self._channel_units: Dict[int, str] = {}
         self._channel_buffer_size = 1024**2
-        self._active_switch_channels = None  # list of active switch channel numbers
+        self._active_switch_channels: Optional[List[int]] = None  # list of active switch channel numbers
         self._last_measurement_error: Dict[int, float] = {}
-        self.stop_flag = False
 
         # data buffer
-        self._wm_start_time = None
-        self._data_buffer = None
-        self._timestamp_buffer = None
+        self._wm_start_time: Optional[float] = None
+        self._data_buffer: Optional[np.ndarray] = None
+        self._timestamp_buffer: Optional[np.ndarray] = None
         self._current_buffer_position = 0
         self._buffer_overflow = False
 
         # stored hardware constraints
-        self._constraints = None
+        self._constraints: Optional[DataInStreamConstraints] = None
 
     def on_activate(self) -> None:
         # configure wavemeter channels
@@ -101,9 +108,6 @@ class HighFinesseWavemeter(DataInStreamInterface):
             ch = info['switch_ch']
             unit = info['unit']
             self._channel_names[ch] = ch_name
-
-            # make sure the channel is active on the multi-channel switch
-            wavemeter_proxy.activate_channel(ch)
 
             if unit == 'THz' or unit == 'Hz':
                 self._channel_units[ch] = 'Hz'
@@ -115,7 +119,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
 
             exp_time = info.get('exposure')
             if exp_time is not None:
-                wavemeter_proxy.set_exposure_time(ch, exp_time)
+                self._proxy().set_exposure_time(ch, exp_time)
 
         self._active_switch_channels = list(self._channel_names)
 
@@ -154,7 +158,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
                 self.module_state.lock()
                 self._init_buffers()
                 self._last_measurement_error = {ch: 0 for ch in self._active_switch_channels}
-                wavemeter_proxy.connect_instreamer(self)
+                self._proxy().connect_instreamer(self, self._active_switch_channels)
             else:
                 self.log.warning('Unable to start input stream. It is already running.')
 
@@ -162,7 +166,16 @@ class HighFinesseWavemeter(DataInStreamInterface):
         """ Stop the data acquisition/streaming """
         with self._lock:
             if self.module_state() == 'locked':
-                wavemeter_proxy.disconnect_instreamer(self)
+                self._proxy().disconnect_instreamer(self)
+                self._wm_start_time = None
+                self.module_state.unlock()
+            else:
+                self.log.warning('Unable to stop wavemeter input stream as nothing is running.')
+
+    def stop_stream_watchdog(self) -> None:
+        """Meant to be called from proxy watchdog only. Skips the disconnecting."""
+        with self._lock:
+            if self.module_state() == 'locked':
                 self._wm_start_time = None
                 self.module_state.unlock()
             else:
@@ -296,7 +309,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         For the wavemeter, it is estimated by the exposure times per channel and switching times if
         more than one channel is active.
         """
-        return wavemeter_proxy.sample_rate()
+        return self._proxy().sample_rate()
 
     @property
     def streaming_mode(self) -> StreamingMode:
@@ -451,6 +464,3 @@ class HighFinesseWavemeter(DataInStreamInterface):
             raise ValueError(f'timestamp_buffer must be exactly of length data_buffer // <channel_count>')
 
         return samples_per_channel
-
-    def let_flag_stop(self, stop_flag) -> None:
-        self.stop_flag = stop_flag
