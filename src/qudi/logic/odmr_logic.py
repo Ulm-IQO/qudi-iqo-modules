@@ -701,8 +701,8 @@ class OdmrLogic(LogicBase):
         for fit_channel in self._fit_results:
             for ii, fit_result in enumerate(self._fit_results[fit_channel]):
                 if fit_result:
-                    fit_result_str = fit_result[0] + ': ' + self._fit_container.formatted_result(fit_result[1])
-                    metadata[f'fit result (channel "{fit_channel}" range {ii})'] = fit_result_str
+                    export_dict = FitContainer.dict_result(fit_result[1])
+                    metadata[f'fit result (channel "{fit_channel}" range {ii})'] = export_dict
         return metadata
 
     def _get_raw_column_headers(self, data_channel):

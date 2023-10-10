@@ -1386,12 +1386,14 @@ class PulsedMeasurementLogic(LogicBase):
                     'extraction parameters'       : self.extraction_settings,
                     'fast counter settings'       : self.fast_counter_settings,
                     # todo: save sequence belonging to signal, not last uploaded one
-                    'generation parameters'       : self.sampling_information['generation_parameters'],
-                    'generation method parameters': self.generation_method_parameters }
+                    'generation parameters'       : self.sampling_information.get('generation_parameters'),
+                    'generation method parameters': self.generation_method_parameters}
         if self._fit_result:
-            metadata['fit result'] = self._fit_result.model.name + ': ' + self._fit_result.result_str
+            export_dict = FitContainer.dict_result(self._fit_result)
+            metadata['fit result'] = export_dict
         if self._fit_result_alt:
-            metadata['fit result alt'] = self._fit_result_alt.model.name + ': ' + self._fit_result_alt.result_str
+            export_dict = FitContainer.dict_result(self._fit_result_alt)
+            metadata['fit result alt'] = export_dict
         return metadata
 
     @staticmethod
