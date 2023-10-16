@@ -60,6 +60,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
             max_channel_samples_buffer: 10000000  # optional, default 10000000
             read_write_timeout: 10  # optional, default 10
             sample_clock_output: '/Dev1/PFI20'  # optional
+            invert_trigger_polarity: False  # optional
 
     """
 
@@ -73,6 +74,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         name='external_sample_clock_frequency', default=None, missing='nothing')
 
     _physical_sample_clock_output = ConfigOption(name='sample_clock_output', default=None)
+    _invert_trigger_polarity = ConfigOption(name='invert_trigger_polarity', default=False)
 
     _adc_voltage_range = ConfigOption('adc_voltage_range', default=(-10, 10), missing='info')
     _max_channel_samples_buffer = ConfigOption(
@@ -542,9 +544,15 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
         if self._physical_sample_clock_output is not None:
             clock_channel = '/{0}InternalOutput'.format(self._clk_task_handle.channel_names[0])
+            if self._invert_trigger_polarity:
+                polarity = ni.constants.SignalModifiers.INVERT_POLARITY
+            else:
+                polarity = ni.constants.SignalModifiers.DO_NOT_INVERT_POLARITY
+
             ni.system.System().connect_terms(source_terminal=clock_channel,
                                              destination_terminal='/{0}/{1}'.format(
-                                                 self._device_name, self._physical_sample_clock_output))
+                                                 self._device_name, self._physical_sample_clock_output),
+                                             signal_modifiers=polarity)
         return 0
 
     def _init_digital_tasks(self):
