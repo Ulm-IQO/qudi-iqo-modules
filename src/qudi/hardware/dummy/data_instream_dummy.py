@@ -561,6 +561,7 @@ class InStreamDummy(DataInStreamInterface):
                 timestamp_buffer = None
             if samples_per_channel > 0:
                 self._sample_generator.read_samples(sample_buffer=data_buffer,
+                                                    samples_per_channel=samples_per_channel,
                                                     timestamp_buffer=timestamp_buffer)
             return data_buffer, timestamp_buffer
 
