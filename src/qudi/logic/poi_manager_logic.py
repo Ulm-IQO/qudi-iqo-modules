@@ -1082,15 +1082,16 @@ class PoiManagerLogic(LogicBase):
                 timestamp.strftime('%Y%m%d-%H%M-%S'), roi_name_no_blanks)
 
             # Metadata to save in both file headers
-            x_extent, y_extent = self.roi_scan_image_extent
             parameters = OrderedDict()
             if self.active_poi:
                 parameters['Active POI'] = self.active_poi
             parameters['roi_name'] = self.roi_name
             parameters['poi_nametag'] = '' if self.poi_nametag is None else self.poi_nametag
             parameters['roi_creation_time'] = self.roi_creation_time_as_str
-            parameters['scan_image_x_extent'] = '{0:.9e},{1:.9e}'.format(*x_extent)
-            parameters['scan_image_y_extent'] = '{0:.9e},{1:.9e}'.format(*y_extent)
+            if self.roi_scan_image is not None:
+                x_extent, y_extent = self.roi_scan_image_extent
+                parameters['scan_image_x_extent'] = '{0:.9e},{1:.9e}'.format(*x_extent)
+                parameters['scan_image_y_extent'] = '{0:.9e},{1:.9e}'.format(*y_extent)
             parameters['data format'] = 'name   X (m)   Y (m)   Z (m)'
 
             ##################################
@@ -1154,7 +1155,7 @@ class PoiManagerLogic(LogicBase):
         roi_name = None
         poi_nametag = None
         roi_creation_time = None
-        scan_extent = None
+        scan_extent, scan_x_extent, scan_y_extent = None, None, None
         if is_legacy_format:
             roi_name = filetag
         else:
@@ -1174,8 +1175,11 @@ class PoiManagerLogic(LogicBase):
                     elif line.startswith('# scan_image_y_extent='):
                         scan_y_extent = line.split('# scan_image_y_extent=', 1)[1].strip().split("'")[1].strip().split(
                             ',')
-            scan_extent = ((float(scan_x_extent[0]), float(scan_x_extent[1])),
-                           (float(scan_y_extent[0]), float(scan_y_extent[1])))
+
+            if scan_x_extent is not None and scan_y_extent is not None:
+                scan_extent = ((float(scan_x_extent[0]), float(scan_x_extent[1])),
+                               (float(scan_y_extent[0]), float(scan_y_extent[1])))
+
             poi_nametag = None if not poi_nametag else poi_nametag
 
         # Read ROI position history from binary file
