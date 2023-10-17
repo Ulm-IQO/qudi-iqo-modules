@@ -246,7 +246,7 @@ class DataInStreamInterface(Base):
         All samples for each channel are stored in consecutive blocks one after the other.
         The returned data_buffer can be unraveled into channel samples with:
 
-            data_buffer.reshape([<channel_count>, number_of_samples])
+            data_buffer.reshape([<number_of_samples>, <channel_count>])
 
         The numpy array data type is the one defined in self.constraints.data_type.
 
