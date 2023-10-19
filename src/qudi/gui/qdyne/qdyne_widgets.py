@@ -75,7 +75,7 @@ class StateEstimatorWidget(QtWidgets.QWidget):
     def __init__(self):
         # Get the path to the *.ui file
         this_dir = os.path.dirname(__file__)
-        ui_file = os.path.join(this_dir, r'ui\time_trace_analysis_widget.ui')
+        ui_file = os.path.join(this_dir, r'ui\state_estimator_widget.ui')
 
         # Load it
         super(StateEstimatorWidget, self).__init__()
@@ -106,7 +106,9 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
 
         uic.loadUi(ui_file, self)
 
-    def activate(self):
+    def activate(self, analyzer, settings):
+        self.analyzer = analyzer
+        self.settings = settings
         pass
 
     def deactivate(self):

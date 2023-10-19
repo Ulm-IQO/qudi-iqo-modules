@@ -47,7 +47,7 @@ class QdyneMainGui(GuiBase):
     logic = Connector(interface='QdyneLogic')
     def on_activate(self):
         self._instantiate_widgets()
-        self._mainw.tabWidget.addTab(self._sew, 'state estimater')
+        self._mainw.tabWidget.addTab(self._ttaw, 'time trace analysis')
         self._activate_ui()
 #        self._connect()
 
@@ -56,20 +56,20 @@ class QdyneMainGui(GuiBase):
     def _instantiate_widgets(self):
         self._mainw = QdyneMainWindow()
 #        self._pmw = MeasurementWidget()
-        self._sew = StateEstimatorWidget()
-#        self._ttaw =  TimeTraceAnalysisWidget()
+#        self._sew = StateEstimatorWidget()
+        self._ttaw =  TimeTraceAnalysisWidget()
 
     def _activate_ui(self):
         self._mainw.activate()
 #        self._pmw.activate()
-        self._sew.activate()
-#        self._ttaw.activate()
+#        self._sew.activate()
+        self._ttaw.activate(self.logic().analyzer, self.logic().settings.time_trace_analysis_stg)
 
     def _connect(self):
         self._mainw.connect()
 #        self._pmw.connect()
-        self._sew.connect()
-#        self._ttaw.connect()
+#        self._sew.connect()
+        self._ttaw.connect()
 
     def on_deactivate(self):
         self._deactivate_ui()
@@ -78,14 +78,14 @@ class QdyneMainGui(GuiBase):
     def _deactivate_ui(self):
         self._mainw.deactivate()
 #        self._pmw.deactivate()
-        self._sew.deactivate()
-#        self._ttaw.deactivate()
+#        self._sew.deactivate()
+        self._ttaw.deactivate()
 
     def _disconnect(self):
         self._mainw.disconnect()
 #        self._pmw.disconnect()
-        self._sew.disconnect()
-#        self._ttaw.disconnect()
+#        self._sew.disconnect()
+        self._ttaw.disconnect()
 
     def show(self):
         self._mainw.show()
