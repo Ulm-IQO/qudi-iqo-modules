@@ -43,6 +43,8 @@ from qudi.gui.qdyne.qdyne_widgets import QdyneMainWindow, MeasurementWidget, \
     StateEstimatorWidget, TimeTraceAnalysisWidget
 
 class QdyneMainGui(GuiBase):
+
+    logic = Connector(interface='QdyneLogic')
     def on_activate(self):
         self._instantiate_widgets()
         self._mainw.tabWidget.addTab(self._sew, 'state estimater')
@@ -87,5 +89,5 @@ class QdyneMainGui(GuiBase):
 
     def show(self):
         self._mainw.show()
-        self._main.activateWindow()
-        self._mw.raise_()
+        self._mainw.activateWindow()
+        self._mainw.raise_()
