@@ -76,10 +76,14 @@ class CameraMainWindow(QtWidgets.QMainWindow):
 
 
 class CameraGui(GuiBase):
-    """
-    Main spectrometer camera class.
+    """ Main camera gui class.
 
-    Todo: Example config for copy-paste:
+    Example config for copy-paste:
+
+    camera_gui:
+        module.Class: 'camera.cameragui.CameraGui'
+        connect:
+            camera_logic: camera_logic
 
     """
 

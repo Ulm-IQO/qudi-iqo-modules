@@ -211,6 +211,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
 
         # initialize default settings
         self._sample_rate = self._constraints.max_sample_rate
+        # TODO: Get real sample rate limits depending on specified channels (see NI FSIO), or include in "ni helper".
         self._frame_size = 0
 
         self.set_active_channels(digital_sources.union(analog_sources))
@@ -425,6 +426,9 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                     timeout=self._rw_timeout)
                 if read_samples != number_of_samples:
                     return data
+                data_buffer *= self._sample_rate
+                # TODO Multiplication by self._sample_rate to convert to c/s, from counts/clock cycle
+                #  What if unit not c/s?
                 data[reader._task.name.split('_')[-1]] = data_buffer
 
             # Read analog channels
