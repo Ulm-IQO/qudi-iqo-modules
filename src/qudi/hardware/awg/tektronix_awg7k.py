@@ -66,8 +66,8 @@ class AWG7k(PulserInterface):
     _password = ConfigOption(name='ftp_passwd', default='anonymous@', missing='warn')
     _visa_timeout = ConfigOption(name='timeout', default=30, missing='nothing')
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Get an instance of the visa resource manager
         self._rm = visa.ResourceManager()

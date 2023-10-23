@@ -5,7 +5,7 @@ from setuptools import setup, find_namespace_packages
 
 
 unix_dep = [
-    'qudi-core>=1.3.0',
+    'qudi-core>=1.4.1',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
@@ -21,7 +21,7 @@ unix_dep = [
 ]
 
 windows_dep = [
-    'qudi-core>=1.3.0',
+    'qudi-core>=1.4.1',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
@@ -47,8 +47,7 @@ setup(
     version=version,
     packages=find_namespace_packages(where='src'),
     package_dir={'': 'src'},
-    package_data={''        : ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md', 'VERSION'],
-                  'qudi'    : ['default.cfg'],
+    package_data={'qudi'    : ['default.cfg'],
                   'qudi.gui': ['*.ui', '*/*.ui'],
                   },
     description='IQO measurement modules collection for qudi',
@@ -71,7 +70,7 @@ setup(
               'modular',
               'measurement',
               ],
-    classifiers=['Development Status :: 3 - Alpha',
+    classifiers=['Development Status :: 4 - Beta',
 
                  'Environment :: Win32 (MS Windows)',
                  'Environment :: X11 Applications',
@@ -93,11 +92,12 @@ setup(
 
                  'Programming Language :: Python :: 3.8',
                  'Programming Language :: Python :: 3.9',
+                 'Programming Language :: Python :: 3.10',
 
                  'Topic :: Scientific/Engineering',
                  ],
     license='LGPLv3',
     install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
-    python_requires='>=3.8, <3.10',
+    python_requires='>=3.8, <3.11',
     zip_safe=False
 )
