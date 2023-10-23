@@ -80,7 +80,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         self._command_wait('*RST')
 
         # Generate constraints
-        if self.model == 'SMB100A':
+        if self._model == 'SMB100A':
             freq_limits = (9e3, 3.2e9)
         else:
             freq_limits = (9e3, 6e9)
@@ -242,7 +242,7 @@ class MicrowaveSmbv(MicrowaveInterface):
             self._scan_sample_rate = sample_rate
             self._scan_power = power
             self._scan_frequencies = np.asarray(frequencies, dtype=np.float64)
-            self._write_list()
+            self._write_sweep()
             self._set_trigger_edge()
 
     def off(self):
