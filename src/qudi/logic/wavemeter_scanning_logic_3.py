@@ -28,11 +28,11 @@ import matplotlib.pyplot as plt
 import scipy.interpolate as interpolate
 
 from qudi.core.connector import Connector
-from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
-#from qudi.interface.data_instream_interface import DataInStreamInterface, StreamingMode
+from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
+from qudi.interface.data_instream_interface import DataInStreamConstraints
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.core.statusvariable import StatusVar
 from qudi.util.network import netobtain
@@ -62,10 +62,10 @@ class WavemeterLogic(LogicBase):
 
     # declare connectors
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
-    #access on timeseries logic and thus nidaq instreamer
+    # access on timeseries logic and thus nidaq instreamer
     _timeserieslogic = Connector(name='counterlogic', interface='TimeSeriesReaderLogic')
 
-    #config options
+    # config options
 
     _fit_config_model = StatusVar(name='fit_configs', default=list())
 
@@ -93,11 +93,11 @@ class WavemeterLogic(LogicBase):
 
         self._bins = 200
         self._data_index = 0
-        self._xmin_histo = 550.0e-9 #in SI units, assure that yout wavelength lies in this interval
+        self._xmin_histo = 500.0e-9  # in SI units, default starting range
         self._xmax_histo = 750.0e-9
-        self._xmin = 1 #default; to be changed upon first iteration
+        self._xmin = 1  # default; to be changed upon first iteration
         self._xmax = -1
-        self.number_of_displayed_points = 2000
+        self.number_of_displayed_points = 1000
         self.fit_histogram = True
 
         return
@@ -108,7 +108,7 @@ class WavemeterLogic(LogicBase):
         self._fit_container = FitContainer(config_model=self._fit_config_model)
         self._last_fit_result = None
 
-        #connect to time series
+        # connect to time series
         self._time_series_logic = self._timeserieslogic()
 
         # create a new x axis from xmin to xmax with bins points
@@ -118,7 +118,7 @@ class WavemeterLogic(LogicBase):
         self.rawhisto = np.zeros(self._bins)
         self.sumhisto = np.ones(self._bins) * 1.0e-10
 
-        self._time_series_logic.sigStopWavemeter.connect(
+        self._time_series_logic.sigStopped.connect(
             self.stop_scanning, QtCore.Qt.QueuedConnection)
         return
 
@@ -131,15 +131,14 @@ class WavemeterLogic(LogicBase):
         elif self.module_state() == 'locked':
             self.stop_scanning()
 
-        self._time_series_logic.sigStopWavemeter.disconnect()
+        self._time_series_logic.sigStopped.disconnect()
         return
 
     @property
-    def streamer_constraints(self):
-        """
-        Retrieve the hardware constrains from the wavemeter device.
-        """
-        return self._streamer().constraints
+    def streamer_constraints(self) -> DataInStreamConstraints:
+        """ Retrieve the hardware constrains from the counter device """
+        # netobtain is required if streamer is a remote module
+        return netobtain(self._streamer().constraints)
 
     @QtCore.Slot(object)
     def _counts_and_wavelength(self, new_count_data=None, new_count_timings=None) -> None:
@@ -159,7 +158,7 @@ class WavemeterLogic(LogicBase):
                     n = self._streamer().available_samples if self._streamer().available_samples > 1 else 1
 
                     raw_data_wavelength, raw_timings = self._streamer().read_data(number_of_samples=n)
-                    raw_data_wavelength = netobtain(raw_data_wavelength) # netobtain due to remote connection
+                    raw_data_wavelength = netobtain(raw_data_wavelength)  # netobtain due to remote connection
                     raw_timings = netobtain(raw_timings)
                     # Above buffers as an option to save the raw wavemeter values
 
@@ -171,7 +170,8 @@ class WavemeterLogic(LogicBase):
                         arr_interp = interpolate.interp1d(raw_timings, raw_data_wavelength)
                         new_timings = np.linspace(raw_timings[0],
                                                   raw_timings[-1],
-                                                  samples_to_read_counts) if samples_to_read_counts > 1 else np.ones(1)*np.mean(raw_timings)
+                                                  samples_to_read_counts) if samples_to_read_counts > 1 else np.ones(
+                            1) * np.mean(raw_timings)
                         wavemeter_data = arr_interp(new_timings)
 
                     if len(wavemeter_data) != len(new_timings) != len(new_count_data) != samples_to_read_counts:
@@ -187,10 +187,17 @@ class WavemeterLogic(LogicBase):
                     # Emit update signal for Gui
                     self.sigNewWavelength2.emit(self.wavelength[-1], self.frequency[-1])
                     # only display self.number_of_displayed_points most recent values
-                    start = len(self.wavelength) - self.number_of_displayed_points if len(self.wavelength) > self.number_of_displayed_points else 0
+                    start = len(self.wavelength) - self.number_of_displayed_points if len(
+                        self.wavelength) > self.number_of_displayed_points else 0
                     self.sigDataChanged.emit(self.timings[start:], self.counts[start:],
                                              self.wavelength[start:], self.frequency[start:], self.histogram_axis,
                                              self.histogram, self.envelope_histogram)
+
+                except TimeoutError as err:
+                    self.log.warning(f'Timeout error: {err}')
+                    self.stop_scanning()
+                    return
+
                 except Exception as e:
                     self.log.warning(f'Reading data from streamer went wrong: {e}')
                     self._time_series_logic.sigNewRawData.disconnect()
@@ -213,17 +220,18 @@ class WavemeterLogic(LogicBase):
                                                 most recent data?
         @return:
         """
-        #reset data index
+        # reset data index
         if complete_histogram:
             self._data_index = 0
             self.complete_histogram = False
 
-        #n+1-dimensional binning axis, to avoid empty bin when using np.digitize
-        offset = (self.histogram_axis[1]-self.histogram_axis[0])/2
-        binning_axis = np.linspace(self.histogram_axis[0]-offset, self.histogram_axis[-1]+offset, len(self.histogram_axis)+1)
+        # n+1-dimensional binning axis, to avoid empty bin when using np.digitize
+        offset = (self.histogram_axis[1] - self.histogram_axis[0]) / 2
+        binning_axis = np.linspace(self.histogram_axis[0] - offset, self.histogram_axis[-1] + offset,
+                                   len(self.histogram_axis) + 1)
 
         for i in self.wavelength[self._data_index:]:
-            self._data_index += 1 #before because of continue
+            self._data_index += 1  # before because of continue
 
             if i < self._xmin:
                 self._xmin = i
@@ -236,10 +244,11 @@ class WavemeterLogic(LogicBase):
             newbin = np.digitize([i], binning_axis)[0]
 
             # sum the counts in rawhisto and count the occurence of the bin in sumhisto
-            self.rawhisto[newbin-1] += self.counts[self._data_index-1]
-            self.sumhisto[newbin-1] += 1.0
+            self.rawhisto[newbin - 1] += self.counts[self._data_index - 1]
+            self.sumhisto[newbin - 1] += 1.0
 
-            self.envelope_histogram[newbin-1] = np.max([self.counts[self._data_index-1], self.envelope_histogram[newbin-1]])
+            self.envelope_histogram[newbin - 1] = np.max(
+                [self.counts[self._data_index - 1], self.envelope_histogram[newbin - 1]])
 
         # the plot data is the summed counts divided by the occurence of the respective bins
         self.histogram = self.rawhisto / self.sumhisto
@@ -249,7 +258,6 @@ class WavemeterLogic(LogicBase):
     def start_scanning(self):
         """
                 Start data acquisition loop.
-                @return error: 0 is OK, -1 is error
                 """
 
         if self.module_state() == 'locked':
@@ -268,13 +276,13 @@ class WavemeterLogic(LogicBase):
             return
 
         if len(self._streamer()._active_switch_channels) != 1:
-            self.log.warning('Only a single wavemeter channel supported currently.')
+            self.log.warning('Only a single wavemeter channel supported.')
             self.sigStatusChanged.emit(False)
             return
 
         unit = self._streamer()._channel_units[self._streamer()._active_switch_channels[0]]
         if unit != 'm':
-            self.log.warning('Make sure acquisition is in unit m!')
+            self.log.warning('Make sure acquisition unit is m!')
             self.sigStatusChanged.emit(False)
             return
 
@@ -296,8 +304,6 @@ class WavemeterLogic(LogicBase):
     def stop_scanning(self):
         """
                 Send a request to stop counting.
-
-                @return int: error code (0: OK, -1: error)
                 """
         if self.module_state() == 'locked':
             try:
@@ -381,13 +387,13 @@ class WavemeterLogic(LogicBase):
 
     def start_displaying_current_wavelength(self):
         if len(self._streamer()._active_switch_channels) != 1:
-            self.log.warning('Only a single wavemeter channel supported currently.')
+            self.log.warning('Only a single wavemeter channel supported.')
             self.sigStatusChanged.emit(False)
             return -1
 
         unit = self._streamer()._channel_units[self._streamer()._active_switch_channels[0]]
         if unit != 'm':
-            self.log.warning('Make sure acquisition is in unit m!')
+            self.log.warning('Make sure acquisition unit is m!')
             self.sigStatusChanged.emit(False)
             return -1
 
@@ -425,7 +431,7 @@ class WavemeterLogic(LogicBase):
         return self._fit_config_model
 
     def get_fit_container(self) -> FitContainer:
-        #with self.threadlock:
+        # with self.threadlock:
         return self._get_fit_container()
 
     def _get_fit_container(self) -> FitContainer:
@@ -447,13 +453,15 @@ class WavemeterLogic(LogicBase):
 
         fit_container = self._get_fit_container()
 
-        #fit the histogram
+        # fit the histogram
         if not self.x_axis_hz_bool:
             fit_results = fit_container.fit_data(fit_config=fit_config, x=self.histogram_axis,
-                                             data=self.histogram if self.fit_histogram else self.envelope_histogram)[1]
+                                                 data=self.histogram if self.fit_histogram else self.envelope_histogram)[
+                1]
         elif self.x_axis_hz_bool:
-            fit_results = fit_container.fit_data(fit_config=fit_config, x=constants.speed_of_light / self.histogram_axis,
-                                                 data=self.histogram if self.fit_histogram else self.envelope_histogram)[1]
+            fit_results = \
+                fit_container.fit_data(fit_config=fit_config, x=constants.speed_of_light / self.histogram_axis,
+                                       data=self.histogram if self.fit_histogram else self.envelope_histogram)[1]
         fit_config = fit_container._last_fit_config
         self._last_fit_result = fit_results
 
@@ -462,7 +470,7 @@ class WavemeterLogic(LogicBase):
         return fit_results
 
     def get_fit_results(self) -> Tuple[str, Dict[str, Union[None, _ModelResult]]]:
-        #with self.threadlock:
+        # with self.threadlock:
         return self._get_fit_results()
 
     def _get_fit_results(self) -> Tuple[str, Dict[str, Union[None, _ModelResult]]]:
@@ -497,10 +505,10 @@ class WavemeterLogic(LogicBase):
         data_set_histogram = np.vstack((self.histogram_axis, self.histogram))
         data_set_histogram = np.vstack((data_set_histogram, self.envelope_histogram))
 
-        parameters_histogram = {'Number of Bins'                  : self.get_bins(),
-                      'Min Wavelength Of Histogram (m)': self._xmin_histo,
-                      'Max Wavelength Of Histogram (m)': self._xmax_histo,
-                      'FitResults': fit_container.formatted_result(self._last_fit_result)}
+        parameters_histogram = {'Number of Bins': self.get_bins(),
+                                'Min Wavelength Of Histogram (m)': self._xmin_histo,
+                                'Max Wavelength Of Histogram (m)': self._xmax_histo,
+                                'FitResults': fit_container.formatted_result(self._last_fit_result)}
 
         file_label = postfix if postfix else 'qdLaserScanning'
 
@@ -523,7 +531,8 @@ class WavemeterLogic(LogicBase):
                                        nametag=file_label + '_histogram')
 
         # plot graph and save as image alongside data file
-        fig = self._plot_figure(self.x_axis_hz_bool, self.get_fit_results(), data_set, data_set_histogram, fit_container)
+        fig = self._plot_figure(self.x_axis_hz_bool, self.get_fit_results(), data_set, data_set_histogram,
+                                fit_container)
         ds.save_thumbnail(fig, file_path=file_path.rsplit('.', 1)[0])
 
         self.log.debug(f'Data saved to: {file_path}')
@@ -572,11 +581,11 @@ class WavemeterLogic(LogicBase):
                      linestyle=':',
                      linewidth=1,
                      label='RawData')
-            ax1.plot(constants.speed_of_light/data_set_histogram[0],
+            ax1.plot(constants.speed_of_light / data_set_histogram[0],
                      data_set_histogram[1],
                      color='y',
                      label='Histogram')
-            ax1.plot(constants.speed_of_light/data_set_histogram[0],
+            ax1.plot(constants.speed_of_light / data_set_histogram[0],
                      data_set_histogram[2],
                      color='g',
                      label='Envelope')

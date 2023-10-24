@@ -61,7 +61,7 @@ class TimeSeriesReaderLogic(LogicBase):
     sigTraceSettingsChanged = QtCore.Signal(dict)
     sigChannelSettingsChanged = QtCore.Signal(list, list)
     _sigNextDataFrame = QtCore.Signal()  # internal signal
-    sigStopWavemeter = QtCore.Signal()
+    sigStopped = QtCore.Signal()
 
     # declare connectors
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
@@ -464,7 +464,6 @@ class TimeSeriesReaderLogic(LogicBase):
     @QtCore.Slot()
     def stop_reading(self) -> None:
         """ Send a request to stop counting """
-        self.sigStopWavemeter.emit()
         with self._threadlock:
             self._stop()
 
@@ -472,6 +471,7 @@ class TimeSeriesReaderLogic(LogicBase):
         if self.module_state() == 'locked':
             try:
                 self._streamer().stop_stream()
+                self.sigStopped.emit()
             except:
                 self.log.exception('Error while trying to stop stream reader:')
                 raise
