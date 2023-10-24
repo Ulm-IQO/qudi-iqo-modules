@@ -288,7 +288,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
-                if not self._in_cw_mode:
+                if not self._in_cw_mode():
                     return
                 raise RuntimeError('Unable to start frequency scan. CW microwave output is active.')
             assert self._scan_frequencies is not None, \
@@ -309,7 +309,7 @@ class MicrowaveSmbv(MicrowaveInterface):
         with self._thread_lock:
             if self.module_state() == 'idle':
                 return
-            if self._in_cw_mode:
+            if self._in_cw_mode():
                 raise RuntimeError('Can not reset frequency scan. CW microwave output active.')
 
             self._command_wait(':ABOR:SWE')
