@@ -40,27 +40,32 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
 from qudi.gui.qdyne.qdyne_widgets import QdyneMainWindow, MeasurementWidget, \
-    StateEstimatorWidget, TimeTraceAnalysisWidget
+    StateEstimatorWidget, TimeTraceAnalysisWidget, GenerationWidget, PredefinedMethodsConfigDialogWidget
 
 class QdyneMainGui(GuiBase):
+    _predefined_methods_to_show = StatusVar('predefined_methods_to_show', [])
 
     logic = Connector(interface='QdyneLogic')
     def on_activate(self):
         self._instantiate_widgets()
+        self._mainw.tabWidget.addTab(self._gw, 'Measurement Generation')
         self._mainw.tabWidget.addTab(self._ttaw, 'time trace analysis')
         self._activate_ui()
-#        self._connect()
+        self._connect()
 
         self.show()
 
     def _instantiate_widgets(self):
-        self._mainw = QdyneMainWindow()
-#        self._pmw = MeasurementWidget()
+        self._mainw = QdyneMainWindow(self)
+        self._gw = GenerationWidget(self)
 #        self._sew = StateEstimatorWidget()
         self._ttaw =  TimeTraceAnalysisWidget()
+        self._gsw = PredefinedMethodsConfigDialogWidget(self)
 
     def _activate_ui(self):
         self._mainw.activate()
+        self._gw.activate()
+        self._gsw.activate()
 #        self._pmw.activate()
 #        self._sew.activate()
         self._ttaw.activate(self.logic().analyzer, self.logic().settings.time_trace_analysis_stg)

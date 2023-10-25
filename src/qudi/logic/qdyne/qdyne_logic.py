@@ -57,7 +57,7 @@ class QdyneLogic(LogicBase):
     """
 
     # declare connectors
-    #pmaster = Connector(interface='PulsedMasterLogic')
+    pulsedmasterlogic = Connector(interface='PulsedMasterLogic')
     #pmeasure = Connector(interface='PulsedMeasurementLogic')
     _data_streamer = Connector(name='data_streamer', interface='DataInStreamInterface')
 
