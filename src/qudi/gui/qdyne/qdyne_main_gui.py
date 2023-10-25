@@ -58,9 +58,9 @@ class QdyneMainGui(GuiBase):
     def _instantiate_widgets(self):
         self._mainw = QdyneMainWindow(self)
         self._gw = GenerationWidget(self)
+        self._gsw = PredefinedMethodsConfigDialogWidget(self)
 #        self._sew = StateEstimatorWidget()
         self._ttaw =  TimeTraceAnalysisWidget()
-        self._gsw = PredefinedMethodsConfigDialogWidget(self)
 
     def _activate_ui(self):
         self._mainw.activate()
@@ -72,6 +72,8 @@ class QdyneMainGui(GuiBase):
 
     def _connect(self):
         self._mainw.connect()
+        self._gw.connect()
+        self._gsw.connect()
 #        self._pmw.connect()
 #        self._sew.connect()
         self._ttaw.connect()
@@ -82,12 +84,16 @@ class QdyneMainGui(GuiBase):
 
     def _deactivate_ui(self):
         self._mainw.deactivate()
+        self._gw.deactivate()
+        self._gsw.deactivate()
 #        self._pmw.deactivate()
 #        self._sew.deactivate()
         self._ttaw.deactivate()
 
     def _disconnect(self):
         self._mainw.disconnect()
+        self._gw.disconnect()
+        self._gsw.disconnect()
 #        self._pmw.disconnect()
 #        self._sew.disconnect()
         self._ttaw.disconnect()
