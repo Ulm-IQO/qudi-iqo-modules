@@ -21,13 +21,98 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 from logging import Logger
 import os
-
+from dataclasses import dataclass, fields
 from PySide2 import QtCore, QtWidgets
 from qudi.util import uic
 from qudi.util.helpers import natural_sort
-from qudi.core.statusvariable import StatusVar
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from enum import Enum
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
+
+
+class DataclassWidget(QtWidgets.QWidget):
+    def __init__(self, dataclass_obj: dataclass) -> None:
+        super().__init__()
+        self.data = dataclass_obj
+        self.layout = None
+        self.labels = dict()
+        self.widgets = dict()
+        self.init_UI()
+
+    def init_UI(self):
+        self.create_layout()
+        self.set_widgets(self.data)
+        self.setLayout(self.layout)
+
+    def create_layout(self):
+        self.layout = QtWidgets.QGridLayout()
+
+    def set_widgets(self, data):
+        param_index = 0
+        for field in fields(data):
+            label = self.create_label(field.name)
+            widget = self.create_widget(field)
+            widget.setMinimumSize(QtCore.QSize(80, 0))
+
+            self.layout.addWidget(label, 0, param_index + 1, 1, 1)
+            self.layout.addWidget(widget, 1, param_index + 1, 1, 1)
+
+            self.labels[field.name] = label
+            self.widgets[field.name] = widget
+            param_index += 1
+
+    def create_widget(self, field):
+        widget = None
+        value = getattr(self.data, field.name)
+
+        if field.type == int:
+            widget = self.int_to_widget(field, value)
+        elif field.type == float:
+            widget = self.float_to_widget(field, value)
+        elif field.type == str:
+            widget = self.str_to_widget(field, value)
+        elif field.type == bool:
+            widget = self.bool_to_widget(field, value)
+        else:
+            print('failed to convert dataclass')
+
+        widget.setObjectName(field.name + '_widget')
+        widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+
+        return widget
+
+    def create_label(self, name):
+        label = QtWidgets.QLabel()
+        label.setText(name)
+        label.setObjectName(name + '_label')
+        return label
+
+    def int_to_widget(self, field, value):
+        widget = ScienSpinBox()
+        widget.setValue(value)
+        widget.valueChanged.connect(lambda value, f=field: self.update_param(f, value))
+        return widget
+
+    def float_to_widget(self, field, value):
+        widget = ScienDSpinBox()
+        widget.setValue(value)
+        widget.valueChanged.connect(lambda value, f=field: self.update_param(f, value))
+        return widget
+
+    def str_to_widget(self, field, value):
+        widget = QtWidgets.QLineEdit()
+        widget.setText(value)
+        widget.editingFinished.connect(lambda value, f=field: self.update_param(f, value))
+        return widget
+
+    def bool_to_widget(self, field, value):
+        widget = QtWidgets.QCheckBox()
+        widget.setChecked(value)
+        widget.stateChanged.connect(lambda value, f=field: self.update_param(f, value))
+        return widget
+
+    def update_param(self, field, value):
+        setattr(self.data, field.name, value)
 
 class QdyneMainWindow(QtWidgets.QMainWindow):
     def __init__(self, gui):
@@ -375,20 +460,20 @@ class GenerationWidget(QtWidgets.QWidget):
         @return:
         """
         # block signals
-        self.laserchannel_combobox.blockSignals(True)
-        self.syncchannel_combobox.blockSignals(True)
-        self.gatechannel_combobox.blockSignals(True)
+        # self.laserchannel_combobox.blockSignals(True)
+        # self.syncchannel_combobox.blockSignals(True)
+        # self.gatechannel_combobox.blockSignals(True)
 
-        if 'laser_channel' in settings_dict:
-            index = self.laserchannel_combobox.findText(settings_dict['laser_channel'])
-            self.laserchannel_combobox.setCurrentIndex(index)
-            # self._pg.block_editor.set_laser_channel_is_digital(settings_dict['laser_channel'].startswith('d'))
-        if 'sync_channel' in settings_dict:
-            index = self.syncchannel_combobox.findText(settings_dict['sync_channel'])
-            self.syncchannel_combobox.setCurrentIndex(index)
-        if 'gate_channel' in settings_dict:
-            index = self.gatechannel_combobox.findText(settings_dict['gate_channel'])
-            self.gatechannel_combobox.setCurrentIndex(index)
+        # if 'laser_channel' in settings_dict:
+        #     index = self.laserchannel_combobox.findText(settings_dict['laser_channel'])
+        #     self.laserchannel_combobox.setCurrentIndex(index)
+        #     # self._pg.block_editor.set_laser_channel_is_digital(settings_dict['laser_channel'].startswith('d'))
+        # if 'sync_channel' in settings_dict:
+        #     index = self.syncchannel_combobox.findText(settings_dict['sync_channel'])
+        #     self.syncchannel_combobox.setCurrentIndex(index)
+        # if 'gate_channel' in settings_dict:
+        #     index = self.gatechannel_combobox.findText(settings_dict['gate_channel'])
+        #     self.gatechannel_combobox.setCurrentIndex(index)
         if hasattr(self, '_channel_selection_comboboxes'):
             for combobox in self._channel_selection_comboboxes:
                 param_name = combobox.objectName()[13:]
@@ -414,9 +499,9 @@ class GenerationWidget(QtWidgets.QWidget):
                     widget.blockSignals(False)
 
         # unblock signals
-        self.laserchannel_combobox.blockSignals(False)
-        self.syncchannel_combobox.blockSignals(False)
-        self.gatechannel_combobox.blockSignals(False)
+        # self.laserchannel_combobox.blockSignals(False)
+        # self.syncchannel_combobox.blockSignals(False)
+        # self.gatechannel_combobox.blockSignals(False)
         return
 
 class StateEstimatorWidget(QtWidgets.QWidget):
