@@ -132,10 +132,10 @@ class QdyneMainWindow(QtWidgets.QMainWindow):
     def deactivate(self):
         pass
 
-    def connect(self):
+    def connect_signals(self):
         self.action_Predefined_Methods_Config.triggered.connect(self._gui._gsw.show)
 
-    def disconnect(self):
+    def disconnect_signals(self):
         pass
 
 class MeasurementWidget(QtWidgets.QWidget):
@@ -155,10 +155,10 @@ class MeasurementWidget(QtWidgets.QWidget):
     def deactivate(self):
         pass
 
-    def connect(self):
+    def connect_signals(self):
         pass
 
-    def disconnect(self):
+    def disconnect_signals(self):
         pass
 
 class GenerationWidget(QtWidgets.QWidget):
@@ -190,10 +190,10 @@ class GenerationWidget(QtWidgets.QWidget):
     def deactivate(self):
         pass
 
-    def connect(self):
+    def connect_signals(self):
         pass
 
-    def disconnect(self):
+    def disconnect_signals(self):
         pass
 
     def _create_pm_global_params(self):
@@ -424,9 +424,6 @@ class GenerationWidget(QtWidgets.QWidget):
         @return:
         """
         settings_dict = dict()
-        settings_dict['laser_channel'] = self._pg.gen_laserchannel_ComboBox.currentText()
-        settings_dict['sync_channel'] = self._pg.gen_syncchannel_ComboBox.currentText()
-        settings_dict['gate_channel'] = self._pg.gen_gatechannel_ComboBox.currentText()
         # Add channel specifiers from predefined methods tab
         if hasattr(self, '_channel_selection_comboboxes'):
             for combobox in self._channel_selection_comboboxes:
@@ -449,7 +446,6 @@ class GenerationWidget(QtWidgets.QWidget):
 
         self._gui.logic().pulsedmasterlogic().set_generation_parameters(settings_dict)
 
-        self._pg.block_editor.set_laser_channel_is_digital(settings_dict['laser_channel'].startswith('d'))
         return
 
     @QtCore.Slot(dict)
@@ -521,10 +517,10 @@ class StateEstimatorWidget(QtWidgets.QWidget):
     def deactivate(self):
         pass
 
-    def connect(self):
+    def connect_signals(self):
         pass
 
-    def disconnect(self):
+    def disconnect_signals(self):
         pass
 
 
@@ -547,10 +543,10 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def deactivate(self):
         pass
 
-    def connect(self):
+    def connect_signals(self):
         pass
 
-    def disconnect(self):
+    def disconnect_signals(self):
         pass
 
 
@@ -588,13 +584,14 @@ class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
     def deactivate(self):
         pass
 
-    def connect(self):
+    def connect_signals(self):
         # Connect signals used in predefined methods config dialog
         self.accepted.connect(self.apply_predefined_methods_config)
         self.rejected.connect(self.keep_former_predefined_methods_config)
         self.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.apply_predefined_methods_config)
+        pass
 
-    def disconnect(self):
+    def disconnect_signals(self):
         pass
 
     def _deactivate_predefined_methods_settings_ui(self):
@@ -613,7 +610,7 @@ class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
             checkbox = getattr(self, 'checkbox_' + method_name)
             checkbox.setChecked(groupbox.isVisible())
         return
-
+    
     def apply_predefined_methods_config(self):
         self._gui._predefined_methods_to_show = list()
         for method_name in self._gui.logic().pulsedmasterlogic().generate_methods:

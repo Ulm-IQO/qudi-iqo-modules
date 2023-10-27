@@ -71,12 +71,12 @@ class QdyneMainGui(GuiBase):
         self._ttaw.activate(self.logic().analyzer, self.logic().settings.time_trace_analysis_stg)
 
     def _connect(self):
-        self._mainw.connect()
-        self._gw.connect()
-        self._gsw.connect()
-#        self._pmw.connect()
-#        self._sew.connect()
-        self._ttaw.connect()
+        self._mainw.connect_signals()
+        self._gw.connect_signals()
+        self._gsw.connect_signals()
+#        self._pmw.connect_signals()
+#        self._sew.connect_signals()
+        self._ttaw.connect_signals()
 
     def on_deactivate(self):
         self._deactivate_ui()
@@ -91,12 +91,12 @@ class QdyneMainGui(GuiBase):
         self._ttaw.deactivate()
 
     def _disconnect(self):
-        self._mainw.disconnect()
-        self._gw.disconnect()
-        self._gsw.disconnect()
-#        self._pmw.disconnect()
-#        self._sew.disconnect()
-        self._ttaw.disconnect()
+        self._mainw.disconnect_signals()
+        self._gw.disconnect_signals()
+        self._gsw.disconnect_signals()
+#        self._pmw.disconnect_signals()
+#        self._sew.disconnect_signals()
+        self._ttaw.disconnect_signals()
 
     def show(self):
         self._mainw.show()
