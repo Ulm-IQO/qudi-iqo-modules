@@ -86,7 +86,7 @@ class TimeSeriesGui(GuiBase):
         """ Initialisation of the GUI """
         self._mw = TimeSeriesGuiMainWindow()
         # Get hardware constraints
-        logic = self._time_series_logic_con
+        logic = self._time_series_logic
         self._streamer_constraints = logic.streamer_constraints
         all_channels = list(self._streamer_constraints.channel_units)
 
@@ -262,7 +262,7 @@ class TimeSeriesGui(GuiBase):
             self._apply_trace_view_settings(dialog.get_channel_states())
 
     def _exec_channel_settings_dialog(self):
-        logic = self._time_series_logic_con
+        logic = self._time_series_logic
         active_channels, averaged_channels = logic.channel_settings
         channels = list(self._streamer_constraints.channel_units)
         channel_states = {ch: (ch in active_channels, ch in averaged_channels) for ch in channels}
@@ -319,7 +319,7 @@ class TimeSeriesGui(GuiBase):
         self._current_value_channel = self._mw.current_value_combobox.currentText()
 
         # Update plot widget axes
-        self._streamer_constraints = self._time_series_logic_con.streamer_constraints
+        self._streamer_constraints = self._time_series_logic.streamer_constraints
         channel_units = self._streamer_constraints.channel_units
         different_units = list({unit for ch, unit in channel_units.items() if ch in enabled})
         self._channels_per_axis = list()
@@ -503,7 +503,7 @@ class TimeSeriesGui(GuiBase):
                 settings_dict['moving_average_width']
             )
             self._mw.settings_dockwidget.moving_average_spinbox.blockSignals(False)
-        self._streamer_constraints = self._time_series_logic_con.streamer_constraints
+        self._streamer_constraints = self._time_series_logic.streamer_constraints
         if self._streamer_constraints.sample_timing == SampleTiming.RANDOM:
             self._mw.trace_plot_widget.setRange(
                 xRange=[0, settings_dict['trace_window_size'] * settings_dict['data_rate']],
