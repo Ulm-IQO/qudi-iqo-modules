@@ -68,6 +68,7 @@ class CameraConstraints:
                                     })
 
         self._operating_modes = None
+
     @property
     def acquisition_modes(self):
         return self._acquisition_modes
@@ -169,10 +170,17 @@ class ScientificCameraInterface(Base):
 
     @property
     @abstractmethod
-    def sensor_area_settings(self):
+    def binning(self):
         """
-        Binning and extracting a certain part of the sensor e.g. {'binning': (2,2), 'crop' ((0, 127), (0, 255)} takes 4 pixels
-        together to 1 and takes from all the pixels an area of 128 by 256
+        Group together pixels and average them.
+        """
+        pass
+
+    @property
+    @abstractmethod
+    def crop(self):
+        """
+        Restrain the camera to a certain part of the sensor.
         """
         pass
 

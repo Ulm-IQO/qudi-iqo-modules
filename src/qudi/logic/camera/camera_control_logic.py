@@ -305,7 +305,7 @@ class CameraControlLogic(LogicBase):
                 # lock the module
                 self.module_state.lock()
                 #single image acquisition
-                if self.acquisition_mode == (1,1):
+                if self.acquisition_mode == (1, 1):
                     # tell the hardware to start the acquisition
                     self._camera().start_acquisition()
                 # live video acquisition
@@ -343,12 +343,13 @@ class CameraControlLogic(LogicBase):
         out = 0
         for time in self.ring_of_exposures:
             out += 1000 * (time + self._camera().readout_time)
-                
+
         out = int(out + self._software_timer_puffer)
         return out
 
     def receive_frames(self):
-        self.last_frames = self._camera().get_images(int(self.expected_image_num/self.number_of_measurements))
+        num_images = int(self.expected_image_num/self.number_of_measurements)
+        self.last_frames = self._camera().get_images(num_images)
 
     def request_stop(self):
         """

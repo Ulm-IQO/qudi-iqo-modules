@@ -32,7 +32,7 @@ import numpy as np
 from qudi.core.configoption import ConfigOption
 
 from qudi.interface.camera_interface import CameraInterface
-from qudi.interface.scientific_camera_interface import ScientificCameraInterface
+from qudi.interface.scientific_camera_interface import ScientificCameraInterface, CameraConstraints
 
 
 class ReadMode(Enum):
@@ -49,10 +49,6 @@ class AcquisitionMode(Enum):
     KINETICS = 3
     FAST_KINETICS = 4
     RUN_TILL_ABORT = 5
-
-class OperatingMode(Enum):
-    default = 0
-    scientific_single_image = 1
 
 class OutputAmplifier(Enum):
     EM = 0
@@ -204,7 +200,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
     _min_temperature = -100
     _live = False
     _camera_name = 'iXon Ultra 897'
-    _shutter = "closed"
+    _shutter = "Closed"
     _scans = 1 #TODO get from camera
     _acquiring = False
     _preamp_gain_index = _default_preamp_gain_index
@@ -212,8 +208,10 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
     _baseline = 200
     _support_live = True
     _current_max_exposure = 0.1
+    _shut_time = 0.01
 
-    _operating_mode = OperatingMode.default
+    _operating_mode = "scientific"
+    _acquisition_mode_code = (1, 1)
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -221,6 +219,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         self._exposures = [self._default_exposure]
         self.dll = cdll.LoadLibrary(self._dll_location)
         self.dll.Initialize()
+        self._close_shutter()
         self._width, self._height = self._get_detector()
         self._set_read_mode(self._read_mode)
         self._set_trigger_mode(self._trigger_mode)
@@ -233,11 +232,35 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         self._set_hs_speed(self._output_amplifier, self._horizontal_readout_index)
         self._set_vs_speed(self._vertical_readout_index)
         self._set_frame_transfer(self._default_frame_transfer)
+
         if self._output_amplifier == 'EM':
             self._set_em_gain_mode(self._default_em_gain_mode)
             self._set_emccd_gain(self._default_em_gain)
         self._last_image = np.zeros((self._width, self._height))
+        self._constraints = CameraConstraints()
+        # todo use psutil to get available virtual memory
+        # 128 GB of memroy for a 512 x 512 pixels with a bit depth of 2 Bytes
+        self._constraints.max_images = int(128e9 / 512 * 512 * 2)
+        # TODO: Expand this to electrons, photons etc.
+        self._constraints.pixel_units = ["Counts"]
+        self._constraints.ring_of_exposures = {"min": 0.001, "max": 10.0, "step": 0.001 }
+        # TODO: find out the right value
+        self._constraints.ring_of_exposures["max_num_of_exposure_times"] = 16
+        self._constraints.shutter = {"states": ["Open", "Closed"]}
 
+        self._constraints.acquisition_modes = {'Image': True,
+                                               'Software Timed Video': True,
+                                               'Image Sequence': True,
+                                               'N-Time Image Sequence': True}
+
+        self._constraints.settable_settings = {'responsitivity': True,
+                                               'bit_depth': False,
+                                               'binning': True,
+                                               'crop': True
+                                               }
+
+        self._constraints.operating_modes = ['default', 'scientific']
+        self.operating_mode = self._constraints.operating_modes.scientific
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
@@ -248,7 +271,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
 
     @property
     def constraints(self):
-        return
+        return self._constraints
 
     def get_name(self):
         """ Retrieve an identifier of the camera that the GUI can print
@@ -257,6 +280,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         """
         return self._camera_name
 
+    @property
     def name(self):
         """ Retrieve an identifier of the camera that the GUI can print
 
@@ -271,6 +295,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         """
         return self._width, self._height
 
+    @property
     def size(self):
         """ Retrieve size of the image in pixel
 
@@ -278,54 +303,80 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         """
         return self._width, self._height
 
+    @property
     def state(self):
         """ Is the camera ready for an acquisition ?
 
         @return bool: ready ?
         """
-        status = c_int()
-        self._get_status(status)
-        if ERROR_DICT[status.value] == 'DRV_IDLE':
+
+        status = self._get_status()
+        if status == 'DRV_IDLE':
             return True
         else:
             return False
 
     @property
-    def exposures(self):
+    def ring_of_exposures(self):
         return self._exposures
 
-    @exposures.setter
-    def exposures(self, exposures):
+    @ring_of_exposures.setter
+    def ring_of_exposures(self, exposures):
+        # Again should make this depend on the operating mode
+        # Just making a default implementation for now
         self._exposures = exposures
-        return
 
     @property
-    def sensitivity(self):
-        return self._get_preamp_gain(self._preamp_gain_index) * self._em_gain
+    def responsitivity(self):
+        return self._get_preamp_gain(self._preamp_gain_index) * self._get_emccd_gain()
 
-    @sensitivity.setter
-    def sensitivity(self, sens):
-        fun = getattr(self, self._amp_setter_fun)
-        fun(sens)
-        return
+    @responsitivity.setter
+    def responsitivity(self, gain):
+        fun = getattr(self, "_amp_setter_fun")
+        if self._output_amplifier == "EM":
+            fun(int(gain / self._get_preamp_gain(self._preamp_gain_index)))
+        else:
+            fun(int(gain))
 
     @property
     def readout_time(self):
         return self._get_acquisition_timings()[2]
 
-    @property
-    def sensor_area_settings(self):
-        return {'binning': (self._hbin, self._vbin),
-                'crop': {(self._hstart, self._hend), (self._vstart, self._vend)}}
+    # @property
+    # def sensor_area_settings(self):
+    #     return {'binning': (self._hbin, self._vbin),
+    #             'crop': {(self._hstart, self._hend), (self._vstart, self._vend)}}
+    #
+    # @sensor_area_settings.setter
+    # def sensor_area_settings(self, area_settings):
+    #     hbin, vbin = area_settings['binning']
+    #     hsettings, vsettings = area_settings['crop']
+    #     hstart, hend = hsettings
+    #     vstart, vend = vsettings
+    #     self._set_image(hbin, vbin, hstart, hend, vstart, vend)
+    #     return
 
-    @sensor_area_settings.setter
-    def sensor_area_settings(self, area_settings):
-        hbin, vbin = area_settings['binning']
-        hsettings, vsettings = area_settings['crop']
-        hstart, hend = hsettings
-        vstart, vend = vsettings
-        self._set_image(hbin, vbin, hstart, hend, vstart, vend)
-        return
+    @property
+    def binning(self):
+        return self._hbin, self._vbin
+
+    @binning.setter
+    def binning(self, size):
+        hbin, vbin = size
+        self._set_image(hbin, vbin, self._hstart,
+                        self._hend, self._vstart, self._vend)
+
+    @property
+    def crop(self):
+        return ((self._hstart, self._hend),
+                (self._vstart, self._vend))
+
+    @crop.setter
+    def crop(self, size):
+        hstart, hend = size[0]
+        vstart, vend = size[1]
+        self._set_image(self._hbin, self._vbin, hstart,
+                        hend, vstart, vend)
 
     @property
     def bit_depth(self):
@@ -345,7 +396,10 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
 
     @operating_mode.setter
     def operating_mode(self, mode):
-        self._operating_mode = getattr(OperatingMode, mode)
+        if self._constraints.operating_modes:
+            if mode in self._constraints.operating_modes:
+                self._operating_mode = mode
+        # adjust the camera settings to the new operating mode
         self._configure_operating_mode(mode)
         return
 
@@ -555,101 +609,11 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         else:
             return False
 
-# soon to be interface functions for using
-# a camera as a part of a (slow) photon counter
-    def set_up_counter(self):
-        """
-        Set up camera for ODMR measurement
-        """
-        if self._shutter == 'closed':
-            msg = self._set_shutter(0, 1, 0.1, 0.1)
-            if msg == 'DRV_SUCCESS':
-                self._shutter = 'open'
-            else:
-                self.log.error('Problems with the shutter.')
-                return -1
-        ret_val1 = self._set_trigger_mode('INTERNAL')
-        self._set_acquisition_mode('KINETICS')
-        self.set_exposure(self._exposure)
-        self._set_preamp_gain(self._preamp_gain_index)
-        # if self._output_amplifier == 'EM':
-        #    self._set_up_em_amp(3, 3, 0) # TODO make this customizable
-        self._set_frame_transfer(True)
-        ret_val2 = 1
-        if (ret_val1 < 0) | (ret_val2 < 0):
-
-            return -1
-
-        error_code = self.dll.PrepareAcquisition()
-        error_msg = ERROR_DICT[error_code]
-        if error_msg == 'DRV_SUCCESS':
-            self.log.debug('prepared acquisition')
-        else:
-            self.log.debug('could not prepare acquisition: {0}'.format(error_msg))
-            return -1
-        self._get_acquisition_timings()
-
-        return 0
-
-    def count_odmr(self, length):
-        # read images as soon as they are acquired and check if list has correct size
-        images = []
-        acq_images = []
-        while len(images) < length:
-            first, last = self._get_number_new_images()
-            if (first < last) | (first == last == length):
-                if acq_images:
-                    low_bound = min(first, min(acq_images))
-                else:
-                    low_bound = first
-                for i in range(low_bound, last + 1):
-                    if i not in acq_images:
-                        img = self._get_images(i, i, 1)
-                        acq_images.append(i)
-                        images.append(img)
-
-        # the first frequency has two triggers, therefore remove one image
-        # del images[0:3]
-        b1 = self.stop_acquisition()
-        return b1, np.array(images).transpose()
-
-    def count_odmr2(self, length):
-        # the advantage of this count mode is that it is making less
-        # calls to the camera
-        # first wait expected amount of time
-        exp_meas_time = (length + 2) * self._exposure
-        time.sleep(exp_meas_time)
-        # read images as soon as they are acquired and check if list has correct size
-        image_dim = self._height * self._width
-        images = np.zeros((length + 2, image_dim))
-        ind = 0
-        loop_counter = 0
-        while loop_counter < length + 2:
-            # don't save the first two images
-            first, last = self._get_number_new_images()
-            n_scans = self._no_of_scans(first, last)
-            loop_counter += n_scans
-            # there should at least be an image available to read out
-            if n_scans > 0:
-                if loop_counter >= length + 2:
-                    # only read out as many images as needed
-                    old_count = loop_counter - n_scans
-                    to_add = length + 2 - old_count
-                    fresh_images = self._get_images(first, first + to_add - 1, to_add)
-                    fresh_images = np.reshape(fresh_images, (to_add, image_dim))
-                else:
-                    # self.log.warning('in normal case')
-                    fresh_images = self._get_images(first, last, n_scans)
-                    fresh_images = np.reshape(fresh_images, (n_scans, image_dim))
-                images[ind: ind + fresh_images.shape[0]] = fresh_images
-                ind += fresh_images.shape[0]
-        # the first frequency has two triggers, therefore remove one image
-        images_final = images[2:]
-        b1 = self.stop_acquisition()
-        return b1, images_final.transpose()
-
     def start_acquisition(self):
+        self.log.warn("In control logic. Making hardware call.")
         error_msg = self._start_acquisition()
+        if self._acquisition_mode == "FAST_KINETICS":
+            self._set_number_kinetics(self._acquisition_mode_code[0])
         if error_msg != 'DRV_SUCCESS':
             self.log.warning('could not start the acquisition: {}'.format(error_msg))
             return False
@@ -658,27 +622,82 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
 
     @property
     def acquisition_mode(self):
-        return self._acquisition_mode
+        return self._acquisition_mode_code
 
     @acquisition_mode.setter
     def acquisition_mode(self, mode):
-        if hasattr(AcquisitionMode, mode):
-            self._acquisition_mode = mode
-            self._set_acquisition_mode()
+        if mode == (1, 1):
+            self._acquisition_mode = "KINETICS"
+            self._acquisition_mode_code = (1, 1)
+        elif mode == (1, -1):
+            self._acquisition_mode = "KINETICS"
+            self._acquisition_mode_code = (1, -1)
+        elif (mode[0] > 1) & (mode[1] >= 1):
+            self._acquisition_mode = "KINETICS"
+            self._acquisition_mode_code = mode
+        elif mode == (-1, -1):
+            self._acquisition_mode = "RUN_TILL_ABORT"
+            self._acquisition_mode_code = (-1, -1)
         else:
-            self.log.warning('Requested acquisition mode is not available')
-        return
+            self.log.error("Acquisition mode decoding failed. Not sure what to do.")
+        self._set_acquisition_mode(self._acquisition_mode)
 
-    def get_images(self, image_num):
-        return
+    # TODO move this property to the constraints class
+    @property
+    def available_acquisition_modes(self):
+        return self._constraints.acquisition_modes
+
+    def get_images(self, n_images):
+        # lets hope this works properly even for small
+        # number of images
+        acq_images = list()
+        waited = 0.0
+        first_img_there = False
+        # TODO make a reasonable estimate for the maximum wait time
+        max_wait = 20.0
+        # TODO reasonable estimate for max query time
+        query_time = 0.1
+
+        loop_counter = 0
+        def num_images(acq_images, width, height):
+            return sum([len(i) for i in acq_images]) / (width * height)
+        while num_images(acq_images, self._width, self._height) < n_images:
+            self.log.warn(f"in loop of get_images \n loop counter {loop_counter}")
+            self.log.warn(f"already acquired images according to num_images(...)"
+                          f" {num_images(acq_images, self._width, self._height)}")
+            first, last = self._get_number_new_images()
+            diff = last - first
+
+            if (diff == 0) and first_img_there:
+                acq_images.append(self._get_images(first, first, 1))
+            else:
+                acq_images.append(self._get_images(first, last, diff + 1))
+                first_img_there = True
+            time.sleep(query_time)
+            waited += query_time
+            if waited > max_wait:
+                self.log.error(f'could not acquire images in {waited}')
+                break
+        return np.concatenate(acq_images).flatten().reshape((n_images, self._width, self._height))
 
     @property
     def shutter_state(self):
-        return
+        return self._shutter
+
+    @shutter_state.setter
+    def shutter_state(self, state):
+        if state == "Open":
+            self._open_shutter(shut_time=self._shut_time)
+        else:
+            self._close_shutter(shut_time=self._shut_time)
 
     @property
     def shutter_speed(self):
-        return
+        return self._shut_time
+
+    @shutter_speed.setter
+    def shutter_speed(self, shut_time):
+        self._shut_time = shut_time
 
 
     def get_down_time(self):
@@ -690,22 +709,49 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         num_px = width * height
         return [i for i in map(lambda x: 'px {0}'.format(x), range(num_px))]
 
+
 # non interface functions regarding camera interface
+
+    def _all_images_acquired(self, num):
+        """
+        Helper function for general read images method
+        :param num:
+        :return:
+        """
+        if num <= self._num_images_in_buffer():
+            return True
+        else:
+            return False
+
+    def _num_images_in_buffer(self):
+        """
+        Helper function for general read images method
+        :return:
+        """
+        first, last = self._get_number_new_images()
+        num_images = last - first + 1
+        return num_images
+
     def _configure_operating_mode(self, mode):
-        if mode == OperatingMode.default.name:
+        if mode == self._constraints.operating_modes.default:
             self.log.info('operationg mode set to >> default <<')
             self._set_trigger_mode('INTERNAL')
-            self._cam.amp = {'preamp': 4.0}
+            self._set_preamp_gain(1)
             self._set_frame_transfer(False)
             self._amp_setter_fun = self._set_preamp_gain
+            self._set_acquisition_mode("KINETICS")
 
-        elif mode == OperatingMode.scientific_single_image.name:
+        elif mode == self._constraints.operating_modes.scientific:
             self.log.info('operationg mode set to >> fast_readout <<')
             self._set_trigger_mode('INTERNAL')
-            self._cam.amp = {'preamp': 4.0, 'EM': 100.0}
+            self._set_preamp_gain(1)
+            self._set_output_amplifier('EM')
+            self._set_emccd_gain(3)
             self._set_frame_transfer(True)
             self._amp_setter_fun = self._set_emccd_gain
-        #TODO implement mode for capturing sequences with scientific cameras
+            self._set_temperature(-70)
+            self._set_cooler(True)
+            self._set_acquisition_mode("KINETICS")
         else:
             self.log.error('operating mode {}'.format(mode))
         
@@ -751,7 +797,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         @return: string msg: contains information if operation went through correctly.
         """
         error_msg = self._set_shutter(0, 1, shut_time, shut_time)
-        self._shutter = 'open'
+        self._shutter = 'Open'
         return error_msg
 
     def _close_shutter(self, shut_time=0.1):
@@ -761,7 +807,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         @return: string msg: contains information if operation went through correctly.
         """
         error_msg = self._set_shutter(0, 2, shut_time, shut_time)
-        self._shutter = 'closed'
+        self._shutter = 'Closed'
         return error_msg
 
     def _set_read_mode(self, mode):
@@ -879,7 +925,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         """
         Set the gain given by the pre amplifier. The actual gain
         factor can be retrieved with a call to '_get_pre_amp_gain'.
-        @param c_int index: 0 - (Number of Preamp gains - 1)
+        @param index: 0 - (Number of Preamp gains - 1)
         @return: string error_msg: Describing if call to function was ok or not
         """
         error_code = self.dll.SetPreAmpGain(c_int(index))
@@ -1250,7 +1296,6 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
 
         return first.value, last.value
 
-    # not working properly (only for n_scans = 1)
     def _get_images(self, first_img, last_img, n_scans):
         """
         This function will return a data array with the specified series of images from the
@@ -1297,40 +1342,6 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         image_array -= self._baseline
         self._last_image = image_array
         return image_array
-
-    def _get_c_images(self, first_img, last_img, n_scans):
-        """
-        Same as _get_images just it returns the c array
-        :param first_img:
-        :param last_img:
-        :param n_scans:
-        :return:
-        """
-        width = self._width
-        height = self._height
-
-        # first_img, last_img = self._get_number_new_images()
-        # n_scans = last_img - first_img
-        dim = width * height * n_scans
-
-        dim = int(dim)
-        image_array = np.zeros(dim)
-        cimage_array = c_int * dim
-        cimage = cimage_array()
-
-        first_img = c_long(first_img)
-        last_img = c_long(last_img)
-        size = c_ulong(width * height)
-        val_first = c_long()
-        val_last = c_long()
-        error_code = self.dll.GetImages(first_img, last_img, pointer(cimage),
-                                        size, byref(val_first), byref(val_last))
-
-        if ERROR_DICT[error_code] != 'DRV_SUCCESS':
-            self.log.error('Couldn\'t retrieve an image. {0}'.format(ERROR_DICT[error_code]))
-            return -1
-        else:
-            return cimage
 
     # functions returning information about the camera used. (e.g. shift speed etc.)
 
