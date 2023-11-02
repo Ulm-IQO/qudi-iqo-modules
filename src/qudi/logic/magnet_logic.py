@@ -43,7 +43,7 @@ class MagnetLogic(LogicBase):
             max_scan_update_interval: 2
             position_update_interval: 1
         connect:
-            scanner: scanner_dummy
+            magnet: magnet_dummy
 
     """
 
@@ -70,6 +70,8 @@ class MagnetLogic(LogicBase):
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
+
+        self._scan_data = None
         return
 
     def on_activate(self):
@@ -86,6 +88,8 @@ class MagnetLogic(LogicBase):
             self._scan_ranges = new_settings['range']
             self._scan_resolution = new_settings['resolution']
             self._scan_frequency = new_settings['frequency']
+
+        self._target = self.magnet_control
 
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
@@ -113,7 +117,7 @@ class MagnetLogic(LogicBase):
     @property
     def magnet_control(self):
         with self._thread_lock:
-            return self._maget.get_position()
+            return self._magnet().get_control()
 
     @property
     def magnet_target(self):
@@ -122,7 +126,7 @@ class MagnetLogic(LogicBase):
 
     @property
     def magnet_control_axes(self):
-        return self.scanner_constraints.axes
+        return self.magnet_constraints.axes
 
     @property
     def figure_of_merit(self):
@@ -131,7 +135,7 @@ class MagnetLogic(LogicBase):
 
     @property
     def magnet_constraints(self):
-        return self._magnet().get_constraints()
+        return self._magnet().constraints()
 
     @property
     def scan_ranges(self):

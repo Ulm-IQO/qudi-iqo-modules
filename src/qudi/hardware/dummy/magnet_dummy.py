@@ -114,7 +114,7 @@ class MagnetDummy(MagnetInterface):
             step = ScalarConstraint(default=0, bounds=(0, dist))
 
             axes.append(MagnetControlAxis(name=axis,
-                                    unit='m',
+                                    unit='T',
                                     control_value=control_value,
                                     step=step,
                                     resolution=resolution,
@@ -195,7 +195,6 @@ class MagnetDummy(MagnetInterface):
             self.module_state.unlock()
         except FysomError:
             pass
-        self._scan_image = None
         self.log.warning('Scanner has been emergency stopped.')
         return 0
 
