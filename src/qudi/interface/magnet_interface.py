@@ -58,7 +58,7 @@ class MagnetControlAxis:
     """
     name: str
     unit: str
-    position: ScalarConstraint
+    control_value: ScalarConstraint
     step: ScalarConstraint
     resolution: ScalarConstraint
     frequency: ScalarConstraint
@@ -66,7 +66,6 @@ class MagnetControlAxis:
     def __post_init__(self):
         if self.name == '':
             raise ValueError('Parameter "name" must be non-empty str.')
-
 
 @dataclass(frozen=True)
 class MagnetScanSettings:
@@ -127,6 +126,87 @@ class MagnetScanSettings:
     def scan_dimension(self) -> int:
         return len(self.axes)
 
+@dataclass(frozen=True)
+class MagnetConstraints:
+    """
+    Data class representing the complete constraints of a scanning probe measurement.
+    """
+    axis_objects: Tuple[MagnetControlAxis, ...]
+    has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
+
+
+    @property
+    def axes(self) -> Dict[str, MagnetControlAxis]:
+        return {ax.name: ax for ax in self.axis_objects}
+
+    def is_valid(self, settings: MagnetScanSettings) -> bool:
+        try:
+            self.check_settings(settings)
+        except (ValueError, TypeError):
+            return False
+        return True
+
+    def check_settings(self, settings: MagnetScanSettings) -> None:
+        self.check_channels(settings)
+        self.check_axes(settings)
+        self.check_feedback(settings)
+
+
+    def check_axes(self, settings: MagnetScanSettings) -> None:
+        if not set(settings.axes).issubset(self.axes):
+            raise ValueError(f'Unknown axis names encountered in {settings.axes}. '
+                             f'Valid axis names are {list(self.axes.keys())}.')
+
+        for axis_name, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
+            axis = self.axes[axis_name]
+            try:
+                axis.position.check(_range[0])
+                axis.position.check(_range[1])
+            except ValueError as e:
+                raise ValueError(f'Scan range out of bounds for axis "{axis_name}".') from e
+            except TypeError as e:
+                raise TypeError(f'Scan range type check failed for axis "{axis_name}".') from e
+
+            try:
+                axis.resolution.check(resolution)
+            except ValueError as e:
+                raise ValueError(f'Scan resolution out of bounds for axis "{axis_name}".') from e
+            except TypeError as e:
+                raise TypeError(f'Scan resolution type check failed for axis "{axis_name}".') from e
+
+        # frequency is only relevant for the first (fast) axis
+        fast_axis_name = settings.axes[0]
+        fast_axis = self.axes[fast_axis_name]
+        try:
+            fast_axis.frequency.check(settings.frequency)
+        except ValueError as e:
+            raise ValueError(f'Scan frequency out of bounds for fast axis "{fast_axis_name}".') from e
+        except TypeError as e:
+            raise TypeError(f'Scan frequency type check failed for fast axis "{fast_axis_name}".') from e
+
+
+    def clip(self, settings: MagnetScanSettings) -> MagnetScanSettings:
+        self.check_axes(settings)
+        clipped_range = []
+        clipped_resolution = []
+        for axis, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
+            clipped_range.append((float(self.axes[axis].position.clip(_range[0])),
+                                  float(self.axes[axis].position.clip(_range[1]))))
+            clipped_resolution.append(int(self.axes[axis].resolution.clip(resolution)))
+        # frequency needs to be within bounds for all axes
+        clipped_frequency = settings.frequency
+        for axis in settings.axes:
+            clipped_frequency = self.axes[axis].frequency.clip(clipped_frequency)
+
+        clipped_settings = MagnetScanSettings(
+            channels=settings.channels,
+            axes=settings.axes,
+            range=tuple(clipped_range),
+            resolution=tuple(clipped_resolution),
+            frequency=clipped_frequency,
+            position_feedback_axes=settings.position_feedback_axes
+        )
+        return clipped_settings
 
 @dataclass
 class MagnetScanData:
@@ -146,7 +226,7 @@ class MagnetScanData:
     _position_data: Optional[Tuple[np.ndarray, ...]] = None
 
     @classmethod
-    def from_constraints(cls, settings: ScanSettings, constraints: ScanConstraints, **kwargs):
+    def from_constraints(cls, settings: MagnetScanSettings, constraints: MagnetConstraints, **kwargs):
         constraints.check_settings(settings)
         _channel_units = tuple(constraints.channels[ch].unit for ch in settings.channels)
         _channel_dtypes = tuple(constraints.channels[ch].dtype for ch in settings.channels)
@@ -162,12 +242,12 @@ class MagnetScanData:
     @classmethod
     def from_dict(cls, dict_repr):
         """ Create a class instance from a dictionary.
-        ScanData contains ScanSettings, which is itself a dataclass
+        ScanData contains MagnetScanSettings, which is itself a dataclass
         and needs to be reconstructed separately. """
         settings = dict_repr['settings']
         dict_repr_without_settings = dict_repr.copy()
         del dict_repr_without_settings['settings']
-        return cls(settings=ScanSettings.from_dict(settings), **dict_repr_without_settings)
+        return cls(settings=MagnetScanSettings.from_dict(settings), **dict_repr_without_settings)
 
     def to_dict(self):
         return asdict(self)
@@ -270,23 +350,19 @@ class MagnetInterface(Base):
 
     @property
     @abstractmethod
-    def constraints(self) -> ScanConstraints:
+    def constraints(self) -> MagnetConstraints:
         """ Read-only property returning the constraints of this scanning probe hardware.
         """
         pass
 
 
     @abstractmethod
-    def configure_scan(self, settings: ScanSettings) -> None:
-        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
-        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
-
-        @param ScanSettings settings: ScanSettings instance holding all parameters
-        """
+    def get_status(self):  # todo fix types
         pass
 
+
     @abstractmethod
-    def move_absolute(self, position: Dict[str, float],
+    def set_control(self, position: Dict[str, float],
                       velocity: Optional[float] = None, blocking: bool = False) -> Dict[str, float]:
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
@@ -303,7 +379,7 @@ class MagnetInterface(Base):
 
 
     @abstractmethod
-    def get_target(self) -> Dict[str, float]:
+    def get_control(self, blocking: Optional[bool] = True) -> Dict[str, float]:
         """ Get the current target position of the scanner hardware
         (i.e. the "theoretical" position).
 
@@ -312,15 +388,24 @@ class MagnetInterface(Base):
         pass
 
     @abstractmethod
-    def get_position(self) -> Dict[str, float]:
-        """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
-        For the same target this value can fluctuate according to the scanners positioning accuracy.
+    def set_activity_state(self, channel: str, active: bool) -> None:
+        """
 
-        For scanning devices that do not have position feedback sensors, simply return the target
-        position (see also: ScanningProbeInterface.get_target).
-
-        @return dict: current position per axis.
+        @return:
         """
         pass
+
+    @abstractmethod
+    def emergency_stop(self) -> None:
+        """
+
+        @return:
+        """
+        pass
+
+    def block_while_moving(self):
+        # helper function that wait's until magnet is idle after reaching a certain control value
+        pass
+
 
 

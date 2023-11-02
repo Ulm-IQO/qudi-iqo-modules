@@ -311,6 +311,14 @@ class MagnetLogic(LogicBase):
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
 
+    def configure_scan(self, settings):
+        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
+        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
+
+        @param ScanSettings settings: ScanSettings instance holding all parameters
+        """
+        pass
+
     def _update_scan_settings(self, scan_axes, settings):
         for ax_index, ax in enumerate(scan_axes):
             # Update scan ranges if needed
