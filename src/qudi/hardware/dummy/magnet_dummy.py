@@ -70,11 +70,7 @@ class MagnetDummy(MagnetInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # Scan process parameters
-        self._current_scan_frequency = -1
-        self._current_scan_ranges = [tuple(), tuple()]
-        self._current_scan_axes = tuple()
-        self._current_scan_resolution = tuple()
+
         self._current_control = dict()
 
 
@@ -90,11 +86,7 @@ class MagnetDummy(MagnetInterface):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        # Set default process values
-        self._current_scan_ranges = tuple(tuple(rng) for rng in tuple(self._control_ranges.values())[:2])
-        self._current_scan_axes = tuple(self._control_ranges)[:2]
-        self._current_scan_frequency = max(self._frequency_ranges[self._current_scan_axes[0]])
-        self._current_scan_resolution = tuple([100] * len(self._current_scan_axes))
+
         self._current_control = {ax: min(rng) + (max(rng) - min(rng)) / 2 for ax, rng in
                                   self._control_ranges.items()}
 

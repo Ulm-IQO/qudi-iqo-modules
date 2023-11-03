@@ -81,7 +81,6 @@ class MagnetScanSettings:
                                          feedback during the scan.
     """
 
-    channels: Tuple[str, ...]
     axes: Tuple[str, ...]
     range: Tuple[Tuple[float, float], ...]
     resolution: Tuple[int, ...]
@@ -92,8 +91,6 @@ class MagnetScanSettings:
         # Sanity checking
         if not (0 < len(self.axes) <= 2):
             raise ValueError('Only 1D and 2D scans are implemented.')
-        if len(self.channels) < 1:
-            raise ValueError('At least one data channel must be specified for a valid scan.')
         if len(self.axes) != len(self.range):
             raise ValueError(f'Parameters "axes" and "range" must have same len. Given '
                              f'{len(self.axes)} and {len(self.range)}, respectively.')
@@ -147,9 +144,8 @@ class MagnetConstraints:
         return True
 
     def check_settings(self, settings: MagnetScanSettings) -> None:
-        self.check_channels(settings)
         self.check_axes(settings)
-        self.check_feedback(settings)
+
 
 
     def check_axes(self, settings: MagnetScanSettings) -> None:
@@ -174,6 +170,7 @@ class MagnetConstraints:
             except TypeError as e:
                 raise TypeError(f'Scan resolution type check failed for axis "{axis_name}".') from e
 
+        # todo: frequency different for magnet!
         # frequency is only relevant for the first (fast) axis
         fast_axis_name = settings.axes[0]
         fast_axis = self.axes[fast_axis_name]

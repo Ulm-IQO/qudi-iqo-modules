@@ -30,6 +30,10 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 
+from qudi.interface.magnet_interface import MagnetInterface, MagnetScanData, MagnetScanSettings
+from qudi.interface.magnet_interface import MagnetControlAxis, MagnetConstraints
+
+
 
 class MagnetLogic(LogicBase):
     """
@@ -72,6 +76,7 @@ class MagnetLogic(LogicBase):
         self._curr_caller_id = self.module_uuid
 
         self._scan_data = None
+
         return
 
     def on_activate(self):
@@ -89,7 +94,9 @@ class MagnetLogic(LogicBase):
             self._scan_resolution = new_settings['resolution']
             self._scan_frequency = new_settings['frequency']
 
+        self._scan_axes = []
         self._target = self.magnet_control
+
 
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
@@ -183,7 +190,7 @@ class MagnetLogic(LogicBase):
         settings = cp.deepcopy(settings)
         constr = self.magnet_constraints
 
-        """"
+
         def check_valid(settings, key):
             is_valid = True  # non present key -> valid
             if key in settings:
@@ -199,13 +206,13 @@ class MagnetLogic(LogicBase):
         for key, val in settings.items():
             if not check_valid(settings, key):
                 if key == 'range':
-                    settings['range'] = {ax.name: ax.value_range for ax in constr.axes.values()}
+                    settings['range'] = {ax.name: ax.control_value.bounds for ax in constr.axes.values()}
                 if key == 'resolution':
-                    settings['resolution'] = {ax.name: max(ax.min_resolution, min(128, ax.max_resolution))  # TODO Hardcoded 128?
+                    settings['resolution'] = {ax.name: max(ax.resolution.minimum, min(128, ax.resolution.maximum))  # TODO Hardcoded 128?
                                               for ax in constr.axes.values()}
                 if key == 'frequency':
-                    settings['frequency'] = {ax.name: ax.max_frequency for ax in constr.axes.values()}
-        """
+                    settings['frequency'] = {ax.name: ax.frequency.maximum for ax in constr.axes.values()}
+
         return settings
 
     def set_scan_range(self, ranges):
@@ -239,7 +246,7 @@ class MagnetLogic(LogicBase):
                 self.sigScanSettingsChanged.emit({'resolution': new_res})
                 return new_res
 
-            constr = self.scanner_constraints
+            constr = self.magnet_constraints
             for ax, ax_res in resolution.items():
                 if ax not in constr.axes:
                     self.log.error('Unknown axis "{0}" encountered.'.format(ax))
@@ -247,7 +254,7 @@ class MagnetLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'resolution': new_res})
                     return new_res
 
-                self._scan_resolution[ax] = constr.axes[ax].clip_resolution(int(ax_res))
+                self._scan_resolution[ax] = constr.axes[ax].resolution.clip(int(ax_res))
 
             new_resolution = {ax: self._scan_resolution[ax] for ax in resolution}
             self.sigScanSettingsChanged.emit({'resolution': new_resolution})
@@ -269,7 +276,7 @@ class MagnetLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'frequency': new_freq})
                     return new_freq
 
-                self._scan_frequency[ax] = constr.axes[ax].clip_frequency(float(ax_freq))
+                self._scan_frequency[ax] = constr.axes[ax].frequency.clip(int(ax_freq))
 
             new_freq = {ax: self._scan_frequency[ax] for ax in frequency}
             self.sigScanSettingsChanged.emit({'frequency': new_freq})
@@ -316,14 +323,40 @@ class MagnetLogic(LogicBase):
             return self.stop_scan()
 
     def configure_scan(self, settings):
+        # todo needed at all?
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
 
         @param ScanSettings settings: ScanSettings instance holding all parameters
         """
-        pass
+        if self.is_scan_running:
+            raise RuntimeError('Unable to configure scan parameters while scan is running. '
+                               'Stop scanning and try again.')
+
+
+
+
+        # check settings - will raise appropriate exceptions if something is not right
+        self.constraints.check_settings(settings)
+        self.log.debug('Scan settings fulfill constraints.')
+
+        self._scan_settings = settings
+
+        self._scan_data = MagnetScanData.from_constraints(
+            settings=settings,
+            constraints=self.constraints
+        )
+        self.log.debug(f'New ScanData created.')
+
+        #self.set_scan_range()
+        #self.set_scan_resolution()
+        #self.set_scan_frequency(settings.frequency)
+
+        scan_dict = self._init_scan_path(self._scan_data)
+
 
     def _update_scan_settings(self, scan_axes, settings):
+        # todo: probably can be dropped
         for ax_index, ax in enumerate(scan_axes):
             # Update scan ranges if needed
             new = tuple(settings['range'][ax_index])
@@ -346,45 +379,63 @@ class MagnetLogic(LogicBase):
             self.sigScanSettingsChanged.emit({'frequency': {scan_axes[0]: new}})
 
     def start_scan(self, scan_axes, caller_id=None):
+        # need to call configure_scan() first
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
                 return 0
-            """
+
+
             scan_axes = tuple(scan_axes)
             self._curr_caller_id = self.module_uuid if caller_id is None else caller_id
 
             self.module_state.lock()
 
-            settings = {'axes': scan_axes,
-                        'range': tuple(self._scan_ranges[ax] for ax in scan_axes),
-                        'resolution': tuple(self._scan_resolution[ax] for ax in scan_axes),
-                        'frequency': self._scan_frequency[scan_axes[0]]}
-            fail, new_settings = self._maget.configure_scan(settings)
-            if fail:
+            # todo: settings needed?
+            settings = MagnetScanSettings(
+                axes=scan_axes,
+                range=tuple(self._scan_ranges[ax] for ax in scan_axes),
+                resolution=tuple(self._scan_resolution[ax] for ax in scan_axes),
+                frequency=self._scan_frequency[scan_axes[0]],
+            )
+
+            self.magnet_constraints.check_settings(settings)
+            self.log.debug('Scan settings fulfill constraints.')
+
+            self._scan_settings = settings
+
+            self._scan_data = MagnetScanData.from_constraints(
+                settings=settings,
+                constraints=self.magnet_constraints
+            )
+            self.log.debug(f'New ScanData created.')
+
+
+            scan_path_dict = self._init_scan_path(self._scan_data)
+
+            try:
+                # todo: return new_settings after setting?
+                self._set_settings()
+            except:
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error(f"Couldn't configure scan: {settings}")
                 return -1
 
-            self._update_scan_settings(scan_axes, new_settings)
+            #self._update_scan_settings(scan_axes, settings)  # check whether can be dropped, most likely
+
             #self.log.debug("Applied new scan settings")
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
-            line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
-            self.__scan_poll_interval = max(self._min_poll_interval,
-                                            line_points / self._scan_frequency[scan_axes[0]])
-            self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
+            #line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
+            #self.__scan_poll_interval = max(self._min_poll_interval,
+            #                                line_points / self._scan_frequency[scan_axes[0]])
+            #self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
 
-            if self._maget.start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
-                self.module_state.unlock()
-                self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
-                self.log.error("Couldn't start scan.")
-                return -1
 
             self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
             self.__start_timer()
-            """
+
             return 0
 
     def stop_scan(self):
@@ -405,7 +456,64 @@ class MagnetLogic(LogicBase):
             else:
                 self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
             """
-            return err
+
+
+    def _init_scan_path(self, scan_data):
+        if scan_data.settings.scan_dimension == 1:
+
+            axis = scan_data.settings.scan_axes[0]
+            horizontal_resolution = scan_data.settings.scan_resolution[0]
+
+            horizontal_line = np.linspace(scan_data.settings.scan_range[0][0], scan_data.settings.scan_range[0][1],
+                                     horizontal_resolution)
+
+            coord_dict = {axis: horizontal_line}
+
+        elif scan_data.settings.scan_dimension == 2:
+            # todo: check how to include backward scan (should yield meander 2d line)
+            # need to make meander line default
+            horizontal_resolution = scan_data.settings.resolution[0]
+            vertical_resolution = scan_data.settings.resolution[1]
+
+            # horizontal scan array / "fast axis"
+            horizontal_axis = scan_data.settings.axes[0]
+
+            horizontal_line = np.linspace(scan_data.settings.range[0][0], scan_data.settings.range[0][1],
+                                     horizontal_resolution)
+
+            # need as much lines as we have in the vertical directions
+            horizontal_scan_array = np.tile(horizontal_line, vertical_resolution)
+
+            # vertical scan array / "slow axis"
+            vertical_axis = scan_data.settings.axes[1]
+            vertical = np.linspace(scan_data.settings.range[1][0], scan_data.settings.range[1][1],
+                                   vertical_resolution)
+
+            backwards_line_resolution = horizontal_resolution
+            # during horizontal line, the vertical line keeps its value
+            vertical_lines = np.repeat(vertical.reshape(vertical_resolution, 1), horizontal_resolution, axis=1)
+            # during backscan of horizontal, the vertical axis increases its value by "one index"
+            vertical_return_lines = np.linspace(vertical[:-1], vertical[1:], backwards_line_resolution).T
+            ## need to extend the vertical lines at the end, as we reach it earlier then for the horizontal axes
+            vertical_return_lines = np.concatenate((vertical_return_lines,
+                                                    np.ones((1, backwards_line_resolution)) * vertical[-1]
+                                                    ))
+
+            vertical_scan_array = np.concatenate((vertical_lines, vertical_return_lines), axis=1).ravel()
+
+
+            coord_dict = {horizontal_axis: horizontal_scan_array,
+                          vertical_axis: vertical_scan_array
+                          }
+
+        else:
+            raise ValueError(f"Not supported scan dimension: {scan_data.settings.scan_dimension}")
+
+        return coord_dict
+
+    def _set_settings(selt):
+        pass
+        # todo: set frequency, scan_path, fom
 
     def __scan_poll_loop(self):
         with self._thread_lock:
@@ -413,7 +521,8 @@ class MagnetLogic(LogicBase):
                 if self.module_state() == 'idle':
                     return
 
-                if self._maget.module_state() == 'idle':
+                if self._magnet().module_state() == 'idle':
+                    # todo: checking module state is outdated for magnet
                     self.stop_scan()
                     return
 
@@ -437,7 +546,7 @@ class MagnetLogic(LogicBase):
             return
 
     def set_full_scan_ranges(self):
-        scan_range = {ax: axis.value_range for ax, axis in self.scanner_constraints.axes.items()}
+        scan_range = {ax: axis.value_range for ax, axis in self.magnet_constraints.axes.items()}
         return self.set_scan_range(scan_range)
 
     def __start_timer(self):
