@@ -714,7 +714,7 @@ class AWG70K(PulserInterface):
                     self.log.error('Unable to determine loaded assets.')
                     return dict(), ''
                 current_type = 'sequence'
-                asset_name += '_' + splitted[1]
+                #asset_name += '_' + splitted[1]
             else:
                 if current_type is not None and current_type != 'waveform':
                     self.log.error('Unable to determine loaded assets.')
