@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-This file contains the Qudi dummy module for the confocal scanner.
+This file contains the Qudi dummy module a magnet.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -26,14 +26,12 @@ from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.constraints import ScalarConstraint
-from qudi.interface.magnet_interface import MagnetInterface, MagnetScanData
+from qudi.interface.magnet_interface import MagnetInterface
 from qudi.interface.magnet_interface import MagnetControlAxis, MagnetConstraints
 
 
 class MagnetDummy(MagnetInterface):
     """
-    Dummy scanning probe microscope. Produces a picture with several gaussian spots.
-
     Example config for copy-paste:
 
     magnet_dummy:
@@ -56,7 +54,6 @@ class MagnetDummy(MagnetInterface):
                 y: 10e-3
                 z: 10e-3
     """
-    # TODO Bool indicators deprecated; Change in scanning probe toolchain
 
     _threaded = True
 
@@ -70,18 +67,11 @@ class MagnetDummy(MagnetInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-
         self._current_control = dict()
-
-
-        # "Hardware" constraints
         self._constraints = None
         # Mutex for access serialization
         self._thread_lock = RecursiveMutex()
 
-        self.__scan_start = 0
-        self.__last_line = -1
-        self.__update_timer = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -114,16 +104,8 @@ class MagnetDummy(MagnetInterface):
 
         self._constraints = MagnetConstraints(axis_objects=tuple(axes),
                                               has_position_feedback=False)
-        self.__scan_start = 0
-        self.__last_line = -1
-        self.__update_timer = QtCore.QTimer()
-        self.__update_timer.setSingleShot(True)
-        #self.__update_timer.timeout.connect(self.get_scan_data, QtCore.Qt.QueuedConnection)
-        return
 
     def on_deactivate(self):
-        """ Deactivate properly the confocal scanner dummy.
-        """
         self.set_activity_state(False)
         # free memory
         try:
@@ -137,22 +119,16 @@ class MagnetDummy(MagnetInterface):
 
         @return:
         """
-        #self.log.debug('Scanning probe dummy "get_constraints" called.')
         return self._constraints
 
     def get_status(self):
         return {0: 'idle'}
 
     def set_control(self, control, blocking=False):
-        """ Move the scanning probe to an absolute position as fast as possible or with a defined
-        velocity.
-
-        Log error and return current target position if something fails or a 1D/2D scan is in
-        progress.
+        """ Move the magnet to an absolute control value.
+        Return current control.
         """
         with self._thread_lock:
-            # self.log.debug('Scanning probe dummy "move_absolute" called.')
-
             if not set(control).issubset(self._control_ranges):
                 self.log.error('Invalid axes encountered in position dict. Valid axes are: {0}'
                                ''.format(set(self._control_ranges)))
@@ -173,9 +149,9 @@ class MagnetDummy(MagnetInterface):
             return self._current_control
 
     def get_control(self):
-        """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
+        """ Get a snapshot of the actual magnet control.
 
-        @return dict: current target position per axis.
+        @return dict: current control per axis.
         """
         with self._thread_lock:
             position = {ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in
@@ -185,7 +161,7 @@ class MagnetDummy(MagnetInterface):
     def emergency_stop(self):
         """
         """
-        self.log.warning('Scanner has been emergency stopped.')
+        self.log.warning('Magnet has been emergency stopped.')
         return 0
 
     def set_activity_state(self, active, channel=None) -> None:
