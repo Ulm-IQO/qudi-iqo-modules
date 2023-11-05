@@ -156,8 +156,8 @@ class MagnetConstraints:
         for axis_name, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
             axis = self.axes[axis_name]
             try:
-                axis.position.check(_range[0])
-                axis.position.check(_range[1])
+                axis.control_value.check(_range[0])
+                axis.control_value.check(_range[1])
             except ValueError as e:
                 raise ValueError(f'Scan range out of bounds for axis "{axis_name}".') from e
             except TypeError as e:
@@ -213,8 +213,8 @@ class MagnetScanData:
     """
 
     settings: MagnetScanSettings
-    _channel_units: Tuple[str, ...]
-    _channel_dtypes: Tuple[str, ...]
+    _fom_unit: Tuple[str, ...]
+    _fom_dtype: Tuple[str, ...]
     _axis_units: Tuple[str, ...]
     scanner_target_at_start: Optional[Dict[str, float]] = None
     timestamp: Optional[datetime.datetime] = None
@@ -225,14 +225,16 @@ class MagnetScanData:
     @classmethod
     def from_constraints(cls, settings: MagnetScanSettings, constraints: MagnetConstraints, **kwargs):
         constraints.check_settings(settings)
-        _channel_units = tuple(constraints.channels[ch].unit for ch in settings.channels)
-        _channel_dtypes = tuple(constraints.channels[ch].dtype for ch in settings.channels)
+        _fom_unit = ""
+        _fom_dtype = float
+
         _axis_units = tuple(constraints.axes[ax].unit for ax in settings.axes)
         return cls(
             settings=settings,
-            _channel_units=_channel_units,
-            _channel_dtypes=_channel_dtypes,
+            _fom_unit=_fom_unit,
+            _fom_dtype=_fom_dtype,
             _axis_units=_axis_units,
+
             **kwargs
         )
 

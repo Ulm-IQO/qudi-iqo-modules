@@ -190,7 +190,7 @@ class MagnetDummy(MagnetInterface):
         self.log.warning('Scanner has been emergency stopped.')
         return 0
 
-    def set_activity_state(self, channel: str, active: bool) -> None:
+    def set_activity_state(self, active, channel=None) -> None:
         pass
 
 
