@@ -36,6 +36,9 @@ class MagnetFOM:
 
     """
     name: str
+    func: callable
+    func_full: callable
+    measurement_time: float
     unit: str = ''
     # saving this as str instead of e.g. np.float64 object eases __dict__ representation
     dtype: str = 'float64'
@@ -361,8 +364,7 @@ class MagnetInterface(Base):
 
 
     @abstractmethod
-    def set_control(self, position: Dict[str, float],
-                      velocity: Optional[float] = None, blocking: bool = False) -> Dict[str, float]:
+    def set_control(self, control: Dict[str, float], blocking: bool=False) -> Dict[str, float]:
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
@@ -378,7 +380,7 @@ class MagnetInterface(Base):
 
 
     @abstractmethod
-    def get_control(self, blocking: Optional[bool] = True) -> Dict[str, float]:
+    def get_control(self) -> Dict[str, float]:
         """ Get the current target position of the scanner hardware
         (i.e. the "theoretical" position).
 

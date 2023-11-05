@@ -141,7 +141,7 @@ class MagnetDummy(MagnetInterface):
         return self._constraints
 
     def get_status(self):
-        return {0: 'ready'}
+        return {0: 'idle'}
 
     def set_control(self, control, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
@@ -152,9 +152,8 @@ class MagnetDummy(MagnetInterface):
         """
         with self._thread_lock:
             # self.log.debug('Scanning probe dummy "move_absolute" called.')
-            if self.module_state() != 'idle':
-                self.log.error('Scanning in progress. Unable to move to position.')
-            elif not set(control).issubset(self._control_ranges):
+
+            if not set(control).issubset(self._control_ranges):
                 self.log.error('Invalid axes encountered in position dict. Valid axes are: {0}'
                                ''.format(set(self._control_ranges)))
             else:
@@ -164,7 +163,11 @@ class MagnetDummy(MagnetInterface):
                 move_time = max(0.01, np.sqrt(
                     np.sum(dist ** 2 for dist in move_distance.values())) / self._velocity)
                 if blocking:
+                    if move_time > 1:
+                        self.log.debug(f"Magnet will need {move_time} s to reach target control.")
                     time.sleep(move_time)
+
+                self.log.debug(f"Magnet control: {control}")
                 self._current_control.update(control)
 
             return self._current_control
@@ -175,7 +178,6 @@ class MagnetDummy(MagnetInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_position" called.')
             position = {ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in
                         self._current_control.items()}
             return position
@@ -183,10 +185,6 @@ class MagnetDummy(MagnetInterface):
     def emergency_stop(self):
         """
         """
-        try:
-            self.module_state.unlock()
-        except FysomError:
-            pass
         self.log.warning('Scanner has been emergency stopped.')
         return 0
 

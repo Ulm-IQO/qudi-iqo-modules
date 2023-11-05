@@ -30,7 +30,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 
-from qudi.interface.magnet_interface import MagnetInterface, MagnetScanData, MagnetScanSettings
+from qudi.interface.magnet_interface import MagnetFOM, MagnetScanData, MagnetScanSettings
 from qudi.interface.magnet_interface import MagnetControlAxis, MagnetConstraints
 
 
@@ -86,7 +86,7 @@ class MagnetLogic(LogicBase):
         constr = self.magnet_constraints
         self._scan_saved_to_hist = True
 
-        self.log.debug(f"Scanner settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
+        self.log.debug(f"Magnet scan settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
         # scanner settings loaded from StatusVar or defaulted
         new_settings = self.check_sanity_scan_settings(self.scan_settings)
         if new_settings != self.scan_settings:
@@ -97,6 +97,8 @@ class MagnetLogic(LogicBase):
         self._scan_axes = []
         self._target = self.magnet_control
 
+        self.configure_figure_of_merit(lambda: None, lambda: None, mes_time=0,
+                                       name="/na")
 
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
@@ -104,7 +106,7 @@ class MagnetLogic(LogicBase):
 
         self.__scan_poll_timer = QtCore.QTimer()
         self.__scan_poll_timer.setSingleShot(True)
-        self.__scan_poll_timer.timeout.connect(self.__scan_poll_loop, QtCore.Qt.QueuedConnection)
+        self.__scan_poll_timer.timeout.connect(self.__scan_loop, QtCore.Qt.QueuedConnection)
         return
 
     def on_deactivate(self):
@@ -156,6 +158,7 @@ class MagnetLogic(LogicBase):
 
     @property
     def scan_frequency(self):
+        # todo: no hw scanner. derive scan frequency from FOM mes time?
         with self._thread_lock:
             return cp.copy(self._scan_frequency)
 
@@ -282,7 +285,11 @@ class MagnetLogic(LogicBase):
             self.sigScanSettingsChanged.emit({'frequency': new_freq})
             return new_freq
 
+    def set_conrtol(self, control, caller_id=None, move_blocking=False):
+        pass
+
     def set_target(self, pos_dict, caller_id=None, move_blocking=False):
+        # todo: we should be able to set a target thats executed only later (eg. after hitting a button)
         with self._thread_lock:
             """
             if self.module_state() != 'idle':
@@ -322,39 +329,6 @@ class MagnetLogic(LogicBase):
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
 
-    def configure_scan(self, settings):
-        # todo needed at all?
-        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
-        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
-
-        @param ScanSettings settings: ScanSettings instance holding all parameters
-        """
-        if self.is_scan_running:
-            raise RuntimeError('Unable to configure scan parameters while scan is running. '
-                               'Stop scanning and try again.')
-
-
-
-
-        # check settings - will raise appropriate exceptions if something is not right
-        self.constraints.check_settings(settings)
-        self.log.debug('Scan settings fulfill constraints.')
-
-        self._scan_settings = settings
-
-        self._scan_data = MagnetScanData.from_constraints(
-            settings=settings,
-            constraints=self.constraints
-        )
-        self.log.debug(f'New ScanData created.')
-
-        #self.set_scan_range()
-        #self.set_scan_resolution()
-        #self.set_scan_frequency(settings.frequency)
-
-        scan_dict = self._init_scan_path(self._scan_data)
-
-
     def _update_scan_settings(self, scan_axes, settings):
         # todo: probably can be dropped
         for ax_index, ax in enumerate(scan_axes):
@@ -378,11 +352,28 @@ class MagnetLogic(LogicBase):
             self._scan_frequency[scan_axes[0]] = new
             self.sigScanSettingsChanged.emit({'frequency': {scan_axes[0]: new}})
 
+    def configure_figure_of_merit(self, func_scalar, func_full, mes_time=1,
+                                  name="", unit=""):
+
+        fom = MagnetFOM(name, func_scalar, func_full, mes_time, unit)
+        self._fom = fom
+
+    def _config_debug_fom(self, mes_time=1):
+        func_scalar = lambda : np.random.random()
+        def func_full():
+            import time
+            time.sleep(mes_time)
+            return np.random.rand(20)
+
+        dummy_fom = MagnetFOM('dummy', func_scalar, func_full, mes_time)
+        self._fom = dummy_fom
+
+
     def start_scan(self, scan_axes, caller_id=None):
-        # need to call configure_scan() first
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
+                self.log.debug("Aborted scan start. Already running.")
                 return 0
 
 
@@ -411,23 +402,15 @@ class MagnetLogic(LogicBase):
             self.log.debug(f'New ScanData created.')
 
 
-            scan_path_dict = self._init_scan_path(self._scan_data)
+            self._scan_path = self._init_scan_path(self._scan_data)
+            self._scan_idx = 0
 
-            try:
-                # todo: return new_settings after setting?
-                self._set_settings()
-            except:
-                self.module_state.unlock()
-                self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
-                self.log.error(f"Couldn't configure scan: {settings}")
-                return -1
 
             #self._update_scan_settings(scan_axes, settings)  # check whether can be dropped, most likely
 
             #self.log.debug("Applied new scan settings")
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
-            #line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
             #self.__scan_poll_interval = max(self._min_poll_interval,
             #                                line_points / self._scan_frequency[scan_axes[0]])
             #self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
@@ -445,6 +428,9 @@ class MagnetLogic(LogicBase):
                 return 0
 
             self.__stop_timer()
+            self.module_state.unlock()
+            self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+
             """
             err = self._maget.stop_scan() if self._maget.module_state() != 'idle' else 0
 
@@ -457,14 +443,13 @@ class MagnetLogic(LogicBase):
                 self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
             """
 
-
     def _init_scan_path(self, scan_data):
         if scan_data.settings.scan_dimension == 1:
 
-            axis = scan_data.settings.scan_axes[0]
-            horizontal_resolution = scan_data.settings.scan_resolution[0]
+            axis = scan_data.settings.axes[0]
+            horizontal_resolution = scan_data.settings.resolution[0]
 
-            horizontal_line = np.linspace(scan_data.settings.scan_range[0][0], scan_data.settings.scan_range[0][1],
+            horizontal_line = np.linspace(scan_data.settings.range[0][0], scan_data.settings.range[0][1],
                                      horizontal_resolution)
 
             coord_dict = {axis: horizontal_line}
@@ -515,17 +500,32 @@ class MagnetLogic(LogicBase):
         pass
         # todo: set frequency, scan_path, fom
 
-    def __scan_poll_loop(self):
+    def __scan_loop(self):
         with self._thread_lock:
             try:
                 if self.module_state() == 'idle':
                     return
 
-                if self._magnet().module_state() == 'idle':
-                    # todo: checking module state is outdated for magnet
+                if next(iter(self._magnet().get_status())) != 0:
+                    self.log.warning("Magnet hardware not ready. Aborting scan.")
                     self.stop_scan()
                     return
 
+                if self._scan_idx >= len(list(self._scan_path.values())[0]):
+                    self.stop_scan()
+                    return
+
+                target_control = {ax: self._scan_path[ax][self._scan_idx] for ax in self._scan_path.keys()}
+                self.log.debug(f"Next value in scan path: [{self._scan_idx}] {target_control}")
+                self._magnet().set_control(target_control, blocking=True)
+
+                # todo: insert into scan data. (always?)
+                actual_control = self._magnet().get_control()
+
+                fom_value = self._fom.func()
+                fom_full_result = self._fom.func_full()
+                self.log.debug(f"New data: {fom_value}. Full res: {fom_full_result}")
+                # todo: insert into ScanData object
                 """
                 Get_next_pos(pathway)
                 Set_control_value(blocking=True)
@@ -535,6 +535,7 @@ class MagnetLogic(LogicBase):
 
                 """
 
+                self._scan_idx += 1
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
 
                 # Queue next call to this slot
