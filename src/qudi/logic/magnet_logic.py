@@ -82,7 +82,6 @@ class MagnetLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-
         constr = self.magnet_constraints
         self._scan_saved_to_hist = True
 
@@ -285,8 +284,9 @@ class MagnetLogic(LogicBase):
             self.sigScanSettingsChanged.emit({'frequency': new_freq})
             return new_freq
 
-    def set_conrtol(self, control, caller_id=None, move_blocking=False):
-        pass
+    def set_control(self, control, caller_id=None, move_blocking=False):
+        self.set_target()
+        # todo: set target an execute move, emit signals
 
     def set_target(self, pos_dict, caller_id=None, move_blocking=False):
         # todo: we should be able to set a target thats executed only later (eg. after hitting a button)
