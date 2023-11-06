@@ -114,7 +114,7 @@ class MagnetLogic(LogicBase):
         self.__scan_poll_timer.stop()
         self.__scan_poll_timer.timeout.disconnect()
         if self.module_state() != 'idle':
-            self._maget.stop_scan()
+            self.stop_scan()
         return
 
     @property
@@ -416,10 +416,11 @@ class MagnetLogic(LogicBase):
                 self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
                 return 0
 
-            self.__stop_timer()
+            #self.__stop_timer()   # todo understand why locks
             self.module_state.unlock()
             self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
 
+            # todo: revert to start pos
             """
             err = self._maget.stop_scan() if self._maget.module_state() != 'idle' else 0
 
@@ -526,7 +527,6 @@ class MagnetLogic(LogicBase):
 
                 self._scan_idx += 1
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
-
                 # Queue next call to this slot
                 self.__scan_poll_timer.start()
             except TimeoutError:
