@@ -476,23 +476,18 @@ class InStreamDummy(DataInStreamInterface):
                     f'samples ({samples_per_channel:d})'
                 )
 
-            # Return immediately if no samples are requested
-            offset = 0
-            while samples_per_channel > offset:
-                self._sample_generator.wait_get_available_samples(1)
-                if timestamp_buffer is None:
-                    read_samples = self._sample_generator.read_samples(
-                        sample_buffer=data_buffer[offset * channel_count:],
-                        samples_per_channel=samples_per_channel
-                    )
-                else:
-                    read_samples = self._sample_generator.read_samples(
-                        sample_buffer=data_buffer[offset * channel_count:],
-                        samples_per_channel=samples_per_channel,
-                        timestamp_buffer=timestamp_buffer[offset:]
-                    )
-                # samples_per_channel -= read_samples
-                offset += read_samples
+            self._sample_generator.wait_get_available_samples(samples_per_channel)
+            if timestamp_buffer is None:
+                self._sample_generator.read_samples(
+                    sample_buffer=data_buffer,
+                    samples_per_channel=samples_per_channel
+                )
+            else:
+                self._sample_generator.read_samples(
+                    sample_buffer=data_buffer,
+                    samples_per_channel=samples_per_channel,
+                    timestamp_buffer=timestamp_buffer
+                )
 
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
@@ -524,6 +519,7 @@ class InStreamDummy(DataInStreamInterface):
             channel_count = len(self.active_channels)
             data_buffer = data_buffer[:channel_count * available_samples]
             return self._sample_generator.read_samples(sample_buffer=data_buffer,
+                                                       samples_per_channel=available_samples,
                                                        timestamp_buffer=timestamp_buffer)
 
     def read_data(self,
@@ -587,5 +583,6 @@ class InStreamDummy(DataInStreamInterface):
                 timestamp_buffer = None
             self._sample_generator.wait_get_available_samples(1)
             self._sample_generator.read_samples(sample_buffer=np.expand_dims(data_buffer, axis=0),
+                                                samples_per_channel=1,
                                                 timestamp_buffer=timestamp_buffer)
             return data_buffer, timestamp_buffer
