@@ -106,12 +106,6 @@ class MagnetDummy(MagnetInterface):
 
     def on_deactivate(self):
         self.set_activity_state(False)
-        # free memory
-        try:
-            self.__update_timer.stop()
-        except:
-            pass
-        self.__update_timer.timeout.disconnect()
 
     def constraints(self):
         """
@@ -166,20 +160,4 @@ class MagnetDummy(MagnetInterface):
     def set_activity_state(self, active, channel=None) -> None:
         pass
 
-
-    def __start_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__update_timer.start()
-
-    def __stop_timer(self):
-        if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer,
-                                            'stop',
-                                            QtCore.Qt.BlockingQueuedConnection)
-        else:
-            self.__update_timer.stop()
 
