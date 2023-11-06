@@ -29,7 +29,7 @@ from qudi.core.module import Base
 from qudi.util.constraints import ScalarConstraint
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=False)
 class MagnetFOM:
     """
     Data class representing a magnet figure of merit and its constraints.
@@ -64,7 +64,6 @@ class MagnetControlAxis:
     control_value: ScalarConstraint
     step: ScalarConstraint
     resolution: ScalarConstraint
-    frequency: ScalarConstraint
 
     def __post_init__(self):
         if self.name == '':
@@ -173,17 +172,6 @@ class MagnetConstraints:
             except TypeError as e:
                 raise TypeError(f'Scan resolution type check failed for axis "{axis_name}".') from e
 
-        # todo: frequency different for magnet!
-        # frequency is only relevant for the first (fast) axis
-        fast_axis_name = settings.axes[0]
-        fast_axis = self.axes[fast_axis_name]
-        try:
-            fast_axis.frequency.check(settings.frequency)
-        except ValueError as e:
-            raise ValueError(f'Scan frequency out of bounds for fast axis "{fast_axis_name}".') from e
-        except TypeError as e:
-            raise TypeError(f'Scan frequency type check failed for fast axis "{fast_axis_name}".') from e
-
 
     def clip(self, settings: MagnetScanSettings) -> MagnetScanSettings:
         self.check_axes(settings)
@@ -193,17 +181,12 @@ class MagnetConstraints:
             clipped_range.append((float(self.axes[axis].position.clip(_range[0])),
                                   float(self.axes[axis].position.clip(_range[1]))))
             clipped_resolution.append(int(self.axes[axis].resolution.clip(resolution)))
-        # frequency needs to be within bounds for all axes
-        clipped_frequency = settings.frequency
-        for axis in settings.axes:
-            clipped_frequency = self.axes[axis].frequency.clip(clipped_frequency)
 
         clipped_settings = MagnetScanSettings(
             channels=settings.channels,
             axes=settings.axes,
             range=tuple(clipped_range),
             resolution=tuple(clipped_resolution),
-            frequency=clipped_frequency,
             position_feedback_axes=settings.position_feedback_axes
         )
         return clipped_settings

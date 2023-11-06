@@ -192,7 +192,6 @@ class MagnetLogic(LogicBase):
         settings = cp.deepcopy(settings)
         constr = self.magnet_constraints
 
-
         def check_valid(settings, key):
             is_valid = True  # non present key -> valid
             if key in settings:
@@ -212,8 +211,6 @@ class MagnetLogic(LogicBase):
                 if key == 'resolution':
                     settings['resolution'] = {ax.name: max(ax.resolution.minimum, min(128, ax.resolution.maximum))  # TODO Hardcoded 128?
                                               for ax in constr.axes.values()}
-                if key == 'frequency':
-                    settings['frequency'] = {ax.name: ax.frequency.maximum for ax in constr.axes.values()}
 
         return settings
 
@@ -270,19 +267,10 @@ class MagnetLogic(LogicBase):
                 self.sigScanSettingsChanged.emit({'frequency': new_freq})
                 return new_freq
 
-            constr = self.scanner_constraints
-            for ax, ax_freq in frequency.items():
-                if ax not in constr.axes:
-                    self.log.error('Unknown axis "{0}" encountered.'.format(ax))
-                    new_freq = self.scan_frequency
-                    self.sigScanSettingsChanged.emit({'frequency': new_freq})
-                    return new_freq
+            self._scan_frequency = frequency
 
-                self._scan_frequency[ax] = constr.axes[ax].frequency.clip(int(ax_freq))
-
-            new_freq = {ax: self._scan_frequency[ax] for ax in frequency}
-            self.sigScanSettingsChanged.emit({'frequency': new_freq})
-            return new_freq
+            self.sigScanSettingsChanged.emit({'frequency': self._scan_frequency})
+            return self._scan_frequency
 
     def set_control(self, control, caller_id=None, move_blocking=False):
         self.set_target()
@@ -348,9 +336,9 @@ class MagnetLogic(LogicBase):
 
         # Update scan frequency if needed
         new = float(settings['frequency'])
-        if self._scan_frequency[scan_axes[0]] != new:
-            self._scan_frequency[scan_axes[0]] = new
-            self.sigScanSettingsChanged.emit({'frequency': {scan_axes[0]: new}})
+        if self._scan_frequency != new:
+            self._scan_frequency = new
+            self.sigScanSettingsChanged.emit({'frequency': self._scan_frequency})
 
     def configure_figure_of_merit(self, func_scalar, func_full, mes_time=1,
                                   name="", unit=""):
@@ -387,13 +375,14 @@ class MagnetLogic(LogicBase):
                 axes=scan_axes,
                 range=tuple(self._scan_ranges[ax] for ax in scan_axes),
                 resolution=tuple(self._scan_resolution[ax] for ax in scan_axes),
-                frequency=self._scan_frequency[scan_axes[0]],
+                frequency=self._scan_frequency,
             )
 
             self.magnet_constraints.check_settings(settings)
             self.log.debug('Scan settings fulfill constraints.')
 
             self._scan_settings = settings
+            self._fom.measurement_time = 1/self.scan_frequency
 
             self._scan_data = MagnetScanData.from_constraints(
                 settings=settings,

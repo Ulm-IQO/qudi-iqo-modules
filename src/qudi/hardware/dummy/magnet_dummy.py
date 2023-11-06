@@ -99,8 +99,7 @@ class MagnetDummy(MagnetInterface):
                                     unit='T',
                                     control_value=control_value,
                                     step=step,
-                                    resolution=resolution,
-                                    frequency=frequency))
+                                    resolution=resolution))
 
         self._constraints = MagnetConstraints(axis_objects=tuple(axes),
                                               has_position_feedback=False)
