@@ -241,8 +241,8 @@ class MagnetLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'range': new_ranges})
                     return new_ranges
 
-                self._scan_ranges[ax] = (constr.axes[ax].clip_value(float(min(ax_range))),
-                                         constr.axes[ax].clip_value(float(max(ax_range))))
+                self._scan_ranges[ax] = (constr.axes[ax].control_value.clip(float(min(ax_range))),
+                                         constr.axes[ax].control_value.clip(float(max(ax_range))))
 
             new_ranges = {ax: self._scan_ranges[ax] for ax in ranges}
             self.sigScanSettingsChanged.emit({'range': new_ranges})
@@ -530,11 +530,11 @@ class MagnetLogic(LogicBase):
                 #fom_full_result = self._fom.func_full()
 
                 # todo: check that this is working for a meander line scan
-                scan_data_flat = self._scan_data.data['FOM'].flatten()
+                scan_data_flat = self._scan_data.data['FOM'].T.flatten()
                 scan_data_flat[self._scan_idx] = fom_value
                 resolution = self.scan_data.settings.resolution
 
-                self._scan_data.data['FOM'][:] = scan_data_flat.reshape(resolution)
+                self._scan_data.data['FOM'][:] = scan_data_flat.reshape(resolution).T
                 self.log.debug(f"New data: {fom_value}. Scan: {self._scan_data.data['FOM']}")
                 # todo: insert into ScanData object
                 """
@@ -557,7 +557,7 @@ class MagnetLogic(LogicBase):
             return
 
     def set_full_scan_ranges(self):
-        scan_range = {ax: axis.value_range for ax, axis in self.magnet_constraints.axes.items()}
+        scan_range = {ax: axis.control_value.bounds for ax, axis in self.magnet_constraints.axes.items()}
         return self.set_scan_range(scan_range)
 
     def __start_timer(self):
