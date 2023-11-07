@@ -491,8 +491,10 @@ class MagnetGui(GuiBase):
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            marker_size = [10, 10]
+
             marker_bounds = (axes_constr[0].control_value.bounds, axes_constr[1].control_value.bounds)
+            marker_size = [(marker_bounds[0][1]-marker_bounds[0][0])/10,
+                           (marker_bounds[1][1]-marker_bounds[1][0])/10]
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr,
                                         xy_region_min_size_percentile=self._min_crosshair_size_fraction)
             dockwidget.scan_widget.set_marker_size(marker_size)

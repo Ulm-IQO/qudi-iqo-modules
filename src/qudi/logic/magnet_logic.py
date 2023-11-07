@@ -280,28 +280,28 @@ class MagnetLogic(LogicBase):
         # todo: we should be able to set a target thats executed only later (eg. after hitting a button)
         with self._thread_lock:
             self.log.debug(f"Set target: {pos_dict}")
-            """
+
             if self.module_state() != 'idle':
                 self.log.error('Unable to change scanner target position while a scan is running.')
-                new_pos = self._maget.get_target()
+                new_pos = self._magnet.get_target()
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
-            ax_constr = self.scanner_constraints.axes
+            ax_constr = self.magnet_constraints.axes
             new_pos = pos_dict.copy()
             for ax, pos in pos_dict.items():
                 if ax not in ax_constr:
-                    self.log.error('Unknown scanner axis: "{0}"'.format(ax))
-                    new_pos = self._maget.get_target()
+                    self.log.error('Unknown magnet axis: "{0}"'.format(ax))
+                    new_pos = self._magnet().get_control()
                     self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                     return new_pos
 
-                new_pos[ax] = ax_constr[ax].clip_value(pos)
+                new_pos[ax] = ax_constr[ax].control_value.clip(pos)
                 if pos != new_pos[ax]:
                     self.log.warning('Scanner position target value out of bounds for axis "{0}". '
                                      'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
 
-            new_pos = self._maget.move_absolute(new_pos, blocking=move_blocking)
+            new_pos = self._magnet().set_control(new_pos, blocking=move_blocking)
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
             #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
@@ -309,7 +309,7 @@ class MagnetLogic(LogicBase):
                 new_pos,
                 self.module_uuid if caller_id is None else caller_id
             )
-            """
+
             return new_pos
 
     def toggle_scan(self, start, scan_axes, caller_id=None):
