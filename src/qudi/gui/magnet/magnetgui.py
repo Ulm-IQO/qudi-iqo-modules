@@ -81,21 +81,17 @@ class SaveDialog(QtWidgets.QDialog):
 
 
 class MagnetGui(GuiBase):
-    """ Main confocal GUI Class for XY and depth scans.
+    """ Main magnet GUI Class for XY and depth scans. Derived from scanning probe gui.
 
     Example config for copy-paste:
 
-    scanner_gui:
-        module.Class: 'scanning.scannergui.ScannerGui'
+    magnet_gui:
+        module.Class: 'magnet.magnetgui.MagnetGui'
         options:
             image_axes_padding: 0.02
             default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
-            optimizer_plot_dimensions: [2, 1]   # for all optimizer sub widgets, (2=XY, 1=Z)
-            min_crosshair_size_fraction: 0.02   # minimum crosshair size as fraction of the displayed scan range
         connect:
-            scanning_logic: scanning_probe_logic
-            data_logic: scanning_data_logic
-            optimize_logic: scanning_optimize_logic
+                scanning_logic: magnet_logic
 
     """
 
@@ -255,9 +251,6 @@ class MagnetGui(GuiBase):
         self.sigScannerTargetChanged.disconnect()
         self.sigScanSettingsChanged.disconnect()
         self.sigToggleScan.disconnect()
-        self.sigToggleOptimize.disconnect()
-        self.sigOptimizerSettingsChanged.disconnect()
-        self._mw.action_optimize_position.triggered[bool].disconnect()
         self._mw.action_restore_default_view.triggered.disconnect()
         self._mw.action_history_forward.triggered.disconnect()
         self._mw.action_history_back.triggered.disconnect()
@@ -266,8 +259,7 @@ class MagnetGui(GuiBase):
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanSettingsChanged.disconnect(self.scanner_settings_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
-        self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
-        self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
+        #self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
 

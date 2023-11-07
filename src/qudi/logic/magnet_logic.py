@@ -279,6 +279,7 @@ class MagnetLogic(LogicBase):
     def set_target(self, pos_dict, caller_id=None, move_blocking=False):
         # todo: we should be able to set a target thats executed only later (eg. after hitting a button)
         with self._thread_lock:
+            self.log.debug(f"Set target: {pos_dict}")
             """
             if self.module_state() != 'idle':
                 self.log.error('Unable to change scanner target position while a scan is running.')
