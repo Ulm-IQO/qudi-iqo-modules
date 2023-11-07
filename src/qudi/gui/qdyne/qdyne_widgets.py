@@ -131,12 +131,11 @@ class QdyneMainWindow(QtWidgets.QMainWindow):
 
     def deactivate(self):
         pass
-
     def connect_signals(self):
-        self.action_Predefined_Methods_Config.triggered.connect(self._gui._gsw.show)
+        self.action_Predefined_Methods_Config.triggered.connect(self._gui._gsw.show_predefined_methods_config)
 
     def disconnect_signals(self):
-        pass
+        self.action_Predefined_Methods_Config.triggered.disconnect()
 
 class MeasurementWidget(QtWidgets.QWidget):
     def __init__(self):
@@ -191,7 +190,7 @@ class GenerationWidget(QtWidgets.QWidget):
         pass
 
     def connect_signals(self):
-        pass
+        self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.connect(self.predefined_generated)
 
     def disconnect_signals(self):
         pass
@@ -417,7 +416,19 @@ class GenerationWidget(QtWidgets.QWidget):
             method_name, param_dict, sample_and_load
         )
 
-    @QtCore.Slot()
+    def predefined_generated(self, asset_name):
+        print("predefined_generated")
+        # Enable all "Generate" buttons in predefined methods tab
+        for button in self.gen_buttons.values():
+            button.setEnabled(True)
+
+        # Enable all "GenSampLo" buttons in predefined methods tab if generation failed or
+        # "sampload_busy" flag in PulsedMasterLogic status_dict is False.
+        if asset_name is None or not self._gui.logic().pulsedmasterlogic().status_dict['sampload_busy']:
+            for button in self.samplo_buttons.values():
+                button.setEnabled(True)
+        return
+
     def generation_parameters_changed(self):
         """
 
@@ -445,10 +456,8 @@ class GenerationWidget(QtWidgets.QWidget):
                     settings_dict[param_name] = widget.currentData()
 
         self._gui.logic().pulsedmasterlogic().set_generation_parameters(settings_dict)
-
         return
 
-    @QtCore.Slot(dict)
     def generation_parameters_updated(self, settings_dict):
         """
 
@@ -582,21 +591,18 @@ class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
         return
 
     def deactivate(self):
-        pass
+        self.close()
 
     def connect_signals(self):
         # Connect signals used in predefined methods config dialog
         self.accepted.connect(self.apply_predefined_methods_config)
         self.rejected.connect(self.keep_former_predefined_methods_config)
         self.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.apply_predefined_methods_config)
-        pass
 
     def disconnect_signals(self):
-        pass
-
-    def _deactivate_predefined_methods_settings_ui(self):
-        self.close()
-        return
+        self.accepted.disconnect()
+        self.rejected.disconnect()
+        self.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
 
     def show_predefined_methods_config(self):
         """ Opens the Window for the config of predefined methods."""
