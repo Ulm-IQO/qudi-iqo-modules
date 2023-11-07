@@ -194,6 +194,11 @@ class MagnetLogic(LogicBase):
 
         def check_valid(settings, key):
             is_valid = True  # non present key -> valid
+
+            if key == 'frequency':
+                if type(settings[key]) == 'float':
+                    return True
+
             if key in settings:
                 if not isinstance(settings[key], dict):
                     is_valid = False
@@ -209,8 +214,12 @@ class MagnetLogic(LogicBase):
                 if key == 'range':
                     settings['range'] = {ax.name: ax.control_value.bounds for ax in constr.axes.values()}
                 if key == 'resolution':
-                    settings['resolution'] = {ax.name: max(ax.resolution.minimum, min(128, ax.resolution.maximum))  # TODO Hardcoded 128?
+                    # TODO Hardcoded dfeault values, 128?
+                    settings['resolution'] = {ax.name: max(ax.resolution.minimum, min(128, ax.resolution.maximum))
                                               for ax in constr.axes.values()}
+                if key == 'frequency':
+                    settings['frequency'] = 0.1
+
 
         return settings
 
@@ -344,7 +353,7 @@ class MagnetLogic(LogicBase):
     def configure_figure_of_merit(self, func_scalar, func_full, mes_time=1,
                                   name="", unit=""):
 
-        fom = MagnetFOM(name, func_scalar, func_full, mes_time, unit)
+        fom = MagnetFOM(name, func_scalar, mes_time, unit)
         self._fom = fom
 
     def _config_debug_fom(self, mes_time=1):
@@ -354,7 +363,7 @@ class MagnetLogic(LogicBase):
             time.sleep(mes_time)
             return np.random.rand(20)
 
-        dummy_fom = MagnetFOM('dummy', func_scalar, func_full, mes_time)
+        dummy_fom = MagnetFOM('dummy', func_scalar, mes_time)
         self._fom = dummy_fom
 
 
@@ -514,8 +523,9 @@ class MagnetLogic(LogicBase):
                 actual_control = self._magnet().get_control()
 
                 fom_value = self._fom.func()
-                fom_full_result = self._fom.func_full()
-                self.log.debug(f"New data: {fom_value}. Full res: {fom_full_result}")
+                #fom_full_result = self._fom.func_full()
+
+                self.log.debug(f"New data: {fom_value}")
                 # todo: insert into ScanData object
                 """
                 Get_next_pos(pathway)
