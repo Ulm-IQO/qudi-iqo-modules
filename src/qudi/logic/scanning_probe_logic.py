@@ -29,6 +29,7 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
+from qudi.interface.scanning_probe_interface import ScanSettings
 
 
 class ScanningProbeLogic(LogicBase):
@@ -95,11 +96,11 @@ class ScanningProbeLogic(LogicBase):
 
         if not self._min_poll_interval:
             # defaults to maximum scan frequency of scanner
-            self._min_poll_interval = 1/np.max([constr.axes[ax].frequency_range for ax in constr.axes])
+            self._min_poll_interval = 1/np.max([constr.axes[ax].frequency.bounds for ax in constr.axes])
 
         """
         if not isinstance(self._scan_ranges, dict):
-            self._scan_ranges = {ax.name: ax.value_range for ax in constr.axes.values()}
+            self._scan_ranges = {ax.name: ax.position.bounds for ax in constr.axes.values()}
         if not isinstance(self._scan_resolution, dict):
             self._scan_resolution = {ax.name: max(ax.min_resolution, min(128, ax.max_resolution))  # TODO Hardcoded 128?
                                      for ax in constr.axes.values()}
@@ -149,7 +150,7 @@ class ScanningProbeLogic(LogicBase):
 
     @property
     def scanner_constraints(self):
-        return self._scanner().get_constraints()
+        return self._scanner().constraints
 
     @property
     def scan_ranges(self):
@@ -212,12 +213,12 @@ class ScanningProbeLogic(LogicBase):
         for key, val in settings.items():
             if not check_valid(settings, key):
                 if key == 'range':
-                    settings['range'] = {ax.name: ax.value_range for ax in constr.axes.values()}
+                    settings['range'] = {ax.name: ax.position.bounds for ax in constr.axes.values()}
                 if key == 'resolution':
-                    settings['resolution'] = {ax.name: max(ax.min_resolution, min(128, ax.max_resolution))  # TODO Hardcoded 128?
+                    settings['resolution'] = {ax.name: max(ax.resolution.minimum, min(128, ax.resolution.maximum))  # TODO Hardcoded 128?
                                               for ax in constr.axes.values()}
                 if key == 'frequency':
-                    settings['frequency'] = {ax.name: ax.max_frequency for ax in constr.axes.values()}
+                    settings['frequency'] = {ax.name: ax.frequency.maximum for ax in constr.axes.values()}
 
         return settings
 
@@ -237,8 +238,8 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'range': new_ranges})
                     return new_ranges
 
-                self._scan_ranges[ax] = (constr.axes[ax].clip_value(float(min(ax_range))),
-                                         constr.axes[ax].clip_value(float(max(ax_range))))
+                self._scan_ranges[ax] = (constr.axes[ax].position.clip(float(min(ax_range))),
+                                         constr.axes[ax].position.clip(float(max(ax_range))))
 
             new_ranges = {ax: self._scan_ranges[ax] for ax in ranges}
             self.sigScanSettingsChanged.emit({'range': new_ranges})
@@ -260,7 +261,7 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'resolution': new_res})
                     return new_res
 
-                self._scan_resolution[ax] = constr.axes[ax].clip_resolution(int(ax_res))
+                self._scan_resolution[ax] = constr.axes[ax].resolution.clip(int(ax_res))
 
             new_resolution = {ax: self._scan_resolution[ax] for ax in resolution}
             self.sigScanSettingsChanged.emit({'resolution': new_resolution})
@@ -282,7 +283,7 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScanSettingsChanged.emit({'frequency': new_freq})
                     return new_freq
 
-                self._scan_frequency[ax] = constr.axes[ax].clip_frequency(float(ax_freq))
+                self._scan_frequency[ax] = constr.axes[ax].frequency.clip(float(ax_freq))
 
             new_freq = {ax: self._scan_frequency[ax] for ax in frequency}
             self.sigScanSettingsChanged.emit({'frequency': new_freq})
@@ -305,7 +306,7 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                     return new_pos
 
-                new_pos[ax] = ax_constr[ax].clip_value(pos)
+                new_pos[ax] = ax_constr[ax].position.clip(pos)
                 if pos != new_pos[ax]:
                     self.log.warning('Scanner position target value out of bounds for axis "{0}". '
                                      'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
@@ -323,55 +324,37 @@ class ScanningProbeLogic(LogicBase):
     def toggle_scan(self, start, scan_axes, caller_id=None):
         with self._thread_lock:
             if start:
-                return self.start_scan(scan_axes, caller_id)
-            return self.stop_scan()
-
-    def _update_scan_settings(self, scan_axes, settings):
-        for ax_index, ax in enumerate(scan_axes):
-            # Update scan ranges if needed
-            new = tuple(settings['range'][ax_index])
-            if self._scan_ranges[ax] != new:
-                self._scan_ranges[ax] = new
-                self.sigScanSettingsChanged.emit({'range': {ax: self._scan_ranges[ax]}})
-
-            # Update scan resolution if needed
-            new = int(settings['resolution'][ax_index])
-            if self._scan_resolution[ax] != new:
-                self._scan_resolution[ax] = new
-                self.sigScanSettingsChanged.emit(
-                    {'resolution': {ax: self._scan_resolution[ax]}}
-                )
-
-        # Update scan frequency if needed
-        new = float(settings['frequency'])
-        if self._scan_frequency[scan_axes[0]] != new:
-            self._scan_frequency[scan_axes[0]] = new
-            self.sigScanSettingsChanged.emit({'frequency': {scan_axes[0]: new}})
+                self.start_scan(scan_axes, caller_id)
+            else:
+                self.stop_scan()
 
     def start_scan(self, scan_axes, caller_id=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
-                return 0
+                return
 
+            self.log.debug('Starting scan.')
             scan_axes = tuple(scan_axes)
             self._curr_caller_id = self.module_uuid if caller_id is None else caller_id
 
             self.module_state.lock()
 
-            settings = {'axes': scan_axes,
-                        'range': tuple(self._scan_ranges[ax] for ax in scan_axes),
-                        'resolution': tuple(self._scan_resolution[ax] for ax in scan_axes),
-                        'frequency': self._scan_frequency[scan_axes[0]]}
-            fail, new_settings = self._scanner().configure_scan(settings)
-            if fail:
+            settings = ScanSettings(
+                channels=tuple(self.scanner_channels),
+                axes=scan_axes,
+                range=tuple(self._scan_ranges[ax] for ax in scan_axes),
+                resolution=tuple(self._scan_resolution[ax] for ax in scan_axes),
+                frequency=self._scan_frequency[scan_axes[0]],
+            )
+            self.log.debug('Attempting to configure scanner...')
+            try:
+                self._scanner().configure_scan(settings)
+            except (TypeError, ValueError) as e:
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
-                self.log.error(f"Couldn't configure scan: {settings}")
-                return -1
-
-            self._update_scan_settings(scan_axes, new_settings)
-            #self.log.debug("Applied new scan settings")
+                self.log.error('Could not set scan settings on scanning probe hardware.')
+            self.log.debug('Successfully configured scanner.')
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
             line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
@@ -379,35 +362,37 @@ class ScanningProbeLogic(LogicBase):
                                             line_points / self._scan_frequency[scan_axes[0]])
             self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
 
-            if self._scanner().start_scan() < 0:  # TODO Current interface states that bool is returned from start_scan
+            try:
+                self._scanner().start_scan()
+            except:
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
                 self.log.error("Couldn't start scan.")
-                return -1
 
             self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
             self.__start_timer()
-            return 0
+            return
 
     def stop_scan(self):
         with self._thread_lock:
             if self.module_state() == 'idle':
                 self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
-                return 0
+                return
 
             self.__stop_timer()
 
-            err = self._scanner().stop_scan() if self._scanner().module_state() != 'idle' else 0
+            try:
+                if self._scanner().module_state() != 'idle':
+                    self._scanner().stop_scan()
+            finally:
+                self.module_state.unlock()
 
-            self.module_state.unlock()
+                if self.scan_settings['save_to_history']:
+                    # module_uuid signals data-ready to data logic
+                    self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
+                else:
+                    self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
 
-            if self.scan_settings['save_to_history']:
-                # module_uuid signals data-ready to data logic
-                self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
-            else:
-                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
-
-            return err
 
     def __scan_poll_loop(self):
         with self._thread_lock:
@@ -430,7 +415,7 @@ class ScanningProbeLogic(LogicBase):
             return
 
     def set_full_scan_ranges(self):
-        scan_range = {ax: axis.value_range for ax, axis in self.scanner_constraints.axes.items()}
+        scan_range = {ax: axis.position.bounds for ax, axis in self.scanner_constraints.axes.items()}
         return self.set_scan_range(scan_range)
 
     def __start_timer(self):

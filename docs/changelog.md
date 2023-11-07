@@ -7,6 +7,7 @@ toolchain and NI x-series hardware module have been adapted but custom modules r
 interface will break.  
 Configuration for time series toolchain needs changes as well. See `default.cfg` or module 
 docstrings.
+- Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Legacy support for some but not all methods.
 
 ### Bugfixes
 - Basic data saving in `TimeSeriesReaderLogic` works now.

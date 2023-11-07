@@ -187,7 +187,7 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             label.setFont(font)
             label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
 
-            max_range = abs(axis.max_value - axis.min_value)
+            max_range = abs(axis.position.maximum - axis.position.minimum)
             range_spinbox = ScienDSpinBox()
             range_spinbox.setObjectName('{0}_range_scienDSpinBox'.format(ax_name))
             range_spinbox.setRange(0, max_range)
@@ -200,8 +200,8 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
 
             res_spinbox = QtWidgets.QSpinBox()
             res_spinbox.setObjectName('{0}_resolution_spinBox'.format(ax_name))
-            res_spinbox.setRange(axis.min_resolution, min(2 ** 31 - 1, axis.max_resolution))
-            res_spinbox.setValue(axis.min_resolution)
+            res_spinbox.setRange(axis.resolution.minimum, min(2 ** 31 - 1, axis.resolution.maximum))
+            res_spinbox.setValue(axis.resolution.minimum)
             res_spinbox.setSuffix(' px')
             res_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             res_spinbox.setMinimumSize(50, 0)
@@ -210,8 +210,8 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
 
             freq_spinbox = ScienDSpinBox()
             freq_spinbox.setObjectName('{0}_frequency_scienDSpinBox'.format(ax_name))
-            freq_spinbox.setRange(*axis.frequency_range)
-            freq_spinbox.setValue(max(axis.min_frequency, axis.max_frequency / 100))
+            freq_spinbox.setRange(*axis.frequency.bounds)
+            freq_spinbox.setValue(max(axis.frequency.minimum, axis.frequency.maximum / 100))
             freq_spinbox.setSuffix('Hz')
             freq_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             freq_spinbox.setMinimumSize(75, 0)

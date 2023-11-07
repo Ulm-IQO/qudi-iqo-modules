@@ -23,18 +23,19 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
 import time
+from typing import Optional, Dict
 
 from PySide2 import QtCore
 from PySide2.QtGui import QGuiApplication
 
 from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanConstraints, \
-    ScannerAxis, ScannerChannel, ScanData
+    ScannerAxis, ScannerChannel, ScanData, ScanSettings
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
-from qudi.util.mutex import RecursiveMutex, Mutex
+from qudi.util.mutex import Mutex
 from qudi.util.enums import SamplingOutputMode
 from qudi.util.helpers import in_range
-
+from qudi.util.constraints import ScalarConstraint
 
 
 class NiScanningProbeInterfuse(ScanningProbeInterface):
@@ -79,19 +80,18 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     """
 
     # TODO What about channels which are not "calibrated" to 'm', e.g. just use 'V'?
-    # TODO Bool indicators deprecated; Change in scanning probe toolchain
 
     _ni_finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
     _ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
 
-    _ni_channel_mapping = ConfigOption(name='ni_channel_mapping', missing='error')
-    _position_ranges = ConfigOption(name='position_ranges', missing='error')
-    _frequency_ranges = ConfigOption(name='frequency_ranges', missing='error')
-    _resolution_ranges = ConfigOption(name='resolution_ranges', missing='error')
-    _input_channel_units = ConfigOption(name='input_channel_units', missing='error')
+    _ni_channel_mapping: Dict[str, str] = ConfigOption(name='ni_channel_mapping', missing='error')
+    _position_ranges: Dict[str, list[float]] = ConfigOption(name='position_ranges', missing='error')
+    _frequency_ranges: Dict[str, list[float]] = ConfigOption(name='frequency_ranges', missing='error')
+    _resolution_ranges: Dict[str, list[float]] = ConfigOption(name='resolution_ranges', missing='error')
+    _input_channel_units: Dict[str, str] = ConfigOption(name='input_channel_units', missing='error')
 
-    __backwards_line_resolution = ConfigOption(name='backwards_line_resolution', default=50)
-    __max_move_velocity = ConfigOption(name='maximum_move_velocity', default=400e-6)
+    __backwards_line_resolution: int = ConfigOption(name='backwards_line_resolution', default=50)
+    __max_move_velocity: float = ConfigOption(name='maximum_move_velocity', default=400e-6)
 
     _threaded = True  # Interfuse is by default not threaded.
 
@@ -100,15 +100,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._current_scan_frequency = -1
-        self._current_scan_ranges = [tuple(), tuple()]
-        self._current_scan_axes = tuple()
-        self._current_scan_resolution = tuple()
+        self._scan_settings: Optional[ScanSettings] = None
 
-        self._scan_data = None
+        self._scan_data: Optional[ScanData] = None
         self.raw_data_container = None
 
-        self._constraints = None
+        self._constraints: Optional[ScanConstraints] = None
 
         self._target_pos = dict()
         self._stored_target_pos = dict()
@@ -143,25 +140,35 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         # Constraints
         axes = list()
         for axis in self._position_ranges:
+            position_range = tuple(self._position_ranges[axis])
+            resolution_range = tuple(self._resolution_ranges[axis])
+            frequency_range = tuple(self._frequency_ranges[axis])
+            max_step = abs(position_range[1] - position_range[0])
+
+            position = ScalarConstraint(default=min(position_range), bounds=position_range)
+            resolution = ScalarConstraint(default=min(resolution_range), bounds=resolution_range, enforce_int=True)
+            frequency = ScalarConstraint(default=min(frequency_range), bounds=frequency_range)
+            step = ScalarConstraint(default=0, bounds=(0, max_step))
+
             axes.append(ScannerAxis(name=axis,
                                     unit='m',
-                                    value_range=self._position_ranges[axis],
-                                    step_range=(0, abs(np.diff(self._position_ranges[axis]))),
-                                    resolution_range=self._resolution_ranges[axis],
-                                    frequency_range=self._frequency_ranges[axis])
+                                    position=position,
+                                    step=step,
+                                    resolution=resolution,
+                                    frequency=frequency,)
                         )
         channels = list()
         for channel, unit in self._input_channel_units.items():
             channels.append(ScannerChannel(name=channel,
                                            unit=unit,
-                                           dtype=np.float64))
+                                           dtype='float64'))
 
-        self._constraints = ScanConstraints(axes=axes,
-                                            channels=channels,
+        self._constraints = ScanConstraints(axis_objects=tuple(axes),
+                                            channel_objects=tuple(channels),
                                             backscan_configurable=False,  # TODO incorporate in scanning_probe toolchain
                                             has_position_feedback=False,  # TODO incorporate in scanning_probe toolchain
                                             square_px_only=False)  # TODO incorporate in scanning_probe toolchain
-#
+
         self._target_pos = self.get_position()  # get voltages/pos from ni_ao
         self._toggle_ao_setpoint_channels(False)  # And free ao resources after that
         self._t_last_move = time.perf_counter()
@@ -190,10 +197,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if self._ni_finite_sampling_io().is_running:
             self._ni_finite_sampling_io().stop_buffered_frame()
 
-    def get_constraints(self):
-        """ Get hardware constraints/limitations.
-
-        @return dict: scanner constraints
+    @property
+    def constraints(self) -> ScanConstraints:
+        """ Read-only property returning the constraints of this scanning probe hardware.
         """
         return self._constraints
 
@@ -202,99 +208,52 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         """
         pass
 
-    def configure_scan(self, scan_settings):
+    @property
+    def scan_settings(self) -> ScanSettings:
+        return self._scan_settings
+
+    def configure_scan(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
+        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
 
-        @param dict scan_settings: scan_settings dictionary holding all the parameters 'axes', 'resolution', 'ranges'
-        #  TODO update docstring in interface
-
-        @return (bool, ScanSettings): Failure indicator (fail=True),
-                                      altered ScanSettings instance (same as "settings")
+        @param ScanSettings settings: ScanSettings instance holding all parameters
         """
 
         if self.is_scan_running:
-            self.log.error('Unable to configure scan parameters while scan is running. '
-                           'Stop scanning and try again.')
-            return True, self.scan_settings
+            raise RuntimeError('Unable to configure scan parameters while scan is running. '
+                               'Stop scanning and try again.')
 
-        axes = scan_settings.get('axes', self._current_scan_axes)
-        ranges = tuple(
-            (min(r), max(r)) for r in scan_settings.get('range', self._current_scan_ranges)
+        # check settings - will raise appropriate exceptions if something is not right
+        self.constraints.check_settings(settings)
+        self.log.debug('Scan settings fulfill constraints.')
+
+        self._scan_settings = settings
+
+        with self._thread_lock_data:
+            self._scan_data = ScanData.from_constraints(
+                settings=settings,
+                constraints=self.constraints
+            )
+            self.log.debug(f'New ScanData created.')
+            self.raw_data_container = RawDataContainer(settings.channels,
+                                                       settings.resolution[
+                                                           1] if settings.scan_dimension == 2 else 1,
+                                                       settings.resolution[0],
+                                                       self.__backwards_line_resolution)
+            self.log.debug(f'New RawDataContainer created.')
+
+        self._ni_finite_sampling_io().set_sample_rate(settings.frequency)
+        self._ni_finite_sampling_io().set_active_channels(
+            input_channels=(self._ni_channel_mapping[in_ch] for in_ch in self._input_channel_units),
+            output_channels=(self._ni_channel_mapping[ax] for ax in settings.axes)
+            # TODO Use all axes and keep the unused constant? basically just constants in ni scan dict.
         )
-        resolution = scan_settings.get('resolution', self._current_scan_resolution)
-        frequency = float(scan_settings.get('frequency', self._current_scan_frequency))
 
-        if not set(axes).issubset(self._position_ranges):
-            self.log.error('Unknown axes names encountered. Valid axes are: {0}'
-                           ''.format(set(self._position_ranges)))
-            return True, self.scan_settings
+        self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
 
-        if len(axes) != len(ranges) or len(axes) != len(resolution):
-            self.log.error('"axes", "range" and "resolution" must have same length.')
-            return True, self.scan_settings
-        for i, ax in enumerate(axes):
-            for axis_constr in self._constraints.axes.values():
-                if ax == axis_constr.name:
-                    break
-            if ranges[i][0] < axis_constr.min_value or ranges[i][1] > axis_constr.max_value:
-                self.log.error('Scan range out of bounds for axis "{0}". Maximum possible range'
-                               ' is: {1}'.format(ax, axis_constr.value_range))
-                return True, self.scan_settings
-            if resolution[i] < axis_constr.min_resolution or resolution[i] > axis_constr.max_resolution:
-                self.log.error('Scan resolution out of bounds for axis "{0}". Maximum possible '
-                               'range is: {1}'.format(ax, axis_constr.resolution_range))
-                return True, self.scan_settings
-            if i == 0:
-                if frequency < axis_constr.min_frequency or frequency > axis_constr.max_frequency:
-                    self.log.error('Scan frequency out of bounds for fast axis "{0}". Maximum '
-                                   'possible range is: {1}'
-                                   ''.format(ax, axis_constr.frequency_range))
-                    return True, self.scan_settings
-            with self._thread_lock_data:
-                try:
-                    self._scan_data = ScanData(
-                        channels=tuple(self._constraints.channels.values()),
-                        scan_axes=tuple(self._constraints.axes[ax] for ax in axes),
-                        scan_range=ranges,
-                        scan_resolution=tuple(resolution),
-                        scan_frequency=frequency,
-                        position_feedback_axes=None
-                    )
-                    self.raw_data_container = RawDataContainer(self._scan_data.channels,
-                                                               resolution[
-                                                                   1] if self._scan_data.scan_dimension == 2 else 1,
-                                                               resolution[0],
-                                                               self.__backwards_line_resolution)
-                    # self.log.debug(f"New scanData created: {self._scan_data.data}")
+        ni_scan_dict = self._initialize_ni_scan_arrays(self._scan_data)
 
-                except:
-                    self.log.exception("")
-                    return True, self.scan_settings
-
-            try:
-                self._ni_finite_sampling_io().set_sample_rate(frequency)
-                self._ni_finite_sampling_io().set_active_channels(
-                    input_channels=(self._ni_channel_mapping[in_ch] for in_ch in self._input_channel_units),
-                    output_channels=(self._ni_channel_mapping[ax] for ax in axes)
-                    # TODO Use all axes and keep the unused constant? basically just constants in ni scan dict.
-                )
-
-                self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
-
-                ni_scan_dict = self._initialize_ni_scan_arrays(self._scan_data)
-
-                self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
-
-            except:
-                self.log.exception("")
-                return True, self.scan_settings
-
-            self._current_scan_resolution = tuple(resolution)
-            self._current_scan_ranges = ranges
-            self._current_scan_axes = tuple(axes)
-            self._current_scan_frequency = frequency
-
-            return False, self.scan_settings
+        self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
 
     def move_absolute(self, position, velocity=None, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
@@ -308,7 +267,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error('Cannot move the scanner while, scan is running')
             return self.get_target()
 
-        if not set(position).issubset(self.get_constraints().axes):
+        if not set(position).issubset(self.constraints.axes):
             self.log.error('Invalid axes name in position')
             return self.get_target()
 
@@ -378,6 +337,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             return pos
 
     def start_scan(self):
+        """Start a scan as configured beforehand.
+        Log an error if something fails or a 1D/2D scan is in progress.
+        """
         try:
 
             #self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
@@ -390,16 +352,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         except:
             self.log.exception("")
-            return -1
-
-        return 0
 
     @QtCore.Slot()
     def _start_scan(self):
-        """
-
-        @return (bool): Failure indicator (fail=True)
-        """
         try:
             if self._scan_data is None:
                 # todo: raising would be better, but from this delegated thread exceptions get lost
@@ -419,20 +374,17 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             self.module_state.lock()
 
             first_scan_position = {ax: pos[0] for ax, pos
-                                   in zip(self.scan_settings['axes'], self.scan_settings['range'])}
+                                   in zip(self.scan_settings.axes, self.scan_settings.range)}
             self._move_to_and_start_scan(first_scan_position)
 
         except Exception:
             self.module_state.unlock()
             self.log.exception("Starting scan failed: ")
 
-
     def stop_scan(self):
+        """Stop the currently running scan.
+        Log an error if something fails or no 1D/2D scan is in progress.
         """
-        @return bool: Failure indicator (fail=True)
-        # todo: return values as error codes are deprecated
-        """
-
         #self.log.debug("Stopping scan")
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
@@ -440,10 +392,10 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         else:
             self._stop_scan()
 
-        return 0
-
     @QtCore.Slot()
     def _stop_scan(self):
+        if not self.is_scan_running:
+            self.log.error('No scan in progress. Cannot stop scan.')
 
         # self.log.debug("Stopping scan...")
         self._start_scan_after_cursor = False  # Ensure Scan HW is not started after movement
@@ -461,15 +413,12 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         self.move_absolute(self._stored_target_pos)
         self._stored_target_pos = dict()
 
-    def get_scan_data(self):
-        """
-
-        @return (ScanData): ScanData instance used in the scan
-        #  TODO change interface
+    def get_scan_data(self) -> ScanData:
+        """ Read-only property returning the ScanData instance used in the scan.
         """
 
         if self._scan_data is None:
-            raise RuntimeError('ScanData is not yet configured, please call "configure_scan" first')
+            raise RuntimeError('ScanData is not yet configured, please set scan settings first')
         try:
             with self._thread_lock_data:
                 return self._scan_data.copy()
@@ -507,15 +456,6 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             running = self.__t_last_follow is not None
             return running
 
-    @property
-    def scan_settings(self):
-
-        settings = {'axes': tuple(self._current_scan_axes),
-                    'range': tuple(self._current_scan_ranges),
-                    'resolution': tuple(self._current_scan_resolution),
-                    'frequency': self._current_scan_frequency}
-        return settings
-
     def _check_scan_end_reached(self):
         # not thread safe, call from thread_lock protected code only
         return self.raw_data_container.is_full
@@ -523,7 +463,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
     def _fetch_data_chunk(self):
         try:
             # self.log.debug(f'fetch chunk: {self._ni_finite_sampling_io().samples_in_buffer}, {self.is_scan_running}')
-            # chunk_size = self._scan_data.scan_resolution[0] + self.__backwards_line_resolution
+            # chunk_size = self._scan_data.settings.resolution[0] + self.__backwards_line_resolution
             chunk_size = 10  # TODO Hardcode or go line by line as commented out above?
             # Request a minimum of chunk_size samples per loop
             try:
@@ -565,7 +505,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         ni_channel = self._ni_channel_mapping[axis]
         voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
-        position_range = self.get_constraints().axes[axis].value_range
+        position_range = self.constraints.axes[axis].position.bounds
 
         slope = np.diff(voltage_range) / np.diff(position_range)
         intercept = voltage_range[1] - position_range[1] * slope
@@ -590,7 +530,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
         if isinstance(position_vec, dict):
             raise ValueError(f"Position can't be provided as dict.")
 
-        axes = sorted(self.get_constraints().axes.keys())
+        axes = sorted(self.constraints.axes.keys())
         return {axes[idx]: pos for idx, pos in enumerate(position_vec)}
 
     def _voltage_dict_to_position_dict(self, voltages):
@@ -609,7 +549,7 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             try:
                 axis = reverse_routing[ni_channel]
                 voltage_range = self._ni_finite_sampling_io().constraints.output_channel_limits[ni_channel]
-                position_range = self.get_constraints().axes[axis].value_range
+                position_range = self.constraints.axes[axis].position.bounds
 
                 slope = np.diff(position_range) / np.diff(voltage_range)
                 intercept = position_range[1] - voltage_range[1] * slope
@@ -642,16 +582,16 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
         assert isinstance(scan_data, ScanData), 'This function requires a scan_data object as input'
 
-        if scan_data.scan_dimension == 1:
+        if scan_data.settings.scan_dimension == 1:
 
-            axis = scan_data.scan_axes[0]
-            horizontal_resolution = scan_data.scan_resolution[0]
+            axis = scan_data.settings.axes[0]
+            horizontal_resolution = scan_data.settings.resolution[0]
 
-            horizontal = np.linspace(*self._position_to_voltage(axis, scan_data.scan_range[0]),
+            horizontal = np.linspace(*self._position_to_voltage(axis, scan_data.settings.range[0]),
                                      horizontal_resolution)
 
-            horizontal_return_line = np.linspace(self._position_to_voltage(axis, scan_data.scan_range[0][1]),
-                                                 self._position_to_voltage(axis, scan_data.scan_range[0][0]),
+            horizontal_return_line = np.linspace(self._position_to_voltage(axis, scan_data.settings.range[0][1]),
+                                                 self._position_to_voltage(axis, scan_data.settings.range[0][0]),
                                                  self.__backwards_line_resolution)
             # TODO Return line for 1d included due to possible hysteresis. Might be able to drop it,
             #  but then get_scan_data needs to be changed accordingly
@@ -663,19 +603,19 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             return voltage_dict
 
-        elif scan_data.scan_dimension == 2:
+        elif scan_data.settings.scan_dimension == 2:
 
-            horizontal_resolution = scan_data.scan_resolution[0]
-            vertical_resolution = scan_data.scan_resolution[1]
+            horizontal_resolution = scan_data.settings.resolution[0]
+            vertical_resolution = scan_data.settings.resolution[1]
 
             # horizontal scan array / "fast axis"
-            horizontal_axis = scan_data.scan_axes[0]
+            horizontal_axis = scan_data.settings.axes[0]
 
-            horizontal = np.linspace(*self._position_to_voltage(horizontal_axis, scan_data.scan_range[0]),
+            horizontal = np.linspace(*self._position_to_voltage(horizontal_axis, scan_data.settings.range[0]),
                                      horizontal_resolution)
 
-            horizontal_return_line = np.linspace(self._position_to_voltage(horizontal_axis, scan_data.scan_range[0][1]),
-                                                 self._position_to_voltage(horizontal_axis, scan_data.scan_range[0][0]),
+            horizontal_return_line = np.linspace(self._position_to_voltage(horizontal_axis, scan_data.settings.range[0][1]),
+                                                 self._position_to_voltage(horizontal_axis, scan_data.settings.range[0][0]),
                                                  self.__backwards_line_resolution)
             # a single back and forth line
             horizontal_single_line = np.concatenate((horizontal, horizontal_return_line))
@@ -684,9 +624,9 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
 
             # vertical scan array / "slow axis"
 
-            vertical_axis = scan_data.scan_axes[1]
+            vertical_axis = scan_data.settings.axes[1]
 
-            vertical = np.linspace(*self._position_to_voltage(vertical_axis, scan_data.scan_range[1]),
+            vertical = np.linspace(*self._position_to_voltage(vertical_axis, scan_data.settings.range[1]),
                                    vertical_resolution)
 
             # during horizontal line, the vertical line keeps its value
@@ -819,13 +759,13 @@ class NiScanningProbeInterfuse(ScanningProbeInterface):
             if not self._ao_setpoint_channels_active:
                 self._toggle_ao_setpoint_channels(True)
 
-            constr = self.get_constraints()
+            constr = self.constraints
 
             for axis, pos in position.items():
-                in_range_flag, _ = in_range(pos, *constr.axes[axis].value_range)
+                in_range_flag, _ = in_range(pos, *constr.axes[axis].position.bounds)
                 if not in_range_flag:
-                    position[axis] = float(constr.axes[axis].clip_value(position[axis]))
-                    self.log.warning(f'Position {pos} out of range {constr.axes[axis].value_range} '
+                    position[axis] = float(constr.axes[axis].position.clip(position[axis]))
+                    self.log.warning(f'Position {pos} out of range {constr.axes[axis].position.bounds} '
                                      f'for axis {axis}. Value clipped to {position[axis]}')
                 # TODO Adapt interface to use "in_range"?
                 self._target_pos[axis] = position[axis]

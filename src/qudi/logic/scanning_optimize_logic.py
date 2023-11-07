@@ -211,13 +211,13 @@ class ScanningOptimizeLogic(LogicBase):
         for key, val in settings.items():
             if not check_valid(settings, key):
                 if key == 'scan_range':
-                    settings['scan_range'] = {ax.name: abs(ax.value_range[1] - ax.value_range[0]) / 100 for ax in
+                    settings['scan_range'] = {ax.name: abs(ax.position.bounds[1] - ax.position.bounds[0]) / 100 for ax in
                                               hw_axes.values()}
                 if key == 'scan_resolution':
-                    settings['scan_resolution'] = {ax.name: max(ax.min_resolution, min(16, ax.max_resolution))
+                    settings['scan_resolution'] = {ax.name: max(ax.resolution.minimum, min(16, ax.resolution.maximum))
                                                    for ax in hw_axes.values()}
                 if key == 'scan_frequency':
-                    settings['scan_frequency'] = {ax.name: max(ax.min_frequency, min(50, ax.max_frequency)) for ax
+                    settings['scan_frequency'] = {ax.name: max(ax.frequency.minimum, min(50, ax.frequency.maximum)) for ax
                                                   in hw_axes.values()}
                 if key == 'data_channel':
                     settings['data_channel'] = list(sig_channels.keys())[0]
@@ -275,14 +275,15 @@ class ScanningOptimizeLogic(LogicBase):
 
     def toggle_optimize(self, start):
         if start:
-            return self.start_optimize()
-        return self.stop_optimize()
+            self.start_optimize()
+        else:
+            self.stop_optimize()
 
     def start_optimize(self):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
-                return 0
+                return
 
             # ToDo: Sanity checks for settings go here
             self.module_state.lock()
@@ -334,7 +335,7 @@ class ScanningOptimizeLogic(LogicBase):
             self._optimal_position = dict()
             self.sigOptimizeStateChanged.emit(True, self.optimal_position, None)
             self._sigNextSequenceStep.emit()
-            return 0
+            return
 
     def _next_sequence_step(self):
         with self._thread_lock:
@@ -362,22 +363,22 @@ class ScanningOptimizeLogic(LogicBase):
                 #self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
 
                 try:
-                    if data.scan_dimension == 1:
-                        x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
+                    if data.settings.scan_dimension == 1:
+                        x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
                         opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
                             x,
                             data.data[self._data_channel]
                         )
                     else:
-                        x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
-                        y = np.linspace(*data.scan_range[1], data.scan_resolution[1])
+                        x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
+                        y = np.linspace(*data.settings.range[1], data.settings.resolution[1])
                         xy = np.meshgrid(x, y, indexing='ij')
                         opt_pos, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
                             xy,
                             data.data[self._data_channel].ravel()
                         )
 
-                    position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
+                    position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.settings.axes)}
                     #self.log.debug(f"Optimizer issuing position update: {position_update}")
                     if fit_data is not None:
                         new_pos = self._scan_logic().set_target_position(position_update, move_blocking=True)
@@ -388,7 +389,7 @@ class ScanningOptimizeLogic(LogicBase):
 
                     self._optimal_position.update(position_update)
                     with self._result_lock:
-                        self._last_scans.append(data.copy())
+                        self._last_scans.append(cp.copy(data))
                         self._last_fits.append(fit_res)
                     self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
 
@@ -414,18 +415,17 @@ class ScanningOptimizeLogic(LogicBase):
         with self._thread_lock:
             if self.module_state() == 'idle':
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
-                return 0
+                return
 
-            if self._scan_logic().module_state() != 'idle':
-                # optimizer scans are never saved in scanning history
-                err = self._scan_logic().stop_scan()
-            else:
-                err = 0
-            self._scan_logic().set_scan_settings(self._stashed_scan_settings)
-            self._stashed_scan_settings = dict()
-            self.module_state.unlock()
-            self.sigOptimizeStateChanged.emit(False, dict(), None)
-            return err
+            try:
+                if self._scan_logic().module_state() != 'idle':
+                    # optimizer scans are never saved in scanning history
+                    self._scan_logic().stop_scan()
+            finally:
+                self._scan_logic().set_scan_settings(self._stashed_scan_settings)
+                self._stashed_scan_settings = dict()
+                self.module_state.unlock()
+                self.sigOptimizeStateChanged.emit(False, dict(), None)
 
     def _get_pos_from_2d_gauss_fit(self, xy, data):
         model = Gaussian2D()

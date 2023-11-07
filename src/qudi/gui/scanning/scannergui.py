@@ -486,7 +486,7 @@ class ScannerGui(GuiBase):
         try:
             data_logic = self._data_logic()
             if scan_axes is None:
-                scan_axes = [scan.scan_axes for scan in data_logic.get_all_current_scan_data()]
+                scan_axes = [scan.settings.axes for scan in data_logic.get_all_current_scan_data()]
             else:
                 scan_axes = [scan_axes]
             for ax in scan_axes:
@@ -532,10 +532,10 @@ class ScannerGui(GuiBase):
                 self.log.error('Unable to add scanning widget for axes {0}. Widget for this scan '
                                'already created. Remove old widget first.'.format(axes))
                 return
-            marker_bounds = (axes_constr[0].value_range, (None, None))
+            marker_bounds = (axes_constr[0].position.bounds, (None, None))
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
-            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range)
+            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].position.bounds)
             self.scan_1d_dockwidgets[axes] = dockwidget
         else:
             if axes in self.scan_2d_dockwidgets:
@@ -543,13 +543,13 @@ class ScannerGui(GuiBase):
                                'already created. Remove old widget first.'.format(axes))
                 return
             marker_size = tuple(abs(optimizer_range[ax]) for ax in axes)
-            marker_bounds = (axes_constr[0].value_range, axes_constr[1].value_range)
+            marker_bounds = (axes_constr[0].position.bounds, axes_constr[1].position.bounds)
             dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr,
                                         xy_region_min_size_percentile=self._min_crosshair_size_fraction)
             dockwidget.scan_widget.set_marker_size(marker_size)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
-            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].value_range,
-                                                  y_range=axes_constr[1].value_range)
+            dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].position.bounds,
+                                                  y_range=axes_constr[1].position.bounds)
             self.scan_2d_dockwidgets[axes] = dockwidget
 
         dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
@@ -678,7 +678,7 @@ class ScannerGui(GuiBase):
         self.scanner_control_dockwidget.set_target(pos_dict)
 
     def scan_state_updated(self, is_running, scan_data=None, caller_id=None):
-        scan_axes = scan_data.scan_axes if scan_data is not None else None
+        scan_axes = scan_data.settings.axes if scan_data is not None else None
         self._toggle_enable_scan_buttons(not is_running, exclude_scan=scan_axes)
         if not self._optimizer_state['is_running']:
             self._toggle_enable_actions(not is_running)
@@ -690,36 +690,36 @@ class ScannerGui(GuiBase):
         if scan_data is not None:
             if caller_id is self._optimizer_id:
                 channel = self._osd.settings['data_channel']
-                if scan_data.scan_dimension == 2:
-                    x_ax, y_ax = scan_data.scan_axes
+                if scan_data.settings.scan_dimension == 2:
+                    x_ax, y_ax = scan_data.settings.axes
                     self.optimizer_dockwidget.set_image(image=scan_data.data[channel],
-                                                        extent=scan_data.scan_range,
-                                                        axs=scan_data.scan_axes)
+                                                        extent=scan_data.settings.range,
+                                                        axs=scan_data.settings.axes)
                     self.optimizer_dockwidget.set_image_label(axis='bottom',
                                                               text=x_ax,
-                                                              units=scan_data.axes_units[x_ax],
-                                                              axs=scan_data.scan_axes)
+                                                              units=scan_data.axis_units[x_ax],
+                                                              axs=scan_data.settings.axes)
                     self.optimizer_dockwidget.set_image_label(axis='left',
                                                               text=y_ax,
-                                                              units=scan_data.axes_units[y_ax],
-                                                              axs=scan_data.scan_axes)
-                elif scan_data.scan_dimension == 1:
-                    x_ax = scan_data.scan_axes[0]
+                                                              units=scan_data.axis_units[y_ax],
+                                                              axs=scan_data.settings.axes)
+                elif scan_data.settings.scan_dimension == 1:
+                    x_ax = scan_data.settings.axes[0]
                     self.optimizer_dockwidget.set_plot_data(
-                        x=np.linspace(*scan_data.scan_range[0], scan_data.scan_resolution[0]),
+                        x=np.linspace(*scan_data.settings.range[0], scan_data.settings.resolution[0]),
                         y=scan_data.data[channel],
-                        axs=scan_data.scan_axes
+                        axs=scan_data.settings.axes
                     )
                     self.optimizer_dockwidget.set_plot_label(axis='bottom',
                                                              text=x_ax,
-                                                             units=scan_data.axes_units[x_ax],
-                                                             axs=scan_data.scan_axes)
+                                                             units=scan_data.axis_units[x_ax],
+                                                             axs=scan_data.settings.axes)
                     self.optimizer_dockwidget.set_plot_label(axis='left',
                                                              text=channel,
                                                              units=scan_data.channel_units[channel],
-                                                             axs=scan_data.scan_axes)
+                                                             axs=scan_data.settings.axes)
             else:
-                if scan_data.scan_dimension == 2:
+                if scan_data.settings.scan_dimension == 2:
                     dockwidget = self.scan_2d_dockwidgets.get(scan_axes, None)
                 else:
                     dockwidget = self.scan_1d_dockwidgets.get(scan_axes, None)
@@ -834,16 +834,16 @@ class ScannerGui(GuiBase):
         self.scanner_control_dockwidget.set_target(pos_dict)
 
     @QtCore.Slot(object)
-    def _update_from_history(self, scan_data):
+    def _update_from_history(self, scan_data: ScanData):
         self._update_scan_data(scan_data)
-        self.set_active_tab(scan_data.scan_axes)
+        self.set_active_tab(scan_data.settings.axes)
 
     @QtCore.Slot(object)
-    def _update_scan_data(self, scan_data):
+    def _update_scan_data(self, scan_data: ScanData):
         """
         @param ScanData scan_data:
         """
-        axes = scan_data.scan_axes
+        axes = scan_data.settings.axes
         try:
             dockwidget = self.scan_2d_dockwidgets[axes]
         except KeyError:
@@ -928,8 +928,8 @@ class ScannerGui(GuiBase):
         for ax, dockwidget in self.scan_2d_dockwidgets.items():
             width = self._osd.settings['scan_range'][ax[0]]
             height = self._osd.settings['scan_range'][ax[1]]
-            x_min, x_max = axes_constr[ax[0]].value_range
-            y_min, y_max = axes_constr[ax[1]].value_range
+            x_min, x_max = axes_constr[ax[0]].position.bounds
+            y_min, y_max = axes_constr[ax[1]].position.bounds
             marker_bounds = (
                 (x_min - width / 2, x_max + width / 2),
                 (y_min - height / 2, y_max + height / 2)
