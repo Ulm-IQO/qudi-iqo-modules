@@ -98,6 +98,8 @@ class MagnetLogic(LogicBase):
 
         self.configure_figure_of_merit(lambda: None, lambda: None, mes_time=0,
                                        name="/na")
+        self.log.warning("Configuring debug FOM. For testing only")
+        self._config_debug_fom()
 
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
@@ -398,6 +400,7 @@ class MagnetLogic(LogicBase):
                 settings=settings,
                 constraints=self.magnet_constraints
             )
+            self._scan_data.new_scan()
             self.log.debug(f'New ScanData created.')
 
 
@@ -503,6 +506,7 @@ class MagnetLogic(LogicBase):
     def __scan_loop(self):
         with self._thread_lock:
             try:
+
                 if self.module_state() == 'idle':
                     return
 
@@ -525,7 +529,13 @@ class MagnetLogic(LogicBase):
                 fom_value = self._fom.func()
                 #fom_full_result = self._fom.func_full()
 
-                self.log.debug(f"New data: {fom_value}")
+                # todo: check that this is working for a meander line scan
+                scan_data_flat = self._scan_data.data['FOM'].flatten()
+                scan_data_flat[self._scan_idx] = fom_value
+                resolution = self.scan_data.settings.resolution
+
+                self._scan_data.data['FOM'][:] = scan_data_flat.reshape(resolution)
+                self.log.debug(f"New data: {fom_value}. Scan: {self._scan_data.data['FOM']}")
                 # todo: insert into ScanData object
                 """
                 Get_next_pos(pathway)

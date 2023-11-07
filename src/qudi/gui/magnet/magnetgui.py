@@ -631,7 +631,7 @@ class MagnetGui(GuiBase):
         self.scanner_control_dockwidget.set_target(pos_dict)
 
     def scan_state_updated(self, is_running, scan_data=None, caller_id=None):
-        scan_axes = scan_data.scan_axes if scan_data is not None else None
+        scan_axes = scan_data.settings.axes if scan_data is not None else None
         self._toggle_enable_scan_buttons(not is_running, exclude_scan=scan_axes)
         if not self._optimizer_state['is_running']:
             self._toggle_enable_actions(not is_running)
@@ -641,105 +641,14 @@ class MagnetGui(GuiBase):
         self.scanner_settings_toggle_gui_lock(is_running)
 
         if scan_data is not None:
-            if caller_id is self._optimizer_id:
-                channel = self._osd.settings['data_channel']
-                if scan_data.scan_dimension == 2:
-                    x_ax, y_ax = scan_data.scan_axes
-                    self.optimizer_dockwidget.set_image(image=scan_data.data[channel],
-                                                        extent=scan_data.scan_range,
-                                                        axs=scan_data.scan_axes)
-                    self.optimizer_dockwidget.set_image_label(axis='bottom',
-                                                              text=x_ax,
-                                                              units=scan_data.axes_units[x_ax],
-                                                              axs=scan_data.scan_axes)
-                    self.optimizer_dockwidget.set_image_label(axis='left',
-                                                              text=y_ax,
-                                                              units=scan_data.axes_units[y_ax],
-                                                              axs=scan_data.scan_axes)
-                elif scan_data.scan_dimension == 1:
-                    x_ax = scan_data.scan_axes[0]
-                    self.optimizer_dockwidget.set_plot_data(
-                        x=np.linspace(*scan_data.scan_range[0], scan_data.scan_resolution[0]),
-                        y=scan_data.data[channel],
-                        axs=scan_data.scan_axes
-                    )
-                    self.optimizer_dockwidget.set_plot_label(axis='bottom',
-                                                             text=x_ax,
-                                                             units=scan_data.axes_units[x_ax],
-                                                             axs=scan_data.scan_axes)
-                    self.optimizer_dockwidget.set_plot_label(axis='left',
-                                                             text=channel,
-                                                             units=scan_data.channel_units[channel],
-                                                             axs=scan_data.scan_axes)
+            if scan_data.settings.scan_dimension == 2:
+                dockwidget = self.scan_2d_dockwidgets.get(scan_axes, None)
             else:
-                if scan_data.scan_dimension == 2:
-                    dockwidget = self.scan_2d_dockwidgets.get(scan_axes, None)
-                else:
-                    dockwidget = self.scan_1d_dockwidgets.get(scan_axes, None)
-                if dockwidget is not None:
-                    dockwidget.scan_widget.toggle_scan_button.setChecked(is_running)
-                    self._update_scan_data(scan_data)
+                dockwidget = self.scan_1d_dockwidgets.get(scan_axes, None)
+            if dockwidget is not None:
+                dockwidget.scan_widget.toggle_scan_button.setChecked(is_running)
+                self._update_scan_data(scan_data)
         return
-
-    @QtCore.Slot(bool, dict, object)
-    def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None):
-        self._optimizer_state['is_running'] = is_running
-        _is_optimizer_valid_1d = not is_running
-        _is_optimizer_valid_2d = not is_running
-
-        self._toggle_enable_scan_buttons(not is_running)
-        self._toggle_enable_actions(not is_running,
-                                    exclude_action=self._mw.action_optimize_position)
-        self._toggle_enable_scan_crosshairs(not is_running)
-        self._mw.action_optimize_position.setChecked(is_running)
-        self.scanner_settings_toggle_gui_lock(is_running)
-
-        if fit_data is not None and optimal_position is None:
-            raise ValueError("Can't understand fit_data without optimal position")
-
-        # Update optimal position crosshair and marker
-        if isinstance(optimal_position, dict):
-            scan_axs = list(optimal_position.keys())
-            if len(optimal_position) == 2:
-                _is_optimizer_valid_2d = True
-                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
-                                                          scan_axs)
-
-            elif len(optimal_position) == 1:
-                _is_optimizer_valid_1d = True
-                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
-                                                          scan_axs)
-        if fit_data is not None and isinstance(optimal_position, dict):
-            data = fit_data['fit_data']
-            fit_res = fit_data['full_fit_res']
-            if data.ndim == 1:
-                self.optimizer_dockwidget.set_fit_data(scan_axs, y=data)
-                sig_z = fit_res.params['sigma'].value
-                self.optimizer_dockwidget.set_1d_position(next(iter(optimal_position.values())),
-                                                          scan_axs, sigma=sig_z)
-            elif data.ndim == 2:
-                sig_x, sig_y = fit_res.params['sigma_x'].value, fit_res.params['sigma_y'].value
-                self.optimizer_dockwidget.set_2d_position(tuple(optimal_position.values()),
-                                                          scan_axs, sigma=[sig_x, sig_y])
-
-        # Hide crosshair and 1d marker when scanning
-        if len(scan_axs) == 2:
-            self.optimizer_dockwidget.toogle_crosshair(scan_axs, _is_optimizer_valid_2d)
-        else:
-            self.optimizer_dockwidget.toogle_crosshair(None, _is_optimizer_valid_2d)
-        if len(scan_axs) == 1:
-            self.optimizer_dockwidget.toogle_marker(scan_axs, _is_optimizer_valid_1d)
-        else:
-            self.optimizer_dockwidget.toogle_marker(None, _is_optimizer_valid_1d)
-
-    @QtCore.Slot(bool)
-    def toggle_optimize(self, enabled):
-        """
-        """
-        self._toggle_enable_actions(not enabled, exclude_action=self._mw.action_optimize_position)
-        self._toggle_enable_scan_buttons(not enabled)
-        self._toggle_enable_scan_crosshairs(not enabled)
-        self.sigToggleOptimize.emit(enabled)
 
     def restore_history(self):
         """
@@ -790,14 +699,14 @@ class MagnetGui(GuiBase):
     @QtCore.Slot(object)
     def _update_from_history(self, scan_data):
         self._update_scan_data(scan_data)
-        self.set_active_tab(scan_data.scan_axes)
+        self.set_active_tab(scan_data.settings.axes)
 
     @QtCore.Slot(object)
     def _update_scan_data(self, scan_data):
         """
         @param ScanData scan_data:
         """
-        axes = scan_data.scan_axes
+        axes = scan_data.settings.axes
         try:
             dockwidget = self.scan_2d_dockwidgets[axes]
         except KeyError:

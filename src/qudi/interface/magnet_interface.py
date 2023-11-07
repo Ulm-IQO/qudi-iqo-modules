@@ -37,7 +37,7 @@ class MagnetFOM:
     """
     name: str
     func: callable
-    func_full: callable
+    #func_full: callable   # for now, only scalar FOM result
     measurement_time: float
     unit: str = ''
     # saving this as str instead of e.g. np.float64 object eases __dict__ representation
@@ -99,6 +99,9 @@ class MagnetScanSettings:
         if len(self.axes) != len(self.resolution):
             raise ValueError(f'Parameters "axes" and "resolution" must have same len. '
                              f'Given {len(self.axes)} and {len(self.resolution)}, respectively.')
+        if self.frequency <= 0:
+            raise ValueError(f"Frequency must be positive, not {self.frequency}")
+
 
         if not set(self.position_feedback_axes).issubset(self.axes):
             raise TypeError(
@@ -124,6 +127,10 @@ class MagnetScanSettings:
     @property
     def scan_dimension(self) -> int:
         return len(self.axes)
+
+    @property
+    def channels(self):
+        return ['FOM']
 
 @dataclass(frozen=True)
 class MagnetConstraints:
@@ -256,12 +263,16 @@ class MagnetScanData:
         )
 
     @property
-    def channel_units(self) -> Dict[str, str]:
-        return {ch: unit for ch, unit in zip(self.settings.channels, self._channel_units)}
+    def channels(self):
+        return ['FOM']
 
     @property
-    def channel_dtypes(self) -> Dict[str, str]:
-        return {ch: dtype for ch, dtype in zip(self.settings.channels, self._channel_dtypes)}
+    def channel_units(self):
+        return self._fom_unit
+
+    @property
+    def channel_dtypes(self):
+        return self._fom_dtype
 
     @property
     def axis_units(self) -> Dict[str, str]:
@@ -272,17 +283,18 @@ class MagnetScanData:
         """ Dict of channel data arrays with channel names as keys. """
         if self._data is None:
             return None
-        return {ch: data for ch, data in zip(self.settings.channels, self._data)}
+        return {'FOM':  self._data}
 
     @data.setter
     def data(self, data_dict: Dict[str, np.ndarray]) -> None:
         channels = tuple(data_dict.keys())
-        if channels != self.settings.channels:
+        if channels != tuple(['FOM']):
             raise ValueError(f'Unknown channel names encountered in {channels}. '
-                             f'Valid channel names are {self.settings.channels}.')
+                             f'Valid channel names are: FOM.')
+
         if not all([val.shape == self.settings.resolution for val in data_dict.values()]):
             raise ValueError(f'Data shapes do not match resolution {self.settings.resolution}.')
-        self._data = tuple(data for data in data_dict.values())
+        self._data = data_dict['FOM']
 
     @property
     def position_data(self) -> Optional[Dict[str, np.ndarray]]:
@@ -321,8 +333,8 @@ class MagnetScanData:
         else:
             self._position_data = None
         self.data = {
-            ch: np.full(self.settings.resolution, np.nan,
-                        dtype=self.channel_dtypes[ch]) for ch in self.settings.channels
+            'FOM': np.full(self.settings.resolution, np.nan,
+                        dtype=self.channel_dtypes)
         }
         return
 
