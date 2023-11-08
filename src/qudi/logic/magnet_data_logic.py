@@ -39,10 +39,10 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import ImageFormat, NpyDataStorage, TextDataStorage
 from qudi.util.units import ScaledFloat
 
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.interface.magnet_interface import MagnetScanData
 
 
-class ScanningDataLogic(LogicBase):
+class MagnetDataLogic(LogicBase):
     """
     Todo: add some info about this module
     
@@ -58,7 +58,7 @@ class ScanningDataLogic(LogicBase):
     """
 
     # declare connectors
-    _scan_logic = Connector(name='scan_logic', interface='ScanningProbeLogic')
+    _scan_logic = Connector(name='scan_logic', interface='MagnetLogic')
 
     # config options
     _max_history_length = ConfigOption(name='max_history_length', default=10)
@@ -100,18 +100,18 @@ class ScanningDataLogic(LogicBase):
         self._curr_data_per_scan = dict()
 
     @_scan_history.representer
-    def __scan_history_to_dicts(self, history: List[ScanData]):
+    def __scan_history_to_dicts(self, history: List[MagnetScanData]):
         return [data.to_dict() for data in history]
 
     @_scan_history.constructor
     def __scan_history_from_dicts(self, history_dicts):
-        return [ScanData.from_dict(hist_dict) for hist_dict in history_dicts]
+        return [MagnetScanData.from_dict(hist_dict) for hist_dict in history_dicts]
 
     def get_current_scan_data(self, scan_axes=None):
         """
         Get the most recent scan data for a certain (or the most recent) scan axes.
         @param tuple scan_axes: axis to get data for. If None yields most recent scan.
-        @return ScanData: most recent scan data
+        @return MagnetScanData: most recent scan data
         """
         with self._thread_lock:
             if scan_axes is None:
@@ -193,8 +193,6 @@ class ScanningDataLogic(LogicBase):
             return
 
     def _update_scan_state(self, running, data, caller_id):
-
-        self.log.debug("Data logic receiving update")
 
         settings = {
             'range': {ax: data.settings.range[i] for i, ax in enumerate(data.settings.axes)},

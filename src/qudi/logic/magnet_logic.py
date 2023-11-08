@@ -433,6 +433,12 @@ class MagnetLogic(LogicBase):
             self.module_state.unlock()
             self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
 
+            if self.scan_settings['save_to_history']:
+                # module_uuid signals data-ready to data logic
+                self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
+            else:
+                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+
             # todo: revert to start pos
             """
             err = self._maget.stop_scan() if self._maget.module_state() != 'idle' else 0

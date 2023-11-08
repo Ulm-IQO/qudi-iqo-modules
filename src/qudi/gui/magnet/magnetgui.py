@@ -97,8 +97,7 @@ class MagnetGui(GuiBase):
 
     # declare connectors
     _scanning_logic = Connector(name='scanning_logic', interface='MagnetLogic')
-    #_data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
-    #_optimize_logic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
+    _data_logic = Connector(name='data_logic', interface='MagnetDataLogic')
 
     # config options for gui
     _default_position_unit_prefix = ConfigOption(name='default_position_unit_prefix', default=None)
@@ -201,14 +200,14 @@ class MagnetGui(GuiBase):
         self._mw.action_utility_full_range.triggered.connect(
             self._scanning_logic().set_full_scan_ranges, QtCore.Qt.QueuedConnection
         )
-        """
+
         self._mw.action_history_forward.triggered.connect(
             self._data_logic().history_next, QtCore.Qt.QueuedConnection
         )
         self._mw.action_history_back.triggered.connect(
             self._data_logic().history_previous, QtCore.Qt.QueuedConnection
         )
-        """
+
         self._scanning_logic().sigScannerTargetChanged.connect(
             self.scanner_target_updated, QtCore.Qt.QueuedConnection
         )
@@ -218,11 +217,11 @@ class MagnetGui(GuiBase):
         self._scanning_logic().sigScanStateChanged.connect(
             self.scan_state_updated, QtCore.Qt.QueuedConnection
         )
-        """
+
         self._data_logic().sigHistoryScanDataRestored.connect(
             self._update_from_history, QtCore.Qt.QueuedConnection
         )
-        """
+
 
 
         self.sigShowSaveDialog.connect(lambda x: self._save_dialog.show() if x else self._save_dialog.hide(),
@@ -259,7 +258,7 @@ class MagnetGui(GuiBase):
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanSettingsChanged.disconnect(self.scanner_settings_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
-        #self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
+        self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
 
@@ -656,12 +655,12 @@ class MagnetGui(GuiBase):
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
         restored_axs = []
-        """
+
         ids_to_restore = np.asarray([self._data_logic().get_current_scan_id(ax) for ax in avail_axs])
         ids_to_restore = ids_to_restore[~np.isnan(ids_to_restore)].astype(int)
 
         [self._data_logic().restore_from_history(id) for id in ids_to_restore]
-        """
+
         # auto range 2d widgets
         # todo: shouldn't be needed, as .restore_from_history() calls _update_scan_data() calls autoRange()
         for ax in avail_axs:
