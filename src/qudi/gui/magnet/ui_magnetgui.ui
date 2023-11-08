@@ -49,7 +49,6 @@
      <string>Settings</string>
     </property>
     <addaction name="action_scanner_settings"/>
-    <addaction name="action_optimizer_settings"/>
     <addaction name="action_display_settings"/>
    </widget>
    <widget class="QMenu" name="menuView">
@@ -57,7 +56,6 @@
      <string>&amp;View</string>
     </property>
     <addaction name="action_view_scanner_control"/>
-    <addaction name="action_view_optimizer"/>
     <addaction name="action_view_toolbar"/>
     <addaction name="action_view_line_scan"/>
     <addaction name="separator"/>
@@ -88,7 +86,6 @@
    <attribute name="toolBarBreak">
     <bool>false</bool>
    </attribute>
-   <addaction name="action_optimize_position"/>
    <addaction name="action_utility_zoom"/>
    <addaction name="action_utility_full_range"/>
    <addaction name="separator"/>
@@ -114,15 +111,6 @@
    </property>
    <property name="toolTip">
     <string>Close scanning window</string>
-   </property>
-  </action>
-  <action name="action_optimizer_settings">
-   <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</iconset>
-   </property>
-   <property name="text">
-    <string>Optimizer Settings</string>
    </property>
   </action>
   <action name="action_utility_zoom">
@@ -157,50 +145,6 @@ Shortcut:Z</string>
    </property>
    <property name="toolTip">
     <string>Toggle scanner control view</string>
-   </property>
-  </action>
-  <action name="action_view_optimizer">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="checked">
-    <bool>true</bool>
-   </property>
-   <property name="text">
-    <string>Optimizer</string>
-   </property>
-   <property name="toolTip">
-    <string>Toggle optimizer view
-Shortcut:Alt+O</string>
-   </property>
-   <property name="shortcut">
-    <string>Alt+O</string>
-   </property>
-  </action>
-  <action name="action_optimize_position">
-   <property name="checkable">
-    <bool>true</bool>
-   </property>
-   <property name="enabled">
-    <bool>true</bool>
-   </property>
-   <property name="icon">
-    <iconset>
-     <normaloff>../../core/artwork/icons/optimize-position.svg</normaloff>
-     <normalon>../../core/artwork/icons/scan-stop.svg</normalon>../../core/artwork/icons/optimize-position.svg</iconset>
-   </property>
-   <property name="text">
-    <string>Optimize position</string>
-   </property>
-   <property name="toolTip">
-    <string>Optimize scanner position according to the configured procedure
-Shortcut:Ctrl+Alt+X</string>
-   </property>
-   <property name="statusTip">
-    <string/>
-   </property>
-   <property name="shortcut">
-    <string>Ctrl+Alt+X</string>
    </property>
   </action>
   <action name="action_restore_default_view">

@@ -633,10 +633,8 @@ class MagnetGui(GuiBase):
     def scan_state_updated(self, is_running, scan_data=None, caller_id=None):
         scan_axes = scan_data.settings.axes if scan_data is not None else None
         self._toggle_enable_scan_buttons(not is_running, exclude_scan=scan_axes)
-        if not self._optimizer_state['is_running']:
-            self._toggle_enable_actions(not is_running)
-        else:
-            self._toggle_enable_actions(not is_running, exclude_action=self._mw.action_optimize_position)
+
+        self._toggle_enable_actions(not is_running)
         self._toggle_enable_scan_crosshairs(not is_running)
         self.scanner_settings_toggle_gui_lock(is_running)
 
@@ -739,8 +737,7 @@ class MagnetGui(GuiBase):
             self._mw.action_history_back.setEnabled(enable)
         if exclude_action is not self._mw.action_history_forward:
             self._mw.action_history_forward.setEnabled(enable)
-        if exclude_action is not self._mw.action_optimize_position:
-            self._mw.action_optimize_position.setEnabled(enable)
+
 
     def __get_marker_update_func(self, axes: Union[Tuple[str], Tuple[str, str]]):
         def update_func(pos: Union[float, Tuple[float, float]]):
