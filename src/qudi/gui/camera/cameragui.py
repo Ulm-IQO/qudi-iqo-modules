@@ -20,14 +20,17 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
+import pyqtgraph as pg
 from PySide2 import QtCore, QtWidgets, QtGui
 import datetime
 
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
+from qudi.util.widgets.plotting.plot_item import DataImageItem
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.paths import get_artwork_dir
+from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
 from typing import Union, Optional, Tuple, List, Dict
 import numpy as np
@@ -75,6 +78,8 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         self.action_open_settings.setCheckable(True)
         toolbar.addAction(self.action_open_settings)
 
+        # add tab widget to switch between raw and sliced data
+        self._data_tab = QtWidgets.QTabWidget()
 
         # Create central widget
         #
@@ -84,13 +89,60 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         #
         #
         self.cw = QtWidgets.QWidget()
+        self.saw = QtWidgets.QWidget()
         layout = QtWidgets.QGridLayout(self.cw)
+        tab_analysis_layout = QtWidgets.QVBoxLayout(self.saw)
+        self.analysis_image_widget = pg.PlotWidget()
+        self.analysis_image_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
+                      QtWidgets.QSizePolicy.Expanding)
+        self.analysis_image_item = DataImageItem()
+        self.analysis_image_item.set_image(np.random.rand(100, 100))
+        self.analysis_image_widget.addItem(self.analysis_image_item)
+        self._data_item = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
+                                          symbol='o',
+                                          symbolPen=palette.c1,
+                                          symbolBrush=palette.c1,
+                                          symbolSize=7)
+        #self.analysis_image_widget.removeItem(self.analysis_image_item)
+        xaxis = np.linspace(0, 2*np.pi)
+        self._data_item.setData(y=np.sin(xaxis), x=xaxis)
+        self.analysis_image_widget.addItem(self._data_item)
+
         self.image_widget = RubberbandZoomSelectionImageWidget()
-        #self.image_widget = MyImageWidget()
+
         # FIXME: The camera hardware is currently transposing the image leading to this dirty hack
         self.image_widget.image_item.setOpts(False, axisOrder='row-major')
+        self._data_tab.addTab(self.image_widget, "Raw Data")
+        self._data_tab.addTab(self.saw, "Sliced Data")
         self.setCentralWidget(self.cw)
 
+        # Software slice and binning selector
+        binning_layout = QtWidgets.QHBoxLayout()
+        self.slice_and_binning_label = QtWidgets.QLabel()
+        self.slice_and_binning_label.setText("Binning (x, y, z):")
+        self.software_binning_x = QtWidgets.QSpinBox()
+        self.software_binning_y = QtWidgets.QSpinBox()
+        self.software_binning_z = QtWidgets.QSpinBox()
+
+        self.software_binning_x.setMinimum(0)
+        self.software_binning_y.setMinimum(0)
+        self.software_binning_z.setMinimum(0)
+
+        self.slice_label = QtWidgets.QLabel()
+        self.slice_label.setText("Slice (x, y, z):")
+        self.software_slicing_x = QtWidgets.QLineEdit()
+        self.software_slicing_y = QtWidgets.QLineEdit()
+        self.software_slicing_z = QtWidgets.QLineEdit()
+
+        binning_layout.addWidget(self.slice_and_binning_label)
+        binning_layout.addWidget(self.software_binning_x)
+        binning_layout.addWidget(self.software_binning_y)
+        binning_layout.addWidget(self.software_binning_z)
+
+        binning_layout.addWidget(self.slice_label)
+        binning_layout.addWidget(self.software_slicing_x)
+        binning_layout.addWidget(self.software_slicing_y)
+        binning_layout.addWidget(self.software_slicing_z)
         # Measurement Selector spi
         measurement_number_layout = QtWidgets.QVBoxLayout()
         self.measurement_number_label = QtWidgets.QLabel()
@@ -119,9 +171,13 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         
         # add the widgets to the central widget layout
         layout.addLayout(measurement_number_layout, 2, 0, 1, 1)
-        layout.addWidget(self.image_widget, 0, 0, 1, 2)
+        layout.addWidget(self._data_tab, 0, 0, 1, 2)
         layout.addLayout(image_number_layout, 2, 1, 1, 1)
         layout.addWidget(self.image_scrollbar, 1, 0, 1, 2)
+        # add the widgets to the tab widget layout
+
+        tab_analysis_layout.addWidget(self.analysis_image_widget)
+        tab_analysis_layout.addLayout(binning_layout)
 
     def update_toolbar(self, text):
         """

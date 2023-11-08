@@ -610,10 +610,7 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
             return False
 
     def start_acquisition(self):
-        self.log.warn("In control logic. Making hardware call.")
         error_msg = self._start_acquisition()
-        if self._acquisition_mode == "FAST_KINETICS":
-            self._set_number_kinetics(self._acquisition_mode_code[0])
         if error_msg != 'DRV_SUCCESS':
             self.log.warning('could not start the acquisition: {}'.format(error_msg))
             return False
@@ -626,14 +623,18 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
 
     @acquisition_mode.setter
     def acquisition_mode(self, mode):
+        self.log.warning(f"mode in setter of acquisition mode {mode}")
         if mode == (1, 1):
             self._acquisition_mode = "KINETICS"
+            self._set_number_kinetics(1)
             self._acquisition_mode_code = (1, 1)
         elif mode == (1, -1):
             self._acquisition_mode = "KINETICS"
+            self._set_number_kinetics(1)
             self._acquisition_mode_code = (1, -1)
-        elif (mode[0] > 1) & (mode[1] >= 1):
+        elif (mode[0] >= 1) & (mode[1] > 1):
             self._acquisition_mode = "KINETICS"
+            self._set_number_kinetics(mode[1])
             self._acquisition_mode_code = mode
         elif mode == (-1, -1):
             self._acquisition_mode = "RUN_TILL_ABORT"
@@ -662,9 +663,6 @@ class IxonUltra(CameraInterface, ScientificCameraInterface):
         def num_images(acq_images, width, height):
             return sum([len(i) for i in acq_images]) / (width * height)
         while num_images(acq_images, self._width, self._height) < n_images:
-            self.log.warn(f"in loop of get_images \n loop counter {loop_counter}")
-            self.log.warn(f"already acquired images according to num_images(...)"
-                          f" {num_images(acq_images, self._width, self._height)}")
             first, last = self._get_number_new_images()
             diff = last - first
 
