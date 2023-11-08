@@ -16,7 +16,7 @@
   <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,0,1,1">
    <item>
     <widget class="QGroupBox" name="tta_setting_gridGroupBox">
-     <layout class="QGridLayout" name="gridLayout" rowminimumheight="0,0">
+     <layout class="QGridLayout" name="gridLayout" rowminimumheight="0">
       <item row="0" column="1">
        <widget class="QComboBox" name="tta_method_comboBox"/>
       </item>
@@ -49,7 +49,7 @@
       <item row="0" column="0">
        <widget class="QPushButton" name="tta_run_pushButton">
         <property name="text">
-         <string>analyze</string>
+         <string>Analyze</string>
         </property>
        </widget>
       </item>
