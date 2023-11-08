@@ -112,6 +112,10 @@ class HighFinesseProxy(Base):
                              'Please install a High Finesse wavemeter and try again.') from e
         else:
             v = [self._wavemeter_dll.GetWLMVersion(i) for i in range(4)]
+            if v[0] == high_finesse_constants.GetFrequencyError.ErrWlmMissing.value:
+                raise RuntimeError('The wavemeter application is not active. '
+                                   'Start the wavemeter application before activating the qudi module.')
+
             self.log.info(f'Successfully loaded wavemeter DLL of WS{v[0]} {v[1]},'
                           f' software revision {v[2]}, compilation number {v[3]}.')
 
