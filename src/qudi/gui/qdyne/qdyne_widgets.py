@@ -464,21 +464,6 @@ class GenerationWidget(QtWidgets.QWidget):
         @param settings_dict:
         @return:
         """
-        # block signals
-        # self.laserchannel_combobox.blockSignals(True)
-        # self.syncchannel_combobox.blockSignals(True)
-        # self.gatechannel_combobox.blockSignals(True)
-
-        # if 'laser_channel' in settings_dict:
-        #     index = self.laserchannel_combobox.findText(settings_dict['laser_channel'])
-        #     self.laserchannel_combobox.setCurrentIndex(index)
-        #     # self._pg.block_editor.set_laser_channel_is_digital(settings_dict['laser_channel'].startswith('d'))
-        # if 'sync_channel' in settings_dict:
-        #     index = self.syncchannel_combobox.findText(settings_dict['sync_channel'])
-        #     self.syncchannel_combobox.setCurrentIndex(index)
-        # if 'gate_channel' in settings_dict:
-        #     index = self.gatechannel_combobox.findText(settings_dict['gate_channel'])
-        #     self.gatechannel_combobox.setCurrentIndex(index)
         if hasattr(self, '_channel_selection_comboboxes'):
             for combobox in self._channel_selection_comboboxes:
                 param_name = combobox.objectName()[13:]
@@ -503,10 +488,6 @@ class GenerationWidget(QtWidgets.QWidget):
                         widget.setCurrentIndex(index)
                     widget.blockSignals(False)
 
-        # unblock signals
-        # self.laserchannel_combobox.blockSignals(False)
-        # self.syncchannel_combobox.blockSignals(False)
-        # self.gatechannel_combobox.blockSignals(False)
         return
 
 class StateEstimatorWidget(QtWidgets.QWidget):
