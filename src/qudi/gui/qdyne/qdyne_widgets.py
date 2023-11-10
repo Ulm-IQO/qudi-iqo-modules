@@ -513,7 +513,6 @@ class StateEstimatorWidget(QtWidgets.QWidget):
     def disconnect_signals(self):
         pass
 
-
 class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def __init__(self):
         # Get the path to the *.ui file
@@ -539,6 +538,29 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def disconnect_signals(self):
         pass
 
+class PulseExtractionWidget(QtWidgets.QWidget):
+    def __init__(self):
+        # Get the path to the *.ui file
+        this_dir = os.path.dirname(__file__)
+        ui_file = os.path.join(this_dir, r'ui\pulsed_extraction_widget.ui')
+
+        # Load it
+        super(PulseExtractionWidget, self).__init__()
+        uic.loadUi(ui_file, self)
+
+    def activate(self, analyzer, settings):
+        self.analyzer = analyzer
+        self.settings = settings
+        pass
+
+    def deactivate(self):
+        pass
+
+    def connect_signals(self):
+        pass
+
+    def disconnect_signals(self):
+        pass
 
 class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
     def __init__(self, gui):

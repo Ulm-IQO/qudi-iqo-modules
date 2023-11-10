@@ -40,7 +40,7 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
 from qudi.gui.qdyne.qdyne_widgets import QdyneMainWindow, MeasurementWidget, \
-    StateEstimatorWidget, TimeTraceAnalysisWidget, GenerationWidget, PredefinedMethodsConfigDialogWidget
+    StateEstimatorWidget, TimeTraceAnalysisWidget, GenerationWidget, PredefinedMethodsConfigDialogWidget, PulseExtractionWidget
 
 class QdyneMainGui(GuiBase):
     _predefined_methods_to_show = StatusVar('predefined_methods_to_show', [])
@@ -49,7 +49,8 @@ class QdyneMainGui(GuiBase):
     def on_activate(self):
         self._instantiate_widgets()
         self._mainw.tabWidget.addTab(self._gw, 'Measurement Generation')
-        self._mainw.tabWidget.addTab(self._ttaw, 'time trace analysis')
+        self._mainw.tabWidget.addTab(self._ttaw, 'Time Trace Analysis')
+        self._mainw.tabWidget.addTab(self._peqdyne, 'Pulse Extraction')
         self._activate_ui()
         self._connect()
 
@@ -60,7 +61,8 @@ class QdyneMainGui(GuiBase):
         self._gw = GenerationWidget(self)
         self._gsw = PredefinedMethodsConfigDialogWidget(self)
 #        self._sew = StateEstimatorWidget()
-        self._ttaw =  TimeTraceAnalysisWidget()
+        self._ttaw = TimeTraceAnalysisWidget()
+        self._peqdyne = PulseExtractionWidget()
 
     def _activate_ui(self):
         self._mainw.activate()
@@ -69,6 +71,7 @@ class QdyneMainGui(GuiBase):
 #        self._pmw.activate()
 #        self._sew.activate()
         self._ttaw.activate(self.logic().analyzer, self.logic().settings.time_trace_analysis_stg)
+        self._peqdyne.activate(self.logic().analyzer, self.logic().settings.time_trace_analysis_stg)
 
     def _connect(self):
         self._mainw.connect_signals()
@@ -77,6 +80,7 @@ class QdyneMainGui(GuiBase):
 #        self._pmw.connect_signals()
 #        self._sew.connect_signals()
         self._ttaw.connect_signals()
+        self._peqdyne.connect_signals()
 
     def on_deactivate(self):
         self._deactivate_ui()
@@ -89,6 +93,7 @@ class QdyneMainGui(GuiBase):
 #        self._pmw.deactivate()
 #        self._sew.deactivate()
         self._ttaw.deactivate()
+        self._peqdyne.deactivate()
 
     def _disconnect(self):
         self._mainw.disconnect_signals()
@@ -97,6 +102,7 @@ class QdyneMainGui(GuiBase):
 #        self._pmw.disconnect_signals()
 #        self._sew.disconnect_signals()
         self._ttaw.disconnect_signals()
+        self._peqdyne.disconnect_signals()
 
     def show(self):
         self._mainw.show()
