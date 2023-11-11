@@ -283,45 +283,96 @@ class MagnetLogic(LogicBase):
             self.sigScanSettingsChanged.emit({'frequency': self._scan_frequency})
             return self._scan_frequency
 
-    def set_control(self, control, caller_id=None, move_blocking=False):
-        self.set_target()
+    def check_dicts_close(self, dict1, dict2, tolerance=None):
+        import math
+        # todo: check what happens if target has not all axes
+
+        if tolerance is None:
+            tolerance = {key: 0 for key in dict1.keys()}
+
+        for key, value in dict1.items():
+            if key not in dict2:
+                continue
+            if math.fabs(value - dict2[key]) > tolerance[key]:
+                return False
+        return True
+
+    @property
+    def target_reached(self):
+        # todo: check control within accuracy at target
+
+        tol = self._magnet().constraints().control_accuracy
+        magnet_control = self._magnet().get_control()
+        target = self._target
+
+        return self.check_dicts_close(magnet_control, target, tol)
+
+    def set_control(self, caller_id=None, move_blocking=False):
+
         # todo: set target an execute move, emit signals
+        # todo: we should be able to set a target thats executed only later (eg. after hitting a button)
+        with self._thread_lock:
+            self.log.debug(f"Setting new control: {self._target}")
+
+            try:
+                new_pos = self._sanitize_target(self._target)
+            except Exception as e:
+                self.log.error(str(e))
+                new_pos = self._magnet().get_control()
+                self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
+                return new_pos
+
+            new_pos = self._magnet().set_control(new_pos, blocking=move_blocking)
+            if any(pos != new_pos[ax] for ax, pos in self._target.items()):
+                caller_id = None
+
+            # self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
+            self.sigScannerTargetChanged.emit(new_pos,
+                self.module_uuid if caller_id is None else caller_id)
+
+            return new_pos
 
     def set_target(self, pos_dict, caller_id=None, move_blocking=False):
         # todo: we should be able to set a target thats executed only later (eg. after hitting a button)
         with self._thread_lock:
-            self.log.debug(f"Set target: {pos_dict}")
 
-            if self.module_state() != 'idle':
-                self.log.error('Unable to change scanner target position while a scan is running.')
-                new_pos = self._magnet.get_target()
+            try:
+                new_pos = self._sanitize_target(pos_dict)
+            except Exception as e:
+                self.log.error(str(e))
+                new_pos = self._magnet().get_control()
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
-            ax_constr = self.magnet_constraints.axes
-            new_pos = pos_dict.copy()
-            for ax, pos in pos_dict.items():
-                if ax not in ax_constr:
-                    self.log.error('Unknown magnet axis: "{0}"'.format(ax))
-                    new_pos = self._magnet().get_control()
-                    self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
-                    return new_pos
-
-                new_pos[ax] = ax_constr[ax].control_value.clip(pos)
-                if pos != new_pos[ax]:
-                    self.log.warning('Scanner position target value out of bounds for axis "{0}". '
-                                     'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
-
-            new_pos = self._magnet().set_control(new_pos, blocking=move_blocking)
-            if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
-                caller_id = None
+            self._target = new_pos
+            self.log.debug(f"Storing new target {self._target}. Not executed yet!")
+            #new_pos = self._magnet().set_control(new_pos, blocking=move_blocking)
+            #if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
+            #    caller_id = None
             #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
-            self.sigScannerTargetChanged.emit(
-                new_pos,
-                self.module_uuid if caller_id is None else caller_id
-            )
+            self.sigScannerTargetChanged.emit(new_pos,
+                self.module_uuid if caller_id is None else caller_id)
 
             return new_pos
+
+    def _sanitize_target(self, pos_dict):
+
+        new_pos = pos_dict.copy()
+
+        if self.module_state() != 'idle':
+            raise RuntimeError('Unable to change scanner target position while a scan is running.')
+
+        ax_constr = self.magnet_constraints.axes
+        for ax, pos in pos_dict.items():
+            if ax not in ax_constr:
+                raise ValueError('Unknown magnet axis: "{0}"'.format(ax))
+
+            new_pos[ax] = ax_constr[ax].control_value.clip(pos)
+            if pos != new_pos[ax]:
+                self.log.warning('Magnet position target value out of bounds for axis "{0}". '
+                                 'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
+
+        return new_pos
 
     def toggle_scan(self, start, scan_axes, caller_id=None):
         with self._thread_lock:
@@ -358,7 +409,7 @@ class MagnetLogic(LogicBase):
         fom = MagnetFOM(name, func_scalar, mes_time, unit)
         self._fom = fom
 
-    def _config_debug_fom(self, mes_time=1):
+    def _config_debug_fom(self, mes_time=0.1):
         func_scalar = lambda : np.random.random()
         def func_full():
             import time

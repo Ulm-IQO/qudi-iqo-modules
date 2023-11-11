@@ -626,6 +626,10 @@ class MagnetGui(GuiBase):
         if not isinstance(pos_dict, dict):
             pos_dict = self._scanning_logic().magnet_target
 
+        # todo: some visual feedback
+        # magnet_gui.scanner_control_dockwidget.widget().axes_widgets['x']['pos_spinbox'].setPalette()
+        self.log.debug(f"Updating gui: target_reached: {self._scanning_logic().target_reached}")
+
         self._update_scan_markers(pos_dict)
         self.scanner_control_dockwidget.set_target(pos_dict)
 

@@ -48,12 +48,12 @@ class MagnetDataLogic(LogicBase):
     
     Example config:
     
-    scanning_data_logic:
-        module.Class: 'scanning_data_logic.ScanningDataLogic'
+    magnet_data_logic:
+        module.Class: 'magnet_data_logic.MagnetDataLogic'
         options:
             max_history_length: 50
         connect:
-            scan_logic: scanning_probe_logic
+            scan_logic: magnet_logic
     
     """
 

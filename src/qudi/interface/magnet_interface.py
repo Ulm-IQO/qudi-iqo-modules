@@ -139,7 +139,7 @@ class MagnetConstraints:
     """
     axis_objects: Tuple[MagnetControlAxis, ...]
     has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
-
+    control_accuracy: Optional[dict] = None
 
     @property
     def axes(self) -> Dict[str, MagnetControlAxis]:
@@ -154,8 +154,6 @@ class MagnetConstraints:
 
     def check_settings(self, settings: MagnetScanSettings) -> None:
         self.check_axes(settings)
-
-
 
     def check_axes(self, settings: MagnetScanSettings) -> None:
         if not set(settings.axes).issubset(self.axes):

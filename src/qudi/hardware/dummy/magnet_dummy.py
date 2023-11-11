@@ -102,7 +102,8 @@ class MagnetDummy(MagnetInterface):
                                     resolution=resolution))
 
         self._constraints = MagnetConstraints(axis_objects=tuple(axes),
-                                              has_position_feedback=False)
+                                              has_position_feedback=False,
+                                              control_accuracy={key: 3*val for key, val in self._position_accuracy.items()})
 
     def on_deactivate(self):
         self.set_activity_state(False)
