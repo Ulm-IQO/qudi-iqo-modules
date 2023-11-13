@@ -19,7 +19,6 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from logging import Logger
 import os
 from dataclasses import dataclass, fields
 from PySide2 import QtCore, QtWidgets
@@ -27,8 +26,6 @@ from qudi.util import uic
 from qudi.util.helpers import natural_sort
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from enum import Enum
-from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
-
 
 class DataclassWidget(QtWidgets.QWidget):
     def __init__(self, dataclass_obj: dataclass) -> None:
@@ -173,6 +170,9 @@ class GenerationWidget(QtWidgets.QWidget):
         uic.loadUi(ui_file, self)
 
     def activate(self):
+        # disable loading loading_indicator
+        self.loading_indicator.setVisible(False)
+        self.loaded_asset_updated(*self._gui.logic().pulsedmasterlogic().loaded_asset)
         # Dynamically create GUI elements for global parameters
         self._channel_selection_comboboxes = list()  # List of created channel selection ComboBoxes
         self._global_param_widgets = list()  # List of all other created global parameter widgets
@@ -191,9 +191,34 @@ class GenerationWidget(QtWidgets.QWidget):
 
     def connect_signals(self):
         self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.connect(self.predefined_generated)
+        self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.connect(self.predefined_generated)
+        self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.connect(self.loaded_asset_updated)
+
+        self._gui.logic().pulsedmasterlogic().sigSampleBlockEnsemble.connect(self.sampling_or_loading_busy)
+        self._gui.logic().pulsedmasterlogic().sigLoadBlockEnsemble.connect(self.sampling_or_loading_busy)
+        self._gui.logic().pulsedmasterlogic().sigLoadSequence.connect(self.sampling_or_loading_busy)
+        self._gui.logic().pulsedmasterlogic().sigSampleSequence.connect(self.sampling_or_loading_busy)
 
     def disconnect_signals(self):
         pass
+
+    def sampling_or_loading_busy(self):
+        if self._gui.logic().pulsedmasterlogic().status_dict['sampload_busy']:
+            self._gui._mainw.action_run_stop.setEnabled(False)
+
+            self.loaded_asset_label.setText('  loading...')
+            self.loading_indicator.setVisible(True)
+    
+    def loaded_asset_updated(self, asset_name, asset_type):
+        """ Check the current loaded asset from the logic and update the display. """
+        label = self.loaded_asset_label
+        if not asset_name:
+            label.setText('  No asset loaded')
+        elif asset_type in ('PulseBlockEnsemble', 'PulseSequence'):
+            label.setText('Currently loaded asset:  {0} ({1})'.format(asset_name, asset_type))
+        else:
+            label.setText('  Unknown asset type')
+        return
 
     def _create_pm_global_params(self):
         """
@@ -417,16 +442,18 @@ class GenerationWidget(QtWidgets.QWidget):
         )
 
     def predefined_generated(self, asset_name):
-        print("predefined_generated")
-        # Enable all "Generate" buttons in predefined methods tab
-        for button in self.gen_buttons.values():
-            button.setEnabled(True)
-
         # Enable all "GenSampLo" buttons in predefined methods tab if generation failed or
         # "sampload_busy" flag in PulsedMasterLogic status_dict is False.
         if asset_name is None or not self._gui.logic().pulsedmasterlogic().status_dict['sampload_busy']:
             for button in self.samplo_buttons.values():
                 button.setEnabled(True)
+            # Enable all "Generate" buttons in predefined methods tab
+            for button in self.gen_buttons.values():
+                button.setEnabled(True)
+            
+            self._gui._mainw.action_run_stop.setEnabled(True)
+            self.loading_indicator.setVisible(False)
+
         return
 
     def generation_parameters_changed(self):
