@@ -163,15 +163,15 @@ class MagnetConstraints:
         for axis_name, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
             axis = self.axes[axis_name]
             try:
-                axis.control_value.check(_range[0])
-                axis.control_value.check(_range[1])
+                axis.control_value.is_valid(_range[0])
+                axis.control_value.is_valid(_range[1])
             except ValueError as e:
                 raise ValueError(f'Scan range out of bounds for axis "{axis_name}".') from e
             except TypeError as e:
                 raise TypeError(f'Scan range type check failed for axis "{axis_name}".') from e
 
             try:
-                axis.resolution.check(resolution)
+                axis.resolution.is_valid(resolution)
             except ValueError as e:
                 raise ValueError(f'Scan resolution out of bounds for axis "{axis_name}".') from e
             except TypeError as e:
