@@ -32,6 +32,7 @@ from qudi.util.datastorage import TextDataStorage
 from qudi.util.paths import get_artwork_dir
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
+from qudi.logic.camera.image_sequence_processing import process_image_sequence
 from typing import Union, Optional, Tuple, List, Dict
 import numpy as np
 
@@ -124,15 +125,13 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         self.software_binning_y = QtWidgets.QSpinBox()
         self.software_binning_z = QtWidgets.QSpinBox()
 
-        self.software_binning_x.setMinimum(0)
-        self.software_binning_y.setMinimum(0)
-        self.software_binning_z.setMinimum(0)
+        self.software_binning_x.setMinimum(1)
+        self.software_binning_y.setMinimum(1)
+        self.software_binning_z.setMinimum(1)
 
         self.slice_label = QtWidgets.QLabel()
         self.slice_label.setText("Slice (x, y, z):")
-        self.software_slicing_x = QtWidgets.QLineEdit()
-        self.software_slicing_y = QtWidgets.QLineEdit()
-        self.software_slicing_z = QtWidgets.QLineEdit()
+        self.software_slicing = QtWidgets.QLineEdit()
 
         binning_layout.addWidget(self.slice_and_binning_label)
         binning_layout.addWidget(self.software_binning_x)
@@ -140,9 +139,7 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         binning_layout.addWidget(self.software_binning_z)
 
         binning_layout.addWidget(self.slice_label)
-        binning_layout.addWidget(self.software_slicing_x)
-        binning_layout.addWidget(self.software_slicing_y)
-        binning_layout.addWidget(self.software_slicing_z)
+        binning_layout.addWidget(self.software_slicing)
         # Measurement Selector spi
         measurement_number_layout = QtWidgets.QVBoxLayout()
         self.measurement_number_label = QtWidgets.QLabel()
@@ -267,6 +264,14 @@ class CameraGui(GuiBase):
         logic.sigFrameChanged.connect(self._update_frame)
         # connect GUI signals to logic slots
         self.sigAcquisitionToggled.connect(logic.toggle_acquisition)
+
+        # connect the signals for the measurement_analysis tab
+        self._mw.software_binning_x.valueChanged.connect(self._update_measurement_view)
+        self._mw.software_binning_y.valueChanged.connect(self._update_measurement_view)
+        self._mw.software_binning_z.valueChanged.connect(self._update_measurement_view)
+
+        self._mw.software_slicing.returnPressed.connect(self._update_measurement_view)
+
         self.show()
 
         # set the maximum value of th settings dialog measurement number spinbox to the maximum allowed number of images in buffer
@@ -430,6 +435,62 @@ class CameraGui(GuiBase):
         self._mw.image_scrollbar.setValue(image_num)
         # update the imageview with the new image data
         self._mw.image_widget.set_image(frame_data[sequence_num].data[image_num])
+
+    def _update_measurement_view(self):
+        # First we get the values from the relevant boxes.
+        bin_x = self._mw.software_binning_x.value()
+        bin_y = self._mw.software_binning_y.value()
+        bin_z = self._mw.software_binning_z.value()
+
+        slice_str = self._mw.software_slicing.text()
+
+        # need to get the current measurement
+        current_measurement_number = self._camera_logic().current_measurement_number
+        measurement_data = self._camera_logic().last_frames[current_measurement_number].data
+        # next we calculate our view
+        view = process_image_sequence(measurement_data, slice_str, (bin_x, bin_y, bin_z))
+
+        vshp = view.shape
+        # Depending on the shape need to change what is displayed
+        # 1) image
+        # 2) 1D plot
+        # 3) image plot + slider (to move through images)
+        # For now we can just implement the former two
+        # but will need to decide how to handle the case of multiple images
+        # (n_images, n_pxx, n_pxy)
+
+        # next we are going to delete the old item
+        if self.analysis_image_item:
+            self.analysis_image_widget.removeItem(self.analysis_image_item)
+        elif self._data_item:
+            self.analysis_image_item.removeItem(self._data_item)
+
+        # Now we will need to create a new item depending on the
+        # shape of the view and add the data.
+        # We can trisect the cases into three major piles
+        # 1) all shape elements are 1
+        # 2) two out of 3 shape elements are 1
+        # 3) one out of 3 shape elements are 1
+        # 4) No shape elements are 1
+        # Going to leave 1 and 4 not implemented for now (can late make a scienced spin box for 1) and
+        # images with slider for 4)
+
+        if len(vshp) == 3:
+            self.log.warning("Measurement analysis not implemented for this data shape.")
+        # any 2 of the three are larger than 1?
+        elif len(vshp) == 2:
+            self.analysis_image_item = DataImageItem()
+            self.analysis_image_item.set_image(view)
+            self.analysis_image_widget.addItem(self.analysis_image_item)
+        else:
+            # what will happen in the case of a scalar?
+            self._data_item = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
+                                              symbol='o',
+                                              symbolPen=palette.c1,
+                                              symbolBrush=palette.c1,
+                                              symbolSize=7)
+            self._data_item.setData(y=view, x=len(view))
+            self.analysis_image_widget.addItem(self._data_item)
 
     def _image_slider_moved(self, image_num):
         self._camera_logic().current_image_number = image_num

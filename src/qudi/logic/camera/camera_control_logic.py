@@ -455,12 +455,14 @@ class CameraControlLogic(LogicBase):
         data_to_store = np.empty(currently_stored_data.shape[0]+1, dtype=object)
         data_to_store[-1] = self.standard_measurement_data_creator(data)
         data_to_store[0:currently_stored_data.shape[0]] = currently_stored_data
+        self.log.warn(f"shape of data to store {data_to_store[-1].data.shape}")
         self._last_frames = data_to_store
 
     def standard_measurement_data_creator(self, data):
         """
         Method that creates a MeasurementData object with timestamp as of function call
-        @param np.ndarray data: 3D ndarray that stores the image data in the last to indices and stores the individual images of the measurement in the first index
+        @param np.ndarray data: 3D ndarray that stores the image data in the last two indices and stores the individual
+         images of the measurement in the first index
 
         @return MeasurementData out: Measurement data that carries all the image and meta data of the current measurement
         """

@@ -274,3 +274,5 @@ class CameraLogic(LogicBase):
     @operating_mode.setter
     def operating_mode(self, data):
         self._camera_control_logic().operating_mode = data
+
+
