@@ -261,6 +261,7 @@ class MagnetGui(GuiBase):
         self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
+        self.scanner_control_dockwidget.widget().move_pushButton.clicked.disconnect()
 
         for scan in tuple(self.scan_1d_dockwidgets):
             self._remove_scan_dockwidget(scan)
@@ -345,6 +346,10 @@ class MagnetGui(GuiBase):
         self.scanner_control_dockwidget.sigSliderMoved.connect(
             #lambda ax, pos: self._update_scan_markers(pos_dict={ax: pos}, exclude_scan=None)
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
+        )
+
+        self.scanner_control_dockwidget.widget().move_pushButton.clicked.connect(
+            self._scanning_logic().set_control
         )
 
 
@@ -626,9 +631,13 @@ class MagnetGui(GuiBase):
         if not isinstance(pos_dict, dict):
             pos_dict = self._scanning_logic().magnet_target
 
-        # todo: some visual feedback
-        # magnet_gui.scanner_control_dockwidget.widget().axes_widgets['x']['pos_spinbox'].setPalette()
         self.log.debug(f"Updating gui: target_reached: {self._scanning_logic().target_reached}")
+
+        target_reached = self._scanning_logic().target_reached
+        spinboxes = [w['pos_spinbox'] for w in self.scanner_control_dockwidget.widget().axes_widgets.values()]
+        for sb in spinboxes:
+            color_str = "QAbstractSpinBox { color: red; }" if not target_reached else ""
+            sb.setStyleSheet(color_str)
 
         self._update_scan_markers(pos_dict)
         self.scanner_control_dockwidget.set_target(pos_dict)

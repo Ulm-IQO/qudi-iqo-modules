@@ -193,6 +193,10 @@ class AxesControlWidget(QtWidgets.QWidget):
             self.axes_widgets[ax_name]['slider'] = slider
             self.axes_widgets[ax_name]['pos_spinbox'] = pos_spinbox
 
+        self.move_pushButton = QtWidgets.QPushButton("Move")
+        self.move_pushButton.setMaximumSize(70, 16777215)
+        layout.addWidget(self.move_pushButton, (len(scanner_axes)+1)/2, 8)
+
         layout.setColumnStretch(5, 1)
         self.setLayout(layout)
         self.setMaximumHeight(self.sizeHint().height())
