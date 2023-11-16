@@ -16,7 +16,9 @@ docstrings.
 ### New Features
 - New `qudi.interface.data_instream_interface.SampleTiming` Enum added to `DataInStreamInterface` 
 constraints to allow non-uniform sampling mode.
+- Pulsed and odmr now add fit parameters to saved meta data.
 - New hardware module added that implements the HighFinesse wavemeter as a data instream device, replacing the old (non-functional) wavemeter toolchain.
+
 
 ### Other
 - Bumped `qudi-core` package minimum version requirement to v1.4.0
