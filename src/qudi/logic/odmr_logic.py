@@ -48,6 +48,8 @@ class OdmrLogic(LogicBase):
         connect:
             microwave: <microwave_name>
             data_scanner: <data_scanner_name>
+        options:
+            default_scan_mode: 'JUMP_LIST'  # optional
     """
 
     # declare connectors
