@@ -10,10 +10,12 @@ docstrings.
 
 ### Bugfixes
 - Basic data saving in `TimeSeriesReaderLogic` works now.
-- Added remote streamer support to `TimeSeriesReaderLogic`.
+- Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
 - Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle 
 
+
 ### New Features
+- Added remote streamer support to `TimeSeriesReaderLogic`.
 - New `qudi.interface.data_instream_interface.SampleTiming` Enum added to `DataInStreamInterface` 
 constraints to allow non-uniform sampling mode.
 - Pulsed and odmr now add fit parameters to saved meta data.
@@ -21,7 +23,7 @@ constraints to allow non-uniform sampling mode.
 
 
 ### Other
-- Bumped `qudi-core` package minimum version requirement to v1.4.0
+- Bumped `qudi-core` package minimum version requirement to v1.5.0
 - Got rid of deprecated `qudi.core.interface` module usage
 - Support for Python 3.10
 
