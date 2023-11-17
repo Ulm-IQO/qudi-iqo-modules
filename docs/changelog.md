@@ -11,8 +11,11 @@ docstrings.
 ### Bugfixes
 - Basic data saving in `TimeSeriesReaderLogic` works now.
 - Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
-- Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle 
-
+- Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle
+- Fix wrong asset name, non-invokable settings for AWG Tek 70k in sequence mode.
+- Fix disfunctional `mw_source_smbv`
+- Fix Keysight AWG sample rate only set-able with too coarse 10 MHz precision
+- Fix various Poimanager crashes 
 
 ### New Features
 - Added remote streamer support to `TimeSeriesReaderLogic`.
@@ -20,7 +23,8 @@ docstrings.
 constraints to allow non-uniform sampling mode.
 - Pulsed and odmr now add fit parameters to saved meta data.
 - New hardware module added that implements the HighFinesse wavemeter as a data instream device, replacing the old (non-functional) wavemeter toolchain.
-
+- Add option to save waveforms and sequence information for debugging to pulser dummy
+- Introduce plugins to the pulsed toolchain that allow more control over `generation_parameters` and can influence all loaded `pulse_objects`.
 
 ### Other
 - Bumped `qudi-core` package minimum version requirement to v1.5.0
