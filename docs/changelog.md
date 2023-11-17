@@ -10,6 +10,7 @@ docstrings.
 
 ### Bugfixes
 - Basic data saving in `TimeSeriesReaderLogic` works now.
+- Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
 
 ### New Features
 - New `qudi.interface.data_instream_interface.SampleTiming` Enum added to `DataInStreamInterface` 
