@@ -5,7 +5,7 @@ from setuptools import setup, find_namespace_packages
 
 
 unix_dep = [
-    'qudi-core>=1.4.1',
+    'qudi-core>=1.5.0',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
@@ -21,7 +21,7 @@ unix_dep = [
 ]
 
 windows_dep = [
-    'qudi-core>=1.4.1',
+    'qudi-core>=1.5.0',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
@@ -47,8 +47,7 @@ setup(
     version=version,
     packages=find_namespace_packages(where='src'),
     package_dir={'': 'src'},
-    package_data={''        : ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md', 'VERSION'],
-                  'qudi'    : ['default.cfg'],
+    package_data={'qudi'    : ['default.cfg'],
                   'qudi.gui': ['*.ui', '*/*.ui'],
                   },
     description='IQO measurement modules collection for qudi',
