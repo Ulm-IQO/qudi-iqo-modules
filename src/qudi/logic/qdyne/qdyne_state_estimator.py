@@ -13,6 +13,8 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+import sys
+import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 import numpy as np
@@ -38,12 +40,12 @@ class StateEstimator(ABC):
 
 
 @dataclass
-class TimeSeriesBasedEstimatorSettings:
+class TimeSeriesStateEstimatorSettings:
     extractor_settings: dict
     estimator_settings: dict
 
 
-class TimeSeriesBasedEstimator(StateEstimator):
+class TimeSeriesStateEstimator(StateEstimator):
 
     def __init__(self, extractor, estimator):
         self.on_activate()
@@ -67,7 +69,7 @@ class TimeSeriesBasedEstimator(StateEstimator):
 
 
 @dataclass
-class TimeTagBasedEstimatorSettings:
+class TimeTagStateEstimatorSettings:
     count_mode: str = 'Average'
     count_length: int = 2000
     start_count: int = 0
@@ -89,12 +91,12 @@ class TimeTagBasedEstimatorSettings:
 
 
 
-class TimeTagBasedEstimator(StateEstimator):
+class TimeTagStateEstimator(StateEstimator):
     def __init__(self):
         super().__init__()
         self.stg = None
 
-    def input_settings(self, settings: TimeTagBasedEstimatorSettings) -> None:
+    def input_settings(self, settings: TimeTagStateEstimatorSettings) -> None:
         self.stg = settings
 
     def extract(self, raw_data):
@@ -149,14 +151,34 @@ class TimeTagBasedEstimator(StateEstimator):
                 photon_counts = 0
         return counts_time_trace
 
+def get_subclasses(class_obj):
+    '''
+    Given a class, find its subclasses and get their names.
+    '''
 
-class StateEstimator:
-    method_lists = ['TimeSeries', 'TimeTag']
+    subclasses = []
+    for name, obj in inspect.getmembers(sys.modules[__name__]):
+        if inspect.isclass(obj) and issubclass(obj, class_obj) and obj != class_obj:
+            subclasses.append(obj)
 
+    return subclasses
+
+def get_method_names(subclass_obj, class_obj):
+    subclass_names = [cls.__name__ for cls in subclass_obj]
+    method_names = [subclass_name.replace(class_obj.__name__, '') for subclass_name in subclass_names]
+    return method_names
+
+class StateEstimatorMain:
 
     def __init__(self):
+        self.method_lists = []
         self._method = None
         self.estimator = None
+        self.generate_method_lists()
+
+    def generate_method_lists(self):
+        estimator_subclasses = get_subclasses(StateEstimator)
+        self.method_lists = get_method_names(estimator_subclasses, StateEstimator)
 
     @property
     def method(self):
@@ -168,10 +190,7 @@ class StateEstimator:
         self._configure_method(self._method)
 
     def _configure_method(self, method):
-        if method == 'TimeSeries':
-            self.estimator = TimeSeriesBasedEstimator()
-        elif method == 'TimeTag':
-            self.estimator = TimeTagBasedEstimator()
+        self.estimator = globals()[method + 'StateEstimator']()
 
     def input_settings(self, settings):
         self.estimator.input_settings(settings)

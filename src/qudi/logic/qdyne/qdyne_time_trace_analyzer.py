@@ -37,7 +37,7 @@ class Analyzer(ABC):
 
 
 @dataclass
-class FourierSettings:
+class FourierAnalyzerSettings:
     range_around_peak: int = 30
     padding_parameter: int = 1
     cut_time_trace: bool = False
@@ -56,7 +56,7 @@ class FourierAnalyzer(Analyzer):
     def __init__(self):
         self.stg = None
 
-    def input_settings(self, settings: FourierSettings) -> None:
+    def input_settings(self, settings: FourierAnalyzerSettings) -> None:
         self.stg = settings
 
     def analyze(self, time_trace):
@@ -134,10 +134,10 @@ def get_subclasses(class_obj):
 
 def get_method_names(subclass_obj, class_obj):
     subclass_names = [cls.__name__ for cls in subclass_obj]
-    method_names = [subclass_name.replace('Analyzer', '') for subclass_name in subclass_names]
+    method_names = [subclass_name.replace(class_obj.__name__, '') for subclass_name in subclass_names]
     return method_names
 
-class TimeTraceAnalyzer:
+class TimeTraceAnalyzerMain:
 
     def __init__(self):
         self.method_lists = []
