@@ -555,6 +555,8 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
         self.analyzer = analyzer
         self.settings = settings
         self.tta_method_comboBox.addItems(self.analyzer.method_lists)
+        self.tta_settings_widget = DataclassWidget(self.settings)
+        self.tta_setting_gridGroupBox.addWidget(self.tta_settings_widget)
 
         pass
 
