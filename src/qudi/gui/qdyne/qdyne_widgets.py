@@ -554,6 +554,8 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def activate(self, analyzer, settings):
         self.analyzer = analyzer
         self.settings = settings
+        self.tta_method_comboBox.addItems(self.analyzer.method_lists)
+
         pass
 
     def deactivate(self):
