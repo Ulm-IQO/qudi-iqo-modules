@@ -70,7 +70,7 @@ setup(
               'modular',
               'measurement',
               ],
-    classifiers=['Development Status ::  5 - Production/Stable',
+    classifiers=['Development Status :: 5 - Production/Stable',
 
                  'Environment :: Win32 (MS Windows)',
                  'Environment :: X11 Applications',
