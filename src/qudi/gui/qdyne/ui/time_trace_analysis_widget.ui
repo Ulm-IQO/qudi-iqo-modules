@@ -16,29 +16,36 @@
   <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,0,1,1">
    <item>
     <widget class="QGroupBox" name="tta_setting_gridGroupBox">
-     <layout class="QGridLayout" name="gridLayout" rowminimumheight="0">
-      <item row="0" column="1">
-       <widget class="QComboBox" name="tta_method_comboBox"/>
-      </item>
+     <layout class="QGridLayout" name="gridLayout_10">
       <item row="0" column="0">
-       <widget class="QLabel" name="tta_method_label">
-        <property name="text">
-         <string>Time trace analysis method:</string>
-        </property>
-       </widget>
+       <layout class="QGridLayout" name="tta_method_gridLayout">
+        <item row="0" column="1">
+         <widget class="QComboBox" name="tta_method_comboBox"/>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="tta_method_label">
+          <property name="text">
+           <string>Time trace analysis method:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2">
+         <spacer name="tta_method_horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
       </item>
-      <item row="0" column="2">
-       <spacer name="tta_method_horizontalSpacer">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-        <property name="sizeHint" stdset="0">
-         <size>
-          <width>40</width>
-          <height>20</height>
-         </size>
-        </property>
-       </spacer>
+      <item row="4" column="0">
+       <layout class="QGridLayout" name="tta_settings_gridLayout"/>
       </item>
      </layout>
     </widget>
@@ -46,13 +53,6 @@
    <item>
     <widget class="QGroupBox" name="tta_gridGroupBox">
      <layout class="QGridLayout" name="gridLayout_2">
-      <item row="0" column="0">
-       <widget class="QPushButton" name="tta_run_pushButton">
-        <property name="text">
-         <string>Analyze</string>
-        </property>
-       </widget>
-      </item>
       <item row="0" column="1">
        <spacer name="horizontalSpacer">
         <property name="orientation">
@@ -65,6 +65,13 @@
          </size>
         </property>
        </spacer>
+      </item>
+      <item row="0" column="0">
+       <widget class="QPushButton" name="tta_run_pushButton">
+        <property name="text">
+         <string>Analyze</string>
+        </property>
+       </widget>
       </item>
      </layout>
     </widget>

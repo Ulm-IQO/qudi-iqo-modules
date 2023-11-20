@@ -542,6 +542,9 @@ class StateEstimatorWidget(QtWidgets.QWidget):
 
 class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def __init__(self):
+        self.analyzer = None
+        self.settings = None
+
         # Get the path to the *.ui file
         this_dir = os.path.dirname(__file__)
         ui_file = os.path.join(this_dir, r'ui\time_trace_analysis_widget.ui')
@@ -554,11 +557,12 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def activate(self, analyzer, settings):
         self.analyzer = analyzer
         self.settings = settings
+        self._activate_widgets()
+
+    def _activate_widgets(self):
         self.tta_method_comboBox.addItems(self.analyzer.method_lists)
         self.tta_settings_widget = DataclassWidget(self.settings)
-        self.tta_setting_gridGroupBox.addWidget(self.tta_settings_widget)
-
-        pass
+        self.tta_settings_gridLayout.addWidget(self.tta_settings_widget)
 
     def deactivate(self):
         pass
