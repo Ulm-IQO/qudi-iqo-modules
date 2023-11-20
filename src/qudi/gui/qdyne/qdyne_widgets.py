@@ -49,6 +49,8 @@ class DataclassWidget(QtWidgets.QWidget):
         for field in fields(data):
             label = self.create_label(field.name)
             widget = self.create_widget(field)
+            if widget is None:
+                continue
             widget.setMinimumSize(QtCore.QSize(80, 0))
 
             self.layout.addWidget(label, 0, param_index + 1, 1, 1)
@@ -72,6 +74,7 @@ class DataclassWidget(QtWidgets.QWidget):
             widget = self.bool_to_widget(field, value)
         else:
             print('failed to convert dataclass')
+            return None
 
         widget.setObjectName(field.name + '_widget')
         widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
@@ -517,19 +520,29 @@ class GenerationWidget(QtWidgets.QWidget):
 
         return
 
-class StateEstimatorWidget(QtWidgets.QWidget):
+class StateEstimationWidget(QtWidgets.QWidget):
     def __init__(self):
+        self.estimator = None
+        self.settings = None
         # Get the path to the *.ui file
         this_dir = os.path.dirname(__file__)
-        ui_file = os.path.join(this_dir, r'ui\state_estimator_widget.ui')
+        ui_file = os.path.join(this_dir, r'ui\state_estimation_widget.ui')
 
         # Load it
-        super(StateEstimatorWidget, self).__init__()
+        super(StateEstimationWidget, self).__init__()
 
         uic.loadUi(ui_file, self)
 
-    def activate(self):
-        pass
+    def activate(self, estimator, settings):
+        self.estimator = estimator
+        self.settings = settings
+        self._activate_widgets()
+
+    def _activate_widgets(self):
+        print(self.settings)
+        self.se_method_comboBox.addItems(self.estimator.method_lists)
+        self.se_settings_widget = DataclassWidget(self.settings)
+        self.se_settings_gridLayout.addWidget(self.se_settings_widget)
 
     def deactivate(self):
         pass
@@ -573,29 +586,6 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def disconnect_signals(self):
         pass
 
-class PulseExtractionWidget(QtWidgets.QWidget):
-    def __init__(self):
-        # Get the path to the *.ui file
-        this_dir = os.path.dirname(__file__)
-        ui_file = os.path.join(this_dir, r'ui\pulsed_extraction_widget.ui')
-
-        # Load it
-        super(PulseExtractionWidget, self).__init__()
-        uic.loadUi(ui_file, self)
-
-    def activate(self, analyzer, settings):
-        self.analyzer = analyzer
-        self.settings = settings
-        pass
-
-    def deactivate(self):
-        pass
-
-    def connect_signals(self):
-        pass
-
-    def disconnect_signals(self):
-        pass
 
 class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
     def __init__(self, gui):
