@@ -1,6 +1,18 @@
 # Changelog
 
 ## Pre-Release
+
+
+
+
+## Version 0.5.0
+
+**⚠ DEPRECATION WARNING**
+This is the last release before major changes in the interfaces of the scanning probe toolchain (see PR #97).
+No action is required if you're using our `ni_scanning_probe_interfuse` hardware. If you integrated new hardware
+into the scanning probe toolchain, you will be required to adapt to the new interface beyond this version.
+
+
 ### Breaking Changes
 - Major rework of `qudi.interface.data_instream_interface.DataInStreamInterface`. Time series 
 toolchain and NI x-series hardware module have been adapted but custom modules relying on this 

@@ -24,6 +24,9 @@ If you are not the responsible release manager, it should be of no concern for y
    For the testing, at least one setup must run on a stable set of dependency versions for a while. These versions will be
    fixed `==` in the release `setup.py`.
    
+2. Go through the list of merged PRs since the last release. Check that the changes have been documented in
+   `qudi-iqo-modules/docs/changelog.md`. From experience, not all PRs edit the changelog as required. 
+   
 
 ## Performing a release
 
