@@ -69,6 +69,8 @@ class QdyneLogic(LogicBase):
     #data_save_dir = ConfigOption(name='data_save_dir')
     data_storage_class = ConfigOption(name='data_storage_class', default='text', missing='nothing')
 
+    analyzer_method_lists = StatusVar()
+    analyzer_method = StatusVar()
 #    estimator_method = StatusVar(default='TimeTag')
 #    analyzer_method = StatusVar(default='Fourier')
     _estimator_method = 'TimeTag'
@@ -96,6 +98,9 @@ class QdyneLogic(LogicBase):
         def set_default_values():
             self.estimator_method = self._estimator_method
             self.analysis_method = self._analysis_method
+
+        def restore_settings():
+            pass
 
         activate_classes()
         set_default_values()
