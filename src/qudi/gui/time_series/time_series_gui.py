@@ -23,6 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ['TimeSeriesGui']
 
 import pyqtgraph as pg
+import numpy as np
 from PySide2 import QtCore, QtWidgets
 from typing import Union, Dict, Tuple
 
@@ -73,6 +74,7 @@ class TimeSeriesGui(GuiBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+        self._streamer_constraints = None
         self._mw = None
         self._vb = None
         self.curves = dict()
@@ -85,8 +87,8 @@ class TimeSeriesGui(GuiBase):
         self._mw = TimeSeriesGuiMainWindow()
         # Get hardware constraints
         logic = self._time_series_logic_con()
-        hw_constr = logic.streamer_constraints
-        all_channels = list(hw_constr.channel_units)
+        self._streamer_constraints = logic.streamer_constraints
+        all_channels = list(self._streamer_constraints.channel_units)
 
         # Refine ConfigOptions
         self._visible_traces = {
@@ -97,7 +99,7 @@ class TimeSeriesGui(GuiBase):
         }
 
         # Configure PlotWidget
-        if hw_constr.sample_timing == SampleTiming.RANDOM:
+        if self._streamer_constraints.sample_timing == SampleTiming.RANDOM:
             self._mw.trace_plot_widget.setLabel('bottom', 'Sample')
         else:
             self._mw.trace_plot_widget.setLabel('bottom', 'Time', units='s')
@@ -253,7 +255,7 @@ class TimeSeriesGui(GuiBase):
     def _exec_channel_settings_dialog(self):
         logic = self._time_series_logic_con()
         active_channels, averaged_channels = logic.channel_settings
-        channels = list(logic.streamer_constraints.channel_units)
+        channels = list(self._streamer_constraints.channel_units)
         channel_states = {ch: (ch in active_channels, ch in averaged_channels) for ch in channels}
         dialog = ChannelSettingsDialog(channels, parent=self._mw)
         dialog.set_channel_states(channel_states)
@@ -308,7 +310,8 @@ class TimeSeriesGui(GuiBase):
         self._current_value_channel = self._mw.current_value_combobox.currentText()
 
         # Update plot widget axes
-        channel_units = self._time_series_logic_con().streamer_constraints.channel_units
+        self._streamer_constraints = self._time_series_logic_con().streamer_constraints
+        channel_units = self._streamer_constraints.channel_units
         different_units = list({unit for ch, unit in channel_units.items() if ch in enabled})
         self._channels_per_axis = list()
         if len(different_units) == 2:
@@ -382,7 +385,9 @@ class TimeSeriesGui(GuiBase):
                 constraints = self._time_series_logic_con().streamer_constraints
                 ch_unit = constraints.channel_units[channel]
                 precision = self._current_value_channel_precision[channel]
-                if is_integer_type(constraints.data_type):
+                if np.isnan(val):
+                    self._mw.current_value_label.setText(f'{val} {ch_unit}')
+                elif is_integer_type(constraints.data_type):
                     self._mw.current_value_label.setText(f'{val:,d} {ch_unit}')
                 elif precision is None:
                     self._mw.current_value_label.setText(f'{ScaledFloat(val):.5r}{ch_unit}')
@@ -489,8 +494,8 @@ class TimeSeriesGui(GuiBase):
                 settings_dict['moving_average_width']
             )
             self._mw.settings_dockwidget.moving_average_spinbox.blockSignals(False)
-        sample_timing = self._time_series_logic_con().streamer_constraints.sample_timing
-        if sample_timing == SampleTiming.RANDOM:
+        self._streamer_constraints = self._time_series_logic_con().streamer_constraints
+        if self._streamer_constraints.sample_timing == SampleTiming.RANDOM:
             self._mw.trace_plot_widget.setRange(
                 xRange=[0, settings_dict['trace_window_size'] * settings_dict['data_rate']],
                 disableAutoRange=False
