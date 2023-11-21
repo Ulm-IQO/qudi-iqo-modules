@@ -586,7 +586,6 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def disconnect_signals(self):
         pass
 
-
 class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
     def __init__(self, gui):
         self._gui = gui
