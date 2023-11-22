@@ -28,7 +28,7 @@ windows_dep = [
     'lxml==4.9.1',
     'matplotlib==3.6.0',
     'nidaqmx==0.5.7',
-    'numpy>==1.23.3',
+    'numpy==1.23.3',
     'pyqtgraph==0.13.1',
     'PySide2==5.15.2',
     'PyVisa==1.12.0',
