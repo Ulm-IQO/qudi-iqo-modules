@@ -76,6 +76,9 @@ class QdyneLogic(LogicBase):
     _estimator_method = 'TimeTag'
     _analysis_method = 'Fourier'
 
+    # signals for connecting modules
+    sigTTFileNameUpdated = QtCore.Signal(str)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -85,6 +88,8 @@ class QdyneLogic(LogicBase):
         self.settings = None
         self.data = None
         self.save = None
+
+        self.tt_filename = None
 
     def on_activate(self):
         def activate_classes():
@@ -171,6 +176,28 @@ class QdyneLogic(LogicBase):
         self.save.save_data(self.data.time_trace, self.settings.save_stg.timetrace_options)
         self.save.save_data(self.data.signal, self.settings.save_stg.signal_options)
         pass
+
+    @QtCore.Slot(str)
+    def set_tt_filename(self, name):
+        if name is None or isinstance(name, str):
+            if name == '':
+                name = None
+            self.tt_filename = name
+            self.sigTTFileNameUpdated.emit(self.tt_filename)
+        else:
+            self.log.error('Time trace filename must be str or None.')
+        return
+
+    @QtCore.Slot()
+    def load_tt_from_file(self, filename=None):
+        if filename is None or isinstance(filename, str):
+            if filename is None:
+                filename = self.tt_filename
+            time_trace = np.load(filename)
+            self.data.time_trace = time_trace['time_trace']
+        else:
+            self.log.error('Time trace filename to load must be str or None.')
+        return
 
 class QdyneSettings:
 

@@ -554,7 +554,13 @@ class StateEstimationWidget(QtWidgets.QWidget):
         pass
 
 class TimeTraceAnalysisWidget(QtWidgets.QWidget):
-    def __init__(self):
+    # declare signals
+    sigTTFileNameChanged = QtCore.Signal(str)
+    sigLoadTT = QtCore.Signal()
+
+    def __init__(self, gui):
+        self._gui = gui
+
         self.analyzer = None
         self.settings = None
 
@@ -581,10 +587,58 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
         pass
 
     def connect_signals(self):
-        pass
+        # connect control signals to logic
+        self.sigTTFileNameChanged.connect(
+            self._gui.logic().set_tt_filename, QtCore.Qt.QueuedConnection)
+        self.sigLoadTT.connect(self._gui.logic().load_tt_from_file, QtCore.Qt.QueuedConnection)
+
+        # connect update signals from logic
+        self._gui.logic().sigTTFileNameUpdated.connect(self.update_tt_filename, QtCore.Qt.QueuedConnection)
+
+        # connect internal signals
+        self.tta_filename_LineEdit.editingFinished.connect(self.tt_filename_changed)
+        self.tta_browsefile_PushButton.clicked.connect(self.browse_file)
+        self.tta_loadfile_PushButton.clicked.connect(self.load_time_trace)
 
     def disconnect_signals(self):
-        pass
+        self.sigTTFileNameChanged.disconnect()
+        self.sigLoadTT.disconnect()
+
+        self._gui.logic().sigTTFileNameUpdated.disconnect()
+
+        self.tta_filename_LineEdit.editingFinished.disconnect()
+        self.tta_browsefile_PushButton.clicked.disconnect()
+        self.tta_loadfile_PushButton.clicked.disconnect()
+
+    @QtCore.Slot()
+    def tt_filename_changed(self):
+        self.sigTTFileNameChanged.emit(self.tta_filename_LineEdit.text())
+        return
+
+    @QtCore.Slot(str)
+    def update_tt_filename(self, name):
+        if name is None:
+            name = ''
+        self.tta_filename_LineEdit.blockSignals(True)
+        self.tta_filename_LineEdit.setText(name)
+        self.tta_filename_LineEdit.blockSignals(False)
+        return
+
+    @QtCore.Slot()
+    def browse_file(self):
+        """ Browse a saved time trace from file."""
+        this_file = QtWidgets.QFileDialog.getOpenFileName(self._gui._mainw,
+                                                          'Open time trace file',
+                                                          self._gui.logic().module_default_data_dir,
+                                                          'Data files (*.npz)')[0]
+        if this_file:
+            self.sigTTFileNameChanged.emit(this_file)
+        return
+
+    @QtCore.Slot()
+    def load_time_trace(self):
+        self.sigLoadTT.emit()
+        return
 
 
 class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):

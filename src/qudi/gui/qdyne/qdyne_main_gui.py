@@ -61,7 +61,7 @@ class QdyneMainGui(GuiBase):
         self._gw = GenerationWidget(self)
         self._gsw = PredefinedMethodsConfigDialogWidget(self)
         self._sew = StateEstimationWidget()
-        self._ttaw = TimeTraceAnalysisWidget()
+        self._ttaw = TimeTraceAnalysisWidget(self)
 
     def _activate_ui(self):
         self._mainw.activate()
