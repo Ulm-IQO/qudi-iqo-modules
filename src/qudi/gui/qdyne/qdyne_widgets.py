@@ -653,7 +653,7 @@ class GenerationWidget(QtWidgets.QWidget):
         self.ana_param_fc_bins_ComboBox.blockSignals(False)
         return
 
-class StateEstimatorWidget(QtWidgets.QWidget):
+class StateEstimationWidget(QtWidgets.QWidget):
     def __init__(self):
         self.estimator = None
         self.settings = None
