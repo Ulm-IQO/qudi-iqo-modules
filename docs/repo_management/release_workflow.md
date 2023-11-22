@@ -69,7 +69,8 @@ unspecified in qudi-iqo-modules `setup.py`. This is most likely the case for the
    the Releases section.
    By convention we tag releases by a string like 'Release v0.1.0'.
    As the description text, you can copy the respective release section from `qudi-iqo-modules/docs/changelog.md`.
-   
+   Don't add a heading like "Relaase v0.1.0", this is automatically created by github.   
+
 10. Change the requirement equalities (`==`) (branch `main`) in`qudi-iqo-modules/setup.py` back to `>=`.
 11. Iterate the version number in `qudi-iqo-modules/VERSIONS` from release to development. Eg. 1.0.0 to 1.0.1.dev0
 

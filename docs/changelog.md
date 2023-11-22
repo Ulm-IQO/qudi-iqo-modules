@@ -2,8 +2,13 @@
 
 ## Pre-Release
 
+### Breaking Changes
 
+### Bugfixes
 
+### New Features
+
+### Other
 
 ## Version 0.5.1
 
