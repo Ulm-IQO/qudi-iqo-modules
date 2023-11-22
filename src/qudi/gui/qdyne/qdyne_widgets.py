@@ -20,12 +20,17 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import os
+import pyqtgraph as pg
+import numpy as np
+from enum import Enum
 from dataclasses import dataclass, fields
 from PySide2 import QtCore, QtWidgets
+
 from qudi.util import uic
 from qudi.util.helpers import natural_sort
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
-from enum import Enum
+from qudi.util.colordefs import QudiPalettePale as palette
+
 
 class DataclassWidget(QtWidgets.QWidget):
     def __init__(self, dataclass_obj: dataclass) -> None:
@@ -131,11 +136,14 @@ class QdyneMainWindow(QtWidgets.QMainWindow):
 
     def deactivate(self):
         pass
+
     def connect_signals(self):
         self.action_Predefined_Methods_Config.triggered.connect(self._gui._gsw.show_predefined_methods_config)
+        self.action_FitSettings.triggered.connect(self._gui._fcd.show)
 
     def disconnect_signals(self):
         self.action_Predefined_Methods_Config.triggered.disconnect()
+        self.action_FitSettings.triggered.disconnect()
 
 class MeasurementWidget(QtWidgets.QWidget):
     def __init__(self):
@@ -181,6 +189,11 @@ class GenerationWidget(QtWidgets.QWidget):
         self._global_param_widgets = list()  # List of all other created global parameter widgets
         self._create_pm_global_params()
         self.generation_parameters_updated(self._gui.logic().pulsedmasterlogic().generation_parameters)
+        self.measurement_settings_updated(self._gui.logic().pulsedmasterlogic().measurement_settings)
+        self.fast_counter_settings_updated(self._gui.logic().pulsedmasterlogic().fast_counter_settings)
+
+        # fill in the measurement parameter widgets
+        self._pa_apply_hardware_constraints()
 
         # Dynamically create GUI elements for predefined methods
         self.gen_buttons = dict()
@@ -202,8 +215,26 @@ class GenerationWidget(QtWidgets.QWidget):
         self._gui.logic().pulsedmasterlogic().sigLoadSequence.connect(self.sampling_or_loading_busy)
         self._gui.logic().pulsedmasterlogic().sigSampleSequence.connect(self.sampling_or_loading_busy)
 
+        self.ana_param_invoke_settings_CheckBox.stateChanged.connect(self.measurement_settings_changed)
+        self.ana_param_record_length_DoubleSpinBox.editingFinished.connect(self.fast_counter_settings_changed)
+        self.ana_param_fc_bins_ComboBox.currentIndexChanged.connect(self.fast_counter_settings_changed)
+
+        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(self.fast_counter_settings_updated)
+        self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(self.measurement_settings_updated)
+
     def disconnect_signals(self):
-        pass
+        self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
+        self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.disconnect()
+        self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.disconnect()
+
+        self._gui.logic().pulsedmasterlogic().sigSampleBlockEnsemble.disconnect()
+        self._gui.logic().pulsedmasterlogic().sigLoadBlockEnsemble.disconnect()
+        self._gui.logic().pulsedmasterlogic().sigLoadSequence.disconnect()
+        self._gui.logic().pulsedmasterlogic().sigSampleSequence.disconnect()
+
+        self.ana_param_invoke_settings_CheckBox.stateChanged.disconnect()
+        self.ana_param_record_length_DoubleSpinBox.editingFinished.disconnect()
+        self.ana_param_fc_bins_ComboBox.currentIndexChanged.disconnect()
 
     def sampling_or_loading_busy(self):
         if self._gui.logic().pulsedmasterlogic().status_dict['sampload_busy']:
@@ -211,7 +242,7 @@ class GenerationWidget(QtWidgets.QWidget):
 
             self.loaded_asset_label.setText('  loading...')
             self.loading_indicator.setVisible(True)
-    
+
     def loaded_asset_updated(self, asset_name, asset_type):
         """ Check the current loaded asset from the logic and update the display. """
         label = self.loaded_asset_label
@@ -313,6 +344,7 @@ class GenerationWidget(QtWidgets.QWidget):
             self.global_param_gridLayout.addItem(spacer, 1, 6)
         else:
             self.global_param_gridLayout.addItem(spacer, 0, max(col_count, combo_count))
+
         return
 
     def _create_predefined_methods(self):
@@ -453,7 +485,7 @@ class GenerationWidget(QtWidgets.QWidget):
             # Enable all "Generate" buttons in predefined methods tab
             for button in self.gen_buttons.values():
                 button.setEnabled(True)
-            
+
             self._gui._mainw.action_run_stop.setEnabled(True)
             self.loading_indicator.setVisible(False)
 
@@ -520,6 +552,114 @@ class GenerationWidget(QtWidgets.QWidget):
 
         return
 
+    @QtCore.Slot()
+    def fast_counter_settings_changed(self):
+        """
+
+        @return:
+        """
+        if self._gui._mainw.action_run_stop.isChecked():
+            return
+        settings_dict = dict()
+        settings_dict['record_length'] = self.ana_param_record_length_DoubleSpinBox.value()
+        settings_dict['bin_width'] = float(self.ana_param_fc_bins_ComboBox.currentText())
+        self._gui.logic().pulsedmasterlogic().set_fast_counter_settings(settings_dict)
+        print(settings_dict)
+        return
+
+    @QtCore.Slot(dict)
+    def fast_counter_settings_updated(self, settings_dict):
+        """
+
+        @param dict settings_dict:
+        """
+
+        print(settings_dict)
+        # block signals
+        self.ana_param_record_length_DoubleSpinBox.blockSignals(True)
+        self.ana_param_fc_bins_ComboBox.blockSignals(True)
+        # set widgets
+        if 'record_length' in settings_dict:
+            self.ana_param_record_length_DoubleSpinBox.setValue(settings_dict['record_length'])
+        if 'bin_width' in settings_dict:
+            index = self.ana_param_fc_bins_ComboBox.findText(str(settings_dict['bin_width']))
+            self.ana_param_fc_bins_ComboBox.setCurrentIndex(index)
+        if 'is_gated' in settings_dict:
+            if settings_dict.get('is_gated'):
+                self.toggle_global_param_enable("gate_channel", True)
+            else:
+                self.toggle_global_param_enable("gate_channel", False)
+                self._gui.logic().pulsedmasterlogic().set_generation_parameters(gate_channel='')
+
+        # unblock signals
+        self.ana_param_record_length_DoubleSpinBox.blockSignals(False)
+        self.ana_param_fc_bins_ComboBox.blockSignals(False)
+        return
+
+    def toggle_global_param_enable(self, name: str, enable: bool) -> None:
+        for widget in self._global_param_widgets:
+            if widget.objectName() == "global_param_" + name:
+                widget.setEnabled(enable)
+
+    @QtCore.Slot()
+    def measurement_settings_changed(self):
+        """
+
+        @return:
+        """
+        # Do nothing if measurement is already running
+        if self._gui._mainw.action_run_stop.isChecked():
+            return
+
+        settings_dict = dict()
+        settings_dict['invoke_settings'] = self.ana_param_invoke_settings_CheckBox.isChecked()
+
+        self._gui.logic().pulsedmasterlogic().set_measurement_settings(settings_dict)
+        return
+
+    @QtCore.Slot(dict)
+    def measurement_settings_updated(self, settings_dict):
+        """
+
+        @param dict settings_dict:
+        """
+        # block signals
+        self.ana_param_invoke_settings_CheckBox.blockSignals(True)
+
+        # set widgets
+        if 'invoke_settings' in settings_dict:
+            self.ana_param_invoke_settings_CheckBox.setChecked(settings_dict['invoke_settings'])
+            self.toggle_measurement_settings_editor(settings_dict['invoke_settings'])
+
+        # unblock signals
+        self.ana_param_invoke_settings_CheckBox.blockSignals(False)
+
+    def toggle_measurement_settings_editor(self, hide_editor):
+        """
+        Shows or hides input widgets for measurement settings and fast counter settings
+        """
+        if hide_editor:
+            self.ana_param_record_length_DoubleSpinBox.setEnabled(False)
+        else:
+            self.ana_param_record_length_DoubleSpinBox.setEnabled(True)
+        return
+
+    def _pa_apply_hardware_constraints(self):
+        """
+        Retrieve the constraints from pulser and fast counter hardware and apply these constraints
+        to the analysis tab GUI elements.
+        """
+        fc_constraints = self._gui.logic().pulsedmasterlogic().fast_counter_constraints
+        # block signals
+        self.ana_param_fc_bins_ComboBox.blockSignals(True)
+        # apply constraints
+        self.ana_param_fc_bins_ComboBox.clear()
+        for binwidth in fc_constraints['hardware_binwidth_list']:
+            self.ana_param_fc_bins_ComboBox.addItem(str(binwidth))
+        # unblock signals
+        self.ana_param_fc_bins_ComboBox.blockSignals(False)
+        return
+
 class StateEstimationWidget(QtWidgets.QWidget):
     def __init__(self):
         self.estimator = None
@@ -553,8 +693,15 @@ class StateEstimationWidget(QtWidgets.QWidget):
     def disconnect_signals(self):
         pass
 
+
 class TimeTraceAnalysisWidget(QtWidgets.QWidget):
-    def __init__(self):
+    # declare signals
+    sigTTFileNameChanged = QtCore.Signal(str)
+    sigLoadTT = QtCore.Signal()
+
+    def __init__(self, gui):
+        self._gui = gui
+
         self.analyzer = None
         self.settings = None
 
@@ -577,14 +724,142 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
         self.tta_settings_widget = DataclassWidget(self.settings)
         self.tta_settings_gridLayout.addWidget(self.tta_settings_widget)
 
+        # Configure the main signal display:
+        self.signal_image = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
+                                             style=QtCore.Qt.DotLine,
+                                             symbol='o',
+                                             symbolPen=palette.c1,
+                                             symbolBrush=palette.c1,
+                                             symbolSize=7)
+        self.plot1_PlotWidget.addItem(self.signal_image)
+        self.plot1_PlotWidget.showGrid(x=True, y=True, alpha=0.8)
+
+        # Configure the fit of the data in the signal display:
+        self.fit_image = pg.PlotDataItem(pen=palette.c3)
+        self.plot1_PlotWidget.addItem(self.fit_image)
+
+        # Configure the errorbars of the data in the signal display:
+        self.signal_image_error_bars = pg.ErrorBarItem(x=np.arange(10),
+                                                       y=np.zeros(10),
+                                                       top=0.,
+                                                       bottom=0.,
+                                                       pen=palette.c2)
+
+        # Configure the second signal plot display:
+        self.second_signal_image = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
+                                                   style=QtCore.Qt.DotLine,
+                                                   symbol='o',
+                                                   symbolPen=palette.c1,
+                                                   symbolBrush=palette.c1,
+                                                   symbolSize=7)
+        self.plot2_PlotWidget.addItem(self.second_signal_image)
+        self.plot2_PlotWidget.showGrid(x=True, y=True, alpha=0.8)
+        # Configure the fit of the data in the secondary pulse analysis display:
+        self.second_fit_image = pg.PlotDataItem(pen=palette.c3)
+        self.plot2_PlotWidget.addItem(self.second_fit_image)
+
+        # Fit settings dialog
+        fit_containers = (self._gui.logic().fit_container1, self._gui.logic().fit_container2)
+        self.plot1_fitwidget.link_fit_container(fit_containers[0])
+        self.plot2_fitwidget.link_fit_container(fit_containers[1])
+
     def deactivate(self):
         pass
 
     def connect_signals(self):
-        pass
+        # connect control signals to logic
+        self.sigTTFileNameChanged.connect(
+            self._gui.logic().set_tt_filename, QtCore.Qt.QueuedConnection)
+        self.sigLoadTT.connect(self._gui.logic().load_tt_from_file, QtCore.Qt.QueuedConnection)
+        self.plot1_fitwidget.sigDoFit.connect(
+            lambda x: self._gui.logic().do_fit(x, False)
+        )
+        self.plot2_fitwidget.sigDoFit.connect(
+            lambda x: self._gui.logic().do_fit(x, True)
+        )
+
+        # connect update signals from logic
+        self._gui.logic().sigTTFileNameUpdated.connect(self.update_tt_filename, QtCore.Qt.QueuedConnection)
+        self._gui.logic().sigFitUpdated.connect(self.fit_data_updated)
+
+        # connect internal signals
+        self.tta_filename_LineEdit.editingFinished.connect(self.tt_filename_changed)
+        self.tta_browsefile_PushButton.clicked.connect(self.browse_file)
+        self.tta_loadfile_PushButton.clicked.connect(self.load_time_trace)
 
     def disconnect_signals(self):
-        pass
+        self.sigTTFileNameChanged.disconnect()
+        self.sigLoadTT.disconnect()
+        self.plot1_fitwidget.sigDoFit.disconnect()
+        self.plot2_fitwidget.sigDoFit.disconnect()
+
+        self._gui.logic().sigTTFileNameUpdated.disconnect()
+        self._gui.logic().sigFitUpdated.disconnect()
+
+        self.tta_filename_LineEdit.editingFinished.disconnect()
+        self.tta_browsefile_PushButton.clicked.disconnect()
+        self.tta_loadfile_PushButton.clicked.disconnect()
+
+    @QtCore.Slot()
+    def tt_filename_changed(self):
+        self.sigTTFileNameChanged.emit(self.tta_filename_LineEdit.text())
+        return
+
+    @QtCore.Slot(str)
+    def update_tt_filename(self, name):
+        if name is None:
+            name = ''
+        self.tta_filename_LineEdit.blockSignals(True)
+        self.tta_filename_LineEdit.setText(name)
+        self.tta_filename_LineEdit.blockSignals(False)
+        return
+
+    @QtCore.Slot()
+    def browse_file(self):
+        """ Browse a saved time trace from file."""
+        this_file = QtWidgets.QFileDialog.getOpenFileName(self._gui._mainw,
+                                                          'Open time trace file',
+                                                          self._gui.logic().module_default_data_dir,
+                                                          'Data files (*.npz)')[0]
+        if this_file:
+            self.sigTTFileNameChanged.emit(this_file)
+        return
+
+    @QtCore.Slot()
+    def load_time_trace(self):
+        self.sigLoadTT.emit()
+        return
+
+    @QtCore.Slot(str, object, bool)
+    def fit_data_updated(self, fit_config, result, use_alternative_data):
+        """
+
+        @param str fit_config:
+        @param object result:
+        @param bool use_alternative_data:
+        @return:
+        """
+        plot1_fitwidget
+        # Update plot.
+        if use_alternative_data:
+            if not fit_config or fit_config == 'No Fit':
+                if self.second_fit_image in self._pa.pulse_analysis_second_PlotWidget.items():
+                    self._pa.pulse_analysis_second_PlotWidget.removeItem(self.second_fit_image)
+            else:
+                self.second_fit_image.setData(x=result.high_res_best_fit[0],
+                                              y=result.high_res_best_fit[1])
+                if self.second_fit_image not in self._pa.pulse_analysis_second_PlotWidget.items():
+                    self._pa.pulse_analysis_second_PlotWidget.addItem(self.second_fit_image)
+        else:
+            if not fit_config or fit_config == 'No Fit':
+                if self.fit_image in self._pa.pulse_analysis_PlotWidget.items():
+                    self._pa.pulse_analysis_PlotWidget.removeItem(self.fit_image)
+            else:
+                self.fit_image.setData(x=result.high_res_best_fit[0],
+                                       y=result.high_res_best_fit[1])
+                if self.fit_image not in self._pa.pulse_analysis_PlotWidget.items():
+                    self._pa.pulse_analysis_PlotWidget.addItem(self.fit_image)
+        return
 
 class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
     def __init__(self, gui):
@@ -643,7 +918,7 @@ class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
             checkbox = getattr(self, 'checkbox_' + method_name)
             checkbox.setChecked(groupbox.isVisible())
         return
-    
+
     def apply_predefined_methods_config(self):
         self._gui._predefined_methods_to_show = list()
         for method_name in self._gui.logic().pulsedmasterlogic().generate_methods:

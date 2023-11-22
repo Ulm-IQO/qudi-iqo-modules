@@ -15,6 +15,53 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,0,1,1">
    <item>
+    <widget class="QGroupBox" name="tta_loadtt_gridGroupBox">
+     <layout class="QGridLayout" name="gridLayout_0">
+      <item row="0" column="0">
+       <layout class="QGridLayout" name="tta_laodfile_gridLayout">
+        <item row="0" column="0">
+         <widget class="QLabel" name="tta_load_label">
+          <property name="text">
+           <string>Load time trace:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="1">
+         <widget class="QLineEdit" name="tta_filename_LineEdit"/>
+        </item>
+        <item row="0" column="2">
+         <widget class="QPushButton" name="tta_browsefile_PushButton">
+          <property name="text">
+           <string>Browse time trace file</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="3">
+         <widget class="QPushButton" name="tta_loadfile_PushButton">
+          <property name="text">
+           <string>Load time trace</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="4">
+         <spacer name="tta_load_horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
     <widget class="QGroupBox" name="tta_setting_gridGroupBox">
      <layout class="QGridLayout" name="gridLayout_10">
       <item row="0" column="0">
