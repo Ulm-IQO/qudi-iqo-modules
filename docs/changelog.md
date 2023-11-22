@@ -5,7 +5,7 @@
 
 
 
-## Version 0.5.0
+## Version 0.5.1
 
 **⚠ DEPRECATION WARNING**
 This is the last release before major changes in the interfaces of the scanning probe toolchain (see PR #97).
@@ -42,6 +42,7 @@ constraints to allow non-uniform sampling mode.
 - Bumped `qudi-core` package minimum version requirement to v1.5.0
 - Got rid of deprecated `qudi.core.interface` module usage
 - Support for Python 3.10
+- This version 0.5.1 fixes a requirement issue found while pushing release 0.5.0 to test-pypi 
 
 ## Version 0.4.0
 ### Breaking Changes
