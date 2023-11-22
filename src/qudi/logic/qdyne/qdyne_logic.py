@@ -30,9 +30,9 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.logic.qdyne.qdyne_measurement import (
     QdyneMeasurement, QdyneMeasurementSettings)
 from qudi.logic.qdyne.qdyne_state_estimator import (
-    StateEstimator, TimeTagBasedEstimatorSettings, TimeSeriesBasedEstimatorSettings)
+    StateEstimatorMain, TimeTagStateEstimatorSettings, TimeSeriesStateEstimatorSettings)
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import (
-    TimeTraceAnalyzer, FourierSettings)
+    TimeTraceAnalyzerMain, FourierAnalyzerSettings)
 from qudi.logic.qdyne.qdyne_save import (
     QdyneSaveSettings, QdyneSave)
 
@@ -69,10 +69,15 @@ class QdyneLogic(LogicBase):
     #data_save_dir = ConfigOption(name='data_save_dir')
     data_storage_class = ConfigOption(name='data_storage_class', default='text', missing='nothing')
 
+    analyzer_method_lists = StatusVar()
+    analyzer_method = StatusVar()
 #    estimator_method = StatusVar(default='TimeTag')
 #    analyzer_method = StatusVar(default='Fourier')
     _estimator_method = 'TimeTag'
     _analysis_method = 'Fourier'
+
+    # signals for connecting modules
+    sigTTFileNameUpdated = QtCore.Signal(str)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -84,11 +89,13 @@ class QdyneLogic(LogicBase):
         self.data = None
         self.save = None
 
+        self.tt_filename = None
+
     def on_activate(self):
         def activate_classes():
             #self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
-            self.estimator = StateEstimator()
-            self.analyzer = TimeTraceAnalyzer()
+            self.estimator = StateEstimatorMain()
+            self.analyzer = TimeTraceAnalyzerMain()
             self.settings = QdyneSettings()
             self.data = MainDataClass()
             self.save = QdyneSave(self.module_default_data_dir, self.data_storage_class)
@@ -96,6 +103,9 @@ class QdyneLogic(LogicBase):
         def set_default_values():
             self.estimator_method = self._estimator_method
             self.analysis_method = self._analysis_method
+
+        def restore_settings():
+            pass
 
         activate_classes()
         set_default_values()
@@ -167,6 +177,28 @@ class QdyneLogic(LogicBase):
         self.save.save_data(self.data.signal, self.settings.save_stg.signal_options)
         pass
 
+    @QtCore.Slot(str)
+    def set_tt_filename(self, name):
+        if name is None or isinstance(name, str):
+            if name == '':
+                name = None
+            self.tt_filename = name
+            self.sigTTFileNameUpdated.emit(self.tt_filename)
+        else:
+            self.log.error('Time trace filename must be str or None.')
+        return
+
+    @QtCore.Slot()
+    def load_tt_from_file(self, filename=None):
+        if filename is None or isinstance(filename, str):
+            if filename is None:
+                filename = self.tt_filename
+            time_trace = np.load(filename)
+            self.data.time_trace = time_trace['time_trace']
+        else:
+            self.log.error('Time trace filename to load must be str or None.')
+        return
+
 class QdyneSettings:
 
     def __init__(self):
@@ -196,14 +228,7 @@ class QdyneSettings:
         self._get_state_estimator_stg()
 
     def _get_state_estimator_stg(self):
-        if self.state_estimator_method == 'TimeSeries':
-            self.state_estimator_stg = TimeSeriesBasedEstimatorSettings()
-
-        elif self.state_estimator_method == 'TimeTag':
-            self.state_estimator_stg = TimeTagBasedEstimatorSettings()
-
-        else:
-            self.state_estimator_stg = None
+        self.state_estimator_stg = globals()[self.state_estimator_method + 'StateEstimatorSettings']()
 
     @property
     def time_trace_analysis_method(self):
@@ -215,8 +240,4 @@ class QdyneSettings:
         self._get_time_trace_analysis_stg()
 
     def _get_time_trace_analysis_stg(self):
-        if self.time_trace_analysis_method == 'Fourier':
-            self.time_trace_analysis_stg = FourierSettings()
-
-        else:
-            self.time_trace_analysis_stg = None
+        self.time_trace_analysis_stg = globals()[self.time_trace_analysis_method + 'AnalyzerSettings']

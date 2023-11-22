@@ -13,6 +13,8 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+import sys
+import inspect
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
@@ -35,7 +37,7 @@ class Analyzer(ABC):
 
 
 @dataclass
-class FourierSettings:
+class FourierAnalyzerSettings:
     range_around_peak: int = 30
     padding_parameter: int = 1
     cut_time_trace: bool = False
@@ -54,7 +56,7 @@ class FourierAnalyzer(Analyzer):
     def __init__(self):
         self.stg = None
 
-    def input_settings(self, settings: FourierSettings) -> None:
+    def input_settings(self, settings: FourierAnalyzerSettings) -> None:
         self.stg = settings
 
     def analyze(self, time_trace):
@@ -118,14 +120,34 @@ class FourierAnalyzer(Analyzer):
     def get_half_frequency_array(self, sequence_length_s, ft):
         return 1 / (sequence_length_s * len(ft))*np.arange(len(ft)/2)
 
+def get_subclasses(class_obj):
+    '''
+    Given a class, find its subclasses and get their names.
+    '''
 
+    subclasses = []
+    for name, obj in inspect.getmembers(sys.modules[__name__]):
+        if inspect.isclass(obj) and issubclass(obj, class_obj) and obj != class_obj:
+            subclasses.append(obj)
 
-class TimeTraceAnalyzer:
-    method_lists = ['Fourier', "aurocorr"]
+    return subclasses
+
+def get_method_names(subclass_obj, class_obj):
+    subclass_names = [cls.__name__ for cls in subclass_obj]
+    method_names = [subclass_name.replace(class_obj.__name__, '') for subclass_name in subclass_names]
+    return method_names
+
+class TimeTraceAnalyzerMain:
 
     def __init__(self):
+        self.method_lists = []
         self.analyzer = None
         self._method = 'Fourier'
+        self.generate_method_lists()
+
+    def generate_method_lists(self):
+        analyzer_subclasses = get_subclasses(Analyzer)
+        self.method_lists = get_method_names(analyzer_subclasses, Analyzer)
 
     @property
     def method(self):
@@ -137,8 +159,7 @@ class TimeTraceAnalyzer:
         self._configure_method(method)
 
     def _configure_method(self, method):
-        if method == 'Fourier':
-            self.analyzer = FourierAnalyzer()
+        self.analyzer = globals()[method + 'Analyzer']()
 
     def input_settings(self, settings):
         self.analyzer.input_settings(settings)

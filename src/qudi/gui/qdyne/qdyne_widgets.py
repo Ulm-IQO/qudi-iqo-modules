@@ -50,6 +50,8 @@ class DataclassWidget(QtWidgets.QWidget):
         for field in fields(data):
             label = self.create_label(field.name)
             widget = self.create_widget(field)
+            if widget is None:
+                continue
             widget.setMinimumSize(QtCore.QSize(80, 0))
 
             self.layout.addWidget(label, 0, param_index + 1, 1, 1)
@@ -73,6 +75,7 @@ class DataclassWidget(QtWidgets.QWidget):
             widget = self.bool_to_widget(field, value)
         else:
             print('failed to convert dataclass')
+            return None
 
         widget.setObjectName(field.name + '_widget')
         widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
@@ -542,7 +545,6 @@ class GenerationWidget(QtWidgets.QWidget):
 
         return
 
-
     @QtCore.Slot()
     def fast_counter_settings_changed(self):
         """
@@ -653,17 +655,27 @@ class GenerationWidget(QtWidgets.QWidget):
 
 class StateEstimatorWidget(QtWidgets.QWidget):
     def __init__(self):
+        self.estimator = None
+        self.settings = None
         # Get the path to the *.ui file
         this_dir = os.path.dirname(__file__)
-        ui_file = os.path.join(this_dir, r'ui\state_estimator_widget.ui')
+        ui_file = os.path.join(this_dir, r'ui\state_estimation_widget.ui')
 
         # Load it
-        super(StateEstimatorWidget, self).__init__()
+        super(StateEstimationWidget, self).__init__()
 
         uic.loadUi(ui_file, self)
 
-    def activate(self):
-        pass
+    def activate(self, estimator, settings):
+        self.estimator = estimator
+        self.settings = settings
+        self._activate_widgets()
+
+    def _activate_widgets(self):
+        print(self.settings)
+        self.se_method_comboBox.addItems(self.estimator.method_lists)
+        self.se_settings_widget = DataclassWidget(self.settings)
+        self.se_settings_gridLayout.addWidget(self.se_settings_widget)
 
     def deactivate(self):
         pass
@@ -675,7 +687,16 @@ class StateEstimatorWidget(QtWidgets.QWidget):
         pass
 
 class TimeTraceAnalysisWidget(QtWidgets.QWidget):
-    def __init__(self):
+    # declare signals
+    sigTTFileNameChanged = QtCore.Signal(str)
+    sigLoadTT = QtCore.Signal()
+
+    def __init__(self, gui):
+        self._gui = gui
+
+        self.analyzer = None
+        self.settings = None
+
         # Get the path to the *.ui file
         this_dir = os.path.dirname(__file__)
         ui_file = os.path.join(this_dir, r'ui\time_trace_analysis_widget.ui')
@@ -688,40 +709,70 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     def activate(self, analyzer, settings):
         self.analyzer = analyzer
         self.settings = settings
-        pass
+        self._activate_widgets()
+
+    def _activate_widgets(self):
+        self.tta_method_comboBox.addItems(self.analyzer.method_lists)
+        self.tta_settings_widget = DataclassWidget(self.settings)
+        self.tta_settings_gridLayout.addWidget(self.tta_settings_widget)
 
     def deactivate(self):
         pass
 
     def connect_signals(self):
-        pass
+        # connect control signals to logic
+        self.sigTTFileNameChanged.connect(
+            self._gui.logic().set_tt_filename, QtCore.Qt.QueuedConnection)
+        self.sigLoadTT.connect(self._gui.logic().load_tt_from_file, QtCore.Qt.QueuedConnection)
+
+        # connect update signals from logic
+        self._gui.logic().sigTTFileNameUpdated.connect(self.update_tt_filename, QtCore.Qt.QueuedConnection)
+
+        # connect internal signals
+        self.tta_filename_LineEdit.editingFinished.connect(self.tt_filename_changed)
+        self.tta_browsefile_PushButton.clicked.connect(self.browse_file)
+        self.tta_loadfile_PushButton.clicked.connect(self.load_time_trace)
 
     def disconnect_signals(self):
-        pass
+        self.sigTTFileNameChanged.disconnect()
+        self.sigLoadTT.disconnect()
 
-class PulseExtractionWidget(QtWidgets.QWidget):
-    def __init__(self):
-        # Get the path to the *.ui file
-        this_dir = os.path.dirname(__file__)
-        ui_file = os.path.join(this_dir, r'ui\pulsed_extraction_widget.ui')
+        self._gui.logic().sigTTFileNameUpdated.disconnect()
 
-        # Load it
-        super(PulseExtractionWidget, self).__init__()
-        uic.loadUi(ui_file, self)
+        self.tta_filename_LineEdit.editingFinished.disconnect()
+        self.tta_browsefile_PushButton.clicked.disconnect()
+        self.tta_loadfile_PushButton.clicked.disconnect()
 
-    def activate(self, analyzer, settings):
-        self.analyzer = analyzer
-        self.settings = settings
-        pass
+    @QtCore.Slot()
+    def tt_filename_changed(self):
+        self.sigTTFileNameChanged.emit(self.tta_filename_LineEdit.text())
+        return
 
-    def deactivate(self):
-        pass
+    @QtCore.Slot(str)
+    def update_tt_filename(self, name):
+        if name is None:
+            name = ''
+        self.tta_filename_LineEdit.blockSignals(True)
+        self.tta_filename_LineEdit.setText(name)
+        self.tta_filename_LineEdit.blockSignals(False)
+        return
 
-    def connect_signals(self):
-        pass
+    @QtCore.Slot()
+    def browse_file(self):
+        """ Browse a saved time trace from file."""
+        this_file = QtWidgets.QFileDialog.getOpenFileName(self._gui._mainw,
+                                                          'Open time trace file',
+                                                          self._gui.logic().module_default_data_dir,
+                                                          'Data files (*.npz)')[0]
+        if this_file:
+            self.sigTTFileNameChanged.emit(this_file)
+        return
 
-    def disconnect_signals(self):
-        pass
+    @QtCore.Slot()
+    def load_time_trace(self):
+        self.sigLoadTT.emit()
+        return
+
 
 class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
     def __init__(self, gui):
