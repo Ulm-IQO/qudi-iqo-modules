@@ -1751,9 +1751,14 @@ class SequenceGeneratorLogic(LogicBase):
                 pulse_function={chnl: SamplingFunctions.Idle() for chnl in self.analog_channels},
                 digital_high={chnl: False for chnl in self.digital_channels})
             idle_extension = PulseBlock('idle_extension', element_list=[pb_element])
-            temp_measurement_info = copy.deepcopy(ensemble.measurement_information)
+
+            # appending idle element invalidates meta-info. Restore meta-info here.
+            temp_generation_parameters = copy.deepcopy(ensemble.generation_method_parameters)
+            temp_measurement_information = copy.deepcopy(ensemble.measurement_information)
             ensemble.append((idle_extension.name, 0))
-            ensemble.measurement_information = temp_measurement_info
+
+            ensemble.measurement_information = temp_measurement_information
+            ensemble.generation_method_parameters = temp_generation_parameters
 
             self.save_block(idle_extension)
             self.save_ensemble(ensemble)

@@ -191,7 +191,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
         into.
         The 1D data_buffer can be unraveled into channel and sample indexing with:
 
-            data_buffer.reshape([<number_of_samples>, <channel_count>])
+            data_buffer.reshape([<samples_per_channel>, <channel_count>])
 
         The data_buffer array must have the same data type as self.constraints.data_type.
 
@@ -251,28 +251,28 @@ class HighFinesseWavemeter(DataInStreamInterface):
         return samples_per_channel
 
     def read_data(self,
-                  number_of_samples: Optional[int] = None
+                  samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
         """ Read data from the stream buffer into a 1D numpy array and return it.
         All samples for each channel are stored in consecutive blocks one after the other.
         The returned data_buffer can be unraveled into channel samples with:
 
-            data_buffer.reshape([<channel_count>, number_of_samples])
+            data_buffer.reshape([<channel_count>, samples_per_channel])
 
         The numpy array data type is the one defined in self.constraints.data_type.
 
         In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
         returned as well with timestamps corresponding to the data_buffer array.
 
-        If number_of_samples is omitted all currently available samples are read from buffer.
+        If samples_per_channel is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
         """
-        number_of_samples = number_of_samples if number_of_samples is not None else self.available_samples
-        total_samples = len(self.active_channels) * number_of_samples
+        samples_per_channel = samples_per_channel if samples_per_channel is not None else self.available_samples
+        total_samples = len(self.active_channels) * samples_per_channel
 
         data_buffer = np.empty(total_samples, dtype=self.constraints.data_type)
-        timestamp_buffer = np.empty(number_of_samples, dtype=np.float64)
-        self.read_data_into_buffer(data_buffer, number_of_samples, timestamp_buffer)
+        timestamp_buffer = np.empty(samples_per_channel, dtype=np.float64)
+        self.read_data_into_buffer(data_buffer, samples_per_channel, timestamp_buffer)
 
         return data_buffer, timestamp_buffer
 

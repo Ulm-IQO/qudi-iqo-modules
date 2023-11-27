@@ -112,6 +112,10 @@ class HighFinesseProxy(Base):
                              'Please install a High Finesse wavemeter and try again.') from e
         else:
             v = [self._wavemeter_dll.GetWLMVersion(i) for i in range(4)]
+            if v[0] == high_finesse_constants.GetFrequencyError.ErrWlmMissing.value:
+                raise RuntimeError('The wavemeter application is not active. '
+                                   'Start the wavemeter application before activating the qudi module.')
+
             self.log.info(f'Successfully loaded wavemeter DLL of WS{v[0]} {v[1]},'
                           f' software revision {v[2]}, compilation number {v[3]}.')
 
@@ -132,8 +136,6 @@ class HighFinesseProxy(Base):
             self._wm_has_switch = True
         else:
             self._wm_has_switch = False
-
-        self._stop_measurement()
 
         self._set_up_watchdog()
 
@@ -168,7 +170,6 @@ class HighFinesseProxy(Base):
                 del self._connected_instream_modules[module]
                 if not self._connected_instream_modules:
                     self._stop_callback()
-                    self._stop_measurement()
                 else:
                     # deactivate channels that are not connected by other instreamers
                     for ch in (channels_disconnecting_instreamer - self.get_connected_channels()):
@@ -232,7 +233,6 @@ class HighFinesseProxy(Base):
         self.log.warning('Stopping all streams.')
         streamers = list(self._connected_instream_modules).copy()
         self._stop_callback()
-        self._stop_measurement()
         self._connected_instream_modules = {}
         for streamer in streamers:
             # stop all streams without them triggering the proxy disconnect
@@ -289,11 +289,6 @@ class HighFinesseProxy(Base):
         err = self._wavemeter_dll.Operation(high_finesse_constants.cCtrlStartMeasurement)
         if err:
             raise RuntimeError(f'Wavemeter error while starting measurement: {high_finesse_constants.ResultError(err)}')
-
-    def _stop_measurement(self) -> None:
-        err = self._wavemeter_dll.Operation(high_finesse_constants.cCtrlStopAll)
-        if err:
-            raise RuntimeError(f'Wavemeter error while stopping measurement: {high_finesse_constants.ResultError(err)}')
 
     def _set_up_watchdog(self) -> None:
         self._watchdog_thread = self._thread_manager.get_new_thread(THREAD_NAME_WATCHDOG)
