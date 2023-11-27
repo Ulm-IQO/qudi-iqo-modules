@@ -38,8 +38,17 @@ except NameError:
 
 
 class SpectrometerGui(GuiBase):
-    """
-    Todo: Documentation
+    """ The GUI class for spectrometer control.
+
+    Example config for copy-paste:
+
+        spectrometer:
+        module.Class: 'spectrometer.spectrometer_gui.SpectrometerGui'
+        connect:
+            spectrometer_logic: 'spectrometerlogic'
+        options:
+            progress_poll_interval: 1  # in seconds
+
     """
 
     # declare connectors

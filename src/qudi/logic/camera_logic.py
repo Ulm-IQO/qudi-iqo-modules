@@ -32,8 +32,16 @@ from qudi.core.module import LogicBase
 
 
 class CameraLogic(LogicBase):
-    """
-    Control a camera.
+    """ Logic class for controlling a camera.
+
+    Example config for copy-paste:
+
+    camera_logic:
+        module.Class: 'camera_logic.CameraLogic'
+        connect:
+            camera: camera_dummy
+        options:
+            minimum_exposure_time: 0.05
     """
 
     # declare connectors

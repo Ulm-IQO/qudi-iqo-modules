@@ -499,9 +499,10 @@ class PulsedMeasurementLogic(LogicBase):
             self.sigExtMicrowaveRunningUpdated.emit(False)
         else:
             microwave.cw_on()
-            if not microwave.is_running:
+            is_running = microwave.module_state() != 'idle'
+            if not is_running:
                 self.log.error('Failed to turn on external CW microwave output.')
-            self.sigExtMicrowaveRunningUpdated.emit(microwave.is_running)
+            self.sigExtMicrowaveRunningUpdated.emit(is_running)
         return 0
 
     def microwave_off(self):
@@ -515,9 +516,10 @@ class PulsedMeasurementLogic(LogicBase):
             self.sigExtMicrowaveRunningUpdated.emit(False)
         else:
             microwave.off()
-            if microwave.is_running:
+            is_running = microwave.module_state() != 'idle'
+            if is_running:
                 self.log.error('Failed to turn off external CW microwave output.')
-            self.sigExtMicrowaveRunningUpdated.emit(microwave.is_running)
+            self.sigExtMicrowaveRunningUpdated.emit(is_running)
         return 0
 
     @QtCore.Slot(bool)
@@ -551,34 +553,35 @@ class PulsedMeasurementLogic(LogicBase):
         @return:
         """
         # Check if microwave is running and do nothing if that is the case
-        microwave = self._microwave()
-        if microwave is not None and microwave.is_running:
-            self.log.warning('Microwave device is running.\nUnable to apply new settings.')
-        else:
-            # Determine complete settings dictionary
-            if not isinstance(settings_dict, dict):
-                settings_dict = kwargs
+        try:
+            microwave = self._microwave()
+            if (microwave is not None) and (microwave.module_state() != 'idle') :
+                self.log.warning('Microwave device is running.\nUnable to apply new settings.')
             else:
-                settings_dict.update(kwargs)
+                # Determine complete settings dictionary
+                if not isinstance(settings_dict, dict):
+                    settings_dict = kwargs
+                else:
+                    settings_dict.update(kwargs)
 
-            # Set parameters if present
-            if 'power' in settings_dict:
-                self.__microwave_power = float(settings_dict['power'])
-            if 'frequency' in settings_dict:
-                self.__microwave_freq = float(settings_dict['frequency'])
-            if 'use_ext_microwave' in settings_dict:
-                self.__use_ext_microwave = bool(settings_dict['use_ext_microwave']) and microwave is not None
+                # Set parameters if present
+                if 'power' in settings_dict:
+                    self.__microwave_power = float(settings_dict['power'])
+                if 'frequency' in settings_dict:
+                    self.__microwave_freq = float(settings_dict['frequency'])
+                if 'use_ext_microwave' in settings_dict:
+                    self.__use_ext_microwave = bool(settings_dict['use_ext_microwave']) and microwave is not None
 
-            if self.__use_ext_microwave and microwave is not None:
-                # Apply the settings to hardware
-                microwave.set_cw(frequency=self.__microwave_freq, power=self.__microwave_power)
-                self.__microwave_freq = microwave.cw_frequency
-                self.__microwave_power = microwave.cw_power
-
-        # emit update signal for master (GUI or other logic module)
-        self.sigExtMicrowaveSettingsUpdated.emit({'power': self.__microwave_power,
-                                                  'frequency': self.__microwave_freq,
-                                                  'use_ext_microwave': self.__use_ext_microwave})
+                if self.__use_ext_microwave and microwave is not None:
+                    # Apply the settings to hardware
+                    microwave.set_cw(frequency=self.__microwave_freq, power=self.__microwave_power)
+                    self.__microwave_freq = microwave.cw_frequency
+                    self.__microwave_power = microwave.cw_power
+        finally:
+            # emit update signal for master (GUI or other logic module)
+            self.sigExtMicrowaveSettingsUpdated.emit({'power': self.__microwave_power,
+                                                      'frequency': self.__microwave_freq,
+                                                      'use_ext_microwave': self.__use_ext_microwave})
         return self.__microwave_freq, self.__microwave_power, self.__use_ext_microwave
     ############################################################################
 
