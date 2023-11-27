@@ -37,7 +37,7 @@ from qudi.util.helpers import in_range
 
 
 
-class NiScanningProbeInterfuse(ScanningProbeInterface):
+class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     """
     This interfuse combines modules of a National Instrument device to make up a scanning probe hardware.
     One module for software timed analog output (NIXSeriesAnalogOutput) to position e.g. a scanner to a specific
@@ -929,7 +929,7 @@ class RawDataContainer:
         return self.number_of_non_nan_values == self.frame_size
 
 
-class NiScanningProbeInterfuseCorrected(CoordinateTransformMixin, NiScanningProbeInterfuse):
+class NiScanningProbeInterfuse(CoordinateTransformMixin, NiScanningProbeInterfuseBare):
 
     def _initialize_ni_scan_arrays(self, scan_data):
         scan_coords = self._get_scan_lines(scan_data)

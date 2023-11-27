@@ -29,7 +29,7 @@ from qudi.interface.scanning_probe_interface import ScanningProbeInterface, Scan
 from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
 
 
-class ScanningProbeDummy(ScanningProbeInterface):
+class ScanningProbeDummyBare(ScanningProbeInterface):
     """
     Dummy scanning probe microscope. Produces a picture with several gaussian spots.
 
@@ -527,7 +527,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
 
 
-class ScanningProbeDummyCorrected(CoordinateTransformMixin, ScanningProbeDummy):
+class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
 
     def _init_scan_grid(self, x_values, y_values):
         # this is fake transformation, as only 2 coordinates of the scan_grid are taken
