@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the Qudi GUI for general Confocal control.
+This file contains the qudi GUI for general Confocal control.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -71,6 +71,7 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
             super().mouseDoubleClickEvent(event)
         return
 
+
 class SaveDialog(QtWidgets.QDialog):
     """ Dialog to provide feedback and block GUI while saving """
     def __init__(self, parent, title="Please wait", text="Saving..."):
@@ -89,9 +90,21 @@ class SaveDialog(QtWidgets.QDialog):
 
 
 class ScannerGui(GuiBase):
-    """Main Confocal Class for xy and depth scans.
+    """ Main confocal GUI Class for XY and depth scans.
 
-    Todo: Example config for copy-paste:
+    Example config for copy-paste:
+
+    scanner_gui:
+        module.Class: 'scanning.scannergui.ScannerGui'
+        options:
+            image_axes_padding: 0.02
+            default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
+            optimizer_plot_dimensions: [2, 1]   # for all optimizer sub widgets, (2=XY, 1=Z)
+            min_crosshair_size_fraction: 0.02   # minimum crosshair size as fraction of the displayed scan range
+        connect:
+            scanning_logic: scanning_probe_logic
+            data_logic: scanning_data_logic
+            optimize_logic: scanning_optimize_logic
 
     """
 
@@ -262,13 +275,6 @@ class ScannerGui(GuiBase):
 
         self._restore_window_geometry(self._mw)
         self._restore_tilt_correction()
-
-        self._send_pop_up_message('We would appreciate your contribution',
-                                  'The scanning probe toolchain is still in active development. '
-                                  'Please report bugs and issues in the qudi-iqo-modules repository '
-                                  'or even fix them and contribute your pull request. Your help is highly appreciated.')
-
-
 
         return
 
