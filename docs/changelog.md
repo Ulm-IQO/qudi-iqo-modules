@@ -3,10 +3,16 @@
 ## Pre-Release
 
 ### Breaking Changes
+- Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Will break custom modules
+  implementing this interface.
 
 ### Bugfixes
 
 ### New Features
+- New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
+- Checkers and clipping methods added to `qudi.interface.scanning_probe_interface.Constraints`
+- Data classes of the scanning probe interface now have an improved hierarchy
+  (e.g. `ScanData` contains `ScanSettings`).
 
 ### Other
 
@@ -24,7 +30,6 @@ toolchain and NI x-series hardware module have been adapted but custom modules r
 interface will break.  
 Configuration for time series toolchain needs changes as well. See `default.cfg` or module 
 docstrings.
-- Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Legacy support for some but not all methods.
 
 ### Bugfixes
 - Basic data saving in `TimeSeriesReaderLogic` works now.
@@ -43,7 +48,6 @@ constraints to allow non-uniform sampling mode.
 - New hardware module added that implements the HighFinesse wavemeter as a data instream device, replacing the old (non-functional) wavemeter toolchain.
 - Add option to save waveforms and sequence information for debugging to pulser dummy
 - Introduce plugins to the pulsed toolchain that allow more control over `generation_parameters` and can influence all loaded `pulse_objects`.
-- New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added
 
 ### Other
 - Bumped `qudi-core` package minimum version requirement to v1.5.0
