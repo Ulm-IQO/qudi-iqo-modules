@@ -48,6 +48,8 @@ class OdmrLogic(LogicBase):
         connect:
             microwave: <microwave_name>
             data_scanner: <data_scanner_name>
+        options:
+            default_scan_mode: 'JUMP_LIST'  # optional
     """
 
     # declare connectors
@@ -688,16 +690,22 @@ class OdmrLogic(LogicBase):
         self.sigFitUpdated.emit(self._fit_results[channel][range_index], channel, range_index)
 
     def _get_metadata(self):
-        return {'Microwave CW Power (dBm)': self._cw_power,
-                'Microwave Scan Power (dBm)': self._scan_power,
-                'Approx. Run Time (s)': self._elapsed_time,
-                'Number of Frequency Sweeps (#)': self._elapsed_sweeps,
-                'Start Frequencies (Hz)': tuple(rng[0] for rng in self._scan_frequency_ranges),
-                'Stop Frequencies (Hz)': tuple(rng[1] for rng in self._scan_frequency_ranges),
-                'Step sizes (Hz)': tuple(rng[2] for rng in self._scan_frequency_ranges),
-                'Data Rate (Hz)': self._data_rate,
-                'Oversampling factor (Hz)': self._oversampling_factor,
-                'Channel Name': ''}
+        metadata = {'Microwave CW Power (dBm)': self._cw_power,
+                    'Microwave Scan Power (dBm)': self._scan_power,
+                    'Approx. Run Time (s)': self._elapsed_time,
+                    'Number of Frequency Sweeps (#)': self._elapsed_sweeps,
+                    'Start Frequencies (Hz)': tuple(rng[0] for rng in self._scan_frequency_ranges),
+                    'Stop Frequencies (Hz)': tuple(rng[1] for rng in self._scan_frequency_ranges),
+                    'Step sizes (Hz)': tuple(rng[2] for rng in self._scan_frequency_ranges),
+                    'Data Rate (Hz)': self._data_rate,
+                    'Oversampling factor (Hz)': self._oversampling_factor,
+                    'Channel Name': ''}
+        for fit_channel in self._fit_results:
+            for ii, fit_result in enumerate(self._fit_results[fit_channel]):
+                if fit_result:
+                    export_dict = FitContainer.dict_result(fit_result[1])
+                    metadata[f'fit result (channel "{fit_channel}" range {ii})'] = export_dict
+        return metadata
 
     def _get_raw_column_headers(self, data_channel):
         channel_unit = self.data_constraints.channel_units[data_channel]

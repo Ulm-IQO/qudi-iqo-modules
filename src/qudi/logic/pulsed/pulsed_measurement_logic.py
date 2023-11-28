@@ -1380,17 +1380,24 @@ class PulsedMeasurementLogic(LogicBase):
                 'extraction parameters': self.extraction_settings}
 
     def _get_signal_metadata(self):
-        return {'Approx. measurement time (s)': self.__elapsed_time,
-                'Measurement sweeps'          : self.__elapsed_sweeps,
-                'Number of laser pulses'      : self._number_of_lasers,
-                'Laser ignore indices'        : self._laser_ignore_list,
-                'alternating'                 : self._alternating,
-                'analysis parameters'         : self.analysis_settings,
-                'extraction parameters'       : self.extraction_settings,
-                'fast counter settings'       : self.fast_counter_settings,
-                # todo: save sequence belonging to signal, not last uploaded one
-                'generation parameters'       : self.sampling_information['generation_parameters'],
-                'generation method parameters': self.generation_method_parameters }
+        metadata = {'Approx. measurement time (s)': self.__elapsed_time,
+                    'Measurement sweeps'          : self.__elapsed_sweeps,
+                    'Number of laser pulses'      : self._number_of_lasers,
+                    'Laser ignore indices'        : self._laser_ignore_list,
+                    'alternating'                 : self._alternating,
+                    'analysis parameters'         : self.analysis_settings,
+                    'extraction parameters'       : self.extraction_settings,
+                    'fast counter settings'       : self.fast_counter_settings,
+                    # todo: save sequence belonging to signal, not last uploaded one
+                    'generation parameters'       : self.sampling_information.get('generation_parameters'),
+                    'generation method parameters': self.generation_method_parameters}
+        if self._fit_result:
+            export_dict = FitContainer.dict_result(self._fit_result)
+            metadata['fit result'] = export_dict
+        if self._fit_result_alt:
+            export_dict = FitContainer.dict_result(self._fit_result_alt)
+            metadata['fit result alt'] = export_dict
+        return metadata
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
