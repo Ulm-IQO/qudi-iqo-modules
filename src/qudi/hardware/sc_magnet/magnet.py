@@ -121,7 +121,7 @@ class Magnet(Base):     #, MagnetInterface
         self.log.info("Magnet in state: {0}".format(answ_dict))
 #       sending a command to the magnet to turn into SI units regarding
 #       field units.
-        self.heat_all_switches()
+        # self.heat_all_switches()
         tell_dict = {'x': 'CONF:FIELD:UNITS 1', 'y': 'CONF:FIELD:UNITS 1', 'z': 'CONF:FIELD:UNITS 1'}
         self.tell(tell_dict)
 
