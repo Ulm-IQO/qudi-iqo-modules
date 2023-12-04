@@ -20,27 +20,18 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import datetime
-import numpy as np
-import pyqtgraph as pg
-from enum import Enum
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
-from qudi.util.helpers import natural_sort
-from qudi.util.datastorage import get_timestamp_filename
-from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage
-from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.core.module import GuiBase
-from qudi.util import uic
-from PySide2 import QtCore, QtWidgets
-from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
-from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
-from qudi.gui.qdyne.qdyne_widgets import QdyneMainWindow, MeasurementWidget, \
-    StateEstimationWidget, TimeTraceAnalysisWidget, GenerationWidget, PredefinedMethodsConfigDialogWidget
+from qudi.gui.qdyne.widgets.main_window import QdyneMainWindow
+from qudi.gui.qdyne.widgets.measurement_widget import MeasurementWidget
+from qudi.gui.qdyne.widgets.generation_widget import GenerationWidget
+from qudi.gui.qdyne.widgets.predefined_method_config_dialog_widget import PredefinedMethodsConfigDialogWidget
+from qudi.gui.qdyne.widgets.state_estimation_widget import StateEstimationWidget
+from qudi.gui.qdyne.widgets.time_trace_analysis_widget import TimeTraceAnalysisWidget
 
 class QdyneMainGui(GuiBase):
     _predefined_methods_to_show = StatusVar('predefined_methods_to_show', [])

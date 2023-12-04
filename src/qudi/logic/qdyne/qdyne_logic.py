@@ -36,7 +36,7 @@ from qudi.logic.qdyne.qdyne_time_trace_analyzer import (
     TimeTraceAnalyzerMain, FourierAnalyzerSettings)
 from qudi.logic.qdyne.qdyne_save import (
     QdyneSaveSettings, QdyneSave)
-from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
+# from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
 
 @dataclass
 class MainDataClass:
