@@ -102,7 +102,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
             power_limits=(-110, 16.5),
             frequency_limits=freq_limits,
             scan_size_limits=(2, 2000),
-            sample_rate_limits=(0.1, 100),  # FIXME: Look up the proper specs for sample rate
+            sample_rate_limits=(1e-6, 50e3),
             scan_modes=(SamplingOutputMode.JUMP_LIST,)
         )
 
