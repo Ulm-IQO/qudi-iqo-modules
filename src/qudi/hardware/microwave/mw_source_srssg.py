@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the Qudi hardware file to control SRS SG devices.
+This file contains the Qudi hardware file to control Stanford Research Systems signal generators.
+Both basic (SG382, SG384, SG386) and vector generators (SG392, SG394, SG396) should work with this module.
+Manual and technical specifications can be found here:
+    - https://www.thinksrs.com/products/sg380.html (basic RF generators)
+    - https://www.thinksrs.com/products/sg390.html (vector signal generators)
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
