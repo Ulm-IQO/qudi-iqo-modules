@@ -69,13 +69,14 @@ class MicrowaveSRSSG(MicrowaveInterface):
         self._rm = visa.ResourceManager()
         self._device: MessageBasedResource = self._rm.open_resource(  # type: ignore
             self._visa_address,
-            timeout=int(self._comm_timeout * 1000)
+            timeout=int(self._comm_timeout * 1000),
+            read_termination='\r\n'
         )
 
         # Reset device
-        self._device.write('*RST')
-        self._device.write('ENBR 0')  # turn off Type N output
-        self._device.write('ENBL 0')  # turn off BNC output
+        self._write('*RST')
+        self._write('ENBR 0')  # turn off Type N output
+        self._write('ENBL 0')  # turn off BNC output
 
         # model identifiers are of the form SG3XY:
         # X: 8 for signal generator, 9 for vector signal generator
@@ -210,12 +211,12 @@ class MicrowaveSRSSG(MicrowaveInterface):
             self._assert_cw_parameters_args(frequency, power)
 
             # disable modulation:
-            self._device.write('MODL 0')
+            self._write('MODL 0')
             if self._is_vector_sg:
                 # set the modulation subtype to analog
-                self._device.write('STYP 0')
-            self._device.write(f'FREQ {frequency:e}')
-            self._device.write(f'AMPR {power:f}')
+                self._write('STYP 0')
+            self._write(f'FREQ {frequency:e}')
+            self._write(f'AMPR {power:f}')
 
     def configure_scan(self, power, frequencies, mode, sample_rate):
         """
@@ -238,7 +239,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
-                self._device.write('ENBR 0')
+                self._write('ENBR 0')
                 while self._output_active():
                     time.sleep(0.1)
                 self.module_state.unlock()
@@ -287,22 +288,17 @@ class MicrowaveSRSSG(MicrowaveInterface):
             if self._in_cw_mode:
                 raise RuntimeError('Can not reset frequency scan. CW microwave output active.')
 
-            self._device.write('LSTR')
+            self._write('LSTR')
 
-    def _command_wait(self, command_str):
-        """ Writes the command in command_str via PyVisa and waits until the device has finished
-        processing it.
-
-        @param str command_str: The command to be written
-        """
-        self._device.write(command_str)
-        self._device.write('*WAI')
-        while int(float(self._device.query('*OPC?'))) != 1:
-            time.sleep(0.2)
+    def _write(self, command: str) -> None:
+        self._device.write(command)
+        err = self._device.query('LERR?')
+        if err != '0':
+            raise RuntimeError(f'Error code {err} received while sending command {command}.')
 
     def _write_list(self):
         # delete a previously created list:
-        self._device.write('LSTD')
+        self._write('LSTD')
 
         # ask for a new list
         success = self._device.query(f'LSTC? {len(self._scan_frequencies):d}')
@@ -312,7 +308,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
             raise RuntimeError('List creation was unsuccessful.')
 
         for ii, freq in enumerate(self._scan_frequencies):
-            self._device.write(
+            self._write(
                 # cycle the frequency, set the power, display the frequency
                 f'LSTP {ii:d},{freq:e},N,N,N,{self._scan_power:f},2,N,N,N,N,N,N,N,N,N'
             )
@@ -387,12 +383,12 @@ class MicrowaveSRSSG(MicrowaveInterface):
         #  15 = Offset of rear DC
 
         # enable the created list:
-        self._device.write('LSTE 1')
+        self._write('LSTE 1')
 
     def _rf_on(self):
         """ Switches on any preconfigured microwave output.
         """
-        self._device.write('ENBR 1')
+        self._write('ENBR 1')
         while not self._output_active():
             time.sleep(0.1)
 
