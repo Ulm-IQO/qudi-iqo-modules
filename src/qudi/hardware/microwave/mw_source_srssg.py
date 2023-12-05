@@ -21,10 +21,8 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
-try:
-    import pyvisa as visa
-except ImportError:
-    import visa
+import pyvisa as visa
+from pyvisa.resources import MessageBasedResource
 import time
 import numpy as np
 
@@ -44,11 +42,9 @@ class MicrowaveSRSSG(MicrowaveInterface):
         options:
             visa_address: 'GPIB0::12::INSTR'
             comm_timeout: 10
-
     """
-
-    _visa_address = ConfigOption('visa_address', missing='error')
-    _comm_timeout = ConfigOption('comm_timeout', default=10, missing='warn')
+    _visa_address: str = ConfigOption('visa_address', missing='error')
+    _comm_timeout: float = ConfigOption('comm_timeout', default=10, missing='warn')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -67,8 +63,10 @@ class MicrowaveSRSSG(MicrowaveInterface):
         """ Initialisation performed during activation of the module. """
         # trying to load the visa connection to the module
         self._rm = visa.ResourceManager()
-        self._device = self._rm.open_resource(self._visa_address,
-                                              timeout=int(self._comm_timeout * 1000))
+        self._device: MessageBasedResource = self._rm.open_resource(  # type: ignore
+            self._visa_address,
+            timeout=int(self._comm_timeout * 1000)
+        )
 
         # Reset device
         self._device.write('*RST')
@@ -247,7 +245,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
-                if self._in_cw_mode():
+                if self._in_cw_mode:
                     return
                 raise RuntimeError(
                     'Unable to start CW microwave output. Microwave output is currently active.'
@@ -388,7 +386,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
             time.sleep(0.1)
 
     def _output_active(self):
-        return bool(int(self._ask('ENBR?').strip()))
+        return bool(int(self._device.query('ENBR?').strip()))
 
     ########################################################################################
     ########################################################################################
