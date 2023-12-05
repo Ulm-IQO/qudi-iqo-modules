@@ -36,6 +36,10 @@ class DataclassWidget(QtWidgets.QWidget):
 
     def init_UI(self):
         self.create_layout()
+        self.update_data(self.data)
+
+    def update_data(self, data):
+        self.data = data
         self.set_widgets(self.data)
         self.setLayout(self.layout)
 
@@ -71,7 +75,6 @@ class DataclassWidget(QtWidgets.QWidget):
         elif field.type == bool:
             widget = self.bool_to_widget(field, value)
         else:
-            print('failed to convert dataclass')
             return None
 
         widget.setObjectName(field.name + '_widget')
@@ -88,25 +91,25 @@ class DataclassWidget(QtWidgets.QWidget):
     def int_to_widget(self, field, value):
         widget = ScienSpinBox()
         widget.setValue(value)
-        widget.valueChanged.connect(lambda value, f=field: self.update_param(f, value))
+        widget.valueChanged.connect(lambda state, f=field, w=widget: self.update_param(f, w.value()))
         return widget
 
     def float_to_widget(self, field, value):
         widget = ScienDSpinBox()
         widget.setValue(value)
-        widget.valueChanged.connect(lambda value, f=field: self.update_param(f, value))
+        widget.valueChanged.connect(lambda state, f=field, w=widget: self.update_param(f, w.value()))
         return widget
 
     def str_to_widget(self, field, value):
         widget = QtWidgets.QLineEdit()
         widget.setText(value)
-        widget.editingFinished.connect(lambda value, f=field: self.update_param(f, value))
+        widget.editingFinished.connect(lambda f=field, w=widget: self.update_param(f, w.text()))
         return widget
 
     def bool_to_widget(self, field, value):
         widget = QtWidgets.QCheckBox()
         widget.setChecked(value)
-        widget.stateChanged.connect(lambda value, f=field: self.update_param(f, value))
+        widget.stateChanged.connect(lambda state, f=field, w=widget: self.update_param(f, w.isChecked()))
         return widget
 
     def update_param(self, field, value):

@@ -44,7 +44,6 @@ class StateEstimationWidget(QtWidgets.QWidget):
         self._activate_widgets()
 
     def _activate_widgets(self):
-        print(self.settings)
         self.se_method_comboBox.addItems(self.estimator.method_lists)
         self.se_settings_widget = DataclassWidget(self.settings)
         self.se_settings_gridLayout.addWidget(self.se_settings_widget)

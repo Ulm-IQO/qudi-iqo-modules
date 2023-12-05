@@ -318,4 +318,4 @@ class QdyneSettings:
         self._get_time_trace_analysis_stg()
 
     def _get_time_trace_analysis_stg(self):
-        self.time_trace_analysis_stg = globals()[self.time_trace_analysis_method + 'AnalyzerSettings']
+        self.time_trace_analysis_stg = globals()[self.time_trace_analysis_method + 'AnalyzerSettings']()
