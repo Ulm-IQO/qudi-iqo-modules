@@ -56,7 +56,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
         self._thread_lock = Mutex()
         self._rm = None
         self._device = None
-        self._model = ''
+        self._is_vector_sg = False
         self._constraints = None
         self._scan_power = -20
         self._scan_frequencies = None
@@ -75,19 +75,31 @@ class MicrowaveSRSSG(MicrowaveInterface):
         self._device.write('ENBR 0')  # turn off Type N output
         self._device.write('ENBL 0')  # turn off BNC output
 
-        self._model = self._device.query('*IDN?').strip().split(',')[1]
+        # model identifiers are of the form SG3XY:
+        # X: 8 for signal generator, 9 for vector signal generator
+        # Y: specifies the maximum frequency of the N type output
+        model = self._device.query('*IDN?').strip().split(',')[1]
+        if not model.startswith('SG3'):
+            raise ValueError(f'Unknown model identifier "{model}". Is the address correct?')
 
-        # Generate constraints
-        # SRS has two output connectors. The specifications are used for the Type N output.
-        if self._model == 'SG392':
+        max_freq = model[4]
+        if max_freq == '2':
             freq_limits = (1e6, 2.025e9)
-        elif self._model == 'SG394':
+        elif max_freq == '4':
             freq_limits = (1e6, 4.050e9)
-        elif self._model == 'SG396':
+        elif max_freq == '6':
             freq_limits = (1e6, 6.075e9)
         else:
-            freq_limits = (1e6, 6.075e9)
-            self.log.error(f'Model brand "{self._model}" unknown, hardware limits may be wrong!')
+            raise ValueError(f'Unknown model identifier "{model}". Is the address correct?')
+
+        vector = model[3]
+        if vector == '8':
+            self._is_vector_sg = False
+        elif vector == '9':
+            self._is_vector_sg = True
+        else:
+            raise ValueError(f'Unknown model identifier "{model}". Is the address correct?')
+
         self._constraints = MicrowaveConstraints(
             power_limits=(-110, 16.5),
             frequency_limits=freq_limits,
