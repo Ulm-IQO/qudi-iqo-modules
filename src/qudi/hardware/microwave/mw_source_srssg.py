@@ -207,8 +207,9 @@ class MicrowaveSRSSG(MicrowaveInterface):
 
             # disable modulation:
             self._device.write('MODL 0')
-            # and the subtype (analog,)
-            self._device.write('STYP 0')
+            if self._is_vector_sg:
+                # set the modulation subtype to analog
+                self._device.write('STYP 0')
             self._device.write(f'FREQ {frequency:e}')
             self._device.write(f'AMPR {power:f}')
 
@@ -304,7 +305,8 @@ class MicrowaveSRSSG(MicrowaveInterface):
 
         for ii, freq in enumerate(self._scan_frequencies):
             self._device.write(
-                f'LSTP {ii:d},{freq:e},N,N,N,{self._scan_power:f},N,N,N,N,N,N,N,N,N,N'
+                # cycle the frequency, set the power, display the frequency
+                f'LSTP {ii:d},{freq:e},N,N,N,{self._scan_power:f},2,N,N,N,N,N,N,N,N,N'
             )
         # the commands contains 15 entries, which are related to the
         # following commands (in brackets the explanation), if parameter is
@@ -375,6 +377,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
         #  13 = Offset of clock output
         #  14 = Amplitude of HF (RF doubler output)
         #  15 = Offset of rear DC
+
         # enable the created list:
         self._device.write('LSTE 1')
 
