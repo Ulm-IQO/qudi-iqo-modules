@@ -301,7 +301,11 @@ class MicrowaveSRSSG(MicrowaveInterface):
         self._device.write('LSTD')
 
         # ask for a new list
-        self._device.query(f'LSTC? {len(self._scan_frequencies):d}')
+        success = self._device.query(f'LSTC? {len(self._scan_frequencies):d}')
+        if success:
+            self.log.debug('Successfully created a new list.')
+        else:
+            raise RuntimeError('List creation was unsuccessful.')
 
         for ii, freq in enumerate(self._scan_frequencies):
             self._device.write(
