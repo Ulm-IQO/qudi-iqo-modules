@@ -95,6 +95,13 @@ class SerialInStreamer(DataInStreamInterface):
         )
         self._active_channels = list(self._constraints.channel_units)
 
+        self._serial = SerialModbus(port=1, slaveaddress=3)
+        self.log.debug(f"Cfg for serial dev: {self._serial._connection_cfg}")
+        try:
+            self._serial.connect()
+        except:
+            raise
+
         self._channel_map = {'pv': 1025,
                              'sp': 1029}
         self._channel_map = {'pv': 1025}
@@ -514,97 +521,85 @@ class SerialInStreamer(DataInStreamInterface):
 
 
 
+from abc import abstractmethod
+class SerialDev1N():
+    def __init__(self, port='COM1', baudrate=9600,
+                 timeout=1, **kwargs):
 
-"""
-class Eurotherm3216(minimalmodbus.Instrument):
-    def __init__(self, portname='COM5', slaveaddress=3):
-        super().__init__(portname, slaveaddress)
-        self.serial.baudrate = 9600
+        self._connection_cfg = {
+            'port': port,
+            'baudrate': baudrate,
+            'timeout': timeout,
+            'bytesize': kwargs.get('bytesize', None),
+            'stopbits': kwargs.get('stopbits', None),
+            'parity': kwargs.get('parity', None),
+            'slaveaddress': kwargs.get('slaveaddress', None)
+        }
 
-        self.pv = list()
-        self.sp = list()
+        self._ch_map = None
+        self._dev = None
 
-        self.cache_pv = list()
-        self.cache_sp = list()
-        return
+    @abstractmethod
+    def connect(self):
+        pass
 
-    def get_pv(self):
+    @abstractmethod
+    def get_single_sample(self):
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
+
+import serial
+import minimalmodbus
+
+class SerialXGS(SerialDev1N):
+    def connect(self):
+        self._dev = serial.Serial()
+        self._dev.port = self._connection_cfg['port']
+        self._dev.baudrate = self._connection_cfg['baudrate']
+        self._dev.bytesize = self._connection_cfg['bytesize']
+        self._dev.stopbits = self._connection_cfg['stopbits']
+        self._dev.timeout = self._connection_cfg['timeout']
+        self._dev.parity = self._connection_cfg['parity']
+
+        self._dev.open()
+
+        self._ch_map = {'1': 1,
+                        '2': 2,
+                        '3': 3}
+
+    def get_single_sample(self):
         try:
-            response = self.read_register(1, 1)
+            self._dev.write('#000F\r\n'.encode())
+            response = self._dev.readline().decode()
+            splitted_values = response.replace('>', '').split(',')
         except:
-            response = 0.0
-            logging.exception('3216 get_pv()')
-        return response
+            splitted_values = ['nan', 'nan', 'nan']
+            raise
 
-    def get_working_sp(self):
-        try:
-            response = self.read_register(5, 1)
-        except:
-            response = 0.0
-            logging.exception('3216 get_working_sp()')
-        return response
+        splitted_values = [float(val) for val in splitted_values]
 
-    def measure_values(self):
-        self.pv.append(self.get_pv())
-        self.sp.append(self.get_working_sp())
+        return {ch: splitted_values[idx] for idx, ch in list(self._ch_map.keys())}
 
-        self.cache_current_values(self.pv[-1], self.sp[-1])
-        return
+    def close(self):
+        self._dev.close()
 
-    def cache_current_values(self, pv, sp):
-        self.cache_pv.append(pv)
-        self.cache_sp.append(sp)
-        return
 
-    def reset_cache(self):
-        self.cache_pv.clear()
-        self.cache_sp.clear()
-        return
+class SerialModbus(SerialDev1N):
+    def connect(self):
+        self._dev = minimalmodbus.Instrument(self._connection_cfg['port'],
+                                             self._connection_cfg['slaveaddress'])
+        self._ch_map = {'pv_l1': 1,
+                        'sp_l1': 5,
+                        'pv_l2': 1025,
+                        'sp_l2': 1029}
 
-    def print_data(self):
-        for e1, e2 in zip(self.pv, self.sp):
-            print(e1, e2)
+    def close(self):
+        self._dev.close()
 
-    def get_data(self):
-        return {'Johannes PV (°C)': np.array(self.pv),
-                'Johannes SP (°C)': np.array(self.sp)}
+    def get_single_sample(self):
+        sample = {ch: self._dev.read_register(reg) for ch, reg in self._ch_map.items()}
 
-    def get_cache_data(self):
-        return {'Johannes PV (°C)': np.array(self.cache_pv),
-                'Johannes SP (°C)': np.array(self.cache_sp)}
-"""
-
-"""
-def set_up_connection_dict(xgs_check=False, et_3504_check=False, et_3216_check=False,
-                           xgs_com_port='COM6', xgs_baudrate=9600, xgs_bytesize=8, xgs_stopbits=1,
-                           xgs_timeout_inveral=0.05, xgs_parity=serial.PARITY_NONE,
-                           et_3504_portname='COM4', et_3504_slaveaddress=1,
-                           et_3216_portname='COM5', et_3216_slaveaddress=3):
-    connection_dict = dict()
-
-    if xgs_check:
-        xgs = XGSSerialConnection(com_port=xgs_com_port, baudrate=xgs_baudrate, bytesize=xgs_bytesize,
-                                  stopbits=xgs_stopbits,
-                                  timeout=xgs_timeout_inveral, parity=xgs_parity)
-        connection_dict['xgs'] = xgs
-
-    if et_3504_check:
-        try:
-            et_tectra = Eurotherm3504(portname=et_3504_portname, slaveaddress=et_3504_slaveaddress)
-            connection_dict['et_3504_tectra'] = et_tectra
-        except:
-            print('Could not open connection to EuroTherm 3504.')
-
-    if et_3216_check:
-        try:
-            et_hb = Eurotherm3216(portname=et_3216_portname, slaveaddress=et_3216_slaveaddress)
-            connection_dict['et_3216_johannes'] = et_hb
-        except:
-            print('Could not open connection to EuroTherm 3216.')
-
-    if not connection_dict:
-        print('No connections created.')
-
-    return connection_dict
-
-"""
+        return sample
