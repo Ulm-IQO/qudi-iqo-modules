@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import os
-from PySide2 import QtWidgets
+from PySide2 import QtWidgets, QtCore
 
 from qudi.util import uic
 from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
@@ -45,14 +45,18 @@ class StateEstimationWidget(QtWidgets.QWidget):
 
     def _activate_widgets(self):
         self.se_method_comboBox.addItems(self.estimator.method_lists)
-        self.se_settings_widget = DataclassWidget(self.settings)
+        self.se_settings_widget = DataclassWidget(self.settings.estimator_setting)
         self.se_settings_gridLayout.addWidget(self.se_settings_widget)
 
     def deactivate(self):
         pass
 
     def connect_signals(self):
-        pass
+        self.se_method_comboBox.currentTextChanged.connect(self.update_setting)
 
     def disconnect_signals(self):
         pass
+
+    def update_setting(self, setting_name):
+        self.settings.current_estimator_stg_name = setting_name
+        self.se_settings_widget.update_data(self.settings.estimator_setting)

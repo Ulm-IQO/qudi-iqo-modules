@@ -76,9 +76,9 @@ class QdyneLogic(LogicBase):
     _estimator_stg_dict = StatusVar(default=dict())
     _analyzer_stg_dict = StatusVar(default=dict())
     _current_estimator_method = StatusVar(default='TimeTag')
-    _current_estimator_stg = StatusVar(default='TimeTag')
+    _current_estimator_stg_name = StatusVar(default='TimeTag')
     _current_analyzer_method = StatusVar(default='Fourier')
-    _current_analyzer_stg = StatusVar(default='Fourier')
+    _current_analyzer_stg_name = StatusVar(default='Fourier')
 
     _fit_configs = StatusVar(name='fit_configs', default=None)
     _estimator_method = 'TimeTag'
@@ -142,8 +142,8 @@ class QdyneLogic(LogicBase):
 
             self.settings.current_analyzer_method = self._current_analyzer_method
             self.settings.current_estimator_method = self._current_estimator_method
-            self.settings.current_analyzer_stg = self._current_analyzer_stg
-            self.settings.current_estimator_stg = self._current_estimator_stg
+            self.settings.current_analyzer_stg_name = self._current_analyzer_stg_name
+            self.settings.current_estimator_stg_name = self._current_estimator_stg_name
 
 
         activate_classes()
@@ -326,11 +326,11 @@ class QdyneSettings:
 
         self.estimator_stg_dict = dict()
         self.current_estimator_method = ''
-        self.current_estimator_stg = ''
+        self.current_estimator_stg_name = ''
 
         self.analyzer_stg_dict = dict()
         self.current_analyzer_method = ''
-        self.current_analyzer_stg = ''
+        self.current_analyzer_stg_name = ''
 
     def on_activate(self):
         self.measurement_stg = None
@@ -372,8 +372,8 @@ class QdyneSettings:
 
     @property
     def estimator_setting(self):
-        return self.estimator_stg_dict[self.current_estimator_stg]
+        return self.estimator_stg_dict[self.current_estimator_stg_name]
 
     @property
     def analyzer_setting(self):
-        return self.analyzer_stg_dict[self.current_analyzer_stg]
+        return self.analyzer_stg_dict[self.current_analyzer_stg_name]

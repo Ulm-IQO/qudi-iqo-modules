@@ -40,13 +40,24 @@ class DataclassWidget(QtWidgets.QWidget):
 
     def update_data(self, data):
         self.data = data
+        self.clear_layout()
         self.set_widgets(self.data)
         self.setLayout(self.layout)
 
     def create_layout(self):
         self.layout = QtWidgets.QGridLayout()
 
+    def clear_layout(self):
+        # Remove all items from the layout
+        while self.layout.count():
+            item = self.layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                # Remove the widget from the layout
+                widget.setParent(None)
     def set_widgets(self, data):
+        self.labels = dict()
+        self.widgets = dict()
         param_index = 0
         for field in fields(data):
             label = self.create_label(field.name)

@@ -56,7 +56,7 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
 
     def _activate_widgets(self):
         self.tta_method_comboBox.addItems(self.analyzer.method_lists)
-        self.tta_settings_widget = DataclassWidget(self.settings)
+        self.tta_settings_widget = DataclassWidget(self.settings.analyzer_setting)
         self.tta_settings_gridLayout.addWidget(self.tta_settings_widget)
 
         # Configure the main signal display:
@@ -103,6 +103,7 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
 
     def connect_signals(self):
         # connect control signals to logic
+        self.tta_method_comboBox.editTextChanged.connect(self.update_current_analyzer_setting)
         self.sigTTFileNameChanged.connect(
             self._gui.logic().set_tt_filename, QtCore.Qt.QueuedConnection)
         self.sigLoadTT.connect(self._gui.logic().load_tt_from_file, QtCore.Qt.QueuedConnection)
@@ -134,6 +135,10 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
         self.tta_filename_LineEdit.editingFinished.disconnect()
         self.tta_browsefile_PushButton.clicked.disconnect()
         self.tta_loadfile_PushButton.clicked.disconnect()
+
+    @QtCore.Slot(str)
+    def update_current_analyzer_setting(self, setting):
+        self.settings.current_analyzer_stg = setting
 
     @QtCore.Slot()
     def tt_filename_changed(self):
