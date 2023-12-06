@@ -208,6 +208,7 @@ class SerialInStreamer(DataInStreamInterface):
             # Init buffer
             self.__pos_sample_buffer = 0
             self.__idx_read_start = 0
+            self.__idx_write_start = 0
             self.__available_samples = 0
             self._sample_buffer = np.ones(self._buffer_size * self.channel_count, dtype=self.data_type)*np.nan
             self._timestamp_buffer = np.zeros(self._buffer_size, dtype=np.float64)
@@ -254,6 +255,7 @@ class SerialInStreamer(DataInStreamInterface):
         idx_start = self.__pos_sample_buffer
         idx_end = self.__pos_sample_buffer + channel_count
 
+        self.log.debug(f"Pulling datab Buffer pos: {self.__pos_sample_buffer}/{len(self._sample_buffer)}")
         if idx_end > len(self._sample_buffer) -1 :
             raise OverflowError("Full buffer! Increase data buffer or reduce sampling rate")
 
@@ -309,6 +311,7 @@ class SerialInStreamer(DataInStreamInterface):
 
     def _set_channel_buffer_size(self, samples: int) -> None:
         self._constraints.channel_buffer_size.check(samples)
+        self.log.debug(f"Setting buffer size: {self._buffer_size}->{samples}")
         self._buffer_size = samples
 
     def _set_sample_rate(self, rate: Union[int, float]) -> None:
@@ -381,7 +384,7 @@ class SerialInStreamer(DataInStreamInterface):
 
         n_ch = self.channel_count
         if data_buffer.size < samples_per_channel * n_ch:
-            raise RuntimeError(
+            rais555555e RuntimeError(
                 f'data_buffer too small ({data_buffer.size:d}) to hold all requested '
                 f'samples for all channels ({channel_count:d} * {samples_per_channel:d} = '
                 f'{samples_per_channel * channel_count:d})'
@@ -396,6 +399,7 @@ class SerialInStreamer(DataInStreamInterface):
         self._wait_get_available_samples(samples_per_channel)
         #time.sleep(5)
 
+
         n_samples = min(self.__available_samples, samples_per_channel) * n_ch
         idx_start = self.__idx_read_start * n_ch
         idx_end = idx_start + n_samples
@@ -403,14 +407,21 @@ class SerialInStreamer(DataInStreamInterface):
         idx_t_end = idx_t_start + n_samples
 
         # todo: broken for >1 channels
-        data_buffer[:n_samples] = self._sample_buffer[idx_start:idx_end]
-        timestamp_buffer[:n_samples//n_ch] = self._timestamp_buffer[idx_t_start:idx_t_end]
+        data_buffer[:] = np.roll(data_buffer, n_samples)
+        timestamp_buffer[:] = np.roll(timestamp_buffer, n_samples // n_ch)
+        data_buffer[:n_samples] = cp.copy(self._sample_buffer)[idx_start:idx_end]
+        timestamp_buffer[:n_samples//n_ch] = cp.copy(self._timestamp_buffer)[idx_t_start:idx_t_end]
 
         n_samples //= n_ch
-        self.__idx_read_start = idx_end // n_ch
+        # reset memory pointer to overwritten alread read data
+        self.__pos_sample_buffer = max(1,idx_start)
+        self.__idx_read_start = self.__pos_sample_buffer
         self.__available_samples -= n_samples
 
-        self.log.debug(f"Filled data idx={idx_start}/{idx_end} into buffer: {data_buffer}, t= {timestamp_buffer}")
+
+        self.log.debug(f"Filled data idx={idx_start}/{idx_end} into buffer:"
+                       f" {data_buffer}, t= {timestamp_buffer}."
+                       f" Write pos: {self.__pos_sample_buffer}")
 
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
@@ -428,6 +439,7 @@ class SerialInStreamer(DataInStreamInterface):
         This method will read all currently available samples into buffer. If number of available
         samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
+        raise NotImplementedError
         with self._thread_lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
@@ -464,6 +476,7 @@ class SerialInStreamer(DataInStreamInterface):
         If samples_per_channel is omitted all currently available samples are read from buffer.
         This method will not return until all requested samples have been read or a timeout occurs.
         """
+        raise NotImplementedError
         with self._thread_lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
@@ -497,6 +510,7 @@ class SerialInStreamer(DataInStreamInterface):
         @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
                                indicates error.
         """
+        raise NotImplementedError
         with self._thread_lock:
             if self.module_state() != 'locked':
                 raise RuntimeError('Unable to read data. Stream is not running.')
@@ -513,98 +527,3 @@ class SerialInStreamer(DataInStreamInterface):
             return data_buffer, timestamp_buffer
 
 
-
-
-"""
-class Eurotherm3216(minimalmodbus.Instrument):
-    def __init__(self, portname='COM5', slaveaddress=3):
-        super().__init__(portname, slaveaddress)
-        self.serial.baudrate = 9600
-
-        self.pv = list()
-        self.sp = list()
-
-        self.cache_pv = list()
-        self.cache_sp = list()
-        return
-
-    def get_pv(self):
-        try:
-            response = self.read_register(1, 1)
-        except:
-            response = 0.0
-            logging.exception('3216 get_pv()')
-        return response
-
-    def get_working_sp(self):
-        try:
-            response = self.read_register(5, 1)
-        except:
-            response = 0.0
-            logging.exception('3216 get_working_sp()')
-        return response
-
-    def measure_values(self):
-        self.pv.append(self.get_pv())
-        self.sp.append(self.get_working_sp())
-
-        self.cache_current_values(self.pv[-1], self.sp[-1])
-        return
-
-    def cache_current_values(self, pv, sp):
-        self.cache_pv.append(pv)
-        self.cache_sp.append(sp)
-        return
-
-    def reset_cache(self):
-        self.cache_pv.clear()
-        self.cache_sp.clear()
-        return
-
-    def print_data(self):
-        for e1, e2 in zip(self.pv, self.sp):
-            print(e1, e2)
-
-    def get_data(self):
-        return {'Johannes PV (°C)': np.array(self.pv),
-                'Johannes SP (°C)': np.array(self.sp)}
-
-    def get_cache_data(self):
-        return {'Johannes PV (°C)': np.array(self.cache_pv),
-                'Johannes SP (°C)': np.array(self.cache_sp)}
-"""
-
-"""
-def set_up_connection_dict(xgs_check=False, et_3504_check=False, et_3216_check=False,
-                           xgs_com_port='COM6', xgs_baudrate=9600, xgs_bytesize=8, xgs_stopbits=1,
-                           xgs_timeout_inveral=0.05, xgs_parity=serial.PARITY_NONE,
-                           et_3504_portname='COM4', et_3504_slaveaddress=1,
-                           et_3216_portname='COM5', et_3216_slaveaddress=3):
-    connection_dict = dict()
-
-    if xgs_check:
-        xgs = XGSSerialConnection(com_port=xgs_com_port, baudrate=xgs_baudrate, bytesize=xgs_bytesize,
-                                  stopbits=xgs_stopbits,
-                                  timeout=xgs_timeout_inveral, parity=xgs_parity)
-        connection_dict['xgs'] = xgs
-
-    if et_3504_check:
-        try:
-            et_tectra = Eurotherm3504(portname=et_3504_portname, slaveaddress=et_3504_slaveaddress)
-            connection_dict['et_3504_tectra'] = et_tectra
-        except:
-            print('Could not open connection to EuroTherm 3504.')
-
-    if et_3216_check:
-        try:
-            et_hb = Eurotherm3216(portname=et_3216_portname, slaveaddress=et_3216_slaveaddress)
-            connection_dict['et_3216_johannes'] = et_hb
-        except:
-            print('Could not open connection to EuroTherm 3216.')
-
-    if not connection_dict:
-        print('No connections created.')
-
-    return connection_dict
-
-"""
