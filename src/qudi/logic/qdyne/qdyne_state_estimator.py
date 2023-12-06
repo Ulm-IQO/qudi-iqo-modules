@@ -38,11 +38,15 @@ class StateEstimator(ABC):
     def estimate(self, data):
         pass
 
+@dataclass
+class StateEstimatorSettings(ABC):
+    name: str = ''
 
 @dataclass
-class TimeSeriesStateEstimatorSettings:
-    extractor_settings: dict
-    estimator_settings: dict
+class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
+    name: str = 'TimeSeries'
+#    extractor_settings: dict
+#    estimator_settings: dict
 
 
 class TimeSeriesStateEstimator(StateEstimator):
@@ -69,7 +73,8 @@ class TimeSeriesStateEstimator(StateEstimator):
 
 
 @dataclass
-class TimeTagStateEstimatorSettings:
+class TimeTagStateEstimatorSettings(StateEstimatorSettings):
+    name: str = 'TimeTag'
     count_mode: str = 'Average'
     count_length: int = 2000
     start_count: int = 0

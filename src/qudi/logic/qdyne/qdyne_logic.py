@@ -18,7 +18,7 @@ import numpy as np
 import time
 from collections import OrderedDict
 from PySide2 import QtCore
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 import datetime
 
 from qudi.core.module import LogicBase
@@ -30,10 +30,8 @@ from qudi.util.datafitting import FitConfigurationsModel, FitContainer
 
 from qudi.logic.qdyne.qdyne_measurement import (
     QdyneMeasurement, QdyneMeasurementSettings)
-from qudi.logic.qdyne.qdyne_state_estimator import (
-    StateEstimatorMain, TimeTagStateEstimatorSettings, TimeSeriesStateEstimatorSettings)
-from qudi.logic.qdyne.qdyne_time_trace_analyzer import (
-    TimeTraceAnalyzerMain, FourierAnalyzerSettings)
+from qudi.logic.qdyne.qdyne_state_estimator import *
+from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
 from qudi.logic.qdyne.qdyne_save import (
     QdyneSaveSettings, QdyneSave)
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
@@ -75,6 +73,13 @@ class QdyneLogic(LogicBase):
     analyzer_method = StatusVar()
 #    estimator_method = StatusVar(default='TimeTag')
 #    analyzer_method = StatusVar(default='Fourier')
+    _estimator_stg_dict = StatusVar(default=dict())
+    _analyzer_stg_dict = StatusVar(default=dict())
+    _current_estimator_method = StatusVar(default='TimeTag')
+    _current_estimator_stg = StatusVar(default='TimeTag')
+    _current_analyzer_method = StatusVar(default='Fourier')
+    _current_analyzer_stg = StatusVar(default='Fourier')
+
     _fit_configs = StatusVar(name='fit_configs', default=None)
     _estimator_method = 'TimeTag'
     _analysis_method = 'Fourier'
@@ -124,15 +129,25 @@ class QdyneLogic(LogicBase):
             self.save = QdyneSave(self.module_default_data_dir, self.data_storage_class)
 #            self.fitting = QdyneFittingMain()
 
-        def set_default_values():
-            self.estimator_method = self._estimator_method
-            self.analysis_method = self._analysis_method
+        def initialize_settings():
+            if any(self._estimator_stg_dict):
+                self.settings.estimator_stg_dict = self.settings.load_settings(self._estimator_stg_dict)
+            else:
+                self.settings.estimator_stg_dict = self.settings.create_default_settings_dict(StateEstimatorSettings)
 
-        def restore_settings():
-            pass
+            if any(self._analyzer_stg_dict):
+                self.settings.analyzer_stg_dict = self.settings.load_settings(self._analyzer_stg_dict)
+            else:
+                self.settings.analyzer_stg_dict = self.settings.create_default_settings_dict(AnalyzerSettings)
+
+            self.settings.current_analyzer_method = self._current_analyzer_method
+            self.settings.current_estimator_method = self._current_estimator_method
+            self.settings.current_analyzer_stg = self._current_analyzer_stg
+            self.settings.current_estimator_stg = self._current_estimator_stg
+
 
         activate_classes()
-        set_default_values()
+        initialize_settings()
 
         # Fitting
         self.fit_config_model = FitConfigurationsModel(parent=self)
@@ -165,7 +180,12 @@ class QdyneLogic(LogicBase):
         self.analyzer.method = self._analysis_method
 
     def on_deactivate(self):
+        self._save_status_variables()
         return
+
+    def _save_status_variables(self):
+        self._estimator_stg_dict = self.settings.convert_settings(self.settings.estimator_stg_dict)
+        self._analyzer_stg_dict = self.settings.convert_settings(self.settings.analyzer_stg_dict)
 
     def configure(self):
         self.estimator.configure_method(self.estimator_method)
@@ -277,6 +297,23 @@ class QdyneLogic(LogicBase):
             self._fit_result = result
         return config, result
 
+def get_subclasses(class_obj):
+    '''
+    Given a class, find its subclasses and get their names.
+    '''
+
+    subclasses = []
+    for name, obj in inspect.getmembers(sys.modules[__name__]):
+        if inspect.isclass(obj) and issubclass(obj, class_obj) and obj != class_obj:
+            subclasses.append(obj)
+
+    return subclasses
+
+def get_method_names(subclass_obj, class_obj):
+    subclass_names = [cls.__name__ for cls in subclass_obj]
+    method_names = [subclass_name.replace(class_obj.__name__, '') for subclass_name in subclass_names]
+    return method_names
+
 class QdyneSettings:
 
     def __init__(self):
@@ -287,35 +324,56 @@ class QdyneSettings:
         self.time_trace_analysis_stg = None
         self.save_stg = None
 
+        self.estimator_stg_dict = dict()
+        self.current_estimator_method = ''
+        self.current_estimator_stg = ''
+
+        self.analyzer_stg_dict = dict()
+        self.current_analyzer_method = ''
+        self.current_analyzer_stg = ''
+
     def on_activate(self):
         self.measurement_stg = None
         self.state_estimator_stg = self.get_state_estimator_stg(self.state_estimator_method)
         self.time_trace_analysis_stg = self.get_time_trace_analysis_stg(self.time_trace_analysis_method)
         self.save_stg = QdyneSaveSettings()
 
-    def get_measurement_stg(self):
-        pass
+    def create_default_settings_dict(self, abstract_class_obj):
+        default_settings_dict = dict()
+        setting_classes = get_subclasses(abstract_class_obj)
+        for setting in setting_classes:
+            default_settings_dict[setting.name] = setting()
+        return default_settings_dict
+
+    def load_settings(self, dict_dict):
+        dataclass_dict = dict()
+        for key in dict_dict.keys():
+            stg_dict = dict_dict[key]
+            class_name = stg_dict['__class__']
+            stg_dict.pop('__class__', None)
+            stg_dataclass = globals()[class_name](**stg_dict)
+            dataclass_dict[key] = stg_dataclass
+        return dataclass_dict
+
+    def convert_settings(self, dataclass_dict):
+        dict_dict = dict()
+        for key in dataclass_dict.keys():
+            stg_dataclass = dataclass_dict[key]
+            stg_dict = asdict(dataclass)
+            stg_dict['class_name'] = stg_dataclass.__class__.__name__
+            dict_dict[key] = stg_dict
+        return dict_dict
+    def add_setting(self, stg_dict, setting):
+        stg_dict[setting.name] = setting
+
+    def remove_setting(self, stg_dict, setting_name):
+        stg_dict.pop(setting_name)
+
 
     @property
-    def state_estimator_method(self):
-        return self._state_estimator_method
-
-    @state_estimator_method.setter
-    def state_estimator_method(self, state_estimator_method):
-        self._state_estimator_method = state_estimator_method
-        self._get_state_estimator_stg()
-
-    def _get_state_estimator_stg(self):
-        self.state_estimator_stg = globals()[self.state_estimator_method + 'StateEstimatorSettings']()
+    def estimator_setting(self):
+        return self.estimator_stg_dict[self.current_estimator_stg]
 
     @property
-    def time_trace_analysis_method(self):
-        return self._time_trace_analysis_method
-
-    @time_trace_analysis_method.setter
-    def time_trace_analysis_method(self, time_trace_analysis_method):
-        self._time_trace_analysis_method = time_trace_analysis_method
-        self._get_time_trace_analysis_stg()
-
-    def _get_time_trace_analysis_stg(self):
-        self.time_trace_analysis_stg = globals()[self.time_trace_analysis_method + 'AnalyzerSettings']()
+    def analyzer_setting(self):
+        return self.analyzer_stg_dict[self.current_analyzer_stg]

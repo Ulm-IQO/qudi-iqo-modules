@@ -35,21 +35,18 @@ class Analyzer(ABC):
     def get_spectrum(self, signal):
         pass
 
+@dataclass
+class AnalyzerSettings(ABC):
+    name: str = ''
 
 @dataclass
-class FourierAnalyzerSettings:
+class FourierAnalyzerSettings(AnalyzerSettings):
+    name: str = 'Fourier'
     range_around_peak: int = 30
     padding_parameter: int = 1
     cut_time_trace: bool = False
     spectrum_type: str = 'amp'
     sequence_length_s: float = 0
-
-    def ceil_log(self, sample_size, base=2):
-        return int(np.ceil(np.log(sample_size, base)))
-
-    def next_pow_2(self, sample_size):
-        return int(2**self.ceil_log(sample_size))
-
 
 class FourierAnalyzer(Analyzer):
 
