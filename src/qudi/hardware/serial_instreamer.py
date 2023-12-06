@@ -95,6 +95,13 @@ class SerialInStreamer(DataInStreamInterface):
         )
         self._active_channels = list(self._constraints.channel_units)
 
+        self._serial = SerialModbus(port=1, slaveaddress=3)
+        self.log.debug(f"Cfg for serial dev: {self._serial._connection_cfg}")
+        try:
+            self._serial.connect()
+        except:
+            raise
+
         self._channel_map = {'pv': 1025,
                              'sp': 1029}
         self._channel_map = {'pv': 1025}
@@ -208,7 +215,6 @@ class SerialInStreamer(DataInStreamInterface):
             # Init buffer
             self.__pos_sample_buffer = 0
             self.__idx_read_start = 0
-            self.__idx_write_start = 0
             self.__available_samples = 0
             self._sample_buffer = np.ones(self._buffer_size * self.channel_count, dtype=self.data_type)*np.nan
             self._timestamp_buffer = np.zeros(self._buffer_size, dtype=np.float64)
@@ -255,7 +261,6 @@ class SerialInStreamer(DataInStreamInterface):
         idx_start = self.__pos_sample_buffer
         idx_end = self.__pos_sample_buffer + channel_count
 
-        self.log.debug(f"Pulling datab Buffer pos: {self.__pos_sample_buffer}/{len(self._sample_buffer)}")
         if idx_end > len(self._sample_buffer) -1 :
             raise OverflowError("Full buffer! Increase data buffer or reduce sampling rate")
 
@@ -311,7 +316,6 @@ class SerialInStreamer(DataInStreamInterface):
 
     def _set_channel_buffer_size(self, samples: int) -> None:
         self._constraints.channel_buffer_size.check(samples)
-        self.log.debug(f"Setting buffer size: {self._buffer_size}->{samples}")
         self._buffer_size = samples
 
     def _set_sample_rate(self, rate: Union[int, float]) -> None:
@@ -384,7 +388,7 @@ class SerialInStreamer(DataInStreamInterface):
 
         n_ch = self.channel_count
         if data_buffer.size < samples_per_channel * n_ch:
-            rais555555e RuntimeError(
+            raise RuntimeError(
                 f'data_buffer too small ({data_buffer.size:d}) to hold all requested '
                 f'samples for all channels ({channel_count:d} * {samples_per_channel:d} = '
                 f'{samples_per_channel * channel_count:d})'
@@ -398,7 +402,6 @@ class SerialInStreamer(DataInStreamInterface):
         self.log.debug(f"Trying to read {samples_per_channel} samples")
         self._wait_get_available_samples(samples_per_channel)
         #time.sleep(5)
-
 
         n_samples = min(self.__available_samples, samples_per_channel) * n_ch
         idx_start = self.__idx_read_start * n_ch
@@ -527,3 +530,88 @@ class SerialInStreamer(DataInStreamInterface):
             return data_buffer, timestamp_buffer
 
 
+
+from abc import abstractmethod
+import serial
+import minimalmodbus
+
+class SerialDev1N():
+    def __init__(self, port='COM1', baudrate=9600,
+                 timeout=1, **kwargs):
+
+        self._connection_cfg = {
+            'port': port,
+            'baudrate': baudrate,
+            'timeout': timeout,
+            'bytesize': kwargs.get('bytesize', None),
+            'stopbits': kwargs.get('stopbits', None),
+            'parity': kwargs.get('parity', None),
+            'slaveaddress': kwargs.get('slaveaddress', None)
+        }
+
+        self._ch_map = None
+        self._dev = None
+
+    @abstractmethod
+    def connect(self):
+        pass
+
+    @abstractmethod
+    def get_single_sample(self):
+        pass
+
+    @abstractmethod
+    def close(self):
+        pass
+
+
+
+class SerialXGS(SerialDev1N):
+    def connect(self):
+        self._dev = serial.Serial()
+        self._dev.port = self._connection_cfg['port']
+        self._dev.baudrate = self._connection_cfg['baudrate']
+        self._dev.bytesize = self._connection_cfg['bytesize']
+        self._dev.stopbits = self._connection_cfg['stopbits']
+        self._dev.timeout = self._connection_cfg['timeout']
+        self._dev.parity = self._connection_cfg['parity']
+
+        self._dev.open()
+
+        self._ch_map = {'1': 1,
+                        '2': 2,
+                        '3': 3}
+
+    def get_single_sample(self):
+        try:
+            self._dev.write('#000F\r\n'.encode())
+            response = self._dev.readline().decode()
+            splitted_values = response.replace('>', '').split(',')
+        except:
+            splitted_values = ['nan', 'nan', 'nan']
+            raise
+
+        splitted_values = [float(val) for val in splitted_values]
+
+        return {ch: splitted_values[idx] for idx, ch in list(self._ch_map.keys())}
+
+    def close(self):
+        self._dev.close()
+
+
+class SerialModbus(SerialDev1N):
+    def connect(self):
+        self._dev = minimalmodbus.Instrument(self._connection_cfg['port'],
+                                             self._connection_cfg['slaveaddress'])
+        self._ch_map = {'pv_l1': 1,
+                        'sp_l1': 5,
+                        'pv_l2': 1025,
+                        'sp_l2': 1029}
+
+    def close(self):
+        self._dev.close()
+
+    def get_single_sample(self):
+        sample = {ch: self._dev.read_register(reg) for ch, reg in self._ch_map.items()}
+
+        return sample
