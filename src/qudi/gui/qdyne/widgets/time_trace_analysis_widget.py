@@ -19,6 +19,8 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+import copy
+import time
 import os
 import pyqtgraph as pg
 import numpy as np
@@ -56,7 +58,8 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
 
     def _activate_widgets(self):
         self.tta_method_comboBox.addItems(self.analyzer.method_lists)
-        self.tta_settings_widget = DataclassWidget(self.settings.analyzer_setting)
+        self.tta_setting_comboBox.addItems(self.settings.current_setting_list)
+        self.tta_settings_widget = DataclassWidget(self.settings.current_setting)
         self.tta_settings_gridLayout.addWidget(self.tta_settings_widget)
 
         # Configure the main signal display:
@@ -103,7 +106,10 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
 
     def connect_signals(self):
         # connect control signals to logic
-        self.tta_method_comboBox.editTextChanged.connect(self.update_current_analyzer_setting)
+        self.tta_method_comboBox.currentTextChanged.connect(self.update_current_method)
+        self.tta_setting_comboBox.currentTextChanged.connect(self.update_current_setting)
+        self.tta_setting_add_pushButton.clicked.connect(self.add_setting)
+        self.tta_setting_delete_pushButton.clicked.connect(self.delete_setting)
         self.sigTTFileNameChanged.connect(
             self._gui.logic().set_tt_filename, QtCore.Qt.QueuedConnection)
         self.sigLoadTT.connect(self._gui.logic().load_tt_from_file, QtCore.Qt.QueuedConnection)
@@ -124,6 +130,10 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
         self.tta_loadfile_PushButton.clicked.connect(self.load_time_trace)
 
     def disconnect_signals(self):
+        self.tta_method_comboBox.currentTextChanged.disconnect()
+        self.tta_setting_comboBox.currentTextChanged.disconnect()
+        self.tta_setting_add_pushButton.clicked.disconnect()
+        self.tta_setting_delete_pushButton.clicked.disconnect()
         self.sigTTFileNameChanged.disconnect()
         self.sigLoadTT.disconnect()
         self.plot1_fitwidget.sigDoFit.disconnect()
@@ -136,9 +146,24 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
         self.tta_browsefile_PushButton.clicked.disconnect()
         self.tta_loadfile_PushButton.clicked.disconnect()
 
-    @QtCore.Slot(str)
-    def update_current_analyzer_setting(self, setting):
-        self.settings.current_analyzer_stg = setting
+    def update_current_method(self):
+        self.settings.current_method = self.tta_method_comboBox.currentText()
+
+    def update_current_setting(self):
+        self.settings.current_stg_name = self.tta_setting_comboBox.currentText()
+        current_setting = copy.deepcopy(self.settings.current_setting)
+        self.tta_settings_widget.update_data(current_setting)
+
+    def add_setting(self):
+        self.settings.add_setting()
+        self.tta_setting_comboBox.addItem(self.settings.current_stg_name)
+        self.tta_setting_comboBox.setCurrentText(self.settings.current_stg_name)
+
+    def delete_setting(self):
+        self.settings.current_stg_name = self.tta_setting_comboBox.currentText()
+        current_index = self.tta_setting_comboBox.currentIndex()
+        self.settings.remove_setting()
+        self.tta_setting_comboBox.removeItem(current_index)
 
     @QtCore.Slot()
     def tt_filename_changed(self):

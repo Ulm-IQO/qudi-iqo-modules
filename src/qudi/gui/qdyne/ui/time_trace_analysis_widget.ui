@@ -13,7 +13,7 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
-  <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,0,1,1">
+  <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,0,1,1,0">
    <item>
     <widget class="QGroupBox" name="tta_loadtt_gridGroupBox">
      <layout class="QGridLayout" name="gridLayout_0">
@@ -66,8 +66,12 @@
      <layout class="QGridLayout" name="gridLayout_10">
       <item row="0" column="0">
        <layout class="QGridLayout" name="tta_method_gridLayout">
-        <item row="0" column="1">
-         <widget class="QComboBox" name="tta_method_comboBox"/>
+        <item row="0" column="4">
+         <widget class="QPushButton" name="tta_setting_add_pushButton">
+          <property name="text">
+           <string>add</string>
+          </property>
+         </widget>
         </item>
         <item row="0" column="0">
          <widget class="QLabel" name="tta_method_label">
@@ -77,6 +81,13 @@
          </widget>
         </item>
         <item row="0" column="2">
+         <widget class="QLabel" name="tta_setting_label">
+          <property name="text">
+           <string>setting</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="6">
          <spacer name="tta_method_horizontalSpacer">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
@@ -88,6 +99,19 @@
            </size>
           </property>
          </spacer>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="tta_method_comboBox"/>
+        </item>
+        <item row="0" column="3">
+         <widget class="QComboBox" name="tta_setting_comboBox"/>
+        </item>
+        <item row="0" column="5">
+         <widget class="QPushButton" name="tta_setting_delete_pushButton">
+          <property name="text">
+           <string>delete</string>
+          </property>
+         </widget>
         </item>
        </layout>
       </item>

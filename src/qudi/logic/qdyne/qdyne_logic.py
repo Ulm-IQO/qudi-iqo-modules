@@ -14,6 +14,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+import copy
 import numpy as np
 import time
 from collections import OrderedDict
@@ -76,9 +77,9 @@ class QdyneLogic(LogicBase):
     _estimator_stg_dict = StatusVar(default=dict())
     _analyzer_stg_dict = StatusVar(default=dict())
     _current_estimator_method = StatusVar(default='TimeTag')
-    _current_estimator_stg_name = StatusVar(default='TimeTag')
+    _current_estimator_stg_name = StatusVar(default='default')
     _current_analyzer_method = StatusVar(default='Fourier')
-    _current_analyzer_stg_name = StatusVar(default='Fourier')
+    _current_analyzer_stg_name = StatusVar(default='default')
 
     _fit_configs = StatusVar(name='fit_configs', default=None)
     _estimator_method = 'TimeTag'
@@ -130,21 +131,13 @@ class QdyneLogic(LogicBase):
 #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
-            if any(self._estimator_stg_dict):
-                self.settings.estimator_stg_dict = self.settings.load_settings(self._estimator_stg_dict)
-            else:
-                self.settings.estimator_stg_dict = self.settings.create_default_settings_dict(StateEstimatorSettings)
+            self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
+            self.settings.estimator_stg.current_stg_name = self._current_estimator_stg_name
+            self.settings.estimator_stg.current_method = self._current_estimator_method
 
-            if any(self._analyzer_stg_dict):
-                self.settings.analyzer_stg_dict = self.settings.load_settings(self._analyzer_stg_dict)
-            else:
-                self.settings.analyzer_stg_dict = self.settings.create_default_settings_dict(AnalyzerSettings)
-
-            self.settings.current_analyzer_method = self._current_analyzer_method
-            self.settings.current_estimator_method = self._current_estimator_method
-            self.settings.current_analyzer_stg_name = self._current_analyzer_stg_name
-            self.settings.current_estimator_stg_name = self._current_estimator_stg_name
-
+            self.settings.analyzer_stg.initialize_settings(self._analyzer_stg_dict)
+            self.settings.analyzer_stg.current_stg_name = self._current_analyzer_stg_name
+            self.settings.analyzer_stg.current_method = self._current_analyzer_method
 
         activate_classes()
         initialize_settings()
@@ -159,44 +152,20 @@ class QdyneLogic(LogicBase):
 
         return
 
-    @property
-    def estimator_method(self):
-        return self._estimator_method
-
-    @estimator_method.setter
-    def estimator_method(self, estimator_method):
-        self._estimator_method = estimator_method
-        self.settings.state_estimator_method = self._estimator_method
-        self.estimator.method = self._estimator_method
-
-    @property
-    def analysis_method(self):
-        return self._analysis_method
-
-    @analysis_method.setter
-    def analysis_method(self, analysis_method):
-        self._analysis_method = analysis_method
-        self.settings.time_trace_analysis_method = self._analysis_method
-        self.analyzer.method = self._analysis_method
-
     def on_deactivate(self):
         self._save_status_variables()
         return
 
     def _save_status_variables(self):
-        self._estimator_stg_dict = self.settings.convert_settings(self.settings.estimator_stg_dict)
-        self._analyzer_stg_dict = self.settings.convert_settings(self.settings.analyzer_stg_dict)
-
-    def configure(self):
-        self.estimator.configure_method(self.estimator_method)
-        self.analyzer.configure_method(self.analysis_method)
         pass
+#        self._estimator_stg_dict = self.settings.convert_settings(self.settings.estimator_stg_dict)
+#        self._analyzer_stg_dict = self.settings.convert_settings(self.settings.analyzer_stg_dict)
 
     def input_estimator_settings(self):
-        self.estimator.input_settings(self.settings.state_estimator_stg)
+        self.estimator.input_settings(self.settings.estimator_stg.current_setting)
 
     def input_analyzer_settings(self):
-        self.analyzer.input_settings(self.settings.time_trace_analysis_stg)
+        self.analyzer.input_settings(self.settings.analyzer_stg.current_setting)
 
     def start_measurement(self, fname=None):
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
@@ -314,36 +283,39 @@ def get_method_names(subclass_obj, class_obj):
     method_names = [subclass_name.replace(class_obj.__name__, '') for subclass_name in subclass_names]
     return method_names
 
+def get_method_name(subclass_obj, class_obj):
+    subclass_name = subclass_obj.__name__
+    method_name = subclass_name.replace(class_obj.__name__, '')
+    return method_name
+
 class QdyneSettings:
 
     def __init__(self):
-        self._state_estimator_method = ''
-        self._time_trace_analysis_method = ''
-        self.measurement_stg = None
-        self.state_estimator_stg = None
-        self.time_trace_analysis_stg = None
-        self.save_stg = None
-
-        self.estimator_stg_dict = dict()
-        self.current_estimator_method = ''
-        self.current_estimator_stg_name = ''
-
-        self.analyzer_stg_dict = dict()
-        self.current_analyzer_method = ''
-        self.current_analyzer_stg_name = ''
-
-    def on_activate(self):
-        self.measurement_stg = None
-        self.state_estimator_stg = self.get_state_estimator_stg(self.state_estimator_method)
-        self.time_trace_analysis_stg = self.get_time_trace_analysis_stg(self.time_trace_analysis_method)
+        self.estimator_stg = SettingsManager(StateEstimatorSettings)
+        self.analyzer_stg = SettingsManager(AnalyzerSettings)
         self.save_stg = QdyneSaveSettings()
 
-    def create_default_settings_dict(self, abstract_class_obj):
+class SettingsManager:
+    def __init__(self, abstract_class_obj=None):
+        self.abstract_class_obj = abstract_class_obj
+        self.settings_dict = dict() # [setting_class][setting_name]
+        self.current_method = ''
+        self.current_stg_name = ''
+
+    def create_default_settings_dict(self):
         default_settings_dict = dict()
-        setting_classes = get_subclasses(abstract_class_obj)
+        setting_classes = get_subclasses(self.abstract_class_obj)
         for setting in setting_classes:
-            default_settings_dict[setting.name] = setting()
+            method_name = get_method_name(setting, self.abstract_class_obj)
+            setting.name = 'default'
+            default_settings_dict[method_name] = {setting.name: setting()}
         return default_settings_dict
+
+    def initialize_settings(self, settings_dict):
+        if any(settings_dict):
+            self.settings_dict = self.load_settings(settings_dict)
+        else:
+            self.settings_dict = self.create_default_settings_dict()
 
     def load_settings(self, dict_dict):
         dataclass_dict = dict()
@@ -363,17 +335,23 @@ class QdyneSettings:
             stg_dict['class_name'] = stg_dataclass.__class__.__name__
             dict_dict[key] = stg_dict
         return dict_dict
-    def add_setting(self, stg_dict, setting):
-        stg_dict[setting.name] = setting
 
-    def remove_setting(self, stg_dict, setting_name):
-        stg_dict.pop(setting_name)
+    @QtCore.Slot()
+    def add_setting(self):
 
+        new_setting = copy.deepcopy(self.current_setting)
+        new_setting.name = new_setting.name +'_new'
+        self.current_stg_name = new_setting.name
+        self.settings_dict[self.current_method].update({self.current_stg_name: new_setting})
+#        self.settings_dict[self.current_method][self.current_setting.name] = new_setting
+
+    def remove_setting(self):
+        self.settings_dict[self.current_method].pop(self.current_stg_name)
 
     @property
-    def estimator_setting(self):
-        return self.estimator_stg_dict[self.current_estimator_stg_name]
+    def current_setting(self):
+        return self.settings_dict[self.current_method][self.current_stg_name]
 
     @property
-    def analyzer_setting(self):
-        return self.analyzer_stg_dict[self.current_analyzer_stg_name]
+    def current_setting_list(self):
+        return self.settings_dict[self.current_method].keys()

@@ -63,8 +63,8 @@ class QdyneMainGui(GuiBase):
         self._gw.activate()
         self._gsw.activate()
 #        self._pmw.activate()
-        self._sew.activate(self.logic().estimator, self.logic().settings)
-        self._ttaw.activate(self.logic().analyzer, self.logic().settings)
+        self._sew.activate(self.logic().estimator, self.logic().settings.estimator_stg)
+        self._ttaw.activate(self.logic().analyzer, self.logic().settings.analyzer_stg)
 
     def _connect(self):
         self._mainw.connect_signals()
