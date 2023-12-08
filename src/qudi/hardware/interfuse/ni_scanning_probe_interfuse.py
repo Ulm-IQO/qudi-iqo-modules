@@ -46,7 +46,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     Example config for copy-paste:
 
     ni_scanning_probe:
-        module.Class: 'interfuse.ni_scanning_probe_interfuse.NiScanningProbeInterfuse'
+        module.Class: 'interfuse.ni_scanning_probe_interfuse.NiScanningProbeInterfuseBare'
         connect:
             scan_hardware: 'ni_finite_sampling_io'
             analog_output: 'ni_ao'
@@ -123,7 +123,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self._thread_lock_data = Mutex()
 
         # handle to the uncorrected scanner instance, not wrapped by a potential CoordinateTransformMixin
-        self.bare_scanner = NiScanningProbeInterfuse
+        self.bare_scanner = NiScanningProbeInterfuseBare
 
     def on_activate(self):
 
