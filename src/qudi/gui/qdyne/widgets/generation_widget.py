@@ -264,6 +264,9 @@ class GenerationWidget(QtWidgets.QWidget):
                         input_obj.setValue(param)
                     elif type(param) is int:
                         input_obj = ScienSpinBox(groupBox)
+                        if param_name == 'num_of_points':
+                            input_obj.setEnabled(False)
+                            param = 1
                         input_obj.setValue(param)
                     elif type(param) is str:
                         input_obj = QtWidgets.QLineEdit(groupBox)
