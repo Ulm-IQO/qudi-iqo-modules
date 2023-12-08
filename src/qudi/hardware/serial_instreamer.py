@@ -1,17 +1,13 @@
 import numpy as np
-import matplotlib.pyplot as plt
 import time
-import datetime
-import os
 from qtpy import QtCore
 import copy as cp
+from abc import abstractmethod
+import serial
+import minimalmodbus
 
-#import serial
-#import minimalmodbus
 from typing import List, Iterable, Union, Optional, Tuple, Callable, Sequence
 
-
-import logging
 
 from qudi.core.configoption import ConfigOption
 from qudi.util.constraints import ScalarConstraint
@@ -20,9 +16,10 @@ from qudi.interface.data_instream_interface import DataInStreamInterface, DataIn
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.util.mutex import Mutex
 
+
 class SerialInStreamer(DataInStreamInterface):
     """
-    A dummy module to act as data in-streaming device (continuously read values)
+    A module that streams in data from a serial device.
 
     Example config for copy-paste:
 
@@ -93,18 +90,24 @@ class SerialInStreamer(DataInStreamInterface):
         )
         self._active_channels = list(self._constraints.channel_units)
 
-        #self._serial = SerialModbus(port=1, slaveaddress=3)
+
         self._serial = SerialDummy()
 
         connection_cfg = {
             'port': 'COM6',  # COM port of XGS-600 connection as string (can be checked in device manager)
-            'baudrate' : 9600,  # leave this at 9600 as specified in manual
+            'baudrate': 9600,  # leave this at 9600 as specified in manual
             'bytesize':  8,  # leave this at 8 as specified in manual
-            'stopbits' : 1,  # leave this at 1 as specified in manual
-            'timeout' : 0.05,  # timeout interval of XGS-600 in s, must be smaller than sampling time of data
+            'stopbits': 1,  # leave this at 1 as specified in manual
+            'timeout': 0.05,  # timeout interval of XGS-600 in s, must be smaller than sampling time of data
         }
 
-        self._serial = SerialXGS(**connection_cfg)
+        #self._serial = SerialXGS(**connection_cfg)
+
+        connection_cfg = {
+            'port': 'COM4',
+            'slaveaddress': 1,
+        }
+        self._serial = SerialModbus(**connection_cfg)
         self.log.debug(f"Cfg for serial dev: {self._serial._connection_cfg}")
 
         # todo: connect on start_stream only
@@ -225,6 +228,7 @@ class SerialInStreamer(DataInStreamInterface):
             self.__pos_sample_buffer = 0
             self.__idx_read_start = 0
             self.__available_samples = 0
+            self.__i_poll = 0
             self._sample_buffer = np.ones(self._buffer_size * self.channel_count, dtype=self.data_type)*np.nan
             self._timestamp_buffer = np.zeros(self._buffer_size, dtype=np.float64)
 
@@ -239,17 +243,23 @@ class SerialInStreamer(DataInStreamInterface):
 
     def _get_sample(self):
 
-        #_sample_per_ch = {key: np.nan for key in self._channel_map.keys()}
-        #for ch_name, ch_reg in self._channel_map.items():
-        #    _sample_per_ch[ch_name] = self._serial.get_single_sample()
-        sample_dict = {}
+        output_dict = {}
+        chs = self._channel_names
         try:
             sample_dict = self._serial.get_single_sample()
-            sample_dict = {ch: val for ch, val in sample_dict.items() if ch in self.active_channels}
+            # translate from physical channel names of serial device into configured names from streamer
+            for idx, val in enumerate(sample_dict.values()):
+                if idx >= len(chs):
+                    continue
+                channel_name = chs[idx]
+
+                if channel_name in self.active_channels:
+                    output_dict[channel_name] = val
+
         except:
             self.log.exception(f"Couldn't obtain sample from hw: ")
 
-        return sample_dict
+        return output_dict
 
 
     def _pull_data_loop(self):
@@ -258,15 +268,15 @@ class SerialInStreamer(DataInStreamInterface):
             if self.__stop_stream:
                 return
 
-            if self.__pos_sample_buffer == 0:
+            if self.__i_poll == 0:
                 self._t_start = time.perf_counter()
 
-            channel_count = self.channel_count
+            n_ch = self.channel_count
 
             idx_start = self.__pos_sample_buffer
-            idx_end = self.__pos_sample_buffer + channel_count
+            idx_end = self.__pos_sample_buffer + n_ch
 
-            if idx_end > len(self._sample_buffer) -1 :
+            if idx_end > len(self._sample_buffer) -1:
                 raise OverflowError("Full buffer! Increase data buffer or reduce sampling rate")
 
             sample_dict = self._get_sample()
@@ -277,10 +287,10 @@ class SerialInStreamer(DataInStreamInterface):
             self._sample_buffer[idx_start:idx_end] = np.asarray(list(sample_dict.values()), dtype=self.data_type)
             self._timestamp_buffer[idx_start:idx_start+1] = dt_now
 
-
             # Update pointers
-            self.__pos_sample_buffer += 1 #channel_count
+            self.__pos_sample_buffer = idx_end
             self.__available_samples += 1
+            self.__i_poll += 1
 
             #self.log.debug(f"Polled samples: {sample_dict} at t= {t_now}. Buffer pos: {self.__pos_sample_buffer}")
             self.__poll_timer.start()
@@ -353,6 +363,8 @@ class SerialInStreamer(DataInStreamInterface):
                 self.module_state.unlock()
 
     def _wait_get_available_samples(self, samples):
+        # todo: add timeout
+
         available = self.available_samples
         if available < samples:
             self.log.debug(f"Waiting for samples: {available}/{samples}")
@@ -424,20 +436,20 @@ class SerialInStreamer(DataInStreamInterface):
 
             # todo: broken for >1 channels
             data_buffer[:] = np.roll(data_buffer, n_samples)
-            timestamp_buffer[:] = np.roll(timestamp_buffer, n_samples // n_ch)
+            timestamp_buffer[:] = np.roll(timestamp_buffer, n_samples//n_ch)
             data_buffer[:n_samples] = cp.copy(self._sample_buffer)[idx_start:idx_end]
             timestamp_buffer[:n_samples//n_ch] = cp.copy(self._timestamp_buffer)[idx_t_start:idx_t_end]
 
             n_samples //= n_ch
             # reset memory pointer to overwritten alread read data
-            self.__pos_sample_buffer = max(1, idx_start // n_ch)   # todo: something goes fwong for n_ch>1
+            self.__pos_sample_buffer = idx_start // n_ch   # todo: something goes fwong for n_ch>1
             self.__idx_read_start = self.__pos_sample_buffer
             self.__available_samples -= n_samples
             self.log.debug(f"New pos_sample pointers: {self.__pos_sample_buffer}")
 
 
             self.log.debug(f"Filled data idx={idx_start}/{idx_end} into buffer:"
-                           f" {data_buffer}, t= {timestamp_buffer}."
+                           f" {data_buffer[1:8]}, t= {timestamp_buffer[1:8]}."
                            f" Write pos: {self.__pos_sample_buffer}")
 
     def read_available_data_into_buffer(self,
@@ -468,13 +480,12 @@ class SerialInStreamer(DataInStreamInterface):
                         'SampleTiming.TIMESTAMP mode requires a timestamp buffer array'
                     )
 
-
                 timestamp_buffer = timestamp_buffer[:available_samples]
-            channel_count = len(self.active_channels)
-            data_buffer = data_buffer[:channel_count * available_samples]
-            return self._sample_generator.read_samples(sample_buffer=data_buffer,
-                                                       samples_per_channel=available_samples,
-                                                       timestamp_buffer=timestamp_buffer)
+                channel_count = len(self.active_channels)
+                data_buffer = data_buffer[:channel_count * available_samples]
+                return self._sample_generator.read_samples(sample_buffer=data_buffer,
+                                                           samples_per_channel=available_samples,
+                                                           timestamp_buffer=timestamp_buffer)
 
     def read_data(self,
                   samples_per_channel: Optional[int] = None
@@ -545,10 +556,6 @@ class SerialInStreamer(DataInStreamInterface):
 
 
 
-from abc import abstractmethod
-import serial
-import minimalmodbus
-
 class SerialDev1N():
     def __init__(self, port='COM1', baudrate=9600,
                  timeout=1, **kwargs):
@@ -582,8 +589,8 @@ class SerialDev1N():
 class SerialDummy(SerialDev1N):
     def connect(self):
         self._ch_map = {'ch1': 1,
-                  #'ch2': 2}
-                        }
+                        'ch2': 2}
+                        #}
 
     def get_single_sample(self):
         try:
@@ -655,9 +662,9 @@ class SerialModbus(SerialDev1N):
                         'sp_l2': 1029}
 
     def close(self):
-        self._dev.close()
+        self._dev.serial.close()
 
     def get_single_sample(self):
-        sample = {ch: self._dev.read_register(reg) for ch, reg in self._ch_map.items()}
+        sample = {ch: self._dev.read_register(reg, 1) for ch, reg in self._ch_map.items()}
 
         return sample
