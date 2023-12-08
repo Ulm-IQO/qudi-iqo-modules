@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>799</width>
+    <width>1263</width>
     <height>686</height>
    </rect>
   </property>
@@ -56,7 +56,7 @@
    <item row="0" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_14">
      <property name="title">
-      <string>Parameters for Pulse Extraction</string>
+      <string>Parameters for state estimation</string>
      </property>
      <layout class="QGridLayout" name="gridLayout_34">
       <item row="0" column="1">
@@ -77,7 +77,7 @@
         <item row="0" column="0">
          <widget class="QLabel" name="se_method_label">
           <property name="text">
-           <string>Extraction method:</string>
+           <string>Estimation method:</string>
           </property>
           <property name="alignment">
            <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -94,7 +94,7 @@
         <item row="0" column="2">
          <widget class="QLabel" name="se_setting_label">
           <property name="text">
-           <string>Extracion setting</string>
+           <string>setting</string>
           </property>
          </widget>
         </item>

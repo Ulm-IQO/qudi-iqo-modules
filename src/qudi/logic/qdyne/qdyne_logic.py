@@ -70,8 +70,6 @@ class QdyneLogic(LogicBase):
     #data_save_dir = ConfigOption(name='data_save_dir')
     data_storage_class = ConfigOption(name='data_storage_class', default='text', missing='nothing')
 
-    analyzer_method_lists = StatusVar()
-    analyzer_method = StatusVar()
 #    estimator_method = StatusVar(default='TimeTag')
 #    analyzer_method = StatusVar(default='Fourier')
     _estimator_stg_dict = StatusVar(default=dict())
@@ -157,9 +155,8 @@ class QdyneLogic(LogicBase):
         return
 
     def _save_status_variables(self):
-        pass
-#        self._estimator_stg_dict = self.settings.convert_settings(self.settings.estimator_stg_dict)
-#        self._analyzer_stg_dict = self.settings.convert_settings(self.settings.analyzer_stg_dict)
+        self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
+        self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
 
     def input_estimator_settings(self):
         self.estimator.input_settings(self.settings.estimator_stg.current_setting)
@@ -317,24 +314,35 @@ class SettingsManager:
         else:
             self.settings_dict = self.create_default_settings_dict()
 
-    def load_settings(self, dict_dict):
-        dataclass_dict = dict()
-        for key in dict_dict.keys():
-            stg_dict = dict_dict[key]
-            class_name = stg_dict['__class__']
-            stg_dict.pop('__class__', None)
-            stg_dataclass = globals()[class_name](**stg_dict)
-            dataclass_dict[key] = stg_dataclass
-        return dataclass_dict
+    def load_settings(self, dict_tabledict):
+        print('dict_tabledict {}'.format(dict_tabledict))
+        dataclass_tabledict = dict()
+        for method_key in dict_tabledict.keys():
+            dataclass_dict = dict()
+            dict_dict = dict_tabledict[method_key]
+            for setting_key in dict_dict.keys():
+                stg_dict = dict_dict[setting_key]
+                class_name = stg_dict['__class__']
+                stg_dict.pop('__class__', None)
+                stg_dataclass = globals()[class_name](**stg_dict)
+                dataclass_dict[setting_key] = stg_dataclass
+            dataclass_tabledict[method_key] = dataclass_dict
+        return dataclass_tabledict
 
-    def convert_settings(self, dataclass_dict):
-        dict_dict = dict()
-        for key in dataclass_dict.keys():
-            stg_dataclass = dataclass_dict[key]
-            stg_dict = asdict(dataclass)
-            stg_dict['class_name'] = stg_dataclass.__class__.__name__
-            dict_dict[key] = stg_dict
-        return dict_dict
+    def convert_settings(self):
+        dataclass_tabledict = self.settings_dict
+        print('settings_dict {}'.format(self.settings_dict))
+        dict_tabledict = dict()
+        for method_key in dataclass_tabledict.keys():
+            dict_dict = dict()
+            dataclass_dict = dataclass_tabledict[method_key]
+            for setting_key in dataclass_dict.keys():
+                stg_dataclass = dataclass_dict[setting_key]
+                stg_dict = asdict(stg_dataclass)
+                stg_dict['__class__'] = stg_dataclass.__class__.__name__
+                dict_dict[setting_key] = stg_dict
+            dict_tabledict[method_key] = dict_dict
+        return dict_tabledict
 
     @QtCore.Slot()
     def add_setting(self):
