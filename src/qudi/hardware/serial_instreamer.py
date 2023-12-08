@@ -95,16 +95,15 @@ class SerialInStreamer(DataInStreamInterface):
         )
         self._active_channels = list(self._constraints.channel_units)
 
-        self._serial = SerialModbus(port=1, slaveaddress=3)
+        #self._serial = SerialModbus(port=1, slaveaddress=3)
+        self._serial = SerialDummy()
         self.log.debug(f"Cfg for serial dev: {self._serial._connection_cfg}")
         try:
             self._serial.connect()
         except:
             raise
+        self._channel_map = self._serial._ch_map   # todo
 
-        self._channel_map = {'pv': 1025,
-                             'sp': 1029}
-        self._channel_map = {'pv': 1025}
         self._buffer_size = 16  # todo: make configOption
         self.data_type = 'float64'
         self._sample_rate = 1
@@ -227,57 +226,54 @@ class SerialInStreamer(DataInStreamInterface):
             self.__stop_stream = True
             self.module_state.unlock()
 
-    def _read_serial_register(self, register):
+
+    def _get_sample(self):
+
+        #_sample_per_ch = {key: np.nan for key in self._channel_map.keys()}
+        #for ch_name, ch_reg in self._channel_map.items():
+        #    _sample_per_ch[ch_name] = self._serial.get_single_sample()
+        sample_dict = {}
         try:
-            response = self.read_register(1029, 1)  # from modbus
+            sample_dict = self._serial.get_single_sample()
+            sample_dict = {ch: val for ch, val in sample_dict.items() if ch in self.active_channels}
         except:
-            response = 0.0
-            raise ValueError(f"Couldn't read register: {register}")
-        return response
+            self.log.exception(f"Couldn't obtain sample from hw: ")
 
-    def _get_sample(self, debug=True):
-
-        _sample_per_ch = {key: np.nan for key in self._channel_map.keys()}
-        for ch_name, ch_reg in self._channel_map.items():
-            if debug:
-                _sample_per_ch[ch_name] = float(np.random.random_sample(1))
-            else:
-                _sample_per_ch[ch_name] = self._read_serial_register(ch_reg)
-
-        return _sample_per_ch
+        return sample_dict
 
 
     def _pull_data_loop(self):
 
-        # todo: thread lock?
-        if self.__stop_stream:
-            return
+        with self._thread_lock:
+            if self.__stop_stream:
+                return
 
-        if self.__pos_sample_buffer == 0:
-            self._t_start = time.perf_counter()
+            if self.__pos_sample_buffer == 0:
+                self._t_start = time.perf_counter()
 
-        channel_count = self.channel_count
+            channel_count = self.channel_count
 
-        idx_start = self.__pos_sample_buffer
-        idx_end = self.__pos_sample_buffer + channel_count
+            idx_start = self.__pos_sample_buffer
+            idx_end = self.__pos_sample_buffer + channel_count
 
-        if idx_end > len(self._sample_buffer) -1 :
-            raise OverflowError("Full buffer! Increase data buffer or reduce sampling rate")
+            if idx_end > len(self._sample_buffer) -1 :
+                raise OverflowError("Full buffer! Increase data buffer or reduce sampling rate")
 
-        sample_dict = self._get_sample()
-        t_now = time.perf_counter()
-        dt_now = time.perf_counter() - self._t_start
+            sample_dict = self._get_sample()
+            self.log.debug(f"Pulled sample: {sample_dict}")
+            t_now = time.perf_counter()
+            dt_now = time.perf_counter() - self._t_start
 
-        self._sample_buffer[idx_start:idx_end] = np.asarray(list(sample_dict.values()), dtype=self.data_type)
-        self._timestamp_buffer[idx_start:idx_start+1] = dt_now
+            self._sample_buffer[idx_start:idx_end] = np.asarray(list(sample_dict.values()), dtype=self.data_type)
+            self._timestamp_buffer[idx_start:idx_start+1] = dt_now
 
 
-        # Update pointers
-        self.__pos_sample_buffer += channel_count
-        self.__available_samples += 1
+            # Update pointers
+            self.__pos_sample_buffer += 1 #channel_count
+            self.__available_samples += 1
 
-        #self.log.debug(f"Polled samples: {sample_dict} at t= {t_now}. Buffer pos: {self.__pos_sample_buffer}")
-        self.__poll_timer.start()
+            #self.log.debug(f"Polled samples: {sample_dict} at t= {t_now}. Buffer pos: {self.__pos_sample_buffer}")
+            self.__poll_timer.start()
 
 
     def _start_query_loop(self):
@@ -300,7 +296,7 @@ class SerialInStreamer(DataInStreamInterface):
             raise ValueError(f'Invalid channels to set active {channels}. Allowed channels are '
                              f'{set(self._constraints.channel_units)}')
         # todo: manipulse channeld map
-        self._active_channels = list(self.active_channels)
+        self._active_channels = list(channels)
 
     def _set_streaming_mode(self, mode: Union[StreamingMode, int]) -> None:
         try:
@@ -380,7 +376,7 @@ class SerialInStreamer(DataInStreamInterface):
 
         This function is blocking until the required number of samples has been acquired.
         """
-        #with self._thread_lock:
+
         if self.module_state() != 'locked':
             raise RuntimeError('Unable to read data. Stream is not running.')
         if (self.constraints.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
@@ -399,32 +395,40 @@ class SerialInStreamer(DataInStreamInterface):
                 f'samples ({samples_per_channel:d})'
             )
 
-        self.log.debug(f"Trying to read {samples_per_channel} samples")
+
+        self.log.debug(f"Trying to read {samples_per_channel} samples. Availabel: {self.available_samples}")
         self._wait_get_available_samples(samples_per_channel)
-        #time.sleep(5)
 
-        n_samples = min(self.__available_samples, samples_per_channel) * n_ch
-        idx_start = self.__idx_read_start * n_ch
-        idx_end = idx_start + n_samples
-        idx_t_start = self.__idx_read_start
-        idx_t_end = idx_t_start + n_samples
+        with self._thread_lock:   # todo
+            #time.sleep(5)
 
-        # todo: broken for >1 channels
-        data_buffer[:] = np.roll(data_buffer, n_samples)
-        timestamp_buffer[:] = np.roll(timestamp_buffer, n_samples // n_ch)
-        data_buffer[:n_samples] = cp.copy(self._sample_buffer)[idx_start:idx_end]
-        timestamp_buffer[:n_samples//n_ch] = cp.copy(self._timestamp_buffer)[idx_t_start:idx_t_end]
+            n_samples = min(self.__available_samples, samples_per_channel) * n_ch
+            idx_start = self.__idx_read_start * n_ch
+            idx_end = idx_start + n_samples
+            idx_t_start = self.__idx_read_start
+            idx_t_end = idx_t_start + n_samples // n_ch
+            self.log.debug(f"Buffer pointers: {idx_start}/{idx_end}. {idx_t_start}/{idx_t_end}")
+            self.log.debug(f"hw sample buffer: {cp.copy(self._sample_buffer)[idx_start:idx_end]}, "
+                           f"t buffer: {cp.copy(self._timestamp_buffer)[idx_t_start:idx_t_end]}")
+            self.log.debug(f"hw sample buffer: {cp.copy(self._sample_buffer)}")
 
-        n_samples //= n_ch
-        # reset memory pointer to overwritten alread read data
-        self.__pos_sample_buffer = max(1,idx_start)
-        self.__idx_read_start = self.__pos_sample_buffer
-        self.__available_samples -= n_samples
+            # todo: broken for >1 channels
+            data_buffer[:] = np.roll(data_buffer, n_samples)
+            timestamp_buffer[:] = np.roll(timestamp_buffer, n_samples // n_ch)
+            data_buffer[:n_samples] = cp.copy(self._sample_buffer)[idx_start:idx_end]
+            timestamp_buffer[:n_samples//n_ch] = cp.copy(self._timestamp_buffer)[idx_t_start:idx_t_end]
+
+            n_samples //= n_ch
+            # reset memory pointer to overwritten alread read data
+            self.__pos_sample_buffer = max(1, idx_start // n_ch)   # todo: something goes fwong for n_ch>1
+            self.__idx_read_start = self.__pos_sample_buffer
+            self.__available_samples -= n_samples
+            self.log.debug(f"New pos_sample pointers: {self.__pos_sample_buffer}")
 
 
-        self.log.debug(f"Filled data idx={idx_start}/{idx_end} into buffer:"
-                       f" {data_buffer}, t= {timestamp_buffer}."
-                       f" Write pos: {self.__pos_sample_buffer}")
+            self.log.debug(f"Filled data idx={idx_start}/{idx_end} into buffer:"
+                           f" {data_buffer}, t= {timestamp_buffer}."
+                           f" Write pos: {self.__pos_sample_buffer}")
 
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
@@ -561,6 +565,30 @@ class SerialDev1N():
         pass
 
     @abstractmethod
+    def close(self):
+        pass
+
+
+class SerialDummy(SerialDev1N):
+    def connect(self):
+        self._ch_map = {'ch1': 1,
+                  #'ch2': 2}
+                        }
+
+    def get_single_sample(self):
+        try:
+            splitted_values = []
+            for ch_nam in self._ch_map.keys():
+                sample_per_ch = float(np.random.random_sample(1))
+                splitted_values.append(sample_per_ch)
+        except:
+            splitted_values = ['nan', 'nan', 'nan']
+            raise
+
+        splitted_values = [float(val) for val in splitted_values]
+
+        return {ch: splitted_values[idx] for idx, ch in enumerate(list(self._ch_map.keys()))}
+
     def close(self):
         pass
 
