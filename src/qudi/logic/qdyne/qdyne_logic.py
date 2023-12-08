@@ -315,7 +315,6 @@ class SettingsManager:
             self.settings_dict = self.create_default_settings_dict()
 
     def load_settings(self, dict_tabledict):
-        print('dict_tabledict {}'.format(dict_tabledict))
         dataclass_tabledict = dict()
         for method_key in dict_tabledict.keys():
             dataclass_dict = dict()
@@ -331,7 +330,6 @@ class SettingsManager:
 
     def convert_settings(self):
         dataclass_tabledict = self.settings_dict
-        print('settings_dict {}'.format(self.settings_dict))
         dict_tabledict = dict()
         for method_key in dataclass_tabledict.keys():
             dict_dict = dict()
@@ -346,7 +344,6 @@ class SettingsManager:
 
     @QtCore.Slot()
     def add_setting(self):
-
         new_setting = copy.deepcopy(self.current_setting)
         new_setting.name = new_setting.name +'_new'
         self.current_stg_name = new_setting.name
