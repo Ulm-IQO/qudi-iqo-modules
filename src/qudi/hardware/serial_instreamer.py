@@ -26,19 +26,17 @@ class SerialInStreamer(DataInStreamInterface):
 
     Example config for copy-paste:
 
-    instream_dummy:
-        module.Class: 'dummy.data_instream_dummy.InStreamDummy'
+    serial_streamer:
+        module.Class: 'serial_instreamer.SerialInStreamer'
         options:
             channel_names:
-                - 'digital 1'
-                - 'analog 1'
-                - 'digital 2'
+                - 'ch1'
+                - 'ch2'
             channel_units:
-                - 'Hz'
-                - 'V'
-                - 'Hz'
+                - 'K'
+                - 'bar'
             data_type: 'float64'
-            sample_timing: 'CONSTANT'  # Can be 'CONSTANT', 'TIMESTAMP' or 'RANDOM'
+            sample_timing: 'TIMESTAMP'  # Can be 'CONSTANT', 'TIMESTAMP' or 'RANDOM'
     """
 
     _threaded = True
@@ -97,7 +95,19 @@ class SerialInStreamer(DataInStreamInterface):
 
         #self._serial = SerialModbus(port=1, slaveaddress=3)
         self._serial = SerialDummy()
+
+        connection_cfg = {
+            'port': 'COM6',  # COM port of XGS-600 connection as string (can be checked in device manager)
+            'baudrate' : 9600,  # leave this at 9600 as specified in manual
+            'bytesize':  8,  # leave this at 8 as specified in manual
+            'stopbits' : 1,  # leave this at 1 as specified in manual
+            'timeout' : 0.05,  # timeout interval of XGS-600 in s, must be smaller than sampling time of data
+        }
+
+        self._serial = SerialXGS(**connection_cfg)
         self.log.debug(f"Cfg for serial dev: {self._serial._connection_cfg}")
+
+        # todo: connect on start_stream only
         try:
             self._serial.connect()
         except:
@@ -117,7 +127,7 @@ class SerialInStreamer(DataInStreamInterface):
 
     def on_deactivate(self):
         # Free memory
-        self._sample_generator = None
+        self._serial.close()
 
     @property
     def constraints(self):
@@ -195,7 +205,7 @@ class SerialInStreamer(DataInStreamInterface):
     @property
     def active_channels(self) -> List[str]:
         """ Read-only property returning the currently configured active channel names """
-        return list(self._channel_map.copy().keys())
+        return list(self._active_channels.copy())
 
     @property
     def channel_count(self):
@@ -602,13 +612,15 @@ class SerialXGS(SerialDev1N):
         self._dev.bytesize = self._connection_cfg['bytesize']
         self._dev.stopbits = self._connection_cfg['stopbits']
         self._dev.timeout = self._connection_cfg['timeout']
-        self._dev.parity = self._connection_cfg['parity']
+        parity = self._connection_cfg['parity']
+        parity = serial.PARITY_NONE if parity is None else parity
+        self._dev.parity = parity
 
         self._dev.open()
 
-        self._ch_map = {'1': 1,
-                        '2': 2,
-                        '3': 3}
+        self._ch_map = {'ch1': 1,
+                        'ch2': 2,
+                        'ch3': 3}
 
     def get_single_sample(self):
         try:
@@ -619,9 +631,15 @@ class SerialXGS(SerialDev1N):
             splitted_values = ['nan', 'nan', 'nan']
             raise
 
-        splitted_values = [float(val) for val in splitted_values]
+        print(f"{splitted_values}")
+        vals = []
+        for val_str in splitted_values:
+            try:
+                vals.append(float(val_str))
+            except ValueError:
+                vals.append(np.nan)
 
-        return {ch: splitted_values[idx] for idx, ch in list(self._ch_map.keys())}
+        return {ch: vals[idx] for idx, ch in enumerate(list(self._ch_map.keys()))}
 
     def close(self):
         self._dev.close()
