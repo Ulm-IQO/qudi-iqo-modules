@@ -46,13 +46,25 @@ class SerialInStreamer(DataInStreamInterface):
     _channel_units = ConfigOption(name='channel_units',
                                   missing='error',
                                   constructor=lambda units: [str(x) for x in units])
-
     _data_type = ConfigOption(name='data_type',
                               default='float64',
                               missing='info',
                               constructor=lambda typ: np.dtype(typ).type)
 
-    # todo make ConfigOption
+    _serial_protocol = ConfigOption(name='serial_protocol',
+                              default='dummy',
+                              missing='warn')
+    _serial_port = ConfigOption(name='serial_port',
+                                missing='error')
+    _serial_baud_rate = ConfigOption(name='serial_baud_rate',
+                                missing='nothing', default=None)
+    _serial_bytesize = ConfigOption(name='serial_bytesize', default=None)
+    _serial_stopbits = ConfigOption(name='serial_stopbits', default=None)
+    _serial_timeout = ConfigOption(name='serial_timeout', default=None)
+    _serial_slaveaddress = ConfigOption(name='serial_slaveaddress',
+                                        default=None)
+
+
     _sample_timing = SampleTiming.TIMESTAMP
     _streaming_mode = StreamingMode.CONTINUOUS
     _sample_rate = 1
@@ -90,9 +102,21 @@ class SerialInStreamer(DataInStreamInterface):
         )
         self._active_channels = list(self._constraints.channel_units)
 
+        connection_cfg = {
+            'port': self._serial_port,
+            'baudrate': self._serial_baud_rate,
+            'bytesize':  self._serial_bytesize,
+            'stopbits': self._serial_stopbits,
+            'timeout': self._serial_timeout}
 
-        self._serial = SerialDummy()
+        if self._serial_protocol == 'dummy':
+            self._serial = SerialDummy(**connection_cfg)
+        elif self._serial_protocol == 'serial':
+            self._serial = Serial(**connection_cfg)
+        elif self._serial_protocol == 'modbus':
+            self._serial = SerialModbus(**connection_cfg)
 
+        """
         connection_cfg = {
             'port': 'COM6',  # COM port of XGS-600 connection as string (can be checked in device manager)
             'baudrate': 9600,  # leave this at 9600 as specified in manual
@@ -100,25 +124,23 @@ class SerialInStreamer(DataInStreamInterface):
             'stopbits': 1,  # leave this at 1 as specified in manual
             'timeout': 0.05,  # timeout interval of XGS-600 in s, must be smaller than sampling time of data
         }
-
-        #self._serial = SerialXGS(**connection_cfg)
-
+        #self._serial = Serial(**connection_cfg)
         connection_cfg = {
             'port': 'COM4',
             'slaveaddress': 1,
         }
-        self._serial = SerialModbus(**connection_cfg)
-        self.log.debug(f"Cfg for serial dev: {self._serial._connection_cfg}")
+        #self._serial = SerialModbus(**connection_cfg)
+        """
 
-        # todo: connect on start_stream only
-        try:
-            self._serial.connect()
-        except:
-            raise
-        self._channel_map = self._serial._ch_map   # todo
+        self.log.debug(f"Cfg for serial dev: {self._serial._connection_cfg}")
+        self._serial.connect()
+
+        if self._serial.channel_count != len(self._constraints.channel_units):
+            self.log.warning(f"Configured number of channels= {len(self._constraints.channel_units)} doesn't"
+                             f" fit to hardware channels ({self._serial.channel_count}). Some data might be missing."
+                             f" Channel config: {self._constraints.channel_units}")
 
         self._buffer_size = 16  # todo: make configOption
-        self.data_type = 'float64'
         self._sample_rate = 1
 
         self.__poll_timer = QtCore.QTimer()
@@ -214,14 +236,6 @@ class SerialInStreamer(DataInStreamInterface):
     def channel_count(self):
         return len(self.active_channels)
 
-    def read_samples(self, sample_buffer, samples_per_channel):
-        pass
-
-    def _connect_device(self):
-        # todo: use serial or minimalmodbug
-        self.configure_port(com_port=com_port, baudrate=baudrate, bytesize=bytesize, stopbits=stopbits, timeout=timeout,
-                            parity=parity)
-
     def _reset_stream(self):
         with self._thread_lock:
             # Init buffer
@@ -229,7 +243,7 @@ class SerialInStreamer(DataInStreamInterface):
             self.__idx_read_start = 0
             self.__available_samples = 0
             self.__i_poll = 0
-            self._sample_buffer = np.ones(self._buffer_size * self.channel_count, dtype=self.data_type)*np.nan
+            self._sample_buffer = np.ones(self._buffer_size * self.channel_count, dtype=self._data_type)*np.nan
             self._timestamp_buffer = np.zeros(self._buffer_size, dtype=np.float64)
 
             self.__stop_stream = False
@@ -240,10 +254,9 @@ class SerialInStreamer(DataInStreamInterface):
             self.__stop_stream = True
             self.module_state.unlock()
 
-
     def _get_sample(self):
 
-        output_dict = {}
+        output_dict = {ch: np.nan for ch in self.active_channels}
         chs = self._channel_names
         try:
             sample_dict = self._serial.get_single_sample()
@@ -261,9 +274,9 @@ class SerialInStreamer(DataInStreamInterface):
 
         return output_dict
 
-
     def _pull_data_loop(self):
-
+        
+        # todo: seems to break for sampling rates >> 10 Hz
         with self._thread_lock:
             if self.__stop_stream:
                 return
@@ -280,12 +293,14 @@ class SerialInStreamer(DataInStreamInterface):
                 raise OverflowError("Full buffer! Increase data buffer or reduce sampling rate")
 
             sample_dict = self._get_sample()
-            self.log.debug(f"Pulled sample: {sample_dict}")
-            t_now = time.perf_counter()
             dt_now = time.perf_counter() - self._t_start
+            self.log.debug(f"[{dt_now}] Pulled sample: {sample_dict}")
+            self.log.debug(f"write idx={idx_start} to t_buffer {self._timestamp_buffer}")
 
-            self._sample_buffer[idx_start:idx_end] = np.asarray(list(sample_dict.values()), dtype=self.data_type)
+            self._sample_buffer[idx_start:idx_end] = np.asarray(list(sample_dict.values()), dtype=self._data_type)
             self._timestamp_buffer[idx_start:idx_start+1] = dt_now
+
+            self.log.debug(f"new t_buffer {self._timestamp_buffer}")
 
             # Update pointers
             self.__pos_sample_buffer = idx_end
@@ -315,7 +330,6 @@ class SerialInStreamer(DataInStreamInterface):
         if not channels.issubset(self._constraints.channel_units):
             raise ValueError(f'Invalid channels to set active {channels}. Allowed channels are '
                              f'{set(self._constraints.channel_units)}')
-        # todo: manipulse channeld map
         self._active_channels = list(channels)
 
     def _set_streaming_mode(self, mode: Union[StreamingMode, int]) -> None:
@@ -408,8 +422,8 @@ class SerialInStreamer(DataInStreamInterface):
         if data_buffer.size < samples_per_channel * n_ch:
             raise RuntimeError(
                 f'data_buffer too small ({data_buffer.size:d}) to hold all requested '
-                f'samples for all channels ({channel_count:d} * {samples_per_channel:d} = '
-                f'{samples_per_channel * channel_count:d})'
+                f'samples for all channels ({n_ch:d} * {samples_per_channel:d} = '
+                f'{samples_per_channel * n_ch:d})'
             )
         if (timestamp_buffer is not None) and (timestamp_buffer.size < samples_per_channel):
             raise RuntimeError(
@@ -421,8 +435,7 @@ class SerialInStreamer(DataInStreamInterface):
         self.log.debug(f"Trying to read {samples_per_channel} samples. Availabel: {self.available_samples}")
         self._wait_get_available_samples(samples_per_channel)
 
-        with self._thread_lock:   # todo
-            #time.sleep(5)
+        with self._thread_lock:
 
             n_samples = min(self.__available_samples, samples_per_channel) * n_ch
             idx_start = self.__idx_read_start * n_ch
@@ -433,8 +446,8 @@ class SerialInStreamer(DataInStreamInterface):
             self.log.debug(f"hw sample buffer: {cp.copy(self._sample_buffer)[idx_start:idx_end]}, "
                            f"t buffer: {cp.copy(self._timestamp_buffer)[idx_t_start:idx_t_end]}")
             self.log.debug(f"hw sample buffer: {cp.copy(self._sample_buffer)}")
+            self.log.debug(f"hw sample t_buffer: {cp.copy(self._timestamp_buffer)}")
 
-            # todo: broken for >1 channels
             data_buffer[:] = np.roll(data_buffer, n_samples)
             timestamp_buffer[:] = np.roll(timestamp_buffer, n_samples//n_ch)
             data_buffer[:n_samples] = cp.copy(self._sample_buffer)[idx_start:idx_end]
@@ -573,6 +586,10 @@ class SerialDev1N():
         self._ch_map = None
         self._dev = None
 
+    @property
+    def channel_count(self):
+        pass
+
     @abstractmethod
     def connect(self):
         pass
@@ -587,10 +604,14 @@ class SerialDev1N():
 
 
 class SerialDummy(SerialDev1N):
+
+    @property
+    def channel_count(self):
+        return len(self._ch_map.keys())
+
     def connect(self):
         self._ch_map = {'ch1': 1,
                         'ch2': 2}
-                        #}
 
     def get_single_sample(self):
         try:
@@ -611,7 +632,11 @@ class SerialDummy(SerialDev1N):
 
 
 
-class SerialXGS(SerialDev1N):
+class Serial(SerialDev1N):
+    @property
+    def channel_count(self):
+        return len(self._ch_map.keys())
+
     def connect(self):
         self._dev = serial.Serial()
         self._dev.port = self._connection_cfg['port']
@@ -625,9 +650,10 @@ class SerialXGS(SerialDev1N):
 
         self._dev.open()
 
-        self._ch_map = {'ch1': 1,
-                        'ch2': 2,
-                        'ch3': 3}
+        # name physical channels of serial device
+        self._ch_map = {'ch1': None,
+                        'ch2': None,
+                        'ch3': None}
 
     def get_single_sample(self):
         try:
@@ -653,9 +679,15 @@ class SerialXGS(SerialDev1N):
 
 
 class SerialModbus(SerialDev1N):
+
+    @property
+    def channel_count(self):
+        return len(self._ch_map.keys())
     def connect(self):
         self._dev = minimalmodbus.Instrument(self._connection_cfg['port'],
                                              self._connection_cfg['slaveaddress'])
+
+        # name and register address of physical channels
         self._ch_map = {'pv_l1': 1,
                         'sp_l1': 5,
                         'pv_l2': 1025,
