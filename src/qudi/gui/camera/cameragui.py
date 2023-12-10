@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import pyqtgraph as pg
 from PySide2 import QtCore, QtWidgets, QtGui
+from qudi.util.widgets.plotting.image_widget import ImageWidget
 import datetime
 
 from qudi.core.module import GuiBase
@@ -93,21 +94,29 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         self.saw = QtWidgets.QWidget()
         layout = QtWidgets.QGridLayout(self.cw)
         tab_analysis_layout = QtWidgets.QVBoxLayout(self.saw)
-        self.analysis_image_widget = pg.PlotWidget()
+        #self.analysis_image_widget = pg.GraphicsLayoutWidget(show=True)
+        self.analysis_image_widget = ImageWidget()
         self.analysis_image_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
                       QtWidgets.QSizePolicy.Expanding)
-        self.analysis_image_item = DataImageItem()
-        self.analysis_image_item.set_image(np.random.rand(100, 100))
-        self.analysis_image_widget.addItem(self.analysis_image_item)
+
+        # Create data plot
+        self._plot_widget = pg.PlotWidget()
+        self._plot_widget.getPlotItem().setContentsMargins(0, 1, 5, 2)
         self._data_item = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
                                           symbol='o',
                                           symbolPen=palette.c1,
                                           symbolBrush=palette.c1,
                                           symbolSize=7)
-        #self.analysis_image_widget.removeItem(self.analysis_image_item)
-        xaxis = np.linspace(0, 2*np.pi)
-        self._data_item.setData(y=np.sin(xaxis), x=xaxis)
-        self.analysis_image_widget.addItem(self._data_item)
+        self._plot_widget.addItem(self._data_item)
+        self._plot_widget.setMinimumWidth(100)
+        self._plot_widget.setMinimumHeight(100)
+        self._plot_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
+                                        QtWidgets.QSizePolicy.Expanding)
+        self._plot_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
+        # #self.analysis_image_widget.removeItem(self.analysis_image_item)
+        # xaxis = np.linspace(0, 2*np.pi)
+        # self._data_item.setData(y=np.sin(xaxis), x=xaxis)
+        # self.analysis_image_widget.addItem(self._data_item)
 
         self.image_widget = RubberbandZoomSelectionImageWidget()
 
@@ -120,7 +129,7 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         # Software slice and binning selector
         binning_layout = QtWidgets.QHBoxLayout()
         self.slice_and_binning_label = QtWidgets.QLabel()
-        self.slice_and_binning_label.setText("Binning (x, y, z):")
+        self.slice_and_binning_label.setText("Binning (z, x, y):")
         self.software_binning_x = QtWidgets.QSpinBox()
         self.software_binning_y = QtWidgets.QSpinBox()
         self.software_binning_z = QtWidgets.QSpinBox()
@@ -130,8 +139,8 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         self.software_binning_z.setMinimum(1)
 
         self.slice_label = QtWidgets.QLabel()
-        self.slice_label.setText("Slice (x, y, z):")
-        self.software_slicing = QtWidgets.QLineEdit()
+        self.slice_label.setText("Slice (z, x, y):")
+        self.software_slicing = QtWidgets.QLineEdit("[0,:,:]")
 
         binning_layout.addWidget(self.slice_and_binning_label)
         binning_layout.addWidget(self.software_binning_x)
@@ -174,6 +183,7 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         # add the widgets to the tab widget layout
 
         tab_analysis_layout.addWidget(self.analysis_image_widget)
+        tab_analysis_layout.addWidget(self._plot_widget)
         tab_analysis_layout.addLayout(binning_layout)
 
     def update_toolbar(self, text):
@@ -451,46 +461,15 @@ class CameraGui(GuiBase):
         view = process_image_sequence(measurement_data, slice_str, (bin_x, bin_y, bin_z))
 
         vshp = view.shape
-        # Depending on the shape need to change what is displayed
-        # 1) image
-        # 2) 1D plot
-        # 3) image plot + slider (to move through images)
-        # For now we can just implement the former two
-        # but will need to decide how to handle the case of multiple images
-        # (n_images, n_pxx, n_pxy)
-
-        # next we are going to delete the old item
-        if self.analysis_image_item:
-            self.analysis_image_widget.removeItem(self.analysis_image_item)
-        elif self._data_item:
-            self.analysis_image_item.removeItem(self._data_item)
-
-        # Now we will need to create a new item depending on the
-        # shape of the view and add the data.
-        # We can trisect the cases into three major piles
-        # 1) all shape elements are 1
-        # 2) two out of 3 shape elements are 1
-        # 3) one out of 3 shape elements are 1
-        # 4) No shape elements are 1
-        # Going to leave 1 and 4 not implemented for now (can late make a scienced spin box for 1) and
-        # images with slider for 4)
 
         if len(vshp) == 3:
             self.log.warning("Measurement analysis not implemented for this data shape.")
         # any 2 of the three are larger than 1?
         elif len(vshp) == 2:
-            self.analysis_image_item = DataImageItem()
-            self.analysis_image_item.set_image(view)
-            self.analysis_image_widget.addItem(self.analysis_image_item)
+
+            self._mw.analysis_image_widget.set_image(view)
         else:
-            # what will happen in the case of a scalar?
-            self._data_item = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
-                                              symbol='o',
-                                              symbolPen=palette.c1,
-                                              symbolBrush=palette.c1,
-                                              symbolSize=7)
-            self._data_item.setData(y=view, x=len(view))
-            self.analysis_image_widget.addItem(self._data_item)
+            self._mw._data_item.setData(y=view, x=np.arange(len(view)))
 
     def _image_slider_moved(self, image_num):
         self._camera_logic().current_image_number = image_num

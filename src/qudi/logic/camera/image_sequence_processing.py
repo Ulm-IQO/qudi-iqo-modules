@@ -15,6 +15,7 @@ def bin_measurement(sliced_data:np.ndarray, binnings:tuple) -> np.ndarray:
         See https://scipython.com/blog/binning-a-2d-array-in-numpy/
         for how it works (in this case generalized for 3 D arrays
         """
+        print(f"sliced_data_shape {sliced_data.shape}, binnings shape {binnings}")
         cur_shape = sliced_data.shape
         # first need to make sure that the shape is correct (3D)
         if len(cur_shape) == 1:
@@ -50,7 +51,9 @@ def calculate_new_size_along_axis(bin:int, cur_length:int) -> int:
 
 def process_image_sequence(measurement_data, text_slice:str, binnings:tuple) -> np.ndarray:
         sliced_data = get_measurement_slice(measurement_data, text_slice)
+        print(f"shape of sliced data {sliced_data.shape}")
         measurement_data_slice = bin_measurement(sliced_data, binnings)
         # as a last step we remove unecessary axes.
-        return np.squeeze(measurement_data_slice)
+        # measurement_data_slice = sliced_data
+        return np.squeeze(measurement_data_slice).transpose()
 
