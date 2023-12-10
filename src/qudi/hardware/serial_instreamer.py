@@ -64,7 +64,6 @@ class SerialInStreamer(DataInStreamInterface):
     _serial_slaveaddress = ConfigOption(name='serial_slaveaddress',
                                         default=None)
 
-
     _sample_timing = SampleTiming.TIMESTAMP
     _streaming_mode = StreamingMode.CONTINUOUS
     _sample_rate = 1
@@ -226,7 +225,6 @@ class SerialInStreamer(DataInStreamInterface):
                 self._set_sample_rate(old_sample_rate)
                 raise RuntimeError('Error while trying to configure data in-streamer') from err
 
-
     @property
     def active_channels(self) -> List[str]:
         """ Read-only property returning the currently configured active channel names """
@@ -275,7 +273,7 @@ class SerialInStreamer(DataInStreamInterface):
         return output_dict
 
     def _pull_data_loop(self):
-        
+
         # todo: seems to break for sampling rates >> 10 Hz
         with self._thread_lock:
             if self.__stop_stream:
@@ -287,6 +285,7 @@ class SerialInStreamer(DataInStreamInterface):
             n_ch = self.channel_count
 
             idx_start = self.__pos_sample_buffer
+            idx_t_start = self.__pos_sample_buffer // n_ch
             idx_end = self.__pos_sample_buffer + n_ch
 
             if idx_end > len(self._sample_buffer) -1:
@@ -298,7 +297,7 @@ class SerialInStreamer(DataInStreamInterface):
             self.log.debug(f"write idx={idx_start} to t_buffer {self._timestamp_buffer}")
 
             self._sample_buffer[idx_start:idx_end] = np.asarray(list(sample_dict.values()), dtype=self._data_type)
-            self._timestamp_buffer[idx_start:idx_start+1] = dt_now
+            self._timestamp_buffer[idx_t_start:idx_t_start+1] = dt_now
 
             self.log.debug(f"new t_buffer {self._timestamp_buffer}")
 
@@ -309,7 +308,6 @@ class SerialInStreamer(DataInStreamInterface):
 
             #self.log.debug(f"Polled samples: {sample_dict} at t= {t_now}. Buffer pos: {self.__pos_sample_buffer}")
             self.__poll_timer.start()
-
 
     def _start_query_loop(self):
         """ Start the readout loop. """
@@ -322,8 +320,6 @@ class SerialInStreamer(DataInStreamInterface):
         if self.module_state() == 'idle':
             self.module_state.lock()
             self.__poll_timer.start()
-
-
 
     def _set_active_channels(self, channels: Iterable[str]) -> None:
         channels = set(channels)
@@ -391,7 +387,6 @@ class SerialInStreamer(DataInStreamInterface):
                 available = self.available_samples
         return available
 
-
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
                               samples_per_channel: int,
@@ -431,8 +426,7 @@ class SerialInStreamer(DataInStreamInterface):
                 f'samples ({samples_per_channel:d})'
             )
 
-
-        self.log.debug(f"Trying to read {samples_per_channel} samples. Availabel: {self.available_samples}")
+        self.log.debug(f"Trying to read {samples_per_channel} samples. Available: {self.available_samples}")
         self._wait_get_available_samples(samples_per_channel)
 
         with self._thread_lock:
@@ -610,13 +604,13 @@ class SerialDummy(SerialDev1N):
         return len(self._ch_map.keys())
 
     def connect(self):
-        self._ch_map = {'ch1': 1,
-                        'ch2': 2}
+        self._ch_map = {'ch1': None,
+                        'ch2': None}
 
     def get_single_sample(self):
         try:
             splitted_values = []
-            for ch_nam in self._ch_map.keys():
+            for ch_name in self._ch_map.keys():
                 sample_per_ch = float(np.random.random_sample(1))
                 splitted_values.append(sample_per_ch)
         except:
@@ -629,7 +623,6 @@ class SerialDummy(SerialDev1N):
 
     def close(self):
         pass
-
 
 
 class Serial(SerialDev1N):
@@ -664,7 +657,6 @@ class Serial(SerialDev1N):
             splitted_values = ['nan', 'nan', 'nan']
             raise
 
-        print(f"{splitted_values}")
         vals = []
         for val_str in splitted_values:
             try:
@@ -683,6 +675,7 @@ class SerialModbus(SerialDev1N):
     @property
     def channel_count(self):
         return len(self._ch_map.keys())
+
     def connect(self):
         self._dev = minimalmodbus.Instrument(self._connection_cfg['port'],
                                              self._connection_cfg['slaveaddress'])
