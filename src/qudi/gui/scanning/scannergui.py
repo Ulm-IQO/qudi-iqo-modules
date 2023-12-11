@@ -260,12 +260,14 @@ class ScannerGui(GuiBase):
                                                                        QtCore.Qt.QueuedConnection)
         tilt_widget.tilt_set_04_pushButton.clicked.connect(lambda: self.tilt_corr_set_support_vector(3),
                                                                        QtCore.Qt.QueuedConnection)
-        tilt_widget.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.tilt_corr_support_vector_updated,
+        tilt_widget.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.apply_tilt_corr_support_vectors,
                                                                        QtCore.Qt.QueuedConnection)
         self._mw.action_toggle_tilt_correction.triggered.connect(self.toggle_tilt_correction,
                                                                 QtCore.Qt.QueuedConnection)
-        [box.valueChanged.connect(self.tilt_corr_support_vector_updated, QtCore.Qt.QueuedConnection)
+        [box.valueChanged.connect(self.apply_tilt_corr_support_vectors, QtCore.Qt.QueuedConnection)
                                   for box_row in tilt_widget.support_vecs_box for box in box_row]
+        self._scanning_logic().sigTiltCorrSettingsChanged.connect(
+            self.tilt_corr_support_vector_updated, QtCore.Qt.QueuedConnection)
 
         # Initialize dockwidgets to default view
         self.restore_default_view()
@@ -318,6 +320,7 @@ class ScannerGui(GuiBase):
         tilt_widget.tilt_set_03_pushButton.clicked.disconnect()
         tilt_widget.tilt_set_04_pushButton.clicked.disconnect()
         tilt_widget.auto_origin_switch.toggle_switch.sigStateChanged.disconnect()
+        self._scanning_logic().sigTiltCorrSettingsChanged.disconnect()
         self._mw.action_toggle_tilt_correction.triggered.disconnect()
 
     def show(self):
@@ -528,7 +531,7 @@ class ScannerGui(GuiBase):
                     self.tilt_correction_dockwidget.set_support_vector(vector, idx)
                 except (ValueError, KeyError):
                     pass
-        self.tilt_corr_support_vector_updated()
+        self.apply_tilt_corr_support_vectors()
 
     @QtCore.Slot(tuple)
     def save_scan_data(self, scan_axes=None):
@@ -1063,9 +1066,28 @@ class ScannerGui(GuiBase):
         target = self._scanning_logic().scanner_target
 
         self.tilt_correction_dockwidget.set_support_vector(target, idx_vector)
-        self.tilt_corr_support_vector_updated()
+        self.apply_tilt_corr_support_vectors()
 
-    def tilt_corr_support_vector_updated(self):
+    def tilt_corr_support_vector_updated(self, sup_vecs=None, shift_vec=None, caller_id=None):
+        """
+        Signal new vectors from logic and update gui accordingly.
+        :param sup_vecs:
+        :param shift_vec:
+        :return:
+        """
+
+        #self.log.debug(f"Update vectors from logic: {sup_vecs}, {shift_vec}")
+
+        tilt_widget = self.tilt_correction_dockwidget
+
+        for i_row, box_row in enumerate(tilt_widget.support_vecs_box):
+            for j_col, box in enumerate(box_row):
+                if i_row == len(tilt_widget.support_vecs_box)-1:
+                    box.setValue(shift_vec[j_col])
+                else:
+                    box.setValue(sup_vecs[i_row, j_col])
+
+    def apply_tilt_corr_support_vectors(self):
 
         support_vecs = self.tilt_correction_dockwidget.support_vecs_box
         support_vecs_val = self.tilt_correction_dockwidget.support_vectors
@@ -1089,7 +1111,8 @@ class ScannerGui(GuiBase):
                 shift_vec_arr = None
             support_vecs_arr = self._scanning_logic().tilt_vector_dict_2_array(support_vecs_val[:-1])
             self._scanning_logic().configure_tilt_correction(support_vecs_arr,
-                                                             shift_vec_arr)
+                                                             shift_vec_arr,
+                                                             caller_id=self.module_uuid)
             self._mw.action_toggle_tilt_correction.setEnabled(True)
 
     def toggle_tilt_correction(self, state):

@@ -68,6 +68,7 @@ class ScanningProbeLogic(LogicBase):
     sigScanStateChanged = QtCore.Signal(bool, object, object)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigScanSettingsChanged = QtCore.Signal(dict)
+    sigTiltCorrSettingsChanged = QtCore.Signal(np.ndarray, np.ndarray, object)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -356,11 +357,15 @@ class ScanningProbeLogic(LogicBase):
             # set target pos again with updated, (dis-) engaged tilt correction
             self.set_target_position(target_pos, move_blocking=True)
 
-    def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
+    def configure_tilt_correction(self, support_vecs=None, shift_vec=None, caller_id=None):
 
         if support_vecs is None:
             self._tilt_corr_transform = None
             return
+
+        if caller_id is None:
+            # if gui is calling, don't emit back update
+            caller_id = self._curr_caller_id
 
         support_vecs = np.asarray(support_vecs)
 
@@ -403,6 +408,11 @@ class ScanningProbeLogic(LogicBase):
 
         self._tilt_corr_transform = lin_transform
         self._tilt_corr_axes = [el for idx, el in enumerate(self._scan_axes) if tilt_axes[idx]]
+
+        #self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
+
+        if caller_id == self._curr_caller_id:
+            self.sigTiltCorrSettingsChanged.emit(support_vecs, shift_vec, self._curr_caller_id)
 
     def tilt_vector_dict_2_array(self, vector, reduced_dim=False):
         """
