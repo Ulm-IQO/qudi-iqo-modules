@@ -107,7 +107,13 @@ class ScanningDataLogic(LogicBase):
 
     @_scan_history.constructor
     def __scan_history_from_dicts(self, history_dicts):
-        return [ScanData.from_dict(hist_dict) for hist_dict in history_dicts]
+        try:
+            history = [ScanData.from_dict(hist_dict) for hist_dict in history_dicts]
+        except Exception as e:
+            self.log.warning(f"Couldn't restore scan history from StatusVar. Scan history will be empty: {repr(e)}")
+            history = []
+
+        return history
 
     def get_current_scan_data(self, scan_axes=None):
         """
