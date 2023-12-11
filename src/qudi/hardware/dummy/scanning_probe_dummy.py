@@ -96,7 +96,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
         # handle to the uncorrected scanner instance, not wrapped by a potential CoordinateTransformMixin
         # that transforms to a tilted, virtual coordinate system.
-        self.bare_scanner = ScanningProbeDummy
+        self.bare_scanner = ScanningProbeDummyBare
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
