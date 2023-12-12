@@ -60,6 +60,7 @@ class ScanningProbeLogic(LogicBase):
     _scan_ranges = StatusVar(name='scan_ranges', default=None)
     _scan_resolution = StatusVar(name='scan_resolution', default=None)
     _scan_frequency = StatusVar(name='scan_frequency', default=None)
+    _tilt_corr_settings = StatusVar(name='tilt_corr_settings', default={})
 
     # config options
     _min_poll_interval = ConfigOption(name='min_poll_interval', default=None)
@@ -68,7 +69,7 @@ class ScanningProbeLogic(LogicBase):
     sigScanStateChanged = QtCore.Signal(bool, object, object)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigScanSettingsChanged = QtCore.Signal(dict)
-    sigTiltCorrSettingsChanged = QtCore.Signal(np.ndarray, np.ndarray, object)
+    sigTiltCorrSettingsChanged = QtCore.Signal(dict, object)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -81,6 +82,11 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
         self._tilt_corr_transform = None
+        self._tilt_corr_settings = {'auto_origin': None,
+                                    'vec_1': None,
+                                    'vec_2': None,
+                                    'vec_3': None,
+                                    'vec_shift': None}
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -357,7 +363,19 @@ class ScanningProbeLogic(LogicBase):
             # set target pos again with updated, (dis-) engaged tilt correction
             self.set_target_position(target_pos, move_blocking=True)
 
+    @property
+    def tilt_correction_settings(self):
+        return self._tilt_corr_settings
+
     def configure_tilt_correction(self, support_vecs=None, shift_vec=None, caller_id=None):
+        """
+        Confiugre the titl correction with a set of support vector that define the tilted plane
+        that should be horizontal after the correction
+
+        @param list support_vecs: list of dicts. Each dict contains the scan axis as keys.
+        @param dict shift_vec: Vector that defines the origin of rotation
+        @param int caller_id:. Qudi module object that is calling.
+        """
 
         if support_vecs is None:
             self._tilt_corr_transform = None
@@ -367,30 +385,33 @@ class ScanningProbeLogic(LogicBase):
             # if gui is calling, don't emit back update
             caller_id = self._curr_caller_id
 
-        support_vecs = np.asarray(support_vecs)
+        support_vecs_arr = np.asarray(self.tilt_vector_dict_2_array(support_vecs, reduced_dim=False))
+        if shift_vec is not None:
+            shift_vec_arr = np.array(self.tilt_vector_dict_2_array(shift_vec, reduced_dim=False))
 
-        if support_vecs.shape[0] != 3:
-            raise ValueError(f"Need 3 n-dim support vectors, not {support_vecs.shape[0]}")
+        if support_vecs_arr.shape[0] != 3:
+            raise ValueError(f"Need 3 n-dim support vectors, not {support_vecs_arr.shape[0]}")
 
+        auto_origin = False
         if shift_vec is None:
-            red_support_vecs = compute_reduced_vectors(support_vecs)
-            shift_vec = np.mean(red_support_vecs, axis=0)
+            auto_origin = True
+            red_support_vecs = compute_reduced_vectors(support_vecs_arr)
+            shift_vec_arr = np.mean(red_support_vecs, axis=0)
         else:
-            shift_vec = np.asarray(shift_vec)
-            red_support_vecs = np.vstack([support_vecs, shift_vec])
+            red_support_vecs = np.vstack([support_vecs_arr, shift_vec_arr])
             red_vecs = compute_reduced_vectors(red_support_vecs)
             red_support_vecs = red_vecs[:-1,:]
-            shift_vec = red_vecs[-1,:]
+            shift_vec_arr = red_vecs[-1,:]
 
-        tilt_axes = find_changing_axes(support_vecs)
+        tilt_axes = find_changing_axes(support_vecs_arr)
 
-        if red_support_vecs.shape != (3,3) or shift_vec.shape[0] != 3:
-            n_dim = support_vecs.shape[1]
+        if red_support_vecs.shape != (3,3) or shift_vec_arr.shape[0] != 3:
+            n_dim = support_vecs_arr.shape[1]
             raise ValueError(f"Can't calculate tilt in >3 dimensions. "
                              f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. ")
 
         rot_mat = compute_rotation_matrix_to_plane(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
-        shift = shift_vec
+        shift = shift_vec_arr
 
         # shift coord system to origin, rotate and shift shift back according to LT(x) = (R+s)*x - R*s
         lin_transform = LinearTransformation3D()
@@ -408,11 +429,15 @@ class ScanningProbeLogic(LogicBase):
 
         self._tilt_corr_transform = lin_transform
         self._tilt_corr_axes = [el for idx, el in enumerate(self._scan_axes) if tilt_axes[idx]]
-
+        self._tilt_corr_settings = {'auto_origin': auto_origin,
+                                    'vec_1': support_vecs[0],
+                                    'vec_2': support_vecs[1],
+                                    'vec_3': support_vecs[2],
+                                    'vec_shift': shift_vec}
         #self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
 
         if caller_id == self._curr_caller_id:
-            self.sigTiltCorrSettingsChanged.emit(support_vecs, shift_vec, self._curr_caller_id)
+            self.sigTiltCorrSettingsChanged.emit(self._tilt_corr_settings, self._curr_caller_id)
 
     def tilt_vector_dict_2_array(self, vector, reduced_dim=False):
         """

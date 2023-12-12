@@ -123,7 +123,6 @@ class ScannerGui(GuiBase):
     # status vars
     _window_state = StatusVar(name='window_state', default=None)
     _window_geometry = StatusVar(name='window_geometry', default=None)
-    _tilt_correction_vectors = StatusVar(name='tilt_correction_vectors', default=[])
 
     # signals
     sigScannerTargetChanged = QtCore.Signal(dict, object)
@@ -525,12 +524,10 @@ class ScannerGui(GuiBase):
         return
 
     def _restore_tilt_correction(self):
-        if self._tilt_correction_vectors:
-            for idx, vector in enumerate(self._tilt_correction_vectors):
-                try:
-                    self.tilt_correction_dockwidget.set_support_vector(vector, idx)
-                except (ValueError, KeyError):
-                    pass
+
+        tilt_settings = self._scanning_logic().tilt_correction_settings
+
+        self.tilt_corr_support_vector_updated(tilt_settings)
         self.apply_tilt_corr_support_vectors()
 
     @QtCore.Slot(tuple)
@@ -1068,7 +1065,7 @@ class ScannerGui(GuiBase):
         self.tilt_correction_dockwidget.set_support_vector(target, idx_vector)
         self.apply_tilt_corr_support_vectors()
 
-    def tilt_corr_support_vector_updated(self, sup_vecs=None, shift_vec=None, caller_id=None):
+    def tilt_corr_support_vector_updated(self, settings=None):
         """
         Signal new vectors from logic and update gui accordingly.
         :param sup_vecs:
@@ -1076,16 +1073,28 @@ class ScannerGui(GuiBase):
         :return:
         """
 
-        #self.log.debug(f"Update vectors from logic: {sup_vecs}, {shift_vec}")
+        if settings:
+            sup_vecs = np.asarray([settings['vec_1'], settings['vec_2'], settings['vec_3']])
+            shift_vec = settings['vec_shift']
+            auto_origin = settings['auto_origin']
+            #self.log.debug(f"Update vectors from logic: {sup_vecs}, {shift_vec}")
 
-        tilt_widget = self.tilt_correction_dockwidget
+            if shift_vec is None and auto_origin:
+                shift_vec = {ax: np.inf for ax in sup_vecs[0].keys()}
 
-        for i_row, box_row in enumerate(tilt_widget.support_vecs_box):
-            for j_col, box in enumerate(box_row):
-                if i_row == len(tilt_widget.support_vecs_box)-1:
-                    box.setValue(shift_vec[j_col])
-                else:
-                    box.setValue(sup_vecs[i_row, j_col])
+            tilt_widget = self.tilt_correction_dockwidget
+
+            auto_state = 'ON' if auto_origin else 'OFF'
+            tilt_widget.set_auto_origin(auto_state)
+
+            for i_row, box_row in enumerate(tilt_widget.support_vecs_box):
+                for j_col, box in enumerate(box_row):
+                    if i_row == len(tilt_widget.support_vecs_box)-1:
+                        vec_arr = self._scanning_logic().tilt_vector_dict_2_array(shift_vec)
+                    else:
+                        vec_arr = self._scanning_logic().tilt_vector_dict_2_array(sup_vecs[i_row])
+
+                    box.setValue(vec_arr[j_col])
 
     def apply_tilt_corr_support_vectors(self):
 
@@ -1096,7 +1105,8 @@ class ScannerGui(GuiBase):
         dim_idxs = [(idx, key) for idx, key in enumerate(self._scanning_logic().scanner_axes.keys())]
 
         all_vecs_valid = True
-        for vec in [0,1,2,3]:
+        vecs_to_check = [0,1,2] if self.tilt_correction_dockwidget.auto_origin else [0,1,2,3]
+        for vec in vecs_to_check:
             vecs_valid = [support_vecs[vec][dim[0]].is_valid for dim in dim_idxs]
             all_vecs_valid = np.all(vecs_valid) and all_vecs_valid
 
@@ -1106,12 +1116,13 @@ class ScannerGui(GuiBase):
         self._mw.action_toggle_tilt_correction.setEnabled(False)
 
         if all_vecs_valid:
-            shift_vec_arr = self._scanning_logic().tilt_vector_dict_2_array(support_vecs_val[-1])
-            if not np.all([np.isfinite(el) for el in shift_vec_arr]):
-                shift_vec_arr = None
-            support_vecs_arr = self._scanning_logic().tilt_vector_dict_2_array(support_vecs_val[:-1])
-            self._scanning_logic().configure_tilt_correction(support_vecs_arr,
-                                                             shift_vec_arr,
+            shift_vec =support_vecs_val[-1]
+            if self.tilt_correction_dockwidget.auto_origin:
+                shift_vec = None
+
+            support_vecs = support_vecs_val[:-1]
+            self._scanning_logic().configure_tilt_correction(support_vecs,
+                                                             shift_vec,
                                                              caller_id=self.module_uuid)
             self._mw.action_toggle_tilt_correction.setEnabled(True)
 

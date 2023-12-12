@@ -121,6 +121,10 @@ class TiltCorrectionDockWidget(QDockWidget):
     def auto_origin(self):
         return True if self.auto_origin_switch.switch_state == 'ON' else False
 
+    def set_auto_origin(self, state):
+        self.auto_origin_switch.switch_state = state
+        self.auto_origin_changed(state)
+
     def auto_origin_changed(self, state):
 
         auto_enabled = True if state == 'ON' else False
