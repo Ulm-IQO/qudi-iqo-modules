@@ -75,6 +75,8 @@ class TimeSeriesReaderLogic(LogicBase):
                                        default=1024**3,
                                        missing='info',
                                        constructor=lambda x: int(round(x)))
+    _auto_save_time = ConfigOption('auto_save_time', default=None, missing='nothing',
+                                   constructor=lambda x: x if x != 0 else 1)  # default 0 to 1
 
     # status vars
     _trace_window_size = StatusVar('trace_window_size', default=6)
@@ -134,6 +136,8 @@ class TimeSeriesReaderLogic(LogicBase):
         self._recorded_sample_count = 0
         self._data_recording_active = False
         self._record_start_time = None
+        self._t_last_autosave = None
+        self._i_autosave = 0
 
         # Check valid StatusVar
         # active channels
@@ -521,6 +525,7 @@ class TimeSeriesReaderLogic(LogicBase):
 
                     if self._data_recording_active:
                         self._add_to_recording_array(data_view, times_view)
+                        self._autosave()
                     self.sigNewRawData.emit(data_view, times_view)
                     # Emit update signal
                     self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
@@ -661,7 +666,7 @@ class TimeSeriesReaderLogic(LogicBase):
         self._recorded_sample_count += new_samples
 
     @QtCore.Slot()
-    def start_recording(self):
+    def start_recording(self, autosave=True):
         """ Will start to continuously accumulate raw data from the streaming hardware (without
         running average and oversampling). Data will be saved to file once the trace acquisition is
         stopped.
@@ -675,6 +680,8 @@ class TimeSeriesReaderLogic(LogicBase):
                 if self.module_state() == 'locked':
                     self._init_recording_arrays()
                     self._record_start_time = dt.datetime.now()
+                    self._t_last_autosave = None
+                    self._i_autosave = 0
                     self.sigStatusChanged.emit(True, True)
                 else:
                     self.start_reading()
@@ -714,11 +721,9 @@ class TimeSeriesReaderLogic(LogicBase):
                 [self._recorded_sample_count, channel_count]
             )
             if self._recorded_raw_times is not None:
-                print(data.shape)
                 data = np.column_stack(
                     [self._recorded_raw_times[:self._recorded_sample_count], data]
                 )
-                print(data.shape, '\n')
                 column_headers.insert(0, 'Time (s)')
             try:
                 fig = self._draw_raw_data_thumbnail(data) if save_figure else None
@@ -733,6 +738,19 @@ class TimeSeriesReaderLogic(LogicBase):
         except:
             self.log.exception('Something went wrong while saving raw data:')
             raise
+
+    def _autosave(self):
+
+        if self._auto_save_time is None:
+            return
+
+        if self._t_last_autosave is None:
+            self._t_last_autosave = dt.datetime.now()
+
+        if (dt.datetime.now() - self._t_last_autosave).total_seconds() > self._auto_save_time:
+            self._save_recorded_data(name_tag=f'autosave.{self._i_autosave:04d}')
+            self._i_autosave += 1
+            self._t_last_autosave = dt.datetime.now()
 
     def _draw_raw_data_thumbnail(self, data: np.ndarray) -> plt.Figure:
         """ Draw figure to save with data file """
