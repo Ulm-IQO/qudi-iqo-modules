@@ -580,6 +580,7 @@ class SerialDev1N():
         self._ch_map = None
         self._dev = None
 
+    @abstractmethod
     @property
     def channel_count(self):
         pass
@@ -608,14 +609,11 @@ class SerialDummy(SerialDev1N):
                         'ch2': None}
 
     def get_single_sample(self):
-        try:
-            splitted_values = []
-            for ch_name in self._ch_map.keys():
-                sample_per_ch = float(np.random.random_sample(1))
-                splitted_values.append(sample_per_ch)
-        except:
-            splitted_values = ['nan', 'nan', 'nan']
-            raise
+
+        splitted_values = []
+        for ch_name in self._ch_map.keys():
+            sample_per_ch = float(np.random.random_sample(1))
+            splitted_values.append(sample_per_ch)
 
         splitted_values = [float(val) for val in splitted_values]
 
