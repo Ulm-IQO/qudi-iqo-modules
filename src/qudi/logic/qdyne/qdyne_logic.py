@@ -292,8 +292,11 @@ class QdyneSettings:
         self.analyzer_stg = SettingsManager(AnalyzerSettings)
         self.save_stg = QdyneSaveSettings()
 
-class SettingsManager:
+class SettingsManager():
+#    current_stg_changed_sig = QtCore.Signal()
+
     def __init__(self, abstract_class_obj=None):
+#        super().__init__()
         self.abstract_class_obj = abstract_class_obj
         self.settings_dict = dict() # [setting_class][setting_name]
         self.current_method = ''

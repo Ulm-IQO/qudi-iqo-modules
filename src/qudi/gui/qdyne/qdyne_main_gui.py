@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from PySide2 import QtWidgets
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -30,7 +31,7 @@ from qudi.gui.qdyne.widgets.main_window import QdyneMainWindow
 from qudi.gui.qdyne.widgets.measurement_widget import MeasurementWidget
 from qudi.gui.qdyne.widgets.generation_widget import GenerationWidget
 from qudi.gui.qdyne.widgets.predefined_method_config_dialog_widget import PredefinedMethodsConfigDialogWidget
-from qudi.gui.qdyne.widgets.state_estimation_widget import StateEstimationWidget
+from qudi.gui.qdyne.widgets.state_estimation_widget import StateEstimationTab
 from qudi.gui.qdyne.widgets.time_trace_analysis_widget import TimeTraceAnalysisWidget
 
 class QdyneMainGui(GuiBase):
@@ -51,7 +52,7 @@ class QdyneMainGui(GuiBase):
         self._mainw = QdyneMainWindow(self)
         self._gw = GenerationWidget(self)
         self._gsw = PredefinedMethodsConfigDialogWidget(self)
-        self._sew = StateEstimationWidget()
+        self._sew = StateEstimationTab()
         self._ttaw = TimeTraceAnalysisWidget(self)
         self._fcd = FitConfigurationDialog(
             parent=self._mainw,
@@ -63,7 +64,8 @@ class QdyneMainGui(GuiBase):
         self._gw.activate()
         self._gsw.activate()
 #        self._pmw.activate()
-        self._sew.activate(self.logic().estimator, self.logic().settings.estimator_stg)
+        self._sew.activate_ui(self.logic().estimator, self.logic().settings.estimator_stg)
+
         self._ttaw.activate(self.logic().analyzer, self.logic().settings.analyzer_stg)
 
     def _connect(self):
@@ -72,6 +74,7 @@ class QdyneMainGui(GuiBase):
         self._gsw.connect_signals()
 #        self._pmw.connect_signals()
         self._sew.connect_signals()
+
         self._ttaw.connect_signals()
 
     def on_deactivate(self):
@@ -83,7 +86,8 @@ class QdyneMainGui(GuiBase):
         self._gw.deactivate()
         self._gsw.deactivate()
 #        self._pmw.deactivate()
-        self._sew.deactivate()
+        self._sew.deactivate_ui()
+
         self._ttaw.deactivate()
 
     def _disconnect(self):

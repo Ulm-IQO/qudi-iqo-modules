@@ -76,15 +76,11 @@ class TimeSeriesStateEstimator(StateEstimator):
 class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     name: str = 'TimeTag'
     count_mode: str = 'Average'
-    count_length: int = 2000
-    start_count: int = 0
+    sig_start: int = 0
+    sig_end: int = 0
     count_threshold: int = 10  # Todo: this has to be either estimated or set somewhere from the logic
     max_bins: int = 90000  # Todo: this should be the maximum number of bins of the counter record length
     weight: list = field(default_factory=list)
-
-    @property
-    def stop_count(self):
-        return self.start_count + self.count_length
 
     def get_histogram(self, time_tag_data):
         count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
@@ -92,7 +88,7 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
 
     def set_start_count(self, time_tag_data):  # Todo: or maybe this can be taken from the pulseextractor?
         count_hist = self.get_histogram(time_tag_data)
-        self.start_count = int(np.where(count_hist[1:] > self.count_threshold)[0][0])
+        self.sig_start = int(np.where(count_hist[1:] > self.count_threshold)[0][0])
 
 
 
@@ -111,14 +107,14 @@ class TimeTagStateEstimator(StateEstimator):
         if self.stg.count_mode == 'Average':
             self.stg.set_start_count(time_tag_data)
             counts_time_trace = self._photon_count(time_tag_data,
-                                                   self.stg.start_count,
-                                                   self.stg.stop_count,
+                                                   self.stg.sig_start,
+                                                   self.stg.sig_stop,
                                                    self.stg.max_bins)
         elif self.stg.count_mode == 'WeightedAverage':
             counts_time_trace = self._weighted_photon_count(time_tag_data,
                                                             self.stg.weight,
-                                                            self.stg.start_count,
-                                                            self.stg.stop_count,
+                                                            self.stg.sig_start,
+                                                            self.stg.sig_stop,
                                                             self.stg.max_bins)
         return counts_time_trace
 

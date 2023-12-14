@@ -36,13 +36,19 @@ class DataclassWidget(QtWidgets.QWidget):
 
     def init_UI(self):
         self.create_layout()
-        self.update_data(self.data)
+        self.set_data(self.data)
 
-    def update_data(self, data):
+    def set_data(self, data):
         self.data = data
         self.clear_layout()
         self.set_widgets(self.data)
         self.setLayout(self.layout)
+
+    def update_data(self, data):
+        self.data = data
+        self.disconnect_widgets()
+        self.data = data
+        self.set_widgets(self.data)
 
     def create_layout(self):
         self.layout = QtWidgets.QGridLayout()
@@ -125,3 +131,12 @@ class DataclassWidget(QtWidgets.QWidget):
 
     def update_param(self, field, value):
         setattr(self.data, field.name, value)
+
+    def disconnect_widgets(self):
+        for field_name, old_widget in self.widgets.items():
+            if isinstance(old_widget, QtWidgets.QLineEdit):
+                old_widget.editingFinished.disconnect()
+            elif isinstance(old_widget, QtWidgets.QCheckBox):
+                old_widget.stateChanged.disconnect()
+            else:
+                old_widget.valueChanged.disconnect()

@@ -14,51 +14,19 @@
    <string>Form</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
-   <item row="1" column="0" colspan="2">
-    <widget class="QGroupBox" name="groupBox_13">
-     <property name="title">
-      <string>Histogram</string>
-     </property>
-     <layout class="QGridLayout" name="gridLayout_32">
-      <item row="0" column="0">
-       <layout class="QGridLayout" name="gridLayout_31">
-        <item row="0" column="2">
-         <widget class="QComboBox" name="laserpulses_ComboBox"/>
-        </item>
-        <item row="0" column="1">
-         <widget class="QLabel" name="label_38">
-          <property name="text">
-           <string>Laser Pulse number:</string>
-          </property>
-          <property name="alignment">
-           <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-          </property>
-         </widget>
-        </item>
-        <item row="0" column="0">
-         <widget class="QCheckBox" name="laserpulses_display_raw_CheckBox">
-          <property name="enabled">
-           <bool>true</bool>
-          </property>
-          <property name="text">
-           <string>Display raw</string>
-          </property>
-         </widget>
-        </item>
-        <item row="1" column="0" colspan="3">
-         <widget class="PlotWidget" name="laserpulses_PlotWidget"/>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
    <item row="0" column="0" colspan="2">
     <widget class="QGroupBox" name="groupBox_14">
      <property name="title">
       <string>Parameters for state estimation</string>
      </property>
      <layout class="QGridLayout" name="gridLayout_34">
+      <item row="1" column="1">
+       <widget class="Line" name="line">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+       </widget>
+      </item>
       <item row="0" column="1">
        <layout class="QGridLayout" name="se_settings_gridLayout">
         <item row="0" column="4">
@@ -113,33 +81,13 @@
         </item>
        </layout>
       </item>
-      <item row="1" column="1">
-       <widget class="Line" name="line">
-        <property name="orientation">
-         <enum>Qt::Horizontal</enum>
-        </property>
-       </widget>
-      </item>
-      <item row="2" column="1">
-       <layout class="QGridLayout" name="extraction_param_gridLayout"/>
-      </item>
      </layout>
     </widget>
    </item>
   </layout>
  </widget>
- <customwidgets>
-  <customwidget>
-   <class>PlotWidget</class>
-   <extends>QGraphicsView</extends>
-   <header>pyqtgraph</header>
-  </customwidget>
- </customwidgets>
  <tabstops>
   <tabstop>se_method_comboBox</tabstop>
-  <tabstop>laserpulses_display_raw_CheckBox</tabstop>
-  <tabstop>laserpulses_ComboBox</tabstop>
-  <tabstop>laserpulses_PlotWidget</tabstop>
  </tabstops>
  <resources/>
  <connections/>

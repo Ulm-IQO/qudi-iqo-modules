@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>se</class>
+ <widget class="QWidget" name="se">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1265</width>
+    <height>693</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QGridLayout" name="gridLayout">
+   <item row="0" column="0" colspan="2">
+    <widget class="QGroupBox" name="pulse_GroupBox">
+     <property name="title">
+      <string>Histogram</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayout_32">
+      <item row="0" column="0">
+       <layout class="QGridLayout" name="pulse_gridLayout">
+        <item row="0" column="0">
+         <widget class="QCheckBox" name="raw_CheckBox">
+          <property name="enabled">
+           <bool>true</bool>
+          </property>
+          <property name="text">
+           <string>Display raw</string>
+          </property>
+         </widget>
+        </item>
+        <item row="1" column="0" colspan="2">
+         <widget class="PlotWidget" name="pulse_PlotWidget"/>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <customwidgets>
+  <customwidget>
+   <class>PlotWidget</class>
+   <extends>QGraphicsView</extends>
+   <header>pyqtgraph</header>
+  </customwidget>
+ </customwidgets>
+ <tabstops>
+  <tabstop>raw_CheckBox</tabstop>
+  <tabstop>pulse_PlotWidget</tabstop>
+ </tabstops>
+ <resources/>
+ <connections/>
+</ui>
