@@ -84,6 +84,7 @@ class StateEstimationTab(QtWidgets.QWidget):
 
     def reconnect_mutual_signals(self):
         self.connect_mutual_signals()
+
     def disconnect_signals(self):
         self._sew1.disconnect_signals()
         self._sew2.disconnect_signals()
@@ -100,6 +101,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
     method_updated_sig = QtCore.Signal()
     setting_name_updated_sig = QtCore.Signal()
     setting_widget_updated_sig = QtCore.Signal()
+
     def __init__(self):
         self.estimator = None
         self.settings = None
@@ -146,10 +148,12 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
 
     def update_current_method(self):
         self.settings.current_method = self.se_method_comboBox.currentText()
+        self.se_setting_comboBox.blockSignals(True)
+        self.se_setting_comboBox.clear()
+        self.se_setting_comboBox.blockSignals(False)
+        self.se_setting_comboBox.addItems(self.settings.current_setting_list)
         self.settings.current_stg_name = 'default'
         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-        self.update_widget()
-        self.method_updated_sig.emit()
 
     def update_current_setting(self):
         self.settings.current_stg_name = self.se_setting_comboBox.currentText()
@@ -164,7 +168,6 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.settings.add_setting()
         self.se_setting_comboBox.addItem(self.settings.current_stg_name)
         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#        self.update_widget()
 
     def delete_setting(self):
         if self.settings.current_stg_name == 'default':

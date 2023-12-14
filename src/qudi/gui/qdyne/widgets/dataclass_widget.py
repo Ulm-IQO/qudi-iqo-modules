@@ -45,10 +45,8 @@ class DataclassWidget(QtWidgets.QWidget):
         self.setLayout(self.layout)
 
     def update_data(self, data):
-        self.data = data
         self.disconnect_widgets()
-        self.data = data
-        self.set_widgets(self.data)
+        self.set_data(data)
 
     def create_layout(self):
         self.layout = QtWidgets.QGridLayout()
@@ -61,6 +59,7 @@ class DataclassWidget(QtWidgets.QWidget):
             if widget:
                 # Remove the widget from the layout
                 widget.setParent(None)
+
     def set_widgets(self, data):
         self.labels = dict()
         self.widgets = dict()
