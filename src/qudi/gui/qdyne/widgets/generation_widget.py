@@ -20,16 +20,12 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import os
-import pyqtgraph as pg
-import numpy as np
 from enum import Enum
-from dataclasses import dataclass, fields
 from PySide2 import QtCore, QtWidgets
 
 from qudi.util import uic
 from qudi.util.helpers import natural_sort
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
-from qudi.util.colordefs import QudiPalettePale as palette
 
 class GenerationWidget(QtWidgets.QWidget):
     def __init__(self, gui):
@@ -46,14 +42,14 @@ class GenerationWidget(QtWidgets.QWidget):
     def activate(self):
         # disable loading loading_indicator
         self.loading_indicator.setVisible(False)
-        self.loaded_asset_updated(*self._gui.logic().pulsedmasterlogic().loaded_asset)
+        self.loaded_asset_updated(*self._gui.logic().loaded_asset)
         # Dynamically create GUI elements for global parameters
         self._channel_selection_comboboxes = list()  # List of created channel selection ComboBoxes
         self._global_param_widgets = list()  # List of all other created global parameter widgets
         self._create_pm_global_params()
-        self.generation_parameters_updated(self._gui.logic().pulsedmasterlogic().generation_parameters)
-        self.measurement_settings_updated(self._gui.logic().pulsedmasterlogic().measurement_settings)
-        self.fast_counter_settings_updated(self._gui.logic().pulsedmasterlogic().fast_counter_settings)
+        self.generation_parameters_updated(self._gui.logic().generation_parameters)
+        self.measurement_settings_updated(self._gui.logic().measurement_settings)
+        self.fast_counter_settings_updated(self._gui.logic().fast_counter_settings)
 
         # fill in the measurement parameter widgets
         self._pa_apply_hardware_constraints()
@@ -100,7 +96,7 @@ class GenerationWidget(QtWidgets.QWidget):
         self.ana_param_fc_bins_ComboBox.currentIndexChanged.disconnect()
 
     def sampling_or_loading_busy(self):
-        if self._gui.logic().pulsedmasterlogic().status_dict['sampload_busy']:
+        if self._gui.logic().status_dict['sampload_busy']:
             self._gui._mainw.action_run_stop.setEnabled(False)
 
             self.loaded_asset_label.setText('  loading...')
@@ -124,7 +120,7 @@ class GenerationWidget(QtWidgets.QWidget):
         col_count = 0
         row_count = 1
         combo_count = 0
-        for param, value in self._gui.logic().pulsedmasterlogic().generation_parameters.items():
+        for param, value in self._gui.logic().generation_parameters.items():
             # Create ComboBoxes for parameters ending on '_channel' to only be able to select
             # active channels. Also save references to those widgets in a list for easy access in
             # case of a change of channel activation config.
@@ -133,8 +129,8 @@ class GenerationWidget(QtWidgets.QWidget):
                 widget.setObjectName('global_param_' + param)
                 widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
                 widget.addItem('')
-                widget.addItems(natural_sort(self._gui.logic().pulsedmasterlogic().digital_channels))
-                widget.addItems(natural_sort(self._gui.logic().pulsedmasterlogic().analog_channels))
+                widget.addItems(natural_sort(self._gui.logic().digital_channels))
+                widget.addItems(natural_sort(self._gui.logic().analog_channels))
                 index = widget.findText(value)
                 if index >= 0:
                     widget.setCurrentIndex(index)
@@ -219,8 +215,8 @@ class GenerationWidget(QtWidgets.QWidget):
         self.samplo_buttons = dict()
         self.method_param_widgets = dict()
 
-        method_params = self._gui.logic().pulsedmasterlogic().generate_method_params
-        for method_name in natural_sort(self._gui.logic().pulsedmasterlogic().generate_methods):
+        method_params = self._gui.logic().generate_method_params
+        for method_name in natural_sort(self._gui.logic().generate_methods):
             # Create the widgets for the predefined methods dialogue
             # Create GroupBox for the method to reside in
             groupBox = QtWidgets.QGroupBox(self)
@@ -338,14 +334,14 @@ class GenerationWidget(QtWidgets.QWidget):
             for button in self.samplo_buttons.values():
                 button.setEnabled(False)
 
-        self._gui.logic().pulsedmasterlogic().generate_predefined_sequence(
+        self._gui.logic().generate_predefined_sequence(
             method_name, param_dict, sample_and_load
         )
 
     def predefined_generated(self, asset_name):
         # Enable all "GenSampLo" buttons in predefined methods tab if generation failed or
         # "sampload_busy" flag in PulsedMasterLogic status_dict is False.
-        if asset_name is None or not self._gui.logic().pulsedmasterlogic().status_dict['sampload_busy']:
+        if asset_name is None or not self._gui.logic().status_dict['sampload_busy']:
             for button in self.samplo_buttons.values():
                 button.setEnabled(True)
             # Enable all "Generate" buttons in predefined methods tab
@@ -383,7 +379,7 @@ class GenerationWidget(QtWidgets.QWidget):
                 elif hasattr(widget, 'currentText'):
                     settings_dict[param_name] = widget.currentData()
 
-        self._gui.logic().pulsedmasterlogic().set_generation_parameters(settings_dict)
+        self._gui.logic().set_generation_parameters(settings_dict)
         return
 
     def generation_parameters_updated(self, settings_dict):
@@ -429,7 +425,7 @@ class GenerationWidget(QtWidgets.QWidget):
         settings_dict = dict()
         settings_dict['record_length'] = self.ana_param_record_length_DoubleSpinBox.value()
         settings_dict['bin_width'] = float(self.ana_param_fc_bins_ComboBox.currentText())
-        self._gui.logic().pulsedmasterlogic().set_fast_counter_settings(settings_dict)
+        self._gui.logic().set_fast_counter_settings(settings_dict)
         print(settings_dict)
         return
 
@@ -455,7 +451,7 @@ class GenerationWidget(QtWidgets.QWidget):
                 self.toggle_global_param_enable("gate_channel", True)
             else:
                 self.toggle_global_param_enable("gate_channel", False)
-                self._gui.logic().pulsedmasterlogic().set_generation_parameters(gate_channel='')
+                self._gui.logic().set_generation_parameters({'gate_channel': ''})
 
         # unblock signals
         self.ana_param_record_length_DoubleSpinBox.blockSignals(False)
@@ -480,7 +476,7 @@ class GenerationWidget(QtWidgets.QWidget):
         settings_dict = dict()
         settings_dict['invoke_settings'] = self.ana_param_invoke_settings_CheckBox.isChecked()
 
-        self._gui.logic().pulsedmasterlogic().set_measurement_settings(settings_dict)
+        self._gui.logic().set_measurement_settings(settings_dict)
         return
 
     @QtCore.Slot(dict)
@@ -515,7 +511,7 @@ class GenerationWidget(QtWidgets.QWidget):
         Retrieve the constraints from pulser and fast counter hardware and apply these constraints
         to the analysis tab GUI elements.
         """
-        fc_constraints = self._gui.logic().pulsedmasterlogic().fast_counter_constraints
+        fc_constraints = self._gui.logic().fast_counter_constraints
         # block signals
         self.ana_param_fc_bins_ComboBox.blockSignals(True)
         # apply constraints

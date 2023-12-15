@@ -15,6 +15,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import copy
+from os import stat
 import numpy as np
 import time
 from collections import OrderedDict
@@ -262,6 +263,59 @@ class QdyneLogic(LogicBase):
         else:
             self._fit_result = result
         return config, result
+
+    @property
+    def status_dict(self):
+        return self.pulsedmasterlogic().status_dict
+
+    @property
+    def generation_parameters(self):
+        return self.pulsedmasterlogic().generation_parameters
+
+    @property
+    def measurement_settings(self):
+        return self.pulsedmasterlogic().measurement_settings
+
+    @property
+    def fast_counter_settings(self):
+        return self.pulsedmasterlogic().fast_counter_settings
+
+    @property
+    def loaded_asset(self):
+        return self.pulsedmasterlogic().loaded_asset
+
+    @property
+    def digital_channels(self):
+        return self.pulsedmasterlogic().digital_channels
+
+    @property
+    def analog_channels(self):
+        return self.pulsedmasterlogic().analog_channels
+
+    @property
+    def generate_method_params(self):
+        return self.pulsedmasterlogic().generate_method_params
+
+    @property
+    def generate_methods(self):
+        return self.pulsedmasterlogic().generate_methods
+
+    @property
+    def fast_counter_constraints(self):
+        return self.pulsedmasterlogic().fast_counter_constraints
+
+    def generate_predefined_sequence(self, method_name, param_dict, sample_and_load):
+        self.pulsedmasterlogic().generate_predefined_sequence(
+            method_name, param_dict, sample_and_load
+        )
+    def set_generation_parameters(self, settings_dict):
+        self.pulsedmasterlogic().set_generation_parameters(settings_dict)
+
+    def set_fast_counter_settings(self, settings_dict):
+        self.pulsedmasterlogic().set_fast_counter_settings(settings_dict)
+
+    def set_measurement_settings(self, settings_dict):
+        self.pulsedmasterlogic().set_measurement_settings(settings_dict)
 
 def get_subclasses(class_obj):
     '''
