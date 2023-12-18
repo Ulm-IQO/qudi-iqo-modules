@@ -534,7 +534,7 @@ class ScannerGui(GuiBase):
     def save_scan_data(self, scan_axes=None):
         """
         Save data for a given (or all) scan axis.
-        @param tuple: Axis to save. Save all currently displayed if None.
+        @param tuple scan_axes: Axis to save. Save all currently displayed if None.
         """
         self.sigShowSaveDialog.emit(True)
         try:
@@ -1065,12 +1065,12 @@ class ScannerGui(GuiBase):
         self.tilt_correction_dockwidget.set_support_vector(target, idx_vector)
         self.apply_tilt_corr_support_vectors()
 
-    def tilt_corr_support_vector_updated(self, settings=None):
+    def tilt_corr_support_vector_updated(self, settings):
         """
         Signal new vectors from logic and update gui accordingly.
-        :param sup_vecs:
-        :param shift_vec:
-        :return:
+
+        @param dict settings: scanning probe logic settings dict
+        @return:
         """
 
         if settings:
@@ -1100,7 +1100,6 @@ class ScannerGui(GuiBase):
 
         support_vecs = self.tilt_correction_dockwidget.support_vecs_box
         support_vecs_val = self.tilt_correction_dockwidget.support_vectors
-        self._tilt_correction_vectors = support_vecs_val
 
         dim_idxs = [(idx, key) for idx, key in enumerate(self._scanning_logic().scanner_axes.keys())]
 
@@ -1112,11 +1111,10 @@ class ScannerGui(GuiBase):
 
         self.toggle_tilt_correction(False)
         self._scanning_logic().configure_tilt_correction(None, None)
-
         self._mw.action_toggle_tilt_correction.setEnabled(False)
 
         if all_vecs_valid:
-            shift_vec =support_vecs_val[-1]
+            shift_vec = support_vecs_val[-1]
             if self.tilt_correction_dockwidget.auto_origin:
                 shift_vec = None
 

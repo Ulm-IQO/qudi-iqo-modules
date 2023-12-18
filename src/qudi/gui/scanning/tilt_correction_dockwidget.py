@@ -131,7 +131,7 @@ class TiltCorrectionDockWidget(QDockWidget):
 
         [el.setEnabled(not auto_enabled) for el in self.support_vecs_box[-1]]
 
-        # nan renders the gui boxes invalid/red, so instead inf
+        # nan renders the gui boxes invalid/red, so if auto=on instead inf
         [el.setValue(np.inf) for el in self.support_vecs_box[-1]]
         if not auto_enabled:
             [el.setValue(np.nan) for el in self.support_vecs_box[-1]]

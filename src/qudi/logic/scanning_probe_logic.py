@@ -82,6 +82,7 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
         self._tilt_corr_transform = None
+        self._tilt_corr_axes = []
         self._tilt_corr_settings = {'auto_origin': None,
                                     'vec_1': None,
                                     'vec_2': None,
@@ -369,7 +370,7 @@ class ScanningProbeLogic(LogicBase):
 
     def configure_tilt_correction(self, support_vecs=None, shift_vec=None, caller_id=None):
         """
-        Confiugre the titl correction with a set of support vector that define the tilted plane
+        Configure the tilt correction with a set of support vector that define the tilted plane
         that should be horizontal after the correction
 
         @param list support_vecs: list of dicts. Each dict contains the scan axis as keys.
@@ -424,8 +425,6 @@ class ScanningProbeLogic(LogicBase):
         shift_back = shift_vec_transform(-shift)
 
         lin_transform.translate(shift_back[0], shift_back[1], shift_back[2])
-        #self.log.debug(f"Shift vec {shift}, shift back {shift_back}")
-        #self.log.debug(f"Matrix: {lin_transform.matrix}")
 
         self._tilt_corr_transform = lin_transform
         self._tilt_corr_axes = [el for idx, el in enumerate(self._scan_axes) if tilt_axes[idx]]
@@ -434,6 +433,9 @@ class ScanningProbeLogic(LogicBase):
                                     'vec_2': support_vecs[1],
                                     'vec_3': support_vecs[2],
                                     'vec_shift': shift_vec}
+
+        #self.log.debug(f"Shift vec {shift}, shift back {shift_back}")
+        #self.log.debug(f"Matrix: {lin_transform.matrix}")
         #self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
 
         if caller_id == self._curr_caller_id:
@@ -442,9 +444,9 @@ class ScanningProbeLogic(LogicBase):
     def tilt_vector_dict_2_array(self, vector, reduced_dim=False):
         """
         Convert vectors given as dict (with axes keys) to arrays and ensure correct order.
-        vector: dict (single coord or arrays per key) or list of dicts
 
-        return: np.array or list of np.array
+        @param dict vector: (single coord or arrays per key) or list of dicts
+        @return np.array or list of np.array: vector(s) as array
         """
 
         axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
