@@ -398,6 +398,7 @@ class ScanningProbeLogic(LogicBase):
             auto_origin = True
             red_support_vecs = compute_reduced_vectors(support_vecs_arr)
             shift_vec_arr = np.mean(red_support_vecs, axis=0)
+            shift_vec = self.tilt_vector_array_2_dict(shift_vec_arr, reduced_dim=True)
         else:
             red_support_vecs = np.vstack([support_vecs_arr, shift_vec_arr])
             red_vecs = compute_reduced_vectors(red_support_vecs)
@@ -446,6 +447,7 @@ class ScanningProbeLogic(LogicBase):
         Convert vectors given as dict (with axes keys) to arrays and ensure correct order.
 
         @param dict vector: (single coord or arrays per key) or list of dicts
+        @param bool reduced_dim: The vector given has been reduced to 3 dims (from n-dim for arbitrary vectors)
         @return np.array or list of np.array: vector(s) as array
         """
 
@@ -471,6 +473,11 @@ class ScanningProbeLogic(LogicBase):
         if len(vecs_arr) == 1:
             return vecs_arr[0]
         return vecs_arr
+
+    def tilt_vector_array_2_dict(self, array, reduced_dim=True):
+        axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
+
+        return {ax: array[idx] for idx, ax in enumerate(axes)}
 
     def _update_scan_settings(self, scan_axes, settings):
         for ax_index, ax in enumerate(scan_axes):
