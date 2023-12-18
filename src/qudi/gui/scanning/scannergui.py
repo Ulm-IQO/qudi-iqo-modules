@@ -1073,28 +1073,30 @@ class ScannerGui(GuiBase):
         @return:
         """
 
+        tilt_widget = self.tilt_correction_dockwidget
+
         if settings:
             sup_vecs = np.asarray([settings['vec_1'], settings['vec_2'], settings['vec_3']])
-            shift_vec = settings['vec_shift']
+            shift_vec = settings.get('vec_shift', {})
             auto_origin = settings['auto_origin']
+            axes = list(tilt_widget.support_vectors[0].keys())
             #self.log.debug(f"Update vectors from logic: {sup_vecs}, {shift_vec}")
 
-            if shift_vec is None and auto_origin:
-                shift_vec = {ax: np.inf for ax in sup_vecs[0].keys()}
-
-            tilt_widget = self.tilt_correction_dockwidget
+            default_vec = {ax: np.inf for ax in axes}
+            shift_vec = {**default_vec, **shift_vec}
 
             auto_state = 'ON' if auto_origin else 'OFF'
             tilt_widget.set_auto_origin(auto_state)
 
             for i_row, box_row in enumerate(tilt_widget.support_vecs_box):
                 for j_col, box in enumerate(box_row):
+                    ax = axes[j_col]
                     if i_row == len(tilt_widget.support_vecs_box)-1:
-                        vec_arr = self._scanning_logic().tilt_vector_dict_2_array(shift_vec)
+                        vec = shift_vec
                     else:
-                        vec_arr = self._scanning_logic().tilt_vector_dict_2_array(sup_vecs[i_row])
+                        vec = sup_vecs[i_row]
 
-                    box.setValue(vec_arr[j_col])
+                    box.setValue(vec[ax])
 
     def apply_tilt_corr_support_vectors(self):
 

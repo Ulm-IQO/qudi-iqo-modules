@@ -374,7 +374,7 @@ class ScanningProbeLogic(LogicBase):
         that should be horizontal after the correction
 
         @param list support_vecs: list of dicts. Each dict contains the scan axis as keys.
-        @param dict shift_vec: Vector that defines the origin of rotation
+        @param dict shift_vec: Vector that defines the origin of rotation.
         @param int caller_id:. Qudi module object that is calling.
         """
 
