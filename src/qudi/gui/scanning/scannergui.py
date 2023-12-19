@@ -1086,7 +1086,10 @@ class ScannerGui(GuiBase):
             shift_vec = {**default_vec, **shift_vec}
 
             auto_state = 'ON' if auto_origin else 'OFF'
-            tilt_widget.set_auto_origin(auto_state)
+
+            tilt_widget.blockSignals(True)
+            tilt_widget.set_auto_origin(auto_state, reset=False)
+            tilt_widget.blockSignals(False)
 
             for i_row, box_row in enumerate(tilt_widget.support_vecs_box):
                 for j_col, box in enumerate(box_row):
@@ -1096,7 +1099,9 @@ class ScannerGui(GuiBase):
                     else:
                         vec = sup_vecs[i_row]
 
+                    box.blockSignals(True)
                     box.setValue(vec[ax])
+                    box.blockSignals(False)
 
     def apply_tilt_corr_support_vectors(self):
 
@@ -1122,8 +1127,7 @@ class ScannerGui(GuiBase):
 
             support_vecs = support_vecs_val[:-1]
             self._scanning_logic().configure_tilt_correction(support_vecs,
-                                                             shift_vec,
-                                                             caller_id=self.module_uuid)
+                                                             shift_vec)
             self._mw.action_toggle_tilt_correction.setEnabled(True)
 
     def toggle_tilt_correction(self, state):

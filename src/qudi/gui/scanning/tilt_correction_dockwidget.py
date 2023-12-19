@@ -121,20 +121,22 @@ class TiltCorrectionDockWidget(QDockWidget):
     def auto_origin(self):
         return True if self.auto_origin_switch.switch_state == 'ON' else False
 
-    def set_auto_origin(self, state):
+    def set_auto_origin(self, state, reset=True):
         self.auto_origin_switch.switch_state = state
-        self.auto_origin_changed(state)
+        self.auto_origin_changed(state, reset=reset)
 
-    def auto_origin_changed(self, state):
+    def auto_origin_changed(self, state, reset=True):
 
         auto_enabled = True if state == 'ON' else False
 
         [el.setEnabled(not auto_enabled) for el in self.support_vecs_box[-1]]
 
-        # nan renders the gui boxes invalid/red, so if auto=on instead inf
-        [el.setValue(np.inf) for el in self.support_vecs_box[-1]]
-        if not auto_enabled:
-            [el.setValue(np.nan) for el in self.support_vecs_box[-1]]
+        if reset:
+            # from gui, reset values for safety. Users should think whether old values are safe.
+            # nan renders the gui boxes invalid/red, so if auto=on instead inf
+            [el.setValue(np.inf) for el in self.support_vecs_box[-1]]
+            if not auto_enabled:
+                [el.setValue(np.nan) for el in self.support_vecs_box[-1]]
 
         self.tilt_set_04_pushButton.setEnabled(not auto_enabled)
 

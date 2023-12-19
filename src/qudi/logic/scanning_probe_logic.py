@@ -69,7 +69,7 @@ class ScanningProbeLogic(LogicBase):
     sigScanStateChanged = QtCore.Signal(bool, object, object)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigScanSettingsChanged = QtCore.Signal(dict)
-    sigTiltCorrSettingsChanged = QtCore.Signal(dict, object)
+    sigTiltCorrSettingsChanged = QtCore.Signal(dict)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -368,23 +368,18 @@ class ScanningProbeLogic(LogicBase):
     def tilt_correction_settings(self):
         return self._tilt_corr_settings
 
-    def configure_tilt_correction(self, support_vecs=None, shift_vec=None, caller_id=None):
+    def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
         """
         Configure the tilt correction with a set of support vector that define the tilted plane
         that should be horizontal after the correction
 
         @param list support_vecs: list of dicts. Each dict contains the scan axis as keys.
         @param dict shift_vec: Vector that defines the origin of rotation.
-        @param int caller_id:. Qudi module object that is calling.
         """
 
         if support_vecs is None:
             self._tilt_corr_transform = None
             return
-
-        if caller_id is None:
-            # if gui is calling, don't emit back update
-            caller_id = self._curr_caller_id
 
         support_vecs_arr = np.asarray(self.tilt_vector_dict_2_array(support_vecs, reduced_dim=False))
         if shift_vec is not None:
@@ -439,8 +434,7 @@ class ScanningProbeLogic(LogicBase):
         #self.log.debug(f"Matrix: {lin_transform.matrix}")
         #self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
 
-        if caller_id == self._curr_caller_id:
-            self.sigTiltCorrSettingsChanged.emit(self._tilt_corr_settings, self._curr_caller_id)
+        self.sigTiltCorrSettingsChanged.emit(self._tilt_corr_settings)
 
     def tilt_vector_dict_2_array(self, vector, reduced_dim=False):
         """
