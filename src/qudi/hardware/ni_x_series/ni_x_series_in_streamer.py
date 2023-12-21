@@ -24,13 +24,58 @@ If not, see <https://www.gnu.org/licenses/>.
 import ctypes
 import numpy as np
 import nidaqmx as ni
+from functools import wraps
+from typing import Tuple, List, Optional, Sequence, Union
 from nidaqmx._lib import lib_importer  # Due to NIDAQmx C-API bug needed to bypass property getter
-from nidaqmx.stream_readers import AnalogMultiChannelReader, CounterReader
+from nidaqmx.stream_readers import CounterReader
+from nidaqmx.stream_readers import AnalogMultiChannelReader as _AnalogMultiChannelReader
+from nidaqmx.constants import FillMode, READ_ALL_AVAILABLE
+try:
+    from nidaqmx._task_modules.read_functions import _read_analog_f_64
+except ImportError:
+    pass
 
 from qudi.core.configoption import ConfigOption
 from qudi.util.helpers import natural_sort
+from qudi.util.constraints import ScalarConstraint
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
-from qudi.interface.data_instream_interface import StreamingMode, StreamChannelType, StreamChannel
+from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
+
+
+class AnalogMultiChannelReader(_AnalogMultiChannelReader):
+    __doc__ = _AnalogMultiChannelReader.__doc__
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    @wraps(_AnalogMultiChannelReader.read_many_sample)
+    def read_many_sample(self,
+                         data,
+                         number_of_samples_per_channel=READ_ALL_AVAILABLE,
+                         timeout=10.0):
+        number_of_samples_per_channel = (
+            self._task._calculate_num_samps_per_chan(number_of_samples_per_channel)
+        )
+
+        self._verify_array(data, number_of_samples_per_channel, False, True)
+
+        try:
+            _, samps_per_chan_read = self._interpreter.read_analog_f64(
+                self._handle,
+                number_of_samples_per_channel,
+                timeout,
+                FillMode.GROUP_BY_SCAN_NUMBER.value,
+                data
+            )
+        except AttributeError:
+            samps_per_chan_read = _read_analog_f_64(
+                self._handle,
+                data,
+                number_of_samples_per_channel,
+                timeout,
+                fill_mode=FillMode.GROUP_BY_SCAN_NUMBER
+            )
+        return samps_per_chan_read
 
 
 class NIXSeriesInStreamer(DataInStreamInterface):
@@ -65,18 +110,21 @@ class NIXSeriesInStreamer(DataInStreamInterface):
     _device_name = ConfigOption(name='device_name', default='Dev1', missing='warn')
     _digital_sources = ConfigOption(name='digital_sources', default=tuple(), missing='info')
     _analog_sources = ConfigOption(name='analog_sources', default=tuple(), missing='info')
-    _external_sample_clock_source = ConfigOption(
-        name='external_sample_clock_source', default=None, missing='nothing')
+    _external_sample_clock_source = ConfigOption(name='external_sample_clock_source',
+                                                 default=None,
+                                                 missing='nothing')
     _external_sample_clock_frequency = ConfigOption(
-        name='external_sample_clock_frequency', default=None, missing='nothing')
-
+        name='external_sample_clock_frequency',
+        default=None,
+        missing='nothing',
+        constructor=lambda x: x if x is None else float(x)
+    )
     _adc_voltage_range = ConfigOption('adc_voltage_range', default=(-10, 10), missing='info')
-    _max_channel_samples_buffer = ConfigOption(
-        'max_channel_samples_buffer', default=25e6, missing='info')
+    _max_channel_samples_buffer = ConfigOption(name='max_channel_samples_buffer',
+                                               default=1024**2,
+                                               missing='info',
+                                               constructor=lambda x: max(int(round(x)), 1024**2))
     _rw_timeout = ConfigOption('read_write_timeout', default=10, missing='nothing')
-
-    # Hardcoded data type
-    __data_type = np.float64
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -90,28 +138,19 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         # nidaqmx stream reader instances to help with data acquisition
         self._di_readers = list()
         self._ai_reader = None
-
         # Internal settings
         self.__sample_rate = -1.0
-        self.__stream_length = -1
         self.__buffer_size = -1
-        self.__use_circular_buffer = False
         self.__streaming_mode = None
-
-        # Data buffer
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
-        self._has_overflown = False
-
         # List of all available counters and terminals for this device
         self.__all_counters = tuple()
         self.__all_digital_terminals = tuple()
         self.__all_analog_terminals = tuple()
-
         # currently active channels
         self.__active_channels = tuple()
-
         # Stored hardware constraints
         self._constraints = None
+        self.__tmp_buffer = None
 
     def on_activate(self):
         """
@@ -132,11 +171,16 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
         self.__all_counters = tuple(
             ctr.split('/')[-1] for ctr in self._device_handle.co_physical_chans.channel_names if
-            'ctr' in ctr.lower())
+            'ctr' in ctr.lower()
+        )
         self.__all_digital_terminals = tuple(
-            term.rsplit('/', 1)[-1].lower() for term in self._device_handle.terminals if 'PFI' in term)
+            term.rsplit('/', 1)[-1].lower() for term in self._device_handle.terminals if
+            'PFI' in term
+        )
         self.__all_analog_terminals = tuple(
-            term.rsplit('/', 1)[-1].lower() for term in self._device_handle.ai_physical_chans.channel_names)
+            term.rsplit('/', 1)[-1].lower() for term in
+            self._device_handle.ai_physical_chans.channel_names
+        )
 
         # Check digital input terminals
         if self._digital_sources:
@@ -179,36 +223,24 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             )
 
         # Create constraints
+        channel_units = {chnl: 'counts/s' for chnl in self._digital_sources}
+        channel_units.update({chnl: 'V' for chnl in self._analog_sources})
         self._constraints = DataInStreamConstraints(
-            digital_channels=tuple(
-                StreamChannel(name=src,
-                              type=StreamChannelType.DIGITAL,
-                              unit='counts') for src in self._digital_sources
-            ),
-            analog_channels=tuple(
-                StreamChannel(name=src,
-                              type=StreamChannelType.ANALOG,
-                              unit='V') for src in self._analog_sources
-            ),
-            analog_sample_rate={'default'    : 1,
-                                'bounds'     : (self._device_handle.ai_min_rate,
-                                                self._device_handle.ai_max_multi_chan_rate),
-                                'increment'  : 1,
-                                'enforce_int': False},
-            # FIXME: What is the minimum frequency for the digital counter timebase?
-            digital_sample_rate={'default'    : 1,
-                                 'bounds'     : (0.1, self._device_handle.ci_max_timebase),
-                                 'increment'  : 0.1,
-                                 'enforce_int': False},
-            read_block_size={'default'    : 1,
-                             'bounds'     : (1, int(self._max_channel_samples_buffer)),
-                             'increment'  : 1,
-                             'enforce_int': True},
-            streaming_modes=(StreamingMode.CONTINUOUS,),  # TODO: Implement FINITE streaming mode
+            channel_units=channel_units,
+            sample_timing=SampleTiming.CONSTANT,
+            streaming_modes=[StreamingMode.CONTINUOUS], # TODO: Implement FINITE streaming mode
             data_type=np.float64,
-            allow_circular_buffer=True
+            channel_buffer_size=ScalarConstraint(default=1024**2,
+                                                 bounds=(2, self._max_channel_samples_buffer),
+                                                 increment=1,
+                                                 enforce_int=True),
+            # FIXME: What is the minimum frequency for the digital counter timebase?
+            sample_rate=ScalarConstraint(default=50.0,
+                                         bounds=(self._device_handle.ai_min_rate,
+                                                 self._device_handle.ai_max_multi_chan_rate),
+                                         increment=1,
+                                         enforce_int=False)
         )
-        self._constraints.combined_sample_rate = self._constraints.analog_sample_rate.copy()
 
         # Check external sample clock source
         if self._external_sample_clock_source is not None:
@@ -216,9 +248,11 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             if new_name in self.__all_digital_terminals:
                 self._external_sample_clock_source = new_name
             else:
-                self.log.error('No valid source terminal found for external_sample_clock_source '
-                               '"{0}". Falling back to internal sampling clock.'
-                               ''.format(self._external_sample_clock_source))
+                self.log.error(
+                    f'No valid source terminal found for external_sample_clock_source '
+                    f'"{self._external_sample_clock_source}". Falling back to internal sampling '
+                    f'clock.'
+                )
                 self._external_sample_clock_source = None
 
         # Check external sample clock frequency
@@ -228,874 +262,571 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             self.log.error('External sample clock source supplied but no clock frequency. '
                            'Falling back to internal clock instead.')
             self._external_sample_clock_source = None
-        elif not self._clk_frequency_valid(self._external_sample_clock_frequency):
-            if self._analog_sources:
-                self.log.error('External sample clock frequency requested ({0:.3e}Hz) is out of '
-                               'bounds. Please choose a value between {1:.3e}Hz and {2:.3e}Hz.'
-                               ' Value will be clipped to the closest boundary.'
-                               ''.format(self._external_sample_clock_frequency,
-                                         self._constraints.combined_sample_rate.minimum,
-                                         self._constraints.combined_sample_rate.maximum))
-                self._external_sample_clock_frequency = min(
-                    self._external_sample_clock_frequency,
-                    self._constraints.combined_sample_rate.maximum)
-                self._external_sample_clock_frequency = max(
-                    self._external_sample_clock_frequency,
-                    self._constraints.combined_sample_rate.minimum)
-            else:
-                self.log.error('External sample clock frequency requested ({0:.3e}Hz) is out of '
-                               'bounds. Please choose a value between {1:.3e}Hz and {2:.3e}Hz.'
-                               ' Value will be clipped to the closest boundary.'
-                               ''.format(self._external_sample_clock_frequency,
-                                         self._constraints.digital_sample_rate.minimum,
-                                         self._constraints.digital_sample_rate.maximum))
-                self._external_sample_clock_frequency = min(
-                    self._external_sample_clock_frequency,
-                    self._constraints.digital_sample_rate.maximum
-                )
-                self._external_sample_clock_frequency = max(
-                    self._external_sample_clock_frequency,
-                    self._constraints.digital_sample_rate.minimum
-                )
+        elif not self._constraints.sample_rate.is_valid(self._external_sample_clock_frequency):
+            self.log.error(
+                f'External sample clock frequency requested '
+                f'({self._external_sample_clock_frequency:.3e}Hz) is out of bounds. Please '
+                f'choose a value between {self._constraints.sample_rate.minimum:.3e}Hz and '
+                f'{self._constraints.sample_rate.maximum:.3e}Hz. Value will be clipped to the '
+                f'closest boundary.'
+            )
+            self._external_sample_clock_frequency = self._constraints.sample_rate.clip(
+                self._external_sample_clock_frequency
+            )
 
-        self.terminate_all_tasks()
-
-        if self._external_sample_clock_frequency is not None:
-            self.__sample_rate = float(self._external_sample_clock_frequency)
+        self._terminate_all_tasks()
+        if self._external_sample_clock_frequency is None:
+            sample_rate = self._constraints.sample_rate.default
         else:
-            self.__sample_rate = self._constraints.combined_sample_rate.minimum
-
-        self.__data_type = np.float64
-        self.__stream_length = -1
-        self.__buffer_size = max(self._max_channel_samples_buffer, 1000000)
-        self.__use_circular_buffer = False
-        self.__streaming_mode = StreamingMode.CONTINUOUS
-        self.__active_channels = tuple()
-
-        # Reset data buffer
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
-        self._has_overflown = False
-        return
+            sample_rate = self._external_sample_clock_frequency
+        self.configure(active_channels=self._constraints.channel_units,
+                       streaming_mode=StreamingMode.CONTINUOUS,
+                       channel_buffer_size=self._constraints.channel_buffer_size.default,
+                       sample_rate=sample_rate)
 
     def on_deactivate(self):
-        """ Shut down the NI card.
-        """
-        self.terminate_all_tasks()
-        # Free memory if possible while module is inactive
-        self._data_buffer = np.empty(0, dtype=self.__data_type)
-        return
+        """ Shut down the NI card. """
+        self._terminate_all_tasks()
+
+    @property
+    def constraints(self) -> DataInStreamConstraints:
+        """ Read-only property returning the constraints on the settings for this data streamer. """
+        return self._constraints
 
     @property
     def sample_rate(self):
-        """
-        The currently set sample rate
-
-        @return float: current sample rate in Hz
+        """ Read-only property returning the currently set sample rate in Hz.
+        For SampleTiming.CONSTANT this is the sample rate of the hardware, for any other timing mode
+        this property represents only a hint to the actual hardware timebase and can not be
+        considered accurate.
         """
         return self.__sample_rate
 
-    @sample_rate.setter
-    def sample_rate(self, rate):
-        if self._check_settings_change():
-            if not self._clk_frequency_valid(rate):
-                if self._analog_sources:
-                    min_val = self._constraints.combined_sample_rate.minimum
-                    max_val = self._constraints.combined_sample_rate.maximum
-                else:
-                    min_val = self._constraints.digital_sample_rate.minimum
-                    max_val = self._constraints.digital_sample_rate.maximum
-                self.log.warning(
-                    'Sample rate requested ({0:.3e}Hz) is out of bounds. Please choose '
-                    'a value between {1:.3e}Hz and {2:.3e}Hz. Value will be clipped to '
-                    'the closest boundary.'.format(rate, min_val, max_val))
-                rate = max(min(max_val, rate), min_val)
-            self.__sample_rate = float(rate)
-        return
-
     @property
-    def data_type(self):
-        """
-        Read-only property to return the currently set data type
+    def channel_buffer_size(self) -> int:
+        """ Read-only property returning the currently set buffer size in samples per channel.
+        The total buffer size in bytes can be estimated by:
+            <buffer_size> * <channel_count> * numpy.nbytes[<data_type>]
 
-        @return type: current data type
-        """
-        return self.__data_type
-
-    @property
-    def buffer_size(self):
-        """
-        The currently set buffer size.
-        Buffer size corresponds to the number of samples per channel that can be buffered. So the
-        actual buffer size in bytes can be estimated by:
-            buffer_size * number_of_channels * size_in_bytes(data_type)
-
-        @return int: current buffer size in samples per channel
+        For StreamingMode.FINITE this will also be the total number of samples to acquire per
+        channel.
         """
         return self.__buffer_size
 
-    @buffer_size.setter
-    def buffer_size(self, size):
-        if self._check_settings_change():
-            size = int(size)
-            if size > self._max_channel_samples_buffer:
-                self.log.error('buffer_size to set ({0}) is larger than maximum allowed buffer '
-                               'size of {1:d} samples per channel.'
-                               ''.format(size, self._max_channel_samples_buffer))
-                return
-            elif size < 1:
-                self.log.error('Buffer size smaller than 1 makes no sense. Tried to set {0} as '
-                               'buffer size and failed.'.format(size))
-                return
-            self.__buffer_size = int(size)
-            self._init_buffer()
-        return
-
     @property
-    def use_circular_buffer(self):
-        """
-        A flag indicating if circular sample buffering is being used or not.
-
-        @return bool: indicate if circular sample buffering is used (True) or not (False)
-        """
-        return self.__use_circular_buffer
-
-    @use_circular_buffer.setter
-    def use_circular_buffer(self, flag):
-        if self._check_settings_change():
-            if flag and not self._constraints.allow_circular_buffer:
-                self.log.error('Circular buffer not allowed for this hardware module.')
-                return
-            self.__use_circular_buffer = bool(flag)
-        return
-
-    @property
-    def streaming_mode(self):
-        """
-        The currently configured streaming mode Enum.
-
-        @return StreamingMode: Finite (StreamingMode.FINITE) or continuous
-                               (StreamingMode.CONTINUOUS) data acquisition
-        """
+    def streaming_mode(self) -> StreamingMode:
+        """ Read-only property returning the currently configured StreamingMode Enum """
         return self.__streaming_mode
 
-    @streaming_mode.setter
-    def streaming_mode(self, mode):
-        if self._check_settings_change():
-            mode = StreamingMode(mode)
-            if mode not in self._constraints.streaming_modes:
-                self.log.error('Unknown streaming mode "{0}" encountered.\nValid modes are: {1}.'
-                               ''.format(mode, self._constraints.streaming_modes))
-                return
-            self.__streaming_mode = mode
-        return
-
     @property
-    def number_of_channels(self):
-        """
-        Read-only property to return the currently configured number of data channels.
+    def active_channels(self) -> List[str]:
+        """ Read-only property returning the currently configured active channel names """
+        return list(self.__active_channels)
 
-        @return int: the currently set number of channels
-        """
-        return len(self.__active_channels)
+    def configure(self,
+                  active_channels: Sequence[str],
+                  streaming_mode: Union[StreamingMode, int],
+                  channel_buffer_size: int,
+                  sample_rate: float) -> None:
+        """ Configure a data stream. See read-only properties for information on each parameter. """
+        if self.module_state() == 'locked':
+            raise RuntimeError('Unable to configure data stream while it is already running')
+        streaming_mode = StreamingMode(streaming_mode)
+        channel_buffer_size = int(round(channel_buffer_size))
+        if any(ch not in self._constraints.channel_units for ch in active_channels):
+            raise ValueError(
+                f'Invalid channel to stream from encountered {tuple(active_channels)}. \n'
+                f'Valid channels are: {tuple(self._constraints.channel_units)}'
+            )
+        if streaming_mode not in self._constraints.streaming_modes or streaming_mode == StreamingMode.INVALID:
+            raise ValueError(f'Invalid streaming mode "{streaming_mode}" encountered.\n'
+                             f'Valid modes are: {self._constraints.streaming_modes}.')
+        self._constraints.channel_buffer_size.check(channel_buffer_size)
+        self._constraints.sample_rate.check(sample_rate)
 
-    @property
-    def active_channels(self):
-        """
-        The currently configured data channel properties.
-        Returns a dict with channel names as keys and corresponding StreamChannel instances as
-        values.
-
-        @return dict: currently active data channel properties with keys being the channel names
-                      and values being the corresponding StreamChannel instances.
-        """
-        constr = self._constraints
-        return(*(ch.copy() for ch in constr.digital_channels if ch.name in self.__active_channels),
-               *(ch.copy() for ch in constr.analog_channels if ch.name in self.__active_channels))
-
-    @active_channels.setter
-    def active_channels(self, channels):
-        if self._check_settings_change():
-            avail_channels = tuple(ch.name for ch in self.available_channels)
-            if any(ch not in avail_channels for ch in channels):
-                self.log.error('Invalid channel to stream from encountered ({0}).\nValid channels '
-                               'are: {1}'
-                               ''.format(tuple(channels), tuple(self.available_channels)))
-                return
-            self.__active_channels = tuple(channels)
-        return
-
-    @property
-    def available_channels(self):
-        """
-        Read-only property to return the currently used data channel properties.
-        Returns a dict with channel names as keys and corresponding StreamChannel instances as
-        values.
-
-        @return tuple: data channel properties for all available channels with keys being the
-                       channel names and values being the corresponding StreamChannel instances.
-        """
-        return (*(ch.copy() for ch in self._constraints.digital_channels),
-                *(ch.copy() for ch in self._constraints.analog_channels))
+        self.__active_channels = tuple(active_channels)
+        self.__streaming_mode = streaming_mode
+        self.__buffer_size = channel_buffer_size
+        self.__sample_rate = sample_rate
+        digital_count = len([ch for ch in self.__active_channels if ch in self._digital_sources])
+        analog_count = len(self.__active_channels) - digital_count
+        self.__tmp_buffer = np.empty(
+            self.__buffer_size * max(analog_count, int(digital_count > 0)),
+            dtype=self._constraints.data_type
+        )
 
     @property
     def available_samples(self):
-        """
-        Read-only property to return the currently available number of samples per channel ready
+        """ Read-only property to return the currently available number of samples per channel ready
         to read from buffer.
-
-        @return int: Number of available samples per channel
         """
-        if not self.is_running:
+        if self.module_state() == 'locked':
+            if self._ai_task_handle is None:
+                return self._di_task_handles[0].in_stream.avail_samp_per_chan
+            else:
+                return self._ai_task_handle.in_stream.avail_samp_per_chan
+        else:
             return 0
 
-        if self._ai_task_handle is None:
-            # avail_samples = self._di_task_handles[0].in_stream.total_samp_per_chan_acquired - \
-            #                 self._di_task_handles[0].in_stream.curr_read_pos
-            return self._di_task_handles[0].in_stream.avail_samp_per_chan
-        else:
-            # avail_samples = self._ai_task_handle.in_stream.total_samp_per_chan_acquired - \
-            #                 self._ai_task_handle.in_stream.curr_read_pos
-            return self._ai_task_handle.in_stream.avail_samp_per_chan
-
-    @property
-    def stream_length(self):
-        """
-        Property holding the total number of samples per channel to be acquired by this stream.
-        This number is only relevant if the streaming mode is set to StreamingMode.FINITE.
-
-        @return int: The number of samples to acquire per channel. Ignored for continuous streaming.
-        """
-        return self.__stream_length
-
-    @stream_length.setter
-    def stream_length(self, length):
-        if self._check_settings_change():
-            length = int(length)
-            if length < 1:
-                self.log.error('Stream_length must be a positive integer >= 1.')
-                return
-            self.__stream_length = length
-        return
-
-    @property
-    def is_running(self):
-        """
-        Read-only flag indicating if the data acquisition is running.
-
-        @return bool: Data acquisition is running (True) or not (False)
-        """
-        return self._ai_reader is not None or self._di_readers
-
-    @property
-    def buffer_overflown(self):
-        """
-        Read-only flag to check if the read buffer has overflown.
-        In case of a circular buffer it indicates data loss.
-        In case of a non-circular buffer the data acquisition should have stopped if this flag is
-        coming up.
-        Flag will only be reset after starting a new data acquisition.
-
-        @return bool: Flag indicates if buffer has overflown (True) or not (False)
-        """
-        return self._has_overflown
-
-    @property
-    def all_settings(self):
-        """
-        Read-only property to return a dict containing all current settings and values that can be
-        configured using the method "configure". Basically returns the same as "configure".
-
-        @return dict: Dictionary containing all configurable settings
-        """
-        return {'sample_rate': self.__sample_rate,
-                'streaming_mode': self.__streaming_mode,
-                'active_channels': self.active_channels,
-                'stream_length': self.__stream_length,
-                'buffer_size': self.__buffer_size,
-                'use_circular_buffer': self.__use_circular_buffer}
-
-    def configure(self, sample_rate=None, streaming_mode=None, active_channels=None,
-                  stream_length=None, buffer_size=None, use_circular_buffer=None):
-        """
-        Method to configure all possible settings of the data input stream.
-
-        @param float sample_rate: The sample rate in Hz at which data points are acquired
-        @param StreamingMode streaming_mode: The streaming mode to use (finite or continuous)
-        @param iterable active_channels: Iterable of channel names (str) to be read from.
-        @param int stream_length: In case of a finite data stream, the total number of
-                                            samples to read per channel
-        @param int buffer_size: The size of the data buffer to pre-allocate in samples per channel
-        @param bool use_circular_buffer: Use circular buffering (True) or stop upon buffer overflow
-                                         (False)
-
-        @return dict: All current settings in a dict. Keywords are the same as kwarg names.
-        """
-        if self._check_settings_change():
-            # Handle sample rate change
-            if sample_rate is not None:
-                self.sample_rate = sample_rate
-
-            # Handle streaming mode change
-            if streaming_mode is not None:
-                self.streaming_mode = streaming_mode
-
-            # Handle active channels
-            if active_channels is not None:
-                self.active_channels = active_channels
-
-            # Handle total number of samples
-            if stream_length is not None:
-                self.stream_length = stream_length
-
-            # Handle buffer size
-            if buffer_size is not None:
-                self.buffer_size = buffer_size
-
-            # Handle circular buffer flag
-            if use_circular_buffer is not None:
-                self.use_circular_buffer = use_circular_buffer
-        return self.all_settings
-
-    def get_constraints(self):
-        """
-        Return the constraints on the settings for this data streamer.
-
-        @return DataInStreamConstraints: Instance of DataInStreamConstraints containing constraints
-        """
-        return self._constraints.copy()
-
-    def start_stream(self):
-        """
-        Start the data acquisition and data stream.
-
-        @return int: error code (0: OK, -1: Error)
-        """
-        if self.is_running:
+    def start_stream(self) -> None:
+        """ Start the data acquisition/streaming """
+        if self.module_state() == 'locked':
             self.log.warning('Unable to start input stream. It is already running.')
-            return 0
-
-        if (self._init_sample_clock() + self._init_digital_tasks() + self._init_analog_task()) != 0:
-            return -1
-
-        self._init_buffer()
-
-        try:
-            self._clk_task_handle.start()
-        except ni.DaqError:
-            self.log.exception('Error while starting sample clock task.')
-            self.terminate_all_tasks()
-            return -1
-
-        if self._ai_task_handle is not None:
-            try:
-                self._ai_task_handle.start()
-            except ni.DaqError:
-                self.log.exception('Error while starting analog input task.')
-                self.terminate_all_tasks()
-                return -1
-        try:
-            for task in self._di_task_handles:
-                task.start()
-        except ni.DaqError:
-            self.log.exception('Error while starting digital counter tasks.')
-            self.terminate_all_tasks()
-            return -1
-        return 0
-
-    def stop_stream(self):
-        """
-        Stop the data acquisition and data stream.
-
-        @return int: error code (0: OK, -1: Error)
-        """
-        if self.is_running:
-            self.terminate_all_tasks()
-        return 0
-
-    def read_data_into_buffer(self, buffer, number_of_samples=None):
-        """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
-        If number_of_samples is omitted it will be derived from buffer.shape[1]
-
-        This method will not return until all requested samples have been read or a timeout occurs.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      this number will be derived from buffer axis 1 size.
-
-        @return int: Number of samples per channel read into buffer; negative value indicates error
-                     (e.g. read timeout)
-        """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return -1
-
-        if not isinstance(buffer, np.ndarray) or buffer.dtype != self.__data_type:
-            self.log.error('buffer must be numpy.ndarray with dtype {0}. Read failed.'
-                           ''.format(self.__data_type))
-            return -1
-
-        if buffer.ndim == 2:
-            if buffer.shape[0] != self.number_of_channels:
-                self.log.error('Configured number of channels ({0:d}) does not match first '
-                               'dimension of 2D buffer array ({1:d}).'
-                               ''.format(self.number_of_channels, buffer.shape[0]))
-                return -1
-            number_of_samples = buffer.shape[1] if number_of_samples is None else number_of_samples
-            buffer = buffer.flatten()
-        elif buffer.ndim == 1:
-            if number_of_samples is None:
-                number_of_samples = buffer.size // self.number_of_channels
         else:
-            self.log.error('Buffer must be a 1D or 2D numpy.ndarray.')
-            return -1
+            self.module_state.lock()
+            try:
+                self._init_sample_clock()
+                self._init_digital_tasks()
+                self._init_analog_task()
 
-        if number_of_samples < 1:
-            return 0
+                self._clk_task_handle.start()
+                if self._ai_task_handle is not None:
+                    self._ai_task_handle.start()
+                for task in self._di_task_handles:
+                    task.start()
+            except:
+                self.module_state.unlock()
+                self._terminate_all_tasks()
+                raise
 
-        # Check for buffer overflow
-        if self.available_samples > self.buffer_size:
-            self._has_overflown = True
-
+    def stop_stream(self) -> None:
+        """ Stop the data acquisition/streaming """
         try:
-            write_offset = 0
-            # Read digital channels
-            for i, reader in enumerate(self._di_readers):
-                # read the counter value. This function is blocking.
-                read_samples = reader.read_many_sample_double(
-                    buffer[write_offset:],
-                    number_of_samples_per_channel=number_of_samples,
-                    timeout=self._rw_timeout)
-                if read_samples != number_of_samples:
-                    return -1
-                write_offset += number_of_samples
-            # Read analog channels
-            if self._ai_reader is not None:
-                read_samples = self._ai_reader.read_many_sample(
-                    buffer[write_offset:],
-                    number_of_samples_per_channel=number_of_samples,
-                    timeout=self._rw_timeout)
-            if read_samples != number_of_samples:
-                return -1
-        except ni.DaqError:
-            self.log.exception('Getting samples from streamer failed.')
-            return -1
-        return read_samples
+            self._terminate_all_tasks()
+        finally:
+            if self.module_state() == 'locked':
+                self.module_state.unlock()
 
-    def read_available_data_into_buffer(self, buffer):
+    def read_data_into_buffer(self,
+                              data_buffer: np.ndarray,
+                              samples_per_channel: int = None,
+                              timestamp_buffer: Optional[np.ndarray] = None) -> None:
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        Samples of all channels are stored interleaved in contiguous memory.
+        In case of a multidimensional buffer array, this buffer will be flattened before written
+        into.
+        The 1D data_buffer can be unraveled into channel and sample indexing with:
+
+            data_buffer.reshape([<samples_per_channel>, <channel_count>])
+
+        The data_buffer array must have the same data type as self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
+        provided to be filled with timestamps corresponding to the data_buffer array. It must be
+        able to hold at least <samples_per_channel> items:
+
+        This function is blocking until the required number of samples has been acquired.
         """
-        Read data from the stream buffer into a 1D/2D numpy array given as parameter.
-        In case of a single data channel the numpy array can be either 1D or 2D. In case of more
-        channels the array must be 2D with the first index corresponding to the channel number and
-        the second index serving as sample index:
-            buffer.shape == (self.number_of_channels, number_of_samples)
-        The numpy array must have the same data type as self.data_type.
+        if self.module_state() != 'locked':
+            raise RuntimeError('Unable to read data. Device is not running.')
+        # Check for buffer overflow
+        if self.available_samples > self.__buffer_size:
+            raise OverflowError('Hardware channel buffer has overflown. Please increase readout '
+                                'speed or decrease sample rate.')
+        if not isinstance(data_buffer, np.ndarray) or data_buffer.dtype != self._constraints.data_type:
+            raise TypeError(
+                f'data_buffer must be numpy.ndarray with dtype {self._constraints.data_type}'
+            )
+
+        channel_count = len(self.__active_channels)
+        digital_count = len(self._di_readers)
+        analog_count = channel_count - digital_count
+        if samples_per_channel is None:
+            samples_per_channel = len(data_buffer) // channel_count
+        total_samples = channel_count * samples_per_channel
+        if samples_per_channel > 0:
+            try:
+                channel_offset = 0
+                # Read digital channels
+                for i, reader in enumerate(self._di_readers):
+                    # read the counter value. This function is blocking.
+                    read_samples = reader.read_many_sample_double(
+                        self.__tmp_buffer,
+                        number_of_samples_per_channel=samples_per_channel,
+                        timeout=self._rw_timeout
+                    )
+                    self.__tmp_buffer[:samples_per_channel] *= self.__sample_rate
+                    data_buffer[channel_offset:total_samples:channel_count] = self.__tmp_buffer[
+                        :samples_per_channel]
+                    channel_offset += 1
+                # Read analog channels
+                if self._ai_reader is not None:
+                    if channel_offset == 0:
+                        read_samples = self._ai_reader.read_many_sample(
+                            data_buffer,
+                            number_of_samples_per_channel=samples_per_channel,
+                            timeout=self._rw_timeout
+                        )
+                    else:
+                        tmp_view = self.__tmp_buffer[:analog_count * samples_per_channel]
+                        read_samples = self._ai_reader.read_many_sample(
+                            tmp_view,
+                            number_of_samples_per_channel=samples_per_channel,
+                            timeout=self._rw_timeout
+                        )
+                        buf_view = data_buffer[:total_samples].reshape(
+                            [samples_per_channel, channel_count]
+                        )
+                        buf_view[:, digital_count:] = tmp_view.reshape(
+                            [samples_per_channel, tmp_view.size // samples_per_channel]
+                        )
+            except:
+                self.log.exception('Getting samples from streamer failed. Stopping streamer.')
+                self.stop_stream()
+
+    def read_available_data_into_buffer(self,
+                                        data_buffer: np.ndarray,
+                                        timestamp_buffer: Optional[np.ndarray] = None) -> int:
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The number of samples read per channel is returned and can be used to slice out valid data
+        from the buffer arrays like:
+
+            valid_data = data_buffer[:<channel_count> * <return_value>]
+            valid_timestamps = timestamp_buffer[:<return_value>]
+
+        See "read_data_into_buffer" documentation for more details.
 
         This method will read all currently available samples into buffer. If number of available
-        samples exceed buffer size, read only as many samples as fit into the buffer.
-
-        @param numpy.ndarray buffer: The numpy array to write the samples to
-
-        @return int: Number of samples per channel read into buffer; negative value indicates error
-                     (e.g. read timeout)
+        samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
-        avail_samples = min(buffer.size // self.number_of_channels, self.available_samples)
-        return self.read_data_into_buffer(buffer=buffer, number_of_samples=avail_samples)
+        channel_count = len(self.__active_channels)
+        samples_per_channel = min(self.available_samples, data_buffer.size // channel_count)
+        self.read_data_into_buffer(data_buffer=data_buffer,
+                                   samples_per_channel=samples_per_channel,
+                                   timestamp_buffer=timestamp_buffer)
+        return samples_per_channel
 
-    def read_data(self, number_of_samples=None):
-        """
-        Read data from the stream buffer into a 2D numpy array and return it.
-        The arrays first index corresponds to the channel number and the second index serves as
-        sample index:
-            return_array.shape == (self.number_of_channels, number_of_samples)
-        The numpy arrays data type is the one defined in self.data_type.
+    def read_data(self,
+                  samples_per_channel: Optional[int] = None
+                  ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
+        """ Read data from the stream buffer into a 1D numpy array and return it.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The returned data_buffer can be unraveled into channel samples with:
+
+            data_buffer.reshape([<channel_count>, number_of_samples])
+
+        The numpy array data type is the one defined in self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
+        returned as well with timestamps corresponding to the data_buffer array.
+
         If number_of_samples is omitted all currently available samples are read from buffer.
-
         This method will not return until all requested samples have been read or a timeout occurs.
-
-        @param int number_of_samples: optional, number of samples to read per channel. If omitted,
-                                      all available samples are read from buffer.
-
-        @return numpy.ndarray: The read samples
         """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return np.empty((0, 0), dtype=self.__data_type)
+        if samples_per_channel is None:
+            samples_per_channel = self.available_samples
+        channel_count = len(self.__active_channels)
+        data_buffer = np.empty(samples_per_channel * channel_count,
+                               dtype=self._constraints.data_type)
+        self.read_data_into_buffer(data_buffer=data_buffer, samples_per_channel=samples_per_channel)
+        return data_buffer, None
 
-        if number_of_samples is None:
-            read_samples = self.read_available_data_into_buffer(self._data_buffer)
-            if read_samples < 0:
-                return np.empty((0, 0), dtype=self.__data_type)
-        else:
-            read_samples = self.read_data_into_buffer(self._data_buffer,
-                                                      number_of_samples=number_of_samples)
-            if read_samples != number_of_samples:
-                return np.empty((0, 0), dtype=self.__data_type)
-
-        total_samples = self.number_of_channels * read_samples
-        return self._data_buffer[:total_samples].reshape((self.number_of_channels,
-                                                          number_of_samples))
-
-    def read_single_point(self):
-        """
-        This method will initiate a single sample read on each configured data channel.
+    def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
+        """ This method will initiate a single sample read on each configured data channel.
         In general this sample may not be acquired simultaneous for all channels and timing in
         general can not be assured. Us this method if you want to have a non-timing-critical
         snapshot of your current data channel input.
         May not be available for all devices.
         The returned 1D numpy array will contain one sample for each channel.
 
-        @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
-                               indicates error.
+        In case of SampleTiming.TIMESTAMP a single numpy.float64 timestamp value will be returned
+        as well.
         """
-        if not self.is_running:
-            self.log.error('Unable to read data. Device is not running.')
-            return np.empty(0, dtype=self.__data_type)
+        if self.module_state() != 'locked':
+            raise RuntimeError('Unable to read data. Device is not running.')
 
+        data_buffer = np.empty(len(self.__active_channels), dtype=self._constraints.data_type)
         try:
+            offset = 0
             # Read digital channels
-            for i, reader in enumerate(self._di_readers):
-                # read the counter value. This function is blocking.
-                if self.__data_type == np.float64:
-                    self._data_buffer[i] = reader.read_one_sample_double(timeout=self._rw_timeout)
-                else:
-                    self._data_buffer[i] = reader.read_one_sample_uint32(timeout=self._rw_timeout)
+            for reader in self._di_readers:
+                # read the counter value. This function is blocking. Scale with sample rate.
+                data_buffer[offset] = self.__sample_rate * reader.read_one_sample_double(
+                    timeout=self._rw_timeout
+                )
+                offset += 1
             # Read analog channels
             if self._ai_reader is not None:
-                self._ai_reader.read_one_sample(self._data_buffer[len(self._di_readers):],
-                                                timeout=self._rw_timeout)
-        except ni.DaqError:
-            self.log.exception('Getting samples from data stream failed.')
-            return np.empty(0, dtype=self.__data_type)
-        return self._data_buffer[:self.number_of_channels]
+                self._ai_reader.read_one_sample(data_buffer[offset:], timeout=self._rw_timeout)
+        except:
+            self.log.exception('Getting samples from data stream failed. Stopping streamer.')
+            self.stop_stream()
+        return data_buffer, None
 
     # =============================================================================================
     def _init_sample_clock(self):
-        """
-        If no external clock is given, configures a counter to provide the sample clock for all
+        """ If no external clock is given, configures a counter to provide the sample clock for all
         channels.
-
-        @return int: error code (0: OK, -1: Error)
         """
         # Return if sample clock is externally supplied
-        if self._external_sample_clock_source is not None:
-            return 0
+        if self._external_sample_clock_source is None:
+            if self._clk_task_handle is not None:
+                raise RuntimeError(
+                    'Sample clock task is already running. Unable to set up a new clock before you '
+                    'close the previous one.'
+                )
 
-        if self._clk_task_handle is not None:
-            self.log.error('Sample clock task is already running. Unable to set up a new clock '
-                           'before you close the previous one.')
-            return -1
-
-        # Try to find an available counter
-        for src in self.__all_counters:
-            # Check if task by that name already exists
-            task_name = 'SampleClock_{0:d}'.format(id(self))
-            try:
-                task = ni.Task(task_name)
-            except ni.DaqError:
-                self.log.exception('Could not create task with name "{0}".'.format(task_name))
-                return -1
-
-            # Try to configure the task
-            try:
-                task.co_channels.add_co_pulse_chan_freq(
-                    '/{0}/{1}'.format(self._device_name, src),
-                    freq=self.__sample_rate,
-                    idle_state=ni.constants.Level.LOW)
-                task.timing.cfg_implicit_timing(
-                    sample_mode=ni.constants.AcquisitionType.CONTINUOUS)
-            except ni.DaqError:
-                self.log.exception('Error while configuring sample clock task.')
-                try:
-                    del task
-                except NameError:
-                    pass
-                return -1
-
-            # Try to reserve resources for the task
-            try:
-                task.control(ni.constants.TaskMode.TASK_RESERVE)
-            except ni.DaqError:
-                # Try to clean up task handle
-                try:
-                    task.close()
-                except ni.DaqError:
-                    pass
-                try:
-                    del task
-                except NameError:
-                    pass
-
-                # Return if no counter could be reserved
-                if src == self.__all_counters[-1]:
-                    self.log.exception('Error while setting up clock. Probably because no free '
-                                       'counter resource could be reserved.')
-                    return -1
-                continue
-            break
-
-        self._clk_task_handle = task
-        return 0
-
-    def _init_digital_tasks(self):
-        """
-        Set up tasks for digital event counting.
-
-        @return int: error code (0:OK, -1:error)
-        """
-        digital_channels = tuple(
-            ch.name for ch in self.active_channels if ch.type == StreamChannelType.DIGITAL)
-        if not digital_channels:
-            return 0
-        if self._di_task_handles:
-            self.log.error('Digital counting tasks have already been generated. '
-                           'Setting up counter tasks has failed.')
-            self.terminate_all_tasks()
-            return -1
-
-        if self._clk_task_handle is None and self._external_sample_clock_source is None:
-            self.log.error(
-                'No sample clock task has been generated and no external clock source specified. '
-                'Unable to create digital counting tasks.')
-            self.terminate_all_tasks()
-            return -1
-
-        if self._external_sample_clock_source:
-            clock_channel = '/{0}/{1}'.format(self._device_name, self._external_sample_clock_source)
-            sample_freq = float(self._external_sample_clock_frequency)
-        else:
-            clock_channel = '/{0}InternalOutput'.format(self._clk_task_handle.channel_names[0])
-            sample_freq = float(self._clk_task_handle.co_channels.all.co_pulse_freq)
-
-        # Set up digital counting tasks
-        for i, chnl in enumerate(digital_channels):
-            chnl_name = '/{0}/{1}'.format(self._device_name, chnl)
-            task_name = 'PeriodCounter_{0}'.format(chnl)
-            # Try to find available counter
-            for ctr in self.__all_counters:
-                ctr_name = '/{0}/{1}'.format(self._device_name, ctr)
+            # Try to find an available counter
+            for src in self.__all_counters:
+                # Check if task by that name already exists
+                task_name = f'SampleClock_{id(self):d}'
                 try:
                     task = ni.Task(task_name)
-                except ni.DaqError:
-                    self.log.error('Could not create task with name "{0}"'.format(task_name))
-                    self.terminate_all_tasks()
-                    return -1
+                except ni.DaqError as err:
+                    raise RuntimeError(f'Could not create task with name "{task_name}"') from err
 
+                # Try to configure the task
                 try:
-                    task.ci_channels.add_ci_period_chan(
-                        ctr_name,
-                        min_val=0,
-                        max_val=100000000,
-                        units=ni.constants.TimeUnits.TICKS,
-                        edge=ni.constants.Edge.RISING)
-                    # NOTE: The following two direct calls to C-function wrappers are a
-                    # workaround due to a bug in some NIDAQmx.lib property getters. If one of
-                    # these getters is called, it will mess up the task timing.
-                    # This behaviour has been confirmed using pure C code.
-                    # nidaqmx will call these getters and so the C function is called directly.
-                    try:
-                        lib_importer.windll.DAQmxSetCIPeriodTerm(
-                            task._handle,
-                            ctypes.c_char_p(ctr_name.encode('ascii')),
-                            ctypes.c_char_p(clock_channel.encode('ascii')))
-                        lib_importer.windll.DAQmxSetCICtrTimebaseSrc(
-                            task._handle,
-                            ctypes.c_char_p(ctr_name.encode('ascii')),
-                            ctypes.c_char_p(chnl_name.encode('ascii')))
-                    except:
-                        lib_importer.cdll.DAQmxSetCIPeriodTerm(
-                            task._handle,
-                            ctypes.c_char_p(ctr_name.encode('ascii')),
-                            ctypes.c_char_p(clock_channel.encode('ascii')))
-                        lib_importer.cdll.DAQmxSetCICtrTimebaseSrc(
-                            task._handle,
-                            ctypes.c_char_p(ctr_name.encode('ascii')),
-                            ctypes.c_char_p(chnl_name.encode('ascii')))
-
+                    task.co_channels.add_co_pulse_chan_freq(f'/{self._device_name}/{src}',
+                                                            freq=self.__sample_rate,
+                                                            idle_state=ni.constants.Level.LOW)
                     task.timing.cfg_implicit_timing(
-                        sample_mode=ni.constants.AcquisitionType.CONTINUOUS,
-                        samps_per_chan=self.__buffer_size)
-                except ni.DaqError:
+                        sample_mode=ni.constants.AcquisitionType.CONTINUOUS
+                    )
+                except ni.DaqError as err:
                     try:
                         del task
                     except NameError:
                         pass
-                    self.terminate_all_tasks()
-                    self.log.exception('Something went wrong while configuring digital counter '
-                                       'task for channel "{0}".'.format(chnl))
-                    return -1
+                    raise RuntimeError('Error while configuring sample clock task') from err
 
+                # Try to reserve resources for the task
                 try:
                     task.control(ni.constants.TaskMode.TASK_RESERVE)
-                except ni.DaqError:
+                except ni.DaqError as err:
+                    # Try to clean up task handle
                     try:
                         task.close()
                     except ni.DaqError:
-                        self.log.exception('Unable to close task.')
+                        pass
                     try:
                         del task
                     except NameError:
-                        self.log.exception('Some weird namespace voodoo happened here...')
+                        pass
 
-                    if ctr == self.__all_counters[-1]:
-                        self.log.exception('Unable to reserve resources for digital counting task '
-                                           'of channel "{0}". No available counter found!'
-                                           ''.format(chnl))
-                        self.terminate_all_tasks()
-                        return -1
-                    continue
+                    # Return if no counter could be reserved
+                    if src == self.__all_counters[-1]:
+                        raise RuntimeError('Error while setting up clock. Probably because no free '
+                                           'counter resource could be reserved.') from err
+                else:
+                    self._clk_task_handle = task
+                    break
 
-                try:
-                    self._di_readers.append(CounterReader(task.in_stream))
-                    self._di_readers[-1].verify_array_shape = False
-                except ni.DaqError:
-                    self.log.exception(
-                        'Something went wrong while setting up the digital counter reader for '
-                        'channel "{0}".'.format(chnl))
-                    self.terminate_all_tasks()
+    def _init_digital_tasks(self):
+        """ Set up tasks for digital event counting. """
+        all_channels = list(self._constraints.channel_units)
+        digital_channels = [ch for ch in all_channels[:len(self._digital_sources)] if
+                            ch in self.__active_channels]
+        if digital_channels:
+            if self._di_task_handles:
+                raise RuntimeError(
+                    'Digital counting tasks have already been generated. Setting up counter tasks '
+                    'has failed.'
+                )
+            if self._clk_task_handle is None and self._external_sample_clock_source is None:
+                raise RuntimeError(
+                    'No sample clock task has been generated and no external clock source '
+                    'specified. Unable to create digital counting tasks.'
+                )
+
+            if self._external_sample_clock_source:
+                clock_channel = f'/{self._device_name}/{self._external_sample_clock_source}'
+                sample_freq = float(self._external_sample_clock_frequency)
+            else:
+                clock_channel = f'/{self._clk_task_handle.channel_names[0]}InternalOutput'
+                sample_freq = float(self._clk_task_handle.co_channels.all.co_pulse_freq)
+
+            # Set up digital counting tasks
+            for i, chnl in enumerate(digital_channels):
+                chnl_name = f'/{self._device_name}/{chnl}'
+                task_name = f'PeriodCounter_{chnl}'
+                # Try to find available counter
+                for ctr in self.__all_counters:
+                    ctr_name = f'/{self._device_name}/{ctr}'
                     try:
-                        task.close()
-                    except ni.DaqError:
-                        self.log.exception('Unable to close task.')
-                    try:
-                        del task
-                    except NameError:
-                        self.log.exception('Some weird namespace voodoo happened here...')
-                    return -1
+                        task = ni.Task(task_name)
+                    except ni.DaqError as err:
+                        raise RuntimeError(
+                            f'Could not create task with name "{task_name}"'
+                        ) from err
 
-                self._di_task_handles.append(task)
-                break
-        return 0
+                    try:
+                        task.ci_channels.add_ci_period_chan(
+                            ctr_name,
+                            min_val=0,
+                            max_val=100000000,
+                            units=ni.constants.TimeUnits.TICKS,
+                            edge=ni.constants.Edge.RISING
+                        )
+                        # NOTE: The following two direct calls to C-function wrappers are a
+                        # workaround due to a bug in some NIDAQmx.lib property getters. If one of
+                        # these getters is called, it will mess up the task timing.
+                        # This behaviour has been confirmed using pure C code.
+                        # nidaqmx will call these getters and so the C function is called directly.
+                        try:
+                            lib_importer.windll.DAQmxSetCIPeriodTerm(
+                                task._handle,
+                                ctypes.c_char_p(ctr_name.encode('ascii')),
+                                ctypes.c_char_p(clock_channel.encode('ascii')))
+                            lib_importer.windll.DAQmxSetCICtrTimebaseSrc(
+                                task._handle,
+                                ctypes.c_char_p(ctr_name.encode('ascii')),
+                                ctypes.c_char_p(chnl_name.encode('ascii')))
+                        except:
+                            lib_importer.cdll.DAQmxSetCIPeriodTerm(
+                                task._handle,
+                                ctypes.c_char_p(ctr_name.encode('ascii')),
+                                ctypes.c_char_p(clock_channel.encode('ascii')))
+                            lib_importer.cdll.DAQmxSetCICtrTimebaseSrc(
+                                task._handle,
+                                ctypes.c_char_p(ctr_name.encode('ascii')),
+                                ctypes.c_char_p(chnl_name.encode('ascii')))
+
+                        task.timing.cfg_implicit_timing(
+                            sample_mode=ni.constants.AcquisitionType.CONTINUOUS,
+                            samps_per_chan=self.__buffer_size
+                        )
+                    except ni.DaqError as err:
+                        try:
+                            del task
+                        except NameError:
+                            pass
+                        raise RuntimeError(
+                            f'Something went wrong while configuring digital counter task for '
+                            f'channel "{chnl}"'
+                        ) from err
+
+                    try:
+                        task.control(ni.constants.TaskMode.TASK_RESERVE)
+                    except ni.DaqError as err:
+                        try:
+                            task.close()
+                        except ni.DaqError:
+                            pass
+                        try:
+                            del task
+                        except NameError:
+                            pass
+
+                        if ctr == self.__all_counters[-1]:
+                            raise RuntimeError(
+                                f'Unable to reserve resources for digital counting task of channel '
+                                f'"{chnl}". No available counter found!'
+                            ) from err
+                    else:
+                        try:
+                            self._di_readers.append(CounterReader(task.in_stream))
+                            self._di_readers[-1].verify_array_shape = False
+                        except ni.DaqError as err:
+                            try:
+                                task.close()
+                            except ni.DaqError:
+                                pass
+                            try:
+                                del task
+                            except NameError:
+                                pass
+                            raise RuntimeError(
+                                f'Something went wrong while setting up the digital counter reader '
+                                f'for channel "{chnl}".'
+                            ) from err
+
+                        self._di_task_handles.append(task)
+                        break
 
     def _init_analog_task(self):
-        """
-        Set up task for analog voltage measurement.
+        """ Set up task for analog voltage measurement. """
+        all_channels = list(self._constraints.channel_units)
+        analog_channels = [ch for ch in all_channels[len(self._digital_sources):] if
+                           ch in self.__active_channels]
+        if analog_channels:
+            if self._ai_task_handle:
+                raise RuntimeError('Analog input task has already been generated')
+            if self._clk_task_handle is None and self._external_sample_clock_source is None:
+                raise RuntimeError(
+                    'No sample clock task has been generated and no external clock source '
+                    'specified. Unable to create analog sample tasks.'
+                )
 
-        @return int: error code (0:OK, -1:error)
-        """
-        analog_channels = tuple(
-            ch.name for ch in self.active_channels if ch.type == StreamChannelType.ANALOG)
-        if not analog_channels:
-            return 0
-        if self._ai_task_handle:
-            self.log.error(
-                'Analog input task has already been generated. Unable to set up analog in task.')
-            self.terminate_all_tasks()
-            return -1
-        if self._clk_task_handle is None and self._external_sample_clock_source is None:
-            self.log.error(
-                'No sample clock task has been generated and no external clock source specified. '
-                'Unable to create analog voltage measurement tasks.')
-            self.terminate_all_tasks()
-            return -1
+            if self._external_sample_clock_source:
+                clock_channel = f'/{self._device_name}/{self._external_sample_clock_source}'
+                sample_freq = float(self._external_sample_clock_frequency)
+            else:
+                clock_channel = f'/{self._clk_task_handle.channel_names[0]}InternalOutput'
+                sample_freq = float(self._clk_task_handle.co_channels.all.co_pulse_freq)
 
-        if self._external_sample_clock_source:
-            clock_channel = '/{0}/{1}'.format(self._device_name, self._external_sample_clock_source)
-            sample_freq = float(self._external_sample_clock_frequency)
-        else:
-            clock_channel = '/{0}InternalOutput'.format(self._clk_task_handle.channel_names[0])
-            sample_freq = float(self._clk_task_handle.co_channels.all.co_pulse_freq)
-
-        # Set up analog input task
-        task_name = 'AnalogIn_{0:d}'.format(id(self))
-        try:
-            ai_task = ni.Task(task_name)
-        except ni.DaqError:
-            self.log.exception('Unable to create analog-in task with name "{0}".'.format(task_name))
-            self.terminate_all_tasks()
-            return -1
-
-        try:
-            ai_ch_str = ','.join(['/{0}/{1}'.format(self._device_name, c) for c in analog_channels])
-            ai_task.ai_channels.add_ai_voltage_chan(ai_ch_str,
-                                                    max_val=max(self._adc_voltage_range),
-                                                    min_val=min(self._adc_voltage_range))
-            ai_task.timing.cfg_samp_clk_timing(sample_freq,
-                                               source=clock_channel,
-                                               active_edge=ni.constants.Edge.RISING,
-                                               sample_mode=ni.constants.AcquisitionType.CONTINUOUS,
-                                               samps_per_chan=self.__buffer_size)
-        except ni.DaqError:
-            self.log.exception(
-                'Something went wrong while configuring the analog-in task.')
+            # Set up analog input task
+            task_name = f'AnalogIn_{id(self):d}'
             try:
-                del ai_task
-            except NameError:
-                pass
-            self.terminate_all_tasks()
-            return -1
+                ai_task = ni.Task(task_name)
+            except ni.DaqError as err:
+                raise RuntimeError(
+                    f'Unable to create analog-in task with name "{task_name}"'
+                ) from err
 
-        try:
-            ai_task.control(ni.constants.TaskMode.TASK_RESERVE)
-        except ni.DaqError:
             try:
-                ai_task.close()
-            except ni.DaqError:
-                self.log.exception('Unable to close task.')
+                ai_ch_str = ','.join([f'/{self._device_name}/{ch}' for ch in analog_channels])
+                ai_task.ai_channels.add_ai_voltage_chan(ai_ch_str,
+                                                        max_val=max(self._adc_voltage_range),
+                                                        min_val=min(self._adc_voltage_range))
+                ai_task.timing.cfg_samp_clk_timing(
+                    sample_freq,
+                    source=clock_channel,
+                    active_edge=ni.constants.Edge.RISING,
+                    sample_mode=ni.constants.AcquisitionType.CONTINUOUS,
+                    samps_per_chan=self.__buffer_size
+                )
+            except ni.DaqError as err:
+                try:
+                    del ai_task
+                except NameError:
+                    pass
+                raise RuntimeError(
+                    'Something went wrong while configuring the analog-in task'
+                ) from err
+
             try:
-                del ai_task
-            except NameError:
-                self.log.exception('Some weird namespace voodoo happened here...')
+                ai_task.control(ni.constants.TaskMode.TASK_RESERVE)
+            except ni.DaqError as err:
+                try:
+                    ai_task.close()
+                except ni.DaqError:
+                    pass
+                try:
+                    del ai_task
+                except NameError:
+                    pass
+                raise RuntimeError('Unable to reserve resources for analog-in task') from err
 
-            self.log.exception('Unable to reserve resources for analog-in task.')
-            self.terminate_all_tasks()
-            return -1
-
-        try:
-            self._ai_reader = AnalogMultiChannelReader(ai_task.in_stream)
-            self._ai_reader.verify_array_shape = False
-        except ni.DaqError:
             try:
-                ai_task.close()
-            except ni.DaqError:
-                self.log.exception('Unable to close task.')
-            try:
-                del ai_task
-            except NameError:
-                self.log.exception('Some weird namespace voodoo happened here...')
-            self.log.exception('Something went wrong while setting up the analog input reader.')
-            self.terminate_all_tasks()
-            return -1
+                self._ai_reader = AnalogMultiChannelReader(ai_task.in_stream)
+                self._ai_reader.verify_array_shape = False
+            except ni.DaqError as err:
+                try:
+                    ai_task.close()
+                except ni.DaqError:
+                    pass
+                try:
+                    del ai_task
+                except NameError:
+                    pass
+                raise RuntimeError(
+                    'Something went wrong while setting up the analog input reader'
+                ) from err
+            self._ai_task_handle = ai_task
 
-        self._ai_task_handle = ai_task
-        return 0
-
-    def reset_hardware(self):
-        """
-        Resets the NI hardware, so the connection is lost and other programs can access it.
-
-        @return int: error code (0:OK, -1:error)
-        """
-        try:
-            self._device_handle.reset_device()
-            self.log.info('Reset device {0}.'.format(self._device_name))
-        except ni.DaqError:
-            self.log.exception('Could not reset NI device {0}'.format(self._device_name))
-            return -1
-        return 0
-
-    def terminate_all_tasks(self):
-        err = 0
-
+    def _terminate_all_tasks(self):
         self._di_readers = list()
         self._ai_reader = None
-
         while len(self._di_task_handles) > 0:
+            task = self._di_task_handles.pop(-1)
             try:
-                if not self._di_task_handles[-1].is_task_done():
-                    self._di_task_handles[-1].stop()
-                self._di_task_handles[-1].close()
+                if not task.is_task_done():
+                    task.stop()
+                task.close()
             except ni.DaqError:
                 self.log.exception('Error while trying to terminate digital counter task.')
-                err = -1
-            finally:
-                del self._di_task_handles[-1]
-        self._di_task_handles = list()
 
         if self._ai_task_handle is not None:
             try:
@@ -1104,8 +835,8 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                 self._ai_task_handle.close()
             except ni.DaqError:
                 self.log.exception('Error while trying to terminate analog input task.')
-                err = -1
-        self._ai_task_handle = None
+            finally:
+                self._ai_task_handle = None
 
         if self._clk_task_handle is not None:
             try:
@@ -1115,37 +846,8 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             except ni.DaqError:
                 self.log.exception('Error while trying to terminate clock task.')
                 err = -1
-
-        self._clk_task_handle = None
-        return err
-
-    def _clk_frequency_valid(self, frequency):
-        if self._analog_sources:
-            max_rate = self._constraints.combined_sample_rate.maximum
-            min_rate = self._constraints.combined_sample_rate.minimum
-        else:
-            max_rate = self._constraints.digital_sample_rate.maximum
-            min_rate = self._constraints.digital_sample_rate.minimum
-        return min_rate <= frequency <= max_rate
-
-    def _init_buffer(self):
-        self._data_buffer = np.zeros(self.number_of_channels * self.buffer_size,
-                                     dtype=self.__data_type)
-        self._has_overflown = False
-        return
-
-    def _check_settings_change(self):
-        """
-        Helper method to check if streamer settings can be changed, i.e. if the streamer is idle.
-        Throw a warning if the streamer is running.
-
-        @return bool: Flag indicating if settings can be changed (True) or not (False)
-        """
-        if self.is_running:
-            self.log.warning('Unable to change streamer settings while streamer is running. '
-                             'New settings ignored.')
-            return False
-        return True
+            finally:
+                self._clk_task_handle = None
 
     @staticmethod
     def _extract_terminal(term_str):
