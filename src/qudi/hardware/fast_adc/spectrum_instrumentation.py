@@ -744,6 +744,9 @@ class Process_commander:
 
         trig_reps = self.cp.dcmd.get_trig_reps()
         unprocessed_reps = trig_reps - self.dp.avg.num
+        if self.dp.avg. num >= self.dp.ms.reps:
+            return
+
         if trig_reps == 0 or unprocessed_reps == 0:
             print('wait for trigger')
             self.cp.toggle_trigger(True)
@@ -882,13 +885,18 @@ class Process_loop(Process_commander):
         self.cp.wait_new_trigger()
         self.initial_process()
 
-        while self.loop_on == True:
-            self.command_process()
-            # self.check_dp_status()
-            # self.check_ts_status()
-            self.t_p = self.process_speed(t_0, self.t_p)
+        if self.dp.ms.reps == 0:
+            while self.loop_on == True:
+                self.command_process()
+                self.t_p = self.process_speed(t_0, self.t_p)
 
-        return
+            return
+
+        else:
+            while self.dp.avg.num < self.dp.ms.reps:
+                self.command_process()
+                self.t_p = self.process_speed(t_0, self.t_p)
+            return
 
     def start_data_process_loop_n(self, n):
         self.cp.wait_new_trigger()
