@@ -20,82 +20,140 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+__all__ = ['CounterType', 'GateMode', 'QdyneCounterConstraints', 'QdyneCounterInterface']
+
+import numpy as np
+from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence
+from enum import Enum
 from abc import abstractmethod
 from qudi.core.module import Base
+from qudi.util.constraints import ScalarConstraint
 
 
-class FastCounterInterface(Base):
+class CounterType(Enum):
+    TIMETAGGER = 0
+    TIMESERIES = 1
+
+
+class GateMode(Enum):
+    UNGATED = 0
+    GATED = 1
+
+
+class QdyneCounterConstraints:
+    """ Collection of constraints for hardware modules implementing QdyneCounterInterface """
+    def __init__(self,
+                 channel_units: Mapping[str, str],
+                 counter_type: Union[CounterType, int],
+                 gate_mode: Union[GateMode, int],
+                 data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
+                 channel_buffer_size: Optional[ScalarConstraint],
+                 sample_rate: Optional[ScalarConstraint] = None):
+        if not isinstance(sample_rate, ScalarConstraint) and sample_rate is not None:
+            raise TypeError(
+                f'"sample_rate" must be None or'
+                f'{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance'
+            )
+        if not isinstance(channel_buffer_size, ScalarConstraint):
+            raise TypeError(
+                f'"channel_buffer_size" must be '
+                f'{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance'
+            )
+        self._channel_units = {**channel_units}
+        self._counter_type = CounterType(counter_type)
+        self._gate_mode = GateMode(gate_mode)
+        self._data_type = np.dtype(data_type).type
+        self._channel_buffer_size = channel_buffer_size
+
+    @property
+    def channel_units(self) -> Dict[str, str]:
+        return self._channel_units.copy()
+
+    @property
+    def counter_type(self) -> CounterType:
+        return self._counter_type
+
+    @property
+    def gate_mode(self) -> GateMode:
+        return self._gate_mode
+
+    @property
+    def data_type(self) -> np.dtype:
+        return self._data_type
+
+    @property
+    def sample_rate(self) -> ScalarConstraint:
+        return self._sample_rate
+
+    @property
+    def channel_buffer_size(self) -> ScalarConstraint:
+        return self._channel_buffer_size
+
+class QdyneCounterInterface(Base):
     """ Interface class to define the controls for qdyne counting devices.
 
-    A "qdyne counter" is a hardware device that count events with a time stamp.
-    The goal is generally to detect when events happen after a time defining trigger. Each event is outputted
-    individually with its respective time stamp after the trigger. These events can be photons arrival on a detector
-    for example, and the trigger the start of the acquisition.
-    This type of hardware regularly records millions of events in repeated acquisition (ie sweeps) in a few seconds,
-    with one or multiple events per trigger (depending on the hardware constraints).
+    A "qdyne counter" is a hardware device that counts events with a time stamp (timetagger, usually digital counter)
+    or as a stream of data (timeseries, usually analog counter) during the acquisition period.
+    The goal is generally to detect when events happen after a time defining trigger. For a timetagger each event is
+    outputted individually with its respective time stamp after the trigger. The timeseries counter records the data
+    during the whole acquisition interval.
     It can be used in two modes :
     - "Gated" : The counter is active during high (or low) trigger state.
     - "Ungated" : After a trigger the counter acquires one sweep for a given time and returns in its idle state
                   waiting for the next trigger.
-
     """
 
+    @property
     @abstractmethod
-    def get_constraints(self):
-        """ Retrieve the hardware constrains from the qdyne counting device.
+    def constraints(self) -> QdyneCounterConstraints:
+        """ Read-only property returning the constraints on the settings for this data streamer. """
+        pass
 
-        @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constraints.
+    @property
+    @abstractmethod
+    def active_channels(self) -> List[str]:
+        """ Read-only property returning the currently configured active channel names """
+        pass
 
-         The keys of the returned dictionary are the str name for the constraints
-        (which are set in this method).
+    @property
+    @abstractmethod
+    def gate_mode(self) -> GateMode:
+        """ Read-only property returning the currently configured GateMode Enum """
+        pass
 
-                    NO OTHER KEYS SHOULD BE INVENTED!
+    @property
+    @abstractmethod
+    def channel_buffer_size(self) -> int:
+        """ Read-only property returning the currently set buffer size """
+        pass
 
-        If you are not sure about the meaning, look in other hardware files to
-        get an impression. If still additional constraints are needed, then they
-        have to be added to all files containing this interface.
+    @property
+    @abstractmethod
+    def sample_rate(self) -> float:
+        """ Read-only property returning the currently set sample rate in Hz """
+        pass
 
-        The items of the keys are again dictionaries which have the generic
-        dictionary form:
-            {'min': <value>,
-             'max': <value>,
-             'step': <value>,
-             'unit': '<value>'}
+    @property
+    @abstractmethod
+    def binwidth(self):
+        """ Read-only property returning the currently set bin width in seconds """
+        pass
 
-        Only the key 'hardware_binwidth_list' differs, since they
-        contain the list of possible binwidths.
-
-        If the constraints cannot be set in the fast counting hardware then
-        write just zero to each key of the generic dicts.
-        Note that there is a difference between float input (0.0) and
-        integer input (0), because some logic modules might rely on that
-        distinction.
-
-        ALL THE PRESENT KEYS OF THE CONSTRAINTS DICT MUST BE ASSIGNED!
-
-        # Example for configuration with default values:
-
-        constraints = dict()
-
-        # the unit of those entries are seconds per bin. In order to get the
-        # current binwidth in seconds use the get_binwidth method.
-        constraints['hardware_binwidth_list'] = []
-
-        """
+    @property
+    @abstractmethod
+    def record_length(self):
+        """ Read-only property returning the currently set recording length in seconds """
         pass
 
     @abstractmethod
-    def configure(self, bin_width_s, record_length_s):
-        """ Configuration of the qdyne counter.
-
-        @param float bin_width_s: Length of a single time bin in the time race histogram in seconds.
-        @param float record_length_s: Length of the single acquisition/gate in seconds.
-
-        @return tuple(binwidth_s, record_length_s):
-                    binwidth_s: float the actual set binwidth in seconds
-                    gate_length_s: the actual record length in seconds
-        """
+    def configure(self,
+                  bin_width_s: float,
+                  record_length_s: float,
+                  active_channels: Sequence[str],
+                  gate_mode: Union[GateMode, int],
+                  channel_buffer_size: int,
+                  sample_rate: float) -> None:
+        """ Configure a Qdyne counter. See read-only properties for information on each parameter. """
         pass
 
     @abstractmethod
@@ -105,7 +163,6 @@ class FastCounterInterface(Base):
         0 = unconfigured
         1 = idle
         2 = running
-        3 = paused
        -1 = error state
         """
         pass
@@ -121,42 +178,14 @@ class FastCounterInterface(Base):
         pass
 
     @abstractmethod
-    def is_time_tagger(self):
-        """ Check whether the qdyne counter is a time tagger (commonly digital counters) or
-        time series counter (commonly analog counters).
+    def get_data(self):
+        """ Polls the current time tag data or time series data from the Qdyne counter.
 
-        @return bool: Boolean value indicates if the qdyne counter is a time tagger (TRUE) or
-                      a time series counter (FALSE).
-        """
-
-    @abstractmethod
-    def is_gated(self):
-        """ Check the gated counting possibility.
-
-        @return bool: Boolean value indicates if the qdyne counter is a gated
-                      counter (TRUE) or not (FALSE).
-        """
-        pass
-
-    @abstractmethod
-    def get_binwidth(self):
-        """ Returns the width of a single timebin.
-
-        @return float: current length of a single bin in seconds (seconds/bin)
-        """
-        pass
-
-    @abstractmethod
-    def get_data_trace(self):
-        """ Polls the current time tag data or time series data from the qdyne counter.
-
-        Return value is a numpy array (dtype = int64).
-        The binning, specified by calling configure() in forehand, must be
-        taken care of in this hardware class.
+        Return value is a numpy array of type as given in the constraints.
         The counter will return a tuple (1D-numpy-array, info_dict).
-        If the counter is digital it will commonly return time tag data in the format
+        If the counter is a time tagger it will return time tag data in the format
             returnarray = [0, timetag1, timetag2 ... 0, ...], where each 0 indicates a new sweep.
-        If the counter is analog it will commonly return time series data in the format
+        If the counter is time series it will return time series data in the format
             returnarray = [val_11, val_12 ... val_1N, val_21 ...], where the value for every bin and every sweep
             is concatenated.
 
