@@ -667,13 +667,6 @@ class Card_process():
 
         return curr_trig_counts
 
-    def wait_new_avail_reps(self):
-        curr_avail_reps = self.dcmd.get_avail_user_reps()
-        while curr_avail_reps == 0:
-            curr_avail_reps = self.dcmd.get_avail_user_reps()
-
-        return curr_avail_reps
-
 class Process_commander:
     '''
     This class commands the process dependent on the unprocessed data.
@@ -723,7 +716,7 @@ class Process_commander:
 
     def initial_process(self):
         usr_pos_B = self.cp.dcmd.get_avail_user_pos_B()
-        curr_avail_reps = self.cp.wait_new_avail_reps()
+        curr_avail_reps = self._get_curr_avail_reps()
         self._process_initial_data(usr_pos_B, curr_avail_reps)
 
     def _process_initial_data(self, user_pos_B, curr_avail_reps):
