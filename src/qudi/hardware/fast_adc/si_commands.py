@@ -22,9 +22,9 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 import time
 import numpy as np
 import inspect
+import ctypes
 
 from pyspcm import *
-from spcm_tools import *
 
 def check_card_error(func):
     def wrapper(self, *args, **kwargs):
@@ -520,7 +520,7 @@ class Configure_data_transfer():
         if cont_buf_len > buf_size_B:
             print('Use continuous buffer')
         else:
-            c_buf_ptr = pvAllocMemPageAligned(buf_size_B)
+            c_buf_ptr = self.pvAllocMemPageAligned(buf_size_B)
 #            print('User Scatter gather')
 
         return c_buf_ptr
@@ -547,16 +547,16 @@ class Configure_data_transfer():
         dwMask = dwAlignment - 1
 
         # allocate non-aligned, slightly larger buffer
-        qwRequiredNonAlignedBytes = qwBytes * sizeof(c_char) + dwMask
-        pvNonAlignedBuf = (c_char * qwRequiredNonAlignedBytes)()
+        qwRequiredNonAlignedBytes = qwBytes * ctypes.sizeof(ctypes.c_char) + dwMask
+        pvNonAlignedBuf = (ctypes.c_char * qwRequiredNonAlignedBytes)()
 
         # get offset of next aligned address in non-aligned buffer
-        misalignment = addressof(pvNonAlignedBuf) & dwMask
+        misalignment = ctypes.addressof(pvNonAlignedBuf) & dwMask
         if misalignment:
             dwOffset = dwAlignment - misalignment
         else:
             dwOffset = 0
-        return (c_char * qwBytes).from_buffer(pvNonAlignedBuf, dwOffset)
+        return (ctypes.c_char * qwBytes).from_buffer(pvNonAlignedBuf, dwOffset)
 
     def set_data_transfer(self, card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B):
         """
@@ -580,6 +580,12 @@ class Configure_data_transfer():
                                c_buf_size_B
                                )
         return
+
+    def invalidate_buffer(self, card, buf_type):
+        try:
+            spcm_dwInvalidateBuf(card, buf_type)
+        except:
+            pass
 
 class Configure_timestamp():
     '''
@@ -657,9 +663,11 @@ class Configure_command(Configure_acquisition_mode, Configure_trigger, Configure
         self.set_acquisition_mode(self._card)
         self.set_sampling_clock(self._card)
         self.set_trigger(self._card, self._trig_mode, self._trig_level_mV)
+        self.invalidate_buffer(self._card, SPCM_BUF_DATA)
         self._c_buf_ptr = self.configure_data_transfer(self._card, SPCM_BUF_DATA, self._c_buf_ptr,
                                                        self._buf_size_B, self._buf_notify_size_B)
         if self._gated == True:
+            self.invalidate_buffer(self._card, SPCM_BUF_TIMESTAMP)
             self._c_ts_buf_ptr = self.configure_data_transfer(self._card, SPCM_BUF_TIMESTAMP, self._c_ts_buf_ptr,
                                                               self._ts_buf_size_B, self._ts_buf_notify_size_B)
             self.configure_ts_standard(self._card)

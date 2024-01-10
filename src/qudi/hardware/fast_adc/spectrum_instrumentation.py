@@ -834,6 +834,18 @@ class Process_commander:
                                                               ts_avail_user_len_B,
                                                               ts_avail_reps))
 
+    def wait_avail_data(self):
+        initial_time = time.time()
+        curr_avail_reps = self._get_curr_avail_reps()
+        while curr_avail_reps == 0:
+            curr_avail_reps = self._get_curr_avail_reps()
+            current_time = time.time() - initial_time
+            if current_time > 10:
+                time_out = True
+                return time_out
+        time_out = False
+        return time_out
+
 class Process_loop(Process_commander):
     '''
     This is the main data process loop class.
@@ -875,7 +887,10 @@ class Process_loop(Process_commander):
     def start_data_process_loop(self):
         t_0 = time.time()
         self.t_p = 0
-        self.cp.wait_new_trigger()
+        time_out = self.wait_avail_data()
+        if time_out:
+           return
+
         self.initial_process()
 
         if self.dp.ms.reps == 0:
