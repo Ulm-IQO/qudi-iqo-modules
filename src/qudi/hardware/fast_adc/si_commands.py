@@ -25,6 +25,7 @@ import inspect
 import ctypes
 
 from pyspcm import *
+from qudi.hardware.fast_adc.si_dataclass import Card_settings
 
 def check_card_error(func):
     def wrapper(self, *args, **kwargs):
