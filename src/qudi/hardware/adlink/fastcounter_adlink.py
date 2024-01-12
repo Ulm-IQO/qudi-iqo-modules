@@ -29,7 +29,6 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
 import time
 import numpy as np
-from qudi.hardware.adlink.callback_function import get_data_from_buffer_callback
 import pickle
 import struct
 from copy import copy
