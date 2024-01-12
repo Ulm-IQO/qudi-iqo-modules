@@ -325,7 +325,7 @@ class Adlink9834(FastCounterInterface):
 
         self._clock_freq = 200e6 # Hz Fixed value for internal timebase
 
-        self._callback = ctypes.CFUNCTYPE(AdlinkDataTypes.U32)(get_data_from_buffer_callback)
+        self._callback = ctypes.CFUNCTYPE(AdlinkDataTypes.U32)(self.callback_function)
         self._available_data = None
 
     def __del__(self):
@@ -784,3 +784,6 @@ class Adlink9834(FastCounterInterface):
         self._dll.WD_Release_Card.restype = AdlinkDataTypes.I16
         self._dll.WD_Buffer_Alloc.restype = ctypes.c_void_p
         self._dll.WD_AI_ContBufferSetup.restype = AdlinkDataTypes.I16
+
+    def callback_function(self):
+        self.log.warn("in callback")
