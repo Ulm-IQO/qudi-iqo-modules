@@ -538,7 +538,7 @@ class Adlink9834(FastCounterInterface):
         accesscnt = AdlinkDataTypes.U32()
         try:
             # self._dll.WD_AI_ContStatus(self._card, ctypes.byref(status))
-            self._dll.WD_AI_AsyncCheck(adlink._card, ctypes.byref(stopped), ctypes.byref(accesscnt))
+            self._dll.WD_AI_AsyncCheck(self._card, ctypes.byref(stopped), ctypes.byref(accesscnt))
         except AttributeError:
             return -1
         if stopped.value == 0:
