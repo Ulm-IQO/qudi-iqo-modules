@@ -291,16 +291,15 @@ class Adlink9834(FastCounterInterface):
             options:
                 wddask_dll_location: "C:/ADLINK/WD-DASK/Lib/wd-dask64.dll"
                 card_number: 0
-                max_number_triggers: 1e3
+                max_onboard_ram_mb: 512e6
     """
     #pulsegenerator = Connector(interface='PulserInterface')
 
     _dll_location = ConfigOption('wddask_dll_location', default="C:/ADLINK/WD-DASK/Lib/wd-dask64.dll", missing='error')
     _card_num = ConfigOption('card_number', default=0, missing='warn')
-    _max_number_triggers = ConfigOption('max_number_triggers', default=1e6, missing='warn',
-                                        constructor=lambda x: int(x))
+    _maximum_onboard_ram = ConfigOption('max_onboard_ram_mb', default=512e6, missing='warn',
+                                        constructor=lambda x: int(x)) # MBytes
     _device_type = AdlinkCardType.PXIe_9834.value
-    _maximum_onboard_ram = 512e6  # MBytes
 
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -454,12 +453,13 @@ class Adlink9834(FastCounterInterface):
                     number_of_gates: the number of gated, which are accepted, None if not-gated
         """
         self.free_buffers()
+        self._number_of_gates = number_of_gates
         self._settings.scan_interval.value = round(bin_width_s * self._clock_freq)
         samples_per_laser = round(record_length_s / bin_width_s)
         samples_per_laser_adjustment = samples_per_laser % 8
         self._settings.scancount_per_trigger.value = samples_per_laser - samples_per_laser_adjustment
-        self._settings.retrigger_count.value = int(number_of_gates * (self._max_number_triggers // number_of_gates))
-        self._number_of_gates = number_of_gates
+        self._settings.retrigger_count.value = self.max_number_triggers()
+
         # setup the callback dll variables and simultaneosly check for buffer size constraints
         self.buffer_size_bytes()
         self._available_data = np.zeros((number_of_gates, self._settings.scancount_per_trigger.value))
@@ -667,7 +667,7 @@ class Adlink9834(FastCounterInterface):
             data = np.average(data, axis=0)
             data = data.reshape(self._number_of_gates, -1)
         except Exception as e:
-            self.log.error(e)
+            raise ValueError("Did you invoke the counter settings?") from e
         self._sweeps += round(self._settings.retrigger_count.value / self._number_of_gates)
         # try:
         #     self.arm_card()
@@ -749,13 +749,12 @@ class Adlink9834(FastCounterInterface):
         """
         buffer_size = self.buffer_size_samples().value * ctypes.sizeof(self._settings.data_type)
         if buffer_size > self._maximum_onboard_ram:
-            max_samples = int(self._maximum_onboard_ram / ctypes.sizeof(self._settings.data_type))
-            max_retriggers = int(max_samples / self._settings.scancount_per_trigger.value)
+            max_retriggers = self.max_number_triggers()
             self.log.error("Onboard buffer size too small for number of specified samples. "
                            "Decrease the number of sweeps in the config option."
                            f"Adlusting the number of retriggers to {max_retriggers}")
             self._settings.retrigger_count.value = max_retriggers
-            return self.buffer_size_bytes()
+            buffer_size = self.buffer_size_samples().value * ctypes.sizeof(self._settings.data_type)
 
         self._buffer_size_bytes = AdlinkDataTypes.U32(buffer_size)
         return self._buffer_size_bytes
@@ -765,6 +764,8 @@ class Adlink9834(FastCounterInterface):
         Calculates the number of samples that will be acquired
         """
         buffer_size = self._settings.scancount_per_trigger.value * (self._settings.channel_num.value + 1)
+        if self._number_of_gates > 0:
+            buffer_size *= self._number_of_gates
         if self._settings.retrigger_count.value > 0:
             buffer_size *= self._settings.retrigger_count.value
         self._buffer_size_samples = AdlinkDataTypes.U32(buffer_size)
@@ -790,3 +791,8 @@ class Adlink9834(FastCounterInterface):
 
     def callback_function(self):
         self.log.warn("in callback")
+        return 0
+
+    def max_number_triggers(self):
+        return int(self._maximum_onboard_ram / ctypes.sizeof(self._settings.data_type)
+                   / self._number_of_gates / self._settings.scancount_per_trigger.value)
