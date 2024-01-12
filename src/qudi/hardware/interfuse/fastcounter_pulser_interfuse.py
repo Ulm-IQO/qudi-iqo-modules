@@ -50,7 +50,6 @@ class FastCounterRestartInterfuse(FastCounterInterface):
                 err = self.pulsegenerator().pulser_off()
                 if err != 0:
                     self.log.error("Couldn't restart AWG")
-            else:
                 self.fastcounter().continue_measure()
                 self.pulsegenerator().pulser_on()
 

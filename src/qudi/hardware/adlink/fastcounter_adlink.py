@@ -749,9 +749,13 @@ class Adlink9834(FastCounterInterface):
         """
         buffer_size = self.buffer_size_samples().value * ctypes.sizeof(self._settings.data_type)
         if buffer_size > self._maximum_onboard_ram:
+            max_samples = int(self._maximum_onboard_ram / ctypes.sizeof(self._settings.data_type))
+            max_retriggers = int(max_samples / self._settings.scancount_per_trigger.value)
             self.log.error("Onboard buffer size too small for number of specified samples. "
-                           "Decrease the number of sweeps in the config option")
-            return
+                           "Decrease the number of sweeps in the config option."
+                           f"Adlusting the number of retriggers to {max_retriggers}")
+            self._settings.retrigger_count.value = max_retriggers
+            return self.buffer_size_bytes()
 
         self._buffer_size_bytes = AdlinkDataTypes.U32(buffer_size)
         return self._buffer_size_bytes
