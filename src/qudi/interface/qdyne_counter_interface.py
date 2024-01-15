@@ -47,23 +47,24 @@ class QdyneCounterConstraints:
                  counter_type: Union[CounterType, int],
                  gate_mode: Union[GateMode, int],
                  data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
-                 channel_buffer_size: Optional[ScalarConstraint],
+                 buffer_size: Optional[ScalarConstraint] = None,
                  sample_rate: Optional[ScalarConstraint] = None):
         if not isinstance(sample_rate, ScalarConstraint) and sample_rate is not None:
             raise TypeError(
                 f'"sample_rate" must be None or'
                 f'{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance'
             )
-        if not isinstance(channel_buffer_size, ScalarConstraint):
+        if not isinstance(buffer_size, ScalarConstraint) and buffer_size is not None:
             raise TypeError(
-                f'"channel_buffer_size" must be '
+                f'"buffer_size" must be None or'
                 f'{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance'
             )
         self._channel_units = {**channel_units}
         self._counter_type = CounterType(counter_type)
         self._gate_mode = GateMode(gate_mode)
         self._data_type = np.dtype(data_type).type
-        self._channel_buffer_size = channel_buffer_size
+        self._buffer_size = buffer_size
+        self._sample_rate = sample_rate
 
     @property
     def channel_units(self) -> Dict[str, str]:
@@ -82,12 +83,12 @@ class QdyneCounterConstraints:
         return self._data_type
 
     @property
-    def sample_rate(self) -> ScalarConstraint:
-        return self._sample_rate
+    def buffer_size(self) -> ScalarConstraint:
+        return self._buffer_size
 
     @property
-    def channel_buffer_size(self) -> ScalarConstraint:
-        return self._channel_buffer_size
+    def sample_rate(self) -> ScalarConstraint:
+        return self._sample_rate
 
 class QdyneCounterInterface(Base):
     """ Interface class to define the controls for qdyne counting devices.
@@ -123,7 +124,7 @@ class QdyneCounterInterface(Base):
 
     @property
     @abstractmethod
-    def channel_buffer_size(self) -> int:
+    def buffer_size(self) -> int:
         """ Read-only property returning the currently set buffer size """
         pass
 
@@ -151,7 +152,7 @@ class QdyneCounterInterface(Base):
                   record_length_s: float,
                   active_channels: Sequence[str],
                   gate_mode: Union[GateMode, int],
-                  channel_buffer_size: int,
+                  buffer_size: int,
                   sample_rate: float) -> None:
         """ Configure a Qdyne counter. See read-only properties for information on each parameter. """
         pass
