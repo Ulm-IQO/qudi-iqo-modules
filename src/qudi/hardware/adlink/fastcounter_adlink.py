@@ -549,6 +549,7 @@ class Adlink9834(FastCounterInterface):
                       f"scan_interval: {self._settings.scan_interval.value},\n"
                       f"retrigger_count: {self._settings.retrigger_count.value}")
         self._sweeps = 0
+        self._available_data = np.zeros((self._buffer_size_samples.value,))
         try:
             self.arm_card()
         except Exception as e:
@@ -587,7 +588,7 @@ class Adlink9834(FastCounterInterface):
             self.log.error(f"Error when arming card: {e}")
 
     def arm_card(self):
-
+        ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
         double_buffered_size = AdlinkDataTypes.U32(
             int(self._buffer_size_samples.value / (self._settings.channel_num.value + 1)))
         err = AdlinkDataTypes.I16(self._dll.WD_AI_ContScanChannels(self._card,
