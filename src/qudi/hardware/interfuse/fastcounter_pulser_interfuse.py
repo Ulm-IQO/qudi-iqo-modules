@@ -18,11 +18,13 @@ class FastCounterRestartInterfuse(FastCounterInterface):
                 pulsegenerator: 'awg70k'
             options:
                 wait_time: 0.05 #s
+                max_retries: 100
     """
     pulsegenerator = Connector(interface='PulserInterface')
     fastcounter = Connector(interface='FastCounterInterface')
 
     wait_time = ConfigOption(default=100) # in s
+    max_retries = ConfigOption(default=100) # number of retries for restarting fast counter
 
     restart_fastcounter_signal = QtCore.Signal()
 
@@ -45,12 +47,21 @@ class FastCounterRestartInterfuse(FastCounterInterface):
                 self.log.info("Fastcounter restarter stopped")
                 return
 
-            if self.fastcounter().get_status() == 3:
+            if self.fastcounter().get_status() == 1:
                 self.log.info("Restarting fastcounter")
                 err = self.pulsegenerator().pulser_off()
                 if err != 0:
                     self.log.error("Couldn't restart AWG")
+                time.sleep(self.wait_time)
+                _, _ = self.fastcounter().get_data_trace()
                 self.fastcounter().continue_measure()
+                for ii in range(self.max_retries):
+                    time.sleep(self.wait_time)
+                    if self.fastcounter().get_status() == 2:
+                        break
+                if self.fastcounter().get_status() == 1:
+                    self.log.error("Failed to restart Adlink Card!")
+                    return
                 self.pulsegenerator().pulser_on()
 
         time.sleep(self.wait_time)
@@ -115,7 +126,6 @@ class FastCounterRestartInterfuse(FastCounterInterface):
                     gate_length_s: the actual record length in seconds
                     number_of_gates: the number of gated, which are accepted, None if not-gated
         """
-        self.log.warn("configure")
         return self.fastcounter().configure(bin_width_s, record_length_s, number_of_gates)
 
     def get_status(self):
@@ -128,7 +138,6 @@ class FastCounterRestartInterfuse(FastCounterInterface):
         3 = paused
         -1 = error state
         """
-        self.log.warn("status")
         return self.fastcounter().get_status()
 
     def start_measure(self):
@@ -196,4 +205,4 @@ class FastCounterRestartInterfuse(FastCounterInterface):
 
         If the hardware does not support these features, the values should be None
         """
-        self.fastcounter().get_data_trace()
+        return self.fastcounter().get_data_trace()

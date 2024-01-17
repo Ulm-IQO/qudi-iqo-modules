@@ -26,12 +26,8 @@ from enum import Enum
 import os
 from datetime import datetime
 from qudi.core.configoption import ConfigOption
-from qudi.core.connector import Connector
 import time
 import numpy as np
-import pickle
-import struct
-from copy import copy
 
 
 class AdlinkDataTypes:
@@ -237,7 +233,7 @@ class AdlinkDefaultSettings:
         self.data_type = AdlinkDataTypes.I16
         self.synchronous_mode = AdlinkSynchronousMode.ASYNCH_OP.value
 
-        self.timeout = AdlinkDataTypes.U32(5000)
+        self.timeout = AdlinkDataTypes.U32(0)
 
 
         # global measurement buffer setup
@@ -291,14 +287,19 @@ class Adlink9834(FastCounterInterface):
             options:
                 wddask_dll_location: "C:/ADLINK/WD-DASK/Lib/wd-dask64.dll"
                 card_number: 0
-                max_onboard_ram_mb: 512e6
+                maximum_samples: 512e6
+                trigger_threshold: 1.67
+                trigger_delay_ticks: 0
     """
     #pulsegenerator = Connector(interface='PulserInterface')
 
     _dll_location = ConfigOption('wddask_dll_location', default="C:/ADLINK/WD-DASK/Lib/wd-dask64.dll", missing='error')
     _card_num = ConfigOption('card_number', default=0, missing='warn')
-    _maximum_onboard_ram = ConfigOption('max_onboard_ram_mb', default=512e6, missing='warn',
-                                        constructor=lambda x: int(x)) # MBytes
+    _maximum_samples = ConfigOption('maximum_samples', default=512e6, missing='warn',
+                                        constructor=lambda x: int(x)) # Maximum number of samples for which a buffer can be set up
+    _trigger_threshold = ConfigOption('trigger_threshold', default=1.67, missing='warn') # V
+    _trigger_delay_ticks = ConfigOption('trigger_delay_ticks', default=0, missing='warn',
+                                        constructor=lambda x: int(x))
     _device_type = AdlinkCardType.PXIe_9834.value
 
     def __init__(self, *args, **kwargs) -> None:
@@ -315,20 +316,20 @@ class Adlink9834(FastCounterInterface):
         self._count = AdlinkDataTypes.U32(0)
 
         self._settings = AdlinkDefaultSettings(self._device_type)
+        self._settings.analog_trigger_level.value = self._trigger_threshold
+        self._settings.trigger_delay_ticks.value = self._trigger_delay_ticks
 
         self._trigger_ready = ctypes.c_bool()
         self._acquisition_stop_flag = ctypes.c_bool()
         self._available_data_buffer_id = AdlinkDataTypes.U32()
         self._restart_callback = ctypes.CFUNCTYPE(ctypes.c_int)(self.arm_card)
 
-        self._clock_freq = 200e6 # Hz Fixed value for internal timebase
-
-        self._callback = ctypes.CFUNCTYPE(AdlinkDataTypes.U32)(self.callback_function)
+        # self._callback = ctypes.CFUNCTYPE(AdlinkDataTypes.U32)(self.callback_function)
         self._available_data = None
 
     def __del__(self):
         """
-        deltion method of the class
+        deletion method of the class
         """
         # unload the dll so a new instance can use the dll without terminating this python thread
         try:
@@ -351,20 +352,21 @@ class Adlink9834(FastCounterInterface):
                                                                    ctypes.byref(self._device_props)))
         self._settings.ad_range = self._device_props.default_range
         self.check_if_error(err, "GetDeviceProperties")
+        self._clock_freq = int(self._device_props.ctrkHz * 1e3)
 
     def on_deactivate(self):
         try:
             self.disarm_card()
         except Exception as e:
             self.log.error(Exception)
-        try:
-            err = AdlinkDataTypes.I16(self._dll.WD_AI_EventCallBack_x64(self._card,
-                                                                        AdlinkDataTypes.I16(0),
-                                                                        self._settings.callback_signal,
-                                                                        None))
-            self.check_if_error(err, "EventCallBack")
-        except Exception as e:
-            self.log.error(e)
+        # try:
+        #     err = AdlinkDataTypes.I16(self._dll.WD_AI_EventCallBack_x64(self._card,
+        #                                                                 AdlinkDataTypes.I16(0),
+        #                                                                 self._settings.callback_signal,
+        #                                                                 None))
+        #     self.check_if_error(err, "EventCallBack")
+        # except Exception as e:
+        #     self.log.error(e)
         try:
             self.close_file_stream()
         except AttributeError as e:
@@ -458,11 +460,8 @@ class Adlink9834(FastCounterInterface):
         samples_per_laser = round(record_length_s / bin_width_s)
         samples_per_laser_adjustment = samples_per_laser % 8
         self._settings.scancount_per_trigger.value = samples_per_laser - samples_per_laser_adjustment
-        self._settings.retrigger_count.value = self.max_number_triggers()
+        self._settings.retrigger_count.value = self.max_number_retriggers()
 
-        # setup the callback dll variables and simultaneosly check for buffer size constraints
-        self.buffer_size_bytes()
-        self._available_data = np.zeros((number_of_gates, self._settings.scancount_per_trigger.value))
         err = AdlinkDataTypes.I16(
             self._dll.WD_AI_CH_Config(self._card, AdlinkDataTypes.I16(-1), self._settings.ad_range))
         if self.check_if_error(err, "CH_Config"):
@@ -490,27 +489,29 @@ class Adlink9834(FastCounterInterface):
             return
 
         # reserve memory using the DLL's function
+        self.buffer_size_bytes()
         self._ai_buffer1 = ctypes.c_void_p(self._dll.WD_Buffer_Alloc(self._card,
-                                                                     self.buffer_size_bytes()))
+                                                                     self._buffer_size_bytes))
 
         if self.check_if_error(AdlinkDataTypes.I16(self._ai_buffer1.value), "BufferAlloc"):
             return
-        ctypes.memset(self._ai_buffer1, 0, self.buffer_size_bytes().value)
+        ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
 
         err = AdlinkDataTypes.I16(self._dll.WD_AI_ContBufferSetup(self._card,
                                                                   self._ai_buffer1,
-                                                                  self.buffer_size_samples(),
+                                                                  self._buffer_size_samples,
                                                                   ctypes.byref(self._buffer_id1)))
         if self.check_if_error(err, "ContBufferSetup"):
             return
+        self._available_data = np.zeros((self._buffer_size_samples.value,))
 
-        #err = AdlinkDataTypes.I16(self._dll.WD_AI_EventCallBackEx_x64(self._card,
-        #                                                              AdlinkDataTypes.I16(1),
-        #                                                              self._settings.callback_signal,
-        #                                                              self._callback,
-        #                                                              None))
-        #if self.check_if_error(err, "EventCallBack"):
-        #    return
+        # err = AdlinkDataTypes.I16(self._dll.WD_AI_EventCallBackEx_x64(self._card,
+        #                                                               AdlinkDataTypes.I16(1),
+        #                                                               self._settings.callback_signal,
+        #                                                               self._callback,
+        #                                                               None))
+        # if self.check_if_error(err, "EventCallBack"):
+        #     return
 
         if self._settings.timeout.value > 0:
             err = AdlinkDataTypes.I16(self._dll.WD_AI_SetTimeout(self._card, self._settings.timeout))
@@ -529,58 +530,49 @@ class Adlink9834(FastCounterInterface):
         3 = paused
        -1 = error state
         """
-        # try and error values that were returned from the card
-        # armed_value = 2147484416  # armed
-        # configured_value = 515  # initialized, configured
-        # value_offset = 2048
-        # status = AdlinkDataTypes.U32()
         stopped = AdlinkDataTypes.U16()
         accesscnt = AdlinkDataTypes.U32()
         try:
-            # self._dll.WD_AI_ContStatus(self._card, ctypes.byref(status))
             self._dll.WD_AI_AsyncCheck(self._card, ctypes.byref(stopped), ctypes.byref(accesscnt))
         except AttributeError:
             return -1
         if stopped.value == 0:
             return 2
         if stopped.value == 1:
-            if accesscnt.value > 0:
-                return 3
-            if accesscnt.value == 0:
-                return 1
-        # if status.value == armed_value or status.value == armed_value + value_offset:
-        #     return 2
-        # if status.value == configured_value or status.value == configured_value + value_offset:
-        #     return 1
+            return 1
 
     def start_measure(self):
         """ Start the fast counter. """
-        self.log.warn("starting adlink")
+        self.log.info("Starting Adlink\n"
+                      f"Configured:\n"
+                      f"scancount: {self._settings.scancount_per_trigger.value},\n"
+                      f"scan_interval: {self._settings.scan_interval.value},\n"
+                      f"retrigger_count: {self._settings.retrigger_count.value}")
         self._sweeps = 0
         try:
             self.arm_card()
         except Exception as e:
-            self.log.warn(f"Error when arming card: {e}")
+            self.log.error(f"Error when arming card: {e}")
         self._start_time = time.time()
 
     def stop_measure(self):
         """ Stop the fast counter. """
-        self.log.warn("stopping adlink")
+        self.log.info("Stopping Adlink")
         try:
             self.disarm_card()
         except Exception as e:
-            self.log.warn(f"Error when disarming card: {e}")
+            self.log.error(f"Error when disarming card: {e}")
 
     def pause_measure(self):
         """ Pauses the current measurement.
 
         Fast counter must be initially in the run state to make it pause.
         """
-        self.log.warn("pausing adlink")
+        self.log.info("Pausing Adlink")
         try:
             self.disarm_card()
         except Exception as e:
-            self.log.warn(f"Error when disarming card: {e}")
+            self.log.error(f"Error when disarming card: {e}")
         pass
 
     def continue_measure(self):
@@ -588,16 +580,16 @@ class Adlink9834(FastCounterInterface):
 
         If fast counter is in pause state, then fast counter will be continued.
         """
-        self.log.warn("resuming adlink")
+        self.log.info("Resuming Adlink")
         try:
             self.arm_card()
         except Exception as e:
-            self.log.warn(f"Error when arming card: {e}")
+            self.log.error(f"Error when arming card: {e}")
 
     def arm_card(self):
 
         double_buffered_size = AdlinkDataTypes.U32(
-            int(self.buffer_size_samples().value / (self._settings.channel_num.value + 1)))
+            int(self._buffer_size_samples.value / (self._settings.channel_num.value + 1)))
         err = AdlinkDataTypes.I16(self._dll.WD_AI_ContScanChannels(self._card,
                                                                    self._settings.channel_num,
                                                                    self._buffer_id1,
@@ -605,7 +597,6 @@ class Adlink9834(FastCounterInterface):
                                                                    self._settings.scan_interval,
                                                                    self._settings.scan_interval,
                                                                    self._settings.synchronous_mode))
-
         if self.check_if_error(err, "ContScanChannelsToFile"):
             return
         return
@@ -658,24 +649,30 @@ class Adlink9834(FastCounterInterface):
             'elapsed_time': time.time() - self._start_time,
         }
 
+        if self.get_status() != 1:
+            data = self.transform_raw_data(self._available_data)
+            return data, info_dict
 
-        # self.pulsegenerator().pulser_off()
         try:
             raw_data = (self._settings.data_type * self._buffer_size_samples.value).from_address(self._ai_buffer1.value)
-            data = np.array(raw_data, dtype=np.int64)
-            data = data.reshape(-1, self._number_of_gates * self._settings.scancount_per_trigger.value)
-            data = np.average(data, axis=0)
-            data = data.reshape(self._number_of_gates, -1)
+            data = np.array(raw_data, dtype=np.int16)
+            self._available_data += data
+            data = self.transform_raw_data(self._available_data)
+            ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
+            return data, info_dict
+
         except Exception as e:
             raise ValueError("Did you invoke the counter settings?") from e
-        self._sweeps += round(self._settings.retrigger_count.value / self._number_of_gates)
-        # try:
-        #     self.arm_card()
-        # except Exception as e:
-        #     self.log.error(e)
-        #self.pulsegenerator().pulser_on()
-        self.log.warn(f"{data}")
-        return data, info_dict
+
+    def transform_raw_data(self, data: np.ndarray):
+        """
+        Method that transform the raw data array to the shape expected by qudi
+        """
+        temp = data.reshape(-1, self._number_of_gates * self._settings.scancount_per_trigger.value)
+        temp = np.sum(temp, axis=0)
+        temp = temp.reshape(self._number_of_gates, -1)
+        temp += np.min(temp)
+        return temp
 
     def load_dll(self, location: str):
         """
@@ -735,6 +732,7 @@ class Adlink9834(FastCounterInterface):
             "EventCallBack": f"Error when setting the callback function (WD_AI_EventCallBack_x64)!",
             "AsyncDblBufferMode": f"Error when setting double buffered mode (WD_AI_AsyncDblBufferMode)!",
             "SetTimeout": f"Error when setting acquisition timeout (WD_AI_SetTimeout)!",
+            "ContBufferReset": f"Error when resetting Buffer (WD_AI_ContBufferReset)!"
         }
         self.log.error(error_messages[error_str] + f" ErrorCode {error_code.value}" + f" Reload module!")
         try:
@@ -748,12 +746,7 @@ class Adlink9834(FastCounterInterface):
         with the number of samples that are acquired.
         """
         buffer_size = self.buffer_size_samples().value * ctypes.sizeof(self._settings.data_type)
-        if buffer_size > self._maximum_onboard_ram:
-            max_retriggers = self.max_number_triggers()
-            self.log.error("Onboard buffer size too small for number of specified samples. "
-                           "Decrease the number of sweeps in the config option."
-                           f"Adlusting the number of retriggers to {max_retriggers}")
-            self._settings.retrigger_count.value = max_retriggers
+        if buffer_size > self._maximum_samples * ctypes.sizeof(self._settings.data_type):
             buffer_size = self.buffer_size_samples().value * ctypes.sizeof(self._settings.data_type)
 
         self._buffer_size_bytes = AdlinkDataTypes.U32(buffer_size)
@@ -764,10 +757,14 @@ class Adlink9834(FastCounterInterface):
         Calculates the number of samples that will be acquired
         """
         buffer_size = self._settings.scancount_per_trigger.value * (self._settings.channel_num.value + 1)
-        if self._number_of_gates > 0:
-            buffer_size *= self._number_of_gates
         if self._settings.retrigger_count.value > 0:
             buffer_size *= self._settings.retrigger_count.value
+        if buffer_size > self._maximum_samples:
+            self._settings.retrigger_count.value = self.max_number_retriggers()
+            self.log.error("Onboard buffer size too small for number of specified samples. "
+                           "Decrease the number of sweeps in the config option."
+                           f"Adlusting the number of retriggers to {self._settings.retrigger_count.value}")
+            return self.buffer_size_samples()
         self._buffer_size_samples = AdlinkDataTypes.U32(buffer_size)
         return self._buffer_size_samples
 
@@ -789,10 +786,10 @@ class Adlink9834(FastCounterInterface):
         self._dll.WD_Buffer_Alloc.restype = ctypes.c_void_p
         self._dll.WD_AI_ContBufferSetup.restype = AdlinkDataTypes.I16
 
-    def callback_function(self):
-        self.log.warn("in callback")
-        return 0
+    def max_number_sequence_retriggers(self):
+        return int(self._maximum_samples / self._number_of_gates / self._settings.scancount_per_trigger.value)
 
-    def max_number_triggers(self):
-        return int(self._maximum_onboard_ram / ctypes.sizeof(self._settings.data_type)
-                   / self._number_of_gates / self._settings.scancount_per_trigger.value)
+    def max_number_retriggers(self):
+        return int(self.max_number_sequence_retriggers() * self._number_of_gates)
+
+
