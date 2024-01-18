@@ -1078,6 +1078,7 @@ class ScannerGui(GuiBase):
         if settings:
             sup_vecs = np.asarray([settings['vec_1'], settings['vec_2'], settings['vec_3']])
             shift_vec = settings.get('vec_shift', {})
+            shift_vec = {} if shift_vec is None else shift_vec
             auto_origin = settings['auto_origin']
             axes = list(tilt_widget.support_vectors[0].keys())
             #self.log.debug(f"Update vectors from logic: {sup_vecs}, {shift_vec}")
