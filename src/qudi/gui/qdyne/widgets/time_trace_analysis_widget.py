@@ -36,11 +36,12 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
     sigTTFileNameChanged = QtCore.Signal(str)
     sigLoadTT = QtCore.Signal()
 
-    def __init__(self, gui):
+    def __init__(self, gui, logic):
         self._gui = gui
+        self.logic = logic
 
-        self.analyzer = None
-        self.settings = None
+        self.analyzer = logic().analyzer
+        self.settings = logic().settings.analyzer_stg
 
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
@@ -51,9 +52,7 @@ class TimeTraceAnalysisWidget(QtWidgets.QWidget):
 
         uic.loadUi(ui_file, self)
 
-    def activate(self, analyzer, settings):
-        self.analyzer = analyzer
-        self.settings = settings
+    def activate(self):
         self._activate_widgets()
 
     def _activate_widgets(self):

@@ -6,8 +6,8 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1265</width>
-    <height>693</height>
+    <width>1263</width>
+    <height>686</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -17,23 +17,33 @@
    <item row="0" column="0" colspan="2">
     <widget class="QGroupBox" name="pulse_GroupBox">
      <property name="title">
-      <string>Histogram</string>
+      <string>Pulse</string>
      </property>
      <layout class="QGridLayout" name="gridLayout_32">
       <item row="0" column="0">
        <layout class="QGridLayout" name="pulse_gridLayout">
+        <item row="1" column="0" colspan="2">
+         <widget class="PlotWidget" name="pulse_PlotWidget"/>
+        </item>
         <item row="0" column="0">
-         <widget class="QCheckBox" name="raw_CheckBox">
-          <property name="enabled">
-           <bool>true</bool>
-          </property>
+         <widget class="QPushButton" name="update_pushButton">
           <property name="text">
-           <string>Display raw</string>
+           <string>Update</string>
           </property>
          </widget>
         </item>
-        <item row="1" column="0" colspan="2">
-         <widget class="PlotWidget" name="pulse_PlotWidget"/>
+        <item row="0" column="1">
+         <spacer name="horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
         </item>
        </layout>
       </item>
@@ -50,7 +60,6 @@
   </customwidget>
  </customwidgets>
  <tabstops>
-  <tabstop>raw_CheckBox</tabstop>
   <tabstop>pulse_PlotWidget</tabstop>
  </tabstops>
  <resources/>

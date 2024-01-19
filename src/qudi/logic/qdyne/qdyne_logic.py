@@ -239,6 +239,9 @@ class QdyneLogic(LogicBase):
         new_data, _ = self._data_streamer().read_data()
         self.data.raw_data = np.append(self.data.raw_data, new_data)
 
+    def get_pulse(self):
+        return self.estimator.get_pulse(self.data.raw_data)
+
     def extract_data(self):
         self.data.extracted_data = self.estimator.extract(self.data.raw_data)
 

@@ -32,14 +32,14 @@ from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
 
 class StateEstimationTab(QtWidgets.QWidget):
 
-    def __init__(self):
+    def __init__(self, logic):
         super().__init__()
-        self._instantiate_widgets()
+        self._instantiate_widgets(logic)
 
-    def _instantiate_widgets(self):
+    def _instantiate_widgets(self, logic):
         self._sew_layout = QtWidgets.QVBoxLayout(self)
-        self._sew1 = StateEstimationSettingWidget()
-        self._sew2 = StateEstimationHistogramWidget()
+        self._sew1 = StateEstimationSettingWidget(logic)
+        self._sew2 = StateEstimationPulseWidget(logic)
         self._sew_layout.addWidget(self._sew1)
         self._sew_layout.addWidget(self._sew2)
 
@@ -89,9 +89,9 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sew1.disconnect_signals()
         self._sew2.disconnect_signals()
 
-    def activate_ui(self, estimator, settings):
-        self._sew1.activate(estimator, settings)
-        self._sew2.activate(estimator, settings)
+    def activate_ui(self):
+        self._sew1.activate()
+        self._sew2.activate()
 
     def deactivate_ui(self):
         self._sew1.deactivate()
@@ -102,9 +102,10 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
     setting_name_updated_sig = QtCore.Signal()
     setting_widget_updated_sig = QtCore.Signal()
 
-    def __init__(self):
-        self.estimator = None
-        self.settings = None
+    def __init__(self, logic):
+        self.logic = logic()
+        self.estimator = logic().estimator
+        self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
         ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_setting_widget.ui')
@@ -114,9 +115,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
 
         uic.loadUi(ui_file, self)
 
-    def activate(self, estimator, settings):
-        self.estimator = estimator
-        self.settings = settings
+    def activate(self):
         self._activate_widgets()
 
     def _activate_widgets(self):
@@ -136,6 +135,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.se_setting_comboBox.currentTextChanged.connect(self.update_current_setting)
         self.se_setting_add_pushButton.clicked.connect(self.add_setting)
         self.se_setting_delete_pushButton.clicked.connect(self.delete_setting)
+
 
 #        self.settings.current_stg_changed_sig.connect(self.update_current_setting)
 
@@ -200,29 +200,28 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
             self.se_settings_widget.widgets['ref_end'].setValue(ref_end)
 
 
-class StateEstimationHistogramWidget(QtWidgets.QWidget):
+class StateEstimationPulseWidget(QtWidgets.QWidget):
     sig_line_changed_sig = QtCore.Signal(int, int)
     ref_line_changed_sig = QtCore.Signal(int, int)
 
-    def __init__(self):
-        self.estimator = None
-        self.settings = None
+    def __init__(self, logic):
+        self.logic = logic()
+        self.estimator = logic().estimator
+        self.settings = logic().settings.estimator_stg
         self.sig_start = 0
         self.sig_end = 0
         self.ref_start = 0
         self.ref_end = 0
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_histogram_widget.ui')
+        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_pulse_widget.ui')
 
         # Load it
-        super(StateEstimationHistogramWidget, self).__init__()
+        super(StateEstimationPulseWidget, self).__init__()
 
         uic.loadUi(ui_file, self)
 
-    def activate(self, estimator, settings):
-        self.estimator = estimator
-        self.settings = settings
+    def activate(self):
         self._activate_widgets()
 
     def _activate_widgets(self):
@@ -259,6 +258,7 @@ class StateEstimationHistogramWidget(QtWidgets.QWidget):
         self.sig_end_line.sigPositionChangeFinished.connect(self.sig_lines_dragged)
         self.ref_start_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
         self.ref_end_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
+        self.update_pushButton.clicked.connect(self.update_pulse)
 
 #        self.settings.current_stg_changed_sig.connect(self.update_lines)
     def disconnect_signals(self):
@@ -299,3 +299,5 @@ class StateEstimationHistogramWidget(QtWidgets.QWidget):
         if 'ref_end' in param_names:
             self.ref_end_line.setValue(self.settings.current_setting.ref_end)
 
+    def update_pulse(self):
+        pulse = self.estimator

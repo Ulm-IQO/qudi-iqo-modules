@@ -38,6 +38,10 @@ class StateEstimator(ABC):
     def estimate(self, data):
         pass
 
+    @abstractmethod
+    def get_pulse(self, data):
+        pass
+
 @dataclass
 class StateEstimatorSettings(ABC):
     name: str = ''
@@ -71,6 +75,8 @@ class TimeSeriesStateEstimator(StateEstimator):
         tmp_signal, tmp_error = self._estimator.analyse_laser_pulses(data)
         return tmp_signal, tmp_error
 
+    def get_pulse(self, data):
+        return data.mean(axis=0)
 
 @dataclass
 class TimeTagStateEstimatorSettings(StateEstimatorSettings):
@@ -82,9 +88,6 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     max_bins: int = 90000  # Todo: this should be the maximum number of bins of the counter record length
     weight: list = field(default_factory=list)
 
-    def get_histogram(self, time_tag_data):
-        count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
-        return count_hist
 
     def set_start_count(self, time_tag_data):  # Todo: or maybe this can be taken from the pulseextractor?
         count_hist = self.get_histogram(time_tag_data)
@@ -151,6 +154,11 @@ class TimeTagStateEstimator(StateEstimator):
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
         return counts_time_trace
+
+    def get_pulse(self, time_tag_data):
+        count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
+        return count_hist
+
 
 def get_subclasses(class_obj):
     '''

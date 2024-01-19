@@ -52,8 +52,8 @@ class QdyneMainGui(GuiBase):
         self._mainw = QdyneMainWindow(self)
         self._gw = GenerationWidget(self)
         self._gsw = PredefinedMethodsConfigDialogWidget(self)
-        self._sew = StateEstimationTab()
-        self._ttaw = TimeTraceAnalysisWidget(self)
+        self._sew = StateEstimationTab(self.logic)
+        self._ttaw = TimeTraceAnalysisWidget(self, self.logic)
         self._fcd = FitConfigurationDialog(
             parent=self._mainw,
             fit_config_model=self.logic().pulsedmasterlogic().fit_config_model
@@ -64,9 +64,8 @@ class QdyneMainGui(GuiBase):
         self._gw.activate()
         self._gsw.activate()
 #        self._pmw.activate()
-        self._sew.activate_ui(self.logic().estimator, self.logic().settings.estimator_stg)
-
-        self._ttaw.activate(self.logic().analyzer, self.logic().settings.analyzer_stg)
+        self._sew.activate_ui()
+        self._ttaw.activate()
 
     def _connect(self):
         self._mainw.connect_signals()
