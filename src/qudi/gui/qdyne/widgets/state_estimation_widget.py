@@ -300,4 +300,6 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
             self.ref_end_line.setValue(self.settings.current_setting.ref_end)
 
     def update_pulse(self):
-        pulse = self.estimator
+        pulse = self.logic.get_pulse()
+        self.pulse_image.setData(x=pulse[0], y=pulse[1])
+        self.pulse_PlotWidget.addItem(self.pulse_image)

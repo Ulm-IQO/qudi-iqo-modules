@@ -82,12 +82,16 @@ class TimeSeriesStateEstimator(StateEstimator):
 class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     name: str = 'TimeTag'
     count_mode: str = 'Average'
-    sig_start: int = 0
-    sig_end: int = 0
+    sig_start: float = 0
+    sig_end: float = 0
+    time_bin: float = 1e-9 #Todo: assign this from logic
     count_threshold: int = 10  # Todo: this has to be either estimated or set somewhere from the logic
     max_bins: int = 90000  # Todo: this should be the maximum number of bins of the counter record length
     weight: list = field(default_factory=list)
 
+    def get_histogram(self, time_tag_data):
+        count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
+        return count_hist
 
     def set_start_count(self, time_tag_data):  # Todo: or maybe this can be taken from the pulseextractor?
         count_hist = self.get_histogram(time_tag_data)
@@ -156,9 +160,10 @@ class TimeTagStateEstimator(StateEstimator):
         return counts_time_trace
 
     def get_pulse(self, time_tag_data):
-        count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
-        return count_hist
-
+        count_hist, bin_edges = np.histogram(time_tag_data, bins=self.stg.max_bins, range=(1, self.stg.max_bins))
+        time_array = self.stg.time_bin * np.arange(len(count_hist))
+        pulse_array = [time_array, count_hist]
+        return pulse_array
 
 def get_subclasses(class_obj):
     '''
@@ -203,6 +208,9 @@ class StateEstimatorMain:
 
     def input_settings(self, settings):
         self.estimator.input_settings(settings)
+
+    def get_pulse(self, raw_data):
+        return self.estimator.get_pulse(raw_data)
 
     def extract(self, raw_data):
         extracted_data = self.estimator.extract(raw_data)
