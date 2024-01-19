@@ -46,6 +46,9 @@ class MainDataClass:
     signal: np.ndarray = np.array([], dtype=float)
     spectrum: np.ndarray = np.array([], dtype=float)
 
+    def load_np_data(self, path):
+        self.raw_data = np.load(path)['arr_0']
+
 class MeasurementGenerator:
     """
     Class that gives acces to the settings for the generation of sequences from the pulsedmasterlogic.
@@ -199,8 +202,15 @@ class QdyneLogic(LogicBase):
             self.settings.analyzer_stg.current_stg_name = self._current_analyzer_stg_name
             self.settings.analyzer_stg.current_method = self._current_analyzer_method
 
+        def input_initial_settings():
+            self.input_estimator_method()
+            self.input_analyzer_method()
+            self.input_estimator_settings()
+            self.input_analyzer_settings()
+
         activate_classes()
         initialize_settings()
+        input_initial_settings()
 
         # Fitting
         self.fit_config_model = FitConfigurationsModel(parent=self)
@@ -220,6 +230,11 @@ class QdyneLogic(LogicBase):
         self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
         self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
 
+    def input_estimator_method(self):
+        self.estimator.method = self.settings.estimator_stg.current_method
+
+    def input_analyzer_method(self):
+        self.analyzer.method = self.settings.analyzer_stg.current_method
     def input_estimator_settings(self):
         self.estimator.input_settings(self.settings.estimator_stg.current_setting)
 
