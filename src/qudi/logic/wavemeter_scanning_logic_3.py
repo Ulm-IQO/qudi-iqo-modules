@@ -65,8 +65,8 @@ class WavemeterLogic(LogicBase):
     # access on timeseries logic and thus nidaq instreamer
     _timeserieslogic = Connector(name='counterlogic', interface='TimeSeriesReaderLogic')
 
+    # TODO status vars...
     # config options
-
     _fit_config_model = StatusVar(name='fit_configs', default=list())
 
     def __init__(self, *args, **kwargs):
@@ -80,8 +80,7 @@ class WavemeterLogic(LogicBase):
         self._fit_container = None
         self.x_axis_hz_bool = False  # by default display wavelength
         self._is_wavelength_displaying = False
-        self._reset_start_time = True
-        self._initial_wm_start_time = None
+        self._delay_time = None
         self._stop_flag = False
 
         # Data arrays #timings, counts, wavelength, wavelength in Hz
@@ -157,11 +156,12 @@ class WavemeterLogic(LogicBase):
                 try:
                     n = self._streamer().available_samples if self._streamer().available_samples > 1 else 1
 
-                    raw_data_wavelength, raw_timings = self._streamer().read_data(number_of_samples=n)
+                    raw_data_wavelength, raw_timings = self._streamer().read_data(samples_per_channel=n)
                     raw_data_wavelength = netobtain(raw_data_wavelength)  # netobtain due to remote connection
                     raw_timings = netobtain(raw_timings)
                     # Above buffers as an option to save the raw wavemeter values
-
+                    if self._delay_time:
+                        raw_timings += self._delay_time
                     # Here the interpolation is performed to match the counts onto wavelength
                     if n == 1:
                         wavemeter_data, new_timings = np.ones(samples_to_read_counts) * raw_data_wavelength, np.ones(
@@ -275,12 +275,13 @@ class WavemeterLogic(LogicBase):
             self.sigStatusChanged.emit(False)
             return
 
-        if len(self._streamer()._active_switch_channels) != 1:
+        if len(self._streamer().active_channels) != 1:
             self.log.warning('Only a single wavemeter channel supported.')
             self.sigStatusChanged.emit(False)
             return
 
-        unit = self._streamer()._channel_units[self._streamer()._active_switch_channels[0]]
+        constraints = self.streamer_constraints
+        unit = constraints.channel_units[self._streamer().active_channels[0]]
         if unit != 'm':
             self.log.warning('Make sure acquisition unit is m!')
             self.sigStatusChanged.emit(False)
@@ -296,7 +297,8 @@ class WavemeterLogic(LogicBase):
         self._time_series_logic.sigNewRawData.connect(
             self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
 
-        self._streamer()._wm_start_time = self._initial_wm_start_time
+        if not len(self.timings) == 0:
+            self._delay_time = self.timings[-1] + time.time() - self._start
         self._streamer().start_stream()
         return 0
 
@@ -309,9 +311,7 @@ class WavemeterLogic(LogicBase):
             try:
                 # disconnect to time series signal
                 self._time_series_logic.sigNewRawData.disconnect()
-                if self._reset_start_time:
-                    self._initial_wm_start_time = self._streamer()._wm_start_time
-                    self._reset_start_time = False
+
                 # terminate the hardware streaming device #TODO test with remote module
                 self._streamer().stop_stream()
             except:
@@ -324,6 +324,7 @@ class WavemeterLogic(LogicBase):
     def _stop_cleanup(self) -> None:
         # save start_time information of high finesse wavemeter
         self.module_state.unlock()
+        self._start = time.time()
         self.sigStatusChanged.emit(False)
         self._trace_data = np.vstack(((self.timings, self.counts), (self.wavelength, self.frequency)))
 
@@ -386,12 +387,13 @@ class WavemeterLogic(LogicBase):
             return
 
     def start_displaying_current_wavelength(self):
-        if len(self._streamer()._active_switch_channels) != 1:
+        if len(self._streamer().active_channels) != 1:
             self.log.warning('Only a single wavemeter channel supported.')
             self.sigStatusChanged.emit(False)
             return -1
 
-        unit = self._streamer()._channel_units[self._streamer()._active_switch_channels[0]]
+        constraints = self.streamer_constraints
+        unit = constraints.channel_units[self._streamer().active_channels[0]]
         if unit != 'm':
             self.log.warning('Make sure acquisition unit is m!')
             self.sigStatusChanged.emit(False)

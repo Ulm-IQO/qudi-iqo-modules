@@ -50,10 +50,10 @@ def _make_sine_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], No
 
 
 def _make_counts_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], None]:
-    count_lvl = 1_00 + np.random.rand() * (5_000 - 1_00)
+    count_lvl = 500e-9 + np.random.rand() * 10e-9
     def make_counts(x, y):
         y[:] = count_lvl
-        y += np.random.poisson(count_lvl, y.size)
+        y += np.random.poisson(count_lvl*0.20e7, y.size)*1e-7
     return make_counts
 
 
@@ -227,27 +227,22 @@ class SampleGenerator:
 
 class InStreamDummy(DataInStreamInterface):
     """
-    A dummy module to act as data in-streaming device (continuously read values)
+    A dummy module to act as data in-streaming device (continuously read values).
+    The Sample Generator is adapted according for wavemeter values.
 
     Example config for copy-paste:
 
-    instream_dummy:
-        module.Class: 'dummy.data_instream_dummy.InStreamDummy'
+    instream_dummy_wavemeter:
+        module.Class: 'dummy.data_instream_dummy_wavemeter.InStreamDummy'
         options:
             channel_names:
-                - 'digital 1'
-                - 'analog 1'
-                - 'digital 2'
+                - 'wavelength'
             channel_units:
-                - 'Hz'
-                - 'V'
-                - 'Hz'
+                - 'm'
             channel_signals:  # Can be 'counts' or 'sine'
                 - 'counts'
-                - 'sine'
-                - 'counts'
             data_type: 'float64'
-            sample_timing: 'CONSTANT'  # Can be 'CONSTANT', 'TIMESTAMP' or 'RANDOM'
+            sample_timing: 'TIMESTAMP'  # Can be 'CONSTANT', 'TIMESTAMP' or 'RANDOM'
     """
     # config options
     _channel_names = ConfigOption(name='channel_names',
@@ -299,7 +294,7 @@ class InStreamDummy(DataInStreamInterface):
                                                  bounds=(128, 1024**3),
                                                  increment=1,
                                                  enforce_int=True),
-            sample_rate=ScalarConstraint(default=10.0, bounds=(0.1, 1024**2), increment=0.1)
+            sample_rate=ScalarConstraint(default=50.0, bounds=(0.1, 1024**2), increment=0.1)
         )
         self._active_channels = list(self._constraints.channel_units)
         self._sample_generator = SampleGenerator(

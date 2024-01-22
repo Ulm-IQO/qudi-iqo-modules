@@ -646,8 +646,7 @@ class WavemeterHistogramGui(GuiBase):
 
         self.curve_data_points.clear()
         self._scatterplot.clear()
-        self._wavemeter_logic._reset_start_time = True
-        self._wavemeter_logic._initial_wm_start_time = None
+        self._wavemeter_logic._delay_time = None
         self._pw.clear_fits()
 
         self._wavemeter_logic.histogram = np.zeros(self._wavemeter_logic.histogram_axis.shape)
