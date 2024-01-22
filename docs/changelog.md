@@ -3,10 +3,16 @@
 ## Pre-Release
 
 ### Breaking Changes
+- Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Will break custom modules
+  implementing this interface.
 
 ### Bugfixes
 
 ### New Features
+- New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
+- Checkers and clipping methods added to `qudi.interface.scanning_probe_interface.Constraints`
+- Data classes of the scanning probe interface now have an improved hierarchy
+  (e.g. `ScanData` contains `ScanSettings`).
 
 ### Other
 
