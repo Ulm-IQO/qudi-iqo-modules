@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This module provides a dummy wavemeter hardware module that is useful for
-troubleshooting logic and gui modules.
+This file contains the qudi hardware dummy module for a wavemeter.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -21,193 +20,618 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import random
-from PySide2 import QtCore
+import time
+import numpy as np
+from enum import Enum
+from typing import List, Iterable, Union, Optional, Tuple, Callable, Sequence, Dict, Any
 
-from qudi.core.module import Base
 from qudi.core.configoption import ConfigOption
-from qudi.interface.wavemeter_interface import WavemeterInterface
+from qudi.util.constraints import ScalarConstraint
 from qudi.util.mutex import Mutex
+from qudi.util.helpers import is_integer_type
+from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
+from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 
 
-class HardwarePull(QtCore.QObject):
-    """ Helper class for running the hardware communication in a separate
-    thread.
+def _make_sine_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], None]:
+    freq = sample_rate / (20 + 80 * np.random.rand())
+    amp = 1 + np.random.rand() * 9
+    noise_lvl = amp * (0.1 + np.random.rand() * 0.4)
+    def make_sine(x, y):
+        # y[:] = np.sin(2 * np.pi * freq * x)
+        np.sin(2 * np.pi * freq * x, out=y)
+        y *= amp
+        noise = np.random.rand(x.size)
+        noise *= 2 * noise_lvl
+        noise -= noise_lvl
+        y += noise
+    return make_sine
+
+
+def _make_counts_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], None]:
+    count_lvl = 1_00 + np.random.rand() * (5_000 - 1_00)
+    def make_counts(x, y):
+        y[:] = count_lvl
+        y += np.random.poisson(count_lvl, y.size)
+    return make_counts
+
+
+def _make_gaussian_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], None]:
+    central_freq = sample_rate / (20 + 80 * np.random.rand())
+    amp = (1 + np.random.rand() * 9) / 1e8
+    std_dev = 0.2 + np.random.rand() * 0.5
+    noise_lvl = amp * (0.1 + np.random.rand() * 0.4)
+    def make_gaussian(x, y):
+        y[:] =np.random.normal(central_freq, std_dev, x.size)
+        y *= amp
+        noise = np.random.rand(x.size)
+        noise *= 2 * noise_lvl
+        noise -= noise_lvl
+        y += noise
+    return make_gaussian
+
+class SignalShape(Enum):
+    INVALID = -1
+    SINE = 0
+    COUNTS = 1
+    GAUSSIAN = 2
+
+
+class SampleGenerator:
+    """ Generator object that periodically generates new samples based on a certain timebase but
+    the actual sample timestamps can be irregular depending on configured SampleTiming
     """
+    def __init__(self,
+                 signal_shapes: Iterable[SignalShape],
+                 sample_rate: float,
+                 sample_timing: SampleTiming,
+                 streaming_mode: StreamingMode,
+                 data_type: Union[type, str],
+                 buffer_size: int,
+                 ) -> None:
+        self.data_type = np.dtype(data_type).type
+        self.sample_rate = float(sample_rate)
+        self.sample_timing = SampleTiming(sample_timing)
+        self.streaming_mode = StreamingMode(streaming_mode)
+        self.signal_shapes = [SignalShape(shape) for shape in signal_shapes]
+        self.buffer_size = buffer_size
 
-    def __init__(self, parentclass):
-        super().__init__()
+        self.__start = 0  # buffer start sample index
+        self.__end = 0  # buffer end sample index
+        self.__available_samples = 0
+        self._sample_buffer = None
+        self._timestamp_buffer = None
+        self._generator_functions = list()
+        self._start_time = self._last_time = 0.0
+        self.restart()
 
-        # remember the reference to the parent class to access functions ad settings
-        self._parentclass = parentclass
+    @property
+    def available_samples(self) -> int:
+        self.generate_samples()
+        return self.__available_samples
 
-    def handle_timer(self, state_change):
-        """ Threaded method that can be called by a signal from outside to start
-            the timer.
+    @property
+    def channel_count(self) -> int:
+        return len(self._generator_functions)
 
-        @param bool state_change: (True) starts timer, (False) stops it.
-        """
+    @property
+    def _buffer_size(self) -> int:
+        return self._sample_buffer.size
 
-        if state_change:
-            self.timer = QtCore.QTimer()
-            self.timer.timeout.connect(self._measure_thread)
-            self.timer.start(self._parentclass._measurement_timing)
+    @property
+    def _buffer_sample_size(self) -> int:
+        return self._buffer_size // self.channel_count
+
+    @property
+    def _free_samples(self) -> int:
+        return max(0, self._buffer_sample_size - self.__available_samples)
+
+    def restart(self) -> None:
+        # Init generator functions
+        self._generator_functions = list()
+        for shape in self.signal_shapes:
+            if shape == SignalShape.SINE:
+                self._generator_functions.append(_make_sine_func(self.sample_rate))
+            elif shape == SignalShape.COUNTS:
+                self._generator_functions.append(_make_counts_func(self.sample_rate))
+            elif shape == SignalShape.GAUSSIAN:
+                self._generator_functions.append(_make_gaussian_func(self.sample_rate))
+            else:
+                raise ValueError(f'Invalid SignalShape encountered: {shape}')
+        # Init buffer
+        self.__start = self.__end = 0
+        self.__available_samples = 0
+        self._sample_buffer = np.empty(self.buffer_size * self.channel_count, dtype=self.data_type)
+        if self.sample_timing == SampleTiming.TIMESTAMP:
+            self._timestamp_buffer = np.zeros(self.buffer_size, dtype=np.float64)
         else:
-            if hasattr(self, 'timer'):
-                self.timer.stop()
+            self._timestamp_buffer = None
+        # Set start time
+        self._start_time = self._last_time = time.perf_counter()
 
-    def _measure_thread(self):
-        """ The threaded method querying the data from the wavemeter. """
+    def generate_samples(self) -> float:
+        """ Generates new samples in free buffer space and updates buffer pointers. If new samples
+        do not fit into buffer, raise an OverflowError.
+        """
+        now = time.perf_counter()
+        elapsed_time = now - self._last_time
+        time_offset = self._last_time - self._start_time
+        samples_per_channel = int(elapsed_time * self.sample_rate)  # truncate
+        if self.streaming_mode == StreamingMode.FINITE:
+            samples_per_channel = min(samples_per_channel, self._free_samples)
+        elapsed_time = samples_per_channel / self.sample_rate
+        ch_count = self.channel_count
 
-        range_step = 0.1
+        if samples_per_channel > 0:
+            # Generate x-axis (time) for sample generation
+            if self.sample_timing == SampleTiming.CONSTANT:
+                x = np.arange(samples_per_channel, dtype=np.float64)
+                x /= self.sample_rate
+            else:
+                # randomize ticks within time interval for non-regular sampling
+                x = np.random.rand(samples_per_channel)
+                x.sort()
+                x *= elapsed_time
+            x += time_offset
 
-        # update as long as the status is busy
-        if self._parentclass.module_state() == 'running':
-            # get the current wavelength from the wavemeter
-            self._parentclass._current_wavelength += random.uniform(-range_step, range_step)
-            self._parentclass._current_wavelength2 += random.uniform(-range_step, range_step)
+            # ToDo:
+            # Generate samples and write into buffer
+            buffer = self._sample_buffer.reshape([self._buffer_sample_size, ch_count])
+            end = self.__end + samples_per_channel
+            if end > self._buffer_sample_size:
+                first_samples = self._buffer_sample_size - self.__end
+                end -= self._buffer_sample_size
+                for ch_idx, generator in enumerate(self._generator_functions):
+                    generator(x[:first_samples], buffer[self.__end:, ch_idx])
+                    generator(x[first_samples:], buffer[:end, ch_idx])
+                if self.sample_timing == SampleTiming.TIMESTAMP:
+                    self._timestamp_buffer[self.__end:] = x[:first_samples]
+                    self._timestamp_buffer[:end] = x[first_samples:]
+            else:
+                for ch_idx, generator in enumerate(self._generator_functions):
+                    generator(x, buffer[self.__end:end, ch_idx])
+                if self.sample_timing == SampleTiming.TIMESTAMP:
+                    self._timestamp_buffer[self.__end:end] = x
+            # Update pointers
+            self.__available_samples += samples_per_channel
+            self.__end = end
+        self._last_time += elapsed_time
+        if self.__available_samples > self._buffer_sample_size:
+            raise OverflowError('Sample buffer has overflown. Decrease sample rate or increase '
+                                'data readout rate.')
+        return self._last_time
+
+    def read_samples(self,
+                     sample_buffer: np.ndarray,
+                     samples_per_channel: int,
+                     timestamp_buffer: Optional[np.ndarray] = None) -> int:
+        ch_count = self.channel_count
+        buf_size = self._buffer_size
+        samples = min(self.__available_samples, samples_per_channel) * ch_count
+        start = self.__start * ch_count
+        end = start + samples
+        if end > buf_size:
+            first_samples = buf_size - start
+            end -= buf_size
+            sample_buffer[:first_samples] = self._sample_buffer[start:]
+            sample_buffer[first_samples:first_samples + end] = self._sample_buffer[:end]
+            if timestamp_buffer is not None:
+                timestamp_buffer[:first_samples // ch_count] = self._timestamp_buffer[self.__start:]
+                timestamp_buffer[first_samples // ch_count:(first_samples + end) // ch_count] = self._timestamp_buffer[:end // ch_count]
+        else:
+            sample_buffer[:samples] = self._sample_buffer[start:end]
+            if timestamp_buffer is not None:
+                timestamp_buffer[:samples // ch_count] = self._timestamp_buffer[self.__start:end // ch_count]
+        # Update pointers
+        samples //= ch_count
+        self.__start = end // ch_count
+        self.__available_samples -= samples
+        return samples
+
+    def wait_get_available_samples(self, samples: int) -> int:
+        available = self.available_samples
+        if available < samples:
+            # Wait for bulk time
+            time.sleep((samples - available) / self.sample_rate)
+            available = self.available_samples
+            # Wait a little more if necessary
+            while available < samples:
+                time.sleep(1 / self.sample_rate)
+                available = self.available_samples
+        return available
 
 
-class WavemeterDummy(WavemeterInterface):
-    """ Dummy hardware class to simulate the controls for a wavemeter.
+class WavemeterDummy(DataInStreamInterface):
+    """
+    A dummy module to act as data in-streaming device (continuously read values)
 
     Example config for copy-paste:
 
-    temp_tsys:
-        module.Class: 'wavemeter_dummy.WavemeterDummy'
+    wavemeter_dummy:
+        module.Class: 'dummy.data_instream_dummy.WavemeterDummy'
         options:
-            measurement_timing: 10.0
-
+            channel_names:
+                - 'Wavelength'
+            channel_units:
+                - 'm'
+            channel_signals:
+                - 'sine'
+            data_type: 'float64'
+            sample_timing: 'CONSTANT'  # Can be 'CONSTANT', 'TIMESTAMP' or 'RANDOM'
     """
-    # config opts
-    _measurement_timing = ConfigOption('measurement_timing', 10.)
+    # config options
+    _wavemeter_ch_config: Dict[str, Dict[str, Any]] = ConfigOption(
+        name='channels',
+        default={
+            'default_channel': {'switch_ch': 1, 'unit': 'm', 'exposure': None}
+        },
+        missing='info'
+    )
+    _channel_signals = ConfigOption(
+        name='channel_signals',
+        default=['sine'],
+        missing='info',
+        constructor=lambda signals: [SignalShape[x.upper()] for x in signals]
+    )
 
-    sig_handle_timer = QtCore.Signal(bool)
+    # _channel_names = ConfigOption(name='channels',
+    #                               missing='error',
+    #                               constructor=lambda names: [str(x) for x in names])
+    # _channel_units = ConfigOption(name='channels.unit',
+    #                               missing='error',
+    #                               constructor=lambda units: [str(x) for x in units])
+    # _data_type = ConfigOption(name='data_type',
+    #                           default='float64',
+    #                           missing='info',
+    #                           constructor=lambda typ: np.dtype(typ).type)
+    # _sample_timing = ConfigOption(name='sample_timing',
+    #                               default='CONSTANT',
+    #                               missing='info',
+    #                               constructor=lambda timing: SampleTiming[timing.upper()])
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        # locking for thread safety
-        self.threadlock = Mutex()
+        self._thread_lock = Mutex()
+        self._sample_generator = None
+        self._constraints = None
 
-        # the current wavelength read by the wavemeter in nm (vac)
-        self._current_wavelength = 700.0
-        self._current_wavelength2 = 700.0
+        self._channel_names: Dict[int, str] = {}
+        self._channel_units: Dict[int, str] = {}
+        self._active_switch_channels: Optional[List[int]] = None  # list of active switch channel numbers
+        
 
     def on_activate(self):
-        """ Activate module.
-        """
-        self.log.warning("This module has not been tested on the new qudi core."
-                         "Use with caution and contribute bug fixed back, please.")
-        # create an indepentent thread for the hardware communication
-        self.hardware_thread = QtCore.QThread()
 
-        # create an object for the hardware communication and let it live on the new thread
-        self._hardware_pull = HardwarePull(self)
-        self._hardware_pull.moveToThread(self.hardware_thread)
+        for ch_name, info in self._wavemeter_ch_config.items():
+            ch = info['switch_ch']
+            unit = info['unit']
+            self._channel_names[ch] = ch_name    
 
-        # connect the signals in and out of the threaded object
-        self.sig_handle_timer.connect(self._hardware_pull.handle_timer)
+            if unit == 'THz' or unit == 'Hz':
+                self._channel_units[ch] = 'Hz'
+            elif unit == 'nm' or unit == 'm':
+                self._channel_units[ch] = 'm'
+            else:
+                self.log.warning(f'Invalid unit: {unit}. Valid units are Hz and m. Using m as default.')
+                self._channel_units[ch] = 'm'
 
-        # start the event loop for the hardware
-        self.hardware_thread.start()
+            exp_time = info.get('exposure')
+            # if exp_time is not None:
+            #     self._proxy().set_exposure_time(ch, exp_time)
+        
+        sample_rate = 1e3
+        self._active_switch_channels = list(self._channel_names)
+        
+        # set up constraints
+        self._constraints = DataInStreamConstraints(
+            channel_units={self._channel_names[ch]: self._channel_units[ch] for ch in self._active_switch_channels},
+            sample_timing=SampleTiming.TIMESTAMP,
+            # TODO: implement fixed streaming mode
+            streaming_modes=[StreamingMode.CONTINUOUS],
+            data_type=np.float64,
+            channel_buffer_size=ScalarConstraint(default=1024**2,  # 8 MB
+                                                 bounds=(128, 1024**3),  # max = 8 GB
+                                                 increment=1,
+                                                 enforce_int=True),
+            sample_rate=ScalarConstraint(default=sample_rate,
+                                         bounds=(0.01, 1e3))
+        )
+
+
+
+        self._sample_generator = SampleGenerator(
+            signal_shapes=self._channel_signals,
+            sample_rate=sample_rate,
+            sample_timing=self._constraints.sample_timing,
+            streaming_mode=self._constraints.streaming_modes[0],
+            data_type=self._constraints.data_type,
+            buffer_size=self._constraints.channel_buffer_size.default
+        )
+
+        # # Sanity check ConfigOptions
+        # if not (len(self._channel_names) == len(self._channel_units)):
+        #     raise ValueError('ConfigOptions "channel_names", "channel_units" '
+        #                      'must contain same number of elements')
+        # if len(set(self._channel_names)) != len(self._channel_names):
+        #     raise ValueError('ConfigOptions "channel_names" must not contain duplicates')
+
 
     def on_deactivate(self):
-        """ Deactivate module.
+        # Free memory
+        self._sample_generator = None
+
+    @property
+    def constraints(self) -> DataInStreamConstraints:
+        """ Read-only property returning the constraints on the settings for this data streamer. """
+        return self._constraints
+
+    @property
+    def available_samples(self) -> int:
+        """ Read-only property to return the currently available number of samples per channel ready
+        to read from buffer.
         """
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                return self._sample_generator.available_samples
+            return 0
 
-        self.stop_acqusition()
-        self.hardware_thread.quit()
-        self.sig_handle_timer.disconnect()
-
-    #############################################
-    # Methods of the main class
-    #############################################
-    def start_acquisition(self):
-        """ Method to start the wavemeter software.
-
-        @return int: error code (0:OK, -1:error)
-
-        Also the actual threaded method for getting the current wavemeter reading is started.
+    @property
+    def sample_rate(self) -> float:
+        """ Read-only property returning the currently set sample rate in Hz.
+        For SampleTiming.CONSTANT this is the sample rate of the hardware, for any other timing mode
+        this property represents only a hint to the actual hardware timebase and can not be
+        considered accurate.
         """
+        # return self._sample_generator.sample_rate
+        pass
 
-        # first check its status
-        if self.module_state() == 'running':
-            self.log.error('Wavemeter busy')
-            return -1
+    @property
+    def channel_buffer_size(self) -> int:
+        """ Read-only property returning the currently set buffer size in samples per channel.
+        The total buffer size in bytes can be estimated by:
+            <buffer_size> * <channel_count> * numpy.nbytes[<data_type>]
 
-        self.module_state.run()
-        # actually start the wavemeter
-        self.log.warning('starting Wavemeter')
-
-        # start the measuring thread
-        self.sig_handle_timer.emit(True)
-
-        return 0
-
-    def stop_acquisition(self):
-        """ Stops the Wavemeter from measuring and kills the thread that queries the data.
-
-        @return int: error code (0:OK, -1:error)
+        For StreamingMode.FINITE this will also be the total number of samples to acquire per
+        channel.
         """
-        # check status just for a sanity check
-        if self.module_state() == 'idle' or self.module_state() == 'deactivated':
-            self.log.warning('Wavemeter was already stopped, stopping it '
-                    'anyway!')
-        else:
-            # stop the measurement thread
-            self.sig_handle_timer.emit(False)
-            # set status to idle again
-            self.module_state.stop()
+        return self._sample_generator.buffer_size
 
-        # Stop the actual wavemeter measurement
-        self.log.warning('stopping Wavemeter')
+    @property
+    def streaming_mode(self) -> StreamingMode:
+        """ Read-only property returning the currently configured StreamingMode Enum """
+        return self._sample_generator.streaming_mode
 
-        return 0
+    @property
+    def active_channels(self) -> List[str]:
+        """ Read-only property returning the currently configured active channel names """
+        ch_names = [self._channel_names[ch] for ch in self._active_switch_channels]
+        return ch_names
 
-    def get_current_wavelength(self, kind="air"):
-        """ This method returns the current wavelength.
+    def configure(self,
+                  active_channels: Sequence[str],
+                  streaming_mode: Union[StreamingMode, int],
+                  channel_buffer_size: int,
+                  sample_rate: float) -> None:
+        """ Configure a data stream. See read-only properties for information on each parameter. """
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                raise RuntimeError('Unable to configure data stream while it is already running')
 
-        @param string kind: can either be "air" or "vac" for the wavelength in air or vacuum, respectively.
+            # Cache current values to restore them if configuration fails
+            old_channels = self.active_channels
+            old_streaming_mode = self.streaming_mode
+            old_buffer_size = self.channel_buffer_size
+            old_sample_rate = self.sample_rate
+            try:
+                self._set_active_channels(active_channels)
+                self._set_streaming_mode(streaming_mode)
+                self._set_channel_buffer_size(channel_buffer_size)
+                self._set_sample_rate(sample_rate)
+            except Exception as err:
+                self._set_active_channels(old_channels)
+                self._set_streaming_mode(old_streaming_mode)
+                self._set_channel_buffer_size(old_buffer_size)
+                self._set_sample_rate(old_sample_rate)
+                raise RuntimeError('Error while trying to configure data in-streamer') from err
 
-        @return float: wavelength (or negative value for errors)
+    def _set_active_channels(self, channels: Iterable[str]) -> None:
+        channels = set(channels)
+        if not channels.issubset(self._constraints.channel_units):
+            raise ValueError(f'Invalid channels to set active {channels}. Allowed channels are '
+                             f'{set(self._constraints.channel_units)}')
+        channel_shapes = {ch: self._channel_signals[idx] for idx, ch in
+                          enumerate(self._constraints.channel_units) if ch in channels}
+        self._sample_generator.signal_shapes = [shape for shape in channel_shapes.values()]
+        self._active_channels = list(channel_shapes)
+
+    def _set_streaming_mode(self, mode: Union[StreamingMode, int]) -> None:
+        try:
+            mode = StreamingMode(mode.value)
+        except AttributeError:
+            mode = StreamingMode(mode)
+        if (mode == StreamingMode.INVALID) or mode not in self._constraints.streaming_modes:
+            raise ValueError(
+                f'Invalid streaming mode to set ({mode}). Allowed StreamingMode values are '
+                f'[{", ".join(str(mod) for mod in self._constraints.streaming_modes)}]'
+            )
+        self._sample_generator.streaming_mode = mode
+
+    def _set_channel_buffer_size(self, samples: int) -> None:
+        self._constraints.channel_buffer_size.check(samples)
+        self._sample_generator.buffer_size = samples
+
+    def _set_sample_rate(self, rate: Union[int, float]) -> None:
+        rate = float(rate)
+        self._constraints.sample_rate.check(rate)
+        self._sample_generator.sample_rate = rate
+
+    def start_stream(self) -> None:
+        """ Start the data acquisition/streaming """
+        self._wm_start_time = time.perf_counter()
+        with self._thread_lock:
+            if self.module_state() == 'idle':
+                self.module_state.lock()
+                try:
+                    self._sample_generator.restart()
+                except:
+                    self.module_state.unlock()
+                    raise
+            else:
+                self.log.warning('Unable to start input stream. It is already running.')
+
+    def stop_stream(self) -> None:
+        """ Stop the data acquisition/streaming """
+        with self._thread_lock:
+            if self.module_state() == 'locked':
+                self.module_state.unlock()
+
+    def read_data_into_buffer(self,
+                              data_buffer: np.ndarray,
+                              samples_per_channel: int,
+                              timestamp_buffer: Optional[np.ndarray] = None) -> None:
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        Samples of all channels are stored interleaved in contiguous memory.
+        In case of a multidimensional buffer array, this buffer will be flattened before written
+        into.
+        The 1D data_buffer can be unraveled into channel and sample indexing with:
+
+            data_buffer.reshape([<samples_per_channel>, <channel_count>])
+
+        The data_buffer array must have the same data type as self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
+        provided to be filled with timestamps corresponding to the data_buffer array. It must be
+        able to hold at least <samples_per_channel> items:
+
+        This function is blocking until the required number of samples has been acquired.
         """
-        if kind in "air":
-            # for air we need the convert the current wavelength. T
-            return float(self._current_wavelength)
-        if kind in "vac":
-            # for vacuum just return the current wavelength
-            return float(self._current_wavelength)
-        return -2.0
+        with self._thread_lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
+            if (self.constraints.sample_timing == SampleTiming.TIMESTAMP) and timestamp_buffer is None:
+                raise RuntimeError('SampleTiming.TIMESTAMP mode requires a timestamp buffer array')
 
-    def get_current_wavelength2(self, kind="air"):
-        """ This method returns the current wavelength of the second input channel.
+            channel_count = len(self.active_channels)
+            if data_buffer.size < samples_per_channel * channel_count:
+                raise RuntimeError(
+                    f'data_buffer too small ({data_buffer.size:d}) to hold all requested '
+                    f'samples for all channels ({channel_count:d} * {samples_per_channel:d} = '
+                    f'{samples_per_channel * channel_count:d})'
+                )
+            if (timestamp_buffer is not None) and (timestamp_buffer.size < samples_per_channel):
+                raise RuntimeError(
+                    f'timestamp_buffer too small ({timestamp_buffer.size:d}) to hold all requested '
+                    f'samples ({samples_per_channel:d})'
+                )
 
-        @param string kind: can either be "air" or "vac" for the wavelength in air or vacuum, respectively.
+            self._sample_generator.wait_get_available_samples(samples_per_channel)
+            if timestamp_buffer is None:
+                self._sample_generator.read_samples(
+                    sample_buffer=data_buffer,
+                    samples_per_channel=samples_per_channel
+                )
+            else:
+                self._sample_generator.read_samples(
+                    sample_buffer=data_buffer,
+                    samples_per_channel=samples_per_channel,
+                    timestamp_buffer=timestamp_buffer
+                )
 
-        @return float: wavelength (or negative value for errors)
+    def read_available_data_into_buffer(self,
+                                        data_buffer: np.ndarray,
+                                        timestamp_buffer: Optional[np.ndarray] = None) -> int:
+        """ Read data from the stream buffer into a 1D numpy array given as parameter.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The number of samples read per channel is returned and can be used to slice out valid data
+        from the buffer arrays like:
+
+            valid_data = data_buffer[:<channel_count> * <return_value>]
+            valid_timestamps = timestamp_buffer[:<return_value>]
+
+        See "read_data_into_buffer" documentation for more details.
+
+        This method will read all currently available samples into buffer. If number of available
+        samples exceeds buffer size, read only as many samples as fit into the buffer.
         """
-        if kind in "air":
-            # for air we need the convert the current wavelength.
-            return float(self._current_wavelength2)
-        if kind in "vac":
-            # for vacuum just return the current wavelength
-            return float(self._current_wavelength2)
-        return -2.0
+        with self._thread_lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
+            self._sample_generator.generate_samples()
+            available_samples = self._sample_generator.available_samples
+            if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
+                if timestamp_buffer is None:
+                    raise RuntimeError(
+                        'SampleTiming.TIMESTAMP mode requires a timestamp buffer array'
+                    )
+                timestamp_buffer = timestamp_buffer[:available_samples]
+            channel_count = len(self.active_channels)
+            data_buffer = data_buffer[:channel_count * available_samples]
+            return self._sample_generator.read_samples(sample_buffer=data_buffer,
+                                                       samples_per_channel=available_samples,
+                                                       timestamp_buffer=timestamp_buffer)
 
-    def get_timing(self):
-        """ Get the timing of the internal measurement thread.
+    def read_data(self,
+                  number_of_samples: Optional[int] = None
+                  ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
+        """ Read data from the stream buffer into a 1D numpy array and return it.
+        All samples for each channel are stored in consecutive blocks one after the other.
+        The returned data_buffer can be unraveled into channel samples with:
 
-        @return float: clock length in second
+            data_buffer.reshape([<number_of_samples>, <channel_count>])
+
+        The numpy array data type is the one defined in self.constraints.data_type.
+
+        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
+        returned as well with timestamps corresponding to the data_buffer array.
+
+        If number_of_samples is omitted all currently available samples are read from buffer.
+        This method will not return until all requested samples have been read or a timeout occurs.
         """
-        return self._measurement_timing
+        with self._thread_lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
 
-    def set_timing(self, timing):
-        """ Set the timing of the internal measurement thread.
+            self._sample_generator.generate_samples()
+            if number_of_samples is None:
+                number_of_samples = self._sample_generator.available_samples
+            else:
+                self._sample_generator.wait_get_available_samples(number_of_samples)
 
-        @param float timing: clock length in second
+            data_buffer = np.empty(len(self.active_channels) * number_of_samples,
+                                   dtype=self._constraints.data_type)
+            if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
+                timestamp_buffer = np.empty(number_of_samples, dtype=np.float64)
+            else:
+                timestamp_buffer = None
+            if number_of_samples > 0:
+                self._sample_generator.read_samples(sample_buffer=data_buffer,
+                                                    samples_per_channel=number_of_samples,
+                                                    timestamp_buffer=timestamp_buffer)
+            return data_buffer, timestamp_buffer
 
-        @return int: error code (0:OK, -1:error)
+    def read_single_point(self):
+        """ This method will initiate a single sample read on each configured data channel.
+        In general this sample may not be acquired simultaneous for all channels and timing in
+        general can not be assured. Us this method if you want to have a non-timing-critical
+        snapshot of your current data channel input.
+        May not be available for all devices.
+        The returned 1D numpy array will contain one sample for each channel.
+
+        @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
+                               indicates error.
         """
-        self._measurement_timing = float(timing)
-        return 0
+        with self._thread_lock:
+            if self.module_state() != 'locked':
+                raise RuntimeError('Unable to read data. Stream is not running.')
+
+            data_buffer = np.empty(len(self.active_channels), dtype=self._constraints.data_type)
+            if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
+                timestamp_buffer = np.empty(1, dtype=np.float64)
+            else:
+                timestamp_buffer = None
+            self._sample_generator.wait_get_available_samples(1)
+            self._sample_generator.read_samples(sample_buffer=np.expand_dims(data_buffer, axis=0),
+                                                samples_per_channel=1,
+                                                timestamp_buffer=timestamp_buffer)
+            return data_buffer, timestamp_buffer
