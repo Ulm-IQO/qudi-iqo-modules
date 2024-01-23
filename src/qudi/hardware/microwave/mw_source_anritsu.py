@@ -43,8 +43,8 @@ class MicrowaveAnritsu(MicrowaveInterface):
     mw_source_anritsu:
         module.Class: 'microwave.mw_source_anritsu.MicrowaveAnritsu'
         options:
-            visa_address: 'GPIB0::12::INSTR'
-            comm_timeout: 10  # in seconds, optional
+            gpib_address: 'GPIB0::12::INSTR'
+            gpib_timeout: 10  # in seconds, optional
             rising_edge_trigger: True  # optional
     """
 
@@ -84,7 +84,7 @@ class MicrowaveAnritsu(MicrowaveInterface):
             scan_modes=(SamplingOutputMode.JUMP_LIST, SamplingOutputMode.EQUIDISTANT_SWEEP)
         )
 
-        self._cw_power = float(self._device.query(':POW?'))
+        self._cw_power = float(self._gpib_connection.query(':POW?'))
         self._scan_power = self._cw_power
         self._scan_frequencies = None
         self._scan_mode = SamplingOutputMode.JUMP_LIST
