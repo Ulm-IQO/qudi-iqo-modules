@@ -284,7 +284,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
                 self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
 
-                ni_scan_dict = self._initialize_ni_scan_arrays(self._scan_data)
+                ni_scan_dict = self._init_ni_scan_arrays(self._scan_data)
 
                 self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
 
@@ -699,7 +699,22 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         return self._expand_coordinate(coord_dict)
 
-    def _initialize_ni_scan_arrays(self, scan_data):
+    def _init_scan_grid(self, scan_data):
+        scan_coords = self._get_scan_lines(scan_data)
+
+        return scan_coords
+
+    def _check_scan_grid(self, scan_coords):
+
+        for ax, coords in scan_coords.items():
+            position_min = self.get_constraints().axes[ax].min_value
+            position_max = self.get_constraints().axes[ax].max_value
+            out_of_range = any(coords < position_min) or any(coords > position_max)
+
+            if out_of_range:
+                raise ValueError(f"Scan axis {ax} out of range [{position_min}, {position_max}]")
+
+    def _init_ni_scan_arrays(self, scan_data):
         """
         @param ScanData scan_data: The desired ScanData instance
 
@@ -712,7 +727,11 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         assert isinstance(scan_data, ScanData), 'This function requires a scan_data object as input'
 
-        scan_coords = self._get_scan_lines(scan_data)
+        scan_coords = self._init_scan_grid(scan_data)
+        self._check_scan_grid(scan_coords)
+
+        #self.log.debug(f"created scan grid: {scan_coords}")
+
         scan_voltages = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, val) for ax, val in scan_coords.items()}
 
         return scan_voltages
@@ -836,7 +855,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
                 # TODO Adapt interface to use "in_range"?
                 self._target_pos[axis] = position[axis]
 
-            self.log.debug(f"New target pos: {self._target_pos}")
+            #self.log.debug(f"New target pos: {self._target_pos}")
 
             # TODO Add max velocity as a hardware constraint/ Calculate from scan_freq etc?
             if velocity is None:
@@ -931,11 +950,10 @@ class RawDataContainer:
 
 class NiScanningProbeInterfuse(CoordinateTransformMixin, NiScanningProbeInterfuseBare):
 
-    def _initialize_ni_scan_arrays(self, scan_data):
-        scan_coords = self._get_scan_lines(scan_data)
-        scan_coords_transf = self.coordinate_transform(scan_coords, inverse=False)
-        scan_voltages_transformed = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, val)
-                                     for ax, val in scan_coords_transf.items()}
+    def _init_scan_grid(self, scan_data):
 
-        return scan_voltages_transformed
+        scan_coords_transf = self.coordinate_transform(super()._init_scan_grid(scan_data), inverse=False)
+
+        return scan_coords_transf
+
 
