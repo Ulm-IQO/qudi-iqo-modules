@@ -205,7 +205,6 @@ class QdyneLogic(LogicBase):
         def input_initial_settings():
             self.input_estimator_method()
             self.input_analyzer_method()
-            self.input_analyzer_settings()
 
         activate_classes()
         initialize_settings()
@@ -235,9 +234,6 @@ class QdyneLogic(LogicBase):
     def input_analyzer_method(self):
         self.analyzer.method = self.settings.analyzer_stg.current_method
 
-    def input_analyzer_settings(self):
-        self.analyzer.input_settings(self.settings.analyzer_stg.current_setting)
-
     def start_measurement(self, fname=None):
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
         fname = timestamp + fname if fname else timestamp
@@ -263,10 +259,10 @@ class QdyneLogic(LogicBase):
                                                        self.settings.estimator_stg.current_setting)
 
     def analyze_time_trace(self):
-        self.data.signal = self.analyzer.analyze(self.data.time_trace)
+        self.data.signal = self.analyzer.analyze(self.data.time_trace, self.settings.analyzer_stg.current_setting)
 
     def get_spectrum(self):
-        self.data.spectrum = self.analyzer.get_spectrum(self.data.signal)
+        self.data.spectrum = self.analyzer.get_spectrum(self.data.signal, self.settings.analyzer_stg.current_setting)
 
     def save(self):
         self.save.save_data(self.data.raw_data, self.settings.save_stg.raw_data_options)

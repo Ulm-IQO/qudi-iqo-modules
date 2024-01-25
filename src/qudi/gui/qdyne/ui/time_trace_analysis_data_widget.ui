@@ -16,14 +16,15 @@
   <layout class="QVBoxLayout" name="verticalLayout_3">
    <item>
     <widget class="QGroupBox" name="tta_gridGroupBox">
-     <property name="minimumSize">
-      <size>
-       <width>0</width>
-       <height>224</height>
-      </size>
-     </property>
      <layout class="QGridLayout" name="gridLayout_2">
-      <item row="0" column="1">
+      <item row="0" column="0">
+       <widget class="QPushButton" name="tta_analyze_pushButton">
+        <property name="text">
+         <string>Analyze</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="2">
        <spacer name="horizontalSpacer">
         <property name="orientation">
          <enum>Qt::Horizontal</enum>
@@ -36,10 +37,10 @@
         </property>
        </spacer>
       </item>
-      <item row="0" column="0">
-       <widget class="QPushButton" name="tta_run_pushButton">
+      <item row="0" column="1">
+       <widget class="QPushButton" name="tta_get_spectrum_pushButton">
         <property name="text">
-         <string>Analyze</string>
+         <string>get spectrum</string>
         </property>
        </widget>
       </item>

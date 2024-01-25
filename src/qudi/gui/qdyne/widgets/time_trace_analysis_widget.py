@@ -261,6 +261,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
 
     def connect_signals(self):
+        self.tta_analyze_pushButton.clicked.connect(self._logic.analyze_time_trace)
+        self.tta_get_spectrum_pushButton.clicked.connect(self.update_spectrum)
         self.plot1_fitwidget.sigDoFit.connect(
             lambda x: self._logic.do_fit(x, False)
         )
@@ -274,6 +276,12 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
     def disconnect_signals(self):
         self.plot1_fitwidget.sigDoFit.disconnect()
         self.plot2_fitwidget.sigDoFit.disconnect()
+
+    def update_spectrum(self):
+        self._logic.get_spectrum()
+        spectrum = self._logic.data.spectrum
+        self.signal_image.setData(x=spectrum[0], y=spectrum[1])
+        self.plot1_PlotWidget.addItem(self.signal_image)
 
     @QtCore.Slot(str, object, bool)
     def fit_data_updated(self, fit_config, result, use_alternative_data):

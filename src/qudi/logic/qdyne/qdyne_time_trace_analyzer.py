@@ -23,9 +23,6 @@ from qudi.util.network import netobtain
 
 
 class Analyzer(ABC):
-    @abstractmethod
-    def input_settings(self, settings):
-        pass
 
     @abstractmethod
     def analyze(self, time_trace):
@@ -50,23 +47,17 @@ class FourierAnalyzerSettings(AnalyzerSettings):
 
 class FourierAnalyzer(Analyzer):
 
-    def __init__(self):
-        self.stg = None
-
-    def input_settings(self, settings: FourierAnalyzerSettings) -> None:
-        self.stg = settings
-
-    def analyze(self, time_trace):
-        ft_signal = self.do_fft(time_trace, self.stg.cut_time_trace, self.stg.padding_parameter)
+    def analyze(self, time_trace, stg:FourierAnalyzerSettings):
+        ft_signal = self.do_fft(time_trace, stg.cut_time_trace, stg.padding_parameter)
         return ft_signal
 
-    def get_spectrum(self, ft_signal):
-        if self.stg.spectrum_type == 'amp':
+    def get_spectrum(self, ft_signal, stg:FourierAnalyzerSettings):
+        if stg.spectrum_type == 'amp':
             spectrum = self.get_norm_amp_spectrum(ft_signal)
-        elif self.stg.spectrum_type == 'power':
+        elif stg.spectrum_type == 'power':
             spectrum = self.get_norm_psd(ft_signal)
         else:
-            print('{}_is not defined'.format(self.stg.spectrum_type))
+            print('{}_is not defined'.format(stg.spectrum_type))
         return spectrum
 
     def do_fft(self, time_trace, cut_time_trace=False, padding_param=0):
@@ -77,8 +68,9 @@ class FourierAnalyzer(Analyzer):
         input_time_trace = self._get_fft_input_time_trace(time_trace, cut_time_trace, n_fft)
         n_point = self._get_fft_n_point(padding_param, n_fft)
         ft = np.fft.fft(input_time_trace, n_point)
-
-        return ft
+        freq = np.fft.fftfreq(len(ft))
+        signal = [freq, ft]
+        return signal
 
     def _get_fft_input_time_trace(self, time_trace, cut_time_trace, n_fft):
         if cut_time_trace:
@@ -98,21 +90,25 @@ class FourierAnalyzer(Analyzer):
         else:
             print('error')
 
-    def get_norm_amp_spectrum(self, ft):
+    def get_norm_amp_spectrum(self, signal):
         """
         get the normalized amplitude spectrum
         """
+        freq = signal[0]
+        ft = signal[1]
         amp_spectrum = abs(ft)
         norm_amp_spectrum = amp_spectrum / len(amp_spectrum)
-        return norm_amp_spectrum
+        return [freq, norm_amp_spectrum]
 
-    def get_norm_psd(self, ft):
+    def get_norm_psd(self, signal):
         """
         get the normalized power sepctrum density
         """
+        freq = signal[0]
+        ft = signal[1]
         psd = abs(ft)*2
         norm_psd = psd / (len(psd))**2
-        return norm_psd
+        return [freq, norm_psd]
 
     def get_half_frequency_array(self, sequence_length_s, ft):
         return 1 / (sequence_length_s * len(ft))*np.arange(len(ft)/2)
@@ -158,15 +154,10 @@ class TimeTraceAnalyzerMain:
     def _configure_method(self, method):
         self.analyzer = globals()[method + 'Analyzer']()
 
-    def input_settings(self, settings):
-        self.analyzer.input_settings(settings)
-
-    def analyze(self, time_trace):
-        time_trace = netobtain(time_trace)
-        signal = self.analyzer.analyze(time_trace)
+    def analyze(self, time_trace, settings):
+        signal = self.analyzer.analyze(time_trace, settings)
         return signal
 
-    def get_spectrum(self, signal):
-        signal = netobtain(signal)
-        spectrum = self.analyzer.get_spectrum(signal)
+    def get_spectrum(self, signal, settings):
+        spectrum = self.analyzer.get_spectrum(signal, settings)
         return spectrum
