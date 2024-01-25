@@ -38,64 +38,64 @@ class StateEstimationTab(QtWidgets.QWidget):
 
     def _instantiate_widgets(self, logic):
         self._sew_layout = QtWidgets.QVBoxLayout(self)
-        self._sew1 = StateEstimationSettingWidget(logic)
-        self._sew2 = StateEstimationPulseWidget(logic)
-        self._sew_layout.addWidget(self._sew1)
-        self._sew_layout.addWidget(self._sew2)
+        self._sw = StateEstimationSettingWidget(logic)
+        self._pw = StateEstimationPulseWidget(logic)
+        self._sew_layout.addWidget(self._sw)
+        self._sew_layout.addWidget(self._pw)
 
     def connect_signals(self):
-        self._sew1.connect_signals()
-        self._sew2.connect_signals()
+        self._sw.connect_signals()
+        self._pw.connect_signals()
         self.connect_mutual_signals()
-        self._sew2.update_lines()
+        self._pw.update_lines()
 
-        self._sew1.method_updated_sig.connect(self.reconnect_mutual_signals)
-        self._sew1.method_updated_sig.connect(self._sew2.toggle_lines)
-        self._sew1.setting_name_updated_sig.connect(self.reconnect_mutual_signals)
-        self._sew1.setting_name_updated_sig.connect(self._sew2.update_lines)
+        self._sw.method_updated_sig.connect(self.reconnect_mutual_signals)
+        self._sw.method_updated_sig.connect(self._pw.toggle_lines)
+        self._sw.setting_name_updated_sig.connect(self.reconnect_mutual_signals)
+        self._sw.setting_name_updated_sig.connect(self._pw.update_lines)
 
     def connect_mutual_signals(self):
-        param_names = self._sew1.settings.current_setting.__annotations__
+        param_names = self._sw.settings.current_setting.__annotations__
         if 'sig_start' in param_names:
-            self._sew1.se_settings_widget.widgets['sig_start'].valueChanged.connect(self._sew2.update_lines)
+            self._sw.se_settings_widget.widgets['sig_start'].valueChanged.connect(self._pw.update_lines)
         if 'sig_end' in param_names:
-            self._sew1.se_settings_widget.widgets['sig_end'].valueChanged.connect(self._sew2.update_lines)
+            self._sw.se_settings_widget.widgets['sig_end'].valueChanged.connect(self._pw.update_lines)
         if 'ref_start' in param_names:
-            self._sew1.se_settings_widget.widgets['ref_start'].valueChanged.connect(self._sew2.update_lines)
+            self._sw.se_settings_widget.widgets['ref_start'].valueChanged.connect(self._pw.update_lines)
         if 'ref_end' in param_names:
-            self._sew1.se_settings_widget.widgets['ref_end'].valueChanged.connect(self._sew2.update_lines)
+            self._sw.se_settings_widget.widgets['ref_end'].valueChanged.connect(self._pw.update_lines)
 
-        self._sew2.sig_line_changed_sig.connect(self._sew1.update_from_sig_lines)
-        self._sew2.ref_line_changed_sig.connect(self._sew1.update_from_ref_lines)
+        self._pw.sig_line_changed_sig.connect(self._sw.update_from_sig_lines)
+        self._pw.ref_line_changed_sig.connect(self._sw.update_from_ref_lines)
 
     def disconnect_mutual_signals(self):
-        param_names = self._sew1.settings.current_setting.__annotations__
+        param_names = self._sw.settings.current_setting.__annotations__
         if 'sig_start' in param_names:
-            self._sew1.se_settings_widget.widgets['sig_start'].valueChanged.disconnect()
+            self._sw.se_settings_widget.widgets['sig_start'].valueChanged.disconnect()
         if 'sig_end' in param_names:
-            self._sew1.se_settings_widget.widgets['sig_end'].valueChanged.disconnect()
+            self._sw.se_settings_widget.widgets['sig_end'].valueChanged.disconnect()
         if 'ref_start' in param_names:
-            self._sew1.se_settings_widget.widgets['ref_start'].valueChanged.disconnect()
+            self._sw.se_settings_widget.widgets['ref_start'].valueChanged.disconnect()
         if 'ref_end' in param_names:
-            self._sew1.se_settings_widget.widgets['ref_end'].valueChanged.disconnect()
+            self._sw.se_settings_widget.widgets['ref_end'].valueChanged.disconnect()
 
-        self._sew2.sig_line_changed_sig.disconnect()
-        self._sew2.ref_line_changed_sig.disconnect()
+        self._pw.sig_line_changed_sig.disconnect()
+        self._pw.ref_line_changed_sig.disconnect()
 
     def reconnect_mutual_signals(self):
         self.connect_mutual_signals()
 
     def disconnect_signals(self):
-        self._sew1.disconnect_signals()
-        self._sew2.disconnect_signals()
+        self._sw.disconnect_signals()
+        self._pw.disconnect_signals()
 
     def activate_ui(self):
-        self._sew1.activate()
-        self._sew2.activate()
+        self._sw.activate()
+        self._pw.activate()
 
     def deactivate_ui(self):
-        self._sew1.deactivate()
-        self._sew2.deactivate()
+        self._sw.deactivate()
+        self._pw.deactivate()
 
 class StateEstimationSettingWidget(QtWidgets.QWidget):
     method_updated_sig = QtCore.Signal()
@@ -178,7 +178,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.se_setting_comboBox.removeItem(current_index)
 #        self.update_widget()
 
-    @QtCore.Slot(int, int)
+    @QtCore.Slot(float, float)
     def update_from_sig_lines(self, sig_start, sig_end):
         param_names = self.settings.current_setting.__annotations__
         if 'sig_start' in param_names:
@@ -188,7 +188,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
             self.settings.current_setting.sig_end = sig_end
             self.se_settings_widget.widgets['sig_end'].setValue(sig_end)
 
-    @QtCore.Slot(int, int)
+    @QtCore.Slot(float, float)
     def update_from_ref_lines(self, ref_start, ref_end):
         param_names = self.settings.current_setting.__annotations__
         if 'ref_start' in param_names:
@@ -201,8 +201,8 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
 
 
 class StateEstimationPulseWidget(QtWidgets.QWidget):
-    sig_line_changed_sig = QtCore.Signal(int, int)
-    ref_line_changed_sig = QtCore.Signal(int, int)
+    sig_line_changed_sig = QtCore.Signal(float, float)
+    ref_line_changed_sig = QtCore.Signal(float, float)
 
     def __init__(self, logic):
         self.logic = logic()
