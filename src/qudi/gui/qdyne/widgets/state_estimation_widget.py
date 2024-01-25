@@ -35,6 +35,7 @@ class StateEstimationTab(QtWidgets.QWidget):
     def __init__(self, logic):
         super().__init__()
         self._instantiate_widgets(logic)
+        self._form_layout()
 
     def _instantiate_widgets(self, logic):
         self._sew_layout = QtWidgets.QVBoxLayout(self)
@@ -44,6 +45,15 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sew_layout.addWidget(self._sw)
         self._sew_layout.addWidget(self._pw)
         self._sew_layout.addWidget(self._ttw)
+
+    def _form_layout(self):
+        self._sw.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self._pw.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self._ttw.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+
+        self._sew_layout.setStretchFactor(self._sw, 1)
+        self._sew_layout.setStretchFactor(self._pw, 3)
+        self._sew_layout.setStretchFactor(self._ttw, 3)
 
     def connect_signals(self):
         self._sw.connect_signals()
