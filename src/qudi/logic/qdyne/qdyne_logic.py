@@ -185,7 +185,7 @@ class QdyneLogic(LogicBase):
     def on_activate(self):
         def activate_classes():
             #self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
-            self.estimator = StateEstimatorMain()
+            self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
             self.settings = QdyneSettings()
             self.measurement_generator = MeasurementGenerator(self.pulsedmasterlogic)
@@ -205,7 +205,6 @@ class QdyneLogic(LogicBase):
         def input_initial_settings():
             self.input_estimator_method()
             self.input_analyzer_method()
-            self.input_estimator_settings()
             self.input_analyzer_settings()
 
         activate_classes()
@@ -235,8 +234,6 @@ class QdyneLogic(LogicBase):
 
     def input_analyzer_method(self):
         self.analyzer.method = self.settings.analyzer_stg.current_method
-    def input_estimator_settings(self):
-        self.estimator.input_settings(self.settings.estimator_stg.current_setting)
 
     def input_analyzer_settings(self):
         self.analyzer.input_settings(self.settings.analyzer_stg.current_setting)
@@ -255,13 +252,15 @@ class QdyneLogic(LogicBase):
         self.data.raw_data = np.append(self.data.raw_data, new_data)
 
     def get_pulse(self):
-        return self.estimator.get_pulse(self.data.raw_data)
+        return self.estimator.get_pulse(self.data.raw_data, self.settings.estimator_stg.current_setting)
 
     def extract_data(self):
-        self.data.extracted_data = self.estimator.extract(self.data.raw_data)
+        self.data.extracted_data = self.estimator.extract(self.data.raw_data,
+                                                          self.settings.estimator_stg.current_setting)
 
-    def process_extracted_data(self):
-        self.data.time_trace = self.estimator.estimate(self.data.extracted_data)
+    def estimate_state(self):
+        self.data.time_trace = self.estimator.estimate(self.data.extracted_data,
+                                                       self.settings.estimator_stg.current_setting)
 
     def analyze_time_trace(self):
         self.data.signal = self.analyzer.analyze(self.data.time_trace)

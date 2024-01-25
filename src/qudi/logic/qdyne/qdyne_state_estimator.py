@@ -26,20 +26,17 @@ from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
 
 class StateEstimator(ABC):
 
+
     @abstractmethod
-    def input_settings(self, settings):
+    def extract(self, raw_data, settings):
         pass
 
     @abstractmethod
-    def extract(self, raw_data):
+    def estimate(self, data, settings):
         pass
 
     @abstractmethod
-    def estimate(self, data):
-        pass
-
-    @abstractmethod
-    def get_pulse(self, data):
+    def get_pulse(self, data, settings):
         pass
 
 @dataclass
@@ -55,27 +52,23 @@ class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
 
 class TimeSeriesStateEstimator(StateEstimator):
 
-    def __init__(self, extractor, estimator):
+    def __init__(self, log):
+        self.log = log
         self.on_activate()
 
     def on_activate(self):
         self._extractor = PulseExtractor(pulsedmeasurementlogic=self)
         self._estimator = PulseAnalyzer(pulsedmeasurementlogic=self)
 
-    def input_settings(self, settings):
-        self._extractor.extraction_settings = settings.extractor_settings
-        self._estimator.analysis_settings = settings.estimator_settings
-        pass
-
-    def extract(self, raw_data):
+    def extract(self, raw_data, settings):
         extracted_data = self._extractor.extract_laser_pulses(raw_data)['laser_counts_arr']
         return extracted_data
 
-    def estimate(self, data):
+    def estimate(self, data, settings):
         tmp_signal, tmp_error = self._estimator.analyse_laser_pulses(data)
         return tmp_signal, tmp_error
 
-    def get_pulse(self, data):
+    def get_pulse(self, data, settings):
         return data.mean(axis=0)
 
 @dataclass
@@ -97,32 +90,37 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
         count_hist = self.get_histogram(time_tag_data)
         self.sig_start = int(np.where(count_hist[1:] > self.count_threshold)[0][0])
 
+    @property
+    def sig_start_int(self):
+        return int(self.sig_start / self.time_bin)
+
+    @property
+    def sig_end_int(self):
+        return int(self.sig_end / self.time_bin)
 
 
 class TimeTagStateEstimator(StateEstimator):
-    def __init__(self):
+    def __init__(self, log):
         super().__init__()
+        self.log = log
         self.stg = None
 
-    def input_settings(self, settings: TimeTagStateEstimatorSettings) -> None:
-        self.stg = settings
-
-    def extract(self, raw_data):
+    def extract(self, raw_data, settings=None):
         return raw_data.tolist()
 
-    def estimate(self, time_tag_data):
-        if self.stg.count_mode == 'Average':
-            self.stg.set_start_count(time_tag_data)
+    def estimate(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
+        if settings.count_mode == 'Average':
             counts_time_trace = self._photon_count(time_tag_data,
-                                                   self.stg.sig_start,
-                                                   self.stg.sig_stop,
-                                                   self.stg.max_bins)
-        elif self.stg.count_mode == 'WeightedAverage':
+                                                   settings.sig_start_int,
+                                                   settings.sig_end_int,
+                                                   settings.max_bins)
+
+        elif settings.count_mode == 'WeightedAverage':
             counts_time_trace = self._weighted_photon_count(time_tag_data,
-                                                            self.stg.weight,
-                                                            self.stg.sig_start,
-                                                            self.stg.sig_stop,
-                                                            self.stg.max_bins)
+                                                            settings.weight,
+                                                            settings.sig_start_int,
+                                                            settings.sig_end_int,
+                                                            settings.max_bins)
         return counts_time_trace
 
     def _photon_count(self, time_tag, start_count, stop_count, max_bins):
@@ -159,9 +157,9 @@ class TimeTagStateEstimator(StateEstimator):
                 photon_counts = 0
         return counts_time_trace
 
-    def get_pulse(self, time_tag_data):
-        count_hist, bin_edges = np.histogram(time_tag_data, bins=self.stg.max_bins, range=(1, self.stg.max_bins))
-        time_array = self.stg.time_bin * np.arange(len(count_hist))
+    def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
+        count_hist, bin_edges = np.histogram(time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins))
+        time_array = settings.time_bin * np.arange(len(count_hist))
         pulse_array = [time_array, count_hist]
         return pulse_array
 
@@ -184,7 +182,8 @@ def get_method_names(subclass_obj, class_obj):
 
 class StateEstimatorMain:
 
-    def __init__(self):
+    def __init__(self, log):
+        self.log = log
         self.method_lists = []
         self._method = None
         self.estimator = None
@@ -204,19 +203,15 @@ class StateEstimatorMain:
         self._configure_method(self._method)
 
     def _configure_method(self, method):
-        self.estimator = globals()[method + 'StateEstimator']()
+        self.estimator = globals()[method + 'StateEstimator'](self.log)
 
-    def input_settings(self, settings):
-        self.estimator.input_settings(settings)
+    def get_pulse(self, raw_data, settings):
+        return self.estimator.get_pulse(raw_data, settings)
 
-    def get_pulse(self, raw_data):
-        return self.estimator.get_pulse(raw_data)
-
-    def extract(self, raw_data):
-        extracted_data = self.estimator.extract(raw_data)
+    def extract(self, raw_data, settings):
+        extracted_data = self.estimator.extract(raw_data, settings)
         return extracted_data
 
-    def estimate(self, extracted_data):
-        extracted_data = netobtain(extracted_data)
-        state_time_trace = self.estimator.estimate(extracted_data)
+    def estimate(self, extracted_data, settings):
+        state_time_trace = self.estimator.estimate(extracted_data, settings)
         return state_time_trace

@@ -40,12 +40,15 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sew_layout = QtWidgets.QVBoxLayout(self)
         self._sw = StateEstimationSettingWidget(logic)
         self._pw = StateEstimationPulseWidget(logic)
+        self._ttw = StateEstimationTimeTraceWidget(logic)
         self._sew_layout.addWidget(self._sw)
         self._sew_layout.addWidget(self._pw)
+        self._sew_layout.addWidget(self._ttw)
 
     def connect_signals(self):
         self._sw.connect_signals()
         self._pw.connect_signals()
+        self._ttw.connect_signals()
         self.connect_mutual_signals()
         self._pw.update_lines()
 
@@ -88,14 +91,17 @@ class StateEstimationTab(QtWidgets.QWidget):
     def disconnect_signals(self):
         self._sw.disconnect_signals()
         self._pw.disconnect_signals()
+        self._ttw.disconnect_signals()
 
     def activate_ui(self):
         self._sw.activate()
         self._pw.activate()
+        self._ttw.activate()
 
     def deactivate_ui(self):
         self._sw.deactivate()
         self._pw.deactivate()
+        self._ttw.deactivate()
 
 class StateEstimationSettingWidget(QtWidgets.QWidget):
     method_updated_sig = QtCore.Signal()
@@ -303,3 +309,38 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         pulse = self.logic.get_pulse()
         self.pulse_image.setData(x=pulse[0], y=pulse[1])
         self.pulse_PlotWidget.addItem(self.pulse_image)
+
+class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
+
+    def __init__(self, logic):
+        self.logic = logic()
+        self.estimator = logic().estimator
+        self.settings = logic().settings.estimator_stg
+        # Get the path to the *.ui file
+        qdyne_dir = os.path.dirname(os.path.dirname(__file__))
+        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_time_trace_widget.ui')
+
+        # Load it
+        super(StateEstimationTimeTraceWidget, self).__init__()
+
+        uic.loadUi(ui_file, self)
+
+    def activate(self):
+        self._activate_widgets()
+
+    def _activate_widgets(self):
+        self.time_trace_image = pg.PlotDataItem(np.arange(10), np.zeros(10), pen=palette.c1)
+        self.time_trace_PlotWidget.addItem(self.time_trace_image)
+
+    def connect_signals(self):
+        self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)
+
+    def disconnect_signals(self):
+        self.get_time_trace.disconnect()
+
+    def update_time_trace(self):
+        self.logic.extract_data()
+        self.logic.estimate_state()
+        y = self.logic.data.time_trace
+        x = np.arange(len(y))
+        self.time_trace_image.setData(x=x, y=y)
