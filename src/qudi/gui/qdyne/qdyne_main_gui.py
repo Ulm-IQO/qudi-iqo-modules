@@ -32,7 +32,7 @@ from qudi.gui.qdyne.widgets.measurement_widget import MeasurementWidget
 from qudi.gui.qdyne.widgets.generation_widget import GenerationWidget
 from qudi.gui.qdyne.widgets.predefined_method_config_dialog_widget import PredefinedMethodsConfigDialogWidget
 from qudi.gui.qdyne.widgets.state_estimation_widget import StateEstimationTab
-from qudi.gui.qdyne.widgets.time_trace_analysis_widget import TimeTraceAnalysisWidget
+from qudi.gui.qdyne.widgets.time_trace_analysis_widget import TimeTraceAnalysisTab
 
 class QdyneMainGui(GuiBase):
     _predefined_methods_to_show = StatusVar('predefined_methods_to_show', [])
@@ -53,7 +53,7 @@ class QdyneMainGui(GuiBase):
         self._gw = GenerationWidget(self)
         self._gsw = PredefinedMethodsConfigDialogWidget(self)
         self._sew = StateEstimationTab(self.logic)
-        self._ttaw = TimeTraceAnalysisWidget(self, self.logic)
+        self._ttaw = TimeTraceAnalysisTab(self.logic, self)
         self._fcd = FitConfigurationDialog(
             parent=self._mainw,
             fit_config_model=self.logic().pulsedmasterlogic().fit_config_model

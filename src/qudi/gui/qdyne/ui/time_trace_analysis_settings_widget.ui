@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>tta</class>
+ <widget class="QWidget" name="tta">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1229</width>
+    <height>696</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Form</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0">
+   <item>
+    <widget class="QGroupBox" name="tta_setting_gridGroupBox">
+     <layout class="QGridLayout" name="gridLayout_10">
+      <item row="0" column="0">
+       <layout class="QGridLayout" name="tta_method_gridLayout">
+        <item row="0" column="4">
+         <widget class="QPushButton" name="tta_setting_add_pushButton">
+          <property name="text">
+           <string>add</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="0">
+         <widget class="QLabel" name="tta_method_label">
+          <property name="text">
+           <string>Time trace analysis method:</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="2">
+         <widget class="QLabel" name="tta_setting_label">
+          <property name="text">
+           <string>setting</string>
+          </property>
+         </widget>
+        </item>
+        <item row="0" column="6">
+         <spacer name="tta_method_horizontalSpacer">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>40</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item row="0" column="1">
+         <widget class="QComboBox" name="tta_method_comboBox"/>
+        </item>
+        <item row="0" column="3">
+         <widget class="QComboBox" name="tta_setting_comboBox"/>
+        </item>
+        <item row="0" column="5">
+         <widget class="QPushButton" name="tta_setting_delete_pushButton">
+          <property name="text">
+           <string>delete</string>
+          </property>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item row="4" column="0">
+       <layout class="QGridLayout" name="tta_settings_gridLayout"/>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
