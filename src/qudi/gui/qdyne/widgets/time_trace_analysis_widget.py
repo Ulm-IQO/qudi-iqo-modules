@@ -67,6 +67,9 @@ class TimeTraceAnalysisTab(QtWidgets.QWidget):
         self._sw.activate()
         self._dw.activate()
 
+    def deactivate(self):
+        pass
+
 class TimeTraceAnalysisLoaderWidget(QtWidgets.QWidget):
     sigTTFileNameChanged = QtCore.Signal(str)
     sigLoadTT = QtCore.Signal()

@@ -342,11 +342,13 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self.time_trace_image = pg.PlotDataItem(np.arange(10), np.zeros(10), pen=palette.c1)
         self.time_trace_PlotWidget.addItem(self.time_trace_image)
 
+    def deactivate(self):
+        pass
     def connect_signals(self):
         self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)
 
     def disconnect_signals(self):
-        self.get_time_trace.disconnect()
+        self.get_time_trace_pushButton.disconnect()
 
     def update_time_trace(self):
         self.logic.extract_data()

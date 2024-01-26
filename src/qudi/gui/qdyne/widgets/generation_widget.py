@@ -84,7 +84,6 @@ class GenerationWidget(QtWidgets.QWidget):
     def disconnect_signals(self):
         self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
         self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.disconnect()
-        self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.disconnect()
 
         self._gui.logic().pulsedmasterlogic().sigSampleBlockEnsemble.disconnect()
         self._gui.logic().pulsedmasterlogic().sigLoadBlockEnsemble.disconnect()
