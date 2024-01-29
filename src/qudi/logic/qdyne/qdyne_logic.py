@@ -26,12 +26,12 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
-from qudi.util.datafitting import FitConfigurationsModel, FitContainer
 
 from qudi.logic.qdyne.qdyne_measurement import (
     QdyneMeasurement, QdyneMeasurementSettings)
 from qudi.logic.qdyne.qdyne_state_estimator import *
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
+from qudi.logic.qdyne.qdyne_fit import QdyneFit
 from qudi.logic.qdyne.qdyne_save import (
     QdyneSaveSettings, QdyneSave)
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
@@ -47,6 +47,9 @@ class MainDataClass:
 
     def load_np_data(self, path):
         self.raw_data = np.load(path)['arr_0']
+
+    def load_spectrum(self, path):
+        self.spectrum = np.load(path)
 
 class MeasurementGenerator:
     """
@@ -148,19 +151,8 @@ class QdyneLogic(LogicBase):
 
     # signals for connecting modules
     sigTTFileNameUpdated = QtCore.Signal(str)
-    sigFitUpdated = QtCore.Signal(str, object, bool)
+    sigFitUpdated = QtCore.Signal(str, object)
 
-    __default_fit_configs = (
-        {'name': 'Lorentzian Dip',
-         'model': 'Lorentzian',
-         'estimator': 'Dip',
-         'custom_parameters': None},
-
-        {'name': 'Lorentzian Peak',
-         'model': 'Lorentzian',
-         'estimator': 'Peak',
-         'custom_parameters': None},
-    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -174,12 +166,6 @@ class QdyneLogic(LogicBase):
 
         self.tt_filename = None
 
-        # for fitting
-        self.fit_config_model = None  # Model for custom fit configurations
-        self.fc = None  # Fit container
-        self.alt_fc = None
-        self._fit_result = None
-        self._fit_result_alt = None
 
     def on_activate(self):
         def activate_classes():
@@ -189,6 +175,7 @@ class QdyneLogic(LogicBase):
             self.settings = QdyneSettings()
             self.measurement_generator = MeasurementGenerator(self.pulsedmasterlogic)
             self.data = MainDataClass()
+            self.fit = QdyneFit(self, self._fit_configs)
             self.save = QdyneSave(self.module_default_data_dir, self.data_storage_class)
 #            self.fitting = QdyneFittingMain()
 
@@ -208,15 +195,6 @@ class QdyneLogic(LogicBase):
         activate_classes()
         initialize_settings()
         input_initial_settings()
-
-        # Fitting
-        self.fit_config_model = FitConfigurationsModel(parent=self)
-        self.fit_config_model.load_configs(self._fit_configs)
-        self.fc = FitContainer(parent=self, config_model=self.fit_config_model)
-        self.alt_fc = FitContainer(parent=self, config_model=self.fit_config_model)
-        self.fit_container1 = FitContainer(parent=self, config_model=self.fit_config_model)
-        self.fit_container2 = FitContainer(parent=self, config_model=self.fit_config_model)
-
         return
 
     def on_deactivate(self):
@@ -291,49 +269,14 @@ class QdyneLogic(LogicBase):
             self.log.error('Time trace filename to load must be str or None.')
         return
 
-    @_fit_configs.representer
-    def __repr_fit_configs(self, value):
-        configs = self.fit_config_model.dump_configs()
-        if len(configs) < 1:
-            configs = None
-        return configs
-
-    @_fit_configs.constructor
-    def __constr_fit_configs(self, value):
-        if not value:
-            return self.__default_fit_configs
-        return value
-
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)
-    def do_fit(self, fit_config, use_alternative_data=False):
+    def do_fit(self, fit_config):
         try:
-            config, result = self.perform_fit(fit_config, use_alternative_data=False)
+            self.data.fit_config, self.data.fit_result = self.fit.perform_fit(self.data.spectrum, fit_config)
         except:
-            config, result = '', None
+            self.data.fit_config, self.data.fit_result = '', None
             self.log.exception('Something went wrong while trying to perform data fit.')
-        self.sigFitUpdated.emit(config, result, use_alternative_data)
-        return result
-
-    def perform_fit(self, fit_config, use_alternative_data=False):
-        """
-        Performs the chosen fit on the measured data.
-
-        @param str fit_config: name of the fit configuration to use
-        @param bool use_alternative_data: Flag indicating if the signal data (False) or the
-                                          alternative signal data (True) should be fitted.
-                                          Ignored if data is given as parameter
-
-        @return result_object: the lmfit result object
-        """
-        container = self.alt_fc if use_alternative_data else self.fc
-        data = self.signal_alt_data if use_alternative_data else self.signal_data
-        config, result = container.fit_data(fit_config, data[0], data[1])
-        if result:
-            result.result_str = container.formatted_result(result)
-        if use_alternative_data:
-            self._fit_result_alt = result
-        else:
-            self._fit_result = result
-        return config, result
+        self.sigFitUpdated.emit(self.data.fit_config, self.data.fit_result)
+        return self.data.fit_result
 

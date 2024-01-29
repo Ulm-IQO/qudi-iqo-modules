@@ -216,7 +216,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
     def activate(self):
         self._form_layout()
         self._activate_plot1_widget()
-        self._activate_plot2_widget()
+        #self._activate_plot2_widget()
 
     def _form_layout(self):
         self.tta_gridGroupBox.setSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
@@ -245,7 +245,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
                                                        bottom=0.,
                                                        pen=palette.c2)
 
-        self.plot1_fitwidget.link_fit_container(self._logic.fit_container1)
+        self.plot1_fitwidget.link_fit_container(self._logic.fit.fit_container)
 
     def _activate_plot2_widget(self):
         # Configure the second signal plot display:
@@ -267,10 +267,10 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.tta_analyze_pushButton.clicked.connect(self._logic.analyze_time_trace)
         self.tta_get_spectrum_pushButton.clicked.connect(self.update_spectrum)
         self.plot1_fitwidget.sigDoFit.connect(
-            lambda x: self._logic.do_fit(x, False)
-        )
+            lambda x: self._logic.do_fit(x)
+        ) #fit config is input
         self.plot2_fitwidget.sigDoFit.connect(
-            lambda x: self._logic.do_fit(x, True)
+            lambda x: self._logic.do_fit(x)
         )
 
         self._logic.sigFitUpdated.connect(self.fit_data_updated)
@@ -286,35 +286,29 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.signal_image.setData(x=spectrum[0], y=spectrum[1])
         self.plot1_PlotWidget.addItem(self.signal_image)
 
-    @QtCore.Slot(str, object, bool)
-    def fit_data_updated(self, fit_config, result, use_alternative_data):
+    @QtCore.Slot(str, object)
+    def fit_data_updated(self, fit_config, fit_result):
         """
 
         @param str fit_config:
-        @param object result:
+        @param object fit_result:
         @param bool use_alternative_data:
         @return:
         """
-        # Update plot.
-        if use_alternative_data:
-            if not fit_config or fit_config == 'No Fit':
-                if self.second_fit_image in self._pa.pulse_analysis_second_PlotWidget.items():
-                    self._pa.pulse_analysis_second_PlotWidget.removeItem(self.second_fit_image)
-            else:
-                self.second_fit_image.setData(x=result.high_res_best_fit[0],
-                                              y=result.high_res_best_fit[1])
-                if self.second_fit_image not in self._pa.pulse_analysis_second_PlotWidget.items():
-                    self._pa.pulse_analysis_second_PlotWidget.addItem(self.second_fit_image)
+        if not fit_config or fit_config == 'No Fit':
+            self._set_plot_removed()
         else:
-            if not fit_config or fit_config == 'No Fit':
-                if self.fit_image in self._pa.pulse_analysis_PlotWidget.items():
-                    self._pa.pulse_analysis_PlotWidget.removeItem(self.fit_image)
-            else:
-                self.fit_image.setData(x=result.high_res_best_fit[0],
-                                       y=result.high_res_best_fit[1])
-                if self.fit_image not in self._pa.pulse_analysis_PlotWidget.items():
-                    self._pa.pulse_analysis_PlotWidget.addItem(self.fit_image)
-        return
+            self._set_fit(fit_result)
+
+    def _set_plot_removed(self):
+        if self.fit_image in self.plot1_PlotWidget.items():
+            self.plot1_PlotWidget.removeItem(self.fit_image)
+
+    def _set_fit(self, fit_result):
+        self.fit_image.setData(x=fit_result.high_res_best_fit[0],
+                               y=fit_result.high_res_best_fit[1])
+        if self.fit_image not in self.plot1_PlotWidget.items():
+            self.plot1_PlotWidget.addItem(self.fit_image)
 
 # class TimeTraceAnalysisWidget(QtWidgets.QWidget):
 #     # declare signals

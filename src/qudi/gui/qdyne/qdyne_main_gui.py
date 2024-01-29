@@ -56,7 +56,7 @@ class QdyneMainGui(GuiBase):
         self._ttaw = TimeTraceAnalysisTab(self.logic, self)
         self._fcd = FitConfigurationDialog(
             parent=self._mainw,
-            fit_config_model=self.logic().pulsedmasterlogic().fit_config_model
+            fit_config_model=self.logic().fit.fit_config_model
         )
 
     def _activate_ui(self):
