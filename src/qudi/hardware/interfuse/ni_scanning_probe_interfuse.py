@@ -255,20 +255,15 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
                     return True, self.scan_settings
             with self._thread_lock_data:
                 try:
-                    self._scan_data = ScanData(
-                        channels=tuple(self._constraints.channels.values()),
-                        scan_axes=tuple(self._constraints.axes[ax] for ax in axes),
-                        scan_range=ranges,
-                        scan_resolution=tuple(resolution),
-                        scan_frequency=frequency,
-                        position_feedback_axes=None
-                    )
+
+                    self._scan_data = self._create_scan_data(axes, ranges, resolution, frequency)
+
                     self.raw_data_container = RawDataContainer(self._scan_data.channels,
-                                                               resolution[
-                                                                   1] if self._scan_data.scan_dimension == 2 else 1,
+                                                               resolution[1] if self._scan_data.scan_dimension==2 else 1,
                                                                resolution[0],
                                                                self.__backwards_line_resolution)
-                    # self.log.debug(f"New scanData created: {self._scan_data.data}")
+
+                    ni_scan_dict = self._init_ni_scan_arrays(self._scan_data)
 
                 except:
                     self.log.exception("")
@@ -283,9 +278,6 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
                 )
 
                 self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
-
-                ni_scan_dict = self._init_ni_scan_arrays(self._scan_data)
-
                 self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
 
             except:
@@ -713,6 +705,47 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
             if out_of_range:
                 raise ValueError(f"Scan axis {ax} out of range [{position_min}, {position_max}]")
+
+    def _create_scan_data(self, axes, ranges, resolution, frequency):
+
+        valid_scan_grid = False
+        i_trial, n_max_trials = 0, 25
+
+        while not valid_scan_grid and i_trial < n_max_trials:
+
+            if i_trial > 0:
+                ranges = self._shrink_scan_ranges(ranges)
+
+            scan_data = ScanData(
+                channels=tuple(self._constraints.channels.values()),
+                scan_axes=tuple(self._constraints.axes[ax] for ax in axes),
+                scan_range=ranges,
+                scan_resolution=tuple(resolution),
+                scan_frequency=frequency,
+                position_feedback_axes=None)
+
+            try:
+                ni_scan_dict = self._init_ni_scan_arrays(scan_data)
+                valid_scan_grid = True
+            except ValueError:
+                valid_scan_grid = False
+
+            i_trial += 1
+
+        if not valid_scan_grid:
+            raise ValueError("Couldn't create scan grid. ")
+
+        if i_trial > 1:
+            self.log.warning(f"Adapted out-of-bounds scan range to {ranges}")
+
+        # self.log.debug(f"New scanData created: {self._scan_data.data}")
+        return scan_data
+
+
+    def _shrink_scan_ranges(self, ranges, factor=0.01):
+        lenghts = [stop - start for (start, stop) in ranges]
+
+        return [(start + 0.01 * lenghts[idx], stop - 0.01 * lenghts[idx]) for idx, (start, stop) in enumerate(ranges)]
 
     def _init_ni_scan_arrays(self, scan_data):
         """
