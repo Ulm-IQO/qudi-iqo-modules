@@ -745,7 +745,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     def _shrink_scan_ranges(self, ranges, factor=0.01):
         lenghts = [stop - start for (start, stop) in ranges]
 
-        return [(start + 0.01 * lenghts[idx], stop - 0.01 * lenghts[idx]) for idx, (start, stop) in enumerate(ranges)]
+        return [(start + factor* lenghts[idx], stop - factor* lenghts[idx]) for idx, (start, stop) in enumerate(ranges)]
 
     def _init_ni_scan_arrays(self, scan_data):
         """
