@@ -25,8 +25,12 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
-import pyvisa as visa
-from pyvisa.resources import MessageBasedResource
+try:
+    import pyvisa as visa
+    from pyvisa.resources import MessageBasedResource
+except ImportError:
+    import visa
+    from visa.resources import MessageBasedResource
 import time
 import numpy as np
 
