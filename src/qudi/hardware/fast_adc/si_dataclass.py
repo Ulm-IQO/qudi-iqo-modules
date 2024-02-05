@@ -84,7 +84,7 @@ class Card_settings:
         @param int seq_size_B: sequence size in bytes
         @param int reps_per_buf: Total number of repetitions which can be stored in the given memory
         """
-        self.buf_size_B = seq_size_B * reps_per_buf
+        self.buf_size_B = int(seq_size_B * reps_per_buf)
         self.ts_buf_size_B = int(2 * 16 * total_pulse * reps_per_buf)
 
     @property
@@ -102,6 +102,7 @@ class Measurement_settings:
     gated: bool = False
     init_buf_size_S: int = 0
     reps: int = 0
+    max_reps_per_buf = 1e5 #TODO configurable
     #Given by the measurement
     binwidth_s: float = 0
     record_length_s: float = 0
@@ -207,9 +208,8 @@ class Measurement_settings:
         when too big a buffer was defined for lower sampling rate.
         """
         try:
-            max_reps_per_buf = 1e6 #empirical value
             reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
-            self.reps_per_buf = min(reps_per_buf, max_reps_per_buf)
+            self.reps_per_buf = int(min(reps_per_buf, self.max_reps_per_buf))
             self.seq_size_B = self.seq_size_S * self.get_data_bytes_B()
         except:
             pass

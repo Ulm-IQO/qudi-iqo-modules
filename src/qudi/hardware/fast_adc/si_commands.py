@@ -557,7 +557,8 @@ class Configure_data_transfer():
             dwOffset = dwAlignment - misalignment
         else:
             dwOffset = 0
-        return (ctypes.c_char * qwBytes).from_buffer(pvNonAlignedBuf, dwOffset)
+        buffer = (ctypes.c_char * qwBytes).from_buffer(pvNonAlignedBuf, dwOffset)
+        return buffer
 
     def set_data_transfer(self, card, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B):
         """
