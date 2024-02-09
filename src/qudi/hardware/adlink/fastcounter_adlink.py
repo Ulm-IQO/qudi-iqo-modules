@@ -326,6 +326,8 @@ class Adlink9834(FastCounterInterface):
 
         # self._callback = ctypes.CFUNCTYPE(AdlinkDataTypes.U32)(self.callback_function)
         self._available_data = None
+        self._number_of_averages = 0
+        self._current_buffer_position = 0
 
     def __del__(self):
         """
@@ -504,6 +506,7 @@ class Adlink9834(FastCounterInterface):
         if self.check_if_error(err, "ContBufferSetup"):
             return
         self._available_data = np.zeros((self._buffer_size_samples.value,))
+        self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value))
 
         # err = AdlinkDataTypes.I16(self._dll.WD_AI_EventCallBackEx_x64(self._card,
         #                                                               AdlinkDataTypes.I16(1),
@@ -550,6 +553,8 @@ class Adlink9834(FastCounterInterface):
                       f"retrigger_count: {self._settings.retrigger_count.value}")
         self._sweeps = 0
         self._available_data = np.zeros((self._buffer_size_samples.value,))
+        self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value))
+        self._current_buffer_position = 0
         try:
             self.arm_card()
         except Exception as e:
@@ -651,14 +656,25 @@ class Adlink9834(FastCounterInterface):
         }
 
         if self.get_status() != 1:
-            data = self.transform_raw_data(self._available_data)
+            if self._number_of_averages <= 0:
+                data = self.transform_raw_data(self._available_data)
+            else:
+                data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
             return data, info_dict
 
         try:
             raw_data = (self._settings.data_type * self._buffer_size_samples.value).from_address(self._ai_buffer1.value)
             data = np.array(raw_data, dtype=np.int16)
-            self._available_data += data
-            data = self.transform_raw_data(self._available_data)
+            if self._number_of_averages <= 0:
+                self._available_data += data
+                data = self.transform_raw_data(self._available_data)
+            else:
+                self._data_buffer[self._current_buffer_position] = np.copy(data)
+                self._current_buffer_position += 1
+                if self._current_buffer_position == self._number_of_averages:
+                    self._current_buffer_position = 0
+                data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
+
             ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
             return data, info_dict
 
