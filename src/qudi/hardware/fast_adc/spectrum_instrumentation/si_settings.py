@@ -101,7 +101,7 @@ class MeasurementSettings:
     gated: bool = False
     init_buf_size_S: int = 0
     reps: int = 0
-    max_reps_per_buf = 1e5
+    max_reps_per_buf = 1e4
     data_stack_on: bool = True
     #Given by the measurement
     binwidth_s: float = 0
@@ -127,9 +127,6 @@ class MeasurementSettings:
     gate_length_rounded_S: int = 0
     gate_end_alignment_S: int = 16
     double_gate_acquisition: bool = False
-
-    def return_c_buf_ptr(self):
-        return self.c_buf_ptr
 
     def load_dynamic_params(self, binwidth_s, record_length_s, number_of_gates):
         self.binwidth_s = binwidth_s
@@ -218,6 +215,4 @@ class MeasurementSettings:
     def ts_data_type(self):
         return c_uint64
 
-    def return_c_ts_buf_ptr(self):
-        return self.c_ts_buf_ptr
 

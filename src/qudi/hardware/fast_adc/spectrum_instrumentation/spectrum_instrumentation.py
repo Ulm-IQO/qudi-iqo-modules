@@ -107,6 +107,7 @@ class SpectrumInstrumentation(FastCounterInterface):
     _threaded = True
     _threadlock = Mutex()
 
+    # ConfigOptions for card settings. See the manual for details.
     _ai_ch = ConfigOption('ai_ch', 'CH0', missing='nothing')
     _ai_range_mV = ConfigOption('ai_range_mV', 1000, missing='warn')
     _ai_offset_mV = ConfigOption('ai_offset_mV', 0, missing='warn')
@@ -116,19 +117,19 @@ class SpectrumInstrumentation(FastCounterInterface):
     _acq_HW_avg_num = ConfigOption('acq_HW_avg_num', 1, missing='nothing')
     _acq_pre_trigs_S = ConfigOption('acq_pre_trigger_samples', 16, missing='warn')
     _acq_post_trigs_S = ConfigOption('acq_post_trigger_samples', 16, missing='nothing')
-
     _buf_notify_size_B = ConfigOption('buf_notify_size_B', 4096, missing='warn')
     _clk_ref_Hz = ConfigOption('clk_reference_Hz', 10e6, missing='warn')
     _trig_mode = ConfigOption('trig_mode', 'EXT', missing='warn')
     _trig_level_mV = ConfigOption('trig_level_mV', '1000', missing='warn')
 
+    #ConfigOptions for measurement settings.
     _init_buf_size_S = ConfigOption('initial_buffer_size_S', 1e9, missing='warn')
-    _max_reps_per_buf = ConfigOption('max_reps_per_buf', 1e5, missing='nothing')
+    _max_reps_per_buf = ConfigOption('max_reps_per_buf', 1e4, missing='nothing')
     _reps = ConfigOption('repetitions', 0, missing='nothing')
     _double_gate_acquisition = ConfigOption('double_gate_acquisition', False, missing='nothing')
-
     _data_stack_on = ConfigOption('data_stack_on', True, missing='nothing')
 
+    _wait_time_interval = ConfigOption('wait_time_interval', 0.01, missing='nothing')
 
     def __init__(self, config, **kwargs):
         super().__init__(config=config, **kwargs)
@@ -168,8 +169,8 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.cmd = Commands(self.card, self.log)
         self.data = Data()
         self.fetcher = DataFetcher()
-        self.commander = Commander(self.cmd)
-        self.loop_manager = LoopManager(self.commander)
+        self.commander = Commander(self.cmd, self.log)
+        self.loop_manager = LoopManager(self.commander, self.log)
 
     def _load_settings_from_config_file(self):
         """
@@ -195,6 +196,8 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.ms.data_stack_on = self._data_stack_on
         self.ms.double_gate_acquisition = self._double_gate_acquisition
         self.ms.assign_data_bit(self.cs.acq_mode)
+
+        self.cmd.process.wait_time_interval = self._wait_time_interval
 
     def on_deactivate(self):
         """
@@ -278,7 +281,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         Start the acquisition and data process loop
         """
         self._start_acquisition()
-        self.loop_manager.start_data_process_loop()
+        self.loop_manager.start_data_process()
 
         return 0
 
@@ -320,7 +323,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         If the hardware does not support these features, the values should be None
         """
         with self._threadlock:
-            avg_data = self.data.avg.data
+            avg_data = self.data.avg.reshape_2d_by_pulse() if self.ms.gated else self.data.avg.data
             avg_num = self.data.avg.num
         info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.loop_manager.start_time}
 

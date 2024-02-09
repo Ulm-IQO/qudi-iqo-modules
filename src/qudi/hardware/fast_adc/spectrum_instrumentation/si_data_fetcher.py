@@ -36,13 +36,12 @@ class DataFetcher:
             self.ts_dt = DataTransfer(ms.c_ts_buf_ptr, ms.ts_data_type,
                                       ms.ts_data_bytes_B, ms.ts_seq_size_S, ms.reps_per_buf)
 
-    def fetch_data(self, user_pos_B, curr_avail_reps):
-        data = self.hw_dt.get_new_data(user_pos_B, curr_avail_reps)
-        rep = curr_avail_reps
-        return data, rep
+    def fetch_data(self, curr_avail_reps, user_pos_B):
+        data = self.hw_dt.get_new_data(curr_avail_reps, user_pos_B)
+        return data
 
-    def fetch_ts_data(self, ts_user_pos_B, curr_avail_reps):
-        ts_row = self.ts_dt.get_new_data(ts_user_pos_B, curr_avail_reps).astype(np.uint64)
+    def fetch_ts_data(self, curr_avail_reps, ts_user_pos_B):
+        ts_row = self.ts_dt.get_new_data(curr_avail_reps, ts_user_pos_B).astype(np.uint64)
         ts_r, ts_f = self._get_ts_rf(ts_row)
         return ts_r, ts_f
 
@@ -108,7 +107,7 @@ class DataTransfer:
         np_buffer = self._asnparray(c_buffer, shape)
         return np_buffer
 
-    def get_new_data(self, user_pos_B, curr_avail_reps):
+    def get_new_data(self, curr_avail_reps, user_pos_B):
         """
         Get the currently available new data at the user position
         dependent on the relative position of the user position in the buffer.
@@ -121,24 +120,24 @@ class DataTransfer:
         rep_end = int(user_pos_B / self.seq_size_B) + curr_avail_reps
 
         if 0 < rep_end <= self.reps_per_buf:
-            np_data = self._fetch_data(user_pos_B, curr_avail_reps)
+            np_data = self._fetch_data(curr_avail_reps, user_pos_B)
 
         elif self.reps_per_buf < rep_end < 2 * self.reps_per_buf:
-            np_data = self._fetch_data_buf_end(user_pos_B, curr_avail_reps)
+            np_data = self._fetch_data_buf_end(curr_avail_reps, user_pos_B)
         else:
             print('error: rep_end {} is out of range'.format(rep_end))
             return
 
         return np_data
 
-    def _fetch_data(self, user_pos_B, curr_avail_reps):
+    def _fetch_data(self, curr_avail_reps, user_pos_B):
         """
         Fetch currently available data at user position in one shot
         """
         np_data = self._fetch_from_buf(user_pos_B, curr_avail_reps * self.seq_size_S)
         return np_data
 
-    def _fetch_data_buf_end(self, user_pos_B, curr_avail_reps):
+    def _fetch_data_buf_end(self, curr_avail_reps, user_pos_B):
         """
         Fetch currently available data at user position which exceeds the end of the buffer.
         """

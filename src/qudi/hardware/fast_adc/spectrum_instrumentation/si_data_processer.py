@@ -7,15 +7,20 @@ class DataProcessorUngated:
         self.fetcher = fetcher
 
     def process_data(self, curr_avail_reps, user_pos_B, *args):
-        self._fetch_data(user_pos_B, curr_avail_reps)
+        self._fetch_data(curr_avail_reps, user_pos_B)
         self._get_new_avg_data()
 
+    def get_initial_avg(self):
+        self.avg.data = self.avg_new.data
+        self.avg.num = self.avg_new.num
+
     def update_data(self, curr_avail_reps, user_pos_B, *args):
-        self.process_data_ungated(user_pos_B, curr_avail_reps)
+        self.process_data(curr_avail_reps, user_pos_B)
         self._update_avg_data()
 
-    def _fetch_data(self, user_pos_B, curr_avail_reps):
-        self.dc_new.data, self.dc_new.rep = self.fetcher.fetch_data(user_pos_B, curr_avail_reps)
+    def _fetch_data(self, curr_avail_reps, user_pos_B):
+        self.dc_new.data = self.fetcher.fetch_data(curr_avail_reps, user_pos_B)
+        self.dc_new.rep = curr_avail_reps
         self.dc_new.set_len()
         self.dc_new.data = self.dc_new.reshape_2d_by_rep()
 
@@ -33,16 +38,16 @@ class DataProcessorUngated:
 class DataProcessGated(DataProcessorUngated):
 
     def process_data(self, curr_avail_reps, user_pos_B, ts_user_pos_B):
-        self._fetch_data(user_pos_B, curr_avail_reps)
-        self._fetch_ts(ts_user_pos_B, curr_avail_reps)
+        self._fetch_data(curr_avail_reps, user_pos_B)
+        self._fetch_ts(curr_avail_reps, ts_user_pos_B)
         self._get_new_avg_data()
 
     def update_data(self, curr_avail_reps, user_pos_B, ts_user_pos_B):
-        self.process_data(user_pos_B, ts_user_pos_B, curr_avail_reps)
+        self.process_data(curr_avail_reps, user_pos_B, ts_user_pos_B)
         self._update_avg_data()
 
-    def _fetch_ts(self, ts_user_pos_B, curr_avail_reps):
-        self.dc_new.ts_r, self.dc_new.ts_f = self.fetcher.fetch_ts_data(ts_user_pos_B, curr_avail_reps)
+    def _fetch_ts(self, curr_avail_reps, ts_user_pos_B):
+        self.dc_new.ts_r, self.dc_new.ts_f = self.fetcher.fetch_ts_data(curr_avail_reps, ts_user_pos_B)
 
     def stack_new_ts(self):
         self.dc.stack_rep_gated(self.dc_new)

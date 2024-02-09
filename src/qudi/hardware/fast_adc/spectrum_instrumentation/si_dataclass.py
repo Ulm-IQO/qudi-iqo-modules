@@ -51,7 +51,11 @@ class Data:
         return ungated_dc
 
     def generate_gated_dataclass(self, ms, cs):
-        gated_dc = self.generate_ungated_dataclass(ms, cs)
+        gated_dc = SeqDataMultiGated()
+        gated_dc.data = np.empty((0,ms.seq_size_S), int)
+        gated_dc.total_pulse_number = ms.total_pulse
+        gated_dc.pule_len = ms.seg_size_S
+        gated_dc.data_range_mV = cs.ai_range_mV
         gated_dc.ts_r = np.empty(0, np.uint64)
         gated_dc.ts_f = np.empty(0, np.uint64)
         return gated_dc

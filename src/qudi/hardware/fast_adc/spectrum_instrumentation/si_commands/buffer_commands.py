@@ -37,23 +37,23 @@ class DataBufferCommands:
         return status.value
 
     def get_avail_user_len_B(self):
-        c_avaiil_user_len = c_int64(0)
-        self._error = spcm_dwGetParam_i64(self._card, SPC_DATA_AVAIL_USER_LEN, byref(c_avaiil_user_len))
-        return c_avaiil_user_len.value
+        c_avail_user_len = c_int64(0)
+        self._error = spcm_dwGetParam_i64(self._card, SPC_DATA_AVAIL_USER_LEN, byref(c_avail_user_len))
+        return c_avail_user_len.value
 
     def get_avail_user_pos_B(self):
-        c_avaiil_user_pos = c_int64(0)
-        self._error = spcm_dwGetParam_i64(self._card, SPC_DATA_AVAIL_USER_POS, byref(c_avaiil_user_pos))
-        return c_avaiil_user_pos.value
+        c_avail_user_pos = c_int64(0)
+        self._error = spcm_dwGetParam_i64(self._card, SPC_DATA_AVAIL_USER_POS, byref(c_avail_user_pos))
+        return c_avail_user_pos.value
 
     def get_avail_card_len_B(self):
-        c_avaiil_card_len_B = c_int64()
-        self._error = spcm_dwGetParam_i64(self._card, SPC_DATA_AVAIL_CARD_LEN, byref(c_avaiil_card_len_B))
-        return c_avaiil_card_len_B.value
+        c_avail_card_len_B = c_int64()
+        self._error = spcm_dwGetParam_i64(self._card, SPC_DATA_AVAIL_CARD_LEN, byref(c_avail_card_len_B))
+        return c_avail_card_len_B.value
 
     def set_avail_card_len_B(self, avail_card_len_B):
-        self._error = c_avaiil_card_len_B = c_int32(avail_card_len_B)
-        spcm_dwSetParam_i32(self._card, SPC_DATA_AVAIL_CARD_LEN, c_avaiil_card_len_B)
+        self._error = c_avail_card_len_B = c_int32(avail_card_len_B)
+        spcm_dwSetParam_i32(self._card, SPC_DATA_AVAIL_CARD_LEN, c_avail_card_len_B)
         return
 
     def get_trig_counter(self):
@@ -97,22 +97,22 @@ class TsBufferCommands:
 
     def get_ts_avail_user_len_B(self):
         c_ts_avail_user_len = c_int64(0)
-        self._error = spcm_dwGetParam_i64(self._card, SPC_TS_AVAIL_USER_LEN, byref(c_ts_avaiil_user_len))
+        self._error = spcm_dwGetParam_i64(self._card, SPC_TS_AVAIL_USER_LEN, byref(c_ts_avail_user_len))
         return c_ts_avail_user_len.value
 
     def get_ts_avail_user_pos_B(self):
         c_ts_avail_user_pos = c_int64(0)
-        self._error = spcm_dwGetParam_i64(self._card, SPC_TS_AVAIL_USER_POS, byref(c_ts_avaiil_user_pos))
+        self._error = spcm_dwGetParam_i64(self._card, SPC_TS_AVAIL_USER_POS, byref(c_ts_avail_user_pos))
         return c_ts_avail_user_pos.value
 
     def get_ts_avail_card_len_B(self):
-        c_ts_avaiil_card_len_B = c_int64()
-        self._error = spcm_dwGetParam_i64(self._card, SPC_TS_AVAIL_CARD_LEN, byref(c_ts_avaiil_card_len_B))
-        return c_ts_avaiil_card_len_B.value
+        c_ts_avail_card_len_B = c_int64()
+        self._error = spcm_dwGetParam_i64(self._card, SPC_TS_AVAIL_CARD_LEN, byref(c_ts_avail_card_len_B))
+        return c_ts_avail_card_len_B.value
 
     def set_ts_avail_card_len_B(self, ts_avail_card_len_B):
-        c_ts_avaiil_card_len_B = c_int64(ts_avail_card_len_B)
-        self._error = spcm_dwSetParam_i64(self._card, SPC_TS_AVAIL_CARD_LEN, c_ts_avaiil_card_len_B)
+        c_ts_avail_card_len_B = c_int64(ts_avail_card_len_B)
+        self._error = spcm_dwSetParam_i64(self._card, SPC_TS_AVAIL_CARD_LEN, c_ts_avail_card_len_B)
         return
 
     def get_timestamp_command(self):

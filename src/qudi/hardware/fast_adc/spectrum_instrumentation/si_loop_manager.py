@@ -31,8 +31,9 @@ class LoopManager:
     '''
     threadlock = Mutex()
 
-    def __init__(self, commander):
+    def __init__(self, commander, log):
         self.commander = commander
+        self._log = log
 
         self.loop_on = False
         self._reps = 0
@@ -69,13 +70,17 @@ class LoopManager:
             self._start_finite_loop()
 
     def _start_inifinite_loop(self):
+        self._log.info('data process started')
         while self.loop_on:
             self.commander.command_process()
+        self._log.info('data process stopped')
         return
 
     def _start_finite_loop(self):
-        while self.commander.processor.data.avg.num < self._reps:
+        self._log.info('data process started')
+        while self.commander.processor.avg.num < self._reps:
             self.commander.command_process()
+        self._log.info('data process stopped')
         return
 
     def stop_data_process(self):

@@ -45,6 +45,9 @@ class ProcessAction:
     '''
     def __init__(self, commands):
         self.cmd = commands
+
+        self.wait_time_interval = 0.01
+
         self.trigger_enabled = False
         self._seq_size_B = 0
         self._total_gate = 0
@@ -83,12 +86,12 @@ class ProcessAction:
                 print('trigger off!!')
                 self.trigger_enabled = self.cmd.card.disable_trigger()
 
-    def wait_new_trigger(self, prev_trig_counts):
-        curr_trig_counts = self.cmd.data_buf.get_trig_counter()
-        while curr_trig_counts == prev_trig_counts:
-            curr_trig_counts = self.cmd.data_buf.get_trig_counter()
-
-        return curr_trig_counts
+    def wait_new_trig_reps(self, prev_trig_reps):
+        curr_trig_reps = self.get_trig_reps()
+        while curr_trig_reps == prev_trig_reps:
+            curr_trig_reps = self.get_trig_reps()
+            time.sleep(self.wait_time_interval)
+        return curr_trig_reps
 
     def _get_trig_reps_ungated(self):
         return int(self.cmd.data_buf.get_trig_counter())
@@ -101,7 +104,7 @@ class ProcessAction:
 
     def _get_curr_avail_reps_gated(self):
         curr_data_avail_reps = self.cmd.process.get_avail_user_reps()
-        curr_ts_avail_reps = self.cmd.ts_buf.get_ts_avail_user_reps(self._ts_seq_size_B)
+        curr_ts_avail_reps = self.cmd.process.get_ts_avail_user_reps()
         return min(curr_data_avail_reps, curr_ts_avail_reps)
 
     def wait_avail_data(self):
@@ -113,5 +116,6 @@ class ProcessAction:
             if current_time > 10:
                 time_out = True
                 return time_out
+            time.sleep(self.wait_time_interval)
         time_out = False
         return time_out
