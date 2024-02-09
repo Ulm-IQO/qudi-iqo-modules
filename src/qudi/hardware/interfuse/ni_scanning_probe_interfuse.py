@@ -46,7 +46,9 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     Example config for copy-paste:
 
     ni_scanning_probe:
-        module.Class: 'interfuse.ni_scanning_probe_interfuse.NiScanningProbeInterfuseBare'
+        module.Class: 'interfuse.ni_scanning_probe_interfuse.NiScanningProbeInterfuse'
+        # to use without tilt correction
+        # module.Class: 'interfuse.ni_scanning_probe_interfuse.NiScanningProbeInterfuseBare'
         connect:
             scan_hardware: 'ni_finite_sampling_io'
             analog_output: 'ni_ao'
