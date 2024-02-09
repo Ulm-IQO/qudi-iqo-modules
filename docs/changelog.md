@@ -13,6 +13,7 @@
 - Checkers and clipping methods added to `qudi.interface.scanning_probe_interface.Constraints`
 - Data classes of the scanning probe interface now have an improved hierarchy
   (e.g. `ScanData` contains `ScanSettings`).
+- Improved support for Stanford Research Systems signal generators
 
 ### Other
 
