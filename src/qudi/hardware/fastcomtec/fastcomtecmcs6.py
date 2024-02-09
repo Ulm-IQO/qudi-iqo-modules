@@ -704,9 +704,15 @@ class FastComtec(FastCounterInterface):
 
         # Turn on or off sequential cycle mode
         if sequential_mode:
-            cmd = 'sweepmode={0}'.format(hex(1978500))
+            self.log.debug("Sequential mode enabled. Make sure to set 'checksync=0' and 'nomessages=1' in mcs6a.ini.")
+            # old standard setting: 1978500
+            # old settings + disable "sweep counter not needed"
+            # + disable "allow 6 byte words"
+            raw_bytes_dec = 35528836
         else:
-            cmd = 'sweepmode={0}'.format(hex(1978496))
+            raw_bytes_dec = 35528836
+
+        cmd = 'sweepmode={0}'.format(hex(raw_bytes_dec))
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
 
         self.set_cycles(cycles_old)
