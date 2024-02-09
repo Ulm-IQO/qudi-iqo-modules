@@ -236,7 +236,7 @@ class ScanData:
     _channel_units: Tuple[str, ...]
     _channel_dtypes: Tuple[str, ...]
     _axis_units: Tuple[str, ...]
-    scanner_target_at_start: Optional[Dict[str, float]] = None
+    scanner_target_at_start: Dict[str, float] = field(default_factory=dict)
     timestamp: Optional[datetime.datetime] = None
     _data: Optional[Tuple[np.ndarray, ...]] = None
     # TODO: Automatic interpolation onto rectangular grid needs to be implemented (for position feedback HW)
