@@ -44,17 +44,17 @@ class Data:
 
     def generate_ungated_dataclass(self, ms, cs):
         ungated_dc = SeqDataMulti()
-        ungated_dc.data = np.empty((0,ms.seq_size_S), int)
+        ungated_dc.data = np.zeros((0,ms.seq_size_S), int)
         ungated_dc.total_pulse_number = ms.total_pulse
-        ungated_dc.pule_len = ms.seg_size_S
+        ungated_dc.pulse_len = ms.seg_size_S
         ungated_dc.data_range_mV = cs.ai_range_mV
         return ungated_dc
 
     def generate_gated_dataclass(self, ms, cs):
         gated_dc = SeqDataMultiGated()
-        gated_dc.data = np.empty((0,ms.seq_size_S), int)
+        gated_dc.data = np.zeros((0,ms.seq_size_S), int)
         gated_dc.total_pulse_number = ms.total_pulse
-        gated_dc.pule_len = ms.seg_size_S
+        gated_dc.pulse_len = ms.seg_size_S
         gated_dc.data_range_mV = cs.ai_range_mV
         gated_dc.ts_r = np.empty(0, np.uint64)
         gated_dc.ts_f = np.empty(0, np.uint64)
@@ -131,8 +131,7 @@ class PulseDataMulti(PulseDataSingle):
         return self.data.mean(axis=0)
 
     def reshape_2d_by_rep(self):
-        len = int(self.data_len / self.rep)
-        shape_2d = (self.rep, len)
+        shape_2d = (self.rep, -1)
         return self.data.reshape(shape_2d)
 
 
@@ -151,8 +150,7 @@ class SeqDataSingle(PulseDataSingle):
         self.total_pulse_number = len(self.pulse_no)
 
     def reshape_2d_by_pulse(self):
-        len = int(self.data_len / self.total_pulse_number)
-        shape_2d = (self.total_pulse_number, len)
+        shape_2d = (self.total_pulse_number, -1)
         return self.data.reshape(shape_2d)
 
 @dataclass
@@ -248,7 +246,10 @@ class AvgData(SeqDataSingle):
     def update(self, curr_ad):
         avg_data_set = np.vstack((self.data, curr_ad.data))
         avg_weights = np.array([self.num, curr_ad.num], dtype=int)
-        self.data = np.average(avg_data_set, axis=0, weights=avg_weights)
-        self.num += curr_ad.num
+        try:
+            self.data = np.average(avg_data_set, axis=0, weights=avg_weights)
+            self.num += curr_ad.num
+        except:
+            print(avg_weights, avg_data_set)
         return self.num, self.data
 

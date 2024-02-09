@@ -80,10 +80,8 @@ class ProcessAction:
             return
         else:
             if trigger_on:
-                print('trigger on!!')
                 self.trigger_enabled = self.cmd.card.enable_trigger()
             else:
-                print('trigger off!!')
                 self.trigger_enabled = self.cmd.card.disable_trigger()
 
     def wait_new_trig_reps(self, prev_trig_reps):

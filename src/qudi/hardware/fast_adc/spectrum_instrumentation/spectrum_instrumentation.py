@@ -289,6 +289,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         Start the data acquisition
         """
+        self.log.info('Measurement started')
         if self._internal_status == CardStatus.idle:
             self.loop_manager.init_measure_params()
             if self.ms.gated:
@@ -296,12 +297,12 @@ class SpectrumInstrumentation(FastCounterInterface):
                 self.cmd.card.start_all_with_extradma()
             else:
                 self.cmd.card.start_all()
+            self.log.info('card started')
 
         elif self._internal_status == CardStatus.paused:
             self.cmd.card.enable_trigger()
 
         self.cmd.process.trigger_enabled = True
-        self.log.info('Measurement started')
         self._internal_status = CardStatus.running
 
     def get_data_trace(self):
@@ -334,18 +335,20 @@ class SpectrumInstrumentation(FastCounterInterface):
         Stop the measurement.
         """
         if self._internal_status == CardStatus.running:
-            self.log.info('card stopped')
+            self.loop_manager.stop_data_process()
             self.cmd.card.disable_trigger()
             self.cmd.process.trigger_enabled = False
-            if self.loop_manager.loop_on:
-                self.loop_manager.stop_data_process()
             self.cmd.card.stop_dma()
             self.cmd.card.card_stop()
+            self.log.info('card stopped')
+            self._internal_status = CardStatus.idle
+            self.log.info('Measurement stopped')
+            return 0
 
-        self._internal_status = CardStatus.idle
-        self.log.info('Measurement stopped')
+        elif self._internal_status == CardStatus.idle:
+            self.log.info('Measurement is not runnning')
+            return 0
 
-        return 0
 
     def pause_measure(self):
         """ Pauses the current measurement.

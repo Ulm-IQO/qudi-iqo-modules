@@ -1,3 +1,26 @@
+# -*- coding: utf-8 -*-
+
+"""
+This file contains the data classes for spectrum instrumentation fast counting devices.
+
+Qudi is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+Qudi is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+
+Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
+top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+"""
+import copy
+
 class DataProcessorUngated:
     def __init__(self, data, fetcher):
         self.dc_new = data.dc_new
@@ -11,8 +34,8 @@ class DataProcessorUngated:
         self._get_new_avg_data()
 
     def get_initial_avg(self):
-        self.avg.data = self.avg_new.data
-        self.avg.num = self.avg_new.num
+        self.avg.data = copy.deepcopy(self.avg_new.data)
+        self.avg.num = copy.copy(self.avg_new.num)
 
     def update_data(self, curr_avail_reps, user_pos_B, *args):
         self.process_data(curr_avail_reps, user_pos_B)
@@ -29,7 +52,7 @@ class DataProcessorUngated:
 
     def _get_new_avg_data(self):
         self.avg_new.data = self.dc_new.avgdata()
-        self.avg_new.num = self.dc_new.rep
+        self.avg_new.num = copy.copy(self.dc_new.rep)
 
     def _update_avg_data(self):
         self.avg.update(self.avg_new)

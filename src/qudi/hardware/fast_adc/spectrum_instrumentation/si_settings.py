@@ -64,7 +64,7 @@ class CardSettings:
     def _calc_acq_params(self, seg_size_S, seq_size_S, reps, total_gate):
         if 'STD' in self.acq_mode:
             self.acq_mem_size_S = int(seq_size_S * reps)
-            if not 'GATE' in self.acq_mode:
+            if 'GATE' not in self.acq_mode:
                 self.acq_seg_size_S = int(seg_size_S)
                 self.acq_post_trigs_S = int(seg_size_S - self.acq_pre_trigs_S)
 
