@@ -1,27 +1,29 @@
 # -*- coding: utf-8 -*-
-
 """
-This file contains the data classes for spectrum instrumentation fast counting devices.
+This file contains the data processer classes for spectrum instrumentation ADC.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 import copy
 
 class DataProcessorUngated:
+    """
+    This class brings the data through the fetcher class and store it in the data class for ungated measurement.
+    """
     def __init__(self, data, fetcher):
         self.dc_new = data.dc_new
         self.dc = data.dc
@@ -59,6 +61,10 @@ class DataProcessorUngated:
         self.avg.set_len()
 
 class DataProcessGated(DataProcessorUngated):
+    """
+    This class brings the data through the fetcher class and store it in the data class for gated measurement.
+    In addition to the data, it also collects the timestamps.
+    """
 
     def process_data(self, curr_avail_reps, user_pos_B, ts_user_pos_B):
         self._fetch_data(curr_avail_reps, user_pos_B)

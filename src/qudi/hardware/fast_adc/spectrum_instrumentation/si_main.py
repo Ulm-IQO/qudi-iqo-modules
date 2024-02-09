@@ -1,23 +1,22 @@
 # -*- coding: utf-8 -*-
-
 """
-This file contains the Qudi hardware for spectrum instrumentation fast counting devices.
+This file contains the Qudi hardware for spectrum instrumentation ADC.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 import time
 import numpy as np
@@ -68,23 +67,26 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     Config example:
     si:
-        module.Class: 'fast_adc.spectrum_instrumentation.SpectrumInstrumentationTest'
-        ai_ch: 'CH0'
-        ai_range_mV: 2000
-        ai_offset_mV: 0
-        ai_termination: '50Ohm'
-        ai_coupling: 'DC'
-        acq_mode: 'FIFO_GATE'
-        acq_HW_avg_num: 1
-        acq_pre_trigger_samples: 16
-        acq_post_trigger_samples: 16
-        buf_notify_size_B: 4096
-        clk_reference_Hz: 10e6
-        trig_mode: 'EXT'
-        trig_level_mV: 1000
-        initial_buffer_size_S: 1e9
-        repetitions: 0
-        row_data_save: False
+        module.Class: 'fast_adc.spectrum_instrumentation.si_main.SpectrumInstrumentation'
+        options:
+            ai_ch: CH0
+            ai_range_mV: 2000
+            ai_offset_mV: 0
+            ai_termination: '1MOhm'
+            ai_coupling: 'DC'
+            acq_mode: 'FIFO_GATE'
+            acq_HW_avg_num: 1
+            acq_pre_trigger_samples: 16
+            acq_post_trigger_samples: 16
+            buf_notify_size_B: 4096
+            clk_reference_Hz: 10e6
+            trig_mode: 'EXT'
+            trig_level_mV: 1000
+            initial_buffer_size_S: 1e9
+            max_reps_per_buf: 1e4
+            repetitions: 0
+            double_gate_acquisition: False
+            data_stack_on: True
 
     Basic class strutcture:
     SpectrumInstrumentation
@@ -149,7 +151,6 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         Open the card by activation of the module
         """
-
 
         if not self._card_on:
             self.card = spcm_hOpen(create_string_buffer(b'/dev/spcm0'))

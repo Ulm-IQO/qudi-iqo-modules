@@ -1,23 +1,23 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains command classes used for spectrum instrumentation fast counting devices.
+This file contains configure commands classes used for spectrum instrumentation ADC.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+QCopyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 import ctypes
 
@@ -27,7 +27,7 @@ from qudi.hardware.fast_adc.spectrum_instrumentation.si_settings import CardSett
 
 class ConfigureCommands:
     '''
-    This class inherets the configure classes above and configures all the card settings given by the cs(Card_settings).
+    This class instantiates all the classes for configuration and input the card settings.
     '''
 
     def __init__(self, card, log):
@@ -176,7 +176,6 @@ class AcquisitionConfigureCommands:
     def _mode_STD_SINGLE(self, post_trigs_S, memsize_S):
         """
         In this mode, pre trigger = memsize - post trigger.
-        @params str card: handle of the card
         @params int post_trig_S: the number of samples to be recorded after the trigger event has been detected.
         @params int memsize_S: the total number of samples to be recorded
         """
@@ -191,7 +190,6 @@ class AcquisitionConfigureCommands:
         including the pre trigger.
         MEMSIZE defines the total number of samples to be recorded per channel.
 
-        @params str card: handle ofthe card
         @params int post_trig_S:
         @params int seg_size_S:
         @params int reps: The number of repetitions.
@@ -219,7 +217,6 @@ class AcquisitionConfigureCommands:
         SEGMENTSIZE is the numbe of samples recorded after detection of one trigger
         including the pre trigger.
 
-        @params str card: handle ofthe card
         @params int pre_trigs_S: the number of samples to be recorded prior to the gate start
         @params int seg_size_S: the numbe of samples recorded after detection of one trigger
                                 including the pre trigger.
@@ -237,7 +234,6 @@ class AcquisitionConfigureCommands:
         SEGMENTSIZE is the numbe of samples recorded after detection of one trigger
         including the pre trigger.
 
-        @params str card: handle ofthe card
         @params int pre_trigs_S: the number of samples to be recorded after the gate start
         @params int seg_size_S: the numbe of samples recorded after detection of one trigger
                                 including the pre trigger.
@@ -330,7 +326,6 @@ class DataTransferConfigureCommands:
         """
         Configure the data transfer buffer
 
-        @param str card: handle of the card
         @param str buf_type: register of data or timestamp buffer
         @param c_buf_ptr: ctypes pointer for the buffer
         @param int buf_size_B: length of the buffer size in bytes
@@ -359,7 +354,6 @@ class DataTransferConfigureCommands:
         Get length of the continuous buffer set in the card.
         Check also the Spectrum Control Center.
 
-        @param str card: handle of the card
         @param c_buf_ptr: ctypes pointer for the buffer
 
         @return int: length of the available continuous buffer
@@ -392,7 +386,6 @@ class DataTransferConfigureCommands:
         """
        set the data transfer buffer
 
-        @param str card: handle of the card
         @param str buf_type: register of data or timestamp buffer
         @param c_buf_ptr: ctypes pointer for the buffer
         @param int buf_size_B: length of the buffer size in bytes
@@ -442,7 +435,7 @@ class TimestampConfigureCommands:
 class ConfigureRegisterChecker:
     '''
     This class can be used to check if the card settings are correctly input.
-    The registers can be obtained from the card to the Card_settings (csr).
+    The registers can be obtained from the card to the CardSettings (csr).
     '''
     def __init__(self, card, log):
         self._card = card

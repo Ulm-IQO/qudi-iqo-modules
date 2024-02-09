@@ -1,23 +1,23 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains command classes used for spectrum instrumentation fast counting devices.
+This file contains commands classes used for spectrum instrumentation ADC.
 
-Qudi is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Qudi is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
+This file is part of qudi.
 
-You should have received a copy of the GNU General Public License
-along with Qudi. If not, see <http://www.gnu.org/licenses/>.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
-top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
 import time
 import numpy as np
@@ -27,10 +27,13 @@ from qudi.hardware.fast_adc.spectrum_instrumentation.si_commands.buffer_commands
     import DataBufferCommands, TsBufferCommands
 from qudi.hardware.fast_adc.spectrum_instrumentation.si_commands.configure_commands import ConfigureCommands
 
+from qudi.hardware.fast_adc.spectrum_instrumentation.si_settings import MeasurementSettings
 
 class Commands:
     '''
-    This class has low-level hardware commands and action commands used in the data process.
+    This class has hardware commands and actions used in the data process.
+    The commands class do not possess any measurement information.
+    The action class has measurement information and interprets the information from the commands based on that.
     '''
     def __init__(self, card, log):
         self.card = CardCommands(card)
@@ -39,9 +42,10 @@ class Commands:
         self.cfg = ConfigureCommands(card, log)
         self.process = ProcessAction(self)
 
+
 class ProcessAction:
     '''
-    This class has actions used in the data process.
+    This class has actions used in the data process. They modify the commands to be useful in the measurement.
     '''
     def __init__(self, commands):
         self.cmd = commands
@@ -53,7 +57,7 @@ class ProcessAction:
         self._total_gate = 0
         self._ts_seq_size_B = 0
 
-    def input_ms(self, ms):
+    def input_ms(self, ms: MeasurementSettings):
         self._seq_size_B = ms.seq_size_B
         self._assign_methods(ms.gated)
         self._total_gate = ms.total_gate
