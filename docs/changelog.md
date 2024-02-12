@@ -7,6 +7,7 @@
 ### Bugfixes
 
 ### New Features
+- Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 - Improved support for Stanford Research Systems signal generators
 
 ### Other
