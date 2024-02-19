@@ -60,7 +60,7 @@ class DataClass:
     num_rep: int = 0
 
     def initialize(self, num_pulse, seq_size_S):
-        self.num_rep =  0
+        self.num_rep = 0
         self.num_pulse = num_pulse
         self.data = np.zeros((0, seq_size_S), int)
 

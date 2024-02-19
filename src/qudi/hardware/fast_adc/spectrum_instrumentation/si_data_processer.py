@@ -40,6 +40,10 @@ class DataProcessorUngated:
         self.data.avg_new.data = self.data.dc_new.get_average()
         self.data.avg_new.num_rep = copy.copy(self.data.dc_new.num_rep)
 
+    def get_initial_data(self):
+        self.data.dc.data = copy.deepcopy(self.data.dc_new.data)
+        self.data.dc.num_rep = copy.deepcopy(self.data.dc_new.num_rep)
+
     def get_initial_avg(self):
         self.data.avg.data = copy.deepcopy(self.data.avg_new.data)
         self.data.avg.num_rep = copy.copy(self.data.avg_new.num_rep)
@@ -67,7 +71,7 @@ class DataProcessGated(DataProcessorUngated):
         self.data.avg.update(self.data.avg_new)
 
     def _fetch_ts(self, curr_avail_reps, ts_user_pos_B):
-        self.data.ts.ts_r, self.data.ts.ts_f = self.fetcher.fetch_ts_data(curr_avail_reps, ts_user_pos_B)
+        self.data.ts_new.ts_r, self.data.ts_new.ts_f = self.fetcher.fetch_ts_data(curr_avail_reps, ts_user_pos_B)
 
     def stack_new_ts(self):
         self.data.ts.stack(self.data.ts_new)

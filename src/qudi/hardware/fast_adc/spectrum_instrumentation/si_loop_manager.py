@@ -79,7 +79,7 @@ class LoopManager:
 
     def _start_finite_loop(self):
         self._log.info('data process started')
-        num_rep = self.commander.processor.data.avg.num_rep
+        num_rep = self.commander.processor.data.dc.num_rep
         while self.loop_on and num_rep < self._reps:
             self.commander.command_process()
         else:

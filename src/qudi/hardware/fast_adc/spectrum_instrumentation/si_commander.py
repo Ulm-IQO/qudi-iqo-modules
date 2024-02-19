@@ -58,7 +58,12 @@ class Commander:
             self.cmd.data_buf.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
 
         def process_data_ungated_stackon():
-            process_data_ungated_stackoff()
+            curr_avail_reps = self.cmd.process.get_curr_avail_reps()
+            if curr_avail_reps == 0:
+                return
+            user_pos_B = self.cmd.data_buf.get_avail_user_pos_B()
+            self.processor.update_data(curr_avail_reps, user_pos_B)
+            self.cmd.data_buf.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
             self.processor.stack_new_data()
 
         def process_data_gated_stackoff():
@@ -71,7 +76,13 @@ class Commander:
             self.cmd.data_buf.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
 
         def process_data_gated_stackon():
-            process_data_gated_stackoff()
+            curr_avail_reps = self.cmd.process.get_curr_avail_reps()
+            if curr_avail_reps == 0:
+                return
+            user_pos_B = self.cmd.data_buf.get_avail_user_pos_B()
+            ts_user_pos_B = self.cmd.ts_buf.get_ts_avail_user_pos_B()
+            self.processor.update_data(curr_avail_reps, user_pos_B, ts_user_pos_B)
+            self.cmd.data_buf.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
             self.processor.stack_new_data()
             self.processor.stack_new_ts()
 
@@ -91,6 +102,7 @@ class Commander:
         user_pos_B = self.cmd.data_buf.get_avail_user_pos_B()
         ts_user_pos_B = self.cmd.ts_buf.get_ts_avail_user_pos_B() if self._gated else None
         self.processor.process_data(curr_avail_reps, user_pos_B, ts_user_pos_B)
+        self.processor.get_initial_data()
         self.processor.get_initial_avg()
         self.cmd.data_buf.set_avail_card_len_B(curr_avail_reps * self._seq_size_B)
 
