@@ -100,7 +100,7 @@ class Commander:
         """
 
         trig_reps = self.cmd.process.get_trig_reps()
-        processed_reps = self.processor.avg.num
+        processed_reps = self.processor.data.avg.num_rep
         unprocessed_reps = trig_reps - processed_reps
         if self._reps != 0 and processed_reps >= self._reps:
             return

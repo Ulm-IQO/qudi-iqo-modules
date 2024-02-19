@@ -246,7 +246,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         def initialize_all():
             self.cmd.process.input_ms(self.ms)
             self.fetcher.init_buffer(self.ms)
-            self.data.init_data(self.ms, self.cs)
+            self.data.initialize(self.ms, self.cs)
             self.processor = DataProcessGated(self.data, self.fetcher) if self.ms.gated \
                 else DataProcessorUngated(self.data, self.fetcher)
             self.commander.init(self.ms, self.processor)
@@ -325,8 +325,8 @@ class SpectrumInstrumentation(FastCounterInterface):
         If the hardware does not support these features, the values should be None
         """
         with self._threadlock:
-            avg_data = self.data.avg.reshape_2d_by_pulse() if self.ms.gated else self.data.avg.data
-            avg_num = self.data.avg.num
+            avg_data = self.data.avg.pulse_array if self.ms.gated else self.data.avg.data
+            avg_num = self.data.avg.num_rep
         info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.loop_manager.start_time}
 
         return avg_data, info_dict

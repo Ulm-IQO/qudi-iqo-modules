@@ -30,230 +30,101 @@ class Data:
     """
 
     def __init__(self):
-        self.dc = None
-        self.dc_new = None
-        self.avg = None
-        self.avg_new = None
+        self.data_info = DataInfo()
+        self.dc = DataClass()
+        self.dc_new = DataClass()
+        self.avg = AverageDataClass()
+        self.avg_new = AverageDataClass()
+        self.ts = None
+        self.ts_new = None
 
-    def init_data(self, ms, cs):
+    def initialize(self, ms, cs):
+        self.data_info.data_range_mV = cs.ai_range_mV
+        self.data_info.data_bit = ms.data_bits
+
+        self.dc.initialize(ms.total_pulse, ms.seq_size_S)
+        self.dc_new.initialize(ms.total_pulse, ms.seq_size_S)
+        self.avg.initialize(ms.total_pulse, ms.seq_size_S)
+        self.avg_new.initialize(ms.total_pulse, ms.seq_size_S)
         if ms.gated:
-            self.dc = self.generate_gated_dataclass(ms, cs)
-            self.dc_new = self.generate_gated_dataclass(ms, cs)
-        else:
-            self.dc = self.generate_ungated_dataclass(ms, cs)
-            self.dc_new = self.generate_ungated_dataclass(ms, cs)
-
-        self.avg = self.generate_avg_dataclass(ms)
-        self.avg_new = self.generate_avg_dataclass(ms)
-
-    def generate_ungated_dataclass(self, ms, cs):
-        ungated_dc = SeqDataMulti()
-        ungated_dc.data = np.zeros((0,ms.seq_size_S), int)
-        ungated_dc.total_pulse_number = ms.total_pulse
-        ungated_dc.pulse_len = ms.seg_size_S
-        ungated_dc.data_range_mV = cs.ai_range_mV
-        return ungated_dc
-
-    def generate_gated_dataclass(self, ms, cs):
-        gated_dc = SeqDataMultiGated()
-        gated_dc.data = np.zeros((0,ms.seq_size_S), int)
-        gated_dc.total_pulse_number = ms.total_pulse
-        gated_dc.pulse_len = ms.seg_size_S
-        gated_dc.data_range_mV = cs.ai_range_mV
-        gated_dc.ts_r = np.empty(0, np.uint64)
-        gated_dc.ts_f = np.empty(0, np.uint64)
-        return gated_dc
-
-    def generate_avg_dataclass(self, ms):
-        avg = AvgData()
-        avg.num = 0
-        avg.total_pulse_number = ms.total_pulse
-        avg.data = np.empty((0,ms.seq_size_S))
-        return avg
+            self.ts = TimeStamp()
+            self.ts_new = TimeStamp()
 
 @dataclass
-class CoreData:
-    """
-    Dataclass for a single data point in the ADC.
-    """
+class DataClass:
+    '''
+    default data structure is (num_pulses, all_pulses)
+    '''
     data: np.ndarray = np.array([])
-    data_len: int = 0
-    data_range_mV: int = 1000
-    data_bit: int = 16
+    num_pulse: int = 0
+    num_rep: int = 0
 
-    def __post_init__(self):
-        self.set_len()
+    def initialize(self, num_pulse, seq_size_S):
+        self.num_rep =  0
+        self.num_pulse = num_pulse
+        self.data = np.zeros((0, seq_size_S), int)
 
-    def add(self, d):
-        self.data = d.data
-        self.data_len = d.data_len
+    def stack(self, new_data):
+        self.data = np.vstack((self.data, new_data.data))
+        self.num_rep += new_data.num_rep
 
-    def set_len(self):
-        if not len(self.data) == 0:
-            self.data_len = len(self.data)
-
-    def reshape_1d(self):
-        shape_1d = (self.data_len,)
-        return self.data.reshape(shape_1d)
+    def get_average(self):
+        return self.data.mean(axis=0)
 
     @property
-    def data_mV(self):
-        return self.data * self.data_range_mV / 2**self.data_bit
+    def pulse_array(self):
+        """
+        data reshaped from single multi pulse data into 2d array separated by pulse numbers.
+        """
+        return self.data.reshape((self.num_pulse, -1))
 
 @dataclass
-class PulseDataSingle(CoreData):
+class AverageDataClass(DataClass):
     """
-    Dataclass for a single pulse in the measurement.
-    """
-
-    rep_no: np.ndarray = np.array([], dtype=int)
-    pulse_no: np.ndarray = np.array([], dtype=int)
-    pulse_len: int = 0
-
-    def add(self, d):
-        super().add(d)
-        self.rep_no = d.rep_no
-        self.pulse_no = d.pulse_no
-
-@dataclass
-class PulseDataMulti(PulseDataSingle):
-    """
-    Dataclass for repeated data of a single pulse.
+    Dataclass for averaged sequence data consisting of multiple pulses.
+    Use pulse_array to get 2d array segmented by reps.
     """
 
-    rep: int = 1
+    def initialize(self, num_pulse, seq_size_S):
+        self.num_rep = 0
+        self.num_pulse = num_pulse
+        self.data = np.empty((0, seq_size_S))
 
-    def stack_rep(self, d):
-        self.rep_no = np.vstack((self.rep_no, d.rep_no))
-        self.data = np.vstack((self.data, d.data))
-        self.rep = self.data.shape[0]
-
-    def extract(self, n):
-        return self.rep_no[n], self.pulse_no, self.data[n]
-
-    def avgdata(self):
-        return self.data.mean(axis=0)
-
-    def reshape_2d_by_rep(self):
-        shape_2d = (self.rep, -1)
-        return self.data.reshape(shape_2d)
+    def update(self, new_avgdata):
+        '''
+        @param AverageDataClass new_avgdata: :
+        '''
+        avg_data_set = np.vstack((self.data, new_avgdata.data))
+        avg_weights = np.array([self.num_rep, new_avgdata.num_rep], dtype=int)
+        try:
+            self.data = np.average(avg_data_set, axis=0, weights=avg_weights)
+            self.num_rep += new_avgdata.num_rep
+        except:
+            print(avg_weights, avg_data_set)
+        return self.num_rep, self.data
 
 
 @dataclass
-class SeqDataSingle(PulseDataSingle):
-    """
-    Dataclass for sequence data consisting of multiple pulses in one of the repetitions.
-    """
-
-    total_pulse_number: int = 0
-    seq_len: int = 0
-
-    def stack_pulse(self, d):
-        self.pulse_no = np.hstack((self.pulse_no, d.pulse_no))
-        self.data = np.hstack((self.data, d.data))
-        self.total_pulse_number = len(self.pulse_no)
-
-    def reshape_2d_by_pulse(self):
-        shape_2d = (self.total_pulse_number, -1)
-        return self.data.reshape(shape_2d)
-
-@dataclass
-class SeqDataMulti(PulseDataMulti, SeqDataSingle):
-    """
-    Dataclass for sequence data consisting of multiple pulses with multiple repetitions.
-    """
-
-    def reshape_3d_multi_seq(self):
-        shape_3d = (self.rep, self.total_pulse_number, self.pulse_len)
-        return self.data.reshape(shape_3d)
-
-    def avgdata(self):
-        self.data = self.reshape_2d_by_rep()
-        return self.data.mean(axis=0)
-
-@dataclass
-class GateData:
-    """
-    Dataclass for a single timestamp for the rising and falling edges.
-    """
-
+class TimeStamp:
     ts_r: np.ndarray = np.array([], dtype=np.uint64)
     ts_f: np.ndarray = np.array([], dtype=np.uint64)
 
-    def add_gated(self, d):
-        self.ts_r = d.ts_r
-        self.ts_f = d.ts_f
+    def __init__(self):
+        self.initialize()
+
+    def initialize(self):
+        self.ts_r = np.empty(0, np.uint64)
+        self.ts_f = np.empty(0, np.uint64)
+
+    def stack(self, ts):
+        """
+        @param TimeStamp ts:
+        """
+        self.ts_r = np.hstack((self.ts_r, ts.ts_r))
+        self.ts_f = np.hstack((self.ts_f, ts.ts_f))
 
 @dataclass
-class PulseDataSingleGated(PulseDataSingle, GateData):
-    """
-    Dataclass for a single pulse with timestamps in the measurement.
-    """
-
-    def add(self, d):
-        super().add(d)
-        self.add_gated(d)
-
-@dataclass
-class PulseDataMultiGated(PulseDataSingleGated):
-    """
-    Dataclass for repeated data of a single pulse with timestamps.
-    """
-
-    def stack_rep_gated(self, d):
-        self.ts_r = np.hstack((self.ts_r, d.ts_r))
-        self.ts_f = np.hstack((self.ts_f, d.ts_f))
-
-@dataclass
-class PulseDataMultiGated(PulseDataMulti, PulseDataMultiGated):
-    """
-    Dataclass for repeated data of a single pulse with timestamps.
-    """
-
-    def stack_rep(self, d):
-        super().stack_rep(d)
-        self.stack_rep_gated(d)
-
-@dataclass
-class SeqGateData(GateData):
-
-    def stack_pulse_gated(self, d):
-        self.ts_r = np.hstack((self.ts_r, d.ts_r))
-        self.ts_f = np.hstack((self.ts_f, d.ts_f))
-
-@dataclass
-class SeqDataSingleGated(SeqDataSingle, SeqGateData):
-    """
-    Dataclass for sequence data consisting of multiple pulses with timestamps in one of the repetitions.
-    """
-    def stack_pulse(self, d):
-        super().stack_pulse(d)
-        self.stack_pulse_gated(d)
-
-@dataclass
-class SeqDataMultiGated(PulseDataMultiGated, SeqDataSingleGated):
-    """
-    Dataclass for sequence data with timestamps
-    consisting of multiple pulses with multiple repetitions.
-    """
-
-    pass
-
-@dataclass
-class AvgData(SeqDataSingle):
-    """
-    Dataclass for averaged sequence data consisting of multiple pulses.
-    """
-
-    num: int = 0
-
-    def update(self, curr_ad):
-        avg_data_set = np.vstack((self.data, curr_ad.data))
-        avg_weights = np.array([self.num, curr_ad.num], dtype=int)
-        try:
-            self.data = np.average(avg_data_set, axis=0, weights=avg_weights)
-            self.num += curr_ad.num
-        except:
-            print(avg_weights, avg_data_set)
-        return self.num, self.data
+class DataInfo:
+    data_range_mV: int = 1000
+    data_bit: int = 16
 
