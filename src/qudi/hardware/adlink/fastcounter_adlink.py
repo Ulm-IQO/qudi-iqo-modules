@@ -239,8 +239,6 @@ class AdlinkDefaultSettings:
         # global measurement buffer setup
         # this buffer is in the PC's memory and stores data from multiple measurements, until it is written to file
         self.measurement_buffer_length = 10
-        self.callback_function = "copy_double_buffer_callback"
-        self.callback_signal = AdlinkDataTypes.I16(0)
 
     def update_settings(self, arguments):
         # update the settings dict
@@ -264,22 +262,9 @@ class AdlinkDefaultSettings:
 
 
 class Adlink9834(FastCounterInterface):
-    """ Interface class to define the controls for fast counting devices.
-
-    A "fast counter" is a hardware device that count events with a "good" time resolution.
-    The goal is generally to detect when events happen after an time defining trigger. These events can be photons
-    arrival on a detector for example, and the trigger the start of the acquisition.
-    This type of hardware regularly records millions of repeated acquisition (ie sweeps) in a few seconds,
-    with one or multiple events per trigger (depending on the hardware constrains).
-    It can be used in two modes :
-    - "Gated" : The result is a 2d array where each line correspond to a single trigger with one or multiple events
-                in each line/box
-    - "Ungated" : Only the sum of the acquisition is acquired, building an histogram of the events times. This is
-                  generally enough for a lot of experiment, where a memory consuming 2d array is not necessary.
-
-    ######################## FOR PULSED MEASUREMENTS ########################
-    In order to use the hardware with the pulsed tool-chain one needs to use the
-    FastCounterRestartInterfuse
+    """
+    FastCounter hardware file for the adlink PCIe_9834 card.
+    This device is designed as a gated device. Modifications are needed, if used in ungated mode.
 
     example configuration:
         adlink9834:
@@ -291,7 +276,6 @@ class Adlink9834(FastCounterInterface):
                 trigger_threshold: 1.67
                 trigger_delay_ticks: 0
     """
-    #pulsegenerator = Connector(interface='PulserInterface')
 
     _dll_location = ConfigOption('wddask_dll_location', default="C:/ADLINK/WD-DASK/Lib/wd-dask64.dll", missing='error')
     _card_num = ConfigOption('card_number', default=0, missing='warn')
@@ -322,10 +306,11 @@ class Adlink9834(FastCounterInterface):
         self._trigger_ready = ctypes.c_bool()
         self._acquisition_stop_flag = ctypes.c_bool()
         self._available_data_buffer_id = AdlinkDataTypes.U32()
-        self._restart_callback = ctypes.CFUNCTYPE(ctypes.c_int)(self.arm_card)
 
-        # self._callback = ctypes.CFUNCTYPE(AdlinkDataTypes.U32)(self.callback_function)
         self._available_data = None
+        # determines how many measurements should be summed up
+        # if set to 0 all acquired samples are summed up
+        # if set to > 0 the number of samples will be summed up and displayed by the pulsed toolchain
         self._number_of_averages = 0
         self._current_buffer_position = 0
 
@@ -361,18 +346,6 @@ class Adlink9834(FastCounterInterface):
             self.disarm_card()
         except Exception as e:
             self.log.error(Exception)
-        # try:
-        #     err = AdlinkDataTypes.I16(self._dll.WD_AI_EventCallBack_x64(self._card,
-        #                                                                 AdlinkDataTypes.I16(0),
-        #                                                                 self._settings.callback_signal,
-        #                                                                 None))
-        #     self.check_if_error(err, "EventCallBack")
-        # except Exception as e:
-        #     self.log.error(e)
-        try:
-            self.close_file_stream()
-        except AttributeError as e:
-            pass
         if self._card.value > 0:
             try:
                 self.free_buffers()
@@ -385,7 +358,6 @@ class Adlink9834(FastCounterInterface):
         self._ai_buffer1 = AdlinkDataTypes.U16(0)
         self._start_pos = AdlinkDataTypes.U32(0)
         self._count = AdlinkDataTypes.U32(0)
-        self._file_stream = None
         try:
             self._dll = self.unload_dll(self._dll)
         except Exception as e:
@@ -508,14 +480,6 @@ class Adlink9834(FastCounterInterface):
         self._available_data = np.zeros((self._buffer_size_samples.value,))
         self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value))
 
-        # err = AdlinkDataTypes.I16(self._dll.WD_AI_EventCallBackEx_x64(self._card,
-        #                                                               AdlinkDataTypes.I16(1),
-        #                                                               self._settings.callback_signal,
-        #                                                               self._callback,
-        #                                                               None))
-        # if self.check_if_error(err, "EventCallBack"):
-        #     return
-
         if self._settings.timeout.value > 0:
             err = AdlinkDataTypes.I16(self._dll.WD_AI_SetTimeout(self._card, self._settings.timeout))
             if self.check_if_error(err, "SetTimeout"):
@@ -593,6 +557,9 @@ class Adlink9834(FastCounterInterface):
             self.log.error(f"Error when arming card: {e}")
 
     def arm_card(self):
+        """
+        Function that starts the card. After calling this function the card will acquire data on each trigger.
+        """
         ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
         double_buffered_size = AdlinkDataTypes.U32(
             int(self._buffer_size_samples.value / (self._settings.channel_num.value + 1)))
@@ -603,11 +570,14 @@ class Adlink9834(FastCounterInterface):
                                                                    self._settings.scan_interval,
                                                                    self._settings.scan_interval,
                                                                    self._settings.synchronous_mode))
-        if self.check_if_error(err, "ContScanChannelsToFile"):
+        if self.check_if_error(err, "ContScanChannels"):
             return
         return
 
     def disarm_card(self):
+        """
+        Disarms the card making it unresponsive to further triggers sent to the card.
+        """
         err = AdlinkDataTypes.I16(self._dll.WD_AI_AsyncClear(self._card,
                                                              ctypes.byref(self._start_pos),
                                                              ctypes.byref(self._count)))
@@ -735,7 +705,7 @@ class Adlink9834(FastCounterInterface):
             "BufferAlloc": f"Buffer allocation failed (WD_Buffer_Alloc)!",
             "CH_Config": f"Error while changing AI channel configuration (WD_AI_CH_Config)!",
             "ContBufferSetup": f"Error while setting continuous buffer (WD_AI_ContBufferSetup)!",
-            "ContScanChannelsToFile": f"Error while starting continuous scan to file acquisition (WD_AI_ContScanChannelsToFile)!",
+            "ContScanChannels": f"Error while starting continuous scan to file acquisition (WD_AI_ContScanChannels)!",
             "AsyncClear": f"Error while stopping continuous acquisition (WD_AI_AsyncClear)!",
             "Register_Card": f"Error while registering card (WD_Register_Card)!",
             "GetDeviceProperties": f"Error while getting device properties (WD_GetDeviceProperties)!",
@@ -804,9 +774,35 @@ class Adlink9834(FastCounterInterface):
         self._dll.WD_AI_ContBufferSetup.restype = AdlinkDataTypes.I16
 
     def max_number_sequence_retriggers(self):
+        """
+        Calculates the number of sequences that fit into maximum samples size of the card.
+        """
         return int(self._maximum_samples / self._number_of_gates / self._settings.scancount_per_trigger.value)
 
     def max_number_retriggers(self):
+        """
+        Calculates the number of triggers that the card will acquire into one buffer.
+        """
         return int(self.max_number_sequence_retriggers() * self._number_of_gates)
 
+    @property
+    def number_of_averages(self) -> int:
+        """
+        determines how many measurements should be summed up
+        if set to 0 all acquired samples are summed up
+        if set to > 0 the number of samples will be summed up and displayed by the pulsed toolchain
 
+        @return number_of_averages, int: currently set number of averages
+        """
+        return self._number_of_averages
+
+    @number_of_averages.setter
+    def number_of_averages(self, number: int) -> None:
+        """
+        determines how many measurements should be summed up
+        if set to 0 all acquired samples are summed up
+        if set to > 0 the number of samples will be summed up and displayed by the pulsed toolchain
+
+        @param number, int: number of averages to set
+        """
+        self._number_of_averages = int(number)
