@@ -18,6 +18,7 @@ from os import stat
 import numpy as np
 import time
 from collections import OrderedDict
+from scipy import signal
 from PySide2 import QtCore
 import datetime
 
@@ -37,6 +38,28 @@ from qudi.logic.qdyne.qdyne_save import (
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
 
+class FreqDomainData:
+    def __init__(self):
+        """"""
+        self.x = None
+        self.y = None
+        self.peaks = []
+        self.current_peak = 0
+        self.range_index = 10
+        self.peak_factor = 10
+
+    def get_peaks(self):
+        mean = self.y.mean()
+        std = self.y.std()
+        height = mean + self.peak_factor * std
+        self.peaks = signal.find_peaks(self.y, height=height)[0]
+
+    @property
+    def data_around_peak(self):
+        x_peak = self.x[self.current_peak - self.range_index: self.current_peak + self.range_index]
+        y_peak = self.y[self.current_peak - self.range_index: self.current_peak + self.range_index]
+        return [x_peak, y_peak]
+
 @dataclass
 class MainDataClass:
     raw_data: np.ndarray = np.array([], dtype=int)
@@ -44,6 +67,9 @@ class MainDataClass:
     time_trace: np.ndarray = np.array([], dtype=float)
     signal: np.ndarray = np.array([], dtype=float)
     spectrum: np.ndarray = np.array([], dtype=float)
+
+    def __init__(self):
+        self.freq_data = FreqDomainData()
 
     def load_np_data(self, path):
         self.raw_data = np.load(path)['arr_0']
@@ -240,6 +266,8 @@ class QdyneLogic(LogicBase):
 
     def get_spectrum(self):
         self.data.spectrum = self.analyzer.get_spectrum(self.data.signal, self.settings.analyzer_stg.current_setting)
+        self.data.freq_data.x = self.data.spectrum[0]
+        self.data.freq_data.y = self.data.spectrum[1]
 
     def save(self):
         self.save.save_data(self.data.raw_data, self.settings.save_stg.raw_data_options)
@@ -273,7 +301,8 @@ class QdyneLogic(LogicBase):
     @QtCore.Slot(str, bool)
     def do_fit(self, fit_config):
         try:
-            self.data.fit_config, self.data.fit_result = self.fit.perform_fit(self.data.spectrum, fit_config)
+            self.data.fit_config, self.data.fit_result \
+                = self.fit.perform_fit(self.data.freq_data.data_around_peak, fit_config)
         except:
             self.data.fit_config, self.data.fit_result = '', None
             self.log.exception('Something went wrong while trying to perform data fit.')

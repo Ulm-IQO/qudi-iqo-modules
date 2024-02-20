@@ -204,6 +204,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self._logic = logic()
         self._gui = gui
 
+        self.freq_data = self._logic.data.freq_data
+
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
         ui_file = os.path.join(qdyne_dir, r'ui\time_trace_analysis_data_widget.ui')
@@ -225,6 +227,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
 
     def _activate_plot1_widget(self):
+        self.range_spinBox.setValue(self.freq_data.range_index)
         self.signal_image = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
                                              style=QtCore.Qt.DotLine,
                                              symbol='o',
@@ -265,7 +268,10 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
     def connect_signals(self):
         self.tta_analyze_pushButton.clicked.connect(self._logic.analyze_time_trace)
-        self.tta_get_spectrum_pushButton.clicked.connect(self.update_spectrum)
+        self.tta_get_spectrum_pushButton.clicked.connect(self.get_spectrum)
+        self.get_peaks_pushButton.clicked.connect(self.get_peaks)
+        self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
+        self.range_spinBox.valueChanged.connect(self.update_spectrum)
         self.plot1_fitwidget.sigDoFit.connect(
             lambda x: self._logic.do_fit(x)
         ) #fit config is input
@@ -277,13 +283,27 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
 
     def disconnect_signals(self):
+        self.get_peaks_pushButton.clicked.disconnect()
+        self.current_peak_comboBox.currentTextChanged.disconnect()
+        self.range_spinBox.valueChanged.disconnect()
         self.plot1_fitwidget.sigDoFit.disconnect()
         self.plot2_fitwidget.sigDoFit.disconnect()
 
-    def update_spectrum(self):
+    def get_spectrum(self):
         self._logic.get_spectrum()
-        spectrum = self._logic.data.spectrum
+
+    def get_peaks(self):
+        self.freq_data.get_peaks()
+        self.current_peak_comboBox.clear()
+        peak_str_list = [str(peak) for peak in self.freq_data.peaks]
+        self.current_peak_comboBox.addItems(peak_str_list)
+
+    def update_spectrum(self):
+        self.freq_data.current_peak = int(self.current_peak_comboBox.currentText())
+        self.freq_data.range_index = self.range_spinBox.value()
+        spectrum = self.freq_data.data_around_peak
         self.signal_image.setData(x=spectrum[0], y=spectrum[1])
+        self.plot1_PlotWidget.clear()
         self.plot1_PlotWidget.addItem(self.signal_image)
 
     @QtCore.Slot(str, object)
@@ -309,6 +329,10 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
                                y=fit_result.high_res_best_fit[1])
         if self.fit_image not in self.plot1_PlotWidget.items():
             self.plot1_PlotWidget.addItem(self.fit_image)
+
+
+
+
 
 # class TimeTraceAnalysisWidget(QtWidgets.QWidget):
 #     # declare signals

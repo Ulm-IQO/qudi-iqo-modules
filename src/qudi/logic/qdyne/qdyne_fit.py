@@ -41,8 +41,6 @@ class QdyneFit(QtCore.QObject):
         pass
         # Fitting
 
-
-
     def perform_fit(self, data, fit_config):
         """
         Performs the chosen fit on the measured data.
