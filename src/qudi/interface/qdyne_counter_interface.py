@@ -158,7 +158,7 @@ class QdyneCounterInterface(Base):
         pass
 
     @abstractmethod
-    def get_status(self):
+    def get_status(self) -> int:
         """ Receives the current status of the hardware and outputs it as return value.
 
         0 = unconfigured
@@ -179,7 +179,7 @@ class QdyneCounterInterface(Base):
         pass
 
     @abstractmethod
-    def get_data(self):
+    def get_data(self) -> tuple:
         """ Polls the current time tag data or time series data from the Qdyne counter.
 
         Return value is a numpy array of type as given in the constraints.
