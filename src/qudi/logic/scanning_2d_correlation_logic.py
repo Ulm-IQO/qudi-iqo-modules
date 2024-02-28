@@ -116,13 +116,14 @@ class Scanning2DCorrelationLogic(LogicBase):
         else:
             raise ValueError(f"Importing image to image number {number} failed. Number should be 1 or 2.")
 
-    def import_image(self, number, path):
+    def import_image(self, number, path, transpose=True):
         """Import an image from a .dat file into the correlation logic.
         @param int number: Defines whether the image is imported into the first image or second image of the correlation
          logic
         @param str path: Absolute path to the image file
+        @param bool tranpose: Tranpose array to load. Data form qudi-iqo-modules requires = True, old_core = False
         """
-        image = Image(datastorage=self._datastorage, path=path)
+        image = Image(datastorage=self._datastorage, path=path, transpose=transpose)
         self._set_image(image, number)
 
     def get_scan_image(self, number, scan_axes=None, channel=None):
@@ -284,7 +285,7 @@ class Image:
     """ Image class storing an image together with its properties.
     """
 
-    def __init__(self, path=None, datastorage=None, root_dir=None):
+    def __init__(self, path=None, datastorage=None, root_dir=None, transpose=True):
         """
         @param str path: Absolute path to the image file
         @param TextDataStorage datastorage: Datastorage object used to import/save the images from files (optional).
@@ -311,7 +312,7 @@ class Image:
             self._datastorage = datastorage
 
         if path is not None:
-            self.import_image(path)
+            self.import_image(path, transpose=transpose)
 
     def _set_img_array(self, array):
         # set NaN-values to zero
@@ -319,13 +320,16 @@ class Image:
         self._array_raw[np.isnan(self._array_raw)] = 0
         self.array = self.array_raw.copy()
 
-    def import_image(self, path):
+    def import_image(self, path, transpose=True):
         """Import image from an absolute file path.
         @param str path: Absolute path to the image file
         """
         # import raw image from file
         img_array, self.metadata, self.general = self._datastorage.load_data(path)
-        self._set_img_array(img_array)
+        if transpose:
+            self._set_img_array(img_array.T)
+        else:
+            self._set_img_array(img_array)
 
         # get range for image
         range_x = np.abs(self.metadata['x scan range'][1] - self.metadata['x scan range'][0])
