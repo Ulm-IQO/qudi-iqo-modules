@@ -22,21 +22,21 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('TiltCorrectionDockWidget')
 
 import numpy as np
+from collections import OrderedDict
 
 from PySide2 import QtCore, QtGui, QtWidgets
 from PySide2.QtWidgets import QDockWidget, QWidget,QGridLayout, QLabel, QPushButton,QTableWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, ToggleSwitchWidget
-#from qudi.interface.scanning_probe_interface import ScanData
-#from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 
 class TiltCorrectionDockWidget(QDockWidget):
-    def __init__(self, parent=None, scanner_axes=None):
-        super(TiltCorrectionDockWidget, self).__init__(parent)
+
+    def __init__(self, scanner_axes=None, **kwargs):
+        super().__init__('Tilt Correction', objectName='Tilt Correction', **kwargs)
 
         self._n_dim = len(scanner_axes)
+        self._scan_axes = scanner_axes
 
-        self.setWindowTitle("Tilt Correction")
         # Create the dock widget contents
         dock_widget_contents = QWidget()
         dock_widget_layout = QGridLayout(dock_widget_contents)
@@ -45,7 +45,7 @@ class TiltCorrectionDockWidget(QDockWidget):
         tiltpoint_label = QLabel("Support Vectors")
         dock_widget_layout.addWidget(tiltpoint_label, 0, 0)
 
-        for idx, ax in enumerate(list(scanner_axes.keys())):
+        for idx, ax in enumerate(list(self._scan_axes.keys())):
             tiltpoint_label = QLabel(ax)
             dock_widget_layout.addWidget(tiltpoint_label, 0, 1+idx)
 
@@ -61,10 +61,9 @@ class TiltCorrectionDockWidget(QDockWidget):
         self.tilt_set_03_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(self.tilt_set_03_pushButton, 3, 0)
 
-        origin_switch_label = QLabel("Auto origin")
+        origin_switch_label = QLabel("Auto rotation origin")
         dock_widget_layout.addWidget(origin_switch_label, 4, 0)
         self.auto_origin_switch = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
-        # todo: disconnect  self.auto_origin_switch.toggle_switch.sigStateChanged
         self.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.auto_origin_changed,
                                                                     QtCore.Qt.QueuedConnection)
         self.auto_origin_switch.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
@@ -99,24 +98,45 @@ class TiltCorrectionDockWidget(QDockWidget):
 
         vec_vals = []
         for vec in support_vecs:
-            vec_vals.append([box.value() for box in vec])
+            vals = [box.value() if box.is_valid else np.nan for box in vec]
+            vec_vals.append({list(self._scan_axes.keys())[idx]: vals[idx] for idx, box in enumerate(vec)})
 
         return vec_vals
+
+    def set_support_vector(self, vector, idx):
+        """
+        vector: dict with key= axis and value= vector component.
+        idx: index of support vector in [0,1,2,3]
+        """
+        dim_idxs = [(idx, key) for idx, key in enumerate(self._scan_axes.keys())]
+
+        if idx in [0,1,2] and vector in self.support_vectors[:3]:
+            [self.support_vecs_box[idx][idx_ax].setValue(np.nan) for idx_ax, ax in dim_idxs]
+            raise ValueError(f"Can't set support vector {idx} to {vector}. Vectors need to be distinct, "
+                             f"but found: {self.support_vectors[:3]}")
+
+        [self.support_vecs_box[idx][idx_ax].setValue(vector[ax]) for idx_ax, ax in dim_idxs]
 
     @property
     def auto_origin(self):
         return True if self.auto_origin_switch.switch_state == 'ON' else False
 
-    def auto_origin_changed(self, state):
+    def set_auto_origin(self, state, reset=True):
+        self.auto_origin_switch.switch_state = state
+        self.auto_origin_changed(state, reset=reset)
+
+    def auto_origin_changed(self, state, reset=True):
 
         auto_enabled = True if state == 'ON' else False
 
         [el.setEnabled(not auto_enabled) for el in self.support_vecs_box[-1]]
 
-        # nan renders the gui boxes invalid/red, so instead inf
-        [el.setValue(np.inf) for el in self.support_vecs_box[-1]]
-        if not auto_enabled:
-            [el.setValue(np.nan) for el in self.support_vecs_box[-1]]
+        if reset:
+            # from gui, reset values for safety. Users should think whether old values are safe.
+            # nan renders the gui boxes invalid/red, so if auto=on instead inf
+            [el.setValue(np.inf) for el in self.support_vecs_box[-1]]
+            if not auto_enabled:
+                [el.setValue(np.nan) for el in self.support_vecs_box[-1]]
 
         self.tilt_set_04_pushButton.setEnabled(not auto_enabled)
 

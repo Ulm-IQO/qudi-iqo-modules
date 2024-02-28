@@ -29,7 +29,7 @@ from qudi.interface.scanning_probe_interface import ScanningProbeInterface, Scan
 from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
 
 
-class ScanningProbeDummy(ScanningProbeInterface):
+class ScanningProbeDummyBare(ScanningProbeInterface):
     """
     Dummy scanning probe microscope. Produces a picture with several gaussian spots.
 
@@ -94,6 +94,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self.__last_line = -1
         self.__update_timer = None
 
+        # handle to the uncorrected scanner instance, not wrapped by a potential CoordinateTransformMixin
+        # that transforms to a tilted, virtual coordinate system.
+        self.bare_scanner = ScanningProbeDummyBare
+
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
@@ -127,8 +131,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                             channels=channels,
                                             backscan_configurable=False,
                                             has_position_feedback=False,
-                                            square_px_only=False,
-                                            allow_coordinate_transform=self.supports_coordinate_transform)
+                                            square_px_only=False)
         self.__scan_start = 0
         self.__last_line = -1
         self.__update_timer = QtCore.QTimer()
@@ -320,7 +323,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_target" called.')
+            #self.log.debug('Scanning probe dummy "get_target" called.')
             return self._current_position.copy()
 
     def get_position(self):
@@ -329,7 +332,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_position" called.')
+            #self.log.debug('Scanning probe dummy "get_position" called.')
             position = {ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in
                         self._current_position.items()}
             return position
@@ -447,7 +450,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             # if self.thread() is not QtCore.QThread.currentThread():
             #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
             if self._scan_data is None:
-                print('nope, no scan data in hardware')
+                self.log.debug('No scan data in hardware, returning None')
                 return None
 
             if self.module_state() != 'idle':
@@ -524,16 +527,19 @@ class ScanningProbeDummy(ScanningProbeInterface):
             -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
 
 
-class ScanningProbeDummyCorrected(CoordinateTransformMixin, ScanningProbeDummy):
+class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
 
     def _init_scan_grid(self, x_values, y_values):
-        # todo: this is demonstration only, not really a transformation
+        # this is fake transformation, as only 2 coordinates of the scan_grid are taken
 
-        vectors = {'x': x_values, 'y': y_values, 'z': np.zeros(len(x_values))}
+        vectors = {'x': x_values, 'y': y_values}
+        vectors = self._expand_coordinate(vectors)
         vectors_tilted = self.coordinate_transform(vectors)
 
         grid = np.meshgrid(vectors_tilted['x'], vectors_tilted['y'], indexing='ij')
-        print(f"Transforming grid: {grid}")
+
+        #if self.coordinate_transform_enabled:
+        #    self.log.debug(f"Transforming scan grid: {grid}")
 
         return grid
 
