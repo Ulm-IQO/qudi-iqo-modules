@@ -75,6 +75,58 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
+    def generate_green_laser_on(self, name='green_laser_on', length=3.0e-6):
+        """ Generates Laser on.
+
+        @param str name: Name of the PulseBlockEnsemble
+        @param float length: laser duration in seconds
+
+        @return object: the generated PulseBlockEnsemble object.
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # create the laser element
+        laser_element = self._get_laser_element(length=length, increment=0)
+        # Create block and append to created_blocks list
+        laser_block = PulseBlock(name=name)
+        laser_block.append(laser_element)
+        created_blocks.append(laser_block)
+        # Create block ensemble and append to created_ensembles list
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble.append((laser_block.name, 0))
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_orange_laser_on(self, name='orange_laser_on', length=3.0e-6, orange_digital_channel="d_ch3"):
+        """ Generates Laser on.
+
+        @param str name: Name of the PulseBlockEnsemble
+        @param float length: laser duration in seconds
+        @param str orange_digital_channel: the digital channel that controls the orange laser
+
+        @return object: the generated PulseBlockEnsemble object.
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        digital_channel = list([orange_digital_channel])
+        # create the laser element
+        trigger_element = self._get_trigger_element(length=length,
+                                                    increment=0,
+                                                    channels=list(digital_channel))
+        # Create block and append to created_blocks list
+        trigger_block = PulseBlock(name=name)
+        trigger_block.append(trigger_element)
+        created_blocks.append(trigger_block)
+        # Create block ensemble and append to created_ensembles list
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble.append((trigger_block.name, 0))
+        created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
     def generate_laser_mw_on(self, name='laser_mw_on', length=3.0e-6):
         """ General generation method for laser on and microwave on generation.
 

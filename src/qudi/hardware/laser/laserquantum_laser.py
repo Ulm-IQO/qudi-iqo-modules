@@ -37,6 +37,7 @@ class PSUTypes(Enum):
     MPC3000 = 1
     SMD12 = 2
     SMD6000 = 3
+    FPU = 4
 
 
 class LaserQuantumLaser(SimpleLaserInterface):
@@ -216,7 +217,7 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return ShutterState: laser shutter state
         """
-        return ShutterState.NOSHUTTER
+        return ShutterState.NO_SHUTTER
 
     def set_shutter_state(self, state):
         """ Set the desired laser shutter state.

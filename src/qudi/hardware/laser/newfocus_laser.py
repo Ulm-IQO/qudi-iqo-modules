@@ -1,16 +1,18 @@
 
-#from core.module import Base
 from qudi.core.configoption import ConfigOption
 from qudi.interface.simple_laser_interface import SimpleLaserInterface
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
-#from enum import Enum
-#import clr
-#clr.AddReference(r'mscorlib')
-#clr.AddReference('System.Reflection')
-#from System.Text import StringBuilder
-#from System import Int32
-#from System.Reflection import Assembly
-import serial
+
+from enum import Enum
+from typing import Union
+
+import clr
+clr.AddReference(r'mscorlib')
+clr.AddReference('System.Reflection')
+from System.Text import StringBuilder
+from System import Int32
+from System.Reflection import Assembly
+
 import time
 
 class Models(Enum):
@@ -28,27 +30,24 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
         module.Class: 'laser.newfocus_laser.NewfocusDiodeLaser'
         options:
             laserid: 4106
-            devicekey: 6700 SN60615
-            remoteaccess: True
+            devicekey: '6700 SN60615'
+            maxpower = 4.5 #mW
+            maxcurrent = 90 #mA
 
     """
-    #_modclass = 'newfocusdiodelaser'
-    #_modtype = 'hardware'
     _DeviceKey = ConfigOption('devicekey', None)
     _Laserid = ConfigOption('laserid', None)
-    #_Buff=StringBuilder(64)
-    #_control_mode = 3
-    #_output_state = 3
+    _Buff = StringBuilder(64)
+    _control_mode = ControlMode.UNKNOWN.value
 
-    #_idn=''
-    serial_interface = ConfigOption(name='interface', default='ASRL1::INSTR', missing='warn')
-    maxpower = ConfigOption(name='maxpower', default = 4.5, missing='warn')# missing='warn: please first run get_power_range to get available power range ')
-    maxcurrent = ConfigOption(name='maxcurrent', default = 0, missing='warn')#, missing='warn: please first run get_current_range to get available current range ')
+    _idn = ''
+    maxpower = ConfigOption(name='maxpower', default = 4.5, missing='warn')
+    maxcurrent = ConfigOption(name='maxcurrent', default = 90, missing='warn')
 
-    #def Query(self, word):
-    #    self._Buff.Clear()
-    #    self._dev.Query(self._DeviceKey, word, self._Buff)
-    #    return self._Buff.ToString()
+    def Query(self, word):
+        self._Buff.Clear()
+        self._dev.Query(self._DeviceKey, word, self._Buff)
+        return self._Buff.ToString()
 
     def on_activate(self):
         """ Activate Module.
@@ -67,8 +66,8 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
             @return bool: connection success
         """
         try:
-            dllpath = 'C:\\Newfocus\\driver\\Bin\\'
-            Assembly.LoadFile(dllpath + 'UsbDllWrap.dll')
+            dll_path = 'C:\\Program Files\\New Focus\\New Focus Tunable Laser Application\\Bin\\'
+            Assembly.LoadFile(dll_path + 'UsbDllWrap.dll')
             clr.AddReference(r'UsbDllWrap')
             import Newport
             self._dev = Newport.USBComm.USB()
@@ -83,8 +82,10 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
                 self._idn = self.Query('*IDN?')
                 if not self._idn == '':
                     self.log.info("\nLaser connected: {}".format(self._idn))
-                    self._control_mode= self.Query('SOURce:CPOWer?')
-                    self._output_state=self.Query('OUTPut:STATe?')
+                    self._control_mode = self.Query('SOURce:CPOWer?')
+                    self._output_state = self.Query('OUTPut:STATe?')
+                    self.get_power_range()
+                    self.get_current_range()
                     timer = 101
                     pass
                 else:
@@ -107,248 +108,208 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
         """ Close the connection to the instrument.
         """
         self._dev.CloseDevices()
-
-    def allowed_control_modes(self):
-        """ Control modes for this laser
-
-            @return ControlMode: available control modes
-        """
-        return ['Constant Current','Constant Power']
-
-    def get_control_mode(self):
-        """ Get active control mode
-
-        @return ControlMode: active control mode
-        """
-        if float(self.Query('SOURce:CPOWer?')) == 0:
-            self._control_mode=0
-            return ['Constant Current']
-        elif float(self.Query('SOURce:CPOWer?')) == 1:
-            self._control_mode=1
-            return ['Constant Power']
-        else:
-            self.log.exception('Error while calling function:')
-
-    def set_control_mode(self, mode):
-        """ Set actve control mode
-
-        @param ControlMode mode: desired control mode
-        @return ControlMode: actual control mode
-        """
-        if mode == 'Constant Current':
-            self.Query('SOURce:CPOWer 0')
-            return self.get_control_mode()
-        elif mode == 'Constant Power':
-            self.Query('SOURce:CPOWer 1')
-            return self.get_control_mode()
-        else:
-            self.log.exception('Mode not available: please use Constant Current or Constant Power')
-
-    def get_power(self):
-        """ Current laser power
-
-        @return float: laser power in watts
-        """
-        return float(self.Query('SENSe:POWer:DIODe'))
-
-
-    def get_power_setpoint(self):
-        """ Current laser power setpoint
-
-        @return float: power setpoint in watts
-        """
-        if self.get_control_mode() == 'Constant Power':
-            return float(self.Query('SOURce:POWer:DIODe?'))
-        else:
-            self.log.exception('Not in Constant Power mode! Please use get_power instead')
-
+        
     def get_power_range(self):
-        """ Laser power range
+        """ Return laser power range
 
-        @return (float, float): laser power range
+        @return float[2]: power range (min, max)
         """
         output=0
         if self._output_state== 1:
             print('Disabling output!')
             output=1
             self.output_disable()
-        power= self.get_power()
+        power= self.get_power_setpoint()
         self.set_power('MAX')
-        self._maxpower= self.get_power()
+        self._maxpower= self.get_power_setpoint()
         self.set_power(power)
         if output == 1:
             print('power range detection finished, re-enabling output')
             self.output_enable()
         return [0, self._maxpower]
 
-    def set_power(self, power):
-        """ Set laser power setpoint
+    def get_power(self):
+        """ Return actual laser power
 
-        @param float power: desired laser power
-
-        @return float: actual laser power setpoint
+        @return float: Laser power in milli watts
         """
-        if float(power) <= self._maxpower:
-            self.Query('SOURce:POWer:DIODe {}'.format(power))
-            return self.get_power()
+        return float(self.Query('SENSe:POWer:DIODe'))
+
+    def set_power(self, power):
+        """ Set power setpoint.
+
+        @param Union[float,str] power: power to set in mW, can be 'MAX' to set power to maximum rated power
+        """
+        if type(power) in [int, float]:
+            if float(power) <= self._maxpower:
+                self.Query('SOURce:POWer:DIODe {}'.format(power))
+                #return self.get_power_setpoint()
+            else:
+                self.log.exception('Set value exceeding max power!')
+        elif power == 'MAX':
+            self.Query('SOURce:POWer:DIODe MAX')
         else:
-            self.log.exception('Set value exceeding maxpower!')
+            self.log.exception('Power input not valid')
+
+    def get_power_setpoint(self):
+        """ Return laser power setpoint.
+
+        @return float: power setpoint in milli watts
+        """
+        #if self.get_control_mode() != ControlMode.POWER.name:
+            #self.log.warning('Not in Constant Power mode! Use get_current_setpoint()')
+        return float(self.Query('SOURce:POWer:DIODe?'))
+
+    def get_current_unit(self):
+        """ Get unit for laser current.
+
+        @return str: unit
+        """
+        return 'mA'
 
     def get_current(self):
-        """ Current laser power
+        """ Get actual laser current
 
-        @return float: laser power in watts
+        @return float: laser current in current units
         """
         return float(self.Query('SENSe:CURRent:DIODe'))
 
-    def get_current_setpoint(self):
-        """ Current laser power setpoint
-
-        @return float: power setpoint in watts
-        """
-        if self.get_control_mode() == 'Constant Current':
-            return float(self.Query('SOURce:CURRent:DIODe?'))
-        else:
-            self.log.exception('Not in Constant Current mode! Please use get_current instead')
-
     def get_current_range(self):
-        """ Laser power range
+        """ Get laser current range.
 
-        @return (float, float): laser power range
+        @return float[2]: laser current range
         """
         output = 0
         if self._output_state == 1:
             output = 1
             print('Disabling output!')
             self.output_disable()
-        current = self.get_current()
+        current = self.get_current_setpoint()
         self.set_current('MAX')
-        self._maxcurrent = self.get_current()
+        self._maxcurrent = self.get_current_setpoint()
         self.set_current(current)
         if output == 1:
             print('current range detection finished, re-enabling output')
             self.output_enable()
         return [0, self._maxcurrent]
 
-    def set_current(self, power):
-        """ Set laser power setpoint
+    def get_current_setpoint(self):
+        """ Get laser current setpoint
 
-        @param float power: desired laser power
-
-        @return float: actual laser power setpoint
+        @return float: laser current setpoint
         """
-        if power <= self.maxcurrent:
-            self.Query('SOURce:POWer:DIODe'.format(current))
-            return self.get_current()
-        else:
-            self.log.exception('Set value exceeding maxcurrent!')
+        #if self.get_control_mode() != ControlMode.CURRENT.name:
+            #self.log.warning('Not in Constant Current mode! Use get_power_setpoint()')
+        return float(self.Query('SOURce:CURRent:DIODe?'))
 
-    def get_output_state(self):
+    def set_current(self, current):
+        """ Set laser current setpoint
+
+        @param Union[float,str] current: desired laser current setpoint in mA, can be 'MAX' for the max rated current
+        """
+        if type(current) in [int, float]:
+            if float(current) <= self._maxcurrent:
+                self.Query('SOURce:CURRent:DIODe {}'.format(current))
+                #return self.get_current_setpoint()
+            else:
+                self.log.exception('Set value exceeding max current!')
+        elif current == 'MAX':
+            self.Query('SOURce:CURRent:DIODe MAX')
+        else:
+            self.log.exception('Current input not valid')
+
+    def allowed_control_modes(self):
+        """ Get supported control modes
+
+        @return frozenset: set of supported ControlMode enums
+        """
+        return frozenset([ControlMode.POWER, ControlMode.CURRENT])
+
+    def get_control_mode(self):
+        """ Get the currently active control mode
+
+        @return ControlMode: active control mode enum
+        """
+        if float(self.Query('SOURce:CPOWer?')) == 0:
+            self._control_mode = ControlMode.CURRENT.value
+            return ControlMode.CURRENT
+        elif float(self.Query('SOURce:CPOWer?')) == 1:
+            self._control_mode = ControlMode.POWER.value
+            return ControlMode.POWER
+        else:
+            self.log.exception('Error while calling function:')
+
+    def set_control_mode(self, control_mode):
+        """ Set the active control mode
+
+        @param ControlMode control_mode: desired control mode enum name
+        """
+        if control_mode == ControlMode.CURRENT:
+            self.Query('SOURce:CPOWer 0')
+            #return self.get_control_mode()
+        elif control_mode == ControlMode.POWER:
+            self.Query('SOURce:CPOWer 1')
+            #return self.get_control_mode()
+        else:
+            self.log.exception('Mode not available: please use ControlMode.CURRENT or ControlMode.POWER')
+
+    def get_laser_state(self):
+        """ Get laser state
+
+        @return LaserState: current laser state enum
+        """
+        if float(self.Query('OUTPut:STATe?')) == 0:
+            self._output_state = LaserState.OFF.value
+            return LaserState.OFF
+        elif float(self.Query('OUTPut:STATe?')) == 1:
+            self._output_state = LaserState.ON.value
+            return LaserState.ON
+        else:
+            self.log.exception('Error while calling function:')
+
+    def set_laser_state(self, state):
+        """ Set laser state.
+
+        @param LaserState state: desired laser state enum name
+        """
+        if state == LaserState.OFF:
+            self.Query('OUTPut:STATe 0')
+            #return self.get_laser_state()
+        elif state == LaserState.ON:
+            self.Query('OUTPut:STATe 1')
+            #return self.get_laser_state()
+        else:
+            self.log.exception('State not available: please use LaserState.OFF or LaserState.ON')
+
+    def get_shutter_state(self):
         """ Get laser shutter state
 
-        @return ShutterState: current laser shutter state
-        """
-        if self.Query('OUTPut:STATe?')=='0':
-            #self._output_state = 0
-            self.log.info('OFF')
-            return True
-        if self.Query('OUTPut:STATe?')=='1':
-            #self._output_state = 1
-            self.log.info('ON')
-            return True
-
-    def output_enable(self):
-        """ Set laser shutter state.
-
-        @param ShuterState state: desired laser shutter state
         @return ShutterState: actual laser shutter state
         """
+        return ShutterState.NO_SHUTTER
 
-        try:
-            self.Query('OUTPut:STATe {}'.format('ON'))
-            self._output_state = self.Query('OUTPut:STATe?')
-            return True
-        except:
-            self.log.exception('error while enabling output')
-            return False
-
-
-    def output_disable(self):
+    def set_shutter_state(self, state):
         """ Set laser shutter state.
 
-        @param ShuterState state: desired laser shutter state
-        @return ShutterState: actual laser shutter state
+        @param ShutterState state: desired laser shutter state
         """
+        return ShutterState.NO_SHUTTER
 
-        try:
-            self.Query('OUTPut:STATe {}'.format('OFF'))
-            self._output_state = self.Query('OUTPut:STATe?')
-            return self.get_output_state()
-        except:
-            self.log.exception('error while disabling output')
-            return False
+    def get_temperatures(self):
+        """ Get all available temperatures.
 
-    def get_wavelength(self):
-        """ Get SHG crystal temerpature.
-
-            @return float: SHG crystal temperature in degrees Celsius
+        @return dict: dict of temperature names and value in degrees Celsius
         """
-        return float(self.Query('SENse:WAVElength'))
+        return {'Diode': self.Query('SENSe:TEMPerature:DIODe'),
+                'Cavity': self.Query('SENSe:TEMPerature:CAVity')}
 
-    def set_wavelength(self,wavelength):
-        """ Get laser diode temperature.
+    def get_extra_info(self):
+        """ Show dianostic information about lasers.
 
-            @return float: laser diode temperature in degrees Celsius
+        @return str: diagnostic info as a string
         """
-        if wavelength <=638.9 and wavelength>=635:
-            self.Query('SOURce:WAVE:START {}'.format(wavelength))
-            self.Query('SOURce:WAVE:STOP {}'.format(wavelength + 0.1))
-            self.Query('SOURce:WAVE:SLEW:FORW {}'.format(0.1))
-            self.Query('SOURce:WAVE:SLEW:RET {}'.format(0.1))
-            self.Query('SOURce:WAVE:DESSCANS 1')
-            self.Query('OUTPut:SCAN:START')
-            #self.Query('SOURce:WAVE {}'.format(wavelength))
-            return float(self.Query('SENse:WAVElength'))
-        else:
-            self.log.exception('out of range: please enter a value between 635 and 638.9')
-            return False
-
-    def get_piezo_percentage(self):
-        """ Get SHG tower temperature
-
-            @return float: SHG tower temperature in degrees Celsius
-        """
-        if self.Query('SOURce:VOLTage:PIEZo?') == 'MAX':
-            return 1
-        else:
-            return float(self.Query('SOURce:VOLTage:PIEZo?'))/100
-
-    def set_piezo_percentage(self, percentage):
-        """ Get cabinet temperature
-
-            @return float: get laser cabinet temperature in degrees Celsius
-        """
-        if percentage<=100:
-            self.Query('SOURce:VOLTage:PIEZo {}'.format(percentage))
-        else:
-            self.log.exception('Please input a value between 0,100')
-        return self.get_piezo_percentage()
-
-    def get_wavelength_tracking_state(self):
-        """ Get all available temperatures
-
-            @return dict: tict of temperature names and values
-        """
-        if self.Query('OUTPut:TRACk?') == 0:
-            return 'OFF'
-        elif  self.Query('OUTPut:TRACk?') == 1:
-            return 'ON'
-
-
-
-    def set_wavelength_tracking_state(self,status):
-        """ Set temperatures for lasers wth tunable temperatures
-
-        """
-        self.Query('OUTPut:TRACk {}'.format(status))
-        return self.get_wavelength_tracking_state()
+        return ('Laser ID string:'          + self.Query('*IDN?')                 +'\n'
+                'Laser model number:'       + self.Query('SYSTem:LASer:MODEL?')   +'\n'     
+                'Laser serial number:'      + self.Query('SYSTem:LASer:SN?')      +'\n'                                                                                                   
+                'Current errors:'           + self.Query('ERRSTR?')
+                )
