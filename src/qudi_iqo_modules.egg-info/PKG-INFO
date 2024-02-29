@@ -1,0 +1,58 @@
+Metadata-Version: 2.1
+Name: qudi-iqo-modules
+Version: 0.4.1.dev0
+Summary: IQO measurement modules collection for qudi
+Home-page: https://github.com/Ulm-IQO/qudi-iqo-modules
+License: LGPLv3
+Project-URL: Documentation, https://ulm-iqo.github.io/qudi-iqo-modules/
+Project-URL: Source Code, https://github.com/Ulm-IQO/qudi-iqo-modules/
+Project-URL: Bug Tracker, https://github.com/Ulm-IQO/qudi-iqo-modules/issues/
+Keywords: qudi,diamond,quantum,confocal,experiment,lab,laboratory,instrumentation,instrument,modular,measurement
+Classifier: Development Status :: 4 - Beta
+Classifier: Environment :: Win32 (MS Windows)
+Classifier: Environment :: X11 Applications
+Classifier: Environment :: MacOS X
+Classifier: Intended Audience :: Science/Research
+Classifier: Intended Audience :: End Users/Desktop
+Classifier: License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)
+Classifier: Natural Language :: English
+Classifier: Operating System :: Microsoft :: Windows :: Windows 8
+Classifier: Operating System :: Microsoft :: Windows :: Windows 8.1
+Classifier: Operating System :: Microsoft :: Windows :: Windows 10
+Classifier: Operating System :: MacOS :: MacOS X
+Classifier: Operating System :: Unix
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Programming Language :: Python :: 3.8
+Classifier: Programming Language :: Python :: 3.9
+Classifier: Programming Language :: Python :: 3.10
+Classifier: Topic :: Scientific/Engineering
+Requires-Python: >=3.8, <3.11
+Description-Content-Type: text/markdown
+License-File: LICENSE
+License-File: LICENSE.LESSER
+License-File: AUTHORS.md
+
+# qudi-iqo-modules
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
+
+---
+A collection of qudi measurement modules originally developed for experiments on color centers in 
+semiconductor materials.
+
+
+
+## Installation
+For installation instructions please refer to our
+[iqo-modules installation guide](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/installation_guide.md).
+
+
+## More information
+The best starting point for further researching the qudi documentation is the [readme file](https://github.com/Ulm-IQO/qudi-core) of the qudi-core repo.
+
+## Forum
+For questions concerning qudi or the iqo-modules, there is a [forum](https://github.com/Ulm-IQO/qudi-core/discussions) to discuss with the qudi community. Feel free to ask!
+If you found a bug and located it already, please note GitHub's [issue tracking](https://github.com/Ulm-IQO/qudi-iqo-modules/issues) feature.
+
+## Copyright
+Check [AUTHORS.md](AUTHORS.md) for a list of authors and the git history for their individual
+contributions.

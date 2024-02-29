@@ -1,0 +1,13 @@
+qudi-core>=1.4.1
+entrypoints>=0.4
+fysom>=2.1.6
+lmfit>=1.0.3
+lxml>=4.9.1
+matplotlib>=3.6.0
+nidaqmx>=0.5.7
+numpy>=1.23.3
+pyqtgraph>=0.13.1
+PySide2>=5.15.2
+PyVisa>=1.12.0
+scipy>=1.9.1
+zaber_motion>=2.14.6
