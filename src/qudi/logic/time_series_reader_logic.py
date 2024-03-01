@@ -505,7 +505,9 @@ class TimeSeriesReaderLogic(LogicBase):
                                                        timestamp_buffer=self._times_buffer)
                     else:
                         # streamer is remote, we need to have a new buffer created and passed to us
-                        self._data_buffer, self._times_buffer = streamer.read_data(number_of_samples=samples_to_read)
+                        self._data_buffer, self._times_buffer = streamer.read_data(
+                            samples_per_channel=samples_to_read
+                        )
                         self._data_buffer = netobtain(self._data_buffer)
                         self._times_buffer = netobtain(self._times_buffer)
 
