@@ -39,7 +39,6 @@ class Data:
         self.ts_new = None
 
     def initialize(self, ms, cs):
-        self.data_info.data_range_mV = cs.ai_range_mV
         self.data_info.data_bit = ms.data_bits
 
         self.dc.initialize(ms.total_pulse, ms.seq_size_S)

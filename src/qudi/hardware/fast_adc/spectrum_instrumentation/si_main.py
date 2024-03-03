@@ -111,10 +111,14 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     # ConfigOptions for card settings. See the manual for details.
     _ai_ch = ConfigOption('ai_ch', 'CH0', missing='nothing')
-    _ai_range_mV = ConfigOption('ai_range_mV', 1000, missing='warn')
-    _ai_offset_mV = ConfigOption('ai_offset_mV', 0, missing='warn')
-    _ai_term = ConfigOption('ai_termination', '50Ohm', missing='warn')
-    _ai_coupling = ConfigOption('ai_coupling', 'DC', missing='warn')
+    _ai0_range_mV = ConfigOption('ai0_range_mV', 1000, missing='warn')
+    _ai0_offset_mV = ConfigOption('ai0_offset_mV', 0, missing='warn')
+    _ai0_term = ConfigOption('ai0_termination', '50Ohm', missing='warn')
+    _ai0_coupling = ConfigOption('ai0_coupling', 'DC', missing='warn')
+    _ai1_range_mV = ConfigOption('ai1_range_mV', 1000, missing='warn')
+    _ai1_offset_mV = ConfigOption('ai1_offset_mV', 0, missing='warn')
+    _ai1_term = ConfigOption('ai1_termination', '50Ohm', missing='warn')
+    _ai1_coupling = ConfigOption('ai1_coupling', 'DC', missing='warn')
     _acq_mode = ConfigOption('acq_mode', 'FIFO_MULTI', missing='warn')
     _acq_HW_avg_num = ConfigOption('acq_HW_avg_num', 1, missing='nothing')
     _acq_pre_trigs_S = ConfigOption('acq_pre_trigger_samples', 16, missing='warn')
@@ -178,10 +182,14 @@ class SpectrumInstrumentation(FastCounterInterface):
         Load the settings parameters of the configuration file to the card and measurement settings.
         """
         self.cs.ai_ch = self._ai_ch
-        self.cs.ai_range_mV = int(self._ai_range_mV)
-        self.cs.ai_offset_mV = int(self._ai_offset_mV)
-        self.cs.ai_term = self._ai_term
-        self.cs.ai_coupling = self._ai_coupling
+        self.cs.ai0_range_mV = int(self._ai0_range_mV)
+        self.cs.ai0_offset_mV = int(self._ai0_offset_mV)
+        self.cs.ai0_term = self._ai0_term
+        self.cs.ai0_coupling = self._ai0_coupling
+        self.cs.ai1_range_mV = int(self._ai1_range_mV)
+        self.cs.ai1_offset_mV = int(self._ai1_offset_mV)
+        self.cs.ai1_term = self._ai1_term
+        self.cs.ai1_coupling = self._ai1_coupling
         self.cs.acq_mode = self._acq_mode
         self.cs.acq_HW_avg_num = int(self._acq_HW_avg_num)
         self.cs.acq_pre_trigs_S = int(self._acq_pre_trigs_S)

@@ -29,11 +29,15 @@ class CardSettings:
     '''
     This dataclass contains parameters input to the card.
     '''
-    ai_ch: str = 'CH0'
-    ai_range_mV: int = 1000
-    ai_offset_mV: int = 0
-    ai_term: str = ''
-    ai_coupling: str = ''
+    ai_ch: tuple = 'CH0'
+    ai0_range_mV: int = 1000
+    ai0_offset_mV: int = 0
+    ai0_term: str = ''
+    ai0_coupling: str = ''
+    ai1_range_mV: int = 1000
+    ai1_offset_mV: int = 0
+    ai1_term: str = ''
+    ai1_coupling: str = ''
     acq_mode: str = ''
     acq_HW_avg_num: int = 1
     acq_pre_trigs_S: int = 16

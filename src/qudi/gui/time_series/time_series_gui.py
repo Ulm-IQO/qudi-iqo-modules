@@ -82,6 +82,8 @@ class TimeSeriesGui(GuiBase):
 
         self._channels_per_axis = [set(), set()]
 
+        self._single_axis = True
+
     def on_activate(self):
         """ Initialisation of the GUI """
         self._mw = TimeSeriesGuiMainWindow()
@@ -334,15 +336,15 @@ class TimeSeriesGui(GuiBase):
             self._mw.trace_plot_widget.hideAxis('right')
             self._channels_per_axis = [tuple(enabled), tuple()]
             self._mw.trace_plot_widget.setLabel('left', 'Signal', units='')
-        elif len(enabled) == 2:
-            self._mw.trace_plot_widget.hideAxis('right')
-            self._channels_per_axis = [(enabled[0],), (enabled[1],)]
-            self._mw.trace_plot_widget.setLabel('left',
-                                                enabled[0],
-                                                units=channel_units[enabled[0]])
-            self._mw.trace_plot_widget.setLabel('right',
-                                                enabled[1],
-                                                units=channel_units[enabled[1]])
+        # elif len(enabled) == 2:
+        #     self._mw.trace_plot_widget.hideAxis('right')
+        #     self._channels_per_axis = [(enabled[0],), (enabled[1],)]
+        #     self._mw.trace_plot_widget.setLabel('left',
+        #                                         enabled[0],
+        #                                         units=channel_units[enabled[0]])
+        #     self._mw.trace_plot_widget.setLabel('right',
+        #                                         enabled[1],
+        #                                         units=channel_units[enabled[1]])
         elif len(enabled) > 2:
             self._mw.trace_plot_widget.hideAxis('right')
             self._channels_per_axis = [tuple(enabled), tuple()]
