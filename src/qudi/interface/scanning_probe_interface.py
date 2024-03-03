@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from enum import auto, Flag
 from dataclasses import dataclass, field, asdict, replace
 from typing import Optional, Tuple, Dict
 import datetime
@@ -27,6 +28,14 @@ import numpy as np
 from abc import abstractmethod
 from qudi.core.module import Base
 from qudi.util.constraints import ScalarConstraint
+
+
+class BackScanCapability(Flag):
+    """Availability and configurability of the back scan."""
+    AVAILABLE = auto()
+    FREQUENCY_CONFIGURABLE = auto()
+    RESOLUTION_CONFIGURABLE = auto()
+    FULLY_CONFIGURABLE = FREQUENCY_CONFIGURABLE | RESOLUTION_CONFIGURABLE
 
 
 @dataclass(frozen=True)
@@ -136,7 +145,7 @@ class ScanConstraints:
     """
     channel_objects: Tuple[ScannerChannel, ...]
     axis_objects: Tuple[ScannerAxis, ...]
-    backscan_configurable: bool  # TODO Incorporate in gui/logic toolchain?
+    back_scan_capability: BackScanCapability
     has_position_feedback: bool  # TODO Incorporate in gui/logic toolchain?
     square_px_only: bool  # TODO Incorporate in gui/logic toolchain?
 
@@ -148,17 +157,36 @@ class ScanConstraints:
     def axes(self) -> Dict[str, ScannerAxis]:
         return {ax.name: ax for ax in self.axis_objects}
 
-    def is_valid(self, settings: ScanSettings) -> bool:
-        try:
-            self.check_settings(settings)
-        except (ValueError, TypeError):
-            return False
-        return True
-
     def check_settings(self, settings: ScanSettings) -> None:
         self.check_channels(settings)
         self.check_axes(settings)
         self.check_feedback(settings)
+
+    def check_back_scan_settings(self, backward_settings: ScanSettings, forward_settings: ScanSettings) -> None:
+        if BackScanCapability.AVAILABLE not in self.back_scan_capability:
+            raise ValueError('A back scan is not available and can therefore not be configured.')
+        elif not BackScanCapability.FULLY_CONFIGURABLE & self.back_scan_capability:
+            raise ValueError('Hardware does not allow any configuration of the back scan.')
+
+        # check if settings would fulfill constraints independently
+        self.check_settings(backward_settings)
+
+        # check if back scan settings match with forward scan settings
+        if backward_settings.axes != forward_settings.axes:
+            raise ValueError('The back scan must use the same axes as the forward scan.')
+        if backward_settings.range != forward_settings.range:
+            raise ValueError('The back scan must use the same range(s) as the forward scan.')
+        if backward_settings.scan_dimension == 2:
+            if backward_settings.resolution[1] != forward_settings.resolution[1]:
+                raise ValueError('The back scan must use the same slow axis resolution as the forward scan.')
+        if BackScanCapability.FREQUENCY_CONFIGURABLE not in self.back_scan_capability:
+            if backward_settings.frequency != forward_settings.frequency:
+                raise ValueError('The hardware requires the frequency of the back scan to be the same as for the '
+                                 'forward scan.')
+        if BackScanCapability.RESOLUTION_CONFIGURABLE not in self.back_scan_capability:
+            if backward_settings.resolution != forward_settings.resolution:
+                raise ValueError('The hardware requires the resolution of the back scan to be the same as for the '
+                                 'forward scan.')
 
     def check_channels(self, settings: ScanSettings) -> None:
         if not set(settings.channels).issubset(self.channels):
@@ -385,12 +413,29 @@ class ScanningProbeInterface(Base):
         """
         pass
 
+    @property
+    @abstractmethod
+    def back_scan_settings(self) -> Optional[ScanSettings]:
+        """ Property returning all parameters of the backwards scan. Returns None if not configured or not available.
+        """
+        pass
+
     @abstractmethod
     def configure_scan(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters needed for a 1D or 2D scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
+        Will reset back scan configuration if back scan is available.
 
         @param ScanSettings settings: ScanSettings instance holding all parameters
+        """
+        pass
+
+    @abstractmethod
+    def configure_back_scan(self, settings: ScanSettings) -> None:
+        """ Configure the hardware with all parameters of the backwards scan.
+        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
+
+        @param ScanSettings settings: ScanSettings instance holding all parameters for the back scan
         """
         pass
 
@@ -466,6 +511,12 @@ class ScanningProbeInterface(Base):
     @abstractmethod
     def get_scan_data(self) -> ScanData:
         """ Retrieve the ScanData instance used in the scan.
+        """
+        pass
+
+    @abstractmethod
+    def get_back_scan_data(self) -> ScanData:
+        """ Retrieve the ScanData instance used in the backwards scan.
         """
         pass
 
