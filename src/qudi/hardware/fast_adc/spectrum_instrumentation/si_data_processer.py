@@ -34,6 +34,8 @@ class DataProcessorUngated:
 
     def _fetch_data(self, curr_avail_reps, user_pos_B):
         self.data.dc_new.data = self.fetcher.fetch_data(curr_avail_reps, user_pos_B).reshape(curr_avail_reps, -1)
+        if self.data.data_info.num_channels == 2:
+            self.data.dc_new.data = self.data.dc_new.dual_ch_data.copy()
         self.data.dc_new.num_rep = curr_avail_reps
 
     def _get_new_avg_data(self):

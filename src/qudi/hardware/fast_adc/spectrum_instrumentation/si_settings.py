@@ -101,6 +101,7 @@ class MeasurementSettings:
     #Fixed
     c_buf_ptr: typing.Any = c_void_p()
     #Given by the config
+    num_channels: int = 1
     gated: bool = False
     init_buf_size_S: int = 0
     reps: int = 0
@@ -153,7 +154,8 @@ class MeasurementSettings:
         The sequence size is the length of data to be recorded in samples.
         The segment size used for the acquisition setting corresponds to the sequence size.
         """
-        self.seq_size_S = int(np.ceil((self.record_length_s / self.binwidth_s) / 16) * 16)  # necessary to be multuples of 16
+        seq_size_S_per_ch = int(np.ceil((self.record_length_s / self.binwidth_s) / 16) * 16)  # necessary to be multuples of 16
+        self.seq_size_S = self.num_channels * seq_size_S_per_ch
         self.seg_size_S = self.seq_size_S
 
     def _calc_gated_data_size_S(self, pre_trigs_S, post_trigs_S):
@@ -166,7 +168,8 @@ class MeasurementSettings:
         """
         self.gate_length_S = int(np.ceil(self.record_length_s / self.binwidth_s))
         self.gate_length_rounded_S = int(np.ceil(self.gate_length_S / self.gate_end_alignment_S) * self.gate_end_alignment_S)
-        self.seg_size_S = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
+        seg_size_S_per_ch = self.gate_length_rounded_S + pre_trigs_S + post_trigs_S
+        self.seg_size_S = self.num_channels * seg_size_S_per_ch
         self.seq_size_S = self.seg_size_S * self.total_gate
         self.ts_seq_size_S = self.ts_seg_size_S * self.total_gate
         self.ts_seq_size_B = self.ts_seg_size_B * self.total_gate

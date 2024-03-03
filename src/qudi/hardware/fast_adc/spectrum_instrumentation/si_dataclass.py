@@ -40,11 +40,12 @@ class Data:
 
     def initialize(self, ms, cs):
         self.data_info.data_bit = ms.data_bits
+        self.data_info.num_channels = ms.num_channels
 
-        self.dc.initialize(ms.total_pulse, ms.seq_size_S)
-        self.dc_new.initialize(ms.total_pulse, ms.seq_size_S)
-        self.avg.initialize(ms.total_pulse, ms.seq_size_S)
-        self.avg_new.initialize(ms.total_pulse, ms.seq_size_S)
+        self.dc.initialize(ms.num_channels, ms.total_pulse, ms.seq_size_S)
+        self.dc_new.initialize(ms.num_channels, ms.total_pulse, ms.seq_size_S)
+        self.avg.initialize(ms.num_channels, ms.total_pulse, ms.seq_size_S)
+        self.avg_new.initialize(ms.num_channels, ms.total_pulse, ms.seq_size_S)
         if ms.gated:
             self.ts = TimeStamp()
             self.ts_new = TimeStamp()
@@ -52,16 +53,18 @@ class Data:
 @dataclass
 class DataClass:
     '''
-    default data structure is (num_pulses, all_pulses)
+    default data structure is (rep_index, all_pulses)
     '''
     data: np.ndarray = np.array([])
+    num_ch: int = 1
     num_pulse: int = 0
     num_rep: int = 0
 
-    def initialize(self, num_pulse, seq_size_S):
-        self.num_rep = 0
+    def initialize(self, num_ch, num_pulse, seq_size_S):
+        self.num_ch = num_ch
         self.num_pulse = num_pulse
         self.data = np.zeros((0, seq_size_S), int)
+        self.num_rep = 0
 
     def stack(self, new_data):
         self.data = np.vstack((self.data, new_data.data))
@@ -75,7 +78,14 @@ class DataClass:
         """
         data reshaped from single multi pulse data into 2d array separated by pulse numbers.
         """
-        return self.data.reshape((self.num_pulse, -1))
+        return self.data.reshape((self.num_pulse * self.num_ch, -1))
+
+    @property
+    def dual_ch_data(self):
+        """"
+        return data reshaped from the pairwise combined data. See 'Data organization' in manual.
+        """
+        return np.hstack((self.data[:, 0::2], self.data[:, 1::2]))
 
 @dataclass
 class AverageDataClass(DataClass):
@@ -84,10 +94,12 @@ class AverageDataClass(DataClass):
     Use pulse_array to get 2d array segmented by reps.
     """
 
-    def initialize(self, num_pulse, seq_size_S):
-        self.num_rep = 0
+    def initialize(self, num_ch, num_pulse, seq_size_S):
+        self.num_ch = num_ch
         self.num_pulse = num_pulse
         self.data = np.empty((0, seq_size_S))
+
+        self.num_rep = 0
 
     def update(self, new_avgdata):
         '''
