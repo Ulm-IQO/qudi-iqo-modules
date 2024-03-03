@@ -69,11 +69,16 @@ class SpectrumInstrumentation(FastCounterInterface):
     si:
         module.Class: 'fast_adc.spectrum_instrumentation.si_main.SpectrumInstrumentation'
         options:
-            ai_ch: CH0
-            ai_range_mV: 2000
-            ai_offset_mV: 0
-            ai_termination: '1MOhm'
-            ai_coupling: 'DC'
+            ai_ch:
+                - 'CH0'
+            ai0_range_mV: 2000
+            ai0_offset_mV: 0
+            ai0_termination: '1MOhm'
+            ai0_coupling: 'DC'
+            ai1_range_mV: 2000
+            ai1_offset_mV: 0
+            ai1_termination: '1MOhm'
+            ai1_coupling: 'DC'
             acq_mode: 'FIFO_GATE'
             acq_HW_avg_num: 1
             acq_pre_trigger_samples: 16

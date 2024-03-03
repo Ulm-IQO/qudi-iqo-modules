@@ -88,9 +88,15 @@ class AnalogInputConfigureCommands:
 
     def set_analog_input_conditions(self, ai_ch):
         spcm_dwSetParam_i32(self._card, SPC_TIMEOUT, 5000)
-        enabled_ch_bitmap = reduce(lambda x, y: self.ai_ch_dict[x]|self.ai_ch_dict[y], ai_ch)
-        spcm_dwSetParam_i32(self._card, SPC_CHENABLE, enabled_ch_bitmap)
+        spcm_dwSetParam_i32(self._card, SPC_CHENABLE, self._get_ch_bitmap(ai_ch))
         return
+
+    def _get_ch_bitmap(self, ai_ch):
+        if len(ai_ch) == 1:
+            enabled_ch_bitmap = self.ai_ch_dict[ai_ch[0]]
+        else:
+            enabled_ch_bitmap = reduce(lambda x, y: self.ai_ch_dict[x]|self.ai_ch_dict[y], ai_ch)
+        return enabled_ch_bitmap
 
     def set_ch0(self, ai_range_mV, ai_offset_mV, ai_term, ai_coupling):
         spcm_dwSetParam_i32(self._card, SPC_AMP0, ai_range_mV) # +- 10 V
