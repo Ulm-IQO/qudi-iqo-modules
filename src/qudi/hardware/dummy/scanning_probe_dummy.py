@@ -27,8 +27,9 @@ from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.constraints import ScalarConstraint
-from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData
-from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel, ScanSettings
+from qudi.interface.scanning_probe_interface import (
+    ScanningProbeInterface, ScanData, ScanConstraints, ScannerAxis, ScannerChannel, ScanSettings, BackScanCapability
+)
 
 
 class ScanningProbeDummy(ScanningProbeInterface):
@@ -76,6 +77,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
 
         # Scan process parameters
         self._scan_settings: Optional[ScanSettings] = None
+        self._back_scan_settings: Optional[ScanSettings] = None
         self._current_position = dict()
         self._scan_image = None
         self._scan_data = None
@@ -114,11 +116,13 @@ class ScanningProbeDummy(ScanningProbeInterface):
         channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype='float64'),
                     ScannerChannel(name='APD events', unit='count', dtype='float64')]
 
-        self._constraints = ScanConstraints(axis_objects=tuple(axes),
-                                            channel_objects=tuple(channels),
-                                            backscan_configurable=False,
-                                            has_position_feedback=False,
-                                            square_px_only=False)
+        self._constraints = ScanConstraints(
+            axis_objects=tuple(axes),
+            channel_objects=tuple(channels),
+            back_scan_capability=BackScanCapability.AVAILABLE | BackScanCapability.FULLY_CONFIGURABLE,
+            has_position_feedback=False,
+            square_px_only=False
+        )
 
         # Set default process values
         self._current_position = {ax.name: np.mean(ax.position.bounds) for ax in self.constraints.axes.values()}
@@ -154,6 +158,11 @@ class ScanningProbeDummy(ScanningProbeInterface):
         """
         with self._thread_lock:
             return self._scan_settings
+
+    @property
+    def back_scan_settings(self) -> Optional[ScanSettings]:
+        with self._thread_lock:
+            return self._back_scan_settings
 
     def _randomize_new_spots(self):
         self._spots = dict()
@@ -217,6 +226,28 @@ class ScanningProbeDummy(ScanningProbeInterface):
             self.constraints.check_settings(settings)
 
             self._scan_settings = settings
+            # reset back scan configuration
+            self._back_scan_settings = self._scan_settings
+
+    def configure_back_scan(self, settings: ScanSettings) -> None:
+        """ Configure the hardware with all parameters of the backwards scan.
+        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
+
+        @param ScanSettings settings: ScanSettings instance holding all parameters for the back scan
+        """
+        with self._thread_lock:
+            if self.module_state() != 'idle':
+                raise RuntimeError('Unable to configure scan parameters while scan is running. '
+                                   'Stop scanning and try again.')
+            if self._scan_settings is None:
+                raise RuntimeError('Configure forward scan settings first.')
+
+            # check settings - will raise appropriate exceptions if something is not right
+            self.constraints.check_back_scan_settings(
+                backward_settings=settings,
+                forward_settings=self._scan_settings
+            )
+            self._back_scan_settings = settings
 
     def move_absolute(self, position, velocity=None, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
@@ -435,6 +466,9 @@ class ScanningProbeDummy(ScanningProbeInterface):
                         elif self.thread() is QtCore.QThread.currentThread():
                             self.__start_timer()
             return self._scan_data.copy()
+
+    def get_back_scan_data(self) -> ScanData:
+        pass
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
