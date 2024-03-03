@@ -262,6 +262,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         self.cmd.card.card_reset()
         self.ms.gated = self.cs.gated
+        self.ms.num_channels = len(self.cs.ai_ch)
 
         set_dynamic_params(binwidth_s, record_length_s, number_of_gates)
 
@@ -333,7 +334,8 @@ class SpectrumInstrumentation(FastCounterInterface):
         If the hardware does not support these features, the values should be None
         """
         with self._threadlock:
-            avg_data = self.data.avg.pulse_array if self.ms.gated else self.data.avg.data
+            avg_data = self.data.avg.pulse_array[0:self.data.avg.num_pulse, :] if self.ms.gated else self.data.avg.data
+            #tentative workaround:
             avg_num = self.data.avg.num_rep
         info_dict = {'elapsed_sweeps': avg_num, 'elapsed_time': time.time() - self.loop_manager.start_time}
 
