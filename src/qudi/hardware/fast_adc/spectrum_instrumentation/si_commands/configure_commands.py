@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import ctypes
-
+from functools import reduce
 from pyspcm import *
 from qudi.hardware.fast_adc.spectrum_instrumentation.si_settings import CardSettings
 
@@ -50,8 +50,12 @@ class ConfigureCommands:
         Collection of all the setting methods.
         """
 
-        self._ai.set_analog_input_conditions(cs.ai_ch, cs.ai_range_mV, cs.ai_offset_mV,
-                                             cs.ai_term, cs.ai_coupling)
+        self._ai.set_analog_input_conditions(cs.ai_ch)
+        if 'CH0' in cs.ai_ch:
+            self._ai.set_ch0(cs.ai_range_mV, cs.ai_offset_mV, cs.ai_term, cs.ai_coupling)
+        if 'CH1' in cs.ai_ch:
+            self._ai.set_ch1(cs.ai_range_mV, cs.ai_offset_mV, cs.ai_term, cs.ai_coupling)
+
         self._acq.set_acquisition_mode(cs.acq_mode, cs.acq_pre_trigs_S, cs.acq_post_trigs_S,
                                        cs.acq_mem_size_S, cs.acq_seg_size_S,
                                        cs.acq_loops, cs.acq_HW_avg_num)
@@ -74,36 +78,31 @@ class ConfigureCommands:
 
 
 class AnalogInputConfigureCommands:
+    ai_ch_dict = {'CH0': CHANNEL0, 'CH1': CHANNEL1}
+    ai_term_dict = {'1MOhm': 0, '50Ohm': 1}
+    ai_coupling_dict = {'DC': 0, 'AC': 1}
+
     def __init__(self, card, log):
         self._card = card
         self._log = log
 
-    def set_analog_input_conditions(self, ai_ch, ai_range_mV, ai_offset_mV, ai_term, ai_coupling):
-        ai_ch_dict ={'CH0': CHANNEL0, 'CH1':CHANNEL1}
+    def set_analog_input_conditions(self, ai_ch):
         spcm_dwSetParam_i32(self._card, SPC_TIMEOUT, 5000)
-        spcm_dwSetParam_i32(self._card, SPC_CHENABLE, ai_ch_dict[ai_ch])
-        if 'CH0' in ai_ch:
-            self._set_ch0(ai_range_mV, ai_offset_mV, ai_term, ai_coupling)
-        elif 'CH1' in ai_ch:
-            self._set_ch1(ai_range_mV, ai_offset_mV, ai_term, ai_coupling)
-
+        enabled_ch_bitmap = reduce(lambda x, y: self.ai_ch_dict[x]|self.ai_ch_dict[y], ai_ch)
+        spcm_dwSetParam_i32(self._card, SPC_CHENABLE, enabled_ch_bitmap)
         return
 
-    def _set_ch0(self, ai_range_mV, ai_offset_mV, ai_term, ai_coupling):
-        ai_term_dict = {'1MOhm':0, '50Ohm':1}
-        ai_coupling_dict = {'DC':0, 'AC':1}
+    def set_ch0(self, ai_range_mV, ai_offset_mV, ai_term, ai_coupling):
         spcm_dwSetParam_i32(self._card, SPC_AMP0, ai_range_mV) # +- 10 V
         spcm_dwSetParam_i32(self._card, SPC_OFFS0, ai_offset_mV)
-        spcm_dwSetParam_i32(self._card, SPC_50OHM0, ai_term_dict[ai_term]) # A "1"("0") sets the 50(1M) ohm termination
-        self._error = spcm_dwSetParam_i32(self._card, SPC_ACDC0, ai_coupling_dict[ai_coupling])  # A "0"("1") sets he DC(AC)coupling
+        spcm_dwSetParam_i32(self._card, SPC_50OHM0, self.ai_term_dict[ai_term]) # A "1"("0") sets the 50(1M) ohm termination
+        self._error = spcm_dwSetParam_i32(self._card, SPC_ACDC0, self.ai_coupling_dict[ai_coupling])  # A "0"("1") sets he DC(AC)coupling
 
-    def _set_ch1(self, ai_range_mV, ai_offset_mV, ai_term, ai_coupling):
-        ai_term_dict = {'1MOhm':0, '50Ohm':1}
-        ai_coupling_dict = {'DC':0, 'AC':1}
+    def set_ch1(self, ai_range_mV, ai_offset_mV, ai_term, ai_coupling):
         spcm_dwSetParam_i32(self._card, SPC_AMP1, ai_range_mV) # +- 10 V
         spcm_dwSetParam_i32(self._card, SPC_OFFS1, ai_offset_mV)
-        spcm_dwSetParam_i32(self._card, SPC_50OHM1, ai_term_dict[ai_term]) # A "1"("0") sets the 50(1M) ohm termination
-        self._error = spcm_dwSetParam_i32(self._card, SPC_ACDC1, ai_coupling_dict[ai_coupling])  # A "0"("1") sets he DC(AC)coupling
+        spcm_dwSetParam_i32(self._card, SPC_50OHM1, self.ai_term_dict[ai_term]) # A "1"("0") sets the 50(1M) ohm termination
+        self._error = spcm_dwSetParam_i32(self._card, SPC_ACDC1, self.ai_coupling_dict[ai_coupling])  # A "0"("1") sets he DC(AC)coupling
 
 class AcquisitionConfigureCommands:
 
