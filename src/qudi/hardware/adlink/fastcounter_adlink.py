@@ -266,6 +266,8 @@ class Adlink9834(FastCounterInterface):
     FastCounter hardware file for the adlink PCIe_9834 card.
     This device is designed as a gated device. Modifications are needed, if used in ungated mode.
 
+    In order to use the hardware with the pulsed tool-chain one needs to use the FastCounterRestartInterfuse
+
     example configuration:
         adlink9834:
             module.Class: 'adlink.fastcounter_adlink.Adlink9834'
@@ -345,7 +347,7 @@ class Adlink9834(FastCounterInterface):
         try:
             self.disarm_card()
         except Exception as e:
-            self.log.error(Exception)
+            self.log.error(e)
         if self._card.value > 0:
             try:
                 self.free_buffers()
