@@ -199,7 +199,7 @@ class AdlinkDefaultSettings:
         self.savefile_location = self.get_default_save_location()
 
         # AI_CH_Config
-        self.ad_range = AdlinkDataTypes.U16()
+        self.ad_range = AdlinkADRange.AD_B_1_V.value
 
         # AI_CH_Config
         self.timebase = AdlinkTimeBase.WD_IntTimeBase.value
@@ -477,8 +477,8 @@ class Adlink9834(FastCounterInterface):
                                                                   ctypes.byref(self._buffer_id1)))
         if self.check_if_error(err, "ContBufferSetup"):
             return
-        self._available_data = np.zeros((self._buffer_size_samples.value,))
-        self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value))
+        self._available_data = np.zeros((self._buffer_size_samples.value,), dtype=np.float64)
+        self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value), dtype=np.float64)
 
         if self._settings.timeout.value > 0:
             err = AdlinkDataTypes.I16(self._dll.WD_AI_SetTimeout(self._card, self._settings.timeout))
@@ -516,8 +516,8 @@ class Adlink9834(FastCounterInterface):
                       f"scan_interval: {self._settings.scan_interval.value},\n"
                       f"retrigger_count: {self._settings.retrigger_count.value}")
         self._sweeps = 0
-        self._available_data = np.zeros((self._buffer_size_samples.value,))
-        self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value))
+        self._available_data = np.zeros((self._buffer_size_samples.value,), dtype=np.float64)
+        self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value), dtype=np.float64)
         self._current_buffer_position = 0
         try:
             self.arm_card()
@@ -627,26 +627,26 @@ class Adlink9834(FastCounterInterface):
 
         if self.get_status() != 1:
             if self._number_of_averages <= 0:
-                data = self.transform_raw_data(self._available_data)
+                transformed_data = self.transform_raw_data(self._available_data)
             else:
-                data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
-            return data, info_dict
+                transformed_data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
+            return transformed_data, info_dict
 
         try:
             raw_data = (self._settings.data_type * self._buffer_size_samples.value).from_address(self._ai_buffer1.value)
-            data = np.array(raw_data, dtype=np.int16)
+            data = np.array(raw_data, dtype=np.float64)
             if self._number_of_averages <= 0:
                 self._available_data += data
-                data = self.transform_raw_data(self._available_data)
+                transformed_data = self.transform_raw_data(self._available_data)
             else:
                 self._data_buffer[self._current_buffer_position] = np.copy(data)
                 self._current_buffer_position += 1
                 if self._current_buffer_position == self._number_of_averages:
                     self._current_buffer_position = 0
-                data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
+                transformed_data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
 
             ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
-            return data, info_dict
+            return transformed_data, info_dict
 
         except Exception as e:
             raise ValueError("Did you invoke the counter settings?") from e
@@ -658,7 +658,7 @@ class Adlink9834(FastCounterInterface):
         temp = data.reshape(-1, self._number_of_gates * self._settings.scancount_per_trigger.value)
         temp = np.sum(temp, axis=0)
         temp = temp.reshape(self._number_of_gates, -1)
-        temp += np.min(temp)
+        temp += np.abs(np.min(temp))
         return temp
 
     def load_dll(self, location: str):
