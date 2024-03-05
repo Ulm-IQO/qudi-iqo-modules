@@ -20,18 +20,16 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-from typing import Optional
 import numpy as np
 from PySide2 import QtCore
 from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
-from qudi.util.constraints import ScalarConstraint
-from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData
-from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel, ScanSettings
+from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData, CoordinateTransformMixin
+from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
 
 
-class ScanningProbeDummy(ScanningProbeInterface):
+class ScanningProbeDummyBare(ScanningProbeInterface):
     """
     Dummy scanning probe microscope. Produces a picture with several gaussian spots.
 
@@ -58,6 +56,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 y: 10e-9
                 z: 50e-9
     """
+    # TODO Bool indicators deprecated; Change in scanning probe toolchain
+
     _threaded = True
 
     # config options
@@ -75,7 +75,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
         super().__init__(*args, **kwargs)
 
         # Scan process parameters
-        self._scan_settings: Optional[ScanSettings] = None
+        self._current_scan_frequency = -1
+        self._current_scan_ranges = [tuple(), tuple()]
+        self._current_scan_axes = tuple()
+        self._current_scan_resolution = tuple()
         self._current_position = dict()
         self._scan_image = None
         self._scan_data = None
@@ -83,7 +86,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         # Randomized spot positions
         self._spots = dict()
         # "Hardware" constraints
-        self._constraints: Optional[ScanConstraints] = None
+        self._constraints = None
         # Mutex for access serialization
         self._thread_lock = RecursiveMutex()
 
@@ -91,43 +94,44 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self.__last_line = -1
         self.__update_timer = None
 
+        # handle to the uncorrected scanner instance, not wrapped by a potential CoordinateTransformMixin
+        # that transforms to a tilted, virtual coordinate system.
+        self.bare_scanner = ScanningProbeDummyBare
+
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        # Generate static constraints
-        axes = list()
-        for axis, ax_range in self._position_ranges.items():
-            dist = max(ax_range) - min(ax_range)
-            resolution_range = tuple(self._resolution_ranges[axis])
-            frequency_range = tuple(self._frequency_ranges[axis])
-
-            position = ScalarConstraint(default=min(ax_range), bounds=ax_range)
-            resolution = ScalarConstraint(default=min(resolution_range), bounds=resolution_range, enforce_int=True)
-            frequency = ScalarConstraint(default=min(frequency_range), bounds=frequency_range)
-            step = ScalarConstraint(default=0, bounds=(0, dist))
-            axes.append(ScannerAxis(name=axis,
-                                    unit='m',
-                                    position=position,
-                                    step=step,
-                                    resolution=resolution,
-                                    frequency=frequency, ))
-        channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype='float64'),
-                    ScannerChannel(name='APD events', unit='count', dtype='float64')]
-
-        self._constraints = ScanConstraints(axis_objects=tuple(axes),
-                                            channel_objects=tuple(channels),
-                                            backscan_configurable=False,
-                                            has_position_feedback=False,
-                                            square_px_only=False)
-
         # Set default process values
-        self._current_position = {ax.name: np.mean(ax.position.bounds) for ax in self.constraints.axes.values()}
-        self._scan_image = None
+        self._current_scan_ranges = tuple(tuple(rng) for rng in tuple(self._position_ranges.values())[:2])
+        self._current_scan_axes = tuple(self._position_ranges)[:2]
+        self._current_scan_frequency = max(self._frequency_ranges[self._current_scan_axes[0]])
+        self._current_scan_resolution = tuple([100] * len(self._current_scan_axes))
+        self._current_position = {ax: min(rng) + (max(rng) - min(rng)) / 2 for ax, rng in
+                                  self._position_ranges.items()}
+        self._scan_image = np.zeros(self._current_scan_resolution)
         self._scan_data = None
 
         # Create fixed maps of spots for each scan axes configuration
         self._randomize_new_spots()
 
+        # Generate static constraints
+        axes = list()
+        for ax, ax_range in self._position_ranges.items():
+            dist = max(ax_range) - min(ax_range)
+            axes.append(ScannerAxis(name=ax,
+                                    unit='m',
+                                    value_range=ax_range,
+                                    step_range=(0, dist),
+                                    resolution_range=self._resolution_ranges[ax],
+                                    frequency_range=self._frequency_ranges[ax]))
+        channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype=np.float64),
+                    ScannerChannel(name='APD events', unit='count', dtype=np.float64)]
+
+        self._constraints = ScanConstraints(axes=axes,
+                                            channels=channels,
+                                            backscan_configurable=False,
+                                            has_position_feedback=False,
+                                            square_px_only=False)
         self.__scan_start = 0
         self.__last_line = -1
         self.__update_timer = QtCore.QTimer()
@@ -149,11 +153,13 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self.__update_timer.timeout.disconnect()
 
     @property
-    def scan_settings(self) -> Optional[ScanSettings]:
-        """ Property returning all parameters needed for a 1D or 2D scan. Returns None if not configured.
-        """
+    def scan_settings(self):
         with self._thread_lock:
-            return self._scan_settings
+            settings = {'axes': tuple(self._current_scan_axes),
+                        'range': tuple(self._current_scan_ranges),
+                        'resolution': tuple(self._current_scan_resolution),
+                        'frequency': self._current_scan_frequency}
+            return settings
 
     def _randomize_new_spots(self):
         self._spots = dict()
@@ -186,37 +192,79 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 self._spots[(x_axis, y_axis)] = spot_dict
 
     def reset(self):
-        """ Hard reset of the hardware.
+        """ Resets the hardware, so the connection is lost and other programs can access it.
+
+        @return int: error code (0:OK, -1:error)
         """
         with self._thread_lock:
             if self.module_state() == 'locked':
                 self.module_state.unlock()
             self.log.debug('Scanning probe dummy has been reset.')
+            return 0
 
-    @property
-    def constraints(self) -> ScanConstraints:
-        """ Read-only property returning the constraints of this scanning probe hardware.
+    def get_constraints(self):
+        """
+
+        @return:
         """
         #self.log.debug('Scanning probe dummy "get_constraints" called.')
         return self._constraints
 
-    def configure_scan(self, settings: ScanSettings) -> None:
-        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
-        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
+    def configure_scan(self, scan_settings):
+        """
 
-        @param ScanSettings settings: ScanSettings instance holding all parameters
+        @param dict scan_settings:
+
+        @return dict: ALL actually set scan settings
         """
         with self._thread_lock:
             self.log.debug('Scanning probe dummy "configure_scan" called.')
             # Sanity checking
             if self.module_state() != 'idle':
-                raise RuntimeError('Unable to configure scan parameters while scan is running. '
-                                   'Stop scanning and try again.')
+                self.log.error('Unable to configure scan parameters while scan is running. '
+                               'Stop scanning and try again.')
+                return True, self.scan_settings
 
-            # check settings - will raise appropriate exceptions if something is not right
-            self.constraints.check_settings(settings)
+            axes = scan_settings.get('axes', self._current_scan_axes)
+            ranges = tuple(
+                (min(r), max(r)) for r in scan_settings.get('range', self._current_scan_ranges)
+            )
+            resolution = scan_settings.get('resolution', self._current_scan_resolution)
+            frequency = float(scan_settings.get('frequency', self._current_scan_frequency))
 
-            self._scan_settings = settings
+            if 'axes' in scan_settings:
+                if not set(axes).issubset(self._position_ranges):
+                    self.log.error('Unknown axes names encountered. Valid axes are: {0}'
+                                   ''.format(set(self._position_ranges)))
+                    return True, self.scan_settings
+
+            if len(axes) != len(ranges) or len(axes) != len(resolution):
+                self.log.error('"axes", "range" and "resolution" must have same length.')
+                return True, self.scan_settings
+            for i, ax in enumerate(axes):
+                for axis_constr in self._constraints.axes.values():
+                    if ax == axis_constr.name:
+                        break
+                if ranges[i][0] < axis_constr.min_value or ranges[i][1] > axis_constr.max_value:
+                    self.log.error('Scan range out of bounds for axis "{0}". Maximum possible range'
+                                   ' is: {1}'.format(ax, axis_constr.value_range))
+                    return True, self.scan_settings
+                if resolution[i] < axis_constr.min_resolution or resolution[i] > axis_constr.max_resolution:
+                    self.log.error('Scan resolution out of bounds for axis "{0}". Maximum possible '
+                                   'range is: {1}'.format(ax, axis_constr.resolution_range))
+                    return True, self.scan_settings
+                if i == 0:
+                    if frequency < axis_constr.min_frequency or frequency > axis_constr.max_frequency:
+                        self.log.error('Scan frequency out of bounds for fast axis "{0}". Maximum '
+                                       'possible range is: {1}'
+                                       ''.format(ax, axis_constr.frequency_range))
+                        return True, self.scan_settings
+
+            self._current_scan_resolution = tuple(resolution)
+            self._current_scan_ranges = ranges
+            self._current_scan_axes = tuple(axes)
+            self._current_scan_frequency = frequency
+            return False, self.scan_settings
 
     def move_absolute(self, position, velocity=None, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
@@ -275,7 +323,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_target" called.')
+            #self.log.debug('Scanning probe dummy "get_target" called.')
             return self._current_position.copy()
 
     def get_position(self):
@@ -284,96 +332,104 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_position" called.')
+            #self.log.debug('Scanning probe dummy "get_position" called.')
             position = {ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in
                         self._current_position.items()}
             return position
 
     def start_scan(self):
-        """Start a scan as configured beforehand.
-        Log an error if something fails or a 1D/2D scan is in progress.
+        """
+        @return:
         """
         with self._thread_lock:
             self.log.debug('Scanning probe dummy "start_scan" called.')
             if self.module_state() != 'idle':
                 self.log.error('Can not start scan. Scan already in progress.')
-            if not self.scan_settings:
-                raise RuntimeError('No scan settings configured. Cannot start scan.')
+                return -1
             self.module_state.lock()
-            if self.scan_settings.scan_dimension == 1:
+            if len(self._current_scan_axes) == 1:
                 for axes, d in self._spots.items():
-                    if axes[0] == self.scan_settings.axes[0]:
+                    if axes[0] == self._current_scan_axes[0]:
                         sim_data = d
             else:
-                sim_data = self._spots[self.scan_settings.axes]
+                sim_data = self._spots[self._current_scan_axes]
             number_of_spots = sim_data['count']
             positions = sim_data['pos']
             amplitudes = sim_data['amp']
             sigmas = sim_data['sigma']
             thetas = sim_data['theta']
 
-            x_values = np.linspace(self.scan_settings.range[0][0],
-                                   self.scan_settings.range[0][1],
-                                   self.scan_settings.resolution[0])
-            if self.scan_settings.scan_dimension == 2:
-                y_values = np.linspace(self.scan_settings.range[1][0],
-                                       self.scan_settings.range[1][1],
-                                       self.scan_settings.resolution[1])
+            x_values = np.linspace(self._current_scan_ranges[0][0],
+                                   self._current_scan_ranges[0][1],
+                                   self._current_scan_resolution[0])
+            if len(self._current_scan_axes) == 2:
+                y_values = np.linspace(self._current_scan_ranges[1][0],
+                                       self._current_scan_ranges[1][1],
+                                       self._current_scan_resolution[1])
             else:
                 y_values = np.linspace(self._current_position['y'], self._current_position['y'], 1)
-            xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
+            xy_grid = self._init_scan_grid(x_values, y_values)
 
             include_dist = self._spot_size_dist[0] + 5 * self._spot_size_dist[1]
-            self._scan_image = np.random.uniform(0, 2e4, self.scan_settings.resolution)
+            self._scan_image = np.random.uniform(0, 2e4, self._current_scan_resolution)
             for i in range(number_of_spots):
-                if positions[i][0] < self.scan_settings.range[0][0] - include_dist:
+                if positions[i][0] < self._current_scan_ranges[0][0] - include_dist:
                     continue
-                if positions[i][0] > self.scan_settings.range[0][1] + include_dist:
+                if positions[i][0] > self._current_scan_ranges[0][1] + include_dist:
                     continue
-                if self.scan_settings.scan_dimension == 1:
+                if len(self._current_scan_axes) == 1:
                     if positions[i][1] < self._current_position['y'] - include_dist:
                         continue
                     if positions[i][1] > self._current_position['y'] + include_dist:
                         continue
                 else:
-                    if positions[i][1] < self.scan_settings.range[1][0] - include_dist:
+                    if positions[i][1] < self._current_scan_ranges[1][0] - include_dist:
                         continue
-                    if positions[i][1] > self.scan_settings.range[1][1] + include_dist:
+                    if positions[i][1] > self._current_scan_ranges[1][1] + include_dist:
                         continue
                 gauss = self._gaussian_2d(xy_grid,
                                           amp=amplitudes[i],
                                           pos=positions[i],
                                           sigma=sigmas[i],
                                           theta=thetas[i])
-                if self.scan_settings.scan_dimension == 1:
+                if len(self._current_scan_axes) == 1:
                     self._scan_image += gauss[:, 0]
                 else:
                     self._scan_image += gauss
 
-            self._scan_data = ScanData.from_constraints(
-                settings=self.scan_settings,
-                constraints=self.constraints,
-                scanner_target_at_start=self.get_target(),
+            if self._constraints.has_position_feedback:
+                feedback_axes = tuple(self._constraints.axes.values())
+            else:
+                feedback_axes = None
+            self._scan_data = ScanData(
+                channels=tuple(self._constraints.channels.values()),
+                scan_axes=tuple(self._constraints.axes[ax] for ax in self._current_scan_axes),
+                scan_range=self._current_scan_ranges,
+                scan_resolution=self._current_scan_resolution,
+                scan_frequency=self._current_scan_frequency,
+                position_feedback_axes=feedback_axes,
+                target_at_start=self.get_target()
             )
 
             self._scan_data.new_scan()
             self.__scan_start = time.time()
             self.__last_line = -1
-            line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
+            line_time = self._current_scan_resolution[0] / self._current_scan_frequency
             self.__update_timer.setInterval(int(round(line_time * 1000)))
             self.__start_timer()
+            return 0
 
     def stop_scan(self):
-        """Stop the currently running scan.
-        Log an error if something fails or no 1D/2D scan is in progress.
+        """ Closes the scanner and cleans up afterwards.
+
+        @return int: error code (0:OK, -1:error)
         """
         with self._thread_lock:
             self.log.debug('Scanning probe dummy "stop_scan" called.')
             if self.module_state() == 'locked':
                 self._scan_image = None
                 self.module_state.unlock()
-            else:
-                self.log.error('No scan in progress. Cannot stop scan.')
+            return 0
 
     def emergency_stop(self):
         """
@@ -384,23 +440,26 @@ class ScanningProbeDummy(ScanningProbeInterface):
             pass
         self._scan_image = None
         self.log.warning('Scanner has been emergency stopped.')
+        return 0
 
-    def get_scan_data(self) -> ScanData:
-        """ Retrieve the ScanData instance used in the scan.
+    def get_scan_data(self):
+        """
+        @return ScanData: ScanData instance used in the scan
         """
         with self._thread_lock:
             # if self.thread() is not QtCore.QThread.currentThread():
-            #     self.log.debug('Scanning probe dummy "scan_data" called.')
+            #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
             if self._scan_data is None:
-                raise RuntimeError('No scan data in hardware.')
+                self.log.debug('No scan data in hardware, returning None')
+                return None
 
             if self.module_state() != 'idle':
                 elapsed = time.time() - self.__scan_start
-                line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
+                line_time = self._current_scan_resolution[0] / self._current_scan_frequency
 
-                if self._scan_data.settings.scan_dimension == 2:
+                if self._scan_data.scan_dimension == 2:
                     acquired_lines = min(int(np.floor(elapsed / line_time)),
-                                         self.scan_settings.resolution[1])
+                                         self._current_scan_resolution[1])
                     if acquired_lines > 0:
                         if self.__last_line < acquired_lines - 1:
                             if self.__last_line < 0:
@@ -411,13 +470,13 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                 self._scan_data.data[ch][:, self.__last_line:acquired_lines] = tmp
 
                             self.__last_line = acquired_lines - 1
-                        if acquired_lines >= self.scan_settings.resolution[1]:
+                        if acquired_lines >= self._current_scan_resolution[1]:
                             self.module_state.unlock()
                         elif self.thread() is QtCore.QThread.currentThread():
                             self.__start_timer()
                 else:
                     acquired_lines = min(int(np.floor(elapsed / line_time)),
-                                         self.scan_settings.resolution[0])
+                                         self._current_scan_resolution[0])
                     if acquired_lines > 0:
                         if self.__last_line < 0:
                             self.__last_line = 0
@@ -430,11 +489,11 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                 self._scan_data.data[ch][self.__last_line:acquired_lines] = tmp
 
                             self.__last_line = acquired_lines - 1
-                        if acquired_lines >= self.scan_settings.resolution[0]:
+                        if acquired_lines >= self._current_scan_resolution[0]:
                             self.module_state.unlock()
                         elif self.thread() is QtCore.QThread.currentThread():
                             self.__start_timer()
-            return self._scan_data.copy()
+            return self._scan_data
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
@@ -451,6 +510,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
+    def _init_scan_grid(self, x_values, y_values):
+        return np.meshgrid(x_values, y_values, indexing='ij')
 
     @staticmethod
     def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
@@ -464,3 +525,26 @@ class ScanningProbeDummy(ScanningProbeInterface):
         y_prime = y - y0
         return offset + amp * np.exp(
             -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
+
+
+class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
+
+    def _init_scan_grid(self, x_values, y_values):
+        # this is fake transformation, as only 2 coordinates of the scan_grid are taken
+
+        vectors = {'x': x_values, 'y': y_values}
+        vectors = self._expand_coordinate(vectors)
+        vectors_tilted = self.coordinate_transform(vectors)
+
+        grid = np.meshgrid(vectors_tilted['x'], vectors_tilted['y'], indexing='ij')
+
+        #if self.coordinate_transform_enabled:
+        #    self.log.debug(f"Transforming scan grid: {grid}")
+
+        return grid
+
+
+
+
+
+
