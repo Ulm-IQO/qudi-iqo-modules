@@ -366,7 +366,7 @@ class MagnetDataLogic(LogicBase):
         """
         image_arr = scan_data.data[channel]
         scan_axes = scan_data.settings.axes
-        scanner_pos = self._scan_logic().scanner_target
+        scanner_pos = self._scan_logic().magnet_target
 
 
         # If no colorbar range was given, take full range of data
@@ -435,8 +435,8 @@ class MagnetDataLogic(LogicBase):
 
         # Draw the colorbar
         cbar = plt.colorbar(cfimage, shrink=0.8)  #, fraction=0.046, pad=0.08, shrink=0.75)
-        if scan_data.channel_units[channel]:
-            cbar.set_label(f'{channel} ({si_prefix_cb}{scan_data.channel_units[channel]})')
+        if scan_data.channel_units:
+            cbar.set_label(f'{channel} ({si_prefix_cb}{scan_data.channel_units})')
         else:
             cbar.set_label(f'{channel}')
 

@@ -112,7 +112,6 @@ class MagnetScanSettings:
     def from_dict(cls, dict_repr):
         """Create instance from dict taking care to convert arguments to tuples."""
         return cls(
-            channels=tuple(dict_repr['channels']),
             axes=tuple(dict_repr['axes']),
             range=tuple((i[0], i[1]) for i in dict_repr['range']),
             resolution=tuple(dict_repr['resolution']),
@@ -217,7 +216,7 @@ class MagnetScanData:
     def from_constraints(cls, settings: MagnetScanSettings, constraints: MagnetConstraints, **kwargs):
         constraints.check_settings(settings)
         _fom_unit = ""
-        _fom_dtype = float
+        _fom_dtype = 'float'
 
         _axis_units = tuple(constraints.axes[ax].unit for ax in settings.axes)
         return cls(
