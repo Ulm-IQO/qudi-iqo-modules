@@ -212,7 +212,10 @@ class MeasurementSettings:
         Maximum repetitions per buffer is used because memory allocation error was observed
         when too big a buffer was defined for lower sampling rate.
         """
-        reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
+        try:
+            reps_per_buf = int(self.init_buf_size_S / self.seq_size_S)
+        except ZeroDivisionError:
+            reps_per_buf = self.max_reps_per_buf
         self.reps_per_buf = int(min(reps_per_buf, self.max_reps_per_buf))
         self.seq_size_B = int(self.seq_size_S * self.data_bytes_B)
 
