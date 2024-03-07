@@ -550,9 +550,9 @@ class MagnetGui(GuiBase):
     def apply_scanner_settings(self):
         """ ToDo: Document
         """
-        # ToDo: Implement backwards scanning functionality
-        forward_freq = {ax: freq[0] for ax, freq in self._ssd.settings_widget.frequency.items()}
-        self.sigScanSettingsChanged.emit({'frequency': forward_freq})
+        # ToDo: make configable
+        #forward_freq = {ax: freq[0] for ax, freq in self._ssd.settings_widget.frequency.items()}
+        self.sigScanSettingsChanged.emit({'frequency': self._scanning_logic().scan_frequency})
 
     @QtCore.Slot()
     def restore_scanner_settings(self):

@@ -161,6 +161,7 @@ class MagnetLogic(LogicBase):
     def scan_frequency(self):
         # todo: no hw scanner. derive scan frequency from FOM mes time?
         with self._thread_lock:
+            return 0.1 # todo: needed or handled in fom?
             return cp.copy(self._scan_frequency)
 
     @property
@@ -272,13 +273,19 @@ class MagnetLogic(LogicBase):
 
     def set_scan_frequency(self, frequency):
         with self._thread_lock:
+            self._scan_frequency = 0.1  # todo handle frequency
+
             if self.module_state() != 'idle':
                 self.log.warning('Scan is running. Unable to change scan frequency.')
                 new_freq = self.scan_frequency
-                self.sigScanSettingsChanged.emit({'frequency': new_freq})
+
+                # todo: this emit seems broken
+                #self.sigScanSettingsChanged.emit({'frequency': new_freq})
+
                 return new_freq
 
-            self._scan_frequency = frequency
+            self._scan_frequency = 0.1   # todo handle frequency
+            #self._scan_frequency = frequency
 
             self.sigScanSettingsChanged.emit({'frequency': self._scan_frequency})
             return self._scan_frequency
@@ -400,13 +407,39 @@ class MagnetLogic(LogicBase):
         # Update scan frequency if needed
         new = float(settings['frequency'])
         if self._scan_frequency != new:
-            self._scan_frequency = new
+            self._scan_frequency = 0.1 # new todo: new
             self.sigScanSettingsChanged.emit({'frequency': self._scan_frequency})
 
     def configure_figure_of_merit(self, func_scalar, func_full, mes_time=1,
                                   name="", unit=""):
 
         fom = MagnetFOM(name, func_scalar, mes_time, unit)
+        self._fom = fom
+
+    def _config_debug_fom_counter(self, mes_time=0.1, handle_counter=None):
+
+        if handle_counter is None:
+            raise ValueError
+
+        counter_logic = handle_counter
+
+        def get_counts():
+            import time
+            # todo: need a public way how to check this
+            if counter_logic.module_state() != 'locked':
+                counter_logic.start_reading()
+            sample_rate = counter_logic.sampling_rate
+            n_samples = int(mes_time*sample_rate)
+
+            time.sleep(mes_time)
+
+            cts_arr = counter_logic.trace_data[1]
+            cts_mean = np.average(next(iter(cts_arr.values()))[-n_samples:])
+
+            return cts_mean
+
+        fom = MagnetFOM('counter', get_counts, mes_time)
+
         self._fom = fom
 
     def _config_debug_fom(self, mes_time=0.1):
@@ -419,21 +452,24 @@ class MagnetLogic(LogicBase):
         dummy_fom = MagnetFOM('dummy', func_scalar, mes_time)
         self._fom = dummy_fom
 
-
     def start_scan(self, scan_axes, caller_id=None):
+
+        self.log.debug(f"Scan started on axes {scan_axes}")
+
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
                 self.log.debug("Aborted scan start. Already running.")
                 return 0
 
-
+            self.log.debug('Locking module..')
             scan_axes = tuple(scan_axes)
             self._curr_caller_id = self.module_uuid if caller_id is None else caller_id
 
             self.module_state.lock()
 
             # todo: settings needed?
+            self.log.debug('Creating scan settings. ')
             settings = MagnetScanSettings(
                 axes=scan_axes,
                 range=tuple(self._scan_ranges[ax] for ax in scan_axes),
@@ -515,7 +551,7 @@ class MagnetLogic(LogicBase):
             coord_dict = {axis: horizontal_line}
 
         elif scan_data.settings.scan_dimension == 2:
-            # todo: check how to include backward scan (should yield meander 2d line)
+            # todo: make scan a meander 2d line
             # need to make meander line default
             horizontal_resolution = scan_data.settings.resolution[0]
             vertical_resolution = scan_data.settings.resolution[1]
@@ -533,19 +569,25 @@ class MagnetLogic(LogicBase):
             vertical_axis = scan_data.settings.axes[1]
             vertical = np.linspace(scan_data.settings.range[1][0], scan_data.settings.range[1][1],
                                    vertical_resolution)
+            self.log.debug(f"Horizontal linspace: {np.min(horizontal_line), np.max(horizontal_line)},"
+                           f"vertical linspace: {np.min(vertical), np.max(vertical)}")
 
-            backwards_line_resolution = horizontal_resolution
             # during horizontal line, the vertical line keeps its value
             vertical_lines = np.repeat(vertical.reshape(vertical_resolution, 1), horizontal_resolution, axis=1)
+
+            """
+            # todo: backscan not implemented. needed at all?
+            backwards_line_resolution = horizontal_resolution
             # during backscan of horizontal, the vertical axis increases its value by "one index"
             vertical_return_lines = np.linspace(vertical[:-1], vertical[1:], backwards_line_resolution).T
             ## need to extend the vertical lines at the end, as we reach it earlier then for the horizontal axes
             vertical_return_lines = np.concatenate((vertical_return_lines,
                                                     np.ones((1, backwards_line_resolution)) * vertical[-1]
                                                     ))
-
+            
             vertical_scan_array = np.concatenate((vertical_lines, vertical_return_lines), axis=1).ravel()
-
+            """
+            vertical_scan_array = vertical_lines.ravel()
 
             coord_dict = {horizontal_axis: horizontal_scan_array,
                           vertical_axis: vertical_scan_array
@@ -567,7 +609,7 @@ class MagnetLogic(LogicBase):
                 if self.module_state() == 'idle':
                     return
 
-                if next(iter(self._magnet().get_status())) != 0:
+                if 0 not in self._magnet().get_status().keys():
                     self.log.warning("Magnet hardware not ready. Aborting scan.")
                     self.stop_scan()
                     return
@@ -577,11 +619,13 @@ class MagnetLogic(LogicBase):
                     return
 
                 target_control = {ax: self._scan_path[ax][self._scan_idx] for ax in self._scan_path.keys()}
-                self.log.debug(f"Next value in scan path: [{self._scan_idx}] {target_control}")
+
                 self._magnet().set_control(target_control, blocking=True)
 
                 # todo: insert into scan data. (always?)
                 actual_control = self._magnet().get_control()
+                self.log.debug(f"Next scan pos: [{self._scan_idx}] {target_control}. Actual control: {actual_control}")
+
 
                 fom_value = self._fom.func()
                 #fom_full_result = self._fom.func_full()
@@ -592,16 +636,8 @@ class MagnetLogic(LogicBase):
                 resolution = self.scan_data.settings.resolution
 
                 self._scan_data.data['FOM'][:] = scan_data_flat.reshape(resolution).T
-                self.log.debug(f"New data: {fom_value}. Scan: {self._scan_data.data['FOM']}")
-                # todo: insert into ScanData object
-                """
-                Get_next_pos(pathway)
-                Set_control_value(blocking=True)
-                Get_control_value()
-                Perform_fom()
-                Save/Emit(control_target, control_actual, fom, meta_data)
+                #self.log.debug(f"New data: {fom_value}. Scan: {self._scan_data.data['FOM']}")
 
-                """
 
                 self._scan_idx += 1
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
