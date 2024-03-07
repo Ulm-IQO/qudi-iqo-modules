@@ -76,6 +76,7 @@ class MagnetLogic(LogicBase):
         self._curr_caller_id = self.module_uuid
 
         self._scan_data = None
+        self._scan_data_flat = None
 
         return
 
@@ -484,26 +485,17 @@ class MagnetLogic(LogicBase):
             self._fom.measurement_time = 1/self.scan_frequency
 
             self._scan_data = MagnetScanData.from_constraints(
-                settings=settings,
-                constraints=self.magnet_constraints
-            )
+                                            settings=settings,
+                                            constraints=self.magnet_constraints)
             self._scan_data.new_scan()
+            self._scan_data_flat = np.copy(self._scan_data.data['FOM']).T.flatten()
             self.log.debug(f'New ScanData created.')
-
 
             self._scan_path = self._init_scan_path(self._scan_data)
             self._scan_idx = 0
 
-
             #self._update_scan_settings(scan_axes, settings)  # check whether can be dropped, most likely
-
             #self.log.debug("Applied new scan settings")
-
-            # Calculate poll time to check for scan completion. Use line scan time estimate.
-            #self.__scan_poll_interval = max(self._min_poll_interval,
-            #                                line_points / self._scan_frequency[scan_axes[0]])
-            #self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
-
 
             self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
             self.__start_timer()
@@ -539,7 +531,21 @@ class MagnetLogic(LogicBase):
                 self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
             """
 
+    def _swap_2nd_rows(self, arr):
+
+        if arr.ndim == 1:
+            return arr
+
+        even_rows = np.arange(arr.shape[0]) % 2 == 1
+        swapped_arr = arr.copy()
+
+        # Swap elements within even-indexed rows
+        swapped_arr[even_rows] = arr[even_rows][:, ::-1]
+
+        return swapped_arr
+
     def _init_scan_path(self, scan_data):
+
         if scan_data.settings.scan_dimension == 1:
 
             axis = scan_data.settings.axes[0]
@@ -551,43 +557,28 @@ class MagnetLogic(LogicBase):
             coord_dict = {axis: horizontal_line}
 
         elif scan_data.settings.scan_dimension == 2:
-            # todo: make scan a meander 2d line
-            # need to make meander line default
+            # todo: do we need a backscan, like in the scanning_probe toolchain?
+
             horizontal_resolution = scan_data.settings.resolution[0]
             vertical_resolution = scan_data.settings.resolution[1]
 
-            # horizontal scan array / "fast axis"
             horizontal_axis = scan_data.settings.axes[0]
+            vertical_axis = scan_data.settings.axes[1]
 
             horizontal_line = np.linspace(scan_data.settings.range[0][0], scan_data.settings.range[0][1],
-                                     horizontal_resolution)
-
-            # need as much lines as we have in the vertical directions
-            horizontal_scan_array = np.tile(horizontal_line, vertical_resolution)
-
-            # vertical scan array / "slow axis"
-            vertical_axis = scan_data.settings.axes[1]
-            vertical = np.linspace(scan_data.settings.range[1][0], scan_data.settings.range[1][1],
-                                   vertical_resolution)
+                                          horizontal_resolution)
+            vertical_line = np.linspace(scan_data.settings.range[1][0], scan_data.settings.range[1][1],
+                                        vertical_resolution)
             self.log.debug(f"Horizontal linspace: {np.min(horizontal_line), np.max(horizontal_line)},"
-                           f"vertical linspace: {np.min(vertical), np.max(vertical)}")
+                           f"vertical linspace: {np.min(vertical_line), np.max(vertical_line)}")
 
-            # during horizontal line, the vertical line keeps its value
-            vertical_lines = np.repeat(vertical.reshape(vertical_resolution, 1), horizontal_resolution, axis=1)
+            h, v = np.meshgrid(horizontal_line, vertical_line)
 
-            """
-            # todo: backscan not implemented. needed at all?
-            backwards_line_resolution = horizontal_resolution
-            # during backscan of horizontal, the vertical axis increases its value by "one index"
-            vertical_return_lines = np.linspace(vertical[:-1], vertical[1:], backwards_line_resolution).T
-            ## need to extend the vertical lines at the end, as we reach it earlier then for the horizontal axes
-            vertical_return_lines = np.concatenate((vertical_return_lines,
-                                                    np.ones((1, backwards_line_resolution)) * vertical[-1]
-                                                    ))
-            
-            vertical_scan_array = np.concatenate((vertical_lines, vertical_return_lines), axis=1).ravel()
-            """
-            vertical_scan_array = vertical_lines.ravel()
+            # make a meander like scan path
+            h, v = self._swap_2nd_rows(h), self._swap_2nd_rows(v)
+
+            horizontal_scan_array = h.ravel()
+            vertical_scan_array = v.ravel()
 
             coord_dict = {horizontal_axis: horizontal_scan_array,
                           vertical_axis: vertical_scan_array
@@ -626,16 +617,14 @@ class MagnetLogic(LogicBase):
                 actual_control = self._magnet().get_control()
                 self.log.debug(f"Next scan pos: [{self._scan_idx}] {target_control}. Actual control: {actual_control}")
 
-
                 fom_value = self._fom.func()
                 #fom_full_result = self._fom.func_full()
 
-                # todo: check that this is working for a meander line scan
-                scan_data_flat = self._scan_data.data['FOM'].T.flatten()
-                scan_data_flat[self._scan_idx] = fom_value
+                self._scan_data_flat[self._scan_idx] = fom_value
                 resolution = self.scan_data.settings.resolution
 
-                self._scan_data.data['FOM'][:] = scan_data_flat.reshape(resolution).T
+                # swap rows, assuming a meander like scan path
+                self._scan_data.data['FOM'][:] = self._swap_2nd_rows(self._scan_data_flat.reshape(resolution)).T
                 #self.log.debug(f"New data: {fom_value}. Scan: {self._scan_data.data['FOM']}")
 
 
