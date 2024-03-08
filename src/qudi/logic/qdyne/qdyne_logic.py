@@ -18,7 +18,6 @@ from os import stat
 import numpy as np
 import time
 from collections import OrderedDict
-from scipy import signal
 from PySide2 import QtCore
 import datetime
 
@@ -33,49 +32,12 @@ from qudi.logic.qdyne.qdyne_measurement import (
 from qudi.logic.qdyne.qdyne_state_estimator import *
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
 from qudi.logic.qdyne.qdyne_fit import QdyneFit
-from qudi.logic.qdyne.qdyne_save import (
-    QdyneSaveSettings, QdyneSave)
+from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
+from qudi.logic.qdyne.qdyne_data_manager import (
+    QdyneSaveSettings, QdyneDataManager)
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
 
-class FreqDomainData:
-    def __init__(self):
-        """"""
-        self.x = None
-        self.y = None
-        self.peaks = []
-        self.current_peak = 0
-        self.range_index = 10
-        self.peak_factor = 10
-
-    def get_peaks(self):
-        mean = self.y.mean()
-        std = self.y.std()
-        height = mean + self.peak_factor * std
-        self.peaks = signal.find_peaks(self.y, height=height)[0]
-
-    @property
-    def data_around_peak(self):
-        x_peak = self.x[self.current_peak - self.range_index: self.current_peak + self.range_index]
-        y_peak = self.y[self.current_peak - self.range_index: self.current_peak + self.range_index]
-        return [x_peak, y_peak]
-
-@dataclass
-class MainDataClass:
-    raw_data: np.ndarray = np.array([], dtype=int)
-    extracted_data: np.ndarray = np.array([], dtype=int)
-    time_trace: np.ndarray = np.array([], dtype=float)
-    signal: np.ndarray = np.array([], dtype=float)
-    spectrum: np.ndarray = np.array([], dtype=float)
-
-    def __init__(self):
-        self.freq_data = FreqDomainData()
-
-    def load_np_data(self, path):
-        self.raw_data = np.load(path)['arr_0']
-
-    def load_spectrum(self, path):
-        self.spectrum = np.load(path)
 
 class MeasurementGenerator:
     """
@@ -202,7 +164,7 @@ class QdyneLogic(LogicBase):
             self.measurement_generator = MeasurementGenerator(self.pulsedmasterlogic)
             self.data = MainDataClass()
             self.fit = QdyneFit(self, self._fit_configs)
-            self.save = QdyneSave(self.module_default_data_dir, self.data_storage_class)
+            self.data_manager = QdyneDataManager(self.module_default_data_dir, self.data)
 #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
@@ -270,10 +232,10 @@ class QdyneLogic(LogicBase):
         self.data.freq_data.y = self.data.spectrum[1]
 
     def save(self):
-        self.save.save_data(self.data.raw_data, self.settings.save_stg.raw_data_options)
-        self.save.save_data(self.data.time_trace, self.settings.save_stg.timetrace_options)
-        self.save.save_data(self.data.signal, self.settings.save_stg.signal_options)
-        pass
+        self.data_manager.save_data('raw_data')
+        self.data_manager.save_data('time_trace')
+        self.data_manager.save_data('spectrum')
+
 
     @QtCore.Slot(str)
     def set_tt_filename(self, name):

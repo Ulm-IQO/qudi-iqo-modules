@@ -1,93 +1,67 @@
-from dataclasses import dataclass
+# -*- coding: utf-8 -*-
+"""
+This module contains a Qdyne manager class.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
+This file is part of qudi.
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
+"""
+
 import numpy as np
 
-#####Dataclass#####
-@dataclass
-class TimeSeriesDataclass:
-    data: np.ndarray = np.array([], dtype=float)
-
-@dataclass
-class TimeTagDataclass:
-    data: np.ndarray = np.array([], dtype=float)
-    hist:
-    rise_edge:
-    fall_edge:
-    MN: int=5
-
-    def get_histogram(self, time_tag):
-        count_hist, bin_edges= np.histogram(time_tag, max(time_tag))
-        return count_hist
-    def get_histogram_N(self, time_tag, N):
-        count_hist, bin_edges= np.histogram(time_tag, bins=N, range=(1,N))
-        return  count_hist
-
-    def get_start_count(self):
-        count_hist = self.get_histogram()
-        return np.where(count_hist[1:] > len(self.data) / self.MN) #TODO what is MN?
+from dataclasses import dataclass
+from scipy import signal
 
 
-@dataclass
-class FT_dataclass:
-    frequency: np.ndarray = np.array([], dtype=float)
-    data: np.arra = np.array([], dtype=float)
+class FreqDomainData:
+    def __init__(self):
+        """"""
+        self.x = None
+        self.y = None
+        self.peaks = []
+        self.current_peak = 0
+        self.range_index = 10
+        self.peak_factor = 10
+
+    def get_peaks(self):
+        mean = self.y.mean()
+        std = self.y.std()
+        height = mean + self.peak_factor * std
+        self.peaks = signal.find_peaks(self.y, height=height)[0]
 
     @property
-    def peak_index(self):
-        return np.argmax(self.data)
-
-#####Settings#####
-@dataclass
-class SequenceGeneratorSettings:
-    pass
+    def data_around_peak(self):
+        x_peak = self.x[self.current_peak - self.range_index: self.current_peak + self.range_index]
+        y_peak = self.y[self.current_peak - self.range_index: self.current_peak + self.range_index]
+        return [x_peak, y_peak]
 
 @dataclass
-class CounterSettings:
-    bin_width: float  = 0
-    record_length: float = 0
-    number_of_gates: int = 1
+class MainDataClass:
+    raw_data: np.ndarray = np.array([], dtype=int)
+    extracted_data: np.ndarray = np.array([], dtype=int)
+    time_trace: np.ndarray = np.array([], dtype=float)
+    signal: np.ndarray = np.array([], dtype=float)
+    spectrum: np.ndarray = np.array([], dtype=float)
 
-@dataclass
-class MeasuremenSsettings(Sequence_generator_settings, Counter_settings):
-    pass
-
-@dataclass
-class Master_settings:
-    status: dict = {} #TODO more specific
-    estimated_measurement_time: float = 0
-    update_time: float = 0
-    extraction_method: str = ''
-    fit_method: str = ''
-
-
-@dataclass
-class readout_settings:
-    filename: str = ''
-    headerlength: int = 72
-    read_lines: int = 0
-    lines_to_read: int = 0
-    lines_per_chunk: int = 10000
+    def __init__(self):
+        self.freq_data = FreqDomainData()
 
     @property
-    def number_of_chunks(self):
-        if self.lines_to_read is None:
-            number_of_chunks = float('inf')
-        else:
-            number_of_chunks = int(lines_to_read / lines_per_chunk)
-        return number_of_chunks
+    def data_list(self):
+        return [attr for attr in dir(self.__class__) if not attr.startswith('__')
+                and not callable(getattr(self, attr))]
 
 
-@dataclass
-class FitSettings:
-    pass
-@dataclass
-class SaveSettings:
-    save_binary: bool = True
-    show_full: bool = True
-    full_list_name: str = ''
-    file_extension: str = ''
+    def load_np_data(self, path):
+        self.raw_data = np.load(path)['arr_0']
 
-    def get_full_list_name(self):
-        pass
+    def load_spectrum(self, path):
+        self.spectrum = np.load(path)
 
-@dataclass
-class PlotSettings:
