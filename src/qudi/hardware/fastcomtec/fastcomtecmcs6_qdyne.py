@@ -22,11 +22,10 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import ctypes
 import numpy as np
-from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence
+from typing import Union, List, Sequence
 import time
 from os import path
 from psutil import virtual_memory
-from psutil._common import bytes2human
 from itertools import islice
 
 from qudi.util.datastorage import create_dir_for_file
@@ -34,8 +33,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.constraints import ScalarConstraint
 from qudi.util.mutex import Mutex
 from qudi.interface.qdyne_counter_interface import GateMode, QdyneCounterInterface, QdyneCounterConstraints, CounterType
-from qudi.hardware.fastcomtec.fastcomtecmcs6 import AcqStatus, BOARDSETTING, ACQDATA, AcqSettings, \
-FastComtec
+from qudi.hardware.fastcomtec.fastcomtecmcs6 import AcqStatus, BOARDSETTING, AcqSettings
 
 
 class FastComtecQdyneCounter(QdyneCounterInterface):
