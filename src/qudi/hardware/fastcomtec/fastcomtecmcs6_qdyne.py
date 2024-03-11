@@ -342,6 +342,155 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
 
         return self.minimal_binwidth*(2**new_bitshift)
 
+    def change_sweep_mode(self, gated, cycles=None, preset=None):
+        """ Change the sweep mode (gated, ungated)
+
+        @param bool gated: Gated or ungated
+        @param int cycles: Optional, change number of cycles. If gated = number of laser pulses.
+        @param int preset: Optional, change number of preset. If gated, typically = 1.
+        """
+
+        # Reduce length to prevent crashes
+        #self.set_length(1440)
+        if gated:
+            self.set_cycle_mode(sequential_mode=True, cycles=cycles)
+            self.set_preset_mode(mode=16, preset=preset)
+            self.gated = True
+        else:
+            self.set_cycle_mode(sequential_mode=False, cycles=cycles)
+            self.set_preset_mode(mode=0, preset=preset)
+            self.gated = False
+        return gated
+
+    def set_length(self, length_bins):
+        """ Sets the length of the length of the actual measurement.
+
+        @param int length_bins: Length of the measurement in bins
+
+        @return float: Red out length of measurement
+        """
+        # First check if no constraint is
+        constraints = self.get_constraints()
+        if self.is_gated():
+            cycles = self.get_cycles()
+        else:
+            cycles = 1
+        if length_bins *  cycles < constraints['max_bins']:
+            # Smallest increment is 64 bins. Since it is better if the range is too short than too long, round down
+            length_bins = int(64 * int(length_bins / 64))
+            cmd = 'RANGE={0}'.format(int(length_bins))
+            self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+            #cmd = 'roimax={0}'.format(int(length_bins))
+            #self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+
+            # insert sleep time, otherwise fast counter crashed sometimes!
+            time.sleep(0.5)
+            return length_bins
+        else:
+            self.log.error('Dimensions {0} are too large for fast counter1!'.format(length_bins *  cycles))
+            return -1
+
+    def set_cycles(self, cycles):
+        """ Sets the cycles
+
+        @param int cycles: Total amount of cycles
+
+        @return int mode: current cycles
+        """
+        # Check that no constraint is violated
+        constraints = self.get_constraints()
+        if cycles == 0:
+            cycles = 1
+        if self.get_length() * cycles  < constraints['max_bins']:
+            cmd = 'cycles={0}'.format(cycles)
+            self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+            time.sleep(0.5)
+            return cycles
+        else:
+            self.log.error('Dimensions {0} are too large for fast counter!'.format(self.get_length() * cycles))
+            return -1
+
+    def get_length(self):
+        """ Get the length of the current measurement.
+
+          @return int: length of the current measurement in bins
+        """
+
+        if self.is_gated():
+            cycles = self.get_cycles()
+            if cycles ==0:
+                cycles = 1
+        else:
+            cycles = 1
+        setting = AcqSettings()
+        self.dll.GetSettingData(ctypes.byref(setting), 0)
+        length = int(setting.range / cycles)
+        return length
+
+    def get_cycles(self):
+        """ Gets the cycles
+        @return int mode: current cycles
+        """
+        bsetting = BOARDSETTING()
+        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
+        cycles = bsetting.cycles
+        return cycles
+
+    def set_cycle_mode(self, sequential_mode=True, cycles=None):
+        """ Turns on or off the sequential cycle mode that writes to new memory on every
+        sync trigger. If disabled, photons are summed.
+
+        @param bool sequential_mode: Set or unset cycle mode for sequential acquisition
+        @param int cycles: Optional, Change number of cycles
+
+        @return: just the input
+        """
+        # First set cycles to 1 to prevent crashes
+
+        cycles_old = self.get_cycles() if cycles is None else cycles
+        self.set_cycles(1)
+
+        # Turn on or off sequential cycle mode
+        if sequential_mode:
+            cmd = 'sweepmode={0}'.format(hex(1978500))
+        else:
+            cmd = 'sweepmode={0}'.format(hex(1978496))
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+
+        self.set_cycles(cycles_old)
+
+        return sequential_mode, cycles
+
+    def set_preset_mode(self, mode=16, preset=None):
+        """ Turns on or off a specific preset mode
+
+        @param int mode: O for off, 4 for sweep preset, 16 for start preset
+        @param int preset: Optional, change number of presets
+
+        @return just the input
+        """
+
+        # Specify preset mode
+        cmd = 'prena={0}'.format(hex(mode))
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+
+        # Set the cycles if specified
+        if preset is not None:
+            self.set_preset(preset)
+
+        return mode, preset
+
+    def set_preset(self, preset):
+        """ Sets the preset/
+
+        @param int preset: Preset in sweeps of starts
+
+        @return int mode: specified save mode
+        """
+        cmd = 'swpreset={0}'.format(preset)
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+        return preset
+
     ################################ Methods for saving ################################
 
     def change_filename(self, name: str):
@@ -495,151 +644,3 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self._has_overflown = False
         return
 
-    def change_sweep_mode(self, gated, cycles=None, preset=None):
-        """ Change the sweep mode (gated, ungated)
-
-        @param bool gated: Gated or ungated
-        @param int cycles: Optional, change number of cycles. If gated = number of laser pulses.
-        @param int preset: Optional, change number of preset. If gated, typically = 1.
-        """
-
-        # Reduce length to prevent crashes
-        #self.set_length(1440)
-        if gated:
-            self.set_cycle_mode(sequential_mode=True, cycles=cycles)
-            self.set_preset_mode(mode=16, preset=preset)
-            self.gated = True
-        else:
-            self.set_cycle_mode(sequential_mode=False, cycles=cycles)
-            self.set_preset_mode(mode=0, preset=preset)
-            self.gated = False
-        return gated
-
-    def set_length(self, length_bins):
-        """ Sets the length of the length of the actual measurement.
-
-        @param int length_bins: Length of the measurement in bins
-
-        @return float: Red out length of measurement
-        """
-        # First check if no constraint is
-        constraints = self.get_constraints()
-        if self.is_gated():
-            cycles = self.get_cycles()
-        else:
-            cycles = 1
-        if length_bins *  cycles < constraints['max_bins']:
-            # Smallest increment is 64 bins. Since it is better if the range is too short than too long, round down
-            length_bins = int(64 * int(length_bins / 64))
-            cmd = 'RANGE={0}'.format(int(length_bins))
-            self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-            #cmd = 'roimax={0}'.format(int(length_bins))
-            #self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-
-            # insert sleep time, otherwise fast counter crashed sometimes!
-            time.sleep(0.5)
-            return length_bins
-        else:
-            self.log.error('Dimensions {0} are too large for fast counter1!'.format(length_bins *  cycles))
-            return -1
-
-    def set_cycles(self, cycles):
-        """ Sets the cycles
-
-        @param int cycles: Total amount of cycles
-
-        @return int mode: current cycles
-        """
-        # Check that no constraint is violated
-        constraints = self.get_constraints()
-        if cycles == 0:
-            cycles = 1
-        if self.get_length() * cycles  < constraints['max_bins']:
-            cmd = 'cycles={0}'.format(cycles)
-            self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-            time.sleep(0.5)
-            return cycles
-        else:
-            self.log.error('Dimensions {0} are too large for fast counter!'.format(self.get_length() * cycles))
-            return -1
-
-    def get_length(self):
-        """ Get the length of the current measurement.
-
-          @return int: length of the current measurement in bins
-        """
-
-        if self.is_gated():
-            cycles = self.get_cycles()
-            if cycles ==0:
-                cycles = 1
-        else:
-            cycles = 1
-        setting = AcqSettings()
-        self.dll.GetSettingData(ctypes.byref(setting), 0)
-        length = int(setting.range / cycles)
-        return length
-
-    def get_cycles(self):
-        """ Gets the cycles
-        @return int mode: current cycles
-        """
-        bsetting = BOARDSETTING()
-        self.dll.GetMCSSetting(ctypes.byref(bsetting), 0)
-        cycles = bsetting.cycles
-        return cycles
-
-    def set_cycle_mode(self, sequential_mode=True, cycles=None):
-        """ Turns on or off the sequential cycle mode that writes to new memory on every
-        sync trigger. If disabled, photons are summed.
-
-        @param bool sequential_mode: Set or unset cycle mode for sequential acquisition
-        @param int cycles: Optional, Change number of cycles
-
-        @return: just the input
-        """
-        # First set cycles to 1 to prevent crashes
-
-        cycles_old = self.get_cycles() if cycles is None else cycles
-        self.set_cycles(1)
-
-        # Turn on or off sequential cycle mode
-        if sequential_mode:
-            cmd = 'sweepmode={0}'.format(hex(1978500))
-        else:
-            cmd = 'sweepmode={0}'.format(hex(1978496))
-        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-
-        self.set_cycles(cycles_old)
-
-        return sequential_mode, cycles
-
-    def set_preset_mode(self, mode=16, preset=None):
-        """ Turns on or off a specific preset mode
-
-        @param int mode: O for off, 4 for sweep preset, 16 for start preset
-        @param int preset: Optional, change number of presets
-
-        @return just the input
-        """
-
-        # Specify preset mode
-        cmd = 'prena={0}'.format(hex(mode))
-        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-
-        # Set the cycles if specified
-        if preset is not None:
-            self.set_preset(preset)
-
-        return mode, preset
-
-    def set_preset(self, preset):
-        """ Sets the preset/
-
-        @param int preset: Preset in sweeps of starts
-
-        @return int mode: specified save mode
-        """
-        cmd = 'swpreset={0}'.format(preset)
-        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-        return preset
