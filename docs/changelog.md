@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 ### Bugfixes
+- "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
 
 ### New Features
 - Improved support for Stanford Research Systems signal generators
