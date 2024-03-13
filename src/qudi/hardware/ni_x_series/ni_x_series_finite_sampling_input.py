@@ -74,7 +74,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
         name='external_sample_clock_frequency', default=None, missing='nothing')
 
     _physical_sample_clock_output = ConfigOption(name='sample_clock_output', default=None)
-    _trigger_edge = ConfigOption(name='trigger_edge', default=ni.constants.Edge.RISING,
+    _trigger_edge = ConfigOption(name='trigger_edge', default="RISING",
                                  constructor=lambda x: ni.constants.Edge[x.upper()], missing='warn')
 
     _adc_voltage_range = ConfigOption('adc_voltage_range', default=(-10, 10), missing='info')
@@ -507,7 +507,7 @@ class NIXSeriesFiniteSamplingInput(FiniteSamplingInputInterface):
                 task.co_channels.add_co_pulse_chan_freq(
                     '/{0}/{1}'.format(self._device_name, src),
                     freq=self._sample_rate,
-                    idle_state=ni.constants.Level.HIGH if self._trigger_edge == ni.constants.Edge.RISING else ni.constants.Level.LOW)
+                    idle_state=ni.constants.Level.HIGH if self._trigger_edge==ni.constants.Edge.FALLING else ni.constants.Level.LOW)
                 task.timing.cfg_implicit_timing(
                     sample_mode=ni.constants.AcquisitionType.FINITE,
                     samps_per_chan=self._frame_size + 1)
