@@ -113,7 +113,7 @@ class QdyneLogic(LogicBase):
 
     # declare connectors
     pulsedmasterlogic = Connector(interface='PulsedMasterLogic')
-    #pmeasure = Connector(interface='PulsedMeasurementLogic')
+    pulsedmeasurementlogic = Connector(interface='PulsedMeasurementLogic')
     _data_streamer = Connector(name='data_streamer', interface='DataInStreamInterface')
 
     # declare config options
@@ -213,6 +213,7 @@ class QdyneLogic(LogicBase):
         self.data.raw_data = np.append(self.data.raw_data, new_data)
 
     def get_pulse(self):
+        self.estimator.configure_method(self.settings.estimator_stg.current_method)
         return self.estimator.get_pulse(self.data.raw_data, self.settings.estimator_stg.current_setting)
 
     def extract_data(self):

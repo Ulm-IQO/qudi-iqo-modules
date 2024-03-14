@@ -55,7 +55,6 @@ class QdyneSettings:
     def __init__(self):
         self.estimator_stg = SettingsManager(StateEstimatorSettings)
         self.analyzer_stg = SettingsManager(AnalyzerSettings)
-        self.save_stg = QdyneSaveSettings()
 
 class SettingsManager():
 
