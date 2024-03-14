@@ -57,9 +57,9 @@ class ConfigureCommands:
 
         self._ai.set_analog_input_conditions(cs.ai_ch)
         if 'CH0' in cs.ai_ch:
-            self._ai.set_ch1(cs.ai0_range_mV, cs.ai0_offset_mV, cs.ai0_term, cs.ai0_coupling)
+            self._ai.set_ch0(cs.ai0_range_mV, cs.ai0_offset_mV, cs.ai0_term, cs.ai0_coupling)
         if 'CH1' in cs.ai_ch:
-            self._ai.set_ch0(cs.ai1_range_mV, cs.ai1_offset_mV, cs.ai1_term, cs.ai1_coupling)
+            self._ai.set_ch1(cs.ai1_range_mV, cs.ai1_offset_mV, cs.ai1_term, cs.ai1_coupling)
 
         self._acq.set_acquisition_mode(cs.acq_mode, cs.acq_pre_trigs_S, cs.acq_post_trigs_S,
                                        cs.acq_mem_size_S, cs.acq_seg_size_S,
