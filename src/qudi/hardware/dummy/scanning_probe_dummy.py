@@ -197,6 +197,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self._current_position = dict()
         self._scan_image = None
         self._scan_data = None
+        self._back_scan_data = None
 
         self._image_generator: Optional[ImageGenerator] = None
         # "Hardware" constraints
@@ -243,6 +244,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self._current_position = {ax.name: np.mean(ax.position.bounds) for ax in self.constraints.axes.values()}
         self._scan_image = None
         self._scan_data = None
+        self._back_scan_data = None
 
         # Create fixed maps of spots for each scan axes configuration
         self._image_generator = ImageGenerator(
@@ -257,7 +259,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self.__last_line = -1
         self.__update_timer = QtCore.QTimer()
         self.__update_timer.setSingleShot(True)
-        self.__update_timer.timeout.connect(self.get_scan_data, QtCore.Qt.QueuedConnection)
+        self.__update_timer.timeout.connect(self._update_scan_data, QtCore.Qt.QueuedConnection)
         return
 
     def on_deactivate(self):
@@ -433,8 +435,14 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 constraints=self.constraints,
                 scanner_target_at_start=self.get_target(),
             )
+            self._back_scan_data = ScanData.from_constraints(
+                settings=self.back_scan_settings,
+                constraints=self.constraints,
+                scanner_target_at_start=self.get_target(),
+            )
 
             self._scan_data.new_scan()
+            self._back_scan_data.new_scan()
             self.__scan_start = time.time()
             self.__last_line = -1
             line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
@@ -463,59 +471,66 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self._scan_image = None
         self.log.warning('Scanner has been emergency stopped.')
 
+    def _update_scan_data(self):
+        with self._thread_lock:
+            if self.module_state() == 'idle':
+                return
+
+            elapsed = time.time() - self.__scan_start
+            line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
+
+            if self._scan_data.settings.scan_dimension == 2:
+                acquired_lines = min(int(np.floor(elapsed / line_time)),
+                                     self.scan_settings.resolution[1])
+                if acquired_lines > 0:
+                    if self.__last_line < acquired_lines - 1:
+                        if self.__last_line < 0:
+                            self.__last_line = 0
+
+                        for ch in self._constraints.channels:
+                            tmp = self._scan_image[:, self.__last_line:acquired_lines]
+                            self._scan_data.data[ch][:, self.__last_line:acquired_lines] = tmp
+
+                        self.__last_line = acquired_lines - 1
+                    if acquired_lines >= self.scan_settings.resolution[1]:
+                        self.module_state.unlock()
+                    elif self.thread() is QtCore.QThread.currentThread():
+                        self.__start_timer()
+            else:
+                acquired_lines = min(int(np.floor(elapsed / line_time)),
+                                     self.scan_settings.resolution[0])
+                if acquired_lines > 0:
+                    if self.__last_line < 0:
+                        self.__last_line = 0
+                    if self.__last_line < acquired_lines - 1:
+                        if self.__last_line < 0:
+                            self.__last_line = 0
+
+                        for ch in self.scan_settings.channels:
+                            tmp = self._scan_image[self.__last_line:acquired_lines]
+                            self._scan_data.data[ch][self.__last_line:acquired_lines] = tmp
+
+                        self.__last_line = acquired_lines - 1
+                    if acquired_lines >= self.scan_settings.resolution[0]:
+                        self.module_state.unlock()
+                    elif self.thread() is QtCore.QThread.currentThread():
+                        self.__start_timer()
+
     def get_scan_data(self) -> ScanData:
         """ Retrieve the ScanData instance used in the scan.
         """
         with self._thread_lock:
-            # if self.thread() is not QtCore.QThread.currentThread():
-            #     self.log.debug('Scanning probe dummy "scan_data" called.')
             if self._scan_data is None:
                 raise RuntimeError('No scan data in hardware.')
-
-            if self.module_state() != 'idle':
-                elapsed = time.time() - self.__scan_start
-                line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
-
-                if self._scan_data.settings.scan_dimension == 2:
-                    acquired_lines = min(int(np.floor(elapsed / line_time)),
-                                         self.scan_settings.resolution[1])
-                    if acquired_lines > 0:
-                        if self.__last_line < acquired_lines - 1:
-                            if self.__last_line < 0:
-                                self.__last_line = 0
-
-                            for ch in self._constraints.channels:
-                                tmp = self._scan_image[:, self.__last_line:acquired_lines]
-                                self._scan_data.data[ch][:, self.__last_line:acquired_lines] = tmp
-
-                            self.__last_line = acquired_lines - 1
-                        if acquired_lines >= self.scan_settings.resolution[1]:
-                            self.module_state.unlock()
-                        elif self.thread() is QtCore.QThread.currentThread():
-                            self.__start_timer()
-                else:
-                    acquired_lines = min(int(np.floor(elapsed / line_time)),
-                                         self.scan_settings.resolution[0])
-                    if acquired_lines > 0:
-                        if self.__last_line < 0:
-                            self.__last_line = 0
-                        if self.__last_line < acquired_lines - 1:
-                            if self.__last_line < 0:
-                                self.__last_line = 0
-
-                            for ch in self.scan_settings.channels:
-                                tmp = self._scan_image[self.__last_line:acquired_lines]
-                                self._scan_data.data[ch][self.__last_line:acquired_lines] = tmp
-
-                            self.__last_line = acquired_lines - 1
-                        if acquired_lines >= self.scan_settings.resolution[0]:
-                            self.module_state.unlock()
-                        elif self.thread() is QtCore.QThread.currentThread():
-                            self.__start_timer()
             return self._scan_data.copy()
 
     def get_back_scan_data(self) -> ScanData:
-        pass
+        """ Retrieve the ScanData instance used in the backwards scan.
+        """
+        with self._thread_lock:
+            if self._back_scan_data is None:
+                raise RuntimeError('No back scan data in hardware.')
+            return self._back_scan_data.copy()
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
