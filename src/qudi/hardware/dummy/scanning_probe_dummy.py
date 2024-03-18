@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, Tuple, Any
 import numpy as np
 from PySide2 import QtCore
 from fysom import FysomError
@@ -30,6 +30,122 @@ from qudi.util.constraints import ScalarConstraint
 from qudi.interface.scanning_probe_interface import (
     ScanningProbeInterface, ScanData, ScanConstraints, ScannerAxis, ScannerChannel, ScanSettings, BackScanCapability
 )
+
+
+class ImageGenerator:
+    """Generate 1D and 2D images with random Gaussian spots."""
+    def __init__(self,
+                 position_ranges: Dict[str, list[float]],
+                 spot_density: float,
+                 spot_size_dist: list[float],
+                 spot_amplitude_dist: list[float],
+                 spot_depth_range: list[float],  # currently unused
+                 ) -> None:
+        self.position_ranges = position_ranges
+        self.spot_density = spot_density
+        self.spot_size_dist = tuple(spot_size_dist)
+        self.spot_amplitude_dist = tuple(spot_amplitude_dist)
+
+        # random spots for each 2D axes pair
+        self._spots: Dict[Tuple[str, str], Any] = {}
+        self.randomize_new_spots()
+
+    def randomize_new_spots(self):
+        """Create a random set of Gaussian 2D peaks."""
+        self._spots = dict()
+        for x_axis, x_range in self.position_ranges.items():
+            for y_axis, y_range in self.position_ranges.items():
+                if x_axis == y_axis:
+                    continue
+                x_min, x_max = min(x_range), max(x_range)
+                y_min, y_max = min(y_range), max(y_range)
+                spot_count = int(round((x_max - x_min) * (y_max - y_min) * self.spot_density))
+
+                # Fill in random spot information
+                spot_dict = dict()
+                # total number of spots
+                spot_dict['count'] = spot_count
+                # spot positions as (x, y) tuples
+                spot_dict['pos'] = np.empty((spot_count, 2))
+                spot_dict['pos'][:, 0] = np.random.uniform(x_min, x_max, spot_count)
+                spot_dict['pos'][:, 1] = np.random.uniform(y_min, y_max, spot_count)
+                # spot sizes as (sigma_x, sigma_y) tuples
+                spot_dict['sigma'] = np.random.normal(
+                    self.spot_size_dist[0], self.spot_size_dist[1], (spot_count, 2))
+                # spot amplitudes
+                spot_dict['amp'] = np.random.normal(
+                    self.spot_amplitude_dist[0], self.spot_amplitude_dist[1], spot_count)
+                # spot angle
+                spot_dict['theta'] = np.random.uniform(0, np.pi, spot_count)
+
+                # Add information to _spots dict
+                self._spots[(x_axis, y_axis)] = spot_dict
+
+    def generate_2d_image(self, scan_settings: ScanSettings, current_position):
+        if scan_settings.scan_dimension == 1:
+            for axes, d in self._spots.items():
+                if axes[0] == scan_settings.axes[0]:
+                    sim_data = d
+        else:
+            sim_data = self._spots[scan_settings.axes]
+        number_of_spots = sim_data['count']
+        positions = sim_data['pos']
+        amplitudes = sim_data['amp']
+        sigmas = sim_data['sigma']
+        thetas = sim_data['theta']
+
+        x_values = np.linspace(scan_settings.range[0][0],
+                               scan_settings.range[0][1],
+                               scan_settings.resolution[0])
+        if scan_settings.scan_dimension == 2:
+            y_values = np.linspace(scan_settings.range[1][0],
+                                   scan_settings.range[1][1],
+                                   scan_settings.resolution[1])
+        else:
+            y_values = np.linspace(current_position['y'], current_position['y'], 1)
+        xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
+
+        include_dist = self.spot_size_dist[0] + 5 * self.spot_size_dist[1]
+        scan_image = np.random.uniform(0, 2e4, scan_settings.resolution)
+        for i in range(number_of_spots):
+            if positions[i][0] < scan_settings.range[0][0] - include_dist:
+                continue
+            if positions[i][0] > scan_settings.range[0][1] + include_dist:
+                continue
+            if scan_settings.scan_dimension == 1:
+                if positions[i][1] < current_position['y'] - include_dist:
+                    continue
+                if positions[i][1] > current_position['y'] + include_dist:
+                    continue
+            else:
+                if positions[i][1] < scan_settings.range[1][0] - include_dist:
+                    continue
+                if positions[i][1] > scan_settings.range[1][1] + include_dist:
+                    continue
+            gauss = self._gaussian_2d(xy_grid,
+                                      amp=amplitudes[i],
+                                      pos=positions[i],
+                                      sigma=sigmas[i],
+                                      theta=thetas[i])
+
+            if scan_settings.scan_dimension == 1:
+                scan_image += gauss[:, 0]
+            else:
+                scan_image += gauss
+        return scan_image
+
+    @staticmethod
+    def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
+        x, y = xy
+        sigx, sigy = sigma
+        x0, y0 = pos
+        a = np.cos(-theta) ** 2 / (2 * sigx ** 2) + np.sin(-theta) ** 2 / (2 * sigy ** 2)
+        b = np.sin(2 * -theta) / (4 * sigy ** 2) - np.sin(2 * -theta) / (4 * sigx ** 2)
+        c = np.sin(-theta) ** 2 / (2 * sigx ** 2) + np.cos(-theta) ** 2 / (2 * sigy ** 2)
+        x_prime = x - x0
+        y_prime = y - y0
+        return offset + amp * np.exp(
+            -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
 
 
 class ScanningProbeDummy(ScanningProbeInterface):
@@ -82,8 +198,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self._scan_image = None
         self._scan_data = None
 
-        # Randomized spot positions
-        self._spots = dict()
+        self._image_generator: Optional[ImageGenerator] = None
         # "Hardware" constraints
         self._constraints: Optional[ScanConstraints] = None
         # Mutex for access serialization
@@ -130,7 +245,13 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self._scan_data = None
 
         # Create fixed maps of spots for each scan axes configuration
-        self._randomize_new_spots()
+        self._image_generator = ImageGenerator(
+            self._position_ranges,
+            self._spot_density,
+            self._spot_size_dist,
+            self._spot_amplitude_dist,
+            self._spot_depth_range,
+        )
 
         self.__scan_start = 0
         self.__last_line = -1
@@ -144,7 +265,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         """
         self.reset()
         # free memory
-        self._spots = dict()
+        del self._image_generator
         self._scan_image = None
         try:
             self.__update_timer.stop()
@@ -163,36 +284,6 @@ class ScanningProbeDummy(ScanningProbeInterface):
     def back_scan_settings(self) -> Optional[ScanSettings]:
         with self._thread_lock:
             return self._back_scan_settings
-
-    def _randomize_new_spots(self):
-        self._spots = dict()
-        for x_axis, x_range in self._position_ranges.items():
-            for y_axis, y_range in self._position_ranges.items():
-                if x_axis == y_axis:
-                    continue
-                x_min, x_max = min(x_range), max(x_range)
-                y_min, y_max = min(y_range), max(y_range)
-                spot_count = int(round((x_max - x_min) * (y_max - y_min) * self._spot_density))
-
-                # Fill in random spot information
-                spot_dict = dict()
-                # total number of spots
-                spot_dict['count'] = spot_count
-                # spot positions as (x, y) tuples
-                spot_dict['pos'] = np.empty((spot_count, 2))
-                spot_dict['pos'][:, 0] = np.random.uniform(x_min, x_max, spot_count)
-                spot_dict['pos'][:, 1] = np.random.uniform(y_min, y_max, spot_count)
-                # spot sizes as (sigma_x, sigma_y) tuples
-                spot_dict['sigma'] = np.random.normal(
-                    self._spot_size_dist[0], self._spot_size_dist[1], (spot_count, 2))
-                # spot amplitudes
-                spot_dict['amp'] = np.random.normal(
-                    self._spot_amplitude_dist[0], self._spot_amplitude_dist[1], spot_count)
-                # spot angle
-                spot_dict['theta'] = np.random.uniform(0, np.pi, spot_count)
-
-                # Add information to _spots dict
-                self._spots[(x_axis, y_axis)] = spot_dict
 
     def reset(self):
         """ Hard reset of the hardware.
@@ -331,55 +422,11 @@ class ScanningProbeDummy(ScanningProbeInterface):
             if not self.scan_settings:
                 raise RuntimeError('No scan settings configured. Cannot start scan.')
             self.module_state.lock()
-            if self.scan_settings.scan_dimension == 1:
-                for axes, d in self._spots.items():
-                    if axes[0] == self.scan_settings.axes[0]:
-                        sim_data = d
-            else:
-                sim_data = self._spots[self.scan_settings.axes]
-            number_of_spots = sim_data['count']
-            positions = sim_data['pos']
-            amplitudes = sim_data['amp']
-            sigmas = sim_data['sigma']
-            thetas = sim_data['theta']
 
-            x_values = np.linspace(self.scan_settings.range[0][0],
-                                   self.scan_settings.range[0][1],
-                                   self.scan_settings.resolution[0])
-            if self.scan_settings.scan_dimension == 2:
-                y_values = np.linspace(self.scan_settings.range[1][0],
-                                       self.scan_settings.range[1][1],
-                                       self.scan_settings.resolution[1])
-            else:
-                y_values = np.linspace(self._current_position['y'], self._current_position['y'], 1)
-            xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
-
-            include_dist = self._spot_size_dist[0] + 5 * self._spot_size_dist[1]
-            self._scan_image = np.random.uniform(0, 2e4, self.scan_settings.resolution)
-            for i in range(number_of_spots):
-                if positions[i][0] < self.scan_settings.range[0][0] - include_dist:
-                    continue
-                if positions[i][0] > self.scan_settings.range[0][1] + include_dist:
-                    continue
-                if self.scan_settings.scan_dimension == 1:
-                    if positions[i][1] < self._current_position['y'] - include_dist:
-                        continue
-                    if positions[i][1] > self._current_position['y'] + include_dist:
-                        continue
-                else:
-                    if positions[i][1] < self.scan_settings.range[1][0] - include_dist:
-                        continue
-                    if positions[i][1] > self.scan_settings.range[1][1] + include_dist:
-                        continue
-                gauss = self._gaussian_2d(xy_grid,
-                                          amp=amplitudes[i],
-                                          pos=positions[i],
-                                          sigma=sigmas[i],
-                                          theta=thetas[i])
-                if self.scan_settings.scan_dimension == 1:
-                    self._scan_image += gauss[:, 0]
-                else:
-                    self._scan_image += gauss
+            self._scan_image = self._image_generator.generate_2d_image(
+                scan_settings=self.scan_settings,
+                current_position=self._current_position
+            )
 
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
@@ -485,16 +532,3 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
-
-    @staticmethod
-    def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
-        x, y = xy
-        sigx, sigy = sigma
-        x0, y0 = pos
-        a = np.cos(-theta) ** 2 / (2 * sigx ** 2) + np.sin(-theta) ** 2 / (2 * sigy ** 2)
-        b = np.sin(2 * -theta) / (4 * sigy ** 2) - np.sin(2 * -theta) / (4 * sigx ** 2)
-        c = np.sin(-theta) ** 2 / (2 * sigx ** 2) + np.cos(-theta) ** 2 / (2 * sigy ** 2)
-        x_prime = x - x0
-        y_prime = y - y0
-        return offset + amp * np.exp(
-            -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
