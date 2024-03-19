@@ -196,6 +196,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self._back_scan_settings: Optional[ScanSettings] = None
         self._current_position = dict()
         self._scan_image = None
+        self._back_scan_image = None
         self._scan_data = None
         self._back_scan_data = None
 
@@ -206,7 +207,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self._thread_lock = RecursiveMutex()
 
         self.__scan_start = 0
-        self.__last_line = -1
+        self.__last_forward_pixel = 0
+        self.__last_backward_pixel = 0
         self.__update_timer = None
 
     def on_activate(self):
@@ -243,6 +245,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         # Set default process values
         self._current_position = {ax.name: np.mean(ax.position.bounds) for ax in self.constraints.axes.values()}
         self._scan_image = None
+        self._back_scan_image = None
         self._scan_data = None
         self._back_scan_data = None
 
@@ -256,11 +259,11 @@ class ScanningProbeDummy(ScanningProbeInterface):
         )
 
         self.__scan_start = 0
-        self.__last_line = -1
+        self.__last_forward_pixel = 0
+        self.__last_backward_pixel = 0
         self.__update_timer = QtCore.QTimer()
         self.__update_timer.setSingleShot(True)
-        self.__update_timer.timeout.connect(self._update_scan_data, QtCore.Qt.QueuedConnection)
-        return
+        self.__update_timer.timeout.connect(self._handle_timer, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """ Deactivate properly the confocal scanner dummy.
@@ -269,6 +272,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         # free memory
         del self._image_generator
         self._scan_image = None
+        self._back_scan_image = None
         try:
             self.__update_timer.stop()
         except:
@@ -429,6 +433,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 scan_settings=self.scan_settings,
                 current_position=self._current_position
             )
+            self._back_scan_image = self._image_generator.generate_2d_image(
+                scan_settings=self.back_scan_settings,
+                current_position=self._current_position
+            )
 
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
@@ -444,9 +452,11 @@ class ScanningProbeDummy(ScanningProbeInterface):
             self._scan_data.new_scan()
             self._back_scan_data.new_scan()
             self.__scan_start = time.time()
-            self.__last_line = -1
+            self.__last_forward_pixel = 0
+            self.__last_backward_pixel = 0
             line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
-            self.__update_timer.setInterval(int(round(line_time * 1000)))
+            timer_interval_ms = int(0.5 * line_time * 1000)  # update twice every line
+            self.__update_timer.setInterval(timer_interval_ms)
             self.__start_timer()
 
     def stop_scan(self):
@@ -457,6 +467,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             self.log.debug('Scanning probe dummy "stop_scan" called.')
             if self.module_state() == 'locked':
                 self._scan_image = None
+                self._back_scan_image = None
                 self.module_state.unlock()
             else:
                 raise RuntimeError('No scan in progress. Cannot stop scan.')
@@ -469,52 +480,61 @@ class ScanningProbeDummy(ScanningProbeInterface):
         except FysomError:
             pass
         self._scan_image = None
+        self._back_scan_image = None
         self.log.warning('Scanner has been emergency stopped.')
 
-    def _update_scan_data(self):
-        with self._thread_lock:
-            if self.module_state() == 'idle':
-                return
+    def _handle_timer(self):
+        """Update during a running scan."""
+        try:
+            with self._thread_lock:
+                self.__update_scan_data()
+        except Exception as e:
+            self.log.error("Could not update scan data.", exc_info=e)
 
-            elapsed = time.time() - self.__scan_start
-            line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
+    def __update_scan_data(self) -> None:
+        """Update scan data."""
+        if self.module_state() == 'idle':
+            raise RuntimeError("Scan is not running.")
 
-            if self._scan_data.settings.scan_dimension == 2:
-                acquired_lines = min(int(np.floor(elapsed / line_time)),
-                                     self.scan_settings.resolution[1])
-                if acquired_lines > 0:
-                    if self.__last_line < acquired_lines - 1:
-                        if self.__last_line < 0:
-                            self.__last_line = 0
+        t_elapsed = time.time() - self.__scan_start
+        t_forward = self.scan_settings.resolution[0] / self.scan_settings.frequency
+        t_backward = self.back_scan_settings.resolution[0] / self.back_scan_settings.frequency
+        t_complete_line = t_forward + t_backward
 
-                        for ch in self._constraints.channels:
-                            tmp = self._scan_image[:, self.__last_line:acquired_lines]
-                            self._scan_data.data[ch][:, self.__last_line:acquired_lines] = tmp
+        aq_lines = int(t_elapsed / t_complete_line)
+        t_current_line = t_elapsed % t_complete_line
+        if t_current_line < t_forward:
+            # currently in forwards scan
+            aq_px_backward = self.back_scan_settings.resolution[0] * aq_lines
+            aq_lines_forward = aq_lines + (t_current_line / t_forward)
+            aq_px_forward = int(self.scan_settings.resolution[0] * aq_lines_forward)
+        else:
+            # currently in backwards scan
+            aq_px_forward = self.scan_settings.resolution[0] * (aq_lines + 1)
+            aq_lines_backward = aq_lines + (t_current_line - t_forward) / t_backward
+            aq_px_backward = int(self.back_scan_settings.resolution[0] * aq_lines_backward)
 
-                        self.__last_line = acquired_lines - 1
-                    if acquired_lines >= self.scan_settings.resolution[1]:
-                        self.module_state.unlock()
-                    elif self.thread() is QtCore.QThread.currentThread():
-                        self.__start_timer()
-            else:
-                acquired_lines = min(int(np.floor(elapsed / line_time)),
-                                     self.scan_settings.resolution[0])
-                if acquired_lines > 0:
-                    if self.__last_line < 0:
-                        self.__last_line = 0
-                    if self.__last_line < acquired_lines - 1:
-                        if self.__last_line < 0:
-                            self.__last_line = 0
+        # transposing the arrays is necessary to fill along the fast axis first
+        # back scan image is not fully accurate: last line is filled the same direction as the forward axis
+        new_forward_data = self._scan_image.T.flat[self.__last_forward_pixel:aq_px_forward]
+        new_backward_data = self._back_scan_image.T.flat[self.__last_backward_pixel:aq_px_backward]
 
-                        for ch in self.scan_settings.channels:
-                            tmp = self._scan_image[self.__last_line:acquired_lines]
-                            self._scan_data.data[ch][self.__last_line:acquired_lines] = tmp
+        for ch in self.constraints.channels:
+            self._scan_data.data[ch].T.flat[self.__last_forward_pixel:aq_px_forward] = new_forward_data
+            self._back_scan_data.data[ch].T.flat[self.__last_backward_pixel:aq_px_backward] = new_backward_data
 
-                        self.__last_line = acquired_lines - 1
-                    if acquired_lines >= self.scan_settings.resolution[0]:
-                        self.module_state.unlock()
-                    elif self.thread() is QtCore.QThread.currentThread():
-                        self.__start_timer()
+        self.__last_forward_pixel = aq_px_forward
+        self.__last_backward_pixel = aq_px_backward
+
+        if self.scan_settings.scan_dimension == 1:
+            is_finished = aq_lines > 1
+        else:
+            is_finished = aq_lines > self.scan_settings.resolution[1]
+        if is_finished:
+            self.module_state.unlock()
+            self.log.debug("Scan finished.")
+        else:
+            self.__start_timer()
 
     def get_scan_data(self) -> ScanData:
         """ Retrieve the ScanData instance used in the scan.
