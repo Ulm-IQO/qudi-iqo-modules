@@ -33,8 +33,7 @@ from qudi.logic.qdyne.qdyne_state_estimator import *
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
 from qudi.logic.qdyne.qdyne_fit import QdyneFit
 from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
-from qudi.logic.qdyne.qdyne_data_manager import (
-    QdyneSaveSettings, QdyneDataManager)
+from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
 
@@ -138,7 +137,6 @@ class QdyneLogic(LogicBase):
     _analysis_method = 'Fourier'
 
     # signals for connecting modules
-    sigTTFileNameUpdated = QtCore.Signal(str)
     sigFitUpdated = QtCore.Signal(str, object)
 
 
@@ -152,19 +150,17 @@ class QdyneLogic(LogicBase):
         self.data = None
         self.save = None
 
-        self.tt_filename = None
-
-
     def on_activate(self):
         def activate_classes():
             #self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
             self.settings = QdyneSettings()
+            self.settings.data_manager_stg.set_data_dir_all(self.module_default_data_dir)
             self.measurement_generator = MeasurementGenerator(self.pulsedmasterlogic)
             self.data = MainDataClass()
             self.fit = QdyneFit(self, self._fit_configs)
-            self.data_manager = QdyneDataManager(self.module_default_data_dir, self.data)
+            self.data_manager = QdyneDataManager(self.data, self.settings.data_manager_stg)
 #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
@@ -232,34 +228,6 @@ class QdyneLogic(LogicBase):
         self.data.freq_data.x = self.data.spectrum[0]
         self.data.freq_data.y = self.data.spectrum[1]
 
-    def save(self):
-        self.data_manager.save_data('raw_data')
-        self.data_manager.save_data('time_trace')
-        self.data_manager.save_data('spectrum')
-
-
-    @QtCore.Slot(str)
-    def set_tt_filename(self, name):
-        if name is None or isinstance(name, str):
-            if name == '':
-                name = None
-            self.tt_filename = name
-            self.sigTTFileNameUpdated.emit(self.tt_filename)
-        else:
-            self.log.error('Time trace filename must be str or None.')
-        return
-
-    @QtCore.Slot()
-    def load_tt_from_file(self, filename=None):
-        if filename is None or isinstance(filename, str):
-            if filename is None:
-                filename = self.tt_filename
-            time_trace = np.load(filename)
-            self.data.time_trace = time_trace['time_trace']
-        else:
-            self.log.error('Time trace filename to load must be str or None.')
-        return
-
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)
     def do_fit(self, fit_config):
@@ -272,3 +240,17 @@ class QdyneLogic(LogicBase):
         self.sigFitUpdated.emit(self.data.fit_config, self.data.fit_result)
         return self.data.fit_result
 
+    @QtCore.Slot(str)
+    def save_data(self, data_type):
+        if 'all' in data_type:
+            for data_type in self.data_manager.data_types:
+                self.data_manager.save_data(data_type)
+        else:
+            self.data_manager.save_data(data_type)
+
+    @QtCore.Slot(str, str, str)
+    def load_data(self, data_type, file_path, index):
+        if 'all' in data_type:
+            self.log.error('Select one data type')
+            return
+        self.data_manager.load_data(data_type, file_path, index)

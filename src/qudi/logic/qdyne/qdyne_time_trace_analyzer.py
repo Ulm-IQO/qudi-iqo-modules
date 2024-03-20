@@ -160,4 +160,4 @@ class TimeTraceAnalyzerMain:
 
     def get_spectrum(self, signal, settings):
         spectrum = self.analyzer.get_spectrum(signal, settings)
-        return spectrum
+        return np.array(spectrum)

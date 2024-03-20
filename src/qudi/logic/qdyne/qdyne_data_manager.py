@@ -14,14 +14,35 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import os
+import numpy as np
 import datetime
 from dataclasses import dataclass
 
-from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage
+from qudi.util.datastorage import *
+
+class QdyneNpyDataStorage(NpyDataStorage):
+    """
+    TODO repair get_header_from_file
+    """
+    def load_data(self, file_path):
+        """ See: DataStorageBase.load_data()
+
+        @param str file_path: path to file to load data from
+        """
+        # Load numpy array
+        data = np.load(file_path, allow_pickle=False, fix_imports=False)
+        # Try to find and load metadata from text file
+        metadata_path = file_path.split('.npy')[0] + '_metadata.txt'
+        try:
+            header = get_header_from_file(metadata_path)
+        except FileNotFoundError:
+            return data, dict(), dict()
+        return data, dict(), dict()
 
 
 @dataclass
 class QdyneSaveOptions:
+    data_dir: str = None
     use_default: bool = True
     timestamp: datetime.datetime = None
     metadata: dict = None
@@ -30,11 +51,6 @@ class QdyneSaveOptions:
     column_headers: str = None
     column_dtypes: list = None
     filename: str = None
-    additional_nametag: str = None
-
-    @property
-    def custom_nametag(self):
-        return self.nametag + self.additional_nametag
 
     def get_default_timestamp(self):
         self.timestamp = datetime.now()
@@ -45,27 +61,6 @@ class QdyneSaveOptions:
             self.filename = None
         else:
             self.data_dir, self.filename = os.path.split(file_path)
-
-    def set_static_options(self, nametag, column_headers, column_dtypes,
-                           filename, additional_nametag):
-        if nametag is not None:
-            self.nametag = nametag
-        if column_headers is not None:
-            self.column_headers = column_headers
-        if column_dtypes is not None:
-            self.column_dtypes = column_dtypes
-        if self.filename is not None:
-            self.filename = filename
-        if additional_nametag is not None:
-            self.additional_nametag = additional_nametag
-
-    def set_dynamic_options(self, timestamp, metadata, notes):
-        if timestamp is not None:
-            self.timestamp = timestamp
-        if metadata is not None:
-            self.metadata = metadata
-        if notes is not None:
-            self.metadata = metadata
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
@@ -82,18 +77,6 @@ class QdyneSaveOptions:
             file_name_stub, file_extension = file_name.rsplit('.', 1)
             return f'{file_name_stub}{suffix_str}.{file_extension}', None
 
-
-class QdyneSaveSettings:
-    raw_data_options = QdyneSaveOptions(nametag='qdyne',
-                                        column_headers='Signal',
-                                        additional_nametag='_raw_data')
-    timetrace_options = QdyneSaveOptions(nametag='qdyne',
-                                         column_headers='Signal',
-                                         additional_nametag='_timetrace')
-    signal_options = QdyneSaveOptions(nametag='qdyne',
-                                      column_headers='Signal',
-                                      additional_nametag='_signal')
-
 class DataStorage:
     data_storage_options = ['text', 'csv', 'npy']
 
@@ -101,7 +84,6 @@ class DataStorage:
         self.data_dir = data_dir
         self.storage_class = storage_class
         self.storage = None
-        self.options = QdyneSaveOptions()
 
         self.create_storage()
 
@@ -116,48 +98,80 @@ class DataStorage:
         if cfg_str == 'csv':
             return CsvDataStorage
         if cfg_str == 'npy':
-            return NpyDataStorage
+            return QdyneNpyDataStorage #TODO repair NpyDataStorage
         raise ValueError('Invalid ConfigOption value to specify data storage type.')
 
-
     def save_data(self, data, options: QdyneSaveOptions=None) -> None:
-        options = options if options is not None else self.options
         self.storage.save_data(
             data=data,
-            nametag=options.custom_nametag,
+            nametag=options.nametag,
             timestamp=options.timestamp,
             metadata=options.metadata,
             notes=options.notes,
             column_headers=options.column_headers,
-            column_dtypes=options.column_dtypes,
+#            column_dtypes=options.column_dtypes,
             filename=options.filename)
 
     def load_data(self, file_path):
         data, metadata, general = self.storage.load_data(file_path)
         return data
 
+class DataManagerSettings:
+    data_types = ['raw_data', 'time_trace', 'spectrum']
+
+    def __init__(self):
+        self.options = dict()
+        for data_type in self.data_types:
+            self.options[data_type] = QdyneSaveOptions()
+        self.set_columns()
+
+    def set_columns(self):
+        self.options['raw_data'].column_headers = 'Signal (a.u.)'
+        self.options['time_trace'].column_headers = 'Signal (a.u.)'
+        self.options['spectrum'].column_headers = 'Signal (a.u.)'
+
+    def set_all(self, method, value):
+        for data_type in self.data_types:
+            method(data_type, value)
+
+    def set_data_dir(self, data_type, data_dir):
+        self.options[data_type].data_dir = data_dir
+
+    def set_data_dir_all(self, data_dir):
+        self.set_all(self.set_data_dir, data_dir)
+
+    def set_nametag(self, data_type, nametag):
+        self.options[data_type].nametag = nametag + '_' + data_type
+
+    def set_nametag_all(self, nametag):
+        self.set_all(self.set_nametag, nametag)
 class QdyneDataManager:
-    data_type = ('raw_data', 'time_trace', 'spectrum')
+    data_types = ['raw_data', 'time_trace', 'spectrum']
     storage_dict = {'raw_data': 'npy', 'time_trace': 'npy', 'spectrum': 'npy'}
 
-    def __init__(self, data_dir, data):
-        self.data_dir = data_dir
+    def __init__(self, data, settings:DataManagerSettings):
         self.data = data
+        self.settings = settings
+        self.storages = dict()
         self.activate_storage()
 
-    def activate_storage(self):
-        for data_type in self.data_type:
-            setattr(self, data_type, DataStorage(self.data_dir, self.storage_dict[data_type]))
+    @property
+    def save_data_types(self):
+        return ['all'] + self.data_types
 
-    def save_data(self, data_type, options:QdyneSaveOptions=None):
-        storage = getattr(self, data_type)
+    def activate_storage(self):
+        for data_type in self.data_types:
+            self.storages[data_type] = DataStorage(
+                self.settings.options[data_type].data_dir, self.storage_dict[data_type])
+
+    def save_data(self, data_type):
         data = getattr(self.data, data_type)
-        storage.save_data(data, options)
+        options = self.settings.options[data_type]
+        self.storages[data_type].save_data(data, options)
 
     def load_data(self, data_type, file_path, index=None):
-        storage = getattr(self, data_type)
-        loaded_data = storage.load_data(file_path)
-        if index is not None:
+        loaded_data = self.storages[data_type].load_data(file_path)
+        if index is not None and index != "" :
             loaded_data = loaded_data[index]
         setattr(self.data, data_type, loaded_data)
 

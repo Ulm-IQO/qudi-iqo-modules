@@ -142,7 +142,7 @@ class TimeTagStateEstimator(StateEstimator):
             else:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
-        return counts_time_trace
+        return np.array(counts_time_trace)
 
     def _weighted_photon_count(self, time_tag, weight, start_count, stop_count, max_bins=90000):
         counts_time_trace = []
@@ -159,7 +159,7 @@ class TimeTagStateEstimator(StateEstimator):
             else:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
-        return counts_time_trace
+        return np.array(counts_time_trace)
 
     def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
         count_hist, bin_edges = np.histogram(time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins))
