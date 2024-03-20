@@ -64,6 +64,7 @@ class ScanningProbeLogic(LogicBase):
 
     # signals
     sigScanStateChanged = QtCore.Signal(bool, object, object)
+    sigNewScanDataForHistory = QtCore.Signal(object)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigScanSettingsChanged = QtCore.Signal(dict)
 
@@ -77,14 +78,14 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
-        return
+        self._save_to_hist = True
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
 
         constr = self.scanner_constraints
-        self._scan_saved_to_hist = True
+        self._save_to_hist = True
 
         self.log.debug(f"Scanner settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
         # scanner settings loaded from StatusVar or defaulted
@@ -168,9 +169,15 @@ class ScanningProbeLogic(LogicBase):
             return cp.copy(self._scan_frequency)
 
     @property
-    def scan_saved_to_history(self):
+    def save_to_history(self) -> bool:
+        """Whether to save finished scans to history."""
         with self._thread_lock:
-            return self._scan_saved_to_hist
+            return self._save_to_hist
+
+    @save_to_history.setter
+    def save_to_history(self, save: bool) -> None:
+        with self._thread_lock:
+            self._save_to_hist = save
 
     @property
     def scan_settings(self):
@@ -178,7 +185,7 @@ class ScanningProbeLogic(LogicBase):
             return {'range': self.scan_ranges,
                     'resolution': self.scan_resolution,
                     'frequency': self.scan_frequency,
-                    'save_to_history': cp.copy(self._scan_saved_to_hist)}
+                    }
 
     def set_scan_settings(self, settings):
         with self._thread_lock:
@@ -188,8 +195,6 @@ class ScanningProbeLogic(LogicBase):
                 self.set_scan_resolution(settings['resolution'])
             if 'frequency' in settings:
                 self.set_scan_frequency(settings['frequency'])
-            if 'save_to_history' in settings:
-                self._scan_saved_to_hist = settings['save_to_history']
 
     def check_sanity_scan_settings(self, settings=None):
         if not isinstance(settings, dict):
@@ -386,13 +391,9 @@ class ScanningProbeLogic(LogicBase):
                     self._scanner().stop_scan()
             finally:
                 self.module_state.unlock()
-
-                if self.scan_settings['save_to_history']:
-                    # module_uuid signals data-ready to data logic
-                    self.sigScanStateChanged.emit(False, self.scan_data, self.module_uuid)
-                else:
-                    self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
-
+                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+                if self.save_to_history:
+                    self.sigNewScanDataForHistory.emit(self.scan_data)
 
     def __scan_poll_loop(self):
         with self._thread_lock:

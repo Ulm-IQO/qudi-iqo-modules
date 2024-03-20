@@ -64,7 +64,7 @@ class ScanningDataLogic(LogicBase):
     _max_history_length = ConfigOption(name='max_history_length', default=10)
 
     # status variables
-    _scan_history = StatusVar(name='scan_history', default=list())
+    _scan_history: List[ScanData] = StatusVar(name='scan_history', default=list())
 
     # signals
     sigHistoryScanDataRestored = QtCore.Signal(object)
@@ -91,12 +91,12 @@ class ScanningDataLogic(LogicBase):
             self._curr_history_index = 0
             self._curr_data_per_scan = dict()
         self._logic_id = self._scan_logic().module_uuid
-        self._scan_logic().sigScanStateChanged.connect(self._update_scan_state)
+        self._scan_logic().sigNewScanDataForHistory.connect(self._append_to_history)
 
     def on_deactivate(self):
         """ Reverse steps of activation
         """
-        self._scan_logic().sigScanStateChanged.disconnect(self._update_scan_state)
+        self._scan_logic().sigNewScanDataForHistory.disconnect(self._append_to_history)
         self._curr_data_per_scan = dict()
 
     @_scan_history.representer
@@ -192,22 +192,13 @@ class ScanningDataLogic(LogicBase):
             self.sigHistoryScanDataRestored.emit(data)
             return
 
-    def _update_scan_state(self, running, data, caller_id):
-
-        settings = {
-            'range': {ax: data.settings.range[i] for i, ax in enumerate(data.settings.axes)},
-            'resolution': {ax: data.settings.resolution[i] for i, ax in enumerate(data.settings.axes)},
-            'frequency': {data.settings.axes[0]: data.settings.frequency}
-        }
-
+    def _append_to_history(self, data: ScanData):
         with self._thread_lock:
-            if not running and caller_id is self._logic_id:
-                #self.log.debug(f"Adding to data history with settings {settings}")
-                self._scan_history.append(data)
-                self._shrink_history()
-                self._curr_data_per_scan[data.settings.axes] = data
-                self._curr_history_index = len(self._scan_history) - 1
-                self.sigHistoryScanDataRestored.emit(data)
+            self._scan_history.append(data)
+            self._shrink_history()
+            self._curr_data_per_scan[data.settings.axes] = data
+            self._curr_history_index = len(self._scan_history) - 1
+            self.sigHistoryScanDataRestored.emit(data)
 
     def _shrink_history(self):
         while len(self._scan_history) > self._max_history_length:

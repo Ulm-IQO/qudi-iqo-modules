@@ -329,7 +329,7 @@ class ScanningOptimizeLogic(LogicBase):
                 self.module_state.lock()
 
             # optimizer scans are never saved
-            self._scan_logic().set_scan_settings({'save_to_history': False})
+            self._scan_logic().save_to_history = False
 
             self._sequence_index = 0
             self._optimal_position = dict()
@@ -422,7 +422,9 @@ class ScanningOptimizeLogic(LogicBase):
                     # optimizer scans are never saved in scanning history
                     self._scan_logic().stop_scan()
             finally:
+                # restore state before optimization
                 self._scan_logic().set_scan_settings(self._stashed_scan_settings)
+                self._scan_logic().save_to_history = True
                 self._stashed_scan_settings = dict()
                 self.module_state.unlock()
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
