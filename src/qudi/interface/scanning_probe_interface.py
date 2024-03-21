@@ -193,11 +193,13 @@ class ScanConstraints:
             raise ValueError(f'Unknown channel names encountered in {settings.channels}. '
                              f'Valid channel names are {list(self.channels.keys())}.')
 
-    def check_axes(self, settings: ScanSettings) -> None:
+    def check_axes_names(self, settings: ScanSettings) -> None:
         if not set(settings.axes).issubset(self.axes):
             raise ValueError(f'Unknown axis names encountered in {settings.axes}. '
                              f'Valid axis names are {list(self.axes.keys())}.')
 
+    def check_axes(self, settings: ScanSettings) -> None:
+        self.check_axes_names(settings)
         for axis_name, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
             axis = self.axes[axis_name]
             try:
@@ -230,7 +232,7 @@ class ScanConstraints:
             raise ValueError(f'Scanner does not support position feedback.')
 
     def clip(self, settings: ScanSettings) -> ScanSettings:
-        self.check_axes(settings)
+        self.check_axes_names(settings)
         clipped_range = []
         clipped_resolution = []
         for axis, _range, resolution in zip(settings.axes, settings.range, settings.resolution):
