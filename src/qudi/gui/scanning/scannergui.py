@@ -22,10 +22,8 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import numpy as np
-import copy as cp
 from typing import Union, Tuple
-from functools import partial
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide2 import QtCore, QtWidgets
 
 import qudi.util.uic as uic
 from qudi.core.connector import Connector
@@ -33,13 +31,13 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
-from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
 
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
 from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
+from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
@@ -118,7 +116,7 @@ class ScannerGui(GuiBase):
 
     # signals
     sigScannerTargetChanged = QtCore.Signal(dict, object)
-    sigScanSettingsChanged = QtCore.Signal(dict)
+    sigFrequencyChanged = QtCore.Signal(str, float)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
     sigOptimizerSettingsChanged = QtCore.Signal(dict)
     sigToggleOptimize = QtCore.Signal(bool)
@@ -135,7 +133,6 @@ class ScannerGui(GuiBase):
         self._osd = None
 
         # References to automatically generated GUI elements
-        self.axes_control_widgets = None
         self.optimizer_settings_axes_widgets = None
         self.scanner_settings_axes_widgets = None
         self.scan_2d_dockwidgets = None
@@ -147,7 +144,6 @@ class ScannerGui(GuiBase):
 
         # misc
         self._optimizer_id = 0
-        self._scanner_settings_locked = False
         self._optimizer_state = {'is_running': False}
         self._n_save_tasks = 0
         return
@@ -175,9 +171,11 @@ class ScannerGui(GuiBase):
         self._init_scanner_settings()
         self._save_dialog = SaveDialog(self._mw)
 
+        scan_logic: ScanningProbeLogic = self._scanning_logic()
+
         # Automatically generate scanning widgets for desired scans
         scans = list()
-        axes = tuple(self._scanning_logic().scanner_axes)
+        axes = tuple(scan_logic.scanner_axes)
         for i, first_ax in enumerate(axes, 1):
             #if not scans:
             scans.append((first_ax,))
@@ -187,18 +185,16 @@ class ScannerGui(GuiBase):
             self._add_scan_dockwidget(scan)
 
         # Initialize widget data
-        self.scanner_settings_updated()
+        self.update_scanner_settings_from_logic()
         self.scanner_target_updated()
-        self.scan_state_updated(self._scanning_logic().module_state() != 'idle')
+        self.scan_state_updated(scan_logic.module_state() != 'idle')
 
         # Connect signals
         self.sigScannerTargetChanged.connect(
             self._scanning_logic().set_target_position, QtCore.Qt.QueuedConnection
         )
-        self.sigScanSettingsChanged.connect(
-            self._scanning_logic().set_scan_settings, QtCore.Qt.QueuedConnection
-        )
-        self.sigToggleScan.connect(self._scanning_logic().toggle_scan, QtCore.Qt.QueuedConnection)
+        self.sigFrequencyChanged.connect(scan_logic.set_scan_frequency, QtCore.Qt.QueuedConnection)
+        self.sigToggleScan.connect(scan_logic.toggle_scan, QtCore.Qt.QueuedConnection)
         self.sigToggleOptimize.connect(
             self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection
         )
@@ -211,7 +207,7 @@ class ScannerGui(GuiBase):
 
         self._mw.action_utility_zoom.toggled.connect(self.toggle_cursor_zoom)
         self._mw.action_utility_full_range.triggered.connect(
-            self._scanning_logic().set_full_scan_ranges, QtCore.Qt.QueuedConnection
+            self.set_full_range, QtCore.Qt.QueuedConnection
         )
         self._mw.action_history_forward.triggered.connect(
             self._data_logic().history_next, QtCore.Qt.QueuedConnection
@@ -222,9 +218,6 @@ class ScannerGui(GuiBase):
 
         self._scanning_logic().sigScannerTargetChanged.connect(
             self.scanner_target_updated, QtCore.Qt.QueuedConnection
-        )
-        self._scanning_logic().sigScanSettingsChanged.connect(
-            self.scanner_settings_updated, QtCore.Qt.QueuedConnection
         )
         self._scanning_logic().sigScanStateChanged.connect(
             self.scan_state_updated, QtCore.Qt.QueuedConnection
@@ -262,7 +255,7 @@ class ScannerGui(GuiBase):
 
         # Disconnect signals
         self.sigScannerTargetChanged.disconnect()
-        self.sigScanSettingsChanged.disconnect()
+        self.sigFrequencyChanged.disconnect()
         self.sigToggleScan.disconnect()
         self.sigToggleOptimize.disconnect()
         self.sigOptimizerSettingsChanged.disconnect()
@@ -273,7 +266,6 @@ class ScannerGui(GuiBase):
         self._mw.action_utility_full_range.triggered.disconnect()
         self._mw.action_utility_zoom.toggled.disconnect()
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
-        self._scanning_logic().sigScanSettingsChanged.disconnect(self.scanner_settings_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
         self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
@@ -324,12 +316,11 @@ class ScannerGui(GuiBase):
 
         # Connect the action of the settings dialog with the GUI module:
         self._ssd.accepted.connect(self.apply_scanner_settings)
-        self._ssd.rejected.connect(self.restore_scanner_settings)
-        self._ssd.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
-            self.apply_scanner_settings
-        )
+        self._ssd.rejected.connect(self.update_scanner_settings_from_logic)
+        self._ssd.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.apply_scanner_settings)
 
     def _init_static_dockwidgets(self):
+        scan_logic: ScanningProbeLogic = self._scanning_logic()
         self.scanner_control_dockwidget = AxesControlDockWidget(
             tuple(self._scanning_logic().scanner_axes.values())
         )
@@ -346,14 +337,8 @@ class ScannerGui(GuiBase):
         self._mw.action_view_line_scan.triggered[bool].connect(
             lambda is_vis: [wid.setVisible(is_vis) for wid in self.scan_1d_dockwidgets.values()]
         )
-        self.scanner_control_dockwidget.sigResolutionChanged.connect(
-            lambda ax, res: self.sigScanSettingsChanged.emit({'resolution': {ax: res}})
-             if not self._scanner_settings_locked else None
-        )
-        self.scanner_control_dockwidget.sigRangeChanged.connect(
-            lambda ax, ranges: self.sigScanSettingsChanged.emit({'range': {ax: ranges}})
-            if not self._scanner_settings_locked else None
-        )
+        self.scanner_control_dockwidget.sigResolutionChanged.connect(scan_logic.set_scan_resolution)
+        self.scanner_control_dockwidget.sigRangeChanged.connect(scan_logic.set_scan_range)
         # TODO: When "current target" value box is clicked in, a move is excecuted. Why and how?
         self.scanner_control_dockwidget.sigTargetChanged.connect(
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
@@ -588,53 +573,29 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot()
     def apply_scanner_settings(self):
-        """ ToDo: Document
-        """
+        """Update the logic with all scanner settings from the GUI."""
         # ToDo: Implement backwards scanning functionality
-        forward_freq = {ax: freq[0] for ax, freq in self._ssd.settings_widget.frequency.items()}
-        self.sigScanSettingsChanged.emit({'frequency': forward_freq})
+        self.scanner_control_dockwidget.emit_current_settings()
+        for ax, (forward, backward) in self._ssd.settings_widget.frequency.items():
+            self.sigFrequencyChanged.emit(ax, forward)
 
     @QtCore.Slot()
-    def restore_scanner_settings(self):
-        """ ToDo: Document
-        """
-        self.scanner_settings_updated({'frequency': self._scanning_logic().scan_frequency})
+    def update_scanner_settings_from_logic(self):
+        """Update all scanner settings from the logic."""
+        scan_logic: ScanningProbeLogic = self._scanning_logic()
 
-    @QtCore.Slot(bool)
-    def scanner_settings_toggle_gui_lock(self, locked):
-        if locked:
-            self._scanner_settings_locked = True
-            # todo: maybe disable/grey out scanner gui elements
-        else:
-            self._scanner_settings_locked = False #unlock
+        self.scanner_control_dockwidget.set_range(scan_logic.scan_ranges)
+        self.scanner_control_dockwidget.set_resolution(scan_logic.scan_resolution)
 
-    @QtCore.Slot(dict)
-    def scanner_settings_updated(self, settings=None):
-        """
-        Update scanner settings from logic and set widgets accordingly.
+        for ax, forward in scan_logic.scan_frequency.items():
+            self._ssd.settings_widget.set_forward_frequency(ax, forward)
 
-        @param dict settings: Settings dict containing the scanner settings to update.
-                              If None (default) read the scanner setting from logic and update.
-        """
-        if not isinstance(settings, dict):
-            settings = self._scanning_logic().scan_settings
-
-        if self._scanner_settings_locked:
-            return
-        # ToDo: Handle all remaining settings
-        # ToDo: Implement backwards scanning functionality
-
-        if 'resolution' in settings:
-            self.scanner_control_dockwidget.set_resolution(settings['resolution'])
-        if 'range' in settings:
-            self.scanner_control_dockwidget.set_range(settings['range'])
-        if 'frequency' in settings:
-            old_freq = self._ssd.settings_widget.frequency
-            new_freq = {
-                ax: (forward, old_freq[ax][1]) for ax, forward in settings['frequency'].items()
-            }
-            self._ssd.settings_widget.set_frequency(new_freq)
-        return
+    @QtCore.Slot()
+    def set_full_range(self) -> None:
+        scan_logic: ScanningProbeLogic = self._scanning_logic()
+        scan_ranges = scan_logic.set_full_scan_ranges()
+        for axis, rng in scan_ranges.items():
+            self.scanner_control_dockwidget.set_range(rng, axis)
 
     @QtCore.Slot(dict)
     def set_scanner_target_position(self, target_pos):
@@ -643,14 +604,10 @@ class ScannerGui(GuiBase):
 
         @param dict target_pos:
         """
-        if not self._scanner_settings_locked:
-            self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
-            # update gui with target, not actual logic values
-            # we can not rely on the execution order of the above emit
-            self.scanner_target_updated(pos_dict=target_pos, caller_id=None)
-        else:
-            # refresh gui with stored values
-            self.scanner_target_updated(pos_dict=None, caller_id=None)
+        self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
+        # update gui with target, not actual logic values
+        # we can not rely on the execution order of the above emit
+        self.scanner_target_updated(pos_dict=target_pos, caller_id=None)
 
     def scanner_target_updated(self, pos_dict=None, caller_id=None):
         """
@@ -680,7 +637,7 @@ class ScannerGui(GuiBase):
         else:
             self._toggle_enable_actions(not is_running, exclude_action=self._mw.action_optimize_position)
         self._toggle_enable_scan_crosshairs(not is_running)
-        self.scanner_settings_toggle_gui_lock(is_running)
+        self.scanner_control_dockwidget.setEnabled(not is_running)
 
         if scan_data is not None:
             if caller_id is self._optimizer_id:
@@ -734,7 +691,7 @@ class ScannerGui(GuiBase):
                                     exclude_action=self._mw.action_optimize_position)
         self._toggle_enable_scan_crosshairs(not is_running)
         self._mw.action_optimize_position.setChecked(is_running)
-        self.scanner_settings_toggle_gui_lock(is_running)
+        self.scanner_control_dockwidget.setEnabled(not is_running)
 
         if fit_data is not None and optimal_position is None:
             raise ValueError("Can't understand fit_data without optimal position")
@@ -838,15 +795,22 @@ class ScannerGui(GuiBase):
         """
         @param ScanData scan_data:
         """
-        axes = scan_data.settings.axes
+        settings = scan_data.settings
         try:
-            dockwidget = self.scan_2d_dockwidgets[axes]
+            dockwidget = self.scan_2d_dockwidgets[settings.axes]
         except KeyError:
-            dockwidget = self.scan_1d_dockwidgets.get(axes, None)
+            dockwidget = self.scan_1d_dockwidgets.get(settings.axes, None)
         if dockwidget is None:
-            self.log.error(f'No scan dockwidget found for scan axes {axes}')
+            self.log.error(f'No scan dockwidget found for scan axes {settings.axes}')
+            return
         else:
             dockwidget.scan_widget.set_scan_data(scan_data)
+
+        # also update scan range and resolution
+        for i in range(settings.scan_dimension):
+            ax = settings.axes[i]
+            self.scanner_control_dockwidget.set_range(settings.range[i], ax)
+            self.scanner_control_dockwidget.set_resolution(settings.resolution[i], ax)
 
     def _toggle_enable_scan_crosshairs(self, enable):
         for dockwidget in self.scan_2d_dockwidgets.values():
@@ -887,9 +851,14 @@ class ScannerGui(GuiBase):
 
     def __get_toggle_scan_func(self, axes: Union[Tuple[str], Tuple[str, str]]):
         def toggle_func(enabled):
+            """Toggle the scan."""
             self._toggle_enable_scan_buttons(not enabled, exclude_scan=axes)
             self._toggle_enable_actions(not enabled)
             self._toggle_enable_scan_crosshairs(not enabled)
+            if enabled:
+                # ensure that the logic has the current settings as they
+                # may have been changed by e.g. the optimizer in the meantime
+                self.apply_scanner_settings()
             self.sigToggleScan.emit(enabled, axes, self.module_uuid)
         return toggle_func
 
@@ -903,12 +872,13 @@ class ScannerGui(GuiBase):
             def set_range_func(x_range, y_range):
                 x_range = tuple(sorted(x_range))
                 y_range = tuple(sorted(y_range))
-                self.sigScanSettingsChanged.emit({'range': {axes[0]: x_range, axes[1]: y_range}})
+                self.scanner_control_dockwidget.set_range(x_range, axes[0])
+                self.scanner_control_dockwidget.set_range(y_range, axes[1])
                 self._mw.action_utility_zoom.setChecked(False)
         else:
             def set_range_func(x_range):
                 x_range = tuple(sorted(x_range))
-                self.sigScanSettingsChanged.emit({'range': {axes[0]: x_range}})
+                self.scanner_control_dockwidget.set_range(x_range, axes[0])
                 self._mw.action_utility_zoom.setChecked(False)
         return set_range_func
 

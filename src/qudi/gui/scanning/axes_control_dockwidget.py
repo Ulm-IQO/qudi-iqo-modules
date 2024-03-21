@@ -36,7 +36,7 @@ class AxesControlDockWidget(QtWidgets.QDockWidget):
                                       'sigTargetChanged', 'sigSliderMoved', 'axes', 'resolution',
                                       'range', 'target', 'get_resolution', 'set_resolution',
                                       'get_range', 'set_range', 'get_target', 'set_target',
-                                      'set_assumed_unit_prefix'})
+                                      'set_assumed_unit_prefix', 'emit_current_settings'})
 
     def __init__(self, scanner_axes: Tuple[ScannerAxis]):
         super().__init__('Axes Control')
@@ -311,6 +311,13 @@ class AxesControlWidget(QtWidgets.QWidget):
             widgets['pos_spinbox'].assumed_unit_prefix = prefix
             widgets['min_spinbox'].assumed_unit_prefix = prefix
             widgets['max_spinbox'].assumed_unit_prefix = prefix
+
+    def emit_current_settings(self):
+        """Emit signals with current settings."""
+        for ax, rng in self.range.items():
+            self.sigRangeChanged.emit(ax, rng)
+        for ax, res in self.resolution.items():
+            self.sigResolutionChanged.emit(ax, res)
 
     def __get_axis_resolution_callback(self, axis, spinbox):
         def callback():

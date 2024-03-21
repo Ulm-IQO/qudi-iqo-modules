@@ -27,13 +27,11 @@ import itertools
 import copy as cp
 
 from qudi.core.module import LogicBase
+from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.core.connector import Connector
-from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.fit_models.gaussian import Gaussian2D, Gaussian
-
-from qudi.interface.scanning_probe_interface import ScanData
 
 
 class ScanningOptimizeLogic(LogicBase):
@@ -74,7 +72,6 @@ class ScanningOptimizeLogic(LogicBase):
         self._thread_lock = RecursiveMutex()
         self._result_lock = Mutex()
 
-        self._stashed_scan_settings = dict()
         self._sequence_index = 0
         self._optimal_position = dict()
         self._last_scans = list()
@@ -109,7 +106,6 @@ class ScanningOptimizeLogic(LogicBase):
             self._scan_resolution = new_settings['scan_resolution']
             self._scan_frequency = new_settings['scan_frequency']
 
-        self._stashed_scan_settings = dict()
         self._sequence_index = 0
         self._optimal_position = dict()
         self._last_scans = list()
@@ -285,74 +281,37 @@ class ScanningOptimizeLogic(LogicBase):
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
                 return
 
-            # ToDo: Sanity checks for settings go here
+            scan_logic: ScanningProbeLogic = self._scan_logic()
+            curr_pos = scan_logic.scanner_target
+            constraints = scan_logic.scanner_constraints
+            for ax, rel_rng in self.scan_range.items():
+                rng_start = curr_pos[ax] - rel_rng / 2
+                rng_stop = curr_pos[ax] + rel_rng / 2
+                # range needs to be clipped if optimizing at the very edge
+                rng_start = constraints.axes[ax].position.clip(rng_start)
+                rng_stop = constraints.axes[ax].position.clip(rng_stop)
+                scan_logic.set_scan_range(ax, (rng_start, rng_stop))
+
+            for ax, res in self.scan_resolution.items():
+                scan_logic.set_scan_resolution(ax, res)
+            for ax, res in self.scan_frequency.items():
+                scan_logic.set_scan_frequency(ax, res)
+
             self.module_state.lock()
             with self._result_lock:
                 self._last_scans = list()
                 self._last_fits = list()
-            self.sigOptimizeStateChanged.emit(True, dict(), None)
-
-            # stash old scanner settings
-            self._stashed_scan_settings = self._scan_logic().scan_settings
-
-            # Set scan ranges
-            curr_pos = self._scan_logic().scanner_target
-            optim_ranges = {ax: (pos - self._scan_range[ax] / 2, pos + self._scan_range[ax] / 2) for
-                            ax, pos in curr_pos.items()}
-            actual_setting = self._scan_logic().set_scan_range(optim_ranges)
-            # FIXME: Comparing floats by inequality here
-            if any(val != optim_ranges[ax] for ax, val in actual_setting.items()):
-                self.log.warning('Some optimize scan ranges have been changed by the scanner.')
-                self.module_state.unlock()
-                self.set_optimize_settings(
-                    {'scan_range': {ax: abs(r[1] - r[0]) for ax, r in actual_setting.items()}}
-                )
-                self.module_state.lock()
-
-            # Set scan frequency
-            actual_setting = self._scan_logic().set_scan_frequency(self._scan_frequency)
-            # FIXME: Comparing floats by inequality here
-            if any(val != self._scan_frequency[ax] for ax, val in actual_setting.items()):
-                self.log.warning('Some optimize scan frequencies have been changed by the scanner.')
-                self.module_state.unlock()
-                self.set_optimize_settings({'scan_frequency': actual_setting})
-                self.module_state.lock()
-
-            # Set scan resolution
-            actual_setting = self._scan_logic().set_scan_resolution(self._scan_resolution)
-            # FIXME: Comparing floats by inequality here
-            if any(val != self._scan_resolution[ax] for ax, val in actual_setting.items()):
-                self.log.warning(
-                    'Some optimize scan resolutions have been changed by the scanner.')
-                self.module_state.unlock()
-                self.set_optimize_settings({'scan_resolution': actual_setting})
-                self.module_state.lock()
-
-            # optimizer scans are never saved
-            self._scan_logic().save_to_history = False
-
+            self._scan_logic().save_to_history = False  # optimizer scans not saved
             self._sequence_index = 0
             self._optimal_position = dict()
             self.sigOptimizeStateChanged.emit(True, self.optimal_position, None)
             self._sigNextSequenceStep.emit()
-            return
 
     def _next_sequence_step(self):
         with self._thread_lock:
-
             if self.module_state() == 'idle':
                 return
-
-            #self.log.debug(f"Next opt sequence step {self._sequence_index}")
-
-            if self._scan_logic().toggle_scan(True,
-                                              self._scan_sequence[self._sequence_index],
-                                              self.module_uuid) < 0:
-                self.log.error('Unable to start {0} scan. Optimize aborted.'.format(
-                    self._scan_sequence[self._sequence_index])
-                )
-                self.stop_optimize()
-            return
+            self._scan_logic().toggle_scan(True, self._scan_sequence[self._sequence_index], self.module_uuid)
 
     def _scan_state_changed(self, is_running, data, caller_id):
 
@@ -422,10 +381,7 @@ class ScanningOptimizeLogic(LogicBase):
                     # optimizer scans are never saved in scanning history
                     self._scan_logic().stop_scan()
             finally:
-                # restore state before optimization
-                self._scan_logic().set_scan_settings(self._stashed_scan_settings)
                 self._scan_logic().save_to_history = True
-                self._stashed_scan_settings = dict()
                 self.module_state.unlock()
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
 

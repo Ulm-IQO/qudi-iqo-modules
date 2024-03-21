@@ -36,10 +36,11 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.util.datastorage import ImageFormat, NpyDataStorage, TextDataStorage
+from qudi.util.datastorage import TextDataStorage
 from qudi.util.units import ScaledFloat
 
 from qudi.interface.scanning_probe_interface import ScanData
+from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 
 
 class ScanningDataLogic(LogicBase):
@@ -166,7 +167,8 @@ class ScanningDataLogic(LogicBase):
 
     def restore_from_history(self, index):
         with self._thread_lock:
-            if self._scan_logic().module_state() != 'idle':
+            scan_logic: ScanningProbeLogic = self._scan_logic()
+            if scan_logic.module_state() != 'idle':
                 self.log.error('Scan is running. Unable to restore history state.')
                 return
 
@@ -178,19 +180,9 @@ class ScanningDataLogic(LogicBase):
                 self.log.exception('Unable to restore scan history with index "{0}"'.format(index))
                 return
 
-            settings = {
-                'range': {ax: data.settings.range[i] for i, ax in enumerate(data.settings.axes)},
-                'resolution': {ax: data.settings.resolution[i] for i, ax in enumerate(data.settings.axes)},
-                'frequency': {data.settings.axes[0]: data.settings.frequency}
-            }
-            self._scan_logic().set_scan_settings(settings)
-
-            #self.log.debug(f"Restoring hist settings from index {index} with {settings}")
-
             self._curr_history_index = index
             self._curr_data_per_scan[data.settings.axes] = data
             self.sigHistoryScanDataRestored.emit(data)
-            return
 
     def _append_to_history(self, data: ScanData):
         with self._thread_lock:
