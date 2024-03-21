@@ -219,11 +219,13 @@ class ScanningProbeDummy(ScanningProbeInterface):
         for axis, ax_range in self._position_ranges.items():
             dist = max(ax_range) - min(ax_range)
             resolution_range = tuple(self._resolution_ranges[axis])
+            res_default = min(resolution_range[1], 100)
             frequency_range = tuple(self._frequency_ranges[axis])
+            f_default = min(frequency_range[1], 1e3)
 
             position = ScalarConstraint(default=min(ax_range), bounds=tuple(ax_range))
-            resolution = ScalarConstraint(default=min(resolution_range), bounds=resolution_range, enforce_int=True)
-            frequency = ScalarConstraint(default=min(frequency_range), bounds=frequency_range)
+            resolution = ScalarConstraint(default=res_default, bounds=resolution_range, enforce_int=True)
+            frequency = ScalarConstraint(default=f_default, bounds=frequency_range)
             step = ScalarConstraint(default=0, bounds=(0, dist))
             axes.append(ScannerAxis(name=axis,
                                     unit='m',
@@ -468,6 +470,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             if self.module_state() == 'locked':
                 self._scan_image = None
                 self._back_scan_image = None
+                self.__stop_timer()
                 self.module_state.unlock()
             else:
                 raise RuntimeError('No scan in progress. Cannot stop scan.')
