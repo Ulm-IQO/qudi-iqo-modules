@@ -30,7 +30,7 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraints
+from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraints, BackScanCapability
 
 
 class ScanningProbeLogic(LogicBase):
@@ -58,7 +58,9 @@ class ScanningProbeLogic(LogicBase):
     # status vars
     _scan_ranges = StatusVar(name='scan_ranges', default=dict())
     _scan_resolution = StatusVar(name='scan_resolution', default=dict())
+    _back_scan_resolution = StatusVar(name='back_scan_resolution', default=dict())
     _scan_frequency = StatusVar(name='scan_frequency', default=dict())
+    _back_scan_frequency = StatusVar(name='back_scan_frequency', default=dict())
 
     # config options
     _min_poll_interval = ConfigOption(name='min_poll_interval', default=None)
@@ -145,6 +147,10 @@ class ScanningProbeLogic(LogicBase):
         return self._scanner().constraints
 
     @property
+    def back_scan_capability(self) -> BackScanCapability:
+        return self.scanner_constraints.back_scan_capability
+
+    @property
     def scan_ranges(self) -> Dict[str, Tuple[float, float]]:
         with self._thread_lock:
             return cp.copy(self._scan_ranges)
@@ -155,9 +161,25 @@ class ScanningProbeLogic(LogicBase):
             return cp.copy(self._scan_resolution)
 
     @property
+    def back_scan_resolution(self) -> Dict[str, int]:
+        with self._thread_lock:
+            if self._back_scan_resolution:
+                return cp.copy(self._back_scan_resolution)
+            else:
+                return self.scan_resolution
+
+    @property
     def scan_frequency(self) -> Dict[str, float]:
         with self._thread_lock:
             return cp.copy(self._scan_frequency)
+
+    @property
+    def back_scan_frequency(self) -> Dict[str, float]:
+        with self._thread_lock:
+            if self._back_scan_frequency:
+                return cp.copy(self._back_scan_frequency)
+            else:
+                return self.scan_frequency
 
     @property
     def save_to_history(self) -> bool:
@@ -181,12 +203,25 @@ class ScanningProbeLogic(LogicBase):
                 frequency=self._scan_frequency[scan_axes[0]],
             )
 
+    def create_back_scan_settings(self, scan_axes: Sequence[str]) -> ScanSettings:
+        """Create a ScanSettings object for the backwards direction of a selected 1D or 2D scan."""
+        with self._thread_lock:
+            return ScanSettings(
+                channels=tuple(self.scanner_channels),
+                axes=tuple(scan_axes),
+                range=tuple(self.scan_ranges[ax] for ax in scan_axes),
+                resolution=tuple(self.back_scan_resolution[ax] for ax in scan_axes),
+                frequency=self.back_scan_frequency[scan_axes[0]],
+            )
+
     def check_scan_settings(self):
         """Validate current scan settings for all possible 1D and 2D scans."""
         for dim in [1, 2]:
             for axes in combinations(self.scanner_axes, dim):
                 settings = self.create_scan_settings(axes)
                 self.scanner_constraints.check_settings(settings)
+                back_settings = self.create_back_scan_settings(axes)
+                self.scanner_constraints.check_back_scan_settings(back_settings, settings)
 
     def set_scan_range(self, axis: str, rng: Tuple[float, float]) -> None:
         with self._thread_lock:
@@ -218,6 +253,24 @@ class ScanningProbeLogic(LogicBase):
                     self.log.error("Invalid scan resolution or axis name.", exc_info=e)
                     self._scan_resolution = old_scan_resolution
 
+    def set_back_scan_resolution(self, axis: str, resolution: int) -> None:
+        with self._thread_lock:
+            if self.module_state() != 'idle':
+                self.log.warning('Scan is running. Unable to change back scan resolution.')
+            elif BackScanCapability.RESOLUTION_CONFIGURABLE not in self.back_scan_capability:
+                self.log.error('Back scan resolution is not configurable for this scanner.')
+            else:
+                old_back_scan_resolution = self.back_scan_resolution.copy()
+                self._back_scan_resolution[axis] = resolution
+                try:
+                    # check only the axis with the change
+                    forward_settings = self.create_scan_settings([axis])
+                    back_settings = self.create_back_scan_settings([axis])
+                    self.scanner_constraints.check_back_scan_settings(back_settings, forward_settings)
+                except Exception as e:
+                    self.log.error("Invalid back scan setting.", exc_info=e)
+                    self._back_scan_resolution = old_back_scan_resolution
+
     def set_scan_frequency(self, axis: str, frequency: float) -> None:
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -232,6 +285,24 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid scan frequency or axis name.", exc_info=e)
                     self._scan_frequency = old_scan_frequency
+
+    def set_back_scan_frequency(self, axis: str, frequency: float) -> None:
+        with self._thread_lock:
+            if self.module_state() != 'idle':
+                self.log.warning('Scan is running. Unable to change back scan frequency.')
+            elif BackScanCapability.FREQUENCY_CONFIGURABLE not in self.back_scan_capability:
+                self.log.error('Back scan frequency is not configurable for this scanner.')
+            else:
+                old_back_scan_frequency = self.back_scan_frequency.copy()
+                self._back_scan_frequency[axis] = frequency
+                try:
+                    # check only the axis with the change
+                    forward_settings = self.create_scan_settings([axis])
+                    back_settings = self.create_back_scan_settings([axis])
+                    self.scanner_constraints.check_back_scan_settings(back_settings, forward_settings)
+                except Exception as e:
+                    self.log.error("Invalid back scan frequency setting.", exc_info=e)
+                    self._back_scan_frequency = old_back_scan_frequency
 
     def set_target_position(self, pos_dict, caller_id=None, move_blocking=False):
         with self._thread_lock:
@@ -283,9 +354,13 @@ class ScanningProbeLogic(LogicBase):
 
             self.module_state.lock()
             settings = self.create_scan_settings(tuple(scan_axes))
+            back_settings = self.create_back_scan_settings(tuple(scan_axes))
             self.log.debug('Attempting to configure scanner...')
             try:
                 self._scanner().configure_scan(settings)
+                if self.back_scan_frequency or self.back_scan_resolution:
+                    # only if these are non-empty dicts
+                    self._scanner().configure_back_scan(back_settings)
             except Exception as e:
                 self.module_state.unlock()
                 self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
