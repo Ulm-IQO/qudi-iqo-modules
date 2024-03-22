@@ -29,7 +29,7 @@ import qudi.util.uic as uic
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability
 from qudi.core.module import GuiBase
 
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
@@ -122,6 +122,7 @@ class ScannerGui(GuiBase):
     # signals
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigFrequencyChanged = QtCore.Signal(str, float)
+    sigBackFrequencyChanged = QtCore.Signal(str, float)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
     sigOptimizerSettingsChanged = QtCore.Signal(OptimizerSettings)
     sigToggleOptimize = QtCore.Signal(bool)
@@ -199,6 +200,7 @@ class ScannerGui(GuiBase):
             self._scanning_logic().set_target_position, QtCore.Qt.QueuedConnection
         )
         self.sigFrequencyChanged.connect(scan_logic.set_scan_frequency, QtCore.Qt.QueuedConnection)
+        self.sigBackFrequencyChanged.connect(scan_logic.set_back_scan_frequency, QtCore.Qt.QueuedConnection)
         self.sigToggleScan.connect(scan_logic.toggle_scan, QtCore.Qt.QueuedConnection)
         self.sigToggleOptimize.connect(
             self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection
@@ -261,6 +263,7 @@ class ScannerGui(GuiBase):
         # Disconnect signals
         self.sigScannerTargetChanged.disconnect()
         self.sigFrequencyChanged.disconnect()
+        self.sigBackFrequencyChanged.disconnect()
         self.sigToggleScan.disconnect()
         self.sigToggleOptimize.disconnect()
         self.sigOptimizerSettingsChanged.disconnect()
@@ -589,10 +592,11 @@ class ScannerGui(GuiBase):
     @QtCore.Slot()
     def apply_scanner_settings(self):
         """Update the logic with all scanner settings from the GUI."""
-        # ToDo: Implement backwards scanning functionality
         self.scanner_control_dockwidget.emit_current_settings()
         for ax, (forward, backward) in self._ssd.settings_widget.frequency.items():
             self.sigFrequencyChanged.emit(ax, forward)
+            if backward > 0:
+                self.sigBackFrequencyChanged.emit(ax, backward)
 
     @QtCore.Slot()
     def update_scanner_settings_from_logic(self):
@@ -604,6 +608,8 @@ class ScannerGui(GuiBase):
 
         for ax, forward in scan_logic.scan_frequency.items():
             self._ssd.settings_widget.set_forward_frequency(ax, forward)
+        for ax, backward in scan_logic.back_scan_frequency.items():
+            self._ssd.settings_widget.set_backward_frequency(ax, backward)
 
     @QtCore.Slot()
     def set_full_range(self) -> None:

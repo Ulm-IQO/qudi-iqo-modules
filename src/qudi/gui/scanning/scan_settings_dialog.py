@@ -64,6 +64,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
 
         self.axes_widgets = dict()
         back_scan_capability = scanner_constraints.back_scan_capability
+        self._back_frequency_configurable = BackScanCapability.FREQUENCY_CONFIGURABLE in back_scan_capability
 
         font = QtGui.QFont()
         font.setBold(True)
@@ -103,11 +104,9 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
             backward_spinbox.setMinimumSize(75, 0)
             backward_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                            QtWidgets.QSizePolicy.Preferred)
-            if BackScanCapability.FREQUENCY_CONFIGURABLE not in back_scan_capability:
-                backward_spinbox.setDisabled(True)
-            if BackScanCapability.AVAILABLE not in back_scan_capability:
-                backward_spinbox.setValue(0)
-                backward_spinbox.setSuffix('na')
+            if not self._back_frequency_configurable:
+                backward_spinbox.setEnabled(False)
+                forward_spinbox.valueChanged.connect(backward_spinbox.setValue)
 
             # Add to layout
             layout.addWidget(label, index, 0)
@@ -146,12 +145,8 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
 
     def set_forward_frequency(self, ax: str, freq: float) -> None:
         spinbox = self.axes_widgets[ax]['forward_freq_spinbox']
-        spinbox.blockSignals(True)
         spinbox.setValue(freq)
-        spinbox.blockSignals(False)
 
     def set_backward_frequency(self, ax: str, freq: float) -> None:
         spinbox = self.axes_widgets[ax]['backward_freq_spinbox']
-        spinbox.blockSignals(True)
         spinbox.setValue(freq)
-        spinbox.blockSignals(False)
