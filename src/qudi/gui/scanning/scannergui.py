@@ -19,10 +19,10 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-
+import itertools
 import os
 import numpy as np
-from typing import Union, Tuple
+from typing import Union, Tuple, Optional, List
 from PySide2 import QtCore, QtWidgets
 
 import qudi.util.uic as uic
@@ -38,6 +38,7 @@ from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
+from qudi.logic.scanning_optimize_logic import OptimizerSettings
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
@@ -89,7 +90,7 @@ class ScannerGui(GuiBase):
         options:
             image_axes_padding: 0.02
             default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
-            optimizer_plot_dimensions: [2, 1]   # for all optimizer sub widgets, (2=XY, 1=Z)
+            optimizer_plot_dimensions: [2, 1]   # optimization sequence dim. order, here for 2D, 1D, e.g. XY, Z
             min_crosshair_size_fraction: 0.02   # minimum crosshair size as fraction of the displayed scan range
         connect:
             scanning_logic: scanning_probe_logic
@@ -106,7 +107,11 @@ class ScannerGui(GuiBase):
     # config options for gui
     _default_position_unit_prefix = ConfigOption(name='default_position_unit_prefix', default=None)
     # for all optimizer sub widgets, (2= xy, 1=z)
-    _optimizer_plot_dims = ConfigOption(name='optimizer_plot_dimensions', default=[2,1])
+    _optimizer_plot_dims: List[int] = ConfigOption(
+        name='optimizer_plot_dimensions',
+        default=[2, 1],
+        checker=lambda x: set(x) == {1, 2},  # only 1D and 2D optimizations are supported
+    )
     # minimum crosshair size as fraction of the displayed scan range
     _min_crosshair_size_fraction = ConfigOption(name='min_crosshair_size_fraction', default=1/50, missing='nothing')
 
@@ -118,7 +123,7 @@ class ScannerGui(GuiBase):
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigFrequencyChanged = QtCore.Signal(str, float)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
-    sigOptimizerSettingsChanged = QtCore.Signal(dict)
+    sigOptimizerSettingsChanged = QtCore.Signal(OptimizerSettings)
     sigToggleOptimize = QtCore.Signal(bool)
     sigSaveScan = QtCore.Signal(object, object)
     sigSaveFinished = QtCore.Signal()
@@ -130,7 +135,7 @@ class ScannerGui(GuiBase):
         # QMainWindow and QDialog child instances
         self._mw = None
         self._ssd = None
-        self._osd = None
+        self._osd: Optional[OptimizerSettingDialog] = None
 
         # References to automatically generated GUI elements
         self.optimizer_settings_axes_widgets = None
@@ -287,22 +292,32 @@ class ScannerGui(GuiBase):
     def _init_optimizer_settings(self):
         """ Configuration and initialisation of the optimizer settings dialog.
         """
-        # Create the Settings window
+        axes_obj = tuple(self._scanning_logic().scanner_axes.values())
+        axes_names = [ax.name for ax in axes_obj]
+
+        # figure out sensible optimization sequences for user selection
+        possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in self._optimizer_plot_dims]
+        optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
+        sequences_no_axis_twice = []
+        for sequence in optimization_sequences:
+            occurring_axes = [axis for step in sequence for axis in step]
+            if len(occurring_axes) <= len(set(occurring_axes)):
+                sequences_no_axis_twice.append(sequence)
+
         self._osd = OptimizerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
                                            tuple(self._scanning_logic().scanner_channels.values()),
-                                           self._optimizer_plot_dims)
+                                           sequences_no_axis_twice)
 
         # Connect MainWindow actions
         self._mw.action_optimizer_settings.triggered.connect(lambda x: self._osd.exec_())
 
         # Connect the action of the settings window with the code:
         self._osd.accepted.connect(self.change_optimizer_settings)
-        self._osd.rejected.connect(self.update_optimizer_settings)
+        self._osd.rejected.connect(self.update_optimizer_settings_from_logic)
         self._osd.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
             self.change_optimizer_settings)
         # pull in data
-        self.update_optimizer_settings()
-        return
+        self.update_optimizer_settings_from_logic()
 
     def _init_scanner_settings(self):
         """
@@ -641,7 +656,7 @@ class ScannerGui(GuiBase):
 
         if scan_data is not None:
             if caller_id is self._optimizer_id:
-                channel = self._osd.settings['data_channel']
+                channel = self._osd.settings.data_channel
                 if scan_data.settings.scan_dimension == 2:
                     x_ax, y_ax = scan_data.settings.axes
                     self.optimizer_dockwidget.set_image(image=scan_data.data[channel],
@@ -747,9 +762,9 @@ class ScannerGui(GuiBase):
         avail_axs = list(self.scan_1d_dockwidgets.keys())
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
-        restored_axs = []
         ids_to_restore = np.asarray([self._data_logic().get_current_scan_id(ax) for ax in avail_axs])
         ids_to_restore = ids_to_restore[~np.isnan(ids_to_restore)].astype(int)
+        self.log.debug(f"Restoring {ids_to_restore}")
 
         [self._data_logic().restore_from_history(id) for id in ids_to_restore]
 
@@ -787,6 +802,7 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot(object)
     def _update_from_history(self, scan_data: ScanData):
+        self.set_scanner_target_position(scan_data.scanner_target_at_start)
         self._update_scan_data(scan_data)
         self.set_active_tab(scan_data.settings.axes)
 
@@ -885,14 +901,14 @@ class ScannerGui(GuiBase):
     @QtCore.Slot()
     def change_optimizer_settings(self):
         self.sigOptimizerSettingsChanged.emit(self._osd.settings)
-        self.optimizer_dockwidget.scan_sequence = self._osd.settings['scan_sequence']
+        self.optimizer_dockwidget.scan_sequence = self._osd.settings.sequence
         self.update_crosshair_sizes()
 
     def update_crosshair_sizes(self):
         axes_constr = self._scanning_logic().scanner_axes
         for ax, dockwidget in self.scan_2d_dockwidgets.items():
-            width = self._osd.settings['scan_range'][ax[0]]
-            height = self._osd.settings['scan_range'][ax[1]]
+            width = self._osd.settings.range[ax[0]]
+            height = self._osd.settings.range[ax[1]]
             x_min, x_max = axes_constr[ax[0]].position.bounds
             y_min, y_max = axes_constr[ax[1]].position.bounds
             marker_bounds = (
@@ -907,56 +923,45 @@ class ScannerGui(GuiBase):
             finally:
                 dockwidget.scan_widget.blockSignals(False)
 
-    @QtCore.Slot(dict)
-    def update_optimizer_settings(self, settings=None):
-        if not isinstance(settings, dict):
-            settings = self._optimize_logic().optimize_settings
+    @QtCore.Slot()
+    def update_optimizer_settings_from_logic(self):
+        """Update all optimizer settings from the optimizer logic."""
+        settings: OptimizerSettings = self._optimize_logic().optimize_settings
 
         # Update optimizer settings QDialog
         self._osd.change_settings(settings)
 
-        # Adjust optimizer settings
-        if 'scan_sequence' in settings:
-            new_settings = self._optimize_logic().check_sanity_optimizer_settings(settings, self._optimizer_plot_dims)
-            if settings['scan_sequence'] != new_settings['scan_sequence']:
-                new_seq = new_settings['scan_sequence']
-                self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
-                                 f" Defaulted optimizer to= {new_seq}")
-                self._optimize_logic().scan_sequence = new_seq
-            settings = new_settings
+        axes_constr = self._scanning_logic().scanner_axes
+        self.optimizer_dockwidget.scan_sequence = settings.sequence
 
-            axes_constr = self._scanning_logic().scanner_axes
-            self.optimizer_dockwidget.scan_sequence = settings['scan_sequence']
+        for seq_step in settings.sequence:
+            if len(seq_step) == 1:
+                axis = seq_step[0]
+                self.optimizer_dockwidget.set_plot_label(axis='bottom',
+                                                         axs=seq_step,
+                                                         text=axis,
+                                                         units=axes_constr[axis].unit)
+                self.optimizer_dockwidget.set_plot_data(axs=seq_step)
+                self.optimizer_dockwidget.set_fit_data(axs=seq_step)
 
-            for seq_step in settings['scan_sequence']:
-                if len(seq_step) == 1:
-                    axis = seq_step[0]
-                    self.optimizer_dockwidget.set_plot_label(axis='bottom',
-                                                             axs=seq_step,
-                                                             text=axis,
-                                                             units=axes_constr[axis].unit)
-                    self.optimizer_dockwidget.set_plot_data(axs=seq_step)
-                    self.optimizer_dockwidget.set_fit_data(axs=seq_step)
-                elif len(seq_step) == 2:
-                    x_axis, y_axis = seq_step
-                    self.optimizer_dockwidget.set_image_label(axis='bottom',
-                                                              axs=seq_step,
-                                                              text=x_axis,
-                                                              units=axes_constr[x_axis].unit)
-                    self.optimizer_dockwidget.set_image_label(axis='left',
-                                                              axs=seq_step,
-                                                              text=y_axis,
-                                                              units=axes_constr[y_axis].unit)
-                    self.optimizer_dockwidget.set_image(None, axs=seq_step,
-                                                        extent=((-0.5, 0.5), (-0.5, 0.5)))
+                channel_constr = self._scanning_logic().scanner_channels
+                channel = settings.data_channel
+                self.optimizer_dockwidget.set_plot_label(axs=seq_step, axis='left',
+                                                         text=channel,
+                                                         units=channel_constr[channel].unit)
 
-                # Adjust 1D plot y-axis label
-                if 'data_channel' in settings and len(seq_step)==1:
-                    channel_constr = self._scanning_logic().scanner_channels
-                    channel = settings['data_channel']
-                    self.optimizer_dockwidget.set_plot_label(axs=seq_step, axis='left',
-                                                             text=channel,
-                                                             units=channel_constr[channel].unit)
+            elif len(seq_step) == 2:
+                x_axis, y_axis = seq_step
+                self.optimizer_dockwidget.set_image_label(axis='bottom',
+                                                          axs=seq_step,
+                                                          text=x_axis,
+                                                          units=axes_constr[x_axis].unit)
+                self.optimizer_dockwidget.set_image_label(axis='left',
+                                                          axs=seq_step,
+                                                          text=y_axis,
+                                                          units=axes_constr[y_axis].unit)
+                self.optimizer_dockwidget.set_image(None, axs=seq_step,
+                                                    extent=((-0.5, 0.5), (-0.5, 0.5)))
 
-                # Adjust crosshair size according to optimizer range
-                self.update_crosshair_sizes()
+            # Adjust crosshair size according to optimizer range
+            self.update_crosshair_sizes()

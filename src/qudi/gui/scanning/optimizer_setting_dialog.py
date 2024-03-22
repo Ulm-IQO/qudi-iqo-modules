@@ -22,24 +22,25 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('OptimizerSettingDialog', 'OptimizerSettingWidget', 'OptimizerAxesWidget')
 
-import copy as cp
+from typing import List, Tuple, Dict
 from PySide2 import QtCore, QtGui, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
-from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
+from qudi.logic.scanning_optimize_logic import OptimizerSettings
+
 
 class OptimizerSettingDialog(QtWidgets.QDialog):
     """ User configurable settings for the scanner optimizer logic
     """
 
-    def __init__(self, scanner_axes, scanner_channels, optimizer_dim=[2,1]):
+    def __init__(self, scanner_axes, scanner_channels, sequences: List[List[Tuple[str, ...]]]):
         super().__init__()
         self.setObjectName('optimizer_settings_dialog')
         self.setWindowTitle('Optimizer Settings')
 
         self.settings_widget = OptimizerSettingWidget(scanner_axes=scanner_axes,
                                                       scanner_channels=scanner_channels,
-                                                      optimizer_dim=optimizer_dim)
+                                                      sequences=sequences)
 
         self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
                                                      QtWidgets.QDialogButtonBox.Cancel |
@@ -56,10 +57,10 @@ class OptimizerSettingDialog(QtWidgets.QDialog):
         self.setLayout(layout)
 
     @property
-    def settings(self):
+    def settings(self) -> OptimizerSettings:
         return self.settings_widget.settings
 
-    def change_settings(self, settings):
+    def change_settings(self, settings: OptimizerSettings):
         return self.settings_widget.change_settings(settings)
 
 
@@ -67,16 +68,12 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
     """ User configurable settings for the scanner optimizer logic
     """
 
-    def __init__(self, scanner_axes, scanner_channels, optimizer_dim=[2,1]):
+    def __init__(self, scanner_axes, scanner_channels, sequences: List[List[Tuple[str, ...]]]):
         super().__init__()
         self.setObjectName('optimizer_settings_widget')
 
         self._avail_axes = sorted([ax.name for ax in scanner_axes])
-        self._optimizer_dim = optimizer_dim
-
-        dummy_seq = OptimizerScanSequence(self._avail_axes,
-                                          self._optimizer_dim)
-        self._available_opt_sequences = cp.copy(dummy_seq.available_opt_sequences)
+        self.available_opt_sequences = sequences
 
         font = QtGui.QFont()
         font.setBold(True)
@@ -85,7 +82,7 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         self.data_channel_combobox.addItems(tuple(ch.name for ch in scanner_channels))
 
         self.optimize_sequence_combobox = QtWidgets.QComboBox()
-        self.optimize_sequence_combobox.addItems(str(seq) for seq in self.available_opt_sequences)
+        self.optimize_sequence_combobox.addItems([str(seq) for seq in self.available_opt_sequences])
 
         label = QtWidgets.QLabel('Data channel:')
         label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
@@ -116,40 +113,31 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         self.setLayout(layout)
 
     @property
-    def settings(self):
-        return {'data_channel': self.data_channel_combobox.currentText(),
-                'scan_sequence': self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()].sequence,
-                'scan_resolution': self.axes_widget.resolution,
-                'scan_range': self.axes_widget.range,
-                'scan_frequency': self.axes_widget.frequency}
+    def settings(self) -> OptimizerSettings:
+        return OptimizerSettings(
+            range=self.axes_widget.range,
+            resolution=self.axes_widget.resolution,
+            frequency=self.axes_widget.frequency,
+            data_channel=self.data_channel_combobox.currentText(),
+            sequence=self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()]
+        )
 
-    @property
-    def available_opt_sequences(self):
-        return self._available_opt_sequences
+    def change_settings(self, settings: OptimizerSettings):
+        self.data_channel_combobox.blockSignals(True)
+        self.data_channel_combobox.setCurrentText(settings.data_channel)
+        self.data_channel_combobox.blockSignals(False)
 
+        self.optimize_sequence_combobox.blockSignals(True)
+        try:
+            idx_combo = self.available_opt_sequences.index(settings.sequence)
+        except ValueError:
+            idx_combo = 0
+        self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
+        self.optimize_sequence_combobox.blockSignals(False)
 
-    def change_settings(self, settings):
-        if 'data_channel' in settings:
-            self.data_channel_combobox.blockSignals(True)
-            self.data_channel_combobox.setCurrentText(settings['data_channel'])
-            self.data_channel_combobox.blockSignals(False)
-        if 'scan_sequence' in settings:
-            self.optimize_sequence_combobox.blockSignals(True)
-            try:
-                idx_combo = [seq.sequence for seq in self.available_opt_sequences].index(settings['scan_sequence'])
-            except ValueError:
-                idx_combo = 0
-            self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
-
-            self.optimize_sequence_combobox.blockSignals(False)
-        if 'scan_range' in settings:
-            self.axes_widget.set_range(settings['scan_range'])
-        if 'scan_resolution' in settings:
-            self.axes_widget.set_resolution(settings['scan_resolution'])
-        if 'scan_frequency' in settings:
-            self.axes_widget.set_frequency(settings['scan_frequency'])
-
-
+        self.axes_widget.set_range(settings.range)
+        self.axes_widget.set_resolution(settings.resolution)
+        self.axes_widget.set_frequency(settings.frequency)
 
 
 class OptimizerAxesWidget(QtWidgets.QWidget):
@@ -191,7 +179,6 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             range_spinbox = ScienDSpinBox()
             range_spinbox.setObjectName('{0}_range_scienDSpinBox'.format(ax_name))
             range_spinbox.setRange(0, max_range)
-            range_spinbox.setValue(max_range / 100)
             range_spinbox.setSuffix(axis.unit)
             range_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             range_spinbox.setMinimumSize(75, 0)
@@ -211,7 +198,6 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             freq_spinbox = ScienDSpinBox()
             freq_spinbox.setObjectName('{0}_frequency_scienDSpinBox'.format(ax_name))
             freq_spinbox.setRange(*axis.frequency.bounds)
-            freq_spinbox.setValue(max(axis.frequency.minimum, axis.frequency.maximum / 100))
             freq_spinbox.setSuffix('Hz')
             freq_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             freq_spinbox.setMinimumSize(75, 0)
@@ -253,60 +239,23 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
     def frequency(self):
         return {ax: widgets['freq_spinbox'].value() for ax, widgets in self.axes_widgets.items()}
 
-    def get_resolution(self, axis):
-        return self.axes_widgets[axis]['res_spinbox'].value()
-
-    @QtCore.Slot(dict)
-    @QtCore.Slot(int, str)
-    def set_resolution(self, value, axis=None):
-        if axis is None or isinstance(value, dict):
-            for ax, val in value.items():
-                spinbox = self.axes_widgets[ax]['res_spinbox']
-                spinbox.blockSignals(True)
-                spinbox.setValue(val)
-                spinbox.blockSignals(False)
-        else:
-            spinbox = self.axes_widgets[axis]['res_spinbox']
+    def set_resolution(self, resolution: Dict[str, int]):
+        for ax, val in resolution.items():
+            spinbox = self.axes_widgets[ax]['res_spinbox']
             spinbox.blockSignals(True)
-            spinbox.setValue(value)
+            spinbox.setValue(val)
             spinbox.blockSignals(False)
 
-    def get_range(self, axis):
-        return self.axes_widgets[axis]['range_spinbox'].value()
-
-    @QtCore.Slot(dict)
-    @QtCore.Slot(object, str)
-    def set_range(self, value, axis=None):
-        if axis is None or isinstance(value, dict):
-            for ax, val in value.items():
-                spinbox = self.axes_widgets[ax]['range_spinbox']
-                spinbox.blockSignals(True)
-                spinbox.setValue(val)
-                spinbox.blockSignals(False)
-        else:
-            spinbox = self.axes_widgets[axis]['range_spinbox']
+    def set_range(self, rng: Dict[str, float]):
+        for ax, val in rng.items():
+            spinbox = self.axes_widgets[ax]['range_spinbox']
             spinbox.blockSignals(True)
-            spinbox.setValue(value)
+            spinbox.setValue(val)
             spinbox.blockSignals(False)
 
-    def get_frequency(self, axis):
-        return self.axes_widgets[axis]['freq_spinbox'].value()
-
-    @QtCore.Slot(dict)
-    @QtCore.Slot(float, str)
-    def set_frequency(self, value, axis=None):
-        if axis is None or isinstance(value, dict):
-            for ax, val in value.items():
-                spinbox = self.axes_widgets[ax]['freq_spinbox']
-                spinbox.blockSignals(True)
-                spinbox.setValue(val)
-                spinbox.blockSignals(False)
-        else:
-            spinbox = self.axes_widgets[axis]['freq_spinbox']
+    def set_frequency(self, frequency: Dict[str, float]):
+        for ax, val in frequency.items():
+            spinbox = self.axes_widgets[ax]['freq_spinbox']
             spinbox.blockSignals(True)
-            spinbox.setValue(value)
+            spinbox.setValue(val)
             spinbox.blockSignals(False)
-
-    def set_assumed_unit_prefix(self, prefix):
-        for widgets in self.axes_widgets.values():
-            widgets['range_spinbox'].assumed_unit_prefix = prefix

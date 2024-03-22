@@ -23,8 +23,9 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
 from PySide2 import QtCore
-import itertools
 import copy as cp
+from typing import Dict, Tuple, List
+from dataclasses import dataclass
 
 from qudi.core.module import LogicBase
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
@@ -34,10 +35,19 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.fit_models.gaussian import Gaussian2D, Gaussian
 
 
+@dataclass
+class OptimizerSettings:
+    range: Dict[str, float]
+    resolution: Dict[str, int]
+    frequency: Dict[str, float]
+    data_channel: str
+    sequence: List[Tuple[str, ...]]
+
+
 class ScanningOptimizeLogic(LogicBase):
     """
-    This module is responsible for performing scanning probe measurements in order to find some optimal
-    position and move the scanner there.
+    This logic module makes use of the scanning probe logic to perform a sequence of
+    1D and 2D spatial signal optimization steps.
 
     Example config for copy-paste:
 
@@ -51,14 +61,12 @@ class ScanningOptimizeLogic(LogicBase):
     # declare connectors
     _scan_logic = Connector(name='scan_logic', interface='ScanningProbeLogic')
 
-    # config options
-
     # status variables
-    _scan_sequence = StatusVar(name='scan_sequence', default=None)
+    _scan_sequence: List[Tuple[str, ...]] = StatusVar(name='scan_sequence', default=None)
     _data_channel = StatusVar(name='data_channel', default=None)
-    _scan_frequency = StatusVar(name='scan_frequency', default=None)
-    _scan_range = StatusVar(name='scan_range', default=None)
-    _scan_resolution = StatusVar(name='scan_resolution', default=None)
+    _scan_range: Dict[str, float] = StatusVar(name='scan_range', default=dict())
+    _scan_resolution: Dict[str, int] = StatusVar(name='scan_resolution', default=dict())
+    _scan_frequency: Dict[str, float] = StatusVar(name='scan_frequency', default=dict())
 
     # signals
     sigOptimizeStateChanged = QtCore.Signal(bool, dict, object)
@@ -76,6 +84,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._optimal_position = dict()
         self._last_scans = list()
         self._last_fits = list()
+        self._avail_axes = tuple()
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -83,7 +92,13 @@ class ScanningOptimizeLogic(LogicBase):
         axes = self._scan_logic().scanner_axes
         channels = self._scan_logic().scanner_channels
 
-        self.log.debug(f"Opt settings at startup, type {type(self._scan_range)} {self._scan_range, self._scan_resolution}")
+        # check if settings in status variables are valid
+        # reset to defaults if required
+        if not all([self.scan_range, self.scan_resolution, self.scan_frequency]):
+            self.log.debug(f"No status variables present, using default scan settings.")
+            self._scan_range = {ax.name: abs(ax.position.maximum - ax.position.minimum) / 100 for ax in axes.values()}
+            self._scan_resolution = {ax.name: max(16, ax.resolution.minimum) for ax in axes.values()}
+            self._scan_frequency = {ax.name: max(ax.frequency.minimum, ax.frequency.maximum / 100) for ax in axes.values()}
 
         self._avail_axes = tuple(axes.values())
         if self._scan_sequence is None:
@@ -98,13 +113,6 @@ class ScanningOptimizeLogic(LogicBase):
                 self._scan_sequence = list()
         if self._data_channel is None:
             self._data_channel = tuple(channels.values())[0].name
-
-        # check nd correct optimizer settings loaded from StatusVar
-        new_settings = self.check_sanity_optimizer_settings(self.optimize_settings)
-        if new_settings != self.optimize_settings:
-            self._scan_range = new_settings['scan_range']
-            self._scan_resolution = new_settings['scan_resolution']
-            self._scan_frequency = new_settings['scan_frequency']
 
         self._sequence_index = 0
         self._optimal_position = dict()
@@ -130,34 +138,33 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def scan_frequency(self):
-        return self._scan_frequency.copy() if self._scan_frequency!=None else None
+        return self._scan_frequency.copy()
 
     @property
     def scan_range(self):
-        return self._scan_range.copy() if self._scan_range!=None else None
+        return self._scan_range.copy()
 
     @property
     def scan_resolution(self):
-        return self._scan_resolution.copy() if self._scan_resolution!= None else None
+        return self._scan_resolution.copy()
 
     @property
-    def scan_sequence(self):
+    def scan_sequence(self) -> List[Tuple[str, ...]]:
         # serialization into status variable changes step type <tuple> -> <list>
-        return [tuple(el) for el in self._scan_sequence]
+        return [tuple(i) for i in self._scan_sequence]
 
     @scan_sequence.setter
-    def scan_sequence(self, sequence):
+    def scan_sequence(self, sequence: List[Tuple[str, ...]]):
         """
-        @param sequence: list of string tuples giving the scan order, eg. [('x','y'),('z')]
+        @param sequence: list or tuple of string tuples giving the scan order, e.g. [('x','y'), ('z')]
         """
-        axs_flat = []
-        list(axs_flat.extend(item) for item in sequence)
-        avail_axes = [ax.name for ax in self._avail_axes]
-        if not all(elem in avail_axes for elem in axs_flat):
-            raise ValueError(f"Optimizer sequence {sequence} must contain only"
-                             f" available axes ({avail_axes})")
-
-        self._scan_sequence = sequence
+        occurring_axes = set([axis for step in sequence for axis in step])
+        available_axes = [ax.name for ax in self._avail_axes]
+        if not occurring_axes.issubset(available_axes):
+            self.log.error(f"Optimizer sequence {sequence} must contain only"
+                           f" available axes ({available_axes}).")
+        else:
+            self._scan_sequence = sequence
 
     @property
     def optimizer_running(self):
@@ -165,11 +172,25 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def optimize_settings(self):
-        return {'scan_frequency': self.scan_frequency,
-                'data_channel': self._data_channel,
-                'scan_range': self.scan_range,
-                'scan_resolution': self.scan_resolution,
-                'scan_sequence': self.scan_sequence}
+        return OptimizerSettings(
+            range=self.scan_range,
+            resolution=self.scan_resolution,
+            frequency=self.scan_frequency,
+            data_channel=self.data_channel,
+            sequence=self.scan_sequence
+        )
+
+    def set_optimize_settings(self, settings: OptimizerSettings):
+        """Set all optimizer settings."""
+        with self._thread_lock:
+            if self.module_state() != 'idle':
+                self.log.error('Cannot change optimize settings when module is locked.')
+            else:
+                self._scan_range.update(settings.range)
+                self._scan_resolution.update(settings.resolution)
+                self._scan_frequency.update(settings.frequency)
+                self._data_channel = settings.data_channel
+                self._scan_sequence = settings.sequence
 
     @property
     def last_scans(self):
@@ -181,93 +202,9 @@ class ScanningOptimizeLogic(LogicBase):
         with self._result_lock:
             return self._last_fits.copy()
 
-    def check_sanity_optimizer_settings(self, settings=None, plot_dimensions=None):
-        # shaddows scanning_probe_logic::check_sanity. Unify code somehow?
-
-        if not isinstance(settings, dict):
-            settings = self.optimize_settings
-
-        settings = cp.deepcopy(settings)
-        hw_axes = self._scan_logic().scanner_axes
-        sig_channels = self._scan_logic().scanner_channels
-
-        def check_valid(settings, key):
-            is_valid = True  # non present key -> valid
-            if key in settings:
-                if not isinstance(settings[key], dict):
-                    is_valid = False
-                else:
-                    axes = settings[key].keys()
-                    if axes != hw_axes.keys():
-                        is_valid = False
-
-            return is_valid
-
-        # first check settings that are defined per scanner axis
-        for key, val in settings.items():
-            if not check_valid(settings, key):
-                if key == 'scan_range':
-                    settings['scan_range'] = {ax.name: abs(ax.position.bounds[1] - ax.position.bounds[0]) / 100 for ax in
-                                              hw_axes.values()}
-                if key == 'scan_resolution':
-                    settings['scan_resolution'] = {ax.name: max(ax.resolution.minimum, min(16, ax.resolution.maximum))
-                                                   for ax in hw_axes.values()}
-                if key == 'scan_frequency':
-                    settings['scan_frequency'] = {ax.name: max(ax.frequency.minimum, min(50, ax.frequency.maximum)) for ax
-                                                  in hw_axes.values()}
-                if key == 'data_channel':
-                    settings['data_channel'] = list(sig_channels.keys())[0]
-
-        # scan_sequence check, only sensibel if plot dimensions (eg. from confocal gui) are available
-        if 'scan_sequence' in settings and plot_dimensions:
-            dummy_seq = OptimizerScanSequence(tuple(self._scan_logic().scanner_axes.keys()),
-                                              plot_dimensions)
-
-            if len(dummy_seq.available_opt_sequences) == 0:
-                raise ValueError(f"Configured optimizer dim= {plot_dimensions}"
-                                 f" doesn't yield any sensible scan sequence.")
-
-            if settings['scan_sequence'] not in [seq.sequence for seq in dummy_seq.available_opt_sequences]:
-                new_seq = dummy_seq.available_opt_sequences[0].sequence
-                settings['scan_sequence'] = new_seq
-
-            if len(settings['scan_sequence']) != len(plot_dimensions):
-                self.log.warning(f"Configured optimizer dim= {plot_dimensions}"
-                                 f" doesn't fit the available sequences.")
-
-        return settings
-
     @property
     def optimal_position(self):
         return self._optimal_position.copy()
-
-    def set_optimize_settings(self, settings):
-        """
-        """
-        with self._thread_lock:
-            if self.module_state() != 'idle':
-                settings_update = self.optimize_settings
-                self.log.error('Can not change optimize settings when module is locked.')
-            else:
-                settings_update = dict()
-                if 'scan_frequency' in settings:
-                    self._scan_frequency.update(settings['scan_frequency'])
-                    settings_update['scan_frequency'] = self.scan_frequency
-                if 'data_channel' in settings:
-                    self._data_channel = settings['data_channel']
-                    settings_update['data_channel'] = self._data_channel
-                if 'scan_range' in settings:
-                    self._scan_range.update(settings['scan_range'])
-                    settings_update['scan_range'] = self.scan_range
-                if 'scan_resolution' in settings:
-                    self._scan_resolution.update(settings['scan_resolution'])
-                    settings_update['scan_resolution'] = self.scan_resolution
-                if 'scan_sequence' in settings:
-                    self.scan_sequence = settings['scan_sequence']
-                    settings_update['scan_sequence'] = self.scan_sequence
-
-            self.sigOptimizeSettingsChanged.emit(settings_update)
-            return settings_update
 
     def toggle_optimize(self, start):
         if start:
@@ -413,176 +350,3 @@ class ScanningOptimizeLogic(LogicBase):
             return (middle,), None, None
 
         return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
-
-
-class OptimizerScanSequence:
-    def __init__(self, axes, dimensions=[2,1], sequence=None):
-        self._avail_axes = axes
-        self._optimizer_dim = dimensions
-        self._sequence = None
-        if sequence in self._available_opt_seqs_raw():
-            self.sequence = sequence
-
-    def __eq__(self, other):
-        if isinstance(other, OptimizerScanSequence):
-            return self._sequence == other._sequence
-        return False
-
-    def __str__(self):
-        out_str = ""
-        if self.sequence:
-            for step in self._sequence:
-                if len(step) == 1:
-                    out_str += f"{step[0]}"
-                elif len(step) == 2:
-                    out_str += f"{step[0]}{step[1]}"
-                else:
-                    raise ValueError
-                out_str += ", "
-
-            out_str = out_str.rstrip(', ')
-
-        return out_str
-
-    def __len__(self):
-        if not self.sequence:
-            return 0
-        return len(self.sequence)
-
-    @property
-    def sequence(self):
-        """
-        @return: list of tuples
-        """
-
-        return self._sequence
-
-    @sequence.setter
-    def sequence(self, sequence):
-        """
-        @param sequence: list of tuples, eg. [('x','y'), ('z')]
-        """
-        if not sequence in self._available_opt_seqs_raw():
-            raise ValueError(f"Given {sequence} sequence incompatible with axes= {self._avail_axes}, dims= {self._optimizer_dim}")
-
-        self._sequence = sequence
-
-    @property
-    def available_opt_sequences(self):
-        """
-        Based on the given plot dimensions and axes configuration, give all possible permutations of scan sequences.
-        """
-
-        return [OptimizerScanSequence(self._avail_axes, self._optimizer_dim, seq) for seq in self._available_opt_seqs_raw()]
-
-    def _available_opt_seqs_raw(self, remove_1d_in_2d=True):
-        """
-        @oaram remove_1d_in_2d: remove sequences where 1d steps are repeated in 2d steps, eg. [('x','y'), ('x')]
-        """
-        def get_n_in(comb_list, seq_step):
-            if type(seq_step) != tuple:
-                raise ValueError
-
-            n_in = 0
-            for old_step in comb_list:
-                if type(old_step) != tuple:
-                    raise ValueError
-                if old_step == seq_step:
-                    n_in += 1
-                    continue
-                if len(old_step) == 2 and len(seq_step) == 2:
-                    if old_step[0] == seq_step[1] and old_step[1] == seq_step[0]:
-                        n_in += 1
-                        continue
-            return n_in
-
-        def add_comb(old_comb, new_seqs):
-            out_comb = []
-
-            for old_list in old_comb:
-                for seq in new_seqs:
-                    out_comb.append(combine(old_list, seq))
-
-            if not old_comb:
-                return [[seq] for seq in new_seqs]
-            if not out_comb:
-                return old_comb
-
-            # clean doubles within combination
-            out_clean = []
-            for comb in out_comb:
-                out_clean.append([el for el in comb if get_n_in(comb, el) == 1])
-            out_comb = [el for el in out_clean if len(el) == len(out_comb[0])]
-
-            return out_comb
-
-        def combine(in1, in2):
-
-            in1 = cp.deepcopy(in1)
-            in2 = cp.deepcopy(in2)
-
-            if type(in1) == str:
-                in1 = tuple(in1)
-            if type(in2) == str:
-                in2 = tuple(in2)
-
-            if type(in1) == list and type(in2) == list:
-                in1.extend(in2)
-                return in1
-            elif type(in1) != list and type(in2) == list:
-                in2.insert(0, in1)
-                return in2
-            elif type(in1) == list and type(in2) != list:
-                in1.append(in2)
-                return in1
-            else:
-                return [in1, in2]
-
-        def remove_duplicates(comb_list):
-            out_seqs = []
-            for seq in comb_list:
-                if seq not in out_seqs:
-                    out_seqs.append(seq)
-
-            return out_seqs
-
-        def remove_1d_in_2d_axes_dupl(comb_list):
-            out_seqs = []
-            for seq in comb_list:
-                is_1d_in_2d = False
-                for step in seq:
-                    if type(step) == tuple and len(step) == 1:
-                        # if 1d step, check whether in any of the other 2 stpes
-                        is_step_in = any([step[0] in s for s in seq if type(s)==tuple and len(s)==2])
-                        if is_step_in:
-                            is_1d_in_2d = True
-
-                if not is_1d_in_2d:
-                    out_seqs.append(seq)
-            return out_seqs
-
-        combs_2d = list(itertools.combinations(self._avail_axes, 2))
-        combs_1d = list(itertools.combinations(self._avail_axes, 1))
-        out_seqs = []
-
-        for dim in self._optimizer_dim:
-            if dim == 1:
-                out_seqs = add_comb(out_seqs, combs_1d)
-            elif dim == 2:
-                out_seqs = add_comb(out_seqs, combs_2d)
-            else:
-                raise ValueError("Only support 1d and 2d optimization sequences.")
-
-        # add permutations
-        out_seqs_any_order = []
-        for seq in out_seqs:
-            out_seqs_any_order.extend([list(el) for el in list(itertools.permutations(seq))])
-        out_seqs = out_seqs_any_order
-        # clean up
-        out_seqs = remove_duplicates(out_seqs)
-        if remove_1d_in_2d:
-            out_seqs = remove_1d_in_2d_axes_dupl(out_seqs)
-
-        return out_seqs
-
-
