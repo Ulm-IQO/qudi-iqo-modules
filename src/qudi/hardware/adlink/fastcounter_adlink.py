@@ -238,7 +238,9 @@ class AdlinkDefaultSettings:
 
         # global measurement buffer setup
         # this buffer is in the PC's memory and stores data from multiple measurements, until it is written to file
-        self.measurement_buffer_length = 10
+        self.number_of_triggers_per_buffer = 1
+        self.callback_function = "copy_double_buffer_callback"
+        self.callback_signal = AdlinkDataTypes.I16(2)
 
     def update_settings(self, arguments):
         # update the settings dict
@@ -280,6 +282,7 @@ class Adlink9834(FastCounterInterface):
     """
 
     _dll_location = ConfigOption('wddask_dll_location', default="C:/ADLINK/WD-DASK/Lib/wd-dask64.dll", missing='error')
+    _callback_dll_location = os.path.join(os.path.dirname(__file__), "adlink_callback_functions.so")
     _card_num = ConfigOption('card_number', default=0, missing='warn')
     _maximum_samples = ConfigOption('maximum_samples', default=512e6, missing='warn',
                                         constructor=lambda x: int(x)) # Maximum number of samples for which a buffer can be set up
@@ -296,7 +299,9 @@ class Adlink9834(FastCounterInterface):
 
         self._buffer_size_samples = AdlinkDataTypes.U32(0)
         self._ai_buffer1 = ctypes.c_void_p()
+        self._ai_buffer2 = ctypes.c_void_p()
         self._buffer_id1 = AdlinkDataTypes.U16(0)
+        self._buffer_id2 = AdlinkDataTypes.U16(0)
 
         self._start_pos = AdlinkDataTypes.U32(0)
         self._count = AdlinkDataTypes.U32(0)
@@ -323,6 +328,7 @@ class Adlink9834(FastCounterInterface):
         # unload the dll so a new instance can use the dll without terminating this python thread
         try:
             self.unload_dll(self._dll)
+            self.unload_dll(self._callback_dll)
         except:
             return
 
@@ -333,6 +339,12 @@ class Adlink9834(FastCounterInterface):
         if self._dll is None:
             self._dll = self.load_dll(self._dll_location)
             self.set_dll_function_return_types()
+        if not hasattr(self, '_callback_dll'):
+            self._callback_dll = self.load_dll(self._callback_dll_location)
+            self.set_callback_dll_function_return_types()
+        if self._callback_dll is None:
+            self._callback_dll = self.load_dll(self._callback_dll_location)
+            self.set_callback_dll_function_return_types()
         self._card = AdlinkDataTypes.I16(self._dll.WD_Register_Card(self._device_type, self._card_num))
         if self.check_if_error(self._card, "Register_Card"):
             raise RuntimeError("Could not initialize card. Is the DLL already loaded in another program?")
@@ -430,6 +442,7 @@ class Adlink9834(FastCounterInterface):
                     gate_length_s: the actual record length in seconds
                     number_of_gates: the number of gated, which are accepted, None if not-gated
         """
+        self.disarm_card()
         self.free_buffers()
         self._number_of_gates = number_of_gates
         self._settings.scan_interval.value = round(bin_width_s * self._clock_freq)
@@ -437,6 +450,9 @@ class Adlink9834(FastCounterInterface):
         samples_per_laser_adjustment = samples_per_laser % 8
         self._settings.scancount_per_trigger.value = samples_per_laser - samples_per_laser_adjustment
         self._settings.retrigger_count.value = self.max_number_retriggers()
+
+        self._measurement_buffer = (ctypes.c_int64 * self.buffer_size_samples_one_measurement())(*[0]*self.buffer_size_samples_one_measurement())
+        self._measurement_buffer_address = ctypes.cast(self._measurement_buffer, ctypes.c_void_p)
 
         err = AdlinkDataTypes.I16(
             self._dll.WD_AI_CH_Config(self._card, AdlinkDataTypes.I16(-1), self._settings.ad_range))
@@ -479,13 +495,37 @@ class Adlink9834(FastCounterInterface):
                                                                   ctypes.byref(self._buffer_id1)))
         if self.check_if_error(err, "ContBufferSetup"):
             return
+
+        self._ai_buffer2 = ctypes.c_void_p(self._dll.WD_Buffer_Alloc(self._card,
+                                                                     self._buffer_size_bytes))
+
+        if self.check_if_error(AdlinkDataTypes.I16(self._ai_buffer2.value), "BufferAlloc"):
+            return
+        ctypes.memset(self._ai_buffer2, 0, self._buffer_size_bytes.value)
+
+        err = AdlinkDataTypes.I16(self._dll.WD_AI_ContBufferSetup(self._card,
+                                                                  self._ai_buffer2,
+                                                                  self._buffer_size_samples,
+                                                                  ctypes.byref(self._buffer_id2)))
+        if self.check_if_error(err, "ContBufferSetup"):
+            return
         self._available_data = np.zeros((self._buffer_size_samples.value,), dtype=np.float64)
         self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value), dtype=np.float64)
+
+        # set up variables in callback_dll
+        self.set_callback_dll_variables()
 
         if self._settings.timeout.value > 0:
             err = AdlinkDataTypes.I16(self._dll.WD_AI_SetTimeout(self._card, self._settings.timeout))
             if self.check_if_error(err, "SetTimeout"):
                 return
+
+        err = AdlinkDataTypes.I16(self._dll.WD_AI_EventCallBack_x64(self._card,
+                                                                AdlinkDataTypes.I16(1),
+                                                                self._settings.callback_signal,
+                                                                self._callback_dll.sum_buffer_callback))
+        if self.check_if_error(err, "EventCallBack"):
+            return
 
         return bin_width_s, record_length_s, number_of_gates
 
@@ -563,6 +603,7 @@ class Adlink9834(FastCounterInterface):
         Function that starts the card. After calling this function the card will acquire data on each trigger.
         """
         ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
+        ctypes.memset(self._ai_buffer2, 0, self._buffer_size_bytes.value)
         double_buffered_size = AdlinkDataTypes.U32(
             int(self._buffer_size_samples.value / (self._settings.channel_num.value + 1)))
         err = AdlinkDataTypes.I16(self._dll.WD_AI_ContScanChannels(self._card,
@@ -627,19 +668,10 @@ class Adlink9834(FastCounterInterface):
             'elapsed_time': time.time() - self._start_time,
         }
 
-        if self.get_status() != 1:
-            if self._number_of_averages <= 0:
-                transformed_data = self.transform_raw_data(self._available_data)
-            else:
-                transformed_data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
-            return transformed_data, info_dict
-
         try:
-            raw_data = (self._settings.data_type * self._buffer_size_samples.value).from_address(self._ai_buffer1.value)
-            data = np.array(raw_data, dtype=np.float64)
+            data = np.array(self._measurement_buffer, dtype=np.float64)
             if self._number_of_averages <= 0:
-                self._available_data += data
-                transformed_data = self.transform_raw_data(self._available_data)
+                transformed_data = self.transform_raw_data(data)
             else:
                 self._data_buffer[self._current_buffer_position] = np.copy(data)
                 self._current_buffer_position += 1
@@ -657,9 +689,7 @@ class Adlink9834(FastCounterInterface):
         """
         Method that transform the raw data array to the shape expected by qudi
         """
-        temp = data.reshape(-1, self._number_of_gates * self._settings.scancount_per_trigger.value)
-        temp = np.sum(temp, axis=0)
-        temp = temp.reshape(self._number_of_gates, -1)
+        temp = data.reshape(self._number_of_gates, -1)
         temp += np.abs(np.min(temp))
         return temp
 
@@ -687,6 +717,8 @@ class Adlink9834(FastCounterInterface):
             AdlinkDataTypes.I16(self._dll.WD_AI_ContBufferReset(self._card))
             if self._ai_buffer1.value:
                 AdlinkDataTypes.I16(self._dll.WD_Buffer_Free(self._card, self._ai_buffer1))
+            if self._ai_buffer2.value:
+                AdlinkDataTypes.I16(self._dll.WD_Buffer_Free(self._card, self._ai_buffer2))
         except:
             return
 
@@ -757,6 +789,12 @@ class Adlink9834(FastCounterInterface):
         self._buffer_size_samples = AdlinkDataTypes.U32(buffer_size)
         return self._buffer_size_samples
 
+    def buffer_size_samples_one_measurement(self):
+        """
+        Calculates the number of samples that will be acquired during one (the pulse sequence has run once) measurement readout.
+        """
+        return self._setting.scancount_per_trigger.value * (self._settings.channel_num.value + 1) * self._number_of_gates
+
     def set_dll_function_return_types(self):
         """
         Function that associates the correct return types from the specified functions
@@ -774,6 +812,13 @@ class Adlink9834(FastCounterInterface):
         self._dll.WD_Release_Card.restype = AdlinkDataTypes.I16
         self._dll.WD_Buffer_Alloc.restype = ctypes.c_void_p
         self._dll.WD_AI_ContBufferSetup.restype = AdlinkDataTypes.I16
+
+    def set_callback_dll_function_return_types(self):
+        """
+        Function that associates the correct return types from the specified functions
+        """
+        self._callback_dll.return_buffer.restype = ctypes.POINTER(self._settings.data_type)
+
 
     def max_number_sequence_retriggers(self):
         """
@@ -808,3 +853,33 @@ class Adlink9834(FastCounterInterface):
         @param number, int: number of averages to set
         """
         self._number_of_averages = int(number)
+
+    def set_callback_dll_variables(self):
+        # set up the buffer address for the c callback function
+        # get global variables in shared library
+        ai_buff1_c_address = ctypes.c_void_p.in_dll(self._callback_dll, 'ai_buff1_address')
+        ai_buff2_c_address = ctypes.c_void_p.in_dll(self._callback_dll, 'ai_buff2_address')
+        total_buffer_c_address = ctypes.c_void_p.in_dll(self._callback_dll, 'qudi_buffer_address')
+        number_measurements_c = self._settings.data_type.in_dll(self._callback_dll, 'number_of_measurements')
+        buffer_size_c = ctypes.c_ulong.in_dll(self._callback_dll, 'buffer_size')
+        total_buffer_length_c = ctypes.c_ulong.in_dll(self._callback_dll, 'total_buffer_length')
+        buffer_id_c = self._settings.data_type.in_dll(self._callback_dll,'buffer_id')
+        current_buffer_position_c = ctypes.c_ulong.in_dll(self._callback_dll, 'current_buffer_position')
+        current_writer_position_c = ctypes.c_ulong.in_dll(self._callback_dll, 'current_writer_position')
+        save_location_c = ctypes.c_char_p.in_dll(self._callback_dll, 'save_location')
+        file_writer_wait_time_c = self._settings.data_type.in_dll(self._callback_dll, 'file_writer_wait_time')
+        file_writer_called_c = ctypes.c_long.in_dll(self._callback_dll, 'number_writer_called')
+        # set the pointer values to the correct addresses of the buffer
+        ai_buff1_c_address.value = self._ai_buffer1.value
+        ai_buff2_c_address.value = self._ai_buffer2.value
+        total_buffer_c_address.value = self._measurement_buffer_address.value
+        number_measurements_c.value = self.max_number_sequence_retriggers()
+        buffer_size_c.value = self.buffer_size_samples().value
+        total_buffer_length_c.value = self._settings.measurement_buffer_length
+        buffer_id_c.value = 0
+        save_location_c.value = self._settings.savefile_location
+        file_writer_wait_time_c.value = self._settings.file_writer_wait_time
+        file_writer_called_c.value = 0
+
+        current_buffer_position_c.value = 0
+        current_writer_position_c.value = 0
