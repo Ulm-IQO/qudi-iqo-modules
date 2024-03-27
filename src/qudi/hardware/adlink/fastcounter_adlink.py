@@ -203,7 +203,7 @@ class AdlinkDefaultSettings:
 
         # AI_CH_Config
         self.timebase = AdlinkTimeBase.WD_IntTimeBase.value
-        self.ad_duty_restore = ctypes.c_bool(True)
+        self.ad_duty_restore = ctypes.c_bool(False)
         self.ad_convert_source = AdlinkTimePacer.WD_AI_ADCONVSRC_TimePacer.value
         self.double_edged = ctypes.c_bool(False)
         self.buf_auto_reset = ctypes.c_bool(False)
@@ -450,7 +450,7 @@ class Adlink9834(FastCounterInterface):
         samples_per_laser_adjustment = samples_per_laser % 8
         self._settings.scancount_per_trigger.value = samples_per_laser - samples_per_laser_adjustment
         self._settings.retrigger_count.value = self.max_number_retriggers()
-
+        self.buffer_size_bytes()
         self._measurement_buffer = (ctypes.c_int64 * self.buffer_size_samples_one_measurement())(*[0]*self.buffer_size_samples_one_measurement())
         self._measurement_buffer_address = ctypes.cast(self._measurement_buffer, ctypes.c_void_p)
 
@@ -476,7 +476,7 @@ class Adlink9834(FastCounterInterface):
                                                               self._settings.post_trigger_scans,
                                                               self._settings.pre_trigger_scans,
                                                               self._settings.trigger_delay_ticks,
-                                                              self._settings.retrigger_count))
+                                                              AdlinkDataTypes.U32(0)))
         if self.check_if_error(err, "Trig_Config"):
             return
 
@@ -604,12 +604,12 @@ class Adlink9834(FastCounterInterface):
         """
         ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
         ctypes.memset(self._ai_buffer2, 0, self._buffer_size_bytes.value)
-        double_buffered_size = AdlinkDataTypes.U32(
-            int(self._buffer_size_samples.value / (self._settings.channel_num.value + 1)))
+        buffer_id_c = self._settings.data_type.in_dll(self._callback_dll, 'buffer_id')
+        buffer_id_c.value = self._buffer_id1.value
         err = AdlinkDataTypes.I16(self._dll.WD_AI_ContScanChannels(self._card,
                                                                    self._settings.channel_num,
                                                                    self._buffer_id1,
-                                                                   double_buffered_size,
+                                                                   self._settings.scancount_per_trigger,
                                                                    self._settings.scan_interval,
                                                                    self._settings.scan_interval,
                                                                    self._settings.synchronous_mode))
@@ -679,7 +679,6 @@ class Adlink9834(FastCounterInterface):
                     self._current_buffer_position = 0
                 transformed_data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
 
-            ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
             return transformed_data, info_dict
 
         except Exception as e:
@@ -793,7 +792,7 @@ class Adlink9834(FastCounterInterface):
         """
         Calculates the number of samples that will be acquired during one (the pulse sequence has run once) measurement readout.
         """
-        return self._setting.scancount_per_trigger.value * (self._settings.channel_num.value + 1) * self._number_of_gates
+        return self._settings.scancount_per_trigger.value * (self._settings.channel_num.value + 1) * self._number_of_gates
 
     def set_dll_function_return_types(self):
         """
@@ -862,23 +861,17 @@ class Adlink9834(FastCounterInterface):
         total_buffer_c_address = ctypes.c_void_p.in_dll(self._callback_dll, 'qudi_buffer_address')
         number_measurements_c = self._settings.data_type.in_dll(self._callback_dll, 'number_of_measurements')
         buffer_size_c = ctypes.c_ulong.in_dll(self._callback_dll, 'buffer_size')
-        total_buffer_length_c = ctypes.c_ulong.in_dll(self._callback_dll, 'total_buffer_length')
         buffer_id_c = self._settings.data_type.in_dll(self._callback_dll,'buffer_id')
         current_buffer_position_c = ctypes.c_ulong.in_dll(self._callback_dll, 'current_buffer_position')
         current_writer_position_c = ctypes.c_ulong.in_dll(self._callback_dll, 'current_writer_position')
-        save_location_c = ctypes.c_char_p.in_dll(self._callback_dll, 'save_location')
-        file_writer_wait_time_c = self._settings.data_type.in_dll(self._callback_dll, 'file_writer_wait_time')
         file_writer_called_c = ctypes.c_long.in_dll(self._callback_dll, 'number_writer_called')
         # set the pointer values to the correct addresses of the buffer
         ai_buff1_c_address.value = self._ai_buffer1.value
         ai_buff2_c_address.value = self._ai_buffer2.value
         total_buffer_c_address.value = self._measurement_buffer_address.value
         number_measurements_c.value = self.max_number_sequence_retriggers()
-        buffer_size_c.value = self.buffer_size_samples().value
-        total_buffer_length_c.value = self._settings.measurement_buffer_length
+        buffer_size_c.value = self.buffer_size_samples_one_measurement()
         buffer_id_c.value = 0
-        save_location_c.value = self._settings.savefile_location
-        file_writer_wait_time_c.value = self._settings.file_writer_wait_time
         file_writer_called_c.value = 0
 
         current_buffer_position_c.value = 0
