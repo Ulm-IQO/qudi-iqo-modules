@@ -50,26 +50,30 @@ class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
 #    estimator_settings: dict
 
 
-class TimeSeriesStateEstimator(StateEstimator):
-
-    def __init__(self, log):
-        self.log = log
-        self.on_activate()
-
-    def on_activate(self):
-        self._extractor = PulseExtractor(pulsedmeasurementlogic=self)
-        self._estimator = PulseAnalyzer(pulsedmeasurementlogic=self)
-
-    def extract(self, raw_data, settings):
-        extracted_data = self._extractor.extract_laser_pulses(raw_data)['laser_counts_arr']
-        return extracted_data
-
-    def estimate(self, data, settings):
-        tmp_signal, tmp_error = self._estimator.analyse_laser_pulses(data)
-        return tmp_signal, tmp_error
-
-    def get_pulse(self, data, settings):
-        return data.mean(axis=0)
+# class TimeSeriesStateEstimator(StateEstimator):
+#
+#     def __init__(self, log, pmel):
+#         self.log = log
+#         self.pmel = pmel
+#         self.on_activate()
+#
+#     def on_activate(self):
+#         self._extractor = PulseExtractor(pulsedmeasurementlogic=self.pmel)
+#         self._estimator = PulseAnalyzer(pulsedmeasurementlogic=self.pmel)
+#
+#     def extract(self, raw_data, settings):
+#         extracted_data = self._extractor.extract_laser_pulses(raw_data)['laser_counts_arr']
+#         return extracted_data
+#
+#     def estimate(self, data, settings):
+#         tmp_signal, tmp_error = self._estimator.analyse_laser_pulses(data)
+#         return tmp_signal, tmp_error
+#
+#     def get_pulse(self, data, settings):
+#         y = data.mean(axis=0)
+#         x = np.arange(len(y))
+#         pulse_array = [x, y]
+#         return pulse_array
 
 @dataclass
 class TimeTagStateEstimatorSettings(StateEstimatorSettings):
@@ -100,7 +104,7 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
 
 
 class TimeTagStateEstimator(StateEstimator):
-    def __init__(self, log):
+    def __init__(self, log, *args):
         super().__init__()
         self.log = log
         self.stg = None
@@ -138,7 +142,7 @@ class TimeTagStateEstimator(StateEstimator):
             else:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
-        return counts_time_trace
+        return np.array(counts_time_trace)
 
     def _weighted_photon_count(self, time_tag, weight, start_count, stop_count, max_bins=90000):
         counts_time_trace = []
@@ -155,7 +159,7 @@ class TimeTagStateEstimator(StateEstimator):
             else:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
-        return counts_time_trace
+        return np.array(counts_time_trace)
 
     def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
         count_hist, bin_edges = np.histogram(time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins))
@@ -193,16 +197,7 @@ class StateEstimatorMain:
         estimator_subclasses = get_subclasses(StateEstimator)
         self.method_lists = get_method_names(estimator_subclasses, StateEstimator)
 
-    @property
-    def method(self):
-        return self._method
-
-    @method.setter
-    def method(self, method):
-        self._method = method
-        self._configure_method(self._method)
-
-    def _configure_method(self, method):
+    def configure_method(self, method):
         self.estimator = globals()[method + 'StateEstimator'](self.log)
 
     def get_pulse(self, raw_data, settings):

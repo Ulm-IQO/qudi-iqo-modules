@@ -22,8 +22,7 @@ from PySide2 import QtCore
 
 from qudi.logic.qdyne.qdyne_state_estimator import *
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
-from qudi.logic.qdyne.qdyne_data_manager import QdyneSaveSettings
-
+from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
 
 def get_subclasses(class_obj):
     '''
@@ -55,7 +54,7 @@ class QdyneSettings:
     def __init__(self):
         self.estimator_stg = SettingsManager(StateEstimatorSettings)
         self.analyzer_stg = SettingsManager(AnalyzerSettings)
-        self.save_stg = QdyneSaveSettings()
+        self.data_manager_stg = DataManagerSettings()
 
 class SettingsManager():
 

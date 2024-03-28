@@ -43,13 +43,7 @@ class QdyneMeasurement:
         self.pmeasure.toggle_pulsed_measurement(start)
 
     def get_raw_data(self):
-        if self.stg.read_from_file:
-            raw_data = self.read_from_file()
-
-        else:
-            raw_data = self.pmeasure.raw_data
+        raw_data = self.pmeasure.raw_data
 
         return raw_data
 
-    def read_from_file(self):
-        return raw_data

@@ -49,7 +49,7 @@ class QdyneMainGui(GuiBase):
         self.show()
 
     def _instantiate_widgets(self):
-        self._mainw = QdyneMainWindow(self)
+        self._mainw = QdyneMainWindow(self, self.logic, self.log)
         self._gw = GenerationWidget(self)
         self._gsw = PredefinedMethodsConfigDialogWidget(self)
         self._sew = StateEstimationTab(self.logic)
