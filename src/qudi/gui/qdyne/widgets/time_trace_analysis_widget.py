@@ -90,13 +90,6 @@ class TimeTraceAnalysisLoaderWidget(QtWidgets.QWidget):
     def activate(self):
         pass
     def connect_signals(self):
-        self.sigTTFileNameChanged.connect(
-            self._logic.set_tt_filename, QtCore.Qt.QueuedConnection)
-        self.sigLoadTT.connect(self._logic.load_tt_from_file, QtCore.Qt.QueuedConnection)
-
-        # connect update signals from logic
-        self._logic.sigTTFileNameUpdated.connect(self.update_tt_filename, QtCore.Qt.QueuedConnection)
-
         # connect internal signals
         self.tta_filename_LineEdit.editingFinished.connect(self.tt_filename_changed)
         self.tta_browsefile_PushButton.clicked.connect(self.browse_file)
