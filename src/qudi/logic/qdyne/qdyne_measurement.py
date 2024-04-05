@@ -16,9 +16,8 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from dataclasses import dataclass
 import datetime
-from PySide2 import QtCore, QtWidgets
+from PySide2 import QtCore
 
-from qudi.core.connector import Connector
 from PySide2 import QtCore
 
 
@@ -91,10 +90,12 @@ class QdyneMeasurement(QtCore.QObject):
         #self.qdyne_logic._data_streamer().change_filename(fname)
         self.qdyne_logic._data_streamer().start_stream()
         self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_on()
+        self.sigStartTimer.emit()
 
     def stop_qdyne_measurement(self):
         self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_off()
         self.qdyne_logic._data_streamer().stop_stream()
+        self.sigStopTimer.emit()
         return
 
     def qdyne_analysis_loop(self):
