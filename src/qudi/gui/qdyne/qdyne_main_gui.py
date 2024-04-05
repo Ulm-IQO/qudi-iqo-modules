@@ -100,7 +100,7 @@ class QdyneMainGui(GuiBase):
         self._sew.disconnect_signals()
         self._ttaw.disconnect_signals()
 
-        self._mw.action_run_stop.triggered.disconnect()
+        self._mainw.action_run_stop.triggered.disconnect()
 
     def show(self):
         self._mainw.show()
