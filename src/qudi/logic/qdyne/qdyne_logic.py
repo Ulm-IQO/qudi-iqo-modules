@@ -40,7 +40,7 @@ from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 
 class MeasurementGenerator:
     """
-    Class that gives acces to the settings for the generation of sequences from the pulsedmasterlogic.
+    Class that gives access to the settings for the generation of sequences from the pulsedmasterlogic.
     """
     def __init__(self, pulsedmasterlogic):
         self.pulsedmasterlogic = pulsedmasterlogic
@@ -98,6 +98,7 @@ class MeasurementGenerator:
     def fast_counter_constraints(self):
         return self.pulsedmasterlogic().fast_counter_constraints
 
+
 class QdyneLogic(LogicBase):
     """
     This is the Logic class for Qdyne measurements.
@@ -138,7 +139,6 @@ class QdyneLogic(LogicBase):
 
     # signals for connecting modules
     sigFitUpdated = QtCore.Signal(str, object)
-
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -196,10 +196,12 @@ class QdyneLogic(LogicBase):
         self.analyzer.method = self.settings.analyzer_stg.current_method
 
     def start_measurement(self, fname=None):
-        timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
-        fname = timestamp + fname if fname else timestamp
-        self._data_streamer().change_filename(fname)
-        self._data_streamer().start_stream()
+        # timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
+        # fname = timestamp + fname if fname else timestamp
+        # self._data_streamer().change_filename(fname)
+        # self._data_streamer().start_stream()
+        # self.pulsedmeasurementlogic().pulse_generator_on()
+        pass
 
     def stop_measurement(self):
         self._data_streamer().stop_stream()
