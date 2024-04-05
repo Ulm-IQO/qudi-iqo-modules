@@ -27,6 +27,8 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.core.module import GuiBase
 
+from PySide2 import QtCore, QtWidgets
+
 from qudi.gui.qdyne.widgets.main_window import QdyneMainWindow
 from qudi.gui.qdyne.widgets.measurement_widget import MeasurementWidget
 from qudi.gui.qdyne.widgets.generation_widget import GenerationWidget
@@ -45,6 +47,8 @@ class QdyneMainGui(GuiBase):
         self._mainw.tabWidget.addTab(self._sew, 'State Estimation')
         self._activate_ui()
         self._connect()
+
+        self._mainw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
 
         self.show()
 
@@ -73,7 +77,6 @@ class QdyneMainGui(GuiBase):
         self._gsw.connect_signals()
 #        self._pmw.connect_signals()
         self._sew.connect_signals()
-
         self._ttaw.connect_signals()
 
     def on_deactivate(self):
@@ -97,7 +100,19 @@ class QdyneMainGui(GuiBase):
         self._sew.disconnect_signals()
         self._ttaw.disconnect_signals()
 
+        self._mainw.action_run_stop.triggered.disconnect()
+
     def show(self):
         self._mainw.show()
         self._mainw.activateWindow()
         self._mainw.raise_()
+
+    @QtCore.Slot(bool)
+    def measurement_run_stop_clicked(self, isChecked):
+        """ Manages what happens if qdyne measurement is started or stopped.
+
+        @param bool isChecked: start scan if that is possible
+        """
+        self.logic().toggle_qdyne_measurement(isChecked)
+        return
+

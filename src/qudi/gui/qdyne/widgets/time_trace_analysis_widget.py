@@ -64,7 +64,6 @@ class TimeTraceAnalysisTab(QtWidgets.QWidget):
     def deactivate(self):
         pass
 
-
 class TimeTraceAnalysisSettingsWidget(QtWidgets.QWidget):
     def __init__(self, logic, gui):
         self._logic = logic()
@@ -73,7 +72,7 @@ class TimeTraceAnalysisSettingsWidget(QtWidgets.QWidget):
         self.settings = logic().settings.analyzer_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\time_trace_analysis_settings_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'time_trace_analysis_settings_widget.ui')
 
         # Load it
         super(TimeTraceAnalysisSettingsWidget, self).__init__()
@@ -129,7 +128,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\time_trace_analysis_data_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'time_trace_analysis_data_widget.ui')
 
         # Load it
         super(TimeTraceAnalysisDataWidget, self).__init__()
@@ -145,7 +144,6 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.tta_gridGroupBox.setSizePolicy(QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum)
         self.plot1_GroupBox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
         self.plot2_GroupBox.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-
 
     def _activate_plot1_widget(self):
         self.range_spinBox.setValue(self.freq_data.range_index)
@@ -186,10 +184,9 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.plot2_PlotWidget.addItem(self.second_fit_image)
         self.plot2_fitwidget.link_fit_container(self._logic.fit_container2)
 
-
     def connect_signals(self):
-        self.analyze_pushButton.clicked.connect(self._logic.analyze_time_trace)
-        self.get_freq_domain_pushButton.clicked.connect(self.get_freq_domain_signal)
+        self.tta_analyze_pushButton.clicked.connect(self._logic.measure.analyze_time_trace)
+        self.tta_get_spectrum_pushButton.clicked.connect(self.get_spectrum)
         self.get_peaks_pushButton.clicked.connect(self.get_peaks)
         self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
         self.range_spinBox.valueChanged.connect(self.update_spectrum)
@@ -201,7 +198,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         )
 
         self._logic.sigFitUpdated.connect(self.fit_data_updated)
-
+        # Connect update signals from qdyne_measurement_logic
+        self._logic.measure.sigQdyneDataUpdated.connect(self.data_updated)
 
     def disconnect_signals(self):
         self.get_peaks_pushButton.clicked.disconnect()
@@ -210,8 +208,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.plot1_fitwidget.sigDoFit.disconnect()
         self.plot2_fitwidget.sigDoFit.disconnect()
 
-    def get_freq_domain_signal(self):
-        self._logic.get_freq_domain_signal()
+    def get_spectrum(self):
+        self._logic.measure.get_spectrum()
 
     def get_peaks(self):
         self.freq_data.get_peaks()
@@ -226,6 +224,9 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.signal_image.setData(x=spectrum[0], y=spectrum[1])
         self.plot1_PlotWidget.clear()
         self.plot1_PlotWidget.addItem(self.signal_image)
+
+    def data_updated(self):
+        pass
 
     @QtCore.Slot(str, object)
     def fit_data_updated(self, fit_config, fit_result):
@@ -250,9 +251,6 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
                                y=fit_result.high_res_best_fit[1])
         if self.fit_image not in self.plot1_PlotWidget.items():
             self.plot1_PlotWidget.addItem(self.fit_image)
-
-
-
 
 
 # class TimeTraceAnalysisWidget(QtWidgets.QWidget):

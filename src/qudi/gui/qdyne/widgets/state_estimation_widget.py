@@ -124,7 +124,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_setting_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'state_estimation_setting_widget.ui')
 
         # Load it
         super(StateEstimationSettingWidget, self).__init__()
@@ -230,7 +230,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.ref_end = 0
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_pulse_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui','state_estimation_pulse_widget.ui')
 
         # Load it
         super(StateEstimationPulseWidget, self).__init__()
@@ -275,6 +275,8 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.ref_start_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
         self.ref_end_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
         self.update_pushButton.clicked.connect(self.update_pulse)
+        # Connect update signals from qdyne_measurement_logic
+        self.logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
 
 #        self.settings.current_stg_changed_sig.connect(self.update_lines)
     def disconnect_signals(self):
@@ -282,6 +284,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.sig_end_line.sigPositionChangeFinished.disconnect()
         self.ref_start_line.sigPositionChangeFinished.disconnect()
         self.ref_end_line.sigPositionChangeFinished.disconnect()
+        self.logic.measure.sigPulseDataUpdated.disconnect()
 
     def toggle_lines(self):
         param_names = self.settings.current_setting.__annotations__
@@ -316,9 +319,13 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
             self.ref_end_line.setValue(self.settings.current_setting.ref_end)
 
     def update_pulse(self):
-        pulse = self.logic.get_pulse()
+        self.logic.measure.get_pulse()
+
+    def pulse_updated(self):
+        pulse = self.logic.data.pulse_data
         self.pulse_image.setData(x=pulse[0], y=pulse[1])
         self.pulse_PlotWidget.addItem(self.pulse_image)
+
 
 class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
 
@@ -328,7 +335,7 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_time_trace_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'state_estimation_time_trace_widget.ui')
 
         # Load it
         super(StateEstimationTimeTraceWidget, self).__init__()
@@ -344,15 +351,22 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
 
     def deactivate(self):
         pass
+
     def connect_signals(self):
         self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)
+        # Connect update signals from qdyne_measurement_logic
+        self.logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
 
     def disconnect_signals(self):
         self.get_time_trace_pushButton.clicked.disconnect()
+        self.logic.measure.sigTimeTraceDataUpdated.disconnect()
 
     def update_time_trace(self):
-        self.logic.extract_data()
-        self.logic.estimate_state()
+        self.logic.measure.extract_data()
+        self.logic.measure.estimate_state()
+        self.time_trace_updated()
+
+    def time_trace_updated(self):
         y = self.logic.data.time_trace
         x = np.arange(len(y))
         self.time_trace_image.setData(x=x, y=y)

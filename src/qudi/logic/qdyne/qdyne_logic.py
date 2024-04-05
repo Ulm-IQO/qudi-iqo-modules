@@ -114,7 +114,7 @@ class QdyneLogic(LogicBase):
     # declare connectors
     pulsedmasterlogic = Connector(interface='PulsedMasterLogic')
     pulsedmeasurementlogic = Connector(interface='PulsedMeasurementLogic')
-    _data_streamer = Connector(name='data_streamer', interface='DataInStreamInterface')
+    _data_streamer = Connector(name='data_streamer', interface='QdyneCounterInterface')
 
     # declare config options
     estimator_method = ConfigOption(name='estimator_method', default='TimeTag', missing='warn')
@@ -139,6 +139,7 @@ class QdyneLogic(LogicBase):
 
     # signals for connecting modules
     sigFitUpdated = QtCore.Signal(str, object)
+    sigToggleQdyneMeasurement = QtCore.Signal(bool)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -152,7 +153,7 @@ class QdyneLogic(LogicBase):
 
     def on_activate(self):
         def activate_classes():
-            #self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
+            self.measure = QdyneMeasurement(self)
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
             self.settings = QdyneSettings()
@@ -179,9 +180,14 @@ class QdyneLogic(LogicBase):
         activate_classes()
         initialize_settings()
         input_initial_settings()
+
+        self.sigToggleQdyneMeasurement.connect(
+            self.measure.toggle_qdyne_measurement, QtCore.Qt.QueuedConnection)
         return
 
     def on_deactivate(self):
+        self.sigToggleQdyneMeasurement.disconnect()
+
         self._save_status_variables()
         return
 
@@ -195,43 +201,15 @@ class QdyneLogic(LogicBase):
     def input_analyzer_method(self):
         self.analyzer.method = self.settings.analyzer_stg.current_method
 
-    def start_measurement(self, fname=None):
-        # timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
-        # fname = timestamp + fname if fname else timestamp
-        # self._data_streamer().change_filename(fname)
-        # self._data_streamer().start_stream()
-        # self.pulsedmeasurementlogic().pulse_generator_on()
-        pass
-
-    def stop_measurement(self):
-        self._data_streamer().stop_stream()
-
-    def get_raw_data(self):
-        new_data, _ = self._data_streamer().read_data()
-        self.data.raw_data = np.append(self.data.raw_data, new_data)
-
-    def get_pulse(self):
-        self.estimator.configure_method(self.settings.estimator_stg.current_method)
-        return self.estimator.get_pulse(self.data.raw_data, self.settings.estimator_stg.current_setting)
-
-    def extract_data(self):
-        self.data.extracted_data = self.estimator.extract(self.data.raw_data,
-                                                          self.settings.estimator_stg.current_setting)
-
-    def estimate_state(self):
-        self.data.time_trace = self.estimator.estimate(self.data.extracted_data,
-                                                       self.settings.estimator_stg.current_setting)
-
-    def analyze_time_trace(self):
-        self.data.signal = self.analyzer.analyze(self.data, self.settings.analyzer_stg.current_setting)
-
-    def get_freq_domain_signal(self):
-        self.data.freq_domain = self.analyzer.get_freq_domain_signal(self.data, self.settings.analyzer_stg.current_setting)
-        self.data.freq_data.x = self.data.freq_domain[0]
-        self.data.freq_data.y = self.data.freq_domain[1]
-
-    def get_time_domain_signal(self):
-        self.data.time_domain = self.analyzer.get_time_domain_signal(self.data, self.settings.analyzer_stg.current_setting)
+    @QtCore.Slot(bool)
+    @QtCore.Slot(bool, str)
+    def toggle_qdyne_measurement(self, start):
+        """
+        @param bool start: True for start measurement, False for stop measurement
+        """
+        if isinstance(start, bool):
+            self.sigToggleQdyneMeasurement.emit(start)
+        return
 
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)
