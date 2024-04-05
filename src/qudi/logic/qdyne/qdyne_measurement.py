@@ -16,6 +16,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from dataclasses import dataclass
 
 from qudi.core.connector import Connector
+from PySide2 import QtCore
 
 
 @dataclass
@@ -31,10 +32,38 @@ class QdyneMeasurementStatus:
 class QdyneMeasurement:
     data_type_lists = ['TimeSeries', 'TimeTag']
 
+    # analysis timer interval
+    __timer_interval = StatusVar(default=5)
+    # analysis timer signals
+    sigStartTimer = QtCore.Signal()
+    sigStopTimer = QtCore.Signal()
+
     def __init__(self, pmaster, pmeasure):
         self.pmaster = pmaster
         self.pmeasure = pmeasure
         self.stg = None
+
+        self.__start_time = 0
+        self.__elapsed_time = 0
+        self.__elapsed_sweeps = 0
+
+        # set up the analysis timer
+        self.__analysis_timer = QtCore.QTimer()
+        self.__analysis_timer.setSingleShot(False)
+        self.__analysis_timer.setInterval(round(1000. * self.__timer_interval))
+        self.__analysis_timer.timeout.connect(self._pulsed_analysis_loop,
+                                              QtCore.Qt.QueuedConnection)
+        # set up the analysis timer signals
+        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.QueuedConnection)
+        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.QueuedConnection)
+
+    def __del__(self):
+        """
+        Upon deactivation of the module all signals should be disconnected.
+        """
+        self.__analysis_timer.timeout.disconnect()
+        self.sigStartTimer.disconnect()
+        self.sigStopTimer.disconnect()
 
     def input_settings(self, settings: QdyneMeasurementSettings) -> None:
         self.stg = settings
@@ -53,3 +82,26 @@ class QdyneMeasurement:
         raw_data = self.pmeasure.raw_data
 
         return raw_data
+
+    @property
+    def analysis_timer_interval(self) -> float:
+        """
+        Property to return the currently set analysis timer interval in seconds.
+        """
+        return self.__timer_interval
+
+    @QtCore.Slot(float)
+    @property.setter
+    def analysis_timer_interval(self, interval: float) -> float:
+        """
+        Property to return the currently set analysis timer interval in seconds.
+        """
+        self.__timer_interval = interval
+        if self.__timer_interval > 0:
+            self.__analysis_timer.setInterval(int(1000. * self.__timer_interval))
+            self.sigStartTimer.emit()
+        else:
+            self.sigStopTimer.emit()
+
+        self.sigTimerUpdated.emit(self.__elapsed_time, self.__elapsed_sweeps,
+                                  self.__timer_interval)
