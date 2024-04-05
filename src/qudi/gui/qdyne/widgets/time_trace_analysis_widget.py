@@ -96,12 +96,6 @@ class TimeTraceAnalysisLoaderWidget(QtWidgets.QWidget):
         self.tta_loadfile_PushButton.clicked.connect(self.load_time_trace)
 
     def disconnect_signals(self):
-        self.sigTTFileNameChanged.disconnect()
-        self.sigLoadTT.disconnect()
-
-        self._logic.sigTTFileNameUpdated.disconnect()
-        self._logic.sigFitUpdated.disconnect()
-
         self.tta_filename_LineEdit.editingFinished.disconnect()
         self.tta_browsefile_PushButton.clicked.disconnect()
         self.tta_loadfile_PushButton.clicked.disconnect()
