@@ -114,7 +114,7 @@ class QdyneLogic(LogicBase):
     # declare connectors
     pulsedmasterlogic = Connector(interface='PulsedMasterLogic')
     pulsedmeasurementlogic = Connector(interface='PulsedMeasurementLogic')
-    _data_streamer = Connector(name='data_streamer', interface='DataInStreamInterface')
+    _data_streamer = Connector(name='data_streamer', interface='QdyneCounterInterface')
 
     # declare config options
     estimator_method = ConfigOption(name='estimator_method', default='TimeTag', missing='warn')
