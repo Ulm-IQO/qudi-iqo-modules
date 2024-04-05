@@ -117,7 +117,7 @@ class DataStorage:
         return data
 
 class DataManagerSettings:
-    data_types = ['raw_data', 'time_trace', 'spectrum']
+    data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
 
     def __init__(self):
         self.options = dict()
@@ -128,7 +128,8 @@ class DataManagerSettings:
     def set_columns(self):
         self.options['raw_data'].column_headers = 'Signal (a.u.)'
         self.options['time_trace'].column_headers = 'Signal (a.u.)'
-        self.options['spectrum'].column_headers = 'Signal (a.u.)'
+        self.options['freq_domain'].column_headers = 'Signal (a.u.)'
+        self.options['time_domain'].column_headers = 'Signal (a.u.)'
 
     def set_all(self, method, value):
         for data_type in self.data_types:
@@ -146,8 +147,8 @@ class DataManagerSettings:
     def set_nametag_all(self, nametag):
         self.set_all(self.set_nametag, nametag)
 class QdyneDataManager:
-    data_types = ['raw_data', 'time_trace', 'spectrum']
-    storage_dict = {'raw_data': 'npy', 'time_trace': 'npy', 'spectrum': 'npy'}
+    data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
+    storage_dict = {'raw_data': 'npy', 'time_trace': 'npy', 'freq_domain': 'npy', 'time_domain': 'npy'}
 
     def __init__(self, data, settings:DataManagerSettings):
         self.data = data

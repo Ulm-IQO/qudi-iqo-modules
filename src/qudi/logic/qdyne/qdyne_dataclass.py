@@ -48,7 +48,8 @@ class MainDataClass:
     extracted_data: np.ndarray = np.array([], dtype=int)
     time_trace: np.ndarray = np.array([], dtype=float)
     signal: np.ndarray = np.array([], dtype=float)
-    spectrum: np.ndarray = np.array([], dtype=float)
+    freq_domain: np.ndarray = np.array([], dtype=float)
+    time_domain: np.ndarray = np.array([], dtype=float)
 
     def __init__(self):
         self.freq_data = FreqDomainData()
@@ -57,11 +58,4 @@ class MainDataClass:
     def data_list(self):
         return [attr for attr in dir(self.__class__) if not attr.startswith('__')
                 and not callable(getattr(self, attr))]
-
-
-    def load_np_data(self, path):
-        self.raw_data = np.load(path)['arr_0']
-
-    def load_spectrum(self, path):
-        self.spectrum = np.load(path)
 

@@ -24,14 +24,34 @@ from qudi.util.network import netobtain
 
 class Analyzer(ABC):
 
-    @abstractmethod
-    def analyze(self, time_trace):
+    def analyze(self, data, settings):
+        """
+        @param MainDataClass data: qdyne dataclass
+        @param AnalyzerSettings settings: corresponding anlyzer settings
+
+        @return signal
+        """
+
         pass
 
-    @abstractmethod
-    def get_spectrum(self, signal):
+    def get_freq_domain_signal(self, data, settings):
+        """
+        @param MainDataClass data: qdyne dataclass
+        @param AnalyzerSettings settings: corresponding anlyzer settings
+
+        @return time_domain_data
+        """
+
         pass
 
+    def get_time_domain_signal(self, data, settings):
+        """
+        @param MainDataClass data: qdyne dataclass
+        @param AnalyzerSettings settings: corresponding anlyzer settings
+
+        @return time_domain_data
+        """
+        pass
 @dataclass
 class AnalyzerSettings(ABC):
     name: str = ''
@@ -47,11 +67,13 @@ class FourierAnalyzerSettings(AnalyzerSettings):
 
 class FourierAnalyzer(Analyzer):
 
-    def analyze(self, time_trace, stg:FourierAnalyzerSettings):
+    def analyze(self, data, stg:FourierAnalyzerSettings):
+        time_trace = data.time_trace
         ft_signal = self.do_fft(time_trace, stg.cut_time_trace, stg.padding_parameter)
         return ft_signal
 
-    def get_spectrum(self, ft_signal, stg:FourierAnalyzerSettings):
+    def get_freq_domain_signal(self, data, stg:FourierAnalyzerSettings):
+        ft_signal = data.signal
         if stg.spectrum_type == 'amp':
             spectrum = self.get_norm_amp_spectrum(ft_signal)
         elif stg.spectrum_type == 'power':
@@ -154,10 +176,14 @@ class TimeTraceAnalyzerMain:
     def _configure_method(self, method):
         self.analyzer = globals()[method + 'Analyzer']()
 
-    def analyze(self, time_trace, settings):
-        signal = self.analyzer.analyze(time_trace, settings)
+    def analyze(self, data, settings):
+        signal = self.analyzer.analyze(data, settings)
         return signal
 
-    def get_spectrum(self, signal, settings):
-        spectrum = self.analyzer.get_spectrum(signal, settings)
-        return np.array(spectrum)
+    def get_freq_domain_signal(self, data, settings):
+        freq_domain = self.analyzer.get_freq_domain_signal(data, settings)
+        return np.array(freq_domain)
+
+    def get_time_domain_signal(self, data, settings):
+        time_domain = self.analyzer.get_time_domain_signal(data, settings)
+        return np.array(time_domain)

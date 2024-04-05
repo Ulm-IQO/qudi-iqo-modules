@@ -223,12 +223,15 @@ class QdyneLogic(LogicBase):
                                                        self.settings.estimator_stg.current_setting)
 
     def analyze_time_trace(self):
-        self.data.signal = self.analyzer.analyze(self.data.time_trace, self.settings.analyzer_stg.current_setting)
+        self.data.signal = self.analyzer.analyze(self.data, self.settings.analyzer_stg.current_setting)
 
-    def get_spectrum(self):
-        self.data.spectrum = self.analyzer.get_spectrum(self.data.signal, self.settings.analyzer_stg.current_setting)
-        self.data.freq_data.x = self.data.spectrum[0]
-        self.data.freq_data.y = self.data.spectrum[1]
+    def get_freq_domain_signal(self):
+        self.data.freq_domain = self.analyzer.get_freq_domain_signal(self.data, self.settings.analyzer_stg.current_setting)
+        self.data.freq_data.x = self.data.freq_domain[0]
+        self.data.freq_data.y = self.data.freq_domain[1]
+
+    def get_time_domain_signal(self):
+        self.data.time_domain = self.analyzer.get_time_domain_signal(self.data, self.settings.analyzer_stg.current_setting)
 
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)

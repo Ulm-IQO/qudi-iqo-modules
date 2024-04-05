@@ -18,7 +18,7 @@
     <widget class="QGroupBox" name="tta_gridGroupBox">
      <layout class="QGridLayout" name="gridLayout_2">
       <item row="0" column="0">
-       <widget class="QPushButton" name="tta_analyze_pushButton">
+       <widget class="QPushButton" name="analyze_pushButton">
         <property name="text">
          <string>Analyze</string>
         </property>
@@ -38,9 +38,9 @@
        </spacer>
       </item>
       <item row="0" column="1">
-       <widget class="QPushButton" name="tta_get_spectrum_pushButton">
+       <widget class="QPushButton" name="get_freq_domain_pushButton">
         <property name="text">
-         <string>get spectrum</string>
+         <string>get freq domain</string>
         </property>
        </widget>
       </item>
