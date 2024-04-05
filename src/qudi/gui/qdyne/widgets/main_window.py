@@ -33,8 +33,7 @@ class QdyneMainWindow(QtWidgets.QMainWindow):
         self._log = log
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\maingui.ui')
-
+        ui_file = os.path.join(qdyne_dir, 'ui','maingui.ui')
         # Load it
         super(QdyneMainWindow, self).__init__()
 

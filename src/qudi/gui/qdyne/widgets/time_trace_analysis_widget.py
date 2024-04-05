@@ -80,7 +80,7 @@ class TimeTraceAnalysisLoaderWidget(QtWidgets.QWidget):
 
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\time_trace_analysis_loader_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'time_trace_analysis_loader_widget.ui')
 
         # Load it
         super(TimeTraceAnalysisLoaderWidget, self).__init__()
@@ -145,7 +145,7 @@ class TimeTraceAnalysisSettingsWidget(QtWidgets.QWidget):
         self.settings = logic().settings.analyzer_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\time_trace_analysis_settings_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'time_trace_analysis_settings_widget.ui')
 
         # Load it
         super(TimeTraceAnalysisSettingsWidget, self).__init__()
@@ -201,7 +201,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\time_trace_analysis_data_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'time_trace_analysis_data_widget.ui')
 
         # Load it
         super(TimeTraceAnalysisDataWidget, self).__init__()

@@ -124,7 +124,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_setting_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'state_estimation_setting_widget.ui')
 
         # Load it
         super(StateEstimationSettingWidget, self).__init__()
@@ -230,7 +230,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.ref_end = 0
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_pulse_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui','state_estimation_pulse_widget.ui')
 
         # Load it
         super(StateEstimationPulseWidget, self).__init__()
@@ -328,7 +328,7 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\state_estimation_time_trace_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'state_estimation_time_trace_widget.ui')
 
         # Load it
         super(StateEstimationTimeTraceWidget, self).__init__()
