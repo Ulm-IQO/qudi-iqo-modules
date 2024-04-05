@@ -348,7 +348,7 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)
 
     def disconnect_signals(self):
-        self.get_time_trace_pushButton.disconnect()
+        self.get_time_trace_pushButton.clicked.disconnect()
 
     def update_time_trace(self):
         self.logic.extract_data()

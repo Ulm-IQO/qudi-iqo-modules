@@ -39,11 +39,17 @@ class QdyneMeasurement:
     def input_settings(self, settings: QdyneMeasurementSettings) -> None:
         self.stg = settings
 
-    def toggle_measurement(self, start):
-        self.pmeasure.toggle_pulsed_measurement(start)
+    def start_qdyne_measurement(self):
+        timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
+        fname = timestamp + fname if fname else timestamp
+        self._data_streamer().change_filename(fname)
+        self._data_streamer().start_stream()
+        self.pulsedmeasurementlogic().pulse_generator_on()
+
+    def stop_qdyne_measurement(self):
+        pass
 
     def get_raw_data(self):
         raw_data = self.pmeasure.raw_data
 
         return raw_data
-
