@@ -211,41 +211,6 @@ class QdyneLogic(LogicBase):
             self.sigToggleQdyneMeasurement.emit(start)
         return
 
-    def start_measurement(self, fname=None):
-        # timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
-        # fname = timestamp + fname if fname else timestamp
-        # self._data_streamer().change_filename(fname)
-        # self._data_streamer().start_stream()
-        # self.pulsedmeasurementlogic().pulse_generator_on()
-        pass
-
-    def stop_measurement(self):
-        self._data_streamer().stop_stream()
-
-    def get_raw_data(self):
-        new_data, _ = self._data_streamer().read_data()
-        self.data.raw_data = np.append(self.data.raw_data, new_data)
-
-    def get_pulse(self):
-        self.estimator.configure_method(self.settings.estimator_stg.current_method)
-        return self.estimator.get_pulse(self.data.raw_data, self.settings.estimator_stg.current_setting)
-
-    def extract_data(self):
-        self.data.extracted_data = self.estimator.extract(self.data.raw_data,
-                                                          self.settings.estimator_stg.current_setting)
-
-    def estimate_state(self):
-        self.data.time_trace = self.estimator.estimate(self.data.extracted_data,
-                                                       self.settings.estimator_stg.current_setting)
-
-    def analyze_time_trace(self):
-        self.data.signal = self.analyzer.analyze(self.data.time_trace, self.settings.analyzer_stg.current_setting)
-
-    def get_spectrum(self):
-        self.data.spectrum = self.analyzer.get_spectrum(self.data.signal, self.settings.analyzer_stg.current_setting)
-        self.data.freq_data.x = self.data.spectrum[0]
-        self.data.freq_data.y = self.data.spectrum[1]
-
     @QtCore.Slot(str)
     @QtCore.Slot(str, bool)
     def do_fit(self, fit_config):
