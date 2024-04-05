@@ -37,7 +37,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
     Example config for copy-paste:
 
     qdyne_counter_dummy:
-        module.Class: 'qdyne_counter_dummy.QdyneCounterDummy'
+        module.Class: 'dummy.qdyne_counter_dummy.QdyneCounterDummy'
         options:
             'sine_frequency_Hz': 200e6
     """
