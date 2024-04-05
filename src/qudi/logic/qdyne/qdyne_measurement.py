@@ -32,16 +32,17 @@ class QdyneMeasurementSettings:
 class QdyneMeasurementStatus:
     running: bool = False
 
-class QdyneMeasurement:
+class QdyneMeasurement(QtCore.QObject):
     data_type_lists = ['TimeSeries', 'TimeTag']
 
     # analysis timer interval
-    __timer_interval = StatusVar(default=5)
+    __timer_interval = 5
     # analysis timer signals
     sigStartTimer = QtCore.Signal()
     sigStopTimer = QtCore.Signal()
 
     def __init__(self, qdyne_logic):
+        super().__init__()
         self.qdyne_logic = qdyne_logic
 
         self.stg = None
@@ -54,7 +55,7 @@ class QdyneMeasurement:
         self.__analysis_timer = QtCore.QTimer()
         self.__analysis_timer.setSingleShot(False)
         self.__analysis_timer.setInterval(round(1000. * self.__timer_interval))
-        self.__analysis_timer.timeout.connect(self._pulsed_analysis_loop,
+        self.__analysis_timer.timeout.connect(self.qdyne_analysis_loop,
                                               QtCore.Qt.QueuedConnection)
         # set up the analysis timer signals
         self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.QueuedConnection)
@@ -116,7 +117,7 @@ class QdyneMeasurement:
         return self.__timer_interval
 
     @QtCore.Slot(float)
-    @property.setter
+    @analysis_timer_interval.setter
     def analysis_timer_interval(self, interval: float) -> float:
         """
         Property to return the currently set analysis timer interval in seconds.
