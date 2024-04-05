@@ -139,6 +139,7 @@ class QdyneLogic(LogicBase):
 
     # signals for connecting modules
     sigFitUpdated = QtCore.Signal(str, object)
+    sigToggleQdyneMeasurement = QtCore.Signal(bool)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -152,7 +153,7 @@ class QdyneLogic(LogicBase):
 
     def on_activate(self):
         def activate_classes():
-            #self.measure = QdyneMeasurement(self.pmaster, self.pmeasure)
+            self.measure = QdyneMeasurement(self)
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
             self.settings = QdyneSettings()
@@ -179,9 +180,14 @@ class QdyneLogic(LogicBase):
         activate_classes()
         initialize_settings()
         input_initial_settings()
+
+        self.sigToggleQdyneMeasurement.connect(
+            self.measure.toggle_qdyne_measurement, QtCore.Qt.QueuedConnection)
         return
 
     def on_deactivate(self):
+        self.sigToggleQdyneMeasurement.disconnect()
+
         self._save_status_variables()
         return
 
@@ -194,6 +200,16 @@ class QdyneLogic(LogicBase):
 
     def input_analyzer_method(self):
         self.analyzer.method = self.settings.analyzer_stg.current_method
+
+    @QtCore.Slot(bool)
+    @QtCore.Slot(bool, str)
+    def toggle_qdyne_measurement(self, start):
+        """
+        @param bool start: True for start measurement, False for stop measurement
+        """
+        if isinstance(start, bool):
+            self.sigToggleQdyneMeasurement.emit(start)
+        return
 
     def start_measurement(self, fname=None):
         # timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')

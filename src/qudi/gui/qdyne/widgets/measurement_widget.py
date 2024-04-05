@@ -28,7 +28,7 @@ class MeasurementWidget(QtWidgets.QWidget):
     def __init__(self):
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\measurement_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'measurement_widget.ui')
 
         # Load it
         super(MeasurementWidget, self).__init__()

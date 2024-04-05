@@ -32,7 +32,7 @@ class GenerationWidget(QtWidgets.QWidget):
         self._gui = gui
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, r'ui\generation_widget.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'generation_widget.ui')
 
         # Load it
         super(GenerationWidget, self).__init__()

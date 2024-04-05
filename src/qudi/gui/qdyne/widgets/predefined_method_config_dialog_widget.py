@@ -30,7 +30,7 @@ class PredefinedMethodsConfigDialogWidget(QtWidgets.QDialog):
         self._gui = gui
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, 'ui/predefined_methods_config.ui')
+        ui_file = os.path.join(qdyne_dir, 'ui', 'predefined_methods_config.ui')
 
         # Load it
         super().__init__()

@@ -13,7 +13,10 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 from dataclasses import dataclass
+import datetime
+from PySide2 import QtCore, QtWidgets
 
 from qudi.core.connector import Connector
 from PySide2 import QtCore
@@ -38,9 +41,9 @@ class QdyneMeasurement:
     sigStartTimer = QtCore.Signal()
     sigStopTimer = QtCore.Signal()
 
-    def __init__(self, pmaster, pmeasure):
-        self.pmaster = pmaster
-        self.pmeasure = pmeasure
+    def __init__(self, qdyne_logic):
+        self.qdyne_logic = qdyne_logic
+
         self.stg = None
 
         self.__start_time = 0
@@ -68,18 +71,40 @@ class QdyneMeasurement:
     def input_settings(self, settings: QdyneMeasurementSettings) -> None:
         self.stg = settings
 
-    def start_qdyne_measurement(self):
+    @QtCore.Slot(bool, str)
+    def toggle_qdyne_measurement(self, start):
+        """
+        Convenience method to start/stop measurement
+
+        @param bool start: Start the measurement (True) or stop the measurement (False)
+        """
+        if start:
+            self.start_qdyne_measurement()
+        else:
+            self.stop_qdyne_measurement()
+        return
+
+    def start_qdyne_measurement(self, fname=None):
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
         fname = timestamp + fname if fname else timestamp
-        self._data_streamer().change_filename(fname)
-        self._data_streamer().start_stream()
-        self.pulsedmeasurementlogic().pulse_generator_on()
+        #self.qdyne_logic._data_streamer().change_filename(fname)
+        self.qdyne_logic._data_streamer().start_stream()
+        self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_on()
 
     def stop_qdyne_measurement(self):
+        self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_off()
+        self.qdyne_logic._data_streamer().stop_stream()
+        return
+
+    def qdyne_analysis_loop(self):
+        qdyne_logic.get_raw_data()
+        qdyne_logic.get_pulse()
+        qdyne_logic.extract_data()
+
         pass
 
     def get_raw_data(self):
-        raw_data = self.pmeasure.raw_data
+        #Todo: raw_data =
 
         return raw_data
 
