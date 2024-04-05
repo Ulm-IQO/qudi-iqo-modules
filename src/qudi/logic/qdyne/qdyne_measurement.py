@@ -119,7 +119,7 @@ class QdyneMeasurement(QtCore.QObject):
 
     @QtCore.Slot(float)
     @analysis_timer_interval.setter
-    def analysis_timer_interval(self, interval: float) -> float:
+    def analysis_timer_interval(self, interval: float):
         """
         Property to return the currently set analysis timer interval in seconds.
         """
