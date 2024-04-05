@@ -40,9 +40,18 @@ class QdyneMeasurement(QtCore.QObject):
     sigStartTimer = QtCore.Signal()
     sigStopTimer = QtCore.Signal()
 
+    # notification signals for master module (i.e. GUI)
+    sigPulseDataUpdated = QtCore.Signal()
+    sigTimeTraceDataUpdated = QtCore.Signal()
+    sigQdyneDataUpdated = QtCore.Signal()
+
     def __init__(self, qdyne_logic):
         super().__init__()
         self.qdyne_logic = qdyne_logic
+        self.data = self.qdyne_logic.data
+        self.estimator = self.qdyne_logic.estimator
+        self.settings = self.qdyne_logic.settings
+        self.analyzer = self.qdyne_logic.analyzer
 
         self.stg = None
 
@@ -88,27 +97,52 @@ class QdyneMeasurement(QtCore.QObject):
         timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
         fname = timestamp + fname if fname else timestamp
         #self.qdyne_logic._data_streamer().change_filename(fname)
-        self.qdyne_logic._data_streamer().start_stream()
+        self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_on()
         self.sigStartTimer.emit()
 
     def stop_qdyne_measurement(self):
         self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_off()
-        self.qdyne_logic._data_streamer().stop_stream()
+        self.qdyne_logic._data_streamer().stop_measure()
         self.sigStopTimer.emit()
         return
 
     def qdyne_analysis_loop(self):
-        qdyne_logic.get_raw_data()
-        qdyne_logic.get_pulse()
-        qdyne_logic.extract_data()
+        self.get_raw_data()
+        self.get_pulse()
+        self.sigPulseDataUpdated.emit()
 
-        pass
+        self.extract_data()
+        self.estimate_state()
+        self.sigTimeTraceDataUpdated.emit()
+
+        self.analyze_time_trace()
+        self.get_spectrum()
+        self.sigQdyneDataUpdated.emit()
 
     def get_raw_data(self):
-        #Todo: raw_data =
+        new_data, _ = self.qdyne_logic._data_streamer().get_data()
+        self.data.raw_data = np.append(self.data.raw_data, new_data)
 
-        return raw_data
+    def get_pulse(self):
+        self.estimator.configure_method(self.settings.estimator_stg.current_method)
+        self.data.pulse_data = self.estimator.get_pulse(self.data.raw_data, self.settings.estimator_stg.current_setting)
+
+    def extract_data(self):
+        self.data.extracted_data = self.estimator.extract(self.data.raw_data,
+                                                          self.settings.estimator_stg.current_setting)
+
+    def estimate_state(self):
+        self.data.time_trace = self.estimator.estimate(self.data.extracted_data,
+                                                       self.settings.estimator_stg.current_setting)
+
+    def analyze_time_trace(self):
+        self.data.signal = self.analyzer.analyze(self.data.time_trace, self.settings.analyzer_stg.current_setting)
+
+    def get_spectrum(self):
+        self.data.spectrum = self.analyzer.get_spectrum(self.data.signal, self.settings.analyzer_stg.current_setting)
+        self.data.freq_data.x = self.data.spectrum[0]
+        self.data.freq_data.y = self.data.spectrum[1]
 
     @property
     def analysis_timer_interval(self) -> float:

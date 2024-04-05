@@ -46,6 +46,7 @@ class FreqDomainData:
 class MainDataClass:
     raw_data: np.ndarray = np.array([], dtype=int)
     extracted_data: np.ndarray = np.array([], dtype=int)
+    pulse_data: np.ndarray = np.array([], dtype=int)
     time_trace: np.ndarray = np.array([], dtype=float)
     signal: np.ndarray = np.array([], dtype=float)
     spectrum: np.ndarray = np.array([], dtype=float)
