@@ -33,7 +33,7 @@ from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability
 from qudi.core.module import GuiBase
 
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
-from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingDialog
+from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingsDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
@@ -124,7 +124,7 @@ class ScannerGui(GuiBase):
     sigFrequencyChanged = QtCore.Signal(str, float)
     sigBackFrequencyChanged = QtCore.Signal(str, float)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
-    sigOptimizerSettingsChanged = QtCore.Signal(str, list, dict, dict, dict)
+    sigOptimizerSettingsChanged = QtCore.Signal(str, list, dict, dict, dict, dict, dict)
     sigToggleOptimize = QtCore.Signal(bool)
     sigSaveScan = QtCore.Signal(object, object)
     sigSaveFinished = QtCore.Signal()
@@ -136,7 +136,7 @@ class ScannerGui(GuiBase):
         # QMainWindow and QDialog child instances
         self._mw = None
         self._ssd = None
-        self._osd: Optional[OptimizerSettingDialog] = None
+        self._osd: Optional[OptimizerSettingsDialog] = None
 
         # References to automatically generated GUI elements
         self.optimizer_settings_axes_widgets = None
@@ -295,7 +295,8 @@ class ScannerGui(GuiBase):
     def _init_optimizer_settings(self):
         """ Configuration and initialisation of the optimizer settings dialog.
         """
-        axes_obj = tuple(self._scanning_logic().scanner_axes.values())
+        scan_logic: ScanningProbeLogic = self._scanning_logic()
+        axes_obj = tuple(scan_logic.scanner_axes.values())
         axes_names = [ax.name for ax in axes_obj]
 
         # figure out sensible optimization sequences for user selection
@@ -307,9 +308,10 @@ class ScannerGui(GuiBase):
             if len(occurring_axes) <= len(set(occurring_axes)):
                 sequences_no_axis_twice.append(sequence)
 
-        self._osd = OptimizerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
-                                           tuple(self._scanning_logic().scanner_channels.values()),
-                                           sequences_no_axis_twice)
+        self._osd = OptimizerSettingsDialog(scan_logic.scanner_axes.values(),
+                                            scan_logic.scanner_channels.values(),
+                                            sequences_no_axis_twice,
+                                            scan_logic.scanner_constraints.back_scan_capability)
 
         # Connect MainWindow actions
         self._mw.action_optimizer_settings.triggered.connect(lambda x: self._osd.exec_())
@@ -912,6 +914,8 @@ class ScannerGui(GuiBase):
             self._osd.range,
             self._osd.resolution,
             self._osd.frequency,
+            self._osd.back_resolution,
+            self._osd.back_frequency
         )
         self.optimizer_dockwidget.scan_sequence = self._osd.sequence
         self.update_crosshair_sizes()
@@ -945,7 +949,9 @@ class ScannerGui(GuiBase):
         self._osd.sequence = optimize_logic.scan_sequence
         self._osd.set_range(optimize_logic.scan_range)
         self._osd.set_resolution(optimize_logic.scan_resolution)
+        self._osd.set_back_resolution(optimize_logic.back_scan_resolution)
         self._osd.set_frequency(optimize_logic.scan_frequency)
+        self._osd.set_back_frequency(optimize_logic.back_scan_frequency)
 
         axes_constr = self._scanning_logic().scanner_axes
         self.optimizer_dockwidget.scan_sequence = optimize_logic.scan_sequence

@@ -52,11 +52,14 @@ class ScanningOptimizeLogic(LogicBase):
     _scan_logic = Connector(name='scan_logic', interface='ScanningProbeLogic')
 
     # status variables
+    # not configuring the back scan parameters is represented by empty dictionaries
     _scan_sequence: List[Tuple[str, ...]] = StatusVar(name='scan_sequence', default=None)
     _data_channel = StatusVar(name='data_channel', default=None)
     _scan_range: Dict[str, float] = StatusVar(name='scan_range', default=dict())
     _scan_resolution: Dict[str, int] = StatusVar(name='scan_resolution', default=dict())
+    _back_scan_resolution: Dict[str, int] = StatusVar(name='back_scan_resolution', default=dict())
     _scan_frequency: Dict[str, float] = StatusVar(name='scan_frequency', default=dict())
+    _back_scan_frequency: Dict[str, float] = StatusVar(name='back_scan_frequency', default=dict())
 
     # signals
     sigOptimizeStateChanged = QtCore.Signal(bool, dict, object)
@@ -127,16 +130,24 @@ class ScanningOptimizeLogic(LogicBase):
         return self._data_channel
 
     @property
-    def scan_frequency(self) -> Dict[str, float]:
-        return self._scan_frequency.copy()
-
-    @property
     def scan_range(self) -> Dict[str, float]:
         return self._scan_range.copy()
 
     @property
     def scan_resolution(self) -> Dict[str, int]:
         return self._scan_resolution.copy()
+
+    @property
+    def back_scan_resolution(self) -> Dict[str, int]:
+        return self._back_scan_resolution.copy()
+
+    @property
+    def scan_frequency(self) -> Dict[str, float]:
+        return self._scan_frequency.copy()
+
+    @property
+    def back_scan_frequency(self) -> Dict[str, float]:
+        return self._back_scan_frequency.copy()
 
     @property
     def scan_sequence(self) -> List[Tuple[str, ...]]:
@@ -161,8 +172,13 @@ class ScanningOptimizeLogic(LogicBase):
         return self.module_state() != 'idle'
 
     def set_optimize_settings(self, data_channel: str, scan_sequence: List[Tuple[str, ...]],
-                              range: Dict[str, float], resolution: Dict[str, int], frequency: Dict[str, float]):
+                              range: Dict[str, float], resolution: Dict[str, int], frequency: Dict[str, float],
+                              back_resolution: Dict[str, int] = None, back_frequency: Dict[str, float] = None):
         """Set all optimizer settings."""
+        if back_resolution is None:
+            back_resolution = dict()
+        if back_frequency is None:
+            back_frequency = dict()
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Cannot change optimize settings when module is locked.')
@@ -172,6 +188,8 @@ class ScanningOptimizeLogic(LogicBase):
                 self._scan_range.update(range)
                 self._scan_resolution.update(resolution)
                 self._scan_frequency.update(frequency)
+                self._back_scan_resolution.update(back_resolution)
+                self._back_scan_frequency.update(back_frequency)
 
     @property
     def last_scans(self):
@@ -212,8 +230,12 @@ class ScanningOptimizeLogic(LogicBase):
 
             for ax, res in self.scan_resolution.items():
                 scan_logic.set_scan_resolution(ax, res)
+            for ax, res in self.back_scan_resolution.items():
+                scan_logic.set_back_scan_resolution(ax, res)
             for ax, res in self.scan_frequency.items():
                 scan_logic.set_scan_frequency(ax, res)
+            for ax, res in self.back_scan_frequency.items():
+                scan_logic.set_back_scan_frequency(ax, res)
 
             self.module_state.lock()
             with self._result_lock:
