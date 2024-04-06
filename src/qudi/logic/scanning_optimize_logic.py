@@ -25,7 +25,6 @@ import numpy as np
 from PySide2 import QtCore
 import copy as cp
 from typing import Dict, Tuple, List
-from dataclasses import dataclass
 
 from qudi.core.module import LogicBase
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
@@ -33,15 +32,6 @@ from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util.fit_models.gaussian import Gaussian2D, Gaussian
-
-
-@dataclass
-class OptimizerSettings:
-    range: Dict[str, float]
-    resolution: Dict[str, int]
-    frequency: Dict[str, float]
-    data_channel: str
-    sequence: List[Tuple[str, ...]]
 
 
 class ScanningOptimizeLogic(LogicBase):
@@ -133,19 +123,19 @@ class ScanningOptimizeLogic(LogicBase):
         return
 
     @property
-    def data_channel(self):
+    def data_channel(self) -> str:
         return self._data_channel
 
     @property
-    def scan_frequency(self):
+    def scan_frequency(self) -> Dict[str, float]:
         return self._scan_frequency.copy()
 
     @property
-    def scan_range(self):
+    def scan_range(self) -> Dict[str, float]:
         return self._scan_range.copy()
 
     @property
-    def scan_resolution(self):
+    def scan_resolution(self) -> Dict[str, int]:
         return self._scan_resolution.copy()
 
     @property
@@ -170,27 +160,18 @@ class ScanningOptimizeLogic(LogicBase):
     def optimizer_running(self):
         return self.module_state() != 'idle'
 
-    @property
-    def optimize_settings(self):
-        return OptimizerSettings(
-            range=self.scan_range,
-            resolution=self.scan_resolution,
-            frequency=self.scan_frequency,
-            data_channel=self.data_channel,
-            sequence=self.scan_sequence
-        )
-
-    def set_optimize_settings(self, settings: OptimizerSettings):
+    def set_optimize_settings(self, data_channel: str, scan_sequence: List[Tuple[str, ...]],
+                              range: Dict[str, float], resolution: Dict[str, int], frequency: Dict[str, float]):
         """Set all optimizer settings."""
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Cannot change optimize settings when module is locked.')
             else:
-                self._scan_range.update(settings.range)
-                self._scan_resolution.update(settings.resolution)
-                self._scan_frequency.update(settings.frequency)
-                self._data_channel = settings.data_channel
-                self._scan_sequence = settings.sequence
+                self._data_channel = data_channel
+                self.scan_sequence = scan_sequence
+                self._scan_range.update(range)
+                self._scan_resolution.update(resolution)
+                self._scan_frequency.update(frequency)
 
     @property
     def last_scans(self):

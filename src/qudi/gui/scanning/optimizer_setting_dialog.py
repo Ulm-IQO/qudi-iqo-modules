@@ -26,7 +26,6 @@ from typing import List, Tuple, Dict
 from PySide2 import QtCore, QtGui, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
-from qudi.logic.scanning_optimize_logic import OptimizerSettings
 
 
 class OptimizerSettingDialog(QtWidgets.QDialog):
@@ -57,11 +56,41 @@ class OptimizerSettingDialog(QtWidgets.QDialog):
         self.setLayout(layout)
 
     @property
-    def settings(self) -> OptimizerSettings:
-        return self.settings_widget.settings
+    def data_channel(self) -> str:
+        return self.settings_widget.data_channel
 
-    def change_settings(self, settings: OptimizerSettings):
-        return self.settings_widget.change_settings(settings)
+    @data_channel.setter
+    def data_channel(self, ch: str) -> None:
+        self.settings_widget.data_channel = ch
+
+    @property
+    def sequence(self) -> List[Tuple[str, ...]]:
+        return self.settings_widget.sequence
+
+    @sequence.setter
+    def sequence(self, seq: List[Tuple[str, ...]]) -> None:
+        self.settings_widget.sequence = seq
+
+    @property
+    def range(self) -> Dict[str, float]:
+        return self.settings_widget.axes_widget.range
+
+    @property
+    def resolution(self) -> Dict[str, int]:
+        return self.settings_widget.axes_widget.resolution
+
+    @property
+    def frequency(self) -> Dict[str, float]:
+        return self.settings_widget.axes_widget.frequency
+
+    def set_range(self, settings: Dict[str, float]):
+        self.settings_widget.axes_widget.set_range(settings)
+
+    def set_resolution(self, settings: Dict[str, int]):
+        self.settings_widget.axes_widget.set_resolution(settings)
+
+    def set_frequency(self, settings: Dict[str, float]):
+        self.settings_widget.axes_widget.set_frequency(settings)
 
 
 class OptimizerSettingWidget(QtWidgets.QWidget):
@@ -113,31 +142,28 @@ class OptimizerSettingWidget(QtWidgets.QWidget):
         self.setLayout(layout)
 
     @property
-    def settings(self) -> OptimizerSettings:
-        return OptimizerSettings(
-            range=self.axes_widget.range,
-            resolution=self.axes_widget.resolution,
-            frequency=self.axes_widget.frequency,
-            data_channel=self.data_channel_combobox.currentText(),
-            sequence=self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()]
-        )
+    def data_channel(self) -> str:
+        return self.data_channel_combobox.currentText()
 
-    def change_settings(self, settings: OptimizerSettings):
+    @data_channel.setter
+    def data_channel(self, ch: str) -> None:
         self.data_channel_combobox.blockSignals(True)
-        self.data_channel_combobox.setCurrentText(settings.data_channel)
+        self.data_channel_combobox.setCurrentText(ch)
         self.data_channel_combobox.blockSignals(False)
 
+    @property
+    def sequence(self) -> List[Tuple[str, ...]]:
+        return self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()]
+
+    @sequence.setter
+    def sequence(self, seq: List[Tuple[str, ...]]) -> None:
         self.optimize_sequence_combobox.blockSignals(True)
         try:
-            idx_combo = self.available_opt_sequences.index(settings.sequence)
+            idx_combo = self.available_opt_sequences.index(seq)
         except ValueError:
             idx_combo = 0
         self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
         self.optimize_sequence_combobox.blockSignals(False)
-
-        self.axes_widget.set_range(settings.range)
-        self.axes_widget.set_resolution(settings.resolution)
-        self.axes_widget.set_frequency(settings.frequency)
 
 
 class OptimizerAxesWidget(QtWidgets.QWidget):
@@ -224,19 +250,15 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
         self.setMaximumHeight(self.sizeHint().height())
 
     @property
-    def axes(self):
-        return tuple(self.axes_widgets)
-
-    @property
-    def resolution(self):
+    def resolution(self) -> Dict[str, int]:
         return {ax: widgets['res_spinbox'].value() for ax, widgets in self.axes_widgets.items()}
 
     @property
-    def range(self):
+    def range(self) -> Dict[str, float]:
         return {ax: widgets['range_spinbox'].value() for ax, widgets in self.axes_widgets.items()}
 
     @property
-    def frequency(self):
+    def frequency(self) -> Dict[str, float]:
         return {ax: widgets['freq_spinbox'].value() for ax, widgets in self.axes_widgets.items()}
 
     def set_resolution(self, resolution: Dict[str, int]):

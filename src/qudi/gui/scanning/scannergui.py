@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import itertools
 import os
 import numpy as np
-from typing import Union, Tuple, Optional, List
+from typing import Union, Tuple, Optional, List, Dict
 from PySide2 import QtCore, QtWidgets
 
 import qudi.util.uic as uic
@@ -38,7 +38,7 @@ from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
-from qudi.logic.scanning_optimize_logic import OptimizerSettings
+from qudi.logic.scanning_optimize_logic import ScanningOptimizeLogic
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
@@ -124,7 +124,7 @@ class ScannerGui(GuiBase):
     sigFrequencyChanged = QtCore.Signal(str, float)
     sigBackFrequencyChanged = QtCore.Signal(str, float)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
-    sigOptimizerSettingsChanged = QtCore.Signal(OptimizerSettings)
+    sigOptimizerSettingsChanged = QtCore.Signal(str, list, dict, dict, dict)
     sigToggleOptimize = QtCore.Signal(bool)
     sigSaveScan = QtCore.Signal(object, object)
     sigSaveFinished = QtCore.Signal()
@@ -662,7 +662,7 @@ class ScannerGui(GuiBase):
 
         if scan_data is not None:
             if caller_id is self._optimizer_id:
-                channel = self._osd.settings.data_channel
+                channel = self._osd.data_channel
                 if scan_data.settings.scan_dimension == 2:
                     x_ax, y_ax = scan_data.settings.axes
                     self.optimizer_dockwidget.set_image(image=scan_data.data[channel],
@@ -906,15 +906,21 @@ class ScannerGui(GuiBase):
 
     @QtCore.Slot()
     def change_optimizer_settings(self):
-        self.sigOptimizerSettingsChanged.emit(self._osd.settings)
-        self.optimizer_dockwidget.scan_sequence = self._osd.settings.sequence
+        self.sigOptimizerSettingsChanged.emit(
+            self._osd.data_channel,
+            self._osd.sequence,
+            self._osd.range,
+            self._osd.resolution,
+            self._osd.frequency,
+        )
+        self.optimizer_dockwidget.scan_sequence = self._osd.sequence
         self.update_crosshair_sizes()
 
     def update_crosshair_sizes(self):
         axes_constr = self._scanning_logic().scanner_axes
         for ax, dockwidget in self.scan_2d_dockwidgets.items():
-            width = self._osd.settings.range[ax[0]]
-            height = self._osd.settings.range[ax[1]]
+            width = self._osd.range[ax[0]]
+            height = self._osd.range[ax[1]]
             x_min, x_max = axes_constr[ax[0]].position.bounds
             y_min, y_max = axes_constr[ax[1]].position.bounds
             marker_bounds = (
@@ -932,15 +938,19 @@ class ScannerGui(GuiBase):
     @QtCore.Slot()
     def update_optimizer_settings_from_logic(self):
         """Update all optimizer settings from the optimizer logic."""
-        settings: OptimizerSettings = self._optimize_logic().optimize_settings
+        optimize_logic: ScanningOptimizeLogic = self._optimize_logic()
 
         # Update optimizer settings QDialog
-        self._osd.change_settings(settings)
+        self._osd.data_channel = optimize_logic.data_channel
+        self._osd.sequence = optimize_logic.scan_sequence
+        self._osd.set_range(optimize_logic.scan_range)
+        self._osd.set_resolution(optimize_logic.scan_resolution)
+        self._osd.set_frequency(optimize_logic.scan_frequency)
 
         axes_constr = self._scanning_logic().scanner_axes
-        self.optimizer_dockwidget.scan_sequence = settings.sequence
+        self.optimizer_dockwidget.scan_sequence = optimize_logic.scan_sequence
 
-        for seq_step in settings.sequence:
+        for seq_step in optimize_logic.scan_sequence:
             if len(seq_step) == 1:
                 axis = seq_step[0]
                 self.optimizer_dockwidget.set_plot_label(axis='bottom',
@@ -951,7 +961,7 @@ class ScannerGui(GuiBase):
                 self.optimizer_dockwidget.set_fit_data(axs=seq_step)
 
                 channel_constr = self._scanning_logic().scanner_channels
-                channel = settings.data_channel
+                channel = optimize_logic.data_channel
                 self.optimizer_dockwidget.set_plot_label(axs=seq_step, axis='left',
                                                          text=channel,
                                                          units=channel_constr[channel].unit)
