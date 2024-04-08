@@ -5,15 +5,13 @@ from qudi.interface.simple_laser_interface import ControlMode, ShutterState, Las
 
 from enum import Enum
 from typing import Union
+import time
 
-import clr
+import clr   # Requires package 'pythonnet', documentation here
 clr.AddReference(r'mscorlib')
 clr.AddReference('System.Reflection')
 from System.Text import StringBuilder
-from System import Int32
 from System.Reflection import Assembly
-
-import time
 
 class Models(Enum):
     """ Model numbers for Millennia lasers
@@ -26,14 +24,15 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
 
     Example config for copy-paste:
 
-    newfocuslaser:
+    newfocus_laser:
         module.Class: 'laser.newfocus_laser.NewfocusDiodeLaser'
         options:
             laserid: 4106
             devicekey: '6700 SN60615'
-            maxpower = 4.5 #mW
-            maxcurrent = 90 #mA
-
+            dllpath: 'path'
+                # laser control requires the Newport USB driver, download and set up the software at
+                # https://www.newport.com/f/velocity-wide-&-fine-tunable-lasers, extract and input path to the
+                # directory containing 'USBWrap.dll' as the dllpath option
     """
     _DeviceKey = ConfigOption('devicekey', None)
     _Laserid = ConfigOption('laserid', None)
@@ -41,8 +40,7 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
     _control_mode = ControlMode.UNKNOWN.value
 
     _idn = ''
-    maxpower = ConfigOption(name='maxpower', default = 4.5, missing='warn')
-    maxcurrent = ConfigOption(name='maxcurrent', default = 90, missing='warn')
+    dll_path = ConfigOption(name='dllpath', default='',  missing='warn')
 
     def Query(self, word):
         self._Buff.Clear()
@@ -66,14 +64,13 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
             @return bool: connection success
         """
         try:
-            dll_path = 'C:\\Program Files\\New Focus\\New Focus Tunable Laser Application\\Bin\\'
-            Assembly.LoadFile(dll_path + 'UsbDllWrap.dll')
+            Assembly.LoadFile(self.dll_path + 'UsbDllWrap.dll')
             clr.AddReference(r'UsbDllWrap')
             import Newport
             self._dev = Newport.USBComm.USB()
             self._dev.OpenDevices(self._Laserid, True)
             out = self._dev.Read(self._DeviceKey, self._Buff)
-            timer=0
+            timer = 0
             while timer <= 100:
                 while not out == -1:
                     out = self._dev.Read(self._DeviceKey, self._Buff)
@@ -115,18 +112,18 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
         @return float[2]: power range (min, max)
         """
         output=0
-        if self._output_state== 1:
+        if self._output_state == 1:
             print('Disabling output!')
-            output=1
+            output = 1
             self.output_disable()
-        power= self.get_power_setpoint()
+        power = self.get_power_setpoint()
         self.set_power('MAX')
-        self._maxpower= self.get_power_setpoint()
+        self.maxpower = self.get_power_setpoint()
         self.set_power(power)
         if output == 1:
             print('power range detection finished, re-enabling output')
             self.output_enable()
-        return [0, self._maxpower]
+        return [0, self.maxpower]
 
     def get_power(self):
         """ Return actual laser power
@@ -141,11 +138,11 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
         @param Union[float,str] power: power to set in mW, can be 'MAX' to set power to maximum rated power
         """
         if type(power) in [int, float]:
-            if float(power) <= self._maxpower:
+            if float(power) <= self.maxpower:
                 self.Query('SOURce:POWer:DIODe {}'.format(power))
                 #return self.get_power_setpoint()
             else:
-                self.log.exception('Set value exceeding max power!')
+                self.log.exception('Set value exceeding max power! Power must be <= {}mW'.format(self.maxpower))
         elif power == 'MAX':
             self.Query('SOURce:POWer:DIODe MAX')
         else:
@@ -186,12 +183,12 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
             self.output_disable()
         current = self.get_current_setpoint()
         self.set_current('MAX')
-        self._maxcurrent = self.get_current_setpoint()
+        self.maxcurrent = self.get_current_setpoint()
         self.set_current(current)
         if output == 1:
             print('current range detection finished, re-enabling output')
             self.output_enable()
-        return [0, self._maxcurrent]
+        return [0, self.maxcurrent]
 
     def get_current_setpoint(self):
         """ Get laser current setpoint
@@ -208,11 +205,11 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
         @param Union[float,str] current: desired laser current setpoint in mA, can be 'MAX' for the max rated current
         """
         if type(current) in [int, float]:
-            if float(current) <= self._maxcurrent:
+            if float(current) <= self.maxcurrent:
                 self.Query('SOURce:CURRent:DIODe {}'.format(current))
                 #return self.get_current_setpoint()
             else:
-                self.log.exception('Set value exceeding max current!')
+                self.log.exception('Set value exceeding max current! Current must be <= {}mA'.format(self.maxcurrent))
         elif current == 'MAX':
             self.Query('SOURce:CURRent:DIODe MAX')
         else:
@@ -230,12 +227,12 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
 
         @return ControlMode: active control mode enum
         """
-        if float(self.Query('SOURce:CPOWer?')) == 0:
+        if self.Query('SOURce:CPOWer?') == '0':
             self._control_mode = ControlMode.CURRENT.value
-            return ControlMode.CURRENT
-        elif float(self.Query('SOURce:CPOWer?')) == 1:
+            return str(ControlMode.CURRENT)
+        elif self.Query('SOURce:CPOWer?') == '1':
             self._control_mode = ControlMode.POWER.value
-            return ControlMode.POWER
+            return str(ControlMode.POWER)
         else:
             self.log.exception('Error while calling function:')
 
@@ -258,12 +255,12 @@ class NewfocusDiodeLaser(SimpleLaserInterface):
 
         @return LaserState: current laser state enum
         """
-        if float(self.Query('OUTPut:STATe?')) == 0:
+        if int(self.Query('OUTPut:STATe?')) == 0:
             self._output_state = LaserState.OFF.value
-            return LaserState.OFF
-        elif float(self.Query('OUTPut:STATe?')) == 1:
+            return str(LaserState.OFF)
+        elif int(self.Query('OUTPut:STATe?')) == 1:
             self._output_state = LaserState.ON.value
-            return LaserState.ON
+            return str(LaserState.ON)
         else:
             self.log.exception('Error while calling function:')
 
