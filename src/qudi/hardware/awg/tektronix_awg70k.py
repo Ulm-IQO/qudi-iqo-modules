@@ -171,14 +171,14 @@ class AWG70K(PulserInterface):
             constraints.sample_rate.max = 25.0e9
             constraints.sample_rate.step = 5.0e2
             constraints.sample_rate.default = 25.0e9
-        elif self.awg_model == 'AWG70001A':
+        elif self.awg_model in ['AWG70001A', 'AWG70001B']:
             constraints.sample_rate.min = 1.49e3
             constraints.sample_rate.max = 50.0e9
             constraints.sample_rate.step = 10
             constraints.sample_rate.default = 50.0e9
 
         constraints.a_ch_amplitude.min = 0.25
-        constraints.a_ch_amplitude.max = 0.5
+        constraints.a_ch_amplitude.max = 10 if self.awg_model == 'AWG70001B' else 0.5
         constraints.a_ch_amplitude.step = 0.0001
         constraints.a_ch_amplitude.default = 0.5
 
@@ -199,7 +199,7 @@ class AWG70K(PulserInterface):
         if self.awg_model == 'AWG70002A':
             constraints.waveform_length.step = 1
             constraints.waveform_length.default = self.__min_waveform_length
-        elif self.awg_model == 'AWG70001A':
+        elif self.awg_model in ['AWG70001A', 'AWG70001B']:
             constraints.waveform_length.step = 2
             constraints.waveform_length.default = self.__min_waveform_length
 
@@ -265,6 +265,12 @@ class AWG70K(PulserInterface):
             # Usage of only channel 2 with no marker:
             activation_config['ch2_0mrk'] = frozenset({'a_ch2'})
         elif self.awg_model == 'AWG70001A':
+            activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
+            # Usage of only channel 1 with one marker:
+            activation_config['ch1_1mrk'] = frozenset({'a_ch1', 'd_ch1'})
+            # Usage of only channel 1 with no marker:
+            activation_config['ch1_0mrk'] = frozenset({'a_ch1'})
+        elif self.awg_model == 'AWG70001B':  #TODO this elif was missing --> commit
             activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
             # Usage of only channel 1 with one marker:
             activation_config['ch1_1mrk'] = frozenset({'a_ch1', 'd_ch1'})
@@ -1696,4 +1702,6 @@ class AWG70K(PulserInterface):
         return xml_header
 
     def _has_sequence_mode(self):
+        if self.awg_model == 'AWG70001B':
+            return 'SEQ' in self.__installed_options
         return '03' in self.__installed_options

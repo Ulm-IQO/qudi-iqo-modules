@@ -36,7 +36,7 @@ class PulserInterface(Base):
     An example in the lab is to use a pulser to send laser pulses of a given duration separated by another precisely
      controlled duration.
 
-    This interface is used to program or or multiple sequences or waveform in the internal memory of a pulser hardware,
+    This interface is used to program or multiple sequences or waveform in the internal memory of a pulser hardware,
     then load one and play it.
     - It handles digital and analog outputs of any number.
     - It handles both -
