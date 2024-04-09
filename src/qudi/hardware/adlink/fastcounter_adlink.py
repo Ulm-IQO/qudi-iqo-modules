@@ -284,11 +284,13 @@ class Adlink9834(FastCounterInterface):
     _dll_location = ConfigOption('wddask_dll_location', default="C:/ADLINK/WD-DASK/Lib/wd-dask64.dll", missing='error')
     _callback_dll_location = os.path.join(os.path.dirname(__file__), "adlink_callback_functions.so")
     _card_num = ConfigOption('card_number', default=0, missing='warn')
-    _maximum_samples = ConfigOption('maximum_samples', default=512e6, missing='warn',
+    _maximum_samples = ConfigOption('maximum_samples', default=512e6, missing='info',
                                         constructor=lambda x: int(x)) # Maximum number of samples for which a buffer can be set up
-    _trigger_threshold = ConfigOption('trigger_threshold', default=1.67, missing='warn') # V
-    _trigger_delay_ticks = ConfigOption('trigger_delay_ticks', default=0, missing='warn',
+    _trigger_threshold = ConfigOption('trigger_threshold', default=1.67, missing='info') # V
+    _trigger_delay_ticks = ConfigOption('trigger_delay_ticks', default=0, missing='info',
                                         constructor=lambda x: int(x))
+    _ad_range = ConfigOption('ad_range', default=10, missing='info',
+                                        constructor=lambda x: AdlinkDataTypes.U16(x)) # ADC range, selectable from AdlinkADRange
     _device_type = AdlinkCardType.PXIe_9834.value
 
     def __init__(self, *args, **kwargs) -> None:
@@ -350,7 +352,7 @@ class Adlink9834(FastCounterInterface):
         # this function is not described in the manual, but present in the DLL and the samples
         err = AdlinkDataTypes.I16(self._dll.WD_GetDeviceProperties(self._card, AdlinkDataTypes.U16(0),
                                                                    ctypes.byref(self._device_props)))
-        self._settings.ad_range = self._device_props.default_range
+        self._settings.ad_range = AdlinkADRange(self._ad_range).value
         self.check_if_error(err, "GetDeviceProperties")
         self._clock_freq = int(self._device_props.ctrkHz * 1e3)
 
