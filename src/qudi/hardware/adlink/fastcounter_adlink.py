@@ -267,6 +267,9 @@ class Adlink9834(FastCounterInterface):
     """
     FastCounter hardware file for the adlink PCIe_9834 card.
     This device is designed as a gated device. Modifications are needed, if used in ungated mode.
+    This file uses a callback function written in C that copies and sums the acquired data from each measurement sweep
+    into a buffer which qudi can read. This file is compiled for Microsoft Windows 10 with x64-based PC.
+    If you are using another operating system or architecture, recompile adlink_callback_functions.c.
 
     In order to use the hardware with the pulsed tool-chain one needs to use the FastCounterRestartInterfuse
 
@@ -279,6 +282,7 @@ class Adlink9834(FastCounterInterface):
                 maximum_samples: 512e6
                 trigger_threshold: 1.67
                 trigger_delay_ticks: 0
+                ad_range: 10
     """
 
     _dll_location = ConfigOption('wddask_dll_location', default="C:/ADLINK/WD-DASK/Lib/wd-dask64.dll", missing='error')
@@ -857,25 +861,21 @@ class Adlink9834(FastCounterInterface):
         self._number_of_averages = int(number)
 
     def set_callback_dll_variables(self):
-        # set up the buffer address for the c callback function
-        # get global variables in shared library
+        """
+        Function to set the global variables in the callback dll.
+        """
+        # Get handle of the variables
         ai_buff1_c_address = ctypes.c_void_p.in_dll(self._callback_dll, 'ai_buff1_address')
         ai_buff2_c_address = ctypes.c_void_p.in_dll(self._callback_dll, 'ai_buff2_address')
         total_buffer_c_address = ctypes.c_void_p.in_dll(self._callback_dll, 'qudi_buffer_address')
         number_measurements_c = self._settings.data_type.in_dll(self._callback_dll, 'number_of_measurements')
         buffer_size_c = ctypes.c_ulong.in_dll(self._callback_dll, 'buffer_size')
         buffer_id_c = self._settings.data_type.in_dll(self._callback_dll,'buffer_id')
-        current_buffer_position_c = ctypes.c_ulong.in_dll(self._callback_dll, 'current_buffer_position')
-        current_writer_position_c = ctypes.c_ulong.in_dll(self._callback_dll, 'current_writer_position')
-        file_writer_called_c = ctypes.c_long.in_dll(self._callback_dll, 'number_writer_called')
-        # set the pointer values to the correct addresses of the buffer
+
+        # Set the value of the variables
         ai_buff1_c_address.value = self._ai_buffer1.value
         ai_buff2_c_address.value = self._ai_buffer2.value
         total_buffer_c_address.value = self._measurement_buffer_address.value
         number_measurements_c.value = self.max_number_sequence_retriggers()
         buffer_size_c.value = self.buffer_size_samples_one_measurement()
         buffer_id_c.value = 0
-        file_writer_called_c.value = 0
-
-        current_buffer_position_c.value = 0
-        current_writer_position_c.value = 0
