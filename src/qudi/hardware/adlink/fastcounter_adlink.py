@@ -314,7 +314,6 @@ class Adlink9834(FastCounterInterface):
         self._acquisition_stop_flag = ctypes.c_bool()
         self._available_data_buffer_id = AdlinkDataTypes.U32()
 
-        self._available_data = None
         # determines how many measurements should be summed up
         # if set to 0 all acquired samples are summed up
         # if set to > 0 the number of samples will be summed up and displayed by the pulsed toolchain
@@ -509,8 +508,8 @@ class Adlink9834(FastCounterInterface):
                                                                   ctypes.byref(self._buffer_id2)))
         if self.check_if_error(err, "ContBufferSetup"):
             return
-        self._available_data = np.zeros((self._buffer_size_samples.value,), dtype=np.float64)
-        self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value), dtype=np.float64)
+        self._data_buffer = np.zeros((self._number_of_averages, self.buffer_size_samples_one_measurement()), dtype=np.float64)
+        self._last_measurement = np.zeros((self.buffer_size_samples_one_measurement(),), dtype=np.float64)
 
         # set up variables in callback_dll
         self.set_callback_dll_variables()
@@ -558,8 +557,8 @@ class Adlink9834(FastCounterInterface):
                       f"scan_interval: {self._settings.scan_interval.value},\n"
                       f"retrigger_count: {self._settings.retrigger_count.value}")
         self._sweeps = 0
-        self._available_data = np.zeros((self._buffer_size_samples.value,), dtype=np.float64)
-        self._data_buffer = np.zeros((self._number_of_averages, self._buffer_size_samples.value), dtype=np.float64)
+        self._data_buffer = np.zeros((self._number_of_averages, self.buffer_size_samples_one_measurement()), dtype=np.float64)
+        self._last_measurement = np.zeros((self.buffer_size_samples_one_measurement(),), dtype=np.float64)
         self._current_buffer_position = 0
         try:
             self.arm_card()
@@ -672,12 +671,14 @@ class Adlink9834(FastCounterInterface):
             data = np.array(self._measurement_buffer, dtype=np.float64)
             if self._number_of_averages <= 0:
                 transformed_data = self.transform_raw_data(data)
-            else:
-                self._data_buffer[self._current_buffer_position] = np.copy(data)
+                return transformed_data, info_dict
+
+            if np.any(self._last_measurement):
+                self._data_buffer[self._current_buffer_position % self._number_of_averages] = data - self._last_measurement
                 self._current_buffer_position += 1
-                if self._current_buffer_position == self._number_of_averages:
-                    self._current_buffer_position = 0
-                transformed_data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
+
+            transformed_data = self.transform_raw_data(np.sum(self._data_buffer, axis=0))
+            self._last_measurement = data
 
             return transformed_data, info_dict
 
