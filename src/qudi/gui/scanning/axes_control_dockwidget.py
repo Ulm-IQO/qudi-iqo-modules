@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('AxesControlDockWidget', 'AxesControlWidget')
 
-from typing import Tuple
+from typing import Tuple, Dict
 from PySide2 import QtCore, QtGui, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.widgets.slider import DoubleSlider
@@ -240,17 +240,11 @@ class AxesControlWidget(QtWidgets.QWidget):
         return self.axes_widgets[axis]['res_spinbox'].value()
 
     @QtCore.Slot(dict)
-    def set_resolution(self, value, axis=None):
-        if axis is None or isinstance(value, dict):
-            for ax, val in value.items():
-                spinbox = self.axes_widgets[ax]['res_spinbox']
-                spinbox.blockSignals(True)
-                spinbox.setValue(val)
-                spinbox.blockSignals(False)
-        else:
-            spinbox = self.axes_widgets[axis]['res_spinbox']
+    def set_resolution(self, resolution: Dict[str, int]) -> None:
+        for ax, val in resolution.items():
+            spinbox = self.axes_widgets[ax]['res_spinbox']
             spinbox.blockSignals(True)
-            spinbox.setValue(value)
+            spinbox.setValue(val)
             spinbox.blockSignals(False)
 
     def get_range(self, axis):
@@ -258,22 +252,11 @@ class AxesControlWidget(QtWidgets.QWidget):
         return widget_dict['min_spinbox'].value(), widget_dict['max_spinbox'].value()
 
     @QtCore.Slot(dict)
-    def set_range(self, value, axis=None):
-        if axis is None or isinstance(value, dict):
-            for ax, val in value.items():
-                min_spinbox = self.axes_widgets[ax]['min_spinbox']
-                max_spinbox = self.axes_widgets[ax]['max_spinbox']
-                min_val, max_val = val
-                min_spinbox.blockSignals(True)
-                min_spinbox.setValue(min_val)
-                min_spinbox.blockSignals(False)
-                max_spinbox.blockSignals(True)
-                max_spinbox.setValue(max_val)
-                max_spinbox.blockSignals(False)
-        else:
-            min_spinbox = self.axes_widgets[axis]['min_spinbox']
-            max_spinbox = self.axes_widgets[axis]['max_spinbox']
-            min_val, max_val = value
+    def set_range(self, rng: Dict[str, Tuple[float, float]]) -> None:
+        for ax, val in rng.items():
+            min_spinbox = self.axes_widgets[ax]['min_spinbox']
+            max_spinbox = self.axes_widgets[ax]['max_spinbox']
+            min_val, max_val = val
             min_spinbox.blockSignals(True)
             min_spinbox.setValue(min_val)
             min_spinbox.blockSignals(False)
@@ -285,25 +268,15 @@ class AxesControlWidget(QtWidgets.QWidget):
         return self.axes_widgets[axis]['pos_spinbox'].value()
 
     @QtCore.Slot(dict)
-    def set_target(self, value, axis=None):
-        if axis is None or isinstance(value, dict):
-            for ax, val in value.items():
-                spinbox = self.axes_widgets[ax]['pos_spinbox']
-                slider = self.axes_widgets[ax]['slider']
-                slider.blockSignals(True)
-                slider.setValue(val)
-                slider.blockSignals(False)
-                spinbox.blockSignals(True)
-                spinbox.setValue(val)
-                spinbox.blockSignals(False)
-        else:
-            spinbox = self.axes_widgets[axis]['pos_spinbox']
-            slider = self.axes_widgets[axis]['slider']
+    def set_target(self, target: Dict[str, float]):
+        for ax, val in target.items():
+            spinbox = self.axes_widgets[ax]['pos_spinbox']
+            slider = self.axes_widgets[ax]['slider']
             slider.blockSignals(True)
-            slider.setValue(value)
+            slider.setValue(val)
             slider.blockSignals(False)
             spinbox.blockSignals(True)
-            spinbox.setValue(value)
+            spinbox.setValue(val)
             spinbox.blockSignals(False)
 
     def set_assumed_unit_prefix(self, prefix):

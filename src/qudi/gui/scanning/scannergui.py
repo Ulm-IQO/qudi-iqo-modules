@@ -617,8 +617,7 @@ class ScannerGui(GuiBase):
     def set_full_range(self) -> None:
         scan_logic: ScanningProbeLogic = self._scanning_logic()
         scan_ranges = scan_logic.set_full_scan_ranges()
-        for axis, rng in scan_ranges.items():
-            self.scanner_control_dockwidget.set_range(rng, axis)
+        self.scanner_control_dockwidget.set_range(scan_ranges)
 
     @QtCore.Slot(dict)
     def set_scanner_target_position(self, target_pos):
@@ -831,10 +830,10 @@ class ScannerGui(GuiBase):
             dockwidget.scan_widget.set_scan_data(scan_data)
 
         # also update scan range and resolution
-        for i in range(settings.scan_dimension):
-            ax = settings.axes[i]
-            self.scanner_control_dockwidget.set_range(settings.range[i], ax)
-            self.scanner_control_dockwidget.set_resolution(settings.resolution[i], ax)
+        rng = {ax: val for ax, val in zip(settings.axes, settings.range)}
+        res = {ax: val for ax, val in zip(settings.axes, settings.resolution)}
+        self.scanner_control_dockwidget.set_range(rng)
+        self.scanner_control_dockwidget.set_resolution(res)
 
     def _toggle_enable_scan_crosshairs(self, enable):
         for dockwidget in self.scan_2d_dockwidgets.values():
@@ -896,13 +895,12 @@ class ScannerGui(GuiBase):
             def set_range_func(x_range, y_range):
                 x_range = tuple(sorted(x_range))
                 y_range = tuple(sorted(y_range))
-                self.scanner_control_dockwidget.set_range(x_range, axes[0])
-                self.scanner_control_dockwidget.set_range(y_range, axes[1])
+                self.scanner_control_dockwidget.set_range({axes[0]: x_range, axes[1]: y_range})
                 self._mw.action_utility_zoom.setChecked(False)
         else:
             def set_range_func(x_range):
                 x_range = tuple(sorted(x_range))
-                self.scanner_control_dockwidget.set_range(x_range, axes[0])
+                self.scanner_control_dockwidget.set_range({axes[0]: x_range})
                 self._mw.action_utility_zoom.setChecked(False)
         return set_range_func
 
