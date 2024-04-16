@@ -26,7 +26,7 @@ from typing import Tuple, Dict
 from PySide2 import QtCore, QtGui, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.widgets.slider import DoubleSlider
-from qudi.interface.scanning_probe_interface import ScannerAxis
+from qudi.interface.scanning_probe_interface import ScannerAxis, BackScanCapability
 
 
 class AxesControlDockWidget(QtWidgets.QDockWidget):
@@ -38,13 +38,12 @@ class AxesControlDockWidget(QtWidgets.QDockWidget):
                                       'get_range', 'set_range', 'get_target', 'set_target',
                                       'set_assumed_unit_prefix', 'emit_current_settings'})
 
-    def __init__(self, scanner_axes: Tuple[ScannerAxis]):
+    def __init__(self, scanner_axes: Tuple[ScannerAxis], back_scan_capability: BackScanCapability):
         super().__init__('Axes Control')
         self.setObjectName('axes_control_dockWidget')
-        widget = AxesControlWidget(scanner_axes=scanner_axes)
+        widget = AxesControlWidget(scanner_axes=scanner_axes, back_scan_capability=back_scan_capability)
         widget.setObjectName('axes_control_widget')
         self.setWidget(widget)
-        return
 
     def __getattr__(self, item):
         if item in self.__wrapped_attributes:
@@ -62,9 +61,9 @@ class AxesControlWidget(QtWidgets.QWidget):
     sigTargetChanged = QtCore.Signal(str, float)
     sigSliderMoved = QtCore.Signal(str, float)
 
-    def __init__(self, *args, scanner_axes: Tuple[ScannerAxis], **kwargs):
+    def __init__(self, *args, scanner_axes: Tuple[ScannerAxis], back_scan_capability: BackScanCapability, **kwargs):
         super().__init__(*args, **kwargs)
-
+        self._back_scan_capability = back_scan_capability
         self.axes_widgets = dict()
 
         font = QtGui.QFont()
@@ -73,7 +72,7 @@ class AxesControlWidget(QtWidgets.QWidget):
 
         column = 1
 
-        for label_text in ['Resolution', 'Back\nResolution']:
+        for label_text in ['Resolution', '=', 'Back\nResolution']:
             label = QtWidgets.QLabel(label_text)
             label.setFont(font)
             label.setAlignment(QtCore.Qt.AlignCenter)
@@ -96,7 +95,7 @@ class AxesControlWidget(QtWidgets.QWidget):
         vline.setFrameShape(QtWidgets.QFrame.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Sunken)
         layout.addWidget(vline, 0, column, len(scanner_axes) + 1, 1)
-        column += 1
+        column += 2
 
         label = QtWidgets.QLabel('Current Target')
         label.setFont(font)
@@ -138,6 +137,25 @@ class AxesControlWidget(QtWidgets.QWidget):
                 widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                      QtWidgets.QSizePolicy.Preferred)
 
+            # checkbox for having back resolution equal to forward resolution
+            check_box = QtWidgets.QCheckBox()
+            check_box.stateChanged.connect(self.__get_equal_checkbox_callback(ax_name))
+            widgets['eq_checkbox'] = check_box
+
+            # adapt to back scan capability of hardware
+            if BackScanCapability.AVAILABLE not in self._back_scan_capability:
+                for widget in ['backward_res_spinbox', 'eq_checkbox']:
+                    widgets[widget].setEnabled(False)
+                    widgets[widget].setToolTip("Back scan is not available.")
+                widgets['eq_checkbox'].setChecked(False)
+                widgets['backward_res_spinbox'].setRange(0, 0)
+                widgets['backward_res_spinbox'].setValue(0)
+            elif BackScanCapability.RESOLUTION_CONFIGURABLE not in self._back_scan_capability:
+                widgets['eq_checkbox'].setChecked(True)
+                widgets['eq_checkbox'].setEnabled(False)
+                widgets['backward_res_spinbox'].setToolTip("Back resolution is not configurable.")
+
+            # slider for moving the scanner
             slider = DoubleSlider(QtCore.Qt.Horizontal)
             slider.setObjectName('{0}_position_doubleSlider'.format(ax_name))
             slider.setRange(*axis.position.bounds)
@@ -154,11 +172,12 @@ class AxesControlWidget(QtWidgets.QWidget):
             # Add to layout
             layout.addWidget(label, index, 0)
             layout.addWidget(widgets['forward_res_spinbox'], index, 1)
-            layout.addWidget(widgets['backward_res_spinbox'], index, 2)
-            layout.addWidget(widgets['min_spinbox'], index, 4)
-            layout.addWidget(widgets['max_spinbox'], index, 5)
-            layout.addWidget(widgets['slider'], index, 7)
-            layout.addWidget(widgets['pos_spinbox'], index, 8)
+            layout.addWidget(widgets['eq_checkbox'], index, 2)
+            layout.addWidget(widgets['backward_res_spinbox'], index, 3)
+            layout.addWidget(widgets['min_spinbox'], index, 5)
+            layout.addWidget(widgets['max_spinbox'], index, 6)
+            layout.addWidget(widgets['slider'], index, 8)
+            layout.addWidget(widgets['pos_spinbox'], index, 9)
 
             # Connect signals
             # TODO "editingFinished" also emits when window gets focus again, so also after alt+tab.
@@ -186,7 +205,7 @@ class AxesControlWidget(QtWidgets.QWidget):
             # Remember widgets references for later access
             self.axes_widgets[ax_name] = widgets
 
-        layout.setColumnStretch(6, 1)
+        layout.setColumnStretch(7, 1)
         self.setLayout(layout)
         self.setMaximumHeight(self.sizeHint().height())
 
@@ -220,11 +239,15 @@ class AxesControlWidget(QtWidgets.QWidget):
 
     @QtCore.Slot(dict)
     def set_resolution(self, resolution: Dict[str, int]) -> None:
+        back_res = {}
         for ax, val in resolution.items():
             spinbox = self.axes_widgets[ax]['forward_res_spinbox']
             spinbox.blockSignals(True)
             spinbox.setValue(val)
             spinbox.blockSignals(False)
+            if self.axes_widgets[ax]['eq_checkbox'].isChecked():
+                back_res[ax] = val
+        self.set_back_resolution(back_res)
 
     @QtCore.Slot(dict)
     def set_back_resolution(self, resolution: Dict[str, int]) -> None:
@@ -289,6 +312,19 @@ class AxesControlWidget(QtWidgets.QWidget):
     def __get_axis_back_resolution_callback(self, axis, spinbox):
         def callback():
             self.sigBackResolutionChanged.emit(axis, spinbox.value())
+        return callback
+
+    def __get_equal_checkbox_callback(self, axis: str):
+        @QtCore.Slot(bool)
+        def callback(checked: bool):
+            forward_spinbox = self.axes_widgets[axis][f'forward_res_spinbox']
+            backward_spinbox = self.axes_widgets[axis][f'backward_res_spinbox']
+            if checked:
+                forward_spinbox.valueChanged.connect(backward_spinbox.setValue)
+                backward_spinbox.setValue(forward_spinbox.value())  # set manually once
+            else:
+                forward_spinbox.valueChanged.disconnect()
+            backward_spinbox.setDisabled(checked)
         return callback
 
     def __get_axis_min_range_callback(self, axis, spinbox):
