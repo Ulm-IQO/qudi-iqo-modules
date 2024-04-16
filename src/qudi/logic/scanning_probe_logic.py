@@ -20,7 +20,8 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from itertools import combinations
-from typing import Tuple, Sequence, Dict
+from typing import Tuple, Sequence, Dict, Optional
+from uuid import UUID
 
 from PySide2 import QtCore
 import copy as cp
@@ -30,7 +31,7 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraints, BackScanCapability
+from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraints, BackScanCapability, ScanData
 
 
 class ScanningProbeLogic(LogicBase):
@@ -66,8 +67,8 @@ class ScanningProbeLogic(LogicBase):
     _min_poll_interval = ConfigOption(name='min_poll_interval', default=None)
 
     # signals
-    sigScanStateChanged = QtCore.Signal(bool, object, object)
-    sigNewScanDataForHistory = QtCore.Signal(object)
+    sigScanStateChanged = QtCore.Signal(bool, ScanData, ScanData, UUID)
+    sigNewScanDataForHistory = QtCore.Signal(ScanData, ScanData)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
 
     def __init__(self, *args, **kwargs):
@@ -120,9 +121,14 @@ class ScanningProbeLogic(LogicBase):
             self._scanner().stop_scan()
 
     @property
-    def scan_data(self):
+    def scan_data(self) -> Optional[ScanData]:
         with self._thread_lock:
             return self._scanner().get_scan_data()
+
+    @property
+    def back_scan_data(self) -> Optional[ScanData]:
+        with self._thread_lock:
+            return self._scanner().get_back_scan_data()
 
     @property
     def scanner_position(self):
@@ -346,7 +352,7 @@ class ScanningProbeLogic(LogicBase):
     def start_scan(self, scan_axes, caller_id=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
-                self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
+                self.sigScanStateChanged.emit(True, self.scan_data, self.back_scan_data, self._curr_caller_id)
                 return
 
             self.log.debug('Starting scan.')
@@ -363,7 +369,7 @@ class ScanningProbeLogic(LogicBase):
                     self._scanner().configure_back_scan(back_settings)
             except Exception as e:
                 self.module_state.unlock()
-                self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
+                self.sigScanStateChanged.emit(False, None, None, self._curr_caller_id)
                 self.log.error('Could not set scan settings on scanning probe hardware.', exc_info=e)
                 return
             self.log.debug('Successfully configured scanner.')
@@ -378,17 +384,17 @@ class ScanningProbeLogic(LogicBase):
                 self._scanner().start_scan()
             except:
                 self.module_state.unlock()
-                self.sigScanStateChanged.emit(False, None, self._curr_caller_id)
+                self.sigScanStateChanged.emit(False, None, None, self._curr_caller_id)
                 self.log.error("Couldn't start scan.")
 
-            self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
+            self.sigScanStateChanged.emit(True, self.scan_data, self.back_scan_data, self._curr_caller_id)
             self.__start_timer()
             return
 
     def stop_scan(self):
         with self._thread_lock:
             if self.module_state() == 'idle':
-                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+                self.sigScanStateChanged.emit(False, self.scan_data, self.back_scan_data, self._curr_caller_id)
                 return
 
             self.__stop_timer()
@@ -398,9 +404,9 @@ class ScanningProbeLogic(LogicBase):
                     self._scanner().stop_scan()
             finally:
                 self.module_state.unlock()
-                self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
+                self.sigScanStateChanged.emit(False, self.scan_data, self.back_scan_data, self._curr_caller_id)
                 if self.save_to_history:
-                    self.sigNewScanDataForHistory.emit(self.scan_data)
+                    self.sigNewScanDataForHistory.emit(self.scan_data, self.back_scan_data)
 
     def __scan_poll_loop(self):
         with self._thread_lock:
@@ -412,7 +418,7 @@ class ScanningProbeLogic(LogicBase):
                     self.stop_scan()
                     return
                 # TODO Added the following line as a quick test; Maybe look at it with more caution if correct
-                self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
+                self.sigScanStateChanged.emit(True, self.scan_data, self.back_scan_data, self._curr_caller_id)
 
                 # Queue next call to this slot
                 self.__scan_poll_timer.start()

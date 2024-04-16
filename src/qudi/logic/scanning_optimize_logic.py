@@ -19,14 +19,15 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-
+from uuid import UUID
 
 import numpy as np
 from PySide2 import QtCore
 import copy as cp
-from typing import Dict, Tuple, List
+from typing import Dict, Tuple, List, Optional
 
 from qudi.core.module import LogicBase
+from qudi.interface.scanning_probe_interface import ScanData
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.core.connector import Connector
@@ -253,8 +254,9 @@ class ScanningOptimizeLogic(LogicBase):
                 return
             self._scan_logic().toggle_scan(True, self._scan_sequence[self._sequence_index], self.module_uuid)
 
-    def _scan_state_changed(self, is_running, data, caller_id):
-
+    def _scan_state_changed(self, is_running: bool,
+                            data: Optional[ScanData], back_scan_data: Optional[ScanData],
+                            caller_id: UUID):
         with self._thread_lock:
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return

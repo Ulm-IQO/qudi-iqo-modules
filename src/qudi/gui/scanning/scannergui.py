@@ -21,6 +21,8 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import itertools
 import os
+from uuid import UUID
+
 import numpy as np
 from typing import Union, Tuple, Optional, List, Dict
 from PySide2 import QtCore, QtWidgets
@@ -654,7 +656,9 @@ class ScannerGui(GuiBase):
         self._update_scan_markers(pos_dict)
         self.scanner_control_dockwidget.set_target(pos_dict)
 
-    def scan_state_updated(self, is_running, scan_data=None, caller_id=None):
+    def scan_state_updated(self, is_running: bool,
+                           scan_data: Optional[ScanData] = None, back_scan_data: Optional[ScanData] = None,
+                           caller_id: Optional[UUID] = None):
         scan_axes = scan_data.settings.axes if scan_data is not None else None
         self._toggle_enable_scan_buttons(not is_running, exclude_scan=scan_axes)
         if not self._optimizer_state['is_running']:
@@ -702,8 +706,7 @@ class ScannerGui(GuiBase):
                     dockwidget = self.scan_1d_dockwidgets.get(scan_axes, None)
                 if dockwidget is not None:
                     dockwidget.scan_widget.toggle_scan_button.setChecked(is_running)
-                    self._update_scan_data(scan_data)
-        return
+                    self._update_scan_data(scan_data, back_scan_data)
 
     @QtCore.Slot(bool, dict, object)
     def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None):
@@ -810,14 +813,14 @@ class ScannerGui(GuiBase):
                 continue
         self.scanner_control_dockwidget.set_target(pos_dict)
 
-    @QtCore.Slot(object)
-    def _update_from_history(self, scan_data: ScanData):
+    @QtCore.Slot(ScanData, ScanData)
+    def _update_from_history(self, scan_data: ScanData, back_scan_data: Optional[ScanData]):
         self.set_scanner_target_position(scan_data.scanner_target_at_start)
-        self._update_scan_data(scan_data)
+        self._update_scan_data(scan_data, back_scan_data)
         self.set_active_tab(scan_data.settings.axes)
 
-    @QtCore.Slot(object)
-    def _update_scan_data(self, scan_data: ScanData):
+    @QtCore.Slot(ScanData, ScanData)
+    def _update_scan_data(self, scan_data: ScanData, back_scan_data: Optional[ScanData]):
         """
         @param ScanData scan_data:
         """
@@ -837,7 +840,9 @@ class ScannerGui(GuiBase):
         res = {ax: val for ax, val in zip(settings.axes, settings.resolution)}
         self.scanner_control_dockwidget.set_range(rng)
         self.scanner_control_dockwidget.set_resolution(res)
-        # TODO: should back resolution be updated here as well?
+        if back_scan_data is not None:
+            back_res = {ax: val for ax, val in zip(back_scan_data.settings.axes, back_scan_data.settings.resolution)}
+            self.scanner_control_dockwidget.set_back_resolution(back_res)
 
     def _toggle_enable_scan_crosshairs(self, enable):
         for dockwidget in self.scan_2d_dockwidgets.values():
