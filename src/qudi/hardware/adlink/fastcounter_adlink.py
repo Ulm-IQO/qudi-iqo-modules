@@ -151,37 +151,37 @@ class AdlinkAnalogTriggerChannel(Enum):
 
 
 class AdlinkADRange(Enum):
-    AD_B_10_V = AdlinkDataTypes.U16(1)
-    AD_B_5_V = AdlinkDataTypes.U16(2)
-    AD_B_2_5_V = AdlinkDataTypes.U16(3)
-    AD_B_1_25_V = AdlinkDataTypes.U16(4)
-    AD_B_0_625_V = AdlinkDataTypes.U16(5)
-    AD_B_0_3125_V = AdlinkDataTypes.U16(6)
-    AD_B_0_5_V = AdlinkDataTypes.U16(7)
-    AD_B_0_05_V = AdlinkDataTypes.U16(8)
-    AD_B_0_005_V = AdlinkDataTypes.U16(9)
-    AD_B_1_V = AdlinkDataTypes.U16(10)
-    AD_B_0_1_V = AdlinkDataTypes.U16(11)
-    AD_B_0_01_V = AdlinkDataTypes.U16(12)
-    AD_B_0_001_V = AdlinkDataTypes.U16(13)
-    AD_U_20_V = AdlinkDataTypes.U16(14)
-    AD_U_10_V = AdlinkDataTypes.U16(15)
-    AD_U_5_V = AdlinkDataTypes.U16(16)
-    AD_U_2_5_V = AdlinkDataTypes.U16(17)
-    AD_U_1_25_V = AdlinkDataTypes.U16(18)
-    AD_U_1_V = AdlinkDataTypes.U16(19)
-    AD_U_0_1_V = AdlinkDataTypes.U16(20)
-    AD_U_0_01_V = AdlinkDataTypes.U16(21)
-    AD_U_0_001_V = AdlinkDataTypes.U16(22)
-    AD_B_2_V = AdlinkDataTypes.U16(23)
-    AD_B_0_25_V = AdlinkDataTypes.U16(24)
-    AD_B_0_2_V = AdlinkDataTypes.U16(25)
-    AD_U_4_V = AdlinkDataTypes.U16(26)
-    AD_U_2_V = AdlinkDataTypes.U16(27)
-    AD_U_0_5_V = AdlinkDataTypes.U16(28)
-    AD_U_0_4_V = AdlinkDataTypes.U16(29)
-    AD_B_1_5_V = AdlinkDataTypes.U16(30)
-    AD_B_0_2145_V = AdlinkDataTypes.U16(31)
+    AD_B_10_V = 1
+    AD_B_5_V = 2
+    AD_B_2_5_V = 3
+    AD_B_1_25_V = 4
+    AD_B_0_625_V = 5
+    AD_B_0_3125_V = 6
+    AD_B_0_5_V = 7
+    AD_B_0_05_V = 8
+    AD_B_0_005_V = 9
+    AD_B_1_V = 10
+    AD_B_0_1_V = 11
+    AD_B_0_01_V = 12
+    AD_B_0_001_V = 13
+    AD_U_20_V = 14
+    AD_U_10_V = 15
+    AD_U_5_V = 16
+    AD_U_2_5_V = 17
+    AD_U_1_25_V = 18
+    AD_U_1_V = 19
+    AD_U_0_1_V = 20
+    AD_U_0_01_V = 21
+    AD_U_0_001_V = 22
+    AD_B_2_V = 23
+    AD_B_0_25_V = 24
+    AD_B_0_2_V = 25
+    AD_U_4_V = 26
+    AD_U_2_V = 27
+    AD_U_0_5_V = 28
+    AD_U_0_4_V = 29
+    AD_B_1_5_V = 30
+    AD_B_0_2145_V = 31
 
 
 class AdlinkSynchronousMode(Enum):
@@ -341,7 +341,7 @@ class Adlink9834(FastCounterInterface):
         "ad_range",
         default=10,
         missing="info",
-        constructor=lambda x: AdlinkDataTypes.U16(x),
+        constructor=lambda x: AdlinkADRange(x),
     )  # ADC range, selectable from AdlinkADRange
     _device_type = AdlinkCardType.PXIe_9834.value
 
@@ -394,10 +394,8 @@ class Adlink9834(FastCounterInterface):
             self.set_dll_function_return_types()
         if not hasattr(self, "_callback_dll"):
             self._callback_dll = self.load_dll(self._callback_dll_location)
-            self.set_callback_dll_function_return_types()
         if self._callback_dll is None:
             self._callback_dll = self.load_dll(self._callback_dll_location)
-            self.set_callback_dll_function_return_types()
         self._card = AdlinkDataTypes.I16(
             self._dll.WD_Register_Card(self._device_type, self._card_num)
         )
@@ -411,7 +409,7 @@ class Adlink9834(FastCounterInterface):
                 self._card, AdlinkDataTypes.U16(0), ctypes.byref(self._device_props)
             )
         )
-        self._settings.ad_range = AdlinkADRange(self._ad_range).value
+        self._settings.ad_range = self._ad_range.value
         self.check_if_error(err, "GetDeviceProperties")
         self._clock_freq = int(self._device_props.ctrkHz * 1e3)
 
@@ -564,7 +562,9 @@ class Adlink9834(FastCounterInterface):
 
         err = AdlinkDataTypes.I16(
             self._dll.WD_AI_CH_Config(
-                self._card, AdlinkDataTypes.I16(-1), self._settings.ad_range
+                self._card,
+                AdlinkDataTypes.I16(-1),
+                AdlinkDataTypes.U16(self._settings.ad_range),
             )
         )
         if self.check_if_error(err, "CH_Config"):
@@ -996,14 +996,6 @@ class Adlink9834(FastCounterInterface):
         self._dll.WD_Release_Card.restype = AdlinkDataTypes.I16
         self._dll.WD_Buffer_Alloc.restype = ctypes.c_void_p
         self._dll.WD_AI_ContBufferSetup.restype = AdlinkDataTypes.I16
-
-    def set_callback_dll_function_return_types(self):
-        """
-        Function that associates the correct return types from the specified functions
-        """
-        self._callback_dll.return_buffer.restype = ctypes.POINTER(
-            self._settings.data_type
-        )
 
     def max_number_sequence_retriggers(self):
         """
