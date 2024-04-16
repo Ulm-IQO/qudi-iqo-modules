@@ -39,6 +39,7 @@ from qudi.gui.scanning.optimizer_setting_dialog import OptimizerSettingsDialog
 from qudi.gui.scanning.scan_settings_dialog import ScannerSettingDialog
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
 from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
+from qudi.logic.scanning_data_logic import ScanningDataLogic
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 from qudi.logic.scanning_optimize_logic import ScanningOptimizeLogic
 
@@ -481,26 +482,23 @@ class ScannerGui(GuiBase):
         return
 
     @QtCore.Slot(tuple)
-    def save_scan_data(self, scan_axes=None):
+    def save_scan_data(self, scan_axes: Union[None, Tuple[str], Tuple[str, str]]):
         """
-        Save data for a given (or all) scan axis.
-        @param tuple: Axis to save. Save all currently displayed if None.
+        Save data for a given scan axis.
+        @param tuple scan_axes: Axis to save, leave None for all axes where data is available.
         """
         self.sigShowSaveDialog.emit(True)
-        try:
-            data_logic = self._data_logic()
-            if scan_axes is None:
-                scan_axes = [scan.settings.axes for scan in data_logic.get_all_current_scan_data()]
-            else:
-                scan_axes = [scan_axes]
-            for ax in scan_axes:
-                try:
-                    cbar_range = self.scan_2d_dockwidgets[ax].scan_widget.image_widget.levels
-                except KeyError:
-                    cbar_range = None
-                self.sigSaveScan.emit(ax, cbar_range)
-        finally:
-            pass
+        if scan_axes is None:
+            data_logic: ScanningDataLogic = self._data_logic()
+            scan_axes = data_logic.get_axes_with_history_entry()
+        else:
+            scan_axes = [scan_axes]
+        for ax in scan_axes:
+            try:
+                cbar_range = self.scan_2d_dockwidgets[ax].scan_widget.image_widget.levels
+            except KeyError:
+                cbar_range = None
+            self.sigSaveScan.emit(ax, cbar_range)
 
     def _track_save_status(self, in_progress):
         if in_progress:
@@ -508,7 +506,7 @@ class ScannerGui(GuiBase):
         else:
             self._n_save_tasks -= 1
 
-        if self._n_save_tasks == 0:
+        if self._n_save_tasks < 1:
             self.sigSaveFinished.emit()
 
     def _remove_scan_dockwidget(self, axes):
@@ -775,18 +773,9 @@ class ScannerGui(GuiBase):
         avail_axs = list(self.scan_1d_dockwidgets.keys())
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
-        ids_to_restore = np.asarray([self._data_logic().get_current_scan_id(ax) for ax in avail_axs])
-        ids_to_restore = ids_to_restore[~np.isnan(ids_to_restore)].astype(int)
-        self.log.debug(f"Restoring {ids_to_restore}")
-
-        [self._data_logic().restore_from_history(id) for id in ids_to_restore]
-
-        # auto range 2d widgets
-        # todo: shouldn't be needed, as .restore_from_history() calls _update_scan_data() calls autoRange()
+        data_logic: ScanningDataLogic = self._data_logic()
         for ax in avail_axs:
-            if len(ax) == 2:
-                dockwidget = self.scan_2d_dockwidgets.get(ax, None)
-                dockwidget.scan_widget.image_widget.autoRange()
+            data_logic.restore_from_history(ax)
 
     def _update_scan_markers(self, pos_dict, exclude_scan=None):
         """

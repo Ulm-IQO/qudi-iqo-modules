@@ -25,7 +25,7 @@ import datetime
 import numpy as np
 from functools import reduce
 import operator
-from typing import List, Optional, Tuple, Dict
+from typing import List, Optional, Tuple, Dict, Set
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -78,7 +78,6 @@ class ScanningDataLogic(LogicBase):
         self._thread_lock = RecursiveMutex()
 
         self._curr_history_index = 0
-        self._curr_data_per_scan: Dict[Tuple[str, ...], ScanData] = dict()
         self._logic_id = None
         return
 
@@ -87,11 +86,9 @@ class ScanningDataLogic(LogicBase):
         """
         self._shrink_history()
         if self._scan_history:
-            self._curr_data_per_scan = {sd[0].settings.axes: sd[0] for sd in self._scan_history}
-            self.restore_from_history(-1)
+            self._restore_from_history_index(-1)
         else:
             self._curr_history_index = 0
-            self._curr_data_per_scan = dict()
         self._logic_id = self._scan_logic().module_uuid
         self._scan_logic().sigNewScanDataForHistory.connect(self._append_to_history)
 
@@ -99,7 +96,6 @@ class ScanningDataLogic(LogicBase):
         """ Reverse steps of activation
         """
         self._scan_logic().sigNewScanDataForHistory.disconnect(self._append_to_history)
-        self._curr_data_per_scan = dict()
 
     @_scan_history.representer
     def __scan_history_to_dicts(self, history: List[Tuple[ScanData, Optional[ScanData]]])\
@@ -121,44 +117,38 @@ class ScanningDataLogic(LogicBase):
             history.append((data, back_data))
         return history
 
-    def get_current_scan_data(self, scan_axes=None) -> Optional[ScanData]:
+    def get_last_history_entry(self, scan_axes: Optional[Tuple[str, ...]] = None)\
+            -> Tuple[Optional[ScanData], Optional[ScanData]]:
         """
-        Get the most recent scan data for a certain (or the most recent) scan axes.
-        @param tuple scan_axes: axis to get data for. If None yields most recent scan.
-        @return ScanData: most recent scan data
+        Get the most recent scan data / back scan data (for a certain scan axes).
+        @param tuple scan_axes: axis or 2D axis pair to get data for
+        @return tuple: most recent scan data and back scan data
         """
         with self._thread_lock:
             if scan_axes is None:
-                try:
-                    scan_axes = self._scan_history[-1][0].settings.axes
-                except IndexError:
-                    return None
-            return self._curr_data_per_scan.get(scan_axes, None)
+                if self._scan_history:
+                    return self._scan_history[-1]
+                else:
+                    # history is empty
+                    return None, None
+            else:
+                index = self._get_last_history_entry_index(scan_axes)
+                if index is not None:
+                    return self._scan_history[index]
+                else:
+                    # no scan saved in history for these axes
+                    return None, None
 
-    def get_current_scan_id(self, scan_axes=None) -> float:
-        """
-        Yield most recent scan data id for a given scan axis or overall.
-        """
+    def get_axes_with_history_entry(self) -> Set[Tuple[str, ...]]:
+        """Get all axes with at least one history entry."""
+        return {data.settings.axes for data, _ in self._scan_history}
 
+    def restore_from_history(self, scan_axes: Tuple[str, ...]):
+        """Restore the latest entry in history for specified scan axes."""
         with self._thread_lock:
-            ret_id = np.nan
-            idx_i = -1
-            for history_entry in reversed(self._scan_history):
-                scan_data = history_entry[0]
-                if scan_data.settings.axes == scan_axes or scan_axes is None:
-                    ret_id = idx_i
-                    break
-                idx_i -= 1
-
-            if np.isnan(ret_id):
-                return np.nan
-
-            assert self._scan_history[ret_id][0] == self.get_current_scan_data(scan_axes)
-            return self._abs_index(ret_id)
-
-    def get_all_current_scan_data(self) -> List[Optional[ScanData]]:
-        with self._thread_lock:
-            return list(self._curr_data_per_scan.copy().values())
+            index = self._get_last_history_entry_index(scan_axes)
+            if index is not None:
+                self._restore_from_history_index(index)
 
     def history_previous(self):
         with self._thread_lock:
@@ -168,7 +158,7 @@ class ScanningDataLogic(LogicBase):
                 return
 
             #self.log.debug(f"Hist_prev called, index {self._curr_history_index - 1}")
-            return self.restore_from_history(self._curr_history_index - 1)
+            return self._restore_from_history_index(self._curr_history_index - 1)
 
     def history_next(self):
         with self._thread_lock:
@@ -177,9 +167,9 @@ class ScanningDataLogic(LogicBase):
                                  'Already at latest history entry.')
                 return
             #self.log.debug(f"Hist_prev called, index {self._curr_history_index + 1}")
-            return self.restore_from_history(self._curr_history_index + 1)
+            return self._restore_from_history_index(self._curr_history_index + 1)
 
-    def restore_from_history(self, index):
+    def _restore_from_history_index(self, index: int):
         with self._thread_lock:
             scan_logic: ScanningProbeLogic = self._scan_logic()
             if scan_logic.module_state() != 'idle':
@@ -195,14 +185,25 @@ class ScanningDataLogic(LogicBase):
                 return
 
             self._curr_history_index = index
-            self._curr_data_per_scan[data.settings.axes] = data
             self.sigHistoryScanDataRestored.emit(data, back_data)
+
+    def _get_last_history_entry_index(self, scan_axes: Tuple[str, ...])\
+            -> int:
+        """
+        Get the history index of the most recent entry for a certain scan axes.
+        @param tuple scan_axes: axis or 2D axis pair to get data for
+        @return int: index
+        """
+        with self._thread_lock:
+            for i in range(len(self._scan_history) - 1, -1, -1):
+                data, _ = self._scan_history[i]
+                if data.settings.axes == scan_axes:
+                    return i
 
     def _append_to_history(self, data: ScanData, back_data: Optional[ScanData]):
         with self._thread_lock:
             self._scan_history.append((data, back_data))
             self._shrink_history()
-            self._curr_data_per_scan[data.settings.axes] = data
             self._curr_history_index = len(self._scan_history) - 1
             self.sigHistoryScanDataRestored.emit(data, back_data)
 
@@ -346,8 +347,13 @@ class ScanningDataLogic(LogicBase):
 
     def save_scan_by_axis(self, scan_axes=None, color_range=None):
         # wrapper for self.save_scan. Avoids copying scan_data through QtSignals
-        scan = self.get_current_scan_data(scan_axes=scan_axes)
-        self.save_scan(scan, color_range=color_range)
+        scan_data, back_scan_data = self.get_last_history_entry(scan_axes=scan_axes)
+        self.log.debug(f"Attempting to save {scan_data}")
+        if scan_data is not None:
+            self.save_scan(scan_data, color_range=color_range)
+        else:
+            self.log.warning(f"No data in history for {scan_axes} scan.")
+            self.sigSaveStateChanged.emit(False)
 
     def create_tag_from_scan_data(self, scan_data, channel):
         axes = scan_data.settings.axes
