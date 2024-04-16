@@ -358,6 +358,7 @@ class ScannerGui(GuiBase):
             lambda is_vis: [wid.setVisible(is_vis) for wid in self.scan_1d_dockwidgets.values()]
         )
         self.scanner_control_dockwidget.sigResolutionChanged.connect(scan_logic.set_scan_resolution)
+        self.scanner_control_dockwidget.sigBackResolutionChanged.connect(scan_logic.set_back_scan_resolution)
         self.scanner_control_dockwidget.sigRangeChanged.connect(scan_logic.set_scan_range)
         # TODO: When "current target" value box is clicked in, a move is excecuted. Why and how?
         self.scanner_control_dockwidget.sigTargetChanged.connect(
@@ -607,6 +608,7 @@ class ScannerGui(GuiBase):
 
         self.scanner_control_dockwidget.set_range(scan_logic.scan_ranges)
         self.scanner_control_dockwidget.set_resolution(scan_logic.scan_resolution)
+        self.scanner_control_dockwidget.set_back_resolution(scan_logic.back_scan_resolution)
 
         for ax, forward in scan_logic.scan_frequency.items():
             self._ssd.settings_widget.set_forward_frequency(ax, forward)
@@ -834,6 +836,7 @@ class ScannerGui(GuiBase):
         res = {ax: val for ax, val in zip(settings.axes, settings.resolution)}
         self.scanner_control_dockwidget.set_range(rng)
         self.scanner_control_dockwidget.set_resolution(res)
+        # TODO: should back resolution be updated here as well?
 
     def _toggle_enable_scan_crosshairs(self, enable):
         for dockwidget in self.scan_2d_dockwidgets.values():

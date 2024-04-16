@@ -32,9 +32,9 @@ from qudi.interface.scanning_probe_interface import ScannerAxis
 class AxesControlDockWidget(QtWidgets.QDockWidget):
     """ Scanner control QDockWidget based on the corresponding QWidget subclass
     """
-    __wrapped_attributes = frozenset({'sigResolutionChanged', 'sigRangeChanged',
-                                      'sigTargetChanged', 'sigSliderMoved', 'axes', 'resolution',
-                                      'range', 'target', 'get_resolution', 'set_resolution',
+    __wrapped_attributes = frozenset({'sigResolutionChanged', 'sigBackResolutionChanged', 'sigRangeChanged',
+                                      'sigTargetChanged', 'sigSliderMoved', 'axes', 'resolution', 'back_resolution',
+                                      'range', 'target', 'set_resolution', 'set_back_resolution',
                                       'get_range', 'set_range', 'get_target', 'set_target',
                                       'set_assumed_unit_prefix', 'emit_current_settings'})
 
@@ -57,6 +57,7 @@ class AxesControlWidget(QtWidgets.QWidget):
     """
 
     sigResolutionChanged = QtCore.Signal(str, int)
+    sigBackResolutionChanged = QtCore.Signal(str, int)
     sigRangeChanged = QtCore.Signal(str, tuple)
     sigTargetChanged = QtCore.Signal(str, float)
     sigSliderMoved = QtCore.Signal(str, float)
@@ -75,25 +76,30 @@ class AxesControlWidget(QtWidgets.QWidget):
         label.setAlignment(QtCore.Qt.AlignCenter)
         layout.addWidget(label, 0, 1)
 
+        label = QtWidgets.QLabel('Back\nResolution')
+        label.setFont(font)
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(label, 0, 2)
+
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(vline, 0, 2, len(scanner_axes) + 1, 1)
+        layout.addWidget(vline, 0, 3, len(scanner_axes) + 1, 1)
 
         label = QtWidgets.QLabel('Scan Range')
         label.setFont(font)
         label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, 3, 1, 2)
+        layout.addWidget(label, 0, 4, 1, 2)
 
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(vline, 0, 5, len(scanner_axes) + 1, 1)
+        layout.addWidget(vline, 0, 6, len(scanner_axes) + 1, 1)
 
         label = QtWidgets.QLabel('Current Target')
         label.setFont(font)
         label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, 7)
+        layout.addWidget(label, 0, 8)
 
         for index, axis in enumerate(scanner_axes, 1):
             ax_name = axis.name
@@ -111,6 +117,16 @@ class AxesControlWidget(QtWidgets.QWidget):
             res_spinbox.setMinimumSize(50, 0)
             res_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                       QtWidgets.QSizePolicy.Preferred)
+
+            back_res_spinbox = QtWidgets.QSpinBox()
+            back_res_spinbox.setObjectName('{0}_backward_resolution_spinBox'.format(ax_name))
+            back_res_spinbox.setRange(axis.resolution.minimum, min(2 ** 31 - 1, axis.resolution.maximum))
+            back_res_spinbox.setValue(axis.resolution.minimum)
+            back_res_spinbox.setSuffix(' px')
+            back_res_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+            back_res_spinbox.setMinimumSize(50, 0)
+            back_res_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                           QtWidgets.QSizePolicy.Preferred)
 
             min_spinbox = ScienDSpinBox()
             min_spinbox.setObjectName('{0}_min_range_scienDSpinBox'.format(ax_name))
@@ -160,10 +176,11 @@ class AxesControlWidget(QtWidgets.QWidget):
             # Add to layout
             layout.addWidget(label, index, 0)
             layout.addWidget(res_spinbox, index, 1)
-            layout.addWidget(min_spinbox, index, 3)
-            layout.addWidget(max_spinbox, index, 4)
-            layout.addWidget(slider, index, 6)
-            layout.addWidget(pos_spinbox, index, 7)
+            layout.addWidget(back_res_spinbox, index, 2)
+            layout.addWidget(min_spinbox, index, 4)
+            layout.addWidget(max_spinbox, index, 5)
+            layout.addWidget(slider, index, 7)
+            layout.addWidget(pos_spinbox, index, 8)
 
             # Connect signals
             # TODO "editingFinished" also emits when window gets focus again, so also after alt+tab.
@@ -171,6 +188,9 @@ class AxesControlWidget(QtWidgets.QWidget):
 
             res_spinbox.editingFinished.connect(
                 self.__get_axis_resolution_callback(ax_name, res_spinbox)
+            )
+            back_res_spinbox.editingFinished.connect(
+                self.__get_axis_back_resolution_callback(ax_name, back_res_spinbox)
             )
             min_spinbox.editingFinished.connect(
                 self.__get_axis_min_range_callback(ax_name, min_spinbox)
@@ -188,12 +208,13 @@ class AxesControlWidget(QtWidgets.QWidget):
             self.axes_widgets[ax_name] = dict()
             self.axes_widgets[ax_name]['label'] = label
             self.axes_widgets[ax_name]['res_spinbox'] = res_spinbox
+            self.axes_widgets[ax_name]['back_res_spinbox'] = back_res_spinbox
             self.axes_widgets[ax_name]['min_spinbox'] = min_spinbox
             self.axes_widgets[ax_name]['max_spinbox'] = max_spinbox
             self.axes_widgets[ax_name]['slider'] = slider
             self.axes_widgets[ax_name]['pos_spinbox'] = pos_spinbox
 
-        layout.setColumnStretch(5, 1)
+        layout.setColumnStretch(6, 1)
         self.setLayout(layout)
         self.setMaximumHeight(self.sizeHint().height())
 
@@ -228,6 +249,10 @@ class AxesControlWidget(QtWidgets.QWidget):
         return {ax: widgets['res_spinbox'].value() for ax, widgets in self.axes_widgets.items()}
 
     @property
+    def back_resolution(self):
+        return {ax: widgets['back_res_spinbox'].value() for ax, widgets in self.axes_widgets.items()}
+
+    @property
     def range(self):
         return {ax: (widgets['min_spinbox'].value(), widgets['max_spinbox'].value()) for ax, widgets
                 in self.axes_widgets.items()}
@@ -236,13 +261,18 @@ class AxesControlWidget(QtWidgets.QWidget):
     def target(self):
         return {ax: widgets['pos_spinbox'].value() for ax, widgets in self.axes_widgets.items()}
 
-    def get_resolution(self, axis):
-        return self.axes_widgets[axis]['res_spinbox'].value()
-
     @QtCore.Slot(dict)
     def set_resolution(self, resolution: Dict[str, int]) -> None:
         for ax, val in resolution.items():
             spinbox = self.axes_widgets[ax]['res_spinbox']
+            spinbox.blockSignals(True)
+            spinbox.setValue(val)
+            spinbox.blockSignals(False)
+
+    @QtCore.Slot(dict)
+    def set_back_resolution(self, resolution: Dict[str, int]) -> None:
+        for ax, val in resolution.items():
+            spinbox = self.axes_widgets[ax]['back_res_spinbox']
             spinbox.blockSignals(True)
             spinbox.setValue(val)
             spinbox.blockSignals(False)
@@ -291,10 +321,17 @@ class AxesControlWidget(QtWidgets.QWidget):
             self.sigRangeChanged.emit(ax, rng)
         for ax, res in self.resolution.items():
             self.sigResolutionChanged.emit(ax, res)
+        for ax, res in self.back_resolution.items():
+            self.sigBackResolutionChanged.emit(ax, res)
 
     def __get_axis_resolution_callback(self, axis, spinbox):
         def callback():
             self.sigResolutionChanged.emit(axis, spinbox.value())
+        return callback
+
+    def __get_axis_back_resolution_callback(self, axis, spinbox):
+        def callback():
+            self.sigBackResolutionChanged.emit(axis, spinbox.value())
         return callback
 
     def __get_axis_min_range_callback(self, axis, spinbox):
