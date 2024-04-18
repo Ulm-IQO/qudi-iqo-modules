@@ -33,6 +33,21 @@ from qudi.util.helpers import in_range
 class MicrowaveInterface(Base):
     """This class defines the interface to simple microwave generators with or without frequency
     scan capability.
+
+    There are two modes of operation:
+        - CW: constant frequency and constant power
+        - scan: variable frequency and constant power
+
+    For the scan, the frequencies can be specified in two ways:
+        - jump list: explicitly defining all frequency values
+        - equidistant sweep: a start and stop frequency, and step count
+    The constraints specify which of the two modes are supported by a specific hardware implementation.
+
+    An external hardware trigger must be supplied to actually step through the scan frequencies.
+
+    # ToDo: Think about if the logic should handle trigger settings and expand the interface if so.
+    #  But I would argue the trigger config is something static and hard-wired for a specific setup,
+    #  so it should be configurable via config and not handled by logic at runtime.
     """
 
     @property
@@ -145,7 +160,13 @@ class MicrowaveInterface(Base):
     @abstractmethod
     def configure_scan(self, power: float, frequencies: Union[np.ndarray, Tuple[float, float, float]],
                        mode: SamplingOutputMode, sample_rate: float) -> None:
-        """
+        """Configure a frequency scan.
+
+        @param float power: the power in dBm to be used during the scan
+        @param float[] frequencies: an array of all frequencies (jump list)
+                                    or a tuple of start, stop frequency and number of steps (equidistant sweep)
+        @param SamplingOutputMode mode: enum stating the way how the frequencies are defined
+        @param float sample_rate: external scan trigger rate
         """
         raise NotImplementedError
 
@@ -163,10 +184,6 @@ class MicrowaveInterface(Base):
         Does not need to stop and restart the microwave output if the device allows soft scan reset.
         """
         raise NotImplementedError
-
-    # ToDo: Think about if the logic should handle trigger settings and expand the interface if so.
-    #  But I would argue the trigger config is something static and hard-wired for a specific setup,
-    #  so it should be configurable via config and not handled by logic at runtime.
 
     def _assert_cw_parameters_args(self, frequency: float, power: float) -> None:
         """ Helper method to unify argument type and value checking against hardware constraints.
