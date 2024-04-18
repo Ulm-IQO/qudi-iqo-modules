@@ -26,8 +26,8 @@ from typing import Union, Tuple, FrozenSet
 import numpy as np
 
 from qudi.core.module import Base
+from qudi.util.constraints import ScalarConstraint
 from qudi.util.enums import SamplingOutputMode
-from qudi.util.helpers import in_range
 
 
 class MicrowaveInterface(Base):
@@ -259,76 +259,93 @@ class MicrowaveConstraints:
         assert all(isinstance(mode, SamplingOutputMode) for mode in scan_modes), \
             'scan_modes must be iterable containing only qudi.util.enums.SamplingOutputMode Enums'
 
-        tmp = [int(lim) for lim in scan_size_limits]
-        self._scan_size_limits = (min(tmp), max(tmp))
-        self._sample_rate_limits = (min(sample_rate_limits), max(sample_rate_limits))
         self._scan_modes = frozenset(scan_modes)
-        self._power_limits = (min(power_limits), max(power_limits))
-        self._frequency_limits = (min(frequency_limits), max(frequency_limits))
+        self._power = ScalarConstraint(power_limits[0], power_limits)
+        self._frequency = ScalarConstraint(frequency_limits[0], frequency_limits)
+        self._scan_size = ScalarConstraint(scan_size_limits[0], scan_size_limits, enforce_int=True)
+        self._sample_rate = ScalarConstraint(sample_rate_limits[0], sample_rate_limits)
+
+    @property
+    def power(self) -> ScalarConstraint:
+        return self._power
+
+    @property
+    def frequency(self) -> ScalarConstraint:
+        return self._frequency
+
+    @property
+    def scan_size(self) -> ScalarConstraint:
+        return self._scan_size
+
+    @property
+    def sample_rate(self) -> ScalarConstraint:
+        return self._sample_rate
+
+    # legacy functions
 
     @property
     def scan_size_limits(self) -> Tuple[int, int]:
-        return self._scan_size_limits
+        return self.scan_size.bounds
 
     @property
     def min_scan_size(self) -> int:
-        return self._scan_size_limits[0]
+        return self.scan_size.minimum
 
     @property
     def max_scan_size(self) -> int:
-        return self._scan_size_limits[1]
+        return self.scan_size.maximum
 
     @property
     def sample_rate_limits(self) -> Tuple[float, float]:
-        return self._sample_rate_limits
+        return self.sample_rate.bounds
 
     @property
     def min_sample_rate(self) -> float:
-        return self._sample_rate_limits[0]
+        return self.sample_rate.minimum
 
     @property
     def max_sample_rate(self) -> float:
-        return self._sample_rate_limits[1]
+        return self.sample_rate.maximum
 
     @property
     def power_limits(self) -> Tuple[float, float]:
-        return self._power_limits
+        return self.power.bounds
 
     @property
     def min_power(self) -> float:
-        return self._power_limits[0]
+        return self.power.minimum
 
     @property
     def max_power(self) -> float:
-        return self._power_limits[1]
+        return self.power.maximum
 
     @property
     def frequency_limits(self) -> Tuple[float, float]:
-        return self._frequency_limits
+        return self.frequency.bounds
 
     @property
     def min_frequency(self) -> float:
-        return self._frequency_limits[0]
+        return self.frequency.minimum
 
     @property
     def max_frequency(self) -> float:
-        return self._frequency_limits[1]
+        return self.frequency.maximum
 
     @property
     def scan_modes(self) -> FrozenSet[SamplingOutputMode]:
         return self._scan_modes
 
     def frequency_in_range(self, value: float) -> Tuple[bool, float]:
-        return in_range(value, *self._frequency_limits)
+        return self.frequency.is_valid(value), self.frequency.clip(value)
 
     def power_in_range(self, value: float) -> Tuple[bool, float]:
-        return in_range(value, *self._power_limits)
+        return self.power.is_valid(value), self.power.clip(value)
 
     def scan_size_in_range(self, value: int) -> Tuple[bool, int]:
-        return in_range(value, *self._scan_size_limits)
+        return self.scan_size.is_valid(value), self.scan_size.clip(value)
 
     def sample_rate_in_range(self, value: float) -> Tuple[bool, float]:
-        return in_range(value, *self._sample_rate_limits)
+        return self.sample_rate.is_valid(value), self.sample_rate.clip(value)
 
     def mode_supported(self, mode: SamplingOutputMode) -> bool:
         return mode in self._scan_modes
