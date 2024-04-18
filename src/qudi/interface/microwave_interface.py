@@ -209,12 +209,14 @@ class MicrowaveInterface(Base):
                 'values: (start, stop, number_of_points)'
             samples = frequencies[-1]
             min_freq, max_freq = frequencies[:2]
+        else:
+            raise AssertionError(f'Unknown mode {mode} encountered.')
         assert self.constraints.scan_size_in_range(samples)[0], \
             f'Number of samples for frequency scan ({samples}) is out of bounds for ' \
             f'allowed scan size limits {self.constraints.scan_size_limits}'
         assert self.constraints.frequency_in_range(min_freq)[0] and \
                self.constraints.frequency_in_range(max_freq)[0], \
-            f'Frequency samples to scan out of bounds.'
+               f'Frequency samples to scan out of bounds.'
 
 
 class MicrowaveConstraints:
