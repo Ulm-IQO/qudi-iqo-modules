@@ -21,6 +21,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from abc import abstractmethod
+from typing import Union, Tuple, FrozenSet
+
+import numpy as np
 
 from qudi.core.module import Base
 from qudi.util.enums import SamplingOutputMode
@@ -34,7 +37,7 @@ class MicrowaveInterface(Base):
 
     @property
     @abstractmethod
-    def constraints(self):
+    def constraints(self) -> 'MicrowaveConstraints':
         """The microwave constraints object for this device.
 
         @return MicrowaveConstraints:
@@ -43,7 +46,7 @@ class MicrowaveInterface(Base):
 
     @property
     @abstractmethod
-    def is_scanning(self):
+    def is_scanning(self) -> bool:
         """Read-Only boolean flag indicating if a scan is running at the moment. Can be used
         together with module_state() to determine if the currently running microwave output is a
         scan or CW.
@@ -55,7 +58,7 @@ class MicrowaveInterface(Base):
 
     @property
     @abstractmethod
-    def cw_power(self):
+    def cw_power(self) -> float:
         """Read-only property returning the currently configured CW microwave power in dBm.
 
         @return float: The currently set CW microwave power in dBm.
@@ -64,7 +67,7 @@ class MicrowaveInterface(Base):
 
     @property
     @abstractmethod
-    def cw_frequency(self):
+    def cw_frequency(self) -> float:
         """Read-only property returning the currently set CW microwave frequency in Hz.
 
         @return float: The currently set CW microwave frequency in Hz.
@@ -73,7 +76,7 @@ class MicrowaveInterface(Base):
 
     @property
     @abstractmethod
-    def scan_power(self):
+    def scan_power(self) -> float:
         """Read-only property returning the currently configured microwave power in dBm used for
         scanning.
 
@@ -83,7 +86,7 @@ class MicrowaveInterface(Base):
 
     @property
     @abstractmethod
-    def scan_frequencies(self):
+    def scan_frequencies(self) -> Union[np.ndarray, Tuple[float, float, float]]:
         """Read-only property returning the currently configured microwave frequencies used for
         scanning.
 
@@ -98,7 +101,7 @@ class MicrowaveInterface(Base):
 
     @property
     @abstractmethod
-    def scan_mode(self):
+    def scan_mode(self) -> SamplingOutputMode:
         """Read-only property returning the currently configured scan mode Enum.
 
         @return SamplingOutputMode: The currently set scan mode Enum
@@ -107,7 +110,7 @@ class MicrowaveInterface(Base):
 
     @property
     @abstractmethod
-    def scan_sample_rate(self):
+    def scan_sample_rate(self) -> float:
         """Read-only property returning the currently configured scan sample rate in Hz.
 
         @return float: The currently set scan sample rate in Hz
@@ -115,14 +118,14 @@ class MicrowaveInterface(Base):
         raise NotImplementedError
 
     @abstractmethod
-    def off(self):
+    def off(self) -> None:
         """Switches off any microwave output (both scan and CW).
         Must return AFTER the device has actually stopped.
         """
         raise NotImplementedError
 
     @abstractmethod
-    def set_cw(self, frequency, power):
+    def set_cw(self, frequency: float, power: float) -> None:
         """Configure the CW microwave output. Does not start physical signal output, see also
         "cw_on".
 
@@ -132,7 +135,7 @@ class MicrowaveInterface(Base):
         raise NotImplementedError
 
     @abstractmethod
-    def cw_on(self):
+    def cw_on(self) -> None:
         """Switches on preconfigured cw microwave output, see also "set_cw".
 
         Must return AFTER the output is actually active.
@@ -140,13 +143,14 @@ class MicrowaveInterface(Base):
         raise NotImplementedError
 
     @abstractmethod
-    def configure_scan(self, power, frequencies, mode, sample_rate):
+    def configure_scan(self, power: float, frequencies: Union[np.ndarray, Tuple[float, float, float]],
+                       mode: SamplingOutputMode, sample_rate: float) -> None:
         """
         """
         raise NotImplementedError
 
     @abstractmethod
-    def start_scan(self):
+    def start_scan(self) -> None:
         """Switches on the preconfigured microwave scanning, see also "configure_scan".
 
         Must return AFTER the output is actually active (and can receive triggers for example).
@@ -154,7 +158,7 @@ class MicrowaveInterface(Base):
         raise NotImplementedError
 
     @abstractmethod
-    def reset_scan(self):
+    def reset_scan(self) -> None:
         """Reset currently running scan and return to start frequency.
         Does not need to stop and restart the microwave output if the device allows soft scan reset.
         """
@@ -164,7 +168,7 @@ class MicrowaveInterface(Base):
     #  But I would argue the trigger config is something static and hard-wired for a specific setup,
     #  so it should be configurable via config and not handled by logic at runtime.
 
-    def _assert_cw_parameters_args(self, frequency, power):
+    def _assert_cw_parameters_args(self, frequency: float, power: float) -> None:
         """ Helper method to unify argument type and value checking against hardware constraints.
         Useful in implementation of "set_cw()".
         """
@@ -177,7 +181,8 @@ class MicrowaveInterface(Base):
             f'CW frequency to set ({frequency:.9e} Hz) is out of bounds for allowed range ' \
             f'{self.constraints.frequency_limits}'
 
-    def _assert_scan_configuration_args(self, power, frequencies, mode, sample_rate):
+    def _assert_scan_configuration_args(self, power: float, frequencies: Union[np.ndarray, Tuple[float, float, float]],
+                                        mode: SamplingOutputMode, sample_rate: float) -> None:
         """ Helper method to unify argument type and value checking against hardware constraints.
         Useful in implementation of "configure_scan()".
         """
@@ -215,8 +220,9 @@ class MicrowaveInterface(Base):
 class MicrowaveConstraints:
     """A container to hold all constraints for microwave sources.
     """
-    def __init__(self, power_limits, frequency_limits, scan_size_limits, sample_rate_limits,
-                 scan_modes):
+    def __init__(self, power_limits: Tuple[float, float], frequency_limits: Tuple[float, float],
+                 scan_size_limits: Tuple[int, int], sample_rate_limits: Tuple[float, float],
+                 scan_modes: Tuple[SamplingOutputMode, ...]) -> None:
         """
         @param float[2] power_limits: Allowed min and max power
         @param float[2] frequency_limits: Allowed min and max frequency
@@ -242,68 +248,68 @@ class MicrowaveConstraints:
         self._frequency_limits = (min(frequency_limits), max(frequency_limits))
 
     @property
-    def scan_size_limits(self):
+    def scan_size_limits(self) -> Tuple[int, int]:
         return self._scan_size_limits
 
     @property
-    def min_scan_size(self):
+    def min_scan_size(self) -> int:
         return self._scan_size_limits[0]
 
     @property
-    def max_scan_size(self):
+    def max_scan_size(self) -> int:
         return self._scan_size_limits[1]
 
     @property
-    def sample_rate_limits(self):
+    def sample_rate_limits(self) -> Tuple[float, float]:
         return self._sample_rate_limits
 
     @property
-    def min_sample_rate(self):
+    def min_sample_rate(self) -> float:
         return self._sample_rate_limits[0]
 
     @property
-    def max_sample_rate(self):
+    def max_sample_rate(self) -> float:
         return self._sample_rate_limits[1]
 
     @property
-    def power_limits(self):
+    def power_limits(self) -> Tuple[float, float]:
         return self._power_limits
 
     @property
-    def min_power(self):
+    def min_power(self) -> float:
         return self._power_limits[0]
 
     @property
-    def max_power(self):
+    def max_power(self) -> float:
         return self._power_limits[1]
 
     @property
-    def frequency_limits(self):
+    def frequency_limits(self) -> Tuple[float, float]:
         return self._frequency_limits
 
     @property
-    def min_frequency(self):
+    def min_frequency(self) -> float:
         return self._frequency_limits[0]
 
     @property
-    def max_frequency(self):
+    def max_frequency(self) -> float:
         return self._frequency_limits[1]
 
     @property
-    def scan_modes(self):
+    def scan_modes(self) -> FrozenSet[SamplingOutputMode]:
         return self._scan_modes
 
-    def frequency_in_range(self, value):
+    def frequency_in_range(self, value: float) -> Tuple[bool, float]:
         return in_range(value, *self._frequency_limits)
 
-    def power_in_range(self, value):
+    def power_in_range(self, value: float) -> Tuple[bool, float]:
         return in_range(value, *self._power_limits)
 
-    def scan_size_in_range(self, value):
+    def scan_size_in_range(self, value: int) -> Tuple[bool, int]:
         return in_range(value, *self._scan_size_limits)
 
-    def sample_rate_in_range(self, value):
+    def sample_rate_in_range(self, value: float) -> Tuple[bool, float]:
         return in_range(value, *self._sample_rate_limits)
 
-    def mode_supported(self, mode):
+    def mode_supported(self, mode: SamplingOutputMode) -> bool:
         return mode in self._scan_modes
