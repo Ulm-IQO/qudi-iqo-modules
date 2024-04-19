@@ -174,6 +174,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 x: 10e-9
                 y: 10e-9
                 z: 50e-9
+            # back scan capability
+            back_scan_available: True
+            back_scan_frequency_configurable: True
+            back_scan_resolution_configurable: True
     """
     _threaded = True
 
@@ -187,6 +191,9 @@ class ScanningProbeDummy(ScanningProbeInterface):
     _spot_size_dist: list[float] = ConfigOption(name='spot_size_dist', default=(100e-9, 15e-9))
     _spot_amplitude_dist: list[float] = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
     _require_square_pixels: bool = ConfigOption(name='require_square_pixels', default=False)
+    _back_scan_available: bool = ConfigOption(name='back_scan_available', default=True)
+    _back_scan_frequency_configurable: bool = ConfigOption(name='back_scan_frequency_configurable', default=True)
+    _back_scan_resolution_configurable: bool = ConfigOption(name='back_scan_resolution_configurable', default=True)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -236,10 +243,19 @@ class ScanningProbeDummy(ScanningProbeInterface):
         channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype='float64'),
                     ScannerChannel(name='APD events', unit='count', dtype='float64')]
 
+        if not self._back_scan_available:
+            back_scan_capability = BackScanCapability(0)
+        else:
+            back_scan_capability = BackScanCapability.AVAILABLE
+            if self._back_scan_resolution_configurable:
+                back_scan_capability = back_scan_capability | BackScanCapability.RESOLUTION_CONFIGURABLE
+            if self._back_scan_frequency_configurable:
+                back_scan_capability = back_scan_capability | BackScanCapability.FREQUENCY_CONFIGURABLE
+
         self._constraints = ScanConstraints(
             axis_objects=tuple(axes),
             channel_objects=tuple(channels),
-            back_scan_capability=BackScanCapability.AVAILABLE | BackScanCapability.FULLY_CONFIGURABLE,
+            back_scan_capability=back_scan_capability,
             has_position_feedback=False,
             square_px_only=False
         )
