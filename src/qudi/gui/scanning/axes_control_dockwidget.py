@@ -139,7 +139,6 @@ class AxesControlWidget(QtWidgets.QWidget):
 
             # checkbox for having back resolution equal to forward resolution
             check_box = QtWidgets.QCheckBox()
-            check_box.stateChanged.connect(self.__get_equal_checkbox_callback(ax_name))
             widgets['eq_checkbox'] = check_box
 
             # adapt to back scan capability of hardware
@@ -151,9 +150,12 @@ class AxesControlWidget(QtWidgets.QWidget):
                 widgets['backward_res_spinbox'].setRange(0, 0)
                 widgets['backward_res_spinbox'].setValue(0)
             elif BackScanCapability.RESOLUTION_CONFIGURABLE not in self._back_scan_capability:
+                for widget in ['backward_res_spinbox', 'eq_checkbox']:
+                    widgets[widget].setEnabled(False)
                 widgets['eq_checkbox'].setChecked(True)
-                widgets['eq_checkbox'].setEnabled(False)
                 widgets['backward_res_spinbox'].setToolTip("Back resolution is not configurable.")
+                # keep back resolution spinbox up to date
+                widgets['forward_res_spinbox'].valueChanged.connect(widgets['backward_res_spinbox'].setValue)
 
             # slider for moving the scanner
             slider = DoubleSlider(QtCore.Qt.Horizontal)
@@ -179,10 +181,14 @@ class AxesControlWidget(QtWidgets.QWidget):
             layout.addWidget(widgets['slider'], index, 8)
             layout.addWidget(widgets['pos_spinbox'], index, 9)
 
+            # Remember widgets references for later access
+            self.axes_widgets[ax_name] = widgets
+
             # Connect signals
             # TODO "editingFinished" also emits when window gets focus again, so also after alt+tab.
             #  "valueChanged" was considered as a replacement but is emitted when scrolled or while typing numbers.
 
+            widgets['eq_checkbox'].stateChanged.connect(self.__get_equal_checkbox_callback(ax_name))
             widgets['forward_res_spinbox'].editingFinished.connect(
                 self.__get_axis_resolution_callback(ax_name, widgets['forward_res_spinbox'])
             )
@@ -201,9 +207,6 @@ class AxesControlWidget(QtWidgets.QWidget):
             widgets['pos_spinbox'].editingFinished.connect(
                 self.__get_axis_target_callback(ax_name, widgets['pos_spinbox'])
             )
-
-            # Remember widgets references for later access
-            self.axes_widgets[ax_name] = widgets
 
         layout.setColumnStretch(7, 1)
         self.setLayout(layout)
@@ -321,9 +324,14 @@ class AxesControlWidget(QtWidgets.QWidget):
             backward_spinbox = self.axes_widgets[axis][f'backward_res_spinbox']
             if checked:
                 forward_spinbox.valueChanged.connect(backward_spinbox.setValue)
+                # ensure that a sigBackResolutionChanged is emitted
+                forward_spinbox.editingFinished.connect(self.__get_axis_back_resolution_callback(axis, forward_spinbox))
                 backward_spinbox.setValue(forward_spinbox.value())  # set manually once
             else:
+                # disconnect from everything and reconnect only to forward resolution callback
                 forward_spinbox.valueChanged.disconnect()
+                forward_spinbox.editingFinished.disconnect()
+                forward_spinbox.editingFinished.connect(self.__get_axis_resolution_callback(axis, forward_spinbox))
             backward_spinbox.setDisabled(checked)
         return callback
 
