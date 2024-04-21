@@ -263,6 +263,9 @@ class ScanningOptimizeLogic(LogicBase):
         with self._thread_lock:
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
+            elif not is_running and data is None:
+                # scan could not be started due to some error
+                self.stop_optimize()
             elif data is not None:
                 #self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
 

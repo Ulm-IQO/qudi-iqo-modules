@@ -664,6 +664,12 @@ class ScannerGui(GuiBase):
             self._toggle_enable_actions(not is_running, exclude_action=self._mw.action_optimize_position)
         self._toggle_enable_scan_crosshairs(not is_running)
         self.scanner_control_dockwidget.setEnabled(not is_running)
+        if not is_running and scan_data is None:
+            # scan could not be started due to some error
+            for dockwidget in (self.scan_2d_dockwidgets | self.scan_1d_dockwidgets).values():
+                toggle_button = dockwidget.scan_widget.toggle_scan_button
+                toggle_button.setChecked(False)
+            self._mw.action_optimize_position.setChecked(False)
 
         if scan_data is not None:
             if caller_id is self._optimizer_id:
