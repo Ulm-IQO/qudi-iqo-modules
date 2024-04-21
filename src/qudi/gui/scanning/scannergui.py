@@ -31,7 +31,7 @@ import qudi.util.uic as uic
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
-from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability
+from qudi.interface.scanning_probe_interface import ScanData
 from qudi.core.module import GuiBase
 
 from qudi.gui.scanning.axes_control_dockwidget import AxesControlDockWidget
@@ -599,8 +599,7 @@ class ScannerGui(GuiBase):
         self.scanner_control_dockwidget.emit_current_settings()
         for ax, (forward, backward) in self._ssd.settings_widget.frequency.items():
             self.sigFrequencyChanged.emit(ax, forward)
-            if backward > 0:
-                self.sigBackFrequencyChanged.emit(ax, backward)
+            self.sigBackFrequencyChanged.emit(ax, backward)
 
     @QtCore.Slot()
     def update_scanner_settings_from_logic(self):

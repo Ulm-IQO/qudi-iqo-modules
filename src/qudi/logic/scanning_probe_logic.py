@@ -259,7 +259,9 @@ class ScanningProbeLogic(LogicBase):
             if self.module_state() != 'idle':
                 self.log.warning('Scan is running. Unable to change back scan resolution.')
             elif BackScanCapability.RESOLUTION_CONFIGURABLE not in self.back_scan_capability:
-                self.log.error('Back scan resolution is not configurable for this scanner.')
+                # ignore if the value is same as forward setting or zero (used in gui if back scan not available)
+                if resolution != self.scan_resolution[axis] and resolution != 0:
+                    self.log.error('Backward scan resolution must be the same as forward resolution for this scanner.')
             else:
                 old_back_scan_resolution = self.back_scan_resolution
                 self._back_scan_resolution[axis] = resolution
@@ -269,7 +271,7 @@ class ScanningProbeLogic(LogicBase):
                     back_settings = self.create_back_scan_settings([axis])
                     self.scanner_constraints.check_back_scan_settings(back_settings, forward_settings)
                 except Exception as e:
-                    self.log.error("Invalid back scan setting.", exc_info=e)
+                    self.log.error("Invalid back scan resolution setting.", exc_info=e)
                     self._back_scan_resolution = old_back_scan_resolution
 
     def set_scan_frequency(self, axis: str, frequency: float) -> None:
@@ -292,7 +294,9 @@ class ScanningProbeLogic(LogicBase):
             if self.module_state() != 'idle':
                 self.log.warning('Scan is running. Unable to change back scan frequency.')
             elif BackScanCapability.FREQUENCY_CONFIGURABLE not in self.back_scan_capability:
-                self.log.error('Back scan frequency is not configurable for this scanner.')
+                # ignore if the value is same as forward setting or zero (used in gui if back scan not available)
+                if frequency != self.scan_frequency[axis] and frequency != 0.0:
+                    self.log.error('Backward scan frequency must be the same as forward frequency for this scanner.')
             else:
                 old_back_scan_frequency = self.back_scan_frequency
                 self._back_scan_frequency[axis] = frequency
@@ -359,8 +363,9 @@ class ScanningProbeLogic(LogicBase):
             self.log.debug('Attempting to configure scanner...')
             try:
                 self._scanner().configure_scan(settings)
-                # configure back scan only if one of these is not empty
-                if self._back_scan_frequency or self._back_scan_resolution:
+                # configure backward scan only if settings are different from forward scan
+                if self.back_scan_frequency != self.scan_frequency \
+                        or self.scan_resolution != self.back_scan_resolution:
                     self._scanner().configure_back_scan(back_settings)
             except Exception as e:
                 self.module_state.unlock()
