@@ -5,8 +5,11 @@
 ### Breaking Changes
 - Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Will break custom modules
   implementing this interface.
+- Add back scan data and back scan settings getter and setter methods
+  to `qudi.interface.scanning_probe_interface`.
 
 ### Bugfixes
+- Improve handling of errors during start of a scan in the scanning probe toolchain.
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
@@ -14,6 +17,11 @@
 - Data classes of the scanning probe interface now have an improved hierarchy
   (e.g. `ScanData` contains `ScanSettings`).
 - Improved support for Stanford Research Systems signal generators
+- Improved scanning probe dummy: new image generator class, more realistic forward and backward scan simulation.
+- Major refactoring of scanning probe toolchain, including scanning probe logic, optimizer logic and gui modules.
+  Implementation of configurable backward scans.
+- Add widgets to configure back scan resolution and frequency from scanning GUI.
+- Add config option to save backward scan data to scanning data logic.
 
 ### Other
 
