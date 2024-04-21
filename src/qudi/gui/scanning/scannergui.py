@@ -708,6 +708,10 @@ class ScannerGui(GuiBase):
     @QtCore.Slot(bool, dict, object)
     def optimize_state_updated(self, is_running, optimal_position=None, fit_data=None):
         self._optimizer_state['is_running'] = is_running
+        if not is_running:
+            # apply normal scan settings to logic again
+            # they may have been changed by the optimizer logic
+            self.apply_scanner_settings()
         _is_optimizer_valid_1d = not is_running
         _is_optimizer_valid_2d = not is_running
 
@@ -875,10 +879,6 @@ class ScannerGui(GuiBase):
             self._toggle_enable_scan_buttons(not enabled, exclude_scan=axes)
             self._toggle_enable_actions(not enabled)
             self._toggle_enable_scan_crosshairs(not enabled)
-            if enabled:
-                # ensure that the logic has the current settings as they
-                # may have been changed by e.g. the optimizer in the meantime
-                self.apply_scanner_settings()
             self.sigToggleScan.emit(enabled, axes, self.module_uuid)
         return toggle_func
 
