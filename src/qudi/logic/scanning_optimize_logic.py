@@ -27,7 +27,7 @@ import copy as cp
 from typing import Dict, Tuple, List, Optional
 
 from qudi.core.module import LogicBase
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.core.connector import Connector
@@ -83,16 +83,17 @@ class ScanningOptimizeLogic(LogicBase):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
-        axes = self._scan_logic().scanner_axes
-        channels = self._scan_logic().scanner_channels
+        scan_logic: ScanningProbeLogic = self._scan_logic()
+        axes = scan_logic.scanner_axes
+        channels = scan_logic.scanner_channels
 
         # check if settings in status variables are valid
         # reset to defaults if required
-        if not all([self.scan_range, self.scan_resolution, self.scan_frequency]):
-            self.log.debug(f"No status variables present, using default scan settings.")
-            self._scan_range = {ax.name: abs(ax.position.maximum - ax.position.minimum) / 100 for ax in axes.values()}
-            self._scan_resolution = {ax.name: max(16, ax.resolution.minimum) for ax in axes.values()}
-            self._scan_frequency = {ax.name: max(ax.frequency.minimum, ax.frequency.maximum / 100) for ax in axes.values()}
+        try:
+            self._check_scan_settings()
+        except Exception as e:
+            self.log.warning("Scan settings in Status Variable empty or invalid, using defaults.", exc_info=e)
+            self._set_default_scan_settings()
 
         self._avail_axes = tuple(axes.values())
         if self._scan_sequence is None:
@@ -140,7 +141,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def back_scan_resolution(self) -> Dict[str, int]:
-        return self._back_scan_resolution.copy()
+        # use value of forward scan if not configured otherwise
+        return self._scan_resolution | self._back_scan_resolution
 
     @property
     def scan_frequency(self) -> Dict[str, float]:
@@ -148,7 +150,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def back_scan_frequency(self) -> Dict[str, float]:
-        return self._back_scan_frequency.copy()
+        # use value of forward scan if not configured otherwise
+        return self._scan_frequency | self._back_scan_frequency
 
     @property
     def scan_sequence(self) -> List[Tuple[str, ...]]:
@@ -355,3 +358,28 @@ class ScanningOptimizeLogic(LogicBase):
             return (middle,), None, None
 
         return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
+
+    def _check_scan_settings(self):
+        """Basic check of scan settings for all axes."""
+        scan_logic: ScanningProbeLogic = self._scan_logic()
+        capability = scan_logic.back_scan_capability
+        if self._back_scan_resolution and (BackScanCapability.RESOLUTION_CONFIGURABLE not in capability):
+            raise AssertionError('Back scan resolution cannot be configured for this scanner hardware.')
+        if self._back_scan_frequency and (BackScanCapability.FREQUENCY_CONFIGURABLE not in capability):
+            raise AssertionError('Back scan frequency cannot be configured for this scanner hardware.')
+        for name, ax in scan_logic.scanner_axes.items():
+            ax.position.check(self.scan_range[name])
+            ax.resolution.check(self.scan_resolution[name])
+            ax.resolution.check(self.back_scan_resolution[name])
+            ax.frequency.check(self.scan_frequency[name])
+            ax.frequency.check(self.back_scan_frequency[name])
+
+    def _set_default_scan_settings(self):
+        """Set range, resolution and frequency to default values."""
+        scan_logic: ScanningProbeLogic = self._scan_logic()
+        axes = scan_logic.scanner_axes
+        self._scan_range = {ax.name: abs(ax.position.maximum - ax.position.minimum) / 100 for ax in axes.values()}
+        self._scan_resolution = {ax.name: max(16, ax.resolution.minimum) for ax in axes.values()}
+        self._scan_frequency = {ax.name: max(ax.frequency.minimum, ax.frequency.maximum / 100) for ax in axes.values()}
+        self._back_scan_resolution = {}
+        self._back_scan_frequency = {}
