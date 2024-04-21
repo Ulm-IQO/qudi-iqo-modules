@@ -276,14 +276,13 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
                     self.axes_widgets[ax_name][widget].setRange(0, 0)
                     self.axes_widgets[ax_name][widget].setValue(0)
             else:
-                # start with checkbox checked - most users won't configure back scan resolution separately
-                self.axes_widgets[ax_name]['res_eq'].setChecked(True)
-                self.axes_widgets[ax_name]['freq_eq'].setChecked(True)
                 if BackScanCapability.RESOLUTION_CONFIGURABLE not in self._back_scan_capability:
+                    self.axes_widgets[ax_name]['res_eq'].setChecked(True)
                     self.axes_widgets[ax_name]['res_eq'].setEnabled(False)
                     for widget in ['res_eq', 'backward_res']:
                         self.axes_widgets[ax_name][widget].setToolTip("Back resolution is not configurable.")
                 if BackScanCapability.FREQUENCY_CONFIGURABLE not in self._back_scan_capability:
+                    self.axes_widgets[ax_name]['freq_eq'].setChecked(True)
                     self.axes_widgets[ax_name]['freq_eq'].setEnabled(False)
                     for widget in ['freq_eq', 'backward_freq']:
                         self.axes_widgets[ax_name][widget].setToolTip("Back frequency is not configurable.")

@@ -208,10 +208,6 @@ class AxesControlWidget(QtWidgets.QWidget):
                 self.__get_axis_target_callback(ax_name, widgets['pos_spinbox'])
             )
 
-            if BackScanCapability.RESOLUTION_CONFIGURABLE in self._back_scan_capability:
-                # start with checkbox checked - most users won't configure back scan resolution separately
-                widgets['eq_checkbox'].setChecked(True)
-
         layout.setColumnStretch(7, 1)
         self.setLayout(layout)
         self.setMaximumHeight(self.sizeHint().height())
