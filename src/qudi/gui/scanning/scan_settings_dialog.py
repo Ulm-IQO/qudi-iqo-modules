@@ -63,8 +63,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
         super().__init__(*args, **kwargs)
 
         self.axes_widgets = dict()
-        back_scan_capability = scanner_constraints.back_scan_capability
-        self._back_frequency_configurable = BackScanCapability.FREQUENCY_CONFIGURABLE in back_scan_capability
+        self._back_scan_capability = scanner_constraints.back_scan_capability
 
         font = QtGui.QFont()
         font.setBold(True)
@@ -104,9 +103,14 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
             backward_spinbox.setMinimumSize(75, 0)
             backward_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                            QtWidgets.QSizePolicy.Preferred)
-            if not self._back_frequency_configurable:
+            if BackScanCapability.FREQUENCY_CONFIGURABLE not in self._back_scan_capability:
+                backward_spinbox.setToolTip("Back frequency is not configurable.")
                 backward_spinbox.setEnabled(False)
                 forward_spinbox.valueChanged.connect(backward_spinbox.setValue)
+            if BackScanCapability.AVAILABLE not in self._back_scan_capability:
+                backward_spinbox.setToolTip("Back scan is not available.")
+                backward_spinbox.setValue(0)
+                backward_spinbox.setRange(0, 0)
 
             # Add to layout
             layout.addWidget(label, index, 0)
