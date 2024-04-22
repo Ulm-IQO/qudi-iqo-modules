@@ -22,6 +22,8 @@
   Implementation of configurable backward scans.
 - Add widgets to configure back scan resolution and frequency from scanning GUI.
 - Add config option to save backward scan data to scanning data logic.
+- NFiniteSamplingInput supporting both trigger polarities via ConfigOption
+- Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 
 ### Other
 

@@ -311,6 +311,7 @@ class ScanningDataLogic(LogicBase):
                 parameters["pixel frequency"] = scan_data.settings.frequency
                 parameters[f"scanner target at start"] = scan_data.scanner_target_at_start
                 parameters['measurement start'] = str(scan_data.timestamp)
+                parameters['coordinate transform info'] = scan_data.coord_transform_info
 
                 # add meta data for axes in full target, but not scan axes
                 if scan_data.scanner_target_at_start:

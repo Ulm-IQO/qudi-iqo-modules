@@ -28,7 +28,8 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.scanning_probe_interface import (
-    ScanningProbeInterface, ScanData, ScanConstraints, ScannerAxis, ScannerChannel, ScanSettings, BackScanCapability
+    ScanningProbeInterface, ScanData, ScanConstraints, ScannerAxis, ScannerChannel,
+    ScanSettings, BackScanCapability, CoordinateTransformMixin
 )
 
 
@@ -81,57 +82,37 @@ class ImageGenerator:
                 # Add information to _spots dict
                 self._spots[(x_axis, y_axis)] = spot_dict
 
-    def generate_2d_image(self, scan_settings: ScanSettings, current_position):
-        if scan_settings.scan_dimension == 1:
-            for axes, d in self._spots.items():
-                if axes[0] == scan_settings.axes[0]:
-                    sim_data = d
-        else:
-            sim_data = self._spots[scan_settings.axes]
+    def generate_2d_image(self, position_vectors: Dict[str, np.ndarray]) -> np.ndarray:
+        scan_axes = tuple(position_vectors.keys())
+        sim_data = self._spots[scan_axes]
         number_of_spots = sim_data['count']
         positions = sim_data['pos']
         amplitudes = sim_data['amp']
         sigmas = sim_data['sigma']
         thetas = sim_data['theta']
 
-        x_values = np.linspace(scan_settings.range[0][0],
-                               scan_settings.range[0][1],
-                               scan_settings.resolution[0])
-        if scan_settings.scan_dimension == 2:
-            y_values = np.linspace(scan_settings.range[1][0],
-                                   scan_settings.range[1][1],
-                                   scan_settings.resolution[1])
-        else:
-            y_values = np.linspace(current_position['y'], current_position['y'], 1)
+        x_values = position_vectors[scan_axes[0]]
+        y_values = position_vectors[scan_axes[1]]
         xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
 
         include_dist = self.spot_size_dist[0] + 5 * self.spot_size_dist[1]
-        scan_image = np.random.uniform(0, 2e4, scan_settings.resolution)
+        scan_image = np.random.uniform(0, 2e4, (x_values.size, y_values.size))
         for i in range(number_of_spots):
-            if positions[i][0] < scan_settings.range[0][0] - include_dist:
+            if positions[i][0] < x_values.min() - include_dist:
                 continue
-            if positions[i][0] > scan_settings.range[0][1] + include_dist:
+            if positions[i][0] > x_values.max() + include_dist:
                 continue
-            if scan_settings.scan_dimension == 1:
-                if positions[i][1] < current_position['y'] - include_dist:
-                    continue
-                if positions[i][1] > current_position['y'] + include_dist:
-                    continue
-            else:
-                if positions[i][1] < scan_settings.range[1][0] - include_dist:
-                    continue
-                if positions[i][1] > scan_settings.range[1][1] + include_dist:
-                    continue
+            if positions[i][1] < y_values.min() - include_dist:
+                continue
+            if positions[i][1] > y_values.max() + include_dist:
+                continue
             gauss = self._gaussian_2d(xy_grid,
                                       amp=amplitudes[i],
                                       pos=positions[i],
                                       sigma=sigmas[i],
                                       theta=thetas[i])
 
-            if scan_settings.scan_dimension == 1:
-                scan_image += gauss[:, 0]
-            else:
-                scan_image += gauss
+            scan_image += gauss
         return scan_image
 
     @staticmethod
@@ -148,7 +129,7 @@ class ImageGenerator:
             -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
 
 
-class ScanningProbeDummy(ScanningProbeInterface):
+class ScanningProbeDummyBare(ScanningProbeInterface):
     """
     Dummy scanning probe microscope. Produces a picture with several gaussian spots.
 
@@ -447,14 +428,21 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 raise RuntimeError('No scan settings configured. Cannot start scan.')
             self.module_state.lock()
 
-            self._scan_image = self._image_generator.generate_2d_image(
-                scan_settings=self.scan_settings,
-                current_position=self._current_position
-            )
-            self._back_scan_image = self._image_generator.generate_2d_image(
-                scan_settings=self.back_scan_settings,
-                current_position=self._current_position
-            )
+            position_vectors_all_axes = self._init_position_vectors()
+            position_vectors = {ax: position_vectors_all_axes[ax] for ax in self.scan_settings.axes}
+            if self.scan_settings.scan_dimension == 1:
+                # ImageGenerator only supports 2D scans at this point
+                axis = self.scan_settings.axes[0]
+                if axis == 'x':
+                    second_axis = 'y'
+                elif axis == 'y':
+                    second_axis = 'z'
+                elif axis == 'z':
+                    second_axis = 'x'
+                position_vectors[second_axis] = position_vectors_all_axes[second_axis]
+            self.log.debug(f'{position_vectors}')
+            self._scan_image = self._image_generator.generate_2d_image(position_vectors)
+            self._back_scan_image = self._image_generator.generate_2d_image(position_vectors)
 
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
@@ -586,3 +574,25 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
+
+    def _init_position_vectors(self) -> Dict[str, np.ndarray]:
+        position_vectors = {}
+        x_axis = self.scan_settings.axes[0]
+        x_values = np.linspace(self.scan_settings.range[0][0],
+                               self.scan_settings.range[0][1],
+                               self.scan_settings.resolution[0])
+        position_vectors[x_axis] = x_values
+        if self.scan_settings.scan_dimension == 2:
+            y_axis = self.scan_settings.axes[1]
+            y_values = np.linspace(self.scan_settings.range[1][0],
+                                   self.scan_settings.range[1][1],
+                                   self.scan_settings.resolution[1])
+            position_vectors[y_axis] = y_values
+        return self._expand_coordinate(position_vectors)
+
+
+class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
+    def _init_position_vectors(self) -> Dict[str, np.ndarray]:
+        position_vectors = super()._init_position_vectors()
+        position_vectors_tilted = self.coordinate_transform(position_vectors)
+        return position_vectors_tilted
