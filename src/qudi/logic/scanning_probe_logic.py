@@ -179,8 +179,8 @@ class ScanningProbeLogic(LogicBase):
     @property
     def back_scan_resolution(self) -> Dict[str, int]:
         with self._thread_lock:
-            # use value of forward scan if not configured otherwise
-            return self._scan_resolution | self._back_scan_resolution
+            # use value of forward scan if not configured otherwise (merge dictionaries)
+            return {**self._scan_resolution, **self._back_scan_resolution}
 
     @property
     def scan_frequency(self) -> Dict[str, float]:
@@ -190,8 +190,8 @@ class ScanningProbeLogic(LogicBase):
     @property
     def back_scan_frequency(self) -> Dict[str, float]:
         with self._thread_lock:
-            # use value of forward scan if not configured otherwise
-            return self._scan_frequency | self._back_scan_frequency
+            # use value of forward scan if not configured otherwise (merge dictionaries)
+            return {**self._scan_frequency, **self._back_scan_frequency}
 
     @property
     def save_to_history(self) -> bool:

@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
-from typing import Optional, Dict, Tuple, Any
+from typing import Optional, Dict, Tuple, Any, List
 import numpy as np
 from PySide2 import QtCore
 from fysom import FysomError
@@ -36,11 +36,11 @@ from qudi.interface.scanning_probe_interface import (
 class ImageGenerator:
     """Generate 1D and 2D images with random Gaussian spots."""
     def __init__(self,
-                 position_ranges: Dict[str, list[float]],
+                 position_ranges: Dict[str, List[float]],
                  spot_density: float,
-                 spot_size_dist: list[float],
-                 spot_amplitude_dist: list[float],
-                 spot_depth_range: list[float],  # currently unused
+                 spot_size_dist: List[float],
+                 spot_amplitude_dist: List[float],
+                 spot_depth_range: List[float],  # currently unused
                  ) -> None:
         self.position_ranges = position_ranges
         self.spot_density = spot_density
@@ -163,14 +163,14 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     _threaded = True
 
     # config options
-    _position_ranges: Dict[str, list[float]] = ConfigOption(name='position_ranges', missing='error')
-    _frequency_ranges: Dict[str, list[float]] = ConfigOption(name='frequency_ranges', missing='error')
-    _resolution_ranges: Dict[str, list[float]] = ConfigOption(name='resolution_ranges', missing='error')
+    _position_ranges: Dict[str, List[float]] = ConfigOption(name='position_ranges', missing='error')
+    _frequency_ranges: Dict[str, List[float]] = ConfigOption(name='frequency_ranges', missing='error')
+    _resolution_ranges: Dict[str, List[float]] = ConfigOption(name='resolution_ranges', missing='error')
     _position_accuracy: Dict[str, float] = ConfigOption(name='position_accuracy', missing='error')
     _spot_density: float = ConfigOption(name='spot_density', default=1e12/8)  # in 1/m²
-    _spot_depth_range: list[float] = ConfigOption(name='spot_depth_range', default=(-500e-9, 500e-9))
-    _spot_size_dist: list[float] = ConfigOption(name='spot_size_dist', default=(100e-9, 15e-9))
-    _spot_amplitude_dist: list[float] = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
+    _spot_depth_range: List[float] = ConfigOption(name='spot_depth_range', default=(-500e-9, 500e-9))
+    _spot_size_dist: List[float] = ConfigOption(name='spot_size_dist', default=(100e-9, 15e-9))
+    _spot_amplitude_dist: List[float] = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
     _require_square_pixels: bool = ConfigOption(name='require_square_pixels', default=False)
     _back_scan_available: bool = ConfigOption(name='back_scan_available', default=True)
     _back_scan_frequency_configurable: bool = ConfigOption(name='back_scan_frequency_configurable', default=True)

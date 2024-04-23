@@ -730,7 +730,7 @@ class ScannerGui(GuiBase):
         self.scanner_control_dockwidget.setEnabled(not is_running)
         if not is_running and scan_data is None:
             # scan could not be started due to some error
-            for dockwidget in (self.scan_2d_dockwidgets | self.scan_1d_dockwidgets).values():
+            for dockwidget in {**self.scan_2d_dockwidgets, **self.scan_1d_dockwidgets}.values():
                 toggle_button = dockwidget.scan_widget.toggle_scan_button
                 toggle_button.setChecked(False)
             self._mw.action_optimize_position.setChecked(False)

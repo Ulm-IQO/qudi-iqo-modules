@@ -141,8 +141,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def back_scan_resolution(self) -> Dict[str, int]:
-        # use value of forward scan if not configured otherwise
-        return self._scan_resolution | self._back_scan_resolution
+        # use value of forward scan if not configured otherwise (merge dictionaries)
+        return {**self._scan_resolution, **self._back_scan_resolution}
 
     @property
     def scan_frequency(self) -> Dict[str, float]:
@@ -150,8 +150,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def back_scan_frequency(self) -> Dict[str, float]:
-        # use value of forward scan if not configured otherwise
-        return self._scan_frequency | self._back_scan_frequency
+        # use value of forward scan if not configured otherwise (merge dictionaries)
+        return {**self._scan_frequency, **self._back_scan_frequency}
 
     @property
     def scan_sequence(self) -> List[Tuple[str, ...]]:
