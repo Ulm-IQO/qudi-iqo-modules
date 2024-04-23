@@ -24,7 +24,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 from typing import Optional, List, Set, TYPE_CHECKING, Dict
-from ctypes import byref, cast, c_double, c_int, c_long, POINTER, WINFUNCTYPE, WinDLL
+from ctypes import byref, cast, c_double, c_int, c_char_p, c_long, POINTER, WINFUNCTYPE, WinDLL
 from PySide2.QtCore import QObject
 from qudi.core.threadmanager import ThreadManager
 from qudi.core.logger import get_logger
@@ -237,6 +237,68 @@ class HighFinesseProxy(Base):
         for streamer in streamers:
             # stop all streams without them triggering the proxy disconnect
             streamer.stop_stream_watchdog()
+
+    # --- PID related methods ---
+    
+    def get_pid_value(self, ch: int, cmi_val: int) -> float:
+        """ Get the coefficient associated with the proportional term
+
+         @return (float): The current kp coefficient associated with the proportional term
+         """
+        i_val = c_long()
+        d_val = c_double()
+        err = self._wavemeter_dll.GetPIDSetting(cmi_val, ch, byref(i_val), byref(d_val))
+        if err == high_finesse_constants.ResultError.NoErr.value:
+            return d_val.value
+        else:
+            raise RuntimeError(f'Error while getting PID value: {high_finesse_constants.ResultError(err)}')
+        
+    def set_pid_value(self, ch: int, cmi_val: int, kp: float):
+        """ 
+        Set the coefficient associated with the proportional term
+        """
+        i_val = c_long()
+        d_val = c_double(kp)
+        err = self._wavemeter_dll.SetPIDSetting(cmi_val, ch, i_val, d_val)
+        if err:
+            raise RuntimeError(f'Error while setting PID value: {high_finesse_constants.ResultError(err)}')
+
+    def get_setpoint(self, ch: int) -> float:
+        """
+        Get the setpoint for a specific channel 
+        @return (float): The setpoint for the channel
+        """
+        pidc = c_char_p(b'0' * 1024)
+        err = self._wavemeter_dll.GetPIDCourseNum(ch, pidc)
+        if err == high_finesse_constants.ResultError.NoErr.value:
+            return float(pidc.value)
+        else:
+            raise RuntimeError(f'Error while getting setpoint: {high_finesse_constants.ResultError(err)}')
+
+    def set_setpoint(self, ch: int, setpoint: float):
+        """
+        Set the setpoint for a specific channel
+        """
+        # convert setpoint to char array with 1024 bytes
+        setpoint = str(setpoint).encode('utf-8')
+        err = self._wavemeter_dll.SetPIDCourseNum(ch, setpoint)
+        if err:
+            raise RuntimeError(f'Error while setting setpoint: {high_finesse_constants.ResultError(err)}')
+
+    def get_pid_enabled(self) -> bool:
+        """
+        Get the PID status
+        @return (bool): True if PID is enabled, False otherwise
+        """
+        return self._wavemeter_dll.GetDeviationMode(False)
+    
+    def set_pid_enabled(self, enabled: bool):
+        """
+        Set the PID status
+        """
+        err = self._wavemeter_dll.SetDeviationMode(enabled)
+        if err:
+            raise RuntimeError(f'Error while setting PID enabled: {high_finesse_constants.ResultError(err)}')
 
     # --- protected methods ---
 

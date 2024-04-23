@@ -7,6 +7,7 @@ from qudi.util.mutex import Mutex
 import numpy as np
 from qudi.interface.pid_controller_interface import PIDControllerInterface
 from qudi.hardware.wavemeter.high_finesse_proxy import HighFinesseProxy
+import qudi.hardware.wavemeter.high_finesse_constants as high_finesse_constants
 
 class HighFinessePID(PIDControllerInterface):
     """
@@ -56,56 +57,59 @@ class HighFinessePID(PIDControllerInterface):
 
          @return (float): The current kp coefficient associated with the proportional term
          """
-        return 1.0
+        return self._proxy().get_pid_value(self._ch, high_finesse_constants.cmiPID_P)
 
     def set_kp(self, kp):
         """ Set the coefficient associated with the proportional term
 
          @param (float) kp: The new kp coefficient associated with the proportional term
          """
-        pass
+        self._proxy().set_pid_value(self._ch, high_finesse_constants.cmiPID_P, kp)
+        self._kp = kp
 
     def get_ki(self):
         """ Get the coefficient associated with the integral term
 
          @return (float): The current ki coefficient associated with the integral term
          """
-        return 1.0
+        return self._proxy().get_pid_value(self._ch, high_finesse_constants.cmiPID_I)
 
     def set_ki(self, ki):
         """ Set the coefficient associated with the integral term
 
          @param (float) ki: The new ki coefficient associated with the integral term
          """
-        pass
+        self._proxy().set_pid_value(self._ch, high_finesse_constants.cmiPID_I, ki)
+        self._ki = ki
 
     def get_kd(self):
         """ Get the coefficient associated with the derivative term
 
          @return (float): The current kd coefficient associated with the derivative term
          """
-        return 1.0
+        return self._proxy().get_pid_value(self._ch, high_finesse_constants.cmiPID_D)
 
     def set_kd(self, kd):
         """ Set the coefficient associated with the derivative term
 
          @param (float) kd: The new kd coefficient associated with the derivative term
          """
-        pass
+        self._proxy().set_pid_value(self._ch, high_finesse_constants.cmiPID_D, kd)
+        self._kd = kd
 
     def get_setpoint(self):
         """ Get the setpoint value of the hardware device
 
          @return (float): The current setpoint value
          """
-        pass
+        return self._proxy().get_setpoint(self._ch)
 
     def set_setpoint(self, setpoint):
         """ Set the setpoint value of the hardware device
 
         @param (float) setpoint: The new setpoint value
         """
-        pass
+        self._proxy().set_setpoint(self._ch, setpoint)
 
     def get_manual_value(self):
         """ Get the manual value, used if the device is disabled
@@ -126,14 +130,14 @@ class HighFinessePID(PIDControllerInterface):
 
         @return (bool): True if enabled, False otherwise
         """
-        return True
+        return self._proxy().get_pid_enabled()
 
     def set_enabled(self, enabled):
         """ Set if the PID is enabled (True) or if it is disabled (False) and the manual value is used
 
         @param (bool) enabled: True if enabled, False otherwise
         """
-        pass
+        return self._proxy().set_pid_enabled(enabled)
 
     def get_control_limits(self):
         """ Get the current limits of the control value as a tuple
