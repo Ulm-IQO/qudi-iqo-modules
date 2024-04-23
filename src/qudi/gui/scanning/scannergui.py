@@ -61,6 +61,9 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
         self.action_toggle_tilt_correction = ToggleIconsQAction(self, 'Tilt correction',
                                               "./artwork/icons/correct-tilt_toggle.svg",
                                               "./artwork/icons/correct-tilt_toggle_off.svg")
+        self.action_toggle_tilt_correction.setToolTip("Toggle tilt correction. \nIf greyed out, you need to configure"
+                                                      " valid support vectors (see 'View'/'Tilt correction') or your"
+                                                      " scanning device does not support coordination transformation.")
         self.util_toolBar.addAction(self.action_toggle_tilt_correction)
         return
 
