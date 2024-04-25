@@ -251,7 +251,7 @@ class HighFinesseProxy(Base):
         if err == 1:
             return d_val.value, i_val.value
         else:
-            raise RuntimeError(f'Error while getting PID value: {high_finesse_constants.ResultError(err)}')
+            raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
         
     def set_pid_setting(self, ch: int, cmi_val: int, val: float):
         """ 
@@ -261,7 +261,7 @@ class HighFinesseProxy(Base):
         d_val = c_double(val)
         err = self._wavemeter_dll.SetPIDSetting(cmi_val, ch, i_val, d_val)
         if err:
-            raise RuntimeError(f'Error while getting PID value: {high_finesse_constants.ResultError(err)}')
+            raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
 
     def get_setpoint(self, ch: int) -> float:
         """
@@ -300,17 +300,20 @@ class HighFinesseProxy(Base):
         if err:
             raise RuntimeError(f'Error while setting PID enabled: {high_finesse_constants.ResultError(err)}')
 
-        """ 
-        Generic method to get PID settings
+    def get_laser_control_setting(self, ch: int, cmi_val: int):
+        """ Generic method to get laser control settings
 
-        """
+        @return: laser control setting
+         """
+        pidc = c_char_p(b'0' * 1024)
         i_val = c_long()
         d_val = c_double()
-        err = self._wavemeter_dll.GetPIDSetting(cmi_val, ch, byref(i_val), byref(d_val))
+        err = self._wavemeter_dll.GetLaserControlSetting(cmi_val, ch, byref(i_val), byref(d_val), pidc)
         if err == 1:
-            return d_val.value
+            return d_val.value, i_val.value, pidc.value
         else:
-            raise RuntimeError(f'Error while getting PID setting: {high_finesse_constants.ResultError(err)}')
+            raise RuntimeError(f'Error while getting laser control setting: {high_finesse_constants.ResultError(err)}')
+    
          
     # --- protected methods ---
 

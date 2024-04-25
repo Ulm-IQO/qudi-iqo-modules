@@ -114,14 +114,14 @@ class HighFinessePID(PIDControllerInterface):
         """
         self._proxy().set_setpoint(self._ch, setpoint)
 
-    def get_manual_value(self):
+    def get_manual_value(self): # TODO: implement
         """ Get the manual value, used if the device is disabled
 
         @return (float): The current manual value
         """
         return 1.0
 
-    def set_manual_value(self, manual_value):
+    def set_manual_value(self, manual_value): # TODO: implement
         """ Set the manual value, used if the device is disabled
 
         @param (float) manual_value: The new manual value
@@ -162,31 +162,31 @@ class HighFinessePID(PIDControllerInterface):
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMin, lower)
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMax, upper)
 
-    def get_process_value(self):
+    def get_process_value(self): # TODO: implement
         """ Get the current process value read
 
         @return (float): The current process value
         """
         return 1.0
 
-    def process_value_unit(self) -> str:
+    def process_value_unit(self) -> str: # TODO: implement
         """ read-only property for the unit of the process value
         """
         pass
 
-    def get_control_value(self):
+    def get_control_value(self): # TODO: implement
         """ Get the current control value read
 
         @return (float): The current control value
         """
-        return 1.0
+        return self._proxy().get_laser_control_setting(self._ch, high_finesse_constants.cmiAnalogOut)
 
-    def control_value_unit(self) -> str:
+    def control_value_unit(self) -> str: # TODO: implement
         """ read-only property for the unit of the control value
         """
         pass
 
-    def get_extra(self):
+    def get_extra(self): # TODO: implement
         """ Get the P, I and D terms computed by the hardware if available
 
          @return dict(): A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
