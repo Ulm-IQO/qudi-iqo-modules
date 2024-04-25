@@ -147,7 +147,9 @@ class HighFinessePID(PIDControllerInterface):
 
         @return (tuple(float, float)): The current control limits
         """
-        return -1.0, 1.0
+        lower, _ = self._proxy().get_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMin)
+        upper, _ = self._proxy().get_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMax)
+        return (lower, upper)
 
     def set_control_limits(self, limits):
         """ Set the current limits of the control value as a tuple
@@ -156,7 +158,9 @@ class HighFinessePID(PIDControllerInterface):
 
         The hardware should check if these limits are within the maximum limits set by a config option.
         """
-        pass
+        lower, upper = limits
+        self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMin, lower)
+        self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMax, upper)
 
     def get_process_value(self):
         """ Get the current process value read
