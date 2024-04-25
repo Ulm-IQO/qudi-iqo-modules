@@ -240,28 +240,28 @@ class HighFinesseProxy(Base):
 
     # --- PID related methods ---
     
-    def get_pid_value(self, ch: int, cmi_val: int) -> float:
-        """ Get the coefficient associated with the proportional term
+    def get_pid_setting(self, ch: int, cmi_val: int):
+        """ Generic method to get PID values and settings
 
-         @return (float): The current kp coefficient associated with the proportional term
+        @return: PID value or setting
          """
         i_val = c_long()
         d_val = c_double()
         err = self._wavemeter_dll.GetPIDSetting(cmi_val, ch, byref(i_val), byref(d_val))
-        if err == high_finesse_constants.ResultError.NoErr.value:
-            return d_val.value
+        if err == 1:
+            return d_val.value, i_val.value
         else:
             raise RuntimeError(f'Error while getting PID value: {high_finesse_constants.ResultError(err)}')
         
-    def set_pid_value(self, ch: int, cmi_val: int, kp: float):
+    def set_pid_setting(self, ch: int, cmi_val: int, val: float):
         """ 
-        Set the coefficient associated with the proportional term
+        Generic method to set PID values and settings
         """
         i_val = c_long()
-        d_val = c_double(kp)
+        d_val = c_double(val)
         err = self._wavemeter_dll.SetPIDSetting(cmi_val, ch, i_val, d_val)
         if err:
-            raise RuntimeError(f'Error while setting PID value: {high_finesse_constants.ResultError(err)}')
+            raise RuntimeError(f'Error while getting PID value: {high_finesse_constants.ResultError(err)}')
 
     def get_setpoint(self, ch: int) -> float:
         """
@@ -300,6 +300,18 @@ class HighFinesseProxy(Base):
         if err:
             raise RuntimeError(f'Error while setting PID enabled: {high_finesse_constants.ResultError(err)}')
 
+        """ 
+        Generic method to get PID settings
+
+        """
+        i_val = c_long()
+        d_val = c_double()
+        err = self._wavemeter_dll.GetPIDSetting(cmi_val, ch, byref(i_val), byref(d_val))
+        if err == 1:
+            return d_val.value
+        else:
+            raise RuntimeError(f'Error while getting PID setting: {high_finesse_constants.ResultError(err)}')
+         
     # --- protected methods ---
 
     def _check_for_second_instance(self) -> bool:

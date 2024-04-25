@@ -57,14 +57,15 @@ class HighFinessePID(PIDControllerInterface):
 
          @return (float): The current kp coefficient associated with the proportional term
          """
-        return self._proxy().get_pid_value(self._ch, high_finesse_constants.cmiPID_P)
+        kp, _ = self._proxy().get_pid_setting(self._ch, high_finesse_constants.cmiPID_P)
+        return kp
 
     def set_kp(self, kp):
         """ Set the coefficient associated with the proportional term
 
          @param (float) kp: The new kp coefficient associated with the proportional term
          """
-        self._proxy().set_pid_value(self._ch, high_finesse_constants.cmiPID_P, kp)
+        self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiPID_P, kp)
         self._kp = kp
 
     def get_ki(self):
@@ -72,14 +73,15 @@ class HighFinessePID(PIDControllerInterface):
 
          @return (float): The current ki coefficient associated with the integral term
          """
-        return self._proxy().get_pid_value(self._ch, high_finesse_constants.cmiPID_I)
+        ki, _ = self._proxy().get_pid_setting(self._ch, high_finesse_constants.cmiPID_I)
+        return ki
 
     def set_ki(self, ki):
         """ Set the coefficient associated with the integral term
 
          @param (float) ki: The new ki coefficient associated with the integral term
          """
-        self._proxy().set_pid_value(self._ch, high_finesse_constants.cmiPID_I, ki)
+        self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiPID_I, ki)
         self._ki = ki
 
     def get_kd(self):
@@ -87,14 +89,15 @@ class HighFinessePID(PIDControllerInterface):
 
          @return (float): The current kd coefficient associated with the derivative term
          """
-        return self._proxy().get_pid_value(self._ch, high_finesse_constants.cmiPID_D)
+        kd, _ = self._proxy().get_pid_setting(self._ch, high_finesse_constants.cmiPID_D)
+        return kd
 
     def set_kd(self, kd):
         """ Set the coefficient associated with the derivative term
 
          @param (float) kd: The new kd coefficient associated with the derivative term
          """
-        self._proxy().set_pid_value(self._ch, high_finesse_constants.cmiPID_D, kd)
+        self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiPID_D, kd)
         self._kd = kd
 
     def get_setpoint(self):
