@@ -314,7 +314,15 @@ class HighFinesseProxy(Base):
         else:
             raise RuntimeError(f'Error while getting laser control setting: {high_finesse_constants.ResultError(err)}')
     
-         
+    def get_control_value(self, ch: int):
+        """
+        Get the control value for a specific channel
+        @return (float): The control value for the channel
+        """
+        i_val = c_long(ch)
+        d_val = c_double()
+        return self._wavemeter_dll.GetDeviationSignalNum(i_val, d_val)
+    
     # --- protected methods ---
 
     def _check_for_second_instance(self) -> bool:

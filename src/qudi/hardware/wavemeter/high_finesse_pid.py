@@ -179,12 +179,12 @@ class HighFinessePID(PIDControllerInterface):
 
         @return (float): The current control value
         """
-        return self._proxy().get_laser_control_setting(self._ch, high_finesse_constants.cmiAnalogOut)
+        return self._proxy().get_control_value(self._ch)
 
     def control_value_unit(self) -> str: # TODO: implement
         """ read-only property for the unit of the control value
         """
-        pass
+        return 'mV'
 
     def get_extra(self): # TODO: implement
         """ Get the P, I and D terms computed by the hardware if available
