@@ -167,21 +167,21 @@ class HighFinessePID(PIDControllerInterface):
 
         @return (float): The current process value
         """
-        return 1.0
+        return self._proxy().get_process_value(self._ch)
 
     def process_value_unit(self) -> str: # TODO: implement
         """ read-only property for the unit of the process value
         """
         pass
 
-    def get_control_value(self): # TODO: implement
+    def get_control_value(self):
         """ Get the current control value read
 
         @return (float): The current control value
         """
         return self._proxy().get_control_value(self._ch)
 
-    def control_value_unit(self) -> str: # TODO: implement
+    def control_value_unit(self) -> str:
         """ read-only property for the unit of the control value
         """
         return 'mV'

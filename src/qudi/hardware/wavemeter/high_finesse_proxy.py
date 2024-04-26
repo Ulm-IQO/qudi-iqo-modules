@@ -323,6 +323,19 @@ class HighFinesseProxy(Base):
         d_val = c_double()
         return self._wavemeter_dll.GetDeviationSignalNum(i_val, d_val)
     
+    def get_process_value(self, ch: int):
+        """
+        Get the  value for a specific channel
+        @return (float): The process value for the channel
+        """
+        i_val = c_long(ch)
+        d_val = c_double()
+        err = self._wavemeter_dll.GetWavelengthNum(i_val, d_val)
+        if err in [e.value for e in high_finesse_constants.GetFrequencyError]:
+            raise RuntimeError(f'Error while getting process value: {high_finesse_constants.ResultError(err)}')
+        else:
+            return err
+    
     # --- protected methods ---
 
     def _check_for_second_instance(self) -> bool:
