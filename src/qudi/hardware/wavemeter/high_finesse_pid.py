@@ -162,7 +162,7 @@ class HighFinessePID(PIDControllerInterface):
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMin, lower)
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMax, upper)
 
-    def get_process_value(self): # TODO: implement
+    def get_process_value(self):
         """ Get the current process value read
 
         @return (float): The current process value
