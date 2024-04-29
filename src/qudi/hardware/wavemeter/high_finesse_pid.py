@@ -153,10 +153,13 @@ class HighFinessePID(PIDControllerInterface):
         """
         return self._proxy().get_process_value(self._ch)
 
-    def process_value_unit(self) -> str: # TODO: implement
+    @property
+    def process_value_unit(self) -> str:
         """ read-only property for the unit of the process value
         """
-        pass
+        # TODO: support other units via config option
+        # can be done using Get/SetPIDSetting and cmiDeviationUnit
+        return 'nm'
 
     def get_control_value(self) -> float:
         """ Get the current control value read
@@ -165,9 +168,11 @@ class HighFinessePID(PIDControllerInterface):
         """
         return self._proxy().get_control_value(self._ch)
 
+    @property
     def control_value_unit(self) -> str:
         """ read-only property for the unit of the control value
         """
+        # TODO: should be SI base unit, i.e. V (not mV)
         return 'mV'
 
     def get_extra(self) -> Dict[str, float]: # TODO: implement
