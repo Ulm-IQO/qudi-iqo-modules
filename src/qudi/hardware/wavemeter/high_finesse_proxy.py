@@ -244,7 +244,7 @@ class HighFinesseProxy(Base):
         """
         Generic method to get PID values and settings
         @return: PID value or setting
-         """
+        """
         i_val = c_long()
         d_val = c_double()
         err = self._wavemeter_dll.GetPIDSetting(cmi_val, ch, byref(i_val), byref(d_val))
@@ -307,7 +307,7 @@ class HighFinesseProxy(Base):
         """ 
         Generic method to get laser control settings
         @return: laser control setting
-         """
+        """
         pidc = c_char_p(b'0' * 1024)
         i_val = c_long()
         d_val = c_double()
