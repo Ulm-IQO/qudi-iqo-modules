@@ -187,9 +187,10 @@ class HighFinessePID(PIDControllerInterface):
         # TODO: should be SI base unit, i.e. V (not mV)
         return 'mV'
 
-    def get_extra(self) -> Dict[str, float]: # TODO: implement
+    def get_extra(self) -> Dict[str, float]:
         """ Get the P, I and D terms computed by the hardware if available
 
-         @return dict(): A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
-         """
+        @return dict(): A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
+        """
+        # live readout of regulation parameters not supported by this hardware
         return {}
