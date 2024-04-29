@@ -241,8 +241,8 @@ class HighFinesseProxy(Base):
     # --- PID related methods ---
     
     def get_pid_setting(self, ch: int, cmi_val: int):
-        """ Generic method to get PID values and settings
-
+        """
+        Generic method to get PID values and settings
         @return: PID value or setting
          """
         i_val = c_long()
@@ -254,9 +254,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
 
     def set_pid_setting(self, ch: int, cmi_val: int, val: float):
-        """ 
-        Generic method to set PID values and settings
-        """
+        """ Generic method to set PID values and settings"""
         i_val = c_long()
         d_val = c_double(val)
         err = self._wavemeter_dll.SetPIDSetting(cmi_val, ch, i_val, d_val)
@@ -276,9 +274,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Error while getting setpoint: {high_finesse_constants.ResultError(err)}')
 
     def set_setpoint(self, ch: int, setpoint: float):
-        """
-        Set the setpoint for a specific channel
-        """
+        """Set the setpoint for a specific channel"""
         # convert setpoint to char array with 1024 bytes
         setpoint = str(setpoint).encode('utf-8')
         err = self._wavemeter_dll.SetPIDCourseNum(ch, setpoint)
@@ -308,8 +304,8 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Error while setting PID enabled: {high_finesse_constants.ResultError(err)}')
 
     def get_laser_control_setting(self, ch: int, cmi_val: int):
-        """ Generic method to get laser control settings
-
+        """ 
+        Generic method to get laser control settings
         @return: laser control setting
          """
         pidc = c_char_p(b'0' * 1024)

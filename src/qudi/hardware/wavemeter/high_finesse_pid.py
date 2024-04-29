@@ -163,33 +163,32 @@ class HighFinessePID(PIDControllerInterface):
 
         @return (float): The current process value
         """
-        return self._proxy().get_process_value(self._ch)
+        # nm to m conversion
+        return self._proxy().get_process_value(self._ch) ** 10^-9
 
     @property
     def process_value_unit(self) -> str:
-        """ read-only property for the unit of the process value
-        """
+        """ read-only property for the unit of the process value"""
         # TODO: support other units via config option
         # can be done using Get/SetPIDSetting and cmiDeviationUnit
-        return 'nm'
+        return 'm'
 
     def get_control_value(self) -> float:
-        """ Get the current control value read
-
+        """ 
+        Get the current control value read
         @return (float): The current control value
         """
-        return self._proxy().get_control_value(self._ch)
+        # mV to V conversion
+        return self._proxy().get_control_value(self._ch) * 10^-3
 
     @property
     def control_value_unit(self) -> str:
-        """ read-only property for the unit of the control value
-        """
-        # TODO: should be SI base unit, i.e. V (not mV)
-        return 'mV'
+        """ read-only property for the unit of the control value"""
+        return 'V'
 
     def get_extra(self) -> Dict[str, float]:
-        """ Get the P, I and D terms computed by the hardware if available
-
+        """ 
+        Get the P, I and D terms computed by the hardware if available
         @return dict(): A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
         """
         # live readout of regulation parameters not supported by this hardware
