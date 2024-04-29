@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import numpy as np
 import time
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 from dataclasses import asdict
 
 from PySide2 import QtCore
@@ -88,9 +88,9 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     _ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
 
     _ni_channel_mapping: Dict[str, str] = ConfigOption(name='ni_channel_mapping', missing='error')
-    _position_ranges: Dict[str, list[float]] = ConfigOption(name='position_ranges', missing='error')
-    _frequency_ranges: Dict[str, list[float]] = ConfigOption(name='frequency_ranges', missing='error')
-    _resolution_ranges: Dict[str, list[float]] = ConfigOption(name='resolution_ranges', missing='error')
+    _position_ranges: Dict[str, List[float]] = ConfigOption(name='position_ranges', missing='error')
+    _frequency_ranges: Dict[str, List[float]] = ConfigOption(name='frequency_ranges', missing='error')
+    _resolution_ranges: Dict[str, List[float]] = ConfigOption(name='resolution_ranges', missing='error')
     _input_channel_units: Dict[str, str] = ConfigOption(name='input_channel_units', missing='error')
 
     __backwards_line_resolution: int = ConfigOption(name='backwards_line_resolution', default=50)
