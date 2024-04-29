@@ -27,11 +27,13 @@ class HighFinessePID(PIDControllerInterface):
     # Config options
     # TODO: add port option as well, the analog voltage output
     # ports might be starting from 0
-    _ch = ConfigOption(name='channel', default=1) # light input
+    _ch: int = ConfigOption(name='channel', default=1) # light input
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._lock = Mutex()
+
+        self._manual_value = 0.0
 
     def on_activate(self) -> None:
         pass
@@ -98,19 +100,26 @@ class HighFinessePID(PIDControllerInterface):
         """
         self._proxy().set_setpoint(self._ch, setpoint)
 
-    def get_manual_value(self) -> float: # TODO: implement
+    def get_manual_value(self) -> float:
         """ Get the manual value, used if the device is disabled
 
         @return (float): The current manual value
         """
-        return 1.0
+        return self._manual_value
 
-    def set_manual_value(self, manual_value: float): # TODO: implement
+    def set_manual_value(self, manual_value: float) -> None:
         """ Set the manual value, used if the device is disabled
 
         @param (float) manual_value: The new manual value
         """
-        pass
+        self._manual_value = manual_value
+        if not self.get_enabled():
+            self._apply_manual_value()
+
+    def _apply_manual_value(self) -> None:
+        """Manually set a constant output voltage (instead of running PID)."""
+        proxy: HighFinesseProxy = self._proxy()
+        proxy.set_manual_value(self._ch, self._manual_value)
 
     def get_enabled(self) -> bool:
         """ Get if the PID is enabled (True) or if it is disabled (False) and the manual value is used
@@ -124,7 +133,10 @@ class HighFinessePID(PIDControllerInterface):
 
         @param (bool) enabled: True if enabled, False otherwise
         """
+        # TODO: is there a way to toggle PID only for a single channel?
         self._proxy().set_pid_enabled(enabled)
+        if not enabled:
+            self._apply_manual_value()
 
     def get_control_limits(self) -> Tuple[float, float]:
         """ Get the current limits of the control value as a tuple
