@@ -37,10 +37,7 @@ class HighFinessePID(PIDControllerInterface):
         pass
 
     def on_deactivate(self) -> None:
-        self.disconnect()
-
-    def disconnect(self) -> None:
-        self._proxy().disconnect_instreamer(self) # no need
+        pass
 
     def get_kp(self):
         """ Get the coefficient associated with the proportional term
