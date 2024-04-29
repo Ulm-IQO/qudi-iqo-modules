@@ -21,9 +21,6 @@ class HighFinessePID(PIDControllerInterface):
             proxy: wavemeter_proxy
         options:
             channel: 0
-            kp: 0.0
-            ki: 0.0
-            kd: 0.0
     """
     _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
 
@@ -31,20 +28,13 @@ class HighFinessePID(PIDControllerInterface):
     # TODO: add port option as well, the analog voltage output
     # ports might be starting from 0
     _ch = ConfigOption(name='channel', default=1) # light input
-    _kp = ConfigOption(name='kp', default=0.0)
-    _ki = ConfigOption(name='ki', default=0.0)
-    _kd = ConfigOption(name='kd', default=0.0)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._lock = Mutex()
 
     def on_activate(self) -> None:
-        # Set PID values
-        # NOTE: Not sure if necessary
-        self.set_kp(self._kp)
-        self.set_ki(self._ki)
-        self.set_kd(self._kd)
+        pass
 
     def on_deactivate(self) -> None:
         self.disconnect()
@@ -66,7 +56,6 @@ class HighFinessePID(PIDControllerInterface):
          @param (float) kp: The new kp coefficient associated with the proportional term
          """
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiPID_P, kp)
-        self._kp = kp
 
     def get_ki(self):
         """ Get the coefficient associated with the integral term
@@ -82,7 +71,6 @@ class HighFinessePID(PIDControllerInterface):
          @param (float) ki: The new ki coefficient associated with the integral term
          """
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiPID_I, ki)
-        self._ki = ki
 
     def get_kd(self):
         """ Get the coefficient associated with the derivative term
@@ -98,7 +86,6 @@ class HighFinessePID(PIDControllerInterface):
          @param (float) kd: The new kd coefficient associated with the derivative term
          """
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiPID_D, kd)
-        self._kd = kd
 
     def get_setpoint(self):
         """ Get the setpoint value of the hardware device
