@@ -21,6 +21,7 @@ class HighFinessePID(PIDControllerInterface):
             proxy: wavemeter_proxy
         options:
             channel: 0
+            max_control_limits: [-10^4, 10^4]
     """
     _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
 
@@ -28,6 +29,7 @@ class HighFinessePID(PIDControllerInterface):
     # TODO: add port option as well, the analog voltage output
     # ports might be starting from 0
     _ch: int = ConfigOption(name='channel', default=1) # light input
+    _max_control_limits: Tuple[float, float] = ConfigOption(name='max_control_limits', default=(-10**4, 10**4))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -154,6 +156,10 @@ class HighFinessePID(PIDControllerInterface):
         The hardware should check if these limits are within the maximum limits set by a config option.
         """
         lower, upper = limits
+        if lower < self._max_control_limits[0] or upper > self._max_control_limits[1]:
+            raise ValueError(f'Control limits {limits} are outside of the maximum limits {self._max_control_limits}')
+        elif lower > upper:
+            raise ValueError(f'Control limits {limits} are invalid: lower limit is greater than upper limit')
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMin, lower)
         self._proxy().set_pid_setting(self._ch, high_finesse_constants.cmiDeviationBoundsMax, upper)
 
