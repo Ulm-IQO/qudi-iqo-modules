@@ -153,7 +153,6 @@ class HighFinessePID(PIDControllerInterface):
         """ 
         Set the current limits of the control value as a tuple
         @param (tuple(float, float)) limits: The new control limits
-        The hardware should check if these limits are within the maximum limits set by a config option.
         """
         lower, upper = limits
         if lower < self._max_control_limits[0] or upper > self._max_control_limits[1]:
@@ -169,7 +168,7 @@ class HighFinessePID(PIDControllerInterface):
         @return (float): The current process value
         """
         # nm to m conversion
-        return self._proxy().get_process_value(self._ch) ** 10^-9
+        return self._proxy().get_process_value(self._ch) ** 1e-9
 
     @property
     def process_value_unit(self) -> str:
@@ -184,7 +183,7 @@ class HighFinessePID(PIDControllerInterface):
         @return (float): The current control value
         """
         # mV to V conversion
-        return self._proxy().get_control_value(self._ch) * 10^-3
+        return self._proxy().get_control_value(self._ch) * 1e-3
 
     @property
     def control_value_unit(self) -> str:
