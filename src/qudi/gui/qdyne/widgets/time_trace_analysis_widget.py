@@ -210,6 +210,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
     def get_spectrum(self):
         self._logic.measure.get_spectrum()
+        # self.freq_data = self._logic.data.freq_data
 
     def get_peaks(self):
         self.freq_data.get_peaks()
@@ -226,6 +227,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.plot1_PlotWidget.addItem(self.signal_image)
 
     def data_updated(self):
+        self.get_peaks()
+        self.update_spectrum()
         pass
 
     @QtCore.Slot(str, object)
