@@ -185,8 +185,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.plot2_fitwidget.link_fit_container(self._logic.fit_container2)
 
     def connect_signals(self):
-        self.tta_analyze_pushButton.clicked.connect(self._logic.measure.analyze_time_trace)
-        self.tta_get_spectrum_pushButton.clicked.connect(self.get_spectrum)
+        self.analyze_pushButton.clicked.connect(self._logic.measure.analyze_time_trace)
+        self.get_freq_domain_pushButton.clicked.connect(self.get_spectrum)
         self.get_peaks_pushButton.clicked.connect(self.get_peaks)
         self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
         self.range_spinBox.valueChanged.connect(self.update_spectrum)
