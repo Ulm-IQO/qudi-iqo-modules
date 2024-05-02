@@ -183,8 +183,7 @@ class HighFinessePID(PIDControllerInterface):
         # nm to m conversion
         return proxy.get_process_value(self._ch) ** 1e-9
 
-    @property
-    def process_value_unit(self) -> str:
+    def process_value_unit(self):
         """ read-only property for the unit of the process value """
         # TODO: support other units via config option
         # can be done using Get/SetPIDSetting and cmiDeviationUnit
@@ -198,8 +197,7 @@ class HighFinessePID(PIDControllerInterface):
         proxy: HighFinesseProxy = self._proxy()
         # mV to V conversion
         return proxy.get_control_value(self._ch) * 1e-3
-
-    @property
+    
     def control_value_unit(self) -> str:
         """ read-only property for the unit of the control value """
         return 'V'
