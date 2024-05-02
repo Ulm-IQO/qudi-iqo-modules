@@ -247,13 +247,13 @@ class HighFinesseProxy(Base):
         """
         i_val = c_long()
         d_val = c_double()
-        err = self._wavemeter_dll.GetPIDSetting(cmi_val, ch, byref(i_val), byref(d_val))
+        err = self._wavemeter_dll.GetPIDSetting(cmi_val, ch, byref(i_val), byref(d_val))    
         if err == 1:
             return d_val.value, i_val.value
         else:
             raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
 
-    def set_pid_setting(self, ch: int, cmi_val: int, val: float):
+    def set_pid_setting(self, ch: int, cmi_val: int, val:    float):
         """ Generic method to set PID values and settings """
         i_val = c_long()
         d_val = c_double(val)
@@ -269,14 +269,20 @@ class HighFinesseProxy(Base):
         pidc = c_char_p(b'0' * 1024)
         err = self._wavemeter_dll.GetPIDCourseNum(ch, pidc)
         if err == high_finesse_constants.ResultError.NoErr.value:
-            return float(pidc.value)
+            # wavemeter returns comma instead of point
+            val = pidc.value.decode('utf-8').replace(',', '.')
+            # wavemeter returns '= 123,456' when first turned on
+            if val.startswith('= '):
+                val = val[2:]
+            return float(val)
         else:
             raise RuntimeError(f'Error while getting setpoint: {high_finesse_constants.ResultError(err)}')
 
     def set_setpoint(self, ch: int, setpoint: float):
         """ Set the setpoint for a specific channel """
+        # wavemeter wants comma instead of point
+        setpoint = str(setpoint).replace('.', ',').encode('utf-8')
         # convert setpoint to char array with 1024 bytes
-        setpoint = str(setpoint).encode('utf-8')
         err = self._wavemeter_dll.SetPIDCourseNum(ch, setpoint)
         if err:
             raise RuntimeError(f'Error while setting setpoint: {high_finesse_constants.ResultError(err)}')

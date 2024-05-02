@@ -100,7 +100,7 @@ class HighFinessePID(PIDControllerInterface):
         @return (float): The current setpoint value
         """
         proxy: HighFinesseProxy = self._proxy()
-        return proxy.get_setpoint(self._ch)
+        return proxy.get_setpoint(self._ch) * 1e-9
 
     def set_setpoint(self, setpoint: float):
         """ 
@@ -108,7 +108,7 @@ class HighFinessePID(PIDControllerInterface):
         @param (float) setpoint: The new setpoint value
         """
         proxy: HighFinesseProxy = self._proxy()
-        proxy.set_setpoint(self._ch, setpoint)
+        proxy.set_setpoint(self._ch, setpoint * 1e9) # wavemeter wants nm
 
     def get_manual_value(self) -> float:
         """ 
@@ -181,7 +181,7 @@ class HighFinessePID(PIDControllerInterface):
         """
         proxy: HighFinesseProxy = self._proxy()
         # nm to m conversion
-        return proxy.get_process_value(self._ch) ** 1e-9
+        return proxy.get_process_value(self._ch) * 1e-9
 
     def process_value_unit(self):
         """ read-only property for the unit of the process value """
