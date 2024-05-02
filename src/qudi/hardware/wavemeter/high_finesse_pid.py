@@ -127,7 +127,7 @@ class HighFinessePID(PIDControllerInterface):
             self._apply_manual_value()
 
     def _apply_manual_value(self) -> None:
-        """Manually set a constant output voltage (instead of running PID)."""
+        """ Manually set a constant output voltage (instead of running PID). """
         proxy: HighFinesseProxy = self._proxy()
         proxy.set_manual_value(self._ch, self._manual_value)
 
@@ -185,7 +185,7 @@ class HighFinessePID(PIDControllerInterface):
 
     @property
     def process_value_unit(self) -> str:
-        """ read-only property for the unit of the process value"""
+        """ read-only property for the unit of the process value """
         # TODO: support other units via config option
         # can be done using Get/SetPIDSetting and cmiDeviationUnit
         return 'm'
@@ -201,7 +201,7 @@ class HighFinessePID(PIDControllerInterface):
 
     @property
     def control_value_unit(self) -> str:
-        """ read-only property for the unit of the control value"""
+        """ read-only property for the unit of the control value """
         return 'V'
 
     def get_extra(self) -> Dict[str, float]:

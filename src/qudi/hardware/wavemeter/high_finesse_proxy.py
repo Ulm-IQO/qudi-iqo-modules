@@ -254,7 +254,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
 
     def set_pid_setting(self, ch: int, cmi_val: int, val: float):
-        """ Generic method to set PID values and settings"""
+        """ Generic method to set PID values and settings """
         i_val = c_long()
         d_val = c_double(val)
         err = self._wavemeter_dll.SetPIDSetting(cmi_val, ch, i_val, d_val)
@@ -274,7 +274,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Error while getting setpoint: {high_finesse_constants.ResultError(err)}')
 
     def set_setpoint(self, ch: int, setpoint: float):
-        """Set the setpoint for a specific channel"""
+        """ Set the setpoint for a specific channel """
         # convert setpoint to char array with 1024 bytes
         setpoint = str(setpoint).encode('utf-8')
         err = self._wavemeter_dll.SetPIDCourseNum(ch, setpoint)
@@ -282,7 +282,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Error while setting setpoint: {high_finesse_constants.ResultError(err)}')
 
     def set_manual_value(self, ch: int, voltage: float) -> None:
-        """Set the control value to put out when PID is not running."""
+        """ Set the control value to put out when PID is not running. """
         d_voltage = c_double(1e3 * voltage)  # wavemeter wants mV
         err = self._wavemeter_dll.SetDeviationSignalNum(ch, d_voltage)
         if err:
@@ -296,9 +296,7 @@ class HighFinesseProxy(Base):
         return self._wavemeter_dll.GetDeviationMode(False)
     
     def set_pid_enabled(self, enabled: bool):
-        """
-        Set the PID status
-        """
+        """ Set the PID status """
         err = self._wavemeter_dll.SetDeviationMode(enabled)
         if err:
             raise RuntimeError(f'Error while setting PID enabled: {high_finesse_constants.ResultError(err)}')
