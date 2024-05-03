@@ -182,8 +182,7 @@ class HighFinessePID(PIDControllerInterface):
         @return (float): The current process value
         """
         proxy: HighFinesseProxy = self._proxy()
-        # nm to m conversion
-        return proxy.get_process_value(self._output_port) * 1e-9
+        return proxy.get_wavelength(self._input_channel)
 
     def process_value_unit(self):
         """ read-only property for the unit of the process value """
