@@ -240,34 +240,34 @@ class HighFinesseProxy(Base):
 
     # --- PID related methods ---
     
-    def get_pid_setting(self, ch: int, cmi_val: int):
+    def get_pid_setting(self, output_port: int, cmi_val: int):
         """
         Generic method to get PID values and settings
         @return: PID value or setting
         """
         i_val = c_long()
         d_val = c_double()
-        err = self._wavemeter_dll.GetPIDSetting(cmi_val, ch, byref(i_val), byref(d_val))    
+        err = self._wavemeter_dll.GetPIDSetting(cmi_val, output_port, byref(i_val), byref(d_val))
         if err == 1:
             return d_val.value, i_val.value
         else:
             raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
 
-    def set_pid_setting(self, ch: int, cmi_val: int, val:    float):
+    def set_pid_setting(self, output_port: int, cmi_val: int, val:    float):
         """ Generic method to set PID values and settings """
         i_val = c_long()
         d_val = c_double(val)
-        err = self._wavemeter_dll.SetPIDSetting(cmi_val, ch, i_val, d_val)
+        err = self._wavemeter_dll.SetPIDSetting(cmi_val, output_port, i_val, d_val)
         if err:
             raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
 
-    def get_setpoint(self, ch: int) -> float:
+    def get_setpoint(self, output_port: int) -> float:
         """
-        Get the setpoint for a specific channel 
-        @return (float): The setpoint for the channel
+        Get the setpoint for a specific control voltage output port
+        @return (float): The setpoint for this output port
         """
         pidc = c_char_p(b'0' * 1024)
-        err = self._wavemeter_dll.GetPIDCourseNum(ch, pidc)
+        err = self._wavemeter_dll.GetPIDCourseNum(output_port, pidc)
         if err == high_finesse_constants.ResultError.NoErr.value:
             # wavemeter returns comma instead of point
             val = pidc.value.decode('utf-8').replace(',', '.')
@@ -278,19 +278,19 @@ class HighFinesseProxy(Base):
         else:
             raise RuntimeError(f'Error while getting setpoint: {high_finesse_constants.ResultError(err)}')
 
-    def set_setpoint(self, ch: int, setpoint: float):
-        """ Set the setpoint for a specific channel """
+    def set_setpoint(self, output_port: int, setpoint: float):
+        """ Set the setpoint for a specific output port """
         # wavemeter wants comma instead of point
         setpoint = str(setpoint).replace('.', ',').encode('utf-8')
         # convert setpoint to char array with 1024 bytes
-        err = self._wavemeter_dll.SetPIDCourseNum(ch, setpoint)
+        err = self._wavemeter_dll.SetPIDCourseNum(output_port, setpoint)
         if err:
             raise RuntimeError(f'Error while setting setpoint: {high_finesse_constants.ResultError(err)}')
 
-    def set_manual_value(self, ch: int, voltage: float) -> None:
+    def set_manual_value(self, output_port: int, voltage: float) -> None:
         """ Set the control value to put out when PID is not running. """
         d_voltage = c_double(1e3 * voltage)  # wavemeter wants mV
-        err = self._wavemeter_dll.SetDeviationSignalNum(ch, d_voltage)
+        err = self._wavemeter_dll.SetDeviationSignalNum(output_port, d_voltage)
         if err:
             raise RuntimeError(f'Error while manual value: {high_finesse_constants.ResultError(err)}')
 
@@ -307,7 +307,7 @@ class HighFinesseProxy(Base):
         if err:
             raise RuntimeError(f'Error while setting PID enabled: {high_finesse_constants.ResultError(err)}')
 
-    def get_laser_control_setting(self, ch: int, cmi_val: int):
+    def get_laser_control_setting(self, output_port: int, cmi_val: int):
         """ 
         Generic method to get laser control settings
         @return: laser control setting
@@ -315,27 +315,27 @@ class HighFinesseProxy(Base):
         pidc = c_char_p(b'0' * 1024)
         i_val = c_long()
         d_val = c_double()
-        err = self._wavemeter_dll.GetLaserControlSetting(cmi_val, ch, byref(i_val), byref(d_val), pidc)
+        err = self._wavemeter_dll.GetLaserControlSetting(cmi_val, output_port, byref(i_val), byref(d_val), pidc)
         if err == 1:
             return d_val.value, i_val.value, pidc.value
         else:
             raise RuntimeError(f'Error while getting laser control setting: {high_finesse_constants.ResultError(err)}')
     
-    def get_control_value(self, ch: int):
+    def get_control_value(self, output_port: int):
         """
-        Get the control value for a specific channel
-        @return (float): The control value for the channel
+        Get the control value for a specific voltage output port
+        @return (float): The control value for the output port
         """
-        i_val = c_long(ch)
+        i_val = c_long(output_port)
         d_val = c_double()
         return self._wavemeter_dll.GetDeviationSignalNum(i_val, d_val)
     
-    def get_process_value(self, ch: int):
+    def get_process_value(self, output_port: int):
         """
-        Get the  value for a specific channel
-        @return (float): The process value for the channel
+        Get the  value for a specific voltage output port
+        @return (float): The process value for the output port
         """
-        i_val = c_long(ch)
+        i_val = c_long(output_port)
         d_val = c_double()
         err = self._wavemeter_dll.GetWavelengthNum(i_val, d_val)
         if err in [e.value for e in high_finesse_constants.GetFrequencyError]:
