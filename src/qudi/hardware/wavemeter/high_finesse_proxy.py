@@ -274,7 +274,11 @@ class HighFinesseProxy(Base):
             # wavemeter returns '= 123,456' when first turned on
             if val.startswith('= '):
                 val = val[2:]
-            return float(val)
+            try:
+                val = float(val)
+            except ValueError:
+                raise ValueError('Could not convert PID course to a number.')
+            return val
         else:
             raise RuntimeError(f'Error while getting setpoint: {high_finesse_constants.ResultError(err)}')
 
@@ -324,11 +328,11 @@ class HighFinesseProxy(Base):
     def get_control_value(self, output_port: int):
         """
         Get the control value for a specific voltage output port
-        @return (float): The control value for the output port
+        @return (float): The control value in V for the output port
         """
         i_val = c_long(output_port)
         d_val = c_double()
-        return self._wavemeter_dll.GetDeviationSignalNum(i_val, d_val)
+        return 1e-3 * self._wavemeter_dll.GetDeviationSignalNum(i_val, d_val)
 
     def get_wavelength(self, channel: int) -> float:
         """

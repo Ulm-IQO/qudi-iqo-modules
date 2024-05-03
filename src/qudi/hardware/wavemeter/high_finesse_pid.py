@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 from typing import Tuple, Dict
 
+from scipy.constants import lambda2nu
+
 from qudi.core.configoption import ConfigOption
 from qudi.core.connector import Connector
 from qudi.util.mutex import Mutex
@@ -22,6 +24,7 @@ class HighFinessePID(PIDControllerInterface):
         options:
             input_channel: 1 # channel of multi-switch with laser light input
             output_port: 1  # port for analog control voltage output
+            unit: 'm'    # wavelength (m) or frequency (Hz)
             max_control_limits: [-10^4, 10^4]
     """
     _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
@@ -30,7 +33,8 @@ class HighFinessePID(PIDControllerInterface):
     _input_channel: int = ConfigOption(name='input_channel', default=1, checker=lambda x: x > 0)
     # port for analog voltage output
     _output_port: int = ConfigOption(name='output_port', default=1, checker=lambda x: x > 0)
-    _max_control_limits: Tuple[float, float] = ConfigOption(name='max_control_limits', default=(-10**4, 10**4))
+    _input_unit: str = ConfigOption(name='unit', default='m')
+    _max_control_limits: Tuple[float, float] = ConfigOption(name='max_control_limits', default=(-10 ** 4, 10 ** 4))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -41,6 +45,15 @@ class HighFinessePID(PIDControllerInterface):
     def on_activate(self) -> None:
         proxy: HighFinesseProxy = self._proxy()
         proxy.set_pid_setting(self._output_port, high_finesse_constants.cmiDeviationChannel, i_val=self._input_channel)
+
+        if self._input_unit == 'Hz':
+            proxy.set_pid_setting(self._output_port, high_finesse_constants.cmiDeviationUnit,
+                                  i_val=high_finesse_constants.cReturnFrequency)
+        elif self._input_unit == 'm':
+            proxy.set_pid_setting(self._output_port, high_finesse_constants.cmiDeviationUnit,
+                                  i_val=high_finesse_constants.cReturnWavelengthVac)
+        else:
+            raise ValueError(f'Unknown unit {self._input_unit} configured. Use m or Hz.')
 
     def on_deactivate(self) -> None:
         pass
@@ -102,7 +115,13 @@ class HighFinessePID(PIDControllerInterface):
         @return (float): The current setpoint value
         """
         proxy: HighFinesseProxy = self._proxy()
-        return proxy.get_setpoint(self._output_port) * 1e-9
+        setpoint = proxy.get_setpoint(self._output_port)
+        if self._input_unit == 'm':
+            # wavelength is in nm
+            return 1e-9 * setpoint
+        else:
+            # frequency is in THz
+            return 1e12 * setpoint
 
     def set_setpoint(self, setpoint: float):
         """ 
@@ -110,7 +129,13 @@ class HighFinessePID(PIDControllerInterface):
         @param (float) setpoint: The new setpoint value
         """
         proxy: HighFinesseProxy = self._proxy()
-        proxy.set_setpoint(self._output_port, setpoint * 1e9) # wavemeter wants nm
+        if self._input_unit == 'm':
+            # wavelength is in nm
+            setpoint *= 1e9
+        else:
+            # frequency is in THz
+            setpoint *= 1e-12
+        proxy.set_setpoint(self._output_port, setpoint)
 
     def get_manual_value(self) -> float:
         """ 
@@ -182,13 +207,16 @@ class HighFinessePID(PIDControllerInterface):
         @return (float): The current process value
         """
         proxy: HighFinesseProxy = self._proxy()
-        return proxy.get_wavelength(self._input_channel)
+        wavelength = proxy.get_wavelength(self._input_channel)
+        if self._input_unit == 'Hz':
+            return lambda2nu(wavelength)
+        else:
+            return wavelength
 
+    @property
     def process_value_unit(self):
         """ read-only property for the unit of the process value """
-        # TODO: support other units via config option
-        # can be done using Get/SetPIDSetting and cmiDeviationUnit
-        return 'm'
+        return self._input_unit
 
     def get_control_value(self) -> float:
         """ 
@@ -196,9 +224,9 @@ class HighFinessePID(PIDControllerInterface):
         @return (float): The current control value
         """
         proxy: HighFinesseProxy = self._proxy()
-        # mV to V conversion
-        return proxy.get_control_value(self._output_port) * 1e-3
-    
+        return proxy.get_control_value(self._output_port)
+
+    @property
     def control_value_unit(self) -> str:
         """ read-only property for the unit of the control value """
         return 'V'
