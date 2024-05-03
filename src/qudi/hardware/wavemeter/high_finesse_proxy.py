@@ -253,13 +253,13 @@ class HighFinesseProxy(Base):
         else:
             raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
 
-    def set_pid_setting(self, output_port: int, cmi_val: int, val:    float):
+    def set_pid_setting(self, output_port: int, cmi_val: int, d_val: float = 0.0, i_val: int = 0):
         """ Generic method to set PID values and settings """
-        i_val = c_long()
-        d_val = c_double(val)
+        i_val = c_long(i_val)
+        d_val = c_double(d_val)
         err = self._wavemeter_dll.SetPIDSetting(cmi_val, output_port, i_val, d_val)
         if err:
-            raise RuntimeError(f'Error while getting PID value/setting: {high_finesse_constants.ResultError(err)}')
+            raise RuntimeError(f'Error while setting PID value/setting: {high_finesse_constants.ResultError(err)}')
 
     def get_setpoint(self, output_port: int) -> float:
         """

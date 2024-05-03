@@ -20,12 +20,14 @@ class HighFinessePID(PIDControllerInterface):
         connect:
             proxy: wavemeter_proxy
         options:
+            input_channel: 1 # channel of multi-switch with laser light input
             output_port: 1  # port for analog control voltage output
             max_control_limits: [-10^4, 10^4]
     """
     _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
 
-    # TODO: add option for wavelength input channel
+    # channel of multi-switch with laser light input
+    _input_channel: int = ConfigOption(name='input_channel', default=1, checker=lambda x: x > 0)
     # port for analog voltage output
     _output_port: int = ConfigOption(name='output_port', default=1, checker=lambda x: x > 0)
     _max_control_limits: Tuple[float, float] = ConfigOption(name='max_control_limits', default=(-10**4, 10**4))
@@ -37,7 +39,8 @@ class HighFinessePID(PIDControllerInterface):
         self._manual_value = 0.0
 
     def on_activate(self) -> None:
-        pass
+        proxy: HighFinesseProxy = self._proxy()
+        proxy.set_pid_setting(self._output_port, high_finesse_constants.cmiDeviationChannel, i_val=self._input_channel)
 
     def on_deactivate(self) -> None:
         pass
