@@ -967,11 +967,16 @@ class ScannerGui(GuiBase):
             def set_range_func(x_range, y_range):
                 x_range = tuple(sorted(x_range))
                 y_range = tuple(sorted(y_range))
+                scan_logic: ScanningProbeLogic = self._scanning_logic()
+                scan_logic.set_scan_range(axes[0], x_range)
+                scan_logic.set_scan_range(axes[1], y_range)
                 self.scanner_control_dockwidget.set_range({axes[0]: x_range, axes[1]: y_range})
                 self._mw.action_utility_zoom.setChecked(False)
         else:
             def set_range_func(x_range):
                 x_range = tuple(sorted(x_range))
+                scan_logic: ScanningProbeLogic = self._scanning_logic()
+                scan_logic.set_scan_range(axes[0], x_range)
                 self.scanner_control_dockwidget.set_range({axes[0]: x_range})
                 self._mw.action_utility_zoom.setChecked(False)
         return set_range_func
