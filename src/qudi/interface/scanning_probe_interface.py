@@ -622,25 +622,22 @@ class CoordinateTransformMixin(ScanningProbeInterface):
     def get_scan_data(self):
         scan_data = super().get_scan_data()
         if scan_data:
-            if self.coordinate_transform_enabled:
-                scan_data.coord_transform_info = self._get_coord_transform_info()
-            else:
-                scan_data.coord_transform_info = {}
+            scan_data.coord_transform_info = self._get_coord_transform_info()
         return scan_data
 
     def get_back_scan_data(self):
         scan_data = super().get_back_scan_data()
         if scan_data:
-            if self.coordinate_transform_enabled:
-                scan_data.coord_transform_info = self._get_coord_transform_info()
-            else:
-                scan_data.coord_transform_info = {}
+            scan_data.coord_transform_info = self._get_coord_transform_info()
         return scan_data
 
     def _get_coord_transform_info(self) -> Dict[str, Any]:
-        rad_2_deg = lambda phi: phi / np.pi * 180
-        return {
-            'transform_matrix': self._coordinate_transform_matrix.matrix,
-            'tilt_angle (deg)': rad_2_deg(self._calc_matr_2_tiltangle()),
-            'translation': self._coordinate_transform_matrix.matrix[0:3, -1]
-        }
+        info = {'enabled': False}
+        if self.coordinate_transform_enabled:
+            info.update({
+                'enabled': True,
+                'transform_matrix': self._coordinate_transform_matrix.matrix,
+                'tilt_angle (deg)': np.rad2deg(self._calc_matr_2_tiltangle()),
+                'translation': self._coordinate_transform_matrix.matrix[0:3, -1]
+            })
+        return info
