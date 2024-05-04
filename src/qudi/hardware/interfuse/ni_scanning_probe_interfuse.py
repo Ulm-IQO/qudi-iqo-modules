@@ -234,7 +234,8 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self.log.debug('Scan settings fulfill constraints.')
 
         with self._thread_lock_data:
-            self._scan_data = self._create_scan_data(settings)
+            settings = self._clip_ranges(settings)
+            self._scan_data = ScanData.from_constraints(settings, self._constraints)
             self._scan_settings = settings
             self.log.debug(f'New ScanData created.')
             self.raw_data_container = RawDataContainer(settings.channels,
@@ -253,7 +254,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
 
-        ni_scan_dict = self._init_ni_scan_arrays(self._scan_data)
+        ni_scan_dict = self._init_ni_scan_arrays(settings)
 
         self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
 
@@ -573,14 +574,14 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         return positions_data
 
-    def _get_scan_lines(self, scan_data: ScanData):
-        if scan_data.settings.scan_dimension == 1:
-            axis = scan_data.settings.axes[0]
-            horizontal_resolution = scan_data.settings.resolution[0]
+    def _get_scan_lines(self, settings: ScanSettings) -> Dict[str, np.ndarray]:
+        if settings.scan_dimension == 1:
+            axis = settings.axes[0]
+            horizontal_resolution = settings.resolution[0]
 
-            horizontal = np.linspace(scan_data.settings.range[0][0], scan_data.settings.range[0][1],
+            horizontal = np.linspace(settings.range[0][0], settings.range[0][1],
                                      horizontal_resolution)
-            horizontal_return_line = np.linspace(scan_data.settings.range[0][1], scan_data.settings.range[0][0],
+            horizontal_return_line = np.linspace(settings.range[0][1], settings.range[0][0],
                                                  self.__backwards_line_resolution)
             # TODO Return line for 1d included due to possible hysteresis. Might be able to drop it,
             #  but then get_scan_data needs to be changed accordingly
@@ -590,18 +591,17 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
             coord_dict = {axis: horizontal_single_line}
 
-        elif scan_data.settings.scan_dimension == 2:
-
-            horizontal_resolution = scan_data.settings.resolution[0]
-            vertical_resolution = scan_data.settings.resolution[1]
+        elif settings.scan_dimension == 2:
+            horizontal_resolution = settings.resolution[0]
+            vertical_resolution = settings.resolution[1]
 
             # horizontal scan array / "fast axis"
-            horizontal_axis = scan_data.settings.axes[0]
-            horizontal = np.linspace(scan_data.settings.range[0][0], scan_data.settings.range[0][1],
+            horizontal_axis = settings.axes[0]
+            horizontal = np.linspace(settings.range[0][0], settings.range[0][1],
                                      horizontal_resolution)
 
-            horizontal_return_line = np.linspace(scan_data.settings.range[0][1],
-                                                 scan_data.settings.range[0][0],
+            horizontal_return_line = np.linspace(settings.range[0][1],
+                                                 settings.range[0][0],
                                                  self.__backwards_line_resolution)
             # a single back and forth line
             horizontal_single_line = np.concatenate((horizontal, horizontal_return_line))
@@ -609,8 +609,8 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             horizontal_scan_array = np.tile(horizontal_single_line, vertical_resolution)
 
             # vertical scan array / "slow axis"
-            vertical_axis = scan_data.settings.axes[1]
-            vertical = np.linspace(scan_data.settings.range[1][0], scan_data.settings.range[1][1],
+            vertical_axis = settings.axes[1]
+            vertical = np.linspace(settings.range[1][0], settings.range[1][1],
                                    vertical_resolution)
 
             # during horizontal line, the vertical line keeps its value
@@ -631,13 +631,12 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             }
 
         else:
-            raise ValueError(f"Not supported scan dimension: {scan_data.settings.scan_dimension}")
+            raise ValueError(f"Not supported scan dimension: {settings.scan_dimension}")
 
         return self._expand_coordinate(coord_dict)
 
-    def _init_scan_grid(self, scan_data):
-        scan_coords = self._get_scan_lines(scan_data)
-
+    def _init_scan_grid(self, settings: ScanSettings) -> Dict[str, np.ndarray]:
+        scan_coords = self._get_scan_lines(settings)
         return scan_coords
 
     def _check_scan_grid(self, scan_coords):
@@ -649,7 +648,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             if out_of_range:
                 raise ValueError(f"Scan axis {ax} out of range [{position_min}, {position_max}]")
 
-    def _create_scan_data(self, settings: ScanSettings):
+    def _clip_ranges(self, settings: ScanSettings):
         valid_scan_grid = False
         i_trial, n_max_trials = 0, 25
         
@@ -660,13 +659,9 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             settings_dict = asdict(settings)
             settings_dict['range'] = ranges
             settings = ScanSettings.from_dict(settings_dict)
-            scan_data = ScanData.from_constraints(
-                settings=settings,
-                constraints=self.constraints
-            )
 
             try:
-                ni_scan_dict = self._init_ni_scan_arrays(scan_data)
+                self._init_ni_scan_arrays(settings)
                 valid_scan_grid = True
             except ValueError:
                 valid_scan_grid = False
@@ -678,35 +673,26 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         if i_trial > 1:
             self.log.warning(f"Adapted out-of-bounds scan range to {ranges}")
+        return settings
 
-        # self.log.debug(f"New scanData created: {self._scan_data.data}")
-        return scan_data
+    @staticmethod
+    def _shrink_scan_ranges(ranges, factor=0.01):
+        lengths = [stop - start for (start, stop) in ranges]
 
-    def _shrink_scan_ranges(self, ranges, factor=0.01):
-        lenghts = [stop - start for (start, stop) in ranges]
+        return [(start + factor * lengths[idx], stop - factor * lengths[idx]) for idx, (start, stop) in enumerate(ranges)]
 
-        return [(start + factor* lenghts[idx], stop - factor* lenghts[idx]) for idx, (start, stop) in enumerate(ranges)]
-
-    def _init_ni_scan_arrays(self, scan_data: ScanData):
+    def _init_ni_scan_arrays(self, settings: ScanSettings) -> Dict[str, np.ndarray]:
         """
-        @param ScanData scan_data: The desired ScanData instance
+        @param ScanSettings settings: scan parameters
 
-        @return dict: Where keys coincide with the ni_channel for the current scan axes and values are the
-                      corresponding voltage 1D numpy arrays for each axis
+        @return dict: NI channel name to voltage 1D numpy array mapping for all axes
         """
-
         # TODO adjust toolchain to incorporate __backwards_line_resolution in settings?
         # TODO maybe need to clip to voltage range in case of float precision error in conversion?
-
-        assert isinstance(scan_data, ScanData), 'This function requires a scan_data object as input'
-
-        scan_coords = self._init_scan_grid(scan_data)
+        scan_coords = self._init_scan_grid(settings)
         self._check_scan_grid(scan_coords)
 
-        #self.log.debug(f"created scan grid: {scan_coords}")
-
         scan_voltages = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, val) for ax, val in scan_coords.items()}
-
         return scan_voltages
 
     def __ao_cursor_write_loop(self):
@@ -922,8 +908,6 @@ class RawDataContainer:
 
 
 class NiScanningProbeInterfuse(CoordinateTransformMixin, NiScanningProbeInterfuseBare):
-    def _init_scan_grid(self, scan_data):
-
-        scan_coords_transf = self.coordinate_transform(super()._init_scan_grid(scan_data), inverse=False)
-
+    def _init_scan_grid(self, settings: ScanSettings) -> Dict[str, np.ndarray]:
+        scan_coords_transf = self.coordinate_transform(super()._init_scan_grid(settings), inverse=False)
         return scan_coords_transf
