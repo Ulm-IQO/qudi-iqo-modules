@@ -210,7 +210,7 @@ class ScanningProbeLogic(LogicBase):
             return ScanSettings(
                 channels=tuple(self.scanner_channels),
                 axes=tuple(scan_axes),
-                range=tuple(self._scan_ranges[ax] for ax in scan_axes),
+                range=tuple(tuple(self._scan_ranges[ax]) for ax in scan_axes),
                 resolution=tuple(self._scan_resolution[ax] for ax in scan_axes),
                 frequency=self._scan_frequency[scan_axes[0]],
             )
@@ -221,7 +221,7 @@ class ScanningProbeLogic(LogicBase):
             return ScanSettings(
                 channels=tuple(self.scanner_channels),
                 axes=tuple(scan_axes),
-                range=tuple(self.scan_ranges[ax] for ax in scan_axes),
+                range=tuple(tuple(self._scan_ranges[ax]) for ax in scan_axes),
                 resolution=tuple(self.back_scan_resolution[ax] for ax in scan_axes),
                 frequency=self.back_scan_frequency[scan_axes[0]],
             )

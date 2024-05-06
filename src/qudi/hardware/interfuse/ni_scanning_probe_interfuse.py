@@ -258,8 +258,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self._ni_finite_sampling_io().set_sample_rate(settings.frequency)
         self._ni_finite_sampling_io().set_active_channels(
             input_channels=(self._ni_channel_mapping[in_ch] for in_ch in self._input_channel_units),
-            output_channels=(self._ni_channel_mapping[ax] for ax in settings.axes)
-            # TODO Use all axes and keep the unused constant? basically just constants in ni scan dict.
+            output_channels=(self._ni_channel_mapping[ax] for ax in self.constraints.axes.keys())
         )
 
         self._ni_finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
@@ -385,8 +384,10 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             #self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
 
             if self.thread() is not QtCore.QThread.currentThread():
-                QtCore.QMetaObject.invokeMethod(self, '_start_scan',
-                                                QtCore.Qt.BlockingQueuedConnection)
+                #QtCore.QMetaObject.invokeMethod(self, '_start_scan',
+                #                                QtCore.Qt.BlockingQueuedConnection)
+                # FIXME: why does the above not work anymore?
+                self._start_scan()
             else:
                 self._start_scan()
 
@@ -406,7 +407,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             with self._thread_lock_data:
                 self._scan_data.new_scan()
                 self._back_scan_data.new_scan()
-                self._stored_target_pos = self.bare_scanner.get_target(self) .copy()
+                self._stored_target_pos = self.bare_scanner.get_target(self).copy()
                 self.log.debug(f"Target pos at scan start: {self._stored_target_pos}")
                 self._scan_data.scanner_target_at_start = self._stored_target_pos
                 self._back_scan_data.scanner_target_at_start = self._stored_target_pos
@@ -429,8 +430,10 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         """
         #self.log.debug("Stopping scan")
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
-                                            QtCore.Qt.BlockingQueuedConnection)
+            #QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
+            #                                QtCore.Qt.BlockingQueuedConnection)
+            # FIXME: why does the above not work anymore?
+            self._stop_scan()
         else:
             self._stop_scan()
 
@@ -683,7 +686,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     def _check_scan_grid(self, scan_coords):
         for ax, coords in scan_coords.items():
             position_min = self.constraints.axes[ax].position.minimum
-            position_max = self.constraints.axes[ax].position.minimum
+            position_max = self.constraints.axes[ax].position.maximum
             out_of_range = any(coords < position_min) or any(coords > position_max)
 
             if out_of_range:
@@ -911,8 +914,11 @@ class RawDataContainer:
             # use same resolution for forward and backward as default
             self.backwards_line_resolution = forward_line_resolution
 
-        self.frame_size = number_of_scan_lines * (forward_line_resolution + backwards_line_resolution)
         self._raw = {key: np.full(self.frame_size, np.nan) for key in channel_keys}
+
+    @property
+    def frame_size(self) -> int:
+        return self.number_of_scan_lines * (self.forward_line_resolution + self.backwards_line_resolution)
 
     def fill_container(self, samples_dict):
         # get index of first nan from one element of dict
