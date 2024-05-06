@@ -384,10 +384,8 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             #self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
 
             if self.thread() is not QtCore.QThread.currentThread():
-                #QtCore.QMetaObject.invokeMethod(self, '_start_scan',
-                #                                QtCore.Qt.BlockingQueuedConnection)
-                # FIXME: why does the above not work anymore?
-                self._start_scan()
+                QtCore.QMetaObject.invokeMethod(self, '_start_scan',
+                                                QtCore.Qt.BlockingQueuedConnection)
             else:
                 self._start_scan()
 
@@ -430,10 +428,8 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         """
         #self.log.debug("Stopping scan")
         if self.thread() is not QtCore.QThread.currentThread():
-            #QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
-            #                                QtCore.Qt.BlockingQueuedConnection)
-            # FIXME: why does the above not work anymore?
-            self._stop_scan()
+            QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
+                                            QtCore.Qt.BlockingQueuedConnection)
         else:
             self._stop_scan()
 
@@ -965,3 +961,13 @@ class NiScanningProbeInterfuse(CoordinateTransformMixin, NiScanningProbeInterfus
     def _init_scan_grid(self, settings: ScanSettings, back_settings: ScanSettings) -> Dict[str, np.ndarray]:
         scan_coords_transf = self.coordinate_transform(super()._init_scan_grid(settings, back_settings), inverse=False)
         return scan_coords_transf
+
+    # start and stop scan need to be reimplemented
+    # for QtCore.QMetaObject.invokeMethod to work
+    @QtCore.Slot()
+    def _start_scan(self):
+        super()._start_scan()
+
+    @QtCore.Slot()
+    def _stop_scan(self):
+        super()._stop_scan()
