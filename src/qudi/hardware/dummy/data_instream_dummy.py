@@ -36,7 +36,7 @@ from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 
 def _make_sine_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], None]:
     freq = sample_rate / (20 + 80 * np.random.rand())
-    amp = 1 + np.random.rand() * 9
+    amp = 1 + np.random.rand() * 9999
     noise_lvl = amp * (0.1 + np.random.rand() * 0.4)
     def make_sine(x, y):
         # y[:] = np.sin(2 * np.pi * freq * x)
