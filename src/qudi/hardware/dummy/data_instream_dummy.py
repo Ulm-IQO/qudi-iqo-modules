@@ -41,6 +41,7 @@ def _make_sine_func(sample_rate: float) -> Callable[[np.ndarray, np.ndarray], No
     def make_sine(x, y):
         # y[:] = np.sin(2 * np.pi * freq * x)
         np.sin(2 * np.pi * freq * x, out=y)
+        y += np.sin(2.2 * np.pi * freq * x)
         y *= amp
         noise = np.random.rand(x.size)
         noise *= 2 * noise_lvl
