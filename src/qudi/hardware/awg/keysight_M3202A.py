@@ -152,10 +152,10 @@ class M3202A(PulserInterface):
             self.awg.close()
             raise Exception('AWG Error: {0} {1}'.format(aouID, ksd1.SD_Error.getErrorMessage(aouID)))
 
-        self.ser = self.awg.getSerialNumber()
-        self.model = self.awg.getProductName()
-        self.fwver = self.awg.getFirmwareVersion()
-        self.hwver = self.awg.getHardwareVersion()
+        self.ser = self.awg.getSerialNumber().rstrip('\x00')
+        self.model = self.awg.getProductName().rstrip('\x00')
+        self.fwver = self.awg.getFirmwareVersion().rstrip('\x00')
+        self.hwver = self.awg.getHardwareVersion().rstrip('\x00')
         self.chassis = self.awg.getChassis()
         self.ch_slot = self.awg.getSlot()
 

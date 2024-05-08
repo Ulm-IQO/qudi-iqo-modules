@@ -35,7 +35,8 @@ class ScanDockWidget(QtWidgets.QDockWidget):
     def __init__(self,
                  axes: Union[Tuple[ScannerAxis], Tuple[ScannerAxis, ScannerAxis]],
                  channels: Sequence[ScannerChannel],
-                 parent: Optional[QtWidgets.QWidget] = None
+                 parent: Optional[QtWidgets.QWidget] = None,
+                 xy_region_min_size_percentile: Optional[float] = None
                  ) -> None:
         try:
             x_axis, y_axis = axes
@@ -52,7 +53,8 @@ class ScanDockWidget(QtWidgets.QDockWidget):
         if len(self._scan_axes) == 1:
             self.scan_widget = Scan1DWidget(self._scan_axes, channels)
         else:
-            self.scan_widget = Scan2DWidget(self._scan_axes, channels)
+            self.scan_widget = Scan2DWidget(self._scan_axes, channels,
+                                            xy_region_min_size_percentile=xy_region_min_size_percentile)
         self.setWidget(self.scan_widget)
 
     @property

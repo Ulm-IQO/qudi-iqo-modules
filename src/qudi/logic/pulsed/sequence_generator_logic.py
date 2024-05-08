@@ -131,12 +131,8 @@ class SequenceGeneratorLogic(LogicBase):
 
     sigPredefinedSequenceGenerated = QtCore.Signal(object, bool)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-        self.log.debug('The following configuration was found.')
-        for key in config.keys():
-            self.log.debug('{0}: {1}'.format(key, config[key]))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # current pulse generator settings that are frequently used by this logic.
         # Save them here since reading them from device every time they are used may take some time.
@@ -163,7 +159,6 @@ class SequenceGeneratorLogic(LogicBase):
         self._saved_pulse_blocks = dict()
         self._saved_pulse_block_ensembles = dict()
         self._saved_pulse_sequences = dict()
-        return
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -220,6 +215,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         # Get instance of PulseObjectGenerator which takes care of collecting all predefined methods
         self._pog = PulseObjectGenerator(sequencegeneratorlogic=self)
+        self._pog.activate_plugins()
 
         self.__sequence_generation_in_progress = False
         return
@@ -1151,6 +1147,7 @@ class SequenceGeneratorLogic(LogicBase):
             self.save_block(block)
         for ensemble in ensembles:
             ensemble.sampling_information = dict()
+            ensemble.generation_method_parameters = kwargs_dict
             self.save_ensemble(ensemble)
 
         if self.pulse_generator_constraints.sequence_option == SequenceOption.FORCED and len(sequences) < 1:
@@ -1754,9 +1751,14 @@ class SequenceGeneratorLogic(LogicBase):
                 pulse_function={chnl: SamplingFunctions.Idle() for chnl in self.analog_channels},
                 digital_high={chnl: False for chnl in self.digital_channels})
             idle_extension = PulseBlock('idle_extension', element_list=[pb_element])
-            temp_measurement_info = copy.deepcopy(ensemble.measurement_information)
+
+            # appending idle element invalidates meta-info. Restore meta-info here.
+            temp_generation_parameters = copy.deepcopy(ensemble.generation_method_parameters)
+            temp_measurement_information = copy.deepcopy(ensemble.measurement_information)
             ensemble.append((idle_extension.name, 0))
-            ensemble.measurement_information = temp_measurement_info
+
+            ensemble.measurement_information = temp_measurement_information
+            ensemble.generation_method_parameters = temp_generation_parameters
 
             self.save_block(idle_extension)
             self.save_ensemble(ensemble)
@@ -2138,16 +2140,9 @@ class SequenceGeneratorLogic(LogicBase):
         :param wave_name: with (rabi_ch1) or without (rabi) channel extension.
         :return: stripped name (rabi)
         """
-        pattern = ".*_ch[0-9]+?"
-        has_ch_ext = True if re.match(pattern, wave_name) is not None else False
-
-        if has_ch_ext:
-            pattern_split = '_ch[0-9]+?'
-            return re.split(pattern_split, wave_name)[0]
-        else:
-            # unsafer, because name including '_' will break
+        if re.match(r'.*_ch[0-9]+?$', wave_name, re.IGNORECASE) is not None:
             return wave_name.rsplit('_', 1)[0]
-
+        return wave_name
 
     @QtCore.Slot()
     def run_pg_benchmark(self, t_goal=10):

@@ -198,10 +198,10 @@ class AWG70K(PulserInterface):
         constraints.waveform_length.max = self.__max_waveform_length
         if self.awg_model == 'AWG70002A':
             constraints.waveform_length.step = 1
-            constraints.waveform_length.default = 1
+            constraints.waveform_length.default = self.__min_waveform_length
         elif self.awg_model == 'AWG70001A':
             constraints.waveform_length.step = 2
-            constraints.waveform_length.default = 2
+            constraints.waveform_length.default = self.__min_waveform_length
 
         # FIXME: Check the proper number for your device
         constraints.waveform_num.min = 1
@@ -708,7 +708,6 @@ class AWG70K(PulserInterface):
                     self.log.error('Unable to determine loaded assets.')
                     return dict(), ''
                 current_type = 'sequence'
-                asset_name += '_' + splitted[1]
             else:
                 if current_type is not None and current_type != 'waveform':
                     self.log.error('Unable to determine loaded assets.')

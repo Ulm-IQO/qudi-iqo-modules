@@ -27,7 +27,7 @@ import itertools
 import copy as cp
 
 from qudi.core.module import LogicBase
-from qudi.util.mutex import RecursiveMutex
+from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
@@ -38,7 +38,8 @@ from qudi.interface.scanning_probe_interface import ScanData
 
 class ScanningOptimizeLogic(LogicBase):
     """
-    ToDo: Write documentation
+    This module is responsible for performing scanning probe measurements in order to find some optimal
+    position and move the scanner there.
 
     Example config for copy-paste:
 
@@ -67,15 +68,17 @@ class ScanningOptimizeLogic(LogicBase):
 
     _sigNextSequenceStep = QtCore.Signal()
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = RecursiveMutex()
+        self._result_lock = Mutex()
 
         self._stashed_scan_settings = dict()
         self._sequence_index = 0
         self._optimal_position = dict()
-        return
+        self._last_scans = list()
+        self._last_fits = list()
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -106,16 +109,16 @@ class ScanningOptimizeLogic(LogicBase):
             self._scan_resolution = new_settings['scan_resolution']
             self._scan_frequency = new_settings['scan_frequency']
 
-
         self._stashed_scan_settings = dict()
         self._sequence_index = 0
         self._optimal_position = dict()
+        self._last_scans = list()
+        self._last_fits = list()
 
         self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
         self._scan_logic().sigScanStateChanged.connect(
             self._scan_state_changed, QtCore.Qt.QueuedConnection
         )
-        return
 
     def on_deactivate(self):
         """ Reverse steps of activation
@@ -172,6 +175,16 @@ class ScanningOptimizeLogic(LogicBase):
                 'scan_resolution': self.scan_resolution,
                 'scan_sequence': self.scan_sequence}
 
+    @property
+    def last_scans(self):
+        with self._result_lock:
+            return self._last_scans.copy()
+
+    @property
+    def last_fits(self):
+        with self._result_lock:
+            return self._last_fits.copy()
+
     def check_sanity_optimizer_settings(self, settings=None, plot_dimensions=None):
         # shaddows scanning_probe_logic::check_sanity. Unify code somehow?
 
@@ -194,7 +207,6 @@ class ScanningOptimizeLogic(LogicBase):
 
             return is_valid
 
-
         # first check settings that are defined per scanner axis
         for key, val in settings.items():
             if not check_valid(settings, key):
@@ -209,7 +221,6 @@ class ScanningOptimizeLogic(LogicBase):
                                                   in hw_axes.values()}
                 if key == 'data_channel':
                     settings['data_channel'] = list(sig_channels.keys())[0]
-
 
         # scan_sequence check, only sensibel if plot dimensions (eg. from confocal gui) are available
         if 'scan_sequence' in settings and plot_dimensions:
@@ -229,7 +240,6 @@ class ScanningOptimizeLogic(LogicBase):
                                  f" doesn't fit the available sequences.")
 
         return settings
-
 
     @property
     def optimal_position(self):
@@ -275,8 +285,10 @@ class ScanningOptimizeLogic(LogicBase):
                 return 0
 
             # ToDo: Sanity checks for settings go here
-
             self.module_state.lock()
+            with self._result_lock:
+                self._last_scans = list()
+                self._last_fits = list()
             self.sigOptimizeStateChanged.emit(True, dict(), None)
 
             # stash old scanner settings
@@ -330,6 +342,8 @@ class ScanningOptimizeLogic(LogicBase):
             if self.module_state() == 'idle':
                 return
 
+            #self.log.debug(f"Next opt sequence step {self._sequence_index}")
+
             if self._scan_logic().toggle_scan(True,
                                               self._scan_sequence[self._sequence_index],
                                               self.module_uuid) < 0:
@@ -345,6 +359,8 @@ class ScanningOptimizeLogic(LogicBase):
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
             elif data is not None:
+                #self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
+
                 try:
                     if data.scan_dimension == 1:
                         x = np.linspace(*data.scan_range[0], data.scan_resolution[0])
@@ -362,15 +378,18 @@ class ScanningOptimizeLogic(LogicBase):
                         )
 
                     position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.scan_axes)}
+                    #self.log.debug(f"Optimizer issuing position update: {position_update}")
                     if fit_data is not None:
-                        new_pos = self._scan_logic().set_target_position(position_update)
+                        new_pos = self._scan_logic().set_target_position(position_update, move_blocking=True)
                         for ax in tuple(position_update):
                             position_update[ax] = new_pos[ax]
 
-                        fit_data = {'fit_data':fit_data, 'full_fit_res':fit_res}
+                        fit_data = {'fit_data': fit_data, 'full_fit_res': fit_res}
 
-                    self.log.debug(f"Optimizer issuing position update: {position_update}")
                     self._optimal_position.update(position_update)
+                    with self._result_lock:
+                        self._last_scans.append(data.copy())
+                        self._last_fits.append(fit_res)
                     self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
 
                     # Abort optimize if fit failed
@@ -412,7 +431,7 @@ class ScanningOptimizeLogic(LogicBase):
         model = Gaussian2D()
 
         try:
-            fit_result = model.fit(data, xy=xy, **model.estimate_peak(data, xy))
+            fit_result = model.fit(data, x=xy, **model.estimate_peak(data, xy))
         except:
             x_min, x_max = xy[0].min(), xy[0].max()
             y_min, y_max = xy[1].min(), xy[1].max()
@@ -438,7 +457,7 @@ class ScanningOptimizeLogic(LogicBase):
         return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
 
 
-class OptimizerScanSequence():
+class OptimizerScanSequence:
     def __init__(self, axes, dimensions=[2,1], sequence=None):
         self._avail_axes = axes
         self._optimizer_dim = dimensions
@@ -498,7 +517,6 @@ class OptimizerScanSequence():
 
         return [OptimizerScanSequence(self._avail_axes, self._optimizer_dim, seq) for seq in self._available_opt_seqs_raw()]
 
-
     def _available_opt_seqs_raw(self, remove_1d_in_2d=True):
         """
         @oaram remove_1d_in_2d: remove sequences where 1d steps are repeated in 2d steps, eg. [('x','y'), ('x')]
@@ -528,7 +546,7 @@ class OptimizerScanSequence():
                     out_comb.append(combine(old_list, seq))
 
             if not old_comb:
-                return new_seqs
+                return [[seq] for seq in new_seqs]
             if not out_comb:
                 return old_comb
 

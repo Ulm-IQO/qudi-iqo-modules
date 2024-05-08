@@ -82,7 +82,7 @@ class PulsedMeasurementLogic(LogicBase):
     # todo: doesn't warn if checker not satisfied
     _default_data_storage_cls = ConfigOption(name='default_data_storage_type',
                                              default='text',
-                                             converter=_data_storage_from_cfg_option)
+                                             constructor=_data_storage_from_cfg_option)
     _save_thumbnails = ConfigOption(name='save_thumbnails', default=True)
 
     # status variables
@@ -118,6 +118,7 @@ class PulsedMeasurementLogic(LogicBase):
     _measurement_information = StatusVar(default=dict())
     # Container to store information about the sampled waveform/sequence currently loaded
     _sampling_information = StatusVar(default=dict())
+    _generation_method_parameters = StatusVar(default=dict())
 
     # Data fitting
     _fit_configs = StatusVar(name='fit_configs', default=None)
@@ -212,13 +213,8 @@ class PulsedMeasurementLogic(LogicBase):
          'custom_parameters': None},
     )
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-        self.log.debug('The following configuration was found.')
-        # checking for the right configuration
-        for key in config.keys():
-            self.log.debug('{0}: {1}'.format(key, config[key]))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # timer for measurement
         self.__analysis_timer = None
@@ -250,7 +246,6 @@ class PulsedMeasurementLogic(LogicBase):
         self.alt_fc = None
         self._fit_result = None
         self._fit_result_alt = None
-        return
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -488,9 +483,10 @@ class PulsedMeasurementLogic(LogicBase):
 
     @property
     def ext_microwave_constraints(self):
-        if self._microwave.is_connected:
-            return self._microwave().constraints
-        return None
+        microwave = self._microwave()
+        if microwave is None:
+            return None
+        return microwave.constraints
 
     def microwave_on(self):
         """
@@ -498,15 +494,16 @@ class PulsedMeasurementLogic(LogicBase):
 
         :return int: error code (0:OK, -1:error)
         """
-        err = 0
-        if self._microwave.is_connected:
-            self._microwave().cw_on()
-            if not self._microwave().is_running:
-                self.log.error('Failed to turn on external CW microwave output.')
-            self.sigExtMicrowaveRunningUpdated.emit(self._microwave().is_running)
-        else:
+        microwave = self._microwave()
+        if microwave is None:
             self.sigExtMicrowaveRunningUpdated.emit(False)
-        return err
+        else:
+            microwave.cw_on()
+            is_running = microwave.module_state() != 'idle'
+            if not is_running:
+                self.log.error('Failed to turn on external CW microwave output.')
+            self.sigExtMicrowaveRunningUpdated.emit(is_running)
+        return 0
 
     def microwave_off(self):
         """
@@ -514,15 +511,16 @@ class PulsedMeasurementLogic(LogicBase):
 
         :return int: error code (0:OK, -1:error)
         """
-        err = 0
-        if self._microwave.is_connected:
-            self._microwave().off()
-            if self._microwave().is_running:
-                self.log.error('Failed to turn off external CW microwave output.')
-            self.sigExtMicrowaveRunningUpdated.emit(self._microwave().is_running)
-        else:
+        microwave = self._microwave()
+        if microwave is None:
             self.sigExtMicrowaveRunningUpdated.emit(False)
-        return err
+        else:
+            microwave.off()
+            is_running = microwave.module_state() != 'idle'
+            if is_running:
+                self.log.error('Failed to turn off external CW microwave output.')
+            self.sigExtMicrowaveRunningUpdated.emit(is_running)
+        return 0
 
     @QtCore.Slot(bool)
     def toggle_microwave(self, switch_on):
@@ -555,33 +553,35 @@ class PulsedMeasurementLogic(LogicBase):
         @return:
         """
         # Check if microwave is running and do nothing if that is the case
-        if self._microwave.is_connected and self._microwave().is_running:
-            self.log.warning('Microwave device is running.\nUnable to apply new settings.')
-        else:
-            # Determine complete settings dictionary
-            if not isinstance(settings_dict, dict):
-                settings_dict = kwargs
+        try:
+            microwave = self._microwave()
+            if (microwave is not None) and (microwave.module_state() != 'idle') :
+                self.log.warning('Microwave device is running.\nUnable to apply new settings.')
             else:
-                settings_dict.update(kwargs)
+                # Determine complete settings dictionary
+                if not isinstance(settings_dict, dict):
+                    settings_dict = kwargs
+                else:
+                    settings_dict.update(kwargs)
 
-            # Set parameters if present
-            if 'power' in settings_dict:
-                self.__microwave_power = float(settings_dict['power'])
-            if 'frequency' in settings_dict:
-                self.__microwave_freq = float(settings_dict['frequency'])
-            if 'use_ext_microwave' in settings_dict:
-                self.__use_ext_microwave = bool(settings_dict['use_ext_microwave']) and self._microwave.is_connected
+                # Set parameters if present
+                if 'power' in settings_dict:
+                    self.__microwave_power = float(settings_dict['power'])
+                if 'frequency' in settings_dict:
+                    self.__microwave_freq = float(settings_dict['frequency'])
+                if 'use_ext_microwave' in settings_dict:
+                    self.__use_ext_microwave = bool(settings_dict['use_ext_microwave']) and microwave is not None
 
-            if self.__use_ext_microwave and self._microwave.is_connected:
-                # Apply the settings to hardware
-                self._microwave().set_cw(frequency=self.__microwave_freq, power=self.__microwave_power)
-                self.__microwave_freq = self._microwave().cw_frequency
-                self.__microwave_power = self._microwave().cw_power
-
-        # emit update signal for master (GUI or other logic module)
-        self.sigExtMicrowaveSettingsUpdated.emit({'power': self.__microwave_power,
-                                                  'frequency': self.__microwave_freq,
-                                                  'use_ext_microwave': self.__use_ext_microwave})
+                if self.__use_ext_microwave and microwave is not None:
+                    # Apply the settings to hardware
+                    microwave.set_cw(frequency=self.__microwave_freq, power=self.__microwave_power)
+                    self.__microwave_freq = microwave.cw_frequency
+                    self.__microwave_power = microwave.cw_power
+        finally:
+            # emit update signal for master (GUI or other logic module)
+            self.sigExtMicrowaveSettingsUpdated.emit({'power': self.__microwave_power,
+                                                      'frequency': self.__microwave_freq,
+                                                      'use_ext_microwave': self.__use_ext_microwave})
         return self.__microwave_freq, self.__microwave_power, self.__use_ext_microwave
     ############################################################################
 
@@ -689,6 +689,18 @@ class PulsedMeasurementLogic(LogicBase):
             self._sampling_information = info_dict
         else:
             self._sampling_information = dict()
+        return
+
+    @property
+    def generation_method_parameters(self):
+        return self._generation_method_parameters
+
+    @generation_method_parameters.setter
+    def generation_method_parameters(self, info_dict):
+        if isinstance(info_dict, dict):
+            self._generation_method_parameters = info_dict
+        else:
+            self._generation_method_parameters = dict()
         return
 
     @property
@@ -1350,8 +1362,6 @@ class PulsedMeasurementLogic(LogicBase):
         self.sigMeasurementDataUpdated.emit()
         return
 
-    # FIXME: Revise everything below
-
     ############################################################################
     def _get_raw_metadata(self):
         return {'bin width (s)'               : self.__fast_counter_binwidth,
@@ -1370,14 +1380,24 @@ class PulsedMeasurementLogic(LogicBase):
                 'extraction parameters': self.extraction_settings}
 
     def _get_signal_metadata(self):
-        return {'Approx. measurement time (s)': self.__elapsed_time,
-                'Measurement sweeps'          : self.__elapsed_sweeps,
-                'Number of laser pulses'      : self._number_of_lasers,
-                'Laser ignore indices'        : self._laser_ignore_list,
-                'alternating'                 : self._alternating,
-                'analysis parameters'         : self.analysis_settings,
-                'extraction parameters'       : self.extraction_settings,
-                'fast counter settings'       : self.fast_counter_settings}
+        metadata = {'Approx. measurement time (s)': self.__elapsed_time,
+                    'Measurement sweeps'          : self.__elapsed_sweeps,
+                    'Number of laser pulses'      : self._number_of_lasers,
+                    'Laser ignore indices'        : self._laser_ignore_list,
+                    'alternating'                 : self._alternating,
+                    'analysis parameters'         : self.analysis_settings,
+                    'extraction parameters'       : self.extraction_settings,
+                    'fast counter settings'       : self.fast_counter_settings,
+                    # todo: save sequence belonging to signal, not last uploaded one
+                    'generation parameters'       : self.sampling_information.get('generation_parameters'),
+                    'generation method parameters': self.generation_method_parameters}
+        if self._fit_result:
+            export_dict = FitContainer.dict_result(self._fit_result)
+            metadata['fit result'] = export_dict
+        if self._fit_result_alt:
+            export_dict = FitContainer.dict_result(self._fit_result_alt)
+            metadata['fit result alt'] = export_dict
+        return metadata
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):

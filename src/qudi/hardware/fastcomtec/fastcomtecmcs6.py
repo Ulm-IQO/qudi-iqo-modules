@@ -179,14 +179,8 @@ class FastComtec(FastCounterInterface):
     aom_delay = ConfigOption('aom_delay', 390e-9, missing='warn')
     minimal_binwidth = ConfigOption('minimal_binwidth', 0.2e-9, missing='warn')
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-        self.log.debug('The following configuration was found.')
-
-        # checking for the right configuration
-        for key in config.keys():
-            self.log.info('{0}: {1}'.format(key,config[key]))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         #this variable has to be added because there is no difference
         #in the fastcomtec it can be on "stopped" or "halt"
@@ -710,9 +704,15 @@ class FastComtec(FastCounterInterface):
 
         # Turn on or off sequential cycle mode
         if sequential_mode:
-            cmd = 'sweepmode={0}'.format(hex(1978500))
+            self.log.debug("Sequential mode enabled. Make sure to set 'checksync=0' and 'nomessages=1' in mcs6a.ini.")
+            # old standard setting: 1978500
+            # old settings + disable "sweep counter not needed"
+            # + disable "allow 6 byte words"
+            raw_bytes_dec = 35528836
         else:
-            cmd = 'sweepmode={0}'.format(hex(1978496))
+            raw_bytes_dec = 35528836
+
+        cmd = 'sweepmode={0}'.format(hex(raw_bytes_dec))
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
 
         self.set_cycles(cycles_old)

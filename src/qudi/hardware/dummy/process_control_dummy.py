@@ -50,25 +50,39 @@ class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
                     limits: [-10.0, 10.0]
                     dtype: float
             setpoint_channels:
-                Power:
-                    unit: 'dBm'
-                    limits: [-120.0, 30.0]
+                Current:
+                    unit: 'A'
+                    limits: [-5, 5]
                     dtype: float
                 Frequency:
                     unit: 'Hz'
                     limits: [100.0e3, 20.0e9]
                     dtype: float
+            linear_dependency:
+                process_value_channel: 'Temperature'
+                setpoint_channel: 'Current'
+                slope: 10
+                offset: 100
+                noise: 0.1
     """
 
     _setpoint_channels = ConfigOption(
         name='setpoint_channels',
-        default={'Power': {'unit': 'dBm', 'limits': (-120.0, 30.0), 'dtype': float},
+        default={'Current': {'unit': 'A', 'limits': (-5, 5), 'dtype': float},
                  'Frequency': {'unit': 'Hz', 'limits': (100.0e3, 20.0e9), 'dtype': float}}
     )
     _process_value_channels = ConfigOption(
         name='process_value_channels',
         default={'Temperature': {'unit': 'K', 'limits': (0, np.inf), 'dtype': float},
                  'Voltage': {'unit': 'V', 'limits': (-10.0, 10.0), 'dtype': float}}
+    )
+    _linear_dependency = ConfigOption(
+        name='linear_dependency',
+        default={'process_value_channel': 'Temperature',
+                 'setpoint_channel': 'Current',
+                 'slope': 10,
+                 'offset': 100,
+                 'noise': 0.1}
     )
 
     @staticmethod
@@ -171,12 +185,25 @@ class ProcessControlDummy(ProcessControlSwitchMixin, ProcessControlInterface):
     def get_process_value(self, channel: str) -> Union[int, float]:
         """ Get current process value for a single channel """
         with self._thread_lock:
-            # Return random sample from allowed value range
             try:
                 min_val, max_val = self.constraints.channel_limits[channel]
             except KeyError as err:
                 raise ValueError(f'Invalid process channel specifier "{channel}". Valid process '
                                  f'channels are:\n{self.constraints.process_channels}') from err
+
+            # check if a dependency of process value should be simulated
+            if channel == self._linear_dependency['process_value_channel']:
+                setpoint = self._setpoints[self._linear_dependency['setpoint_channel']]
+                value = self._linear_dependency['offset'] + setpoint * self._linear_dependency['slope']
+                value *= 1 + np.random.rand() * self._linear_dependency['noise']
+                if value < min_val:
+                    return min_val
+                elif value > max_val:
+                    return max_val
+                else:
+                    return value
+
+            # otherwise return random sample from allowed value range
             if np.isinf(min_val):
                 min_val = -1000
             if np.isinf(max_val):
@@ -214,9 +241,9 @@ class ProcessSetpointDummy(ProcessControlDummy):
     process_setpoint_dummy:
         module.Class: 'dummy.process_control_dummy.ProcessSetpointDummy'
         setpoint_channels:
-            Power:
-                unit: 'dBm'
-                limits: [-120.0, 30.0]
+            Current:
+                unit: 'A'
+                limits: [-5, 5]
                 dtype: float
             Frequency:
                 unit: 'Hz'

@@ -45,14 +45,8 @@ class FastCounterDummy(FastCounterInterface):
     _gated = ConfigOption('gated', False, missing='warn')
     trace_path = ConfigOption('load_trace', None)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
-
-        self.log.debug('The following configuration was found.')
-
-        # checking for the right configuration
-        for key in config.keys():
-            self.log.info('{0}: {1}'.format(key,config[key]))
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         if self.trace_path is None:
             self.trace_path = os.path.abspath(os.path.join(__file__,

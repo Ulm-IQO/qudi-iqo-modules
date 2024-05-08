@@ -26,6 +26,7 @@ import sys
 import inspect
 import importlib
 import numpy as np
+import warnings
 
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
 from qudi.util.helpers import natural_sort, iter_modules_recursive
@@ -424,7 +425,10 @@ class PulseBlockEnsemble(object):
         # This container needs to be populated by the script creating the PulseBlockEnsemble
         # before saving it. (e.g. in generate methods in PulsedObjectGenerator class)
         self.measurement_information = dict()
-        return
+        # Dictionary container to store parameters (eg. XY8 order) of the function (eg. predefined method) that
+        # generated the pulse block ensemble.
+        self.generation_method_parameters = dict()
+
 
     def __repr__(self):
         repr_str = 'PulseBlockEnsemble(name=\'{0}\', block_list={1}, rotating_frame={2})'.format(
@@ -487,6 +491,7 @@ class PulseBlockEnsemble(object):
         self.block_list[key] = tuple(value)
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def __delitem__(self, key):
@@ -497,6 +502,7 @@ class PulseBlockEnsemble(object):
         del self.block_list[key]
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def pop(self, position=None):
@@ -520,6 +526,7 @@ class PulseBlockEnsemble(object):
 
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return self.block_list.pop(position)
 
     def insert(self, position, element):
@@ -546,6 +553,7 @@ class PulseBlockEnsemble(object):
         self.block_list.insert(position, tuple(element))
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def append(self, element):
@@ -563,12 +571,14 @@ class PulseBlockEnsemble(object):
         del self.block_list[:]
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def reverse(self):
         self.block_list.reverse()
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def get_dict_representation(self):
@@ -578,6 +588,7 @@ class PulseBlockEnsemble(object):
         dict_repr['block_list'] = self.block_list
         dict_repr['sampling_information'] = self.sampling_information
         dict_repr['measurement_information'] = self.measurement_information
+        dict_repr['generation_method_parameters'] = self.generation_method_parameters
         return dict_repr
 
     @staticmethod
@@ -587,6 +598,7 @@ class PulseBlockEnsemble(object):
                                      rotating_frame=ensemble_dict['rotating_frame'])
         new_ens.sampling_information = ensemble_dict['sampling_information']
         new_ens.measurement_information = ensemble_dict['measurement_information']
+        new_ens.generation_method_parameters = ensemble_dict['generation_method_parameters']
         return new_ens
 
 
@@ -1023,6 +1035,15 @@ class PredefinedGeneratorBase:
     @property
     def generation_parameters(self):
         return self.__sequencegeneratorlogic.generation_parameters
+
+    @generation_parameters.setter
+    def generation_parameters(self, param_dict):
+        """
+        Update the generation parameters with a given dict.
+        """
+        gen_params = self.generation_parameters
+        gen_params.update(param_dict)
+        self.__sequencegeneratorlogic.generation_parameters = gen_params
 
     @property
     def pulse_generator_constraints(self):
@@ -1547,6 +1568,7 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
 
         # create an instance of each class and put them in a temporary list
         generator_instances = [cls(sequencegeneratorlogic) for cls in generator_classes]
+        self._generator_instances = generator_instances
 
         # add references to all generate methods in each instance to a dict
         self.__populate_method_dict(instance_list=generator_instances)
@@ -1630,5 +1652,25 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         @return bool: True if obj is a valid generator class, False otherwise
         """
         if inspect.isclass(obj):
-            return PredefinedGeneratorBase in obj.__bases__ and len(obj.__bases__) == 1
+            return PredefinedGeneratorBase in obj.__bases__# and len(obj.__bases__) == 1
         return False
+
+    def activate_plugins(self):
+        [gen.activate_plugin() for gen in self._generator_instances if hasattr(gen, 'activate_plugin')]
+
+
+class PredefinedGeneratorPlugin():
+    """
+    PredefinedGeneratorPlugin is a PredefinedGenerator that can run code after the PulseObjectGenerator
+    in order to manipulate all loaded predefined methods.
+    """
+    def __init__(self, *args, **kwargs):
+        # should by of type DeprecationWarning, currently broken
+        warnings.warn(f'PredefinedGeneratorPlugin is an experimental feature and can be deprecated any time in future.')
+        super().__init__(*args, **kwargs)
+
+    def activate_plugin(self):
+        # allow plugins to invoke code after the PulseObjectGenerator is fully initialized
+        pass
+
+
