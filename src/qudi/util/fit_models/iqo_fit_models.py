@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['N15Model']
+__all__ = ['N15Model', 'N14Model', 'SaturationModel','SaturationModelBackground']
 
 import numpy as np
 from qudi.util.fit_models.model import FitModelBase, estimator
@@ -85,4 +85,48 @@ class N14Model(TripleLorentzian):
     def estimate_N14(self, data, x):
         # Todo
         estimate = self.estimate_dips(data, x)
+        return estimate
+
+class SaturationModel(FitModelBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.set_param_hint('amplitude', value=0., min=-np.inf, max=np.inf)
+        self.set_param_hint('saturation', value=0., min=0., max=np.inf)
+        self.set_param_hint('offset', value=0., min=0., max=np.inf)
+
+    @staticmethod
+    def _model_function(x, amplitude, saturation,  offset):
+        return amplitude / saturation * x / (1 + x / saturation) + offset
+
+    @estimator('Saturation')
+    def estimate_saturation(self, data, x):
+
+        estimate = self.make_params()
+        estimate['amplitude'].set(value=np.abs(max(data)-min(data)), min=0.0, max=np.inf)
+        estimate['saturation'].set(value=(x[-1]+x[0])/2, min=0, max=np.inf)
+        estimate['offset'].set(value=min(data), min=0, max=np.inf, vary=True)
+
+        return estimate
+
+class SaturationModelBackground(FitModelBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.set_param_hint('amplitude', value=0., min=-np.inf, max=np.inf)
+        self.set_param_hint('saturation', value=0., min=0., max=np.inf)
+        self.set_param_hint('offset', value=0., min=0., max=np.inf)
+        self.set_param_hint('slope', value=0., min=0., max=np.inf)
+
+    @staticmethod
+    def _model_function(x, amplitude, saturation, slope, offset):
+        return amplitude / saturation * x / (1 + x / saturation) + slope * x + offset
+
+    @estimator('Saturation')
+    def estimate_saturation(self, data, x):
+
+        estimate = self.make_params()
+        estimate['amplitude'].set(value=np.abs(max(data)-min(data)), min=0.0, max=np.inf)
+        estimate['saturation'].set(value=(x[-1]+x[0])/2, min=0, max=np.inf)
+        estimate['slope'].set(value=np.abs(max(data)-min(data))/np.abs(max(x)-min(x)), min=0, max=np.inf)
+        estimate['offset'].set(value=min(data), min=min(data), max=max(data), vary=True)
+
         return estimate
