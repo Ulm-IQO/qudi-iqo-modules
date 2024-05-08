@@ -213,7 +213,6 @@ class HighFinessePID(PIDControllerInterface):
         else:
             return wavelength
 
-    @property
     def process_value_unit(self):
         """ read-only property for the unit of the process value """
         return self._input_unit
@@ -226,7 +225,6 @@ class HighFinessePID(PIDControllerInterface):
         proxy: HighFinesseProxy = self._proxy()
         return proxy.get_control_value(self._output_port)
 
-    @property
     def control_value_unit(self) -> str:
         """ read-only property for the unit of the control value """
         return 'V'
