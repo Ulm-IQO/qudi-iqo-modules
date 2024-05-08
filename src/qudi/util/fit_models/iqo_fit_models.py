@@ -33,8 +33,8 @@ class N15Model(DoubleLorentzian):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    @estimator('N15')
-    def estimate_N15(self, data, x):
+    @estimator('N15 dips')
+    def estimate_N15_dips(self, data, x):
         estimate = self.estimate_dips(data, x)
         hf_splitting = 3.03e6
         test_shift = np.array([-1, 1]) * hf_splitting
@@ -49,7 +49,7 @@ class N15Model(DoubleLorentzian):
                                                 estimate['amplitude_{}'.format(ref_str)].value,
                                                 estimate['amplitude_{}'.format(ref_str)].value / 2)
             sum_res[ii] = np.abs(data - lor_estimate).sum()
-        hf_shift = test_shift[sum_res.argmax()]
+        hf_shift = test_shift[sum_res.argmin()]
 
         estimate['center_1'].set(value=estimate['center_{}'.format(ref_str)].value,
                                  min=estimate['center_{}'.format(ref_str)].min,
@@ -74,6 +74,21 @@ class N15Model(DoubleLorentzian):
                                 expr='sigma_1')
         return estimate
 
+    @estimator('N15 peaks')
+    def estimate_N15_peaks(self, data, x):
+        estimate = self.estimate_N15_dips(-data, x)
+        estimate['offset'].set(value=-estimate['offset'].value,
+                               min=-estimate['offset'].max,
+                               max=-estimate['offset'].min)
+        estimate['amplitude_1'].set(value=-estimate['amplitude_1'].value,
+                                  min=-estimate['amplitude_1'].max,
+                                  max=-estimate['amplitude_1'].min)
+        estimate['amplitude_2'].set(value=-estimate['amplitude_2'].value,
+                                    min=-estimate['amplitude_2'].max,
+                                    max=-estimate['amplitude_2'].min)
+        return estimate
+
+
 class N14Model(TripleLorentzian):
     """
     """
@@ -86,6 +101,7 @@ class N14Model(TripleLorentzian):
         # Todo
         estimate = self.estimate_dips(data, x)
         return estimate
+
 
 class SaturationModel(FitModelBase):
     def __init__(self, **kwargs):
@@ -107,6 +123,7 @@ class SaturationModel(FitModelBase):
         estimate['offset'].set(value=min(data), min=0, max=np.inf, vary=True)
 
         return estimate
+
 
 class SaturationModelBackground(FitModelBase):
     def __init__(self, **kwargs):
