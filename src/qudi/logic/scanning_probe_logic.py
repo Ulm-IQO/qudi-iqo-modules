@@ -27,12 +27,12 @@ from collections import OrderedDict
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
-from qudi.util.linear_transform import LinearTransformation, LinearTransformation3D # lives in branch qudi-core:coord-transforma
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.util.linear_transform \
-    import compute_rotation_matrix_to_plane, compute_reduced_vectors, find_changing_axes
+from qudi.util.linear_transform import find_changing_axes, LinearTransformation3D
+from qudi.util.linear_transform import compute_rotation_matrix_to_plane, compute_reduced_vectors
+
 
 class ScanningProbeLogic(LogicBase):
     """
@@ -83,11 +83,6 @@ class ScanningProbeLogic(LogicBase):
         self._curr_caller_id = self.module_uuid
         self._tilt_corr_transform = None
         self._tilt_corr_axes = []
-        self._tilt_corr_settings = {'auto_origin': None,
-                                    'vec_1': None,
-                                    'vec_2': None,
-                                    'vec_3': None,
-                                    'vec_shift': None}
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -126,8 +121,6 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_timer.timeout.connect(self.__scan_poll_loop, QtCore.Qt.QueuedConnection)
 
         self._scan_axes = OrderedDict(sorted(self._scanner().get_constraints().axes.items()))
-
-        return
 
     def on_deactivate(self):
         """ Reverse steps of activation
