@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['N15Model', 'N14Model', 'SaturationModel','SaturationModelBackground']
+__all__ = ['N15Model', 'N14Model', 'SaturationModel', 'SaturationModelBackground']
 
 import numpy as np
 from qudi.util.fit_models.model import FitModelBase, estimator
@@ -96,10 +96,80 @@ class N14Model(TripleLorentzian):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
 
-    @estimator('N14')
-    def estimate_N14(self, data, x):
-        # Todo
+    @estimator('N14 dips')
+    def estimate_N14_dips(self, data, x):
         estimate = self.estimate_dips(data, x)
+        print(estimate)
+        hf_splitting = 2.15e6
+        test_shift = np.array([-1, 0, 1]) * hf_splitting
+        ref_str = str(np.argmax([estimate['amplitude_1'].value, estimate['amplitude_2'].value,
+                                 estimate['amplitude_3'].value]) + 1)
+        sum_res = np.zeros(len(test_shift))
+        for ii, shift in enumerate(test_shift):
+            lor_estimate = self._model_function(x, estimate['offset'].value,
+                                                estimate['center_{}'.format(ref_str)].value - hf_splitting + shift,
+                                                estimate['center_{}'.format(ref_str)].value + shift,
+                                                estimate['center_{}'.format(ref_str)].value + hf_splitting + shift,
+                                                estimate['sigma_{}'.format(ref_str)].value,
+                                                estimate['sigma_{}'.format(ref_str)].value,
+                                                estimate['sigma_{}'.format(ref_str)].value,
+                                                estimate['amplitude_{}'.format(ref_str)].value,
+                                                estimate['amplitude_{}'.format(ref_str)].value,
+                                                estimate['amplitude_{}'.format(ref_str)].value)
+            sum_res[ii] = np.abs(data - lor_estimate).sum()
+        print(sum_res)
+        hf_shift = test_shift[sum_res.argmin()]
+
+        estimate['center_1'].set(value=estimate['center_{}'.format(ref_str)].value - hf_splitting + hf_shift,
+                                 min=estimate['center_{}'.format(ref_str)].min - hf_splitting + hf_shift,
+                                 max=estimate['center_{}'.format(ref_str)].max - hf_splitting + hf_shift)
+        estimate['amplitude_1'].set(value=estimate['amplitude_{}'.format(ref_str)].value,
+                                    min=estimate['amplitude_{}'.format(ref_str)].min,
+                                    max=estimate['amplitude_{}'.format(ref_str)].max)
+        estimate['sigma_1'].set(value=estimate['sigma_{}'.format(ref_str)].value,
+                                min=estimate['sigma_{}'.format(ref_str)].min,
+                                max=estimate['sigma_{}'.format(ref_str)].max)
+
+        estimate['center_2'].set(value=estimate['center_1'].value + hf_splitting,
+                                 min=estimate['center_1'].min + hf_splitting,
+                                 max=estimate['center_1'].max + hf_splitting,
+                                 expr='center_1+{0}'.format(hf_splitting))
+        estimate['amplitude_2'].set(value=estimate['amplitude_1'].value,
+                                    min=estimate['amplitude_1'].min,
+                                    max=estimate['amplitude_1'].max)
+        estimate['sigma_2'].set(value=estimate['sigma_1'].value,
+                                min=estimate['sigma_1'].min,
+                                max=estimate['sigma_1'].max,
+                                expr='sigma_1')
+
+        estimate['center_3'].set(value=estimate['center_1'].value + 2 * hf_splitting,
+                                 min=estimate['center_1'].min + 2 * hf_splitting,
+                                 max=estimate['center_1'].max + 2 * hf_splitting,
+                                 expr='center_1+{0}'.format(2 * hf_splitting))
+        estimate['amplitude_3'].set(value=estimate['amplitude_1'].value,
+                                    min=estimate['amplitude_1'].min,
+                                    max=estimate['amplitude_1'].max)
+        estimate['sigma_3'].set(value=estimate['sigma_1'].value,
+                                min=estimate['sigma_1'].min,
+                                max=estimate['sigma_1'].max,
+                                expr='sigma_1')
+        return estimate
+
+    @estimator('N14 peaks')
+    def estimate_N14_peaks(self, data, x):
+        estimate = self.estimate_N14_dips(-data, x)
+        estimate['offset'].set(value=-estimate['offset'].value,
+                               min=-estimate['offset'].max,
+                               max=-estimate['offset'].min)
+        estimate['amplitude_1'].set(value=-estimate['amplitude_1'].value,
+                                    min=-estimate['amplitude_1'].max,
+                                    max=-estimate['amplitude_1'].min)
+        estimate['amplitude_2'].set(value=-estimate['amplitude_2'].value,
+                                    min=-estimate['amplitude_2'].max,
+                                    max=-estimate['amplitude_2'].min)
+        estimate['amplitude_3'].set(value=-estimate['amplitude_3'].value,
+                                    min=-estimate['amplitude_3'].max,
+                                    max=-estimate['amplitude_3'].min)
         return estimate
 
 
