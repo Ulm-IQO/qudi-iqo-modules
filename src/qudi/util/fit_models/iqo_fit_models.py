@@ -189,7 +189,7 @@ class SaturationModel(FitModelBase):
 
         estimate = self.make_params()
         estimate['amplitude'].set(value=np.abs(max(data)-min(data)), min=0.0, max=np.inf)
-        estimate['saturation'].set(value=(x[-1]+x[0])/2, min=0, max=np.inf)
+        estimate['saturation'].set(value=(x[-1]+x[0])/2, min=0.0, max=np.inf)
         estimate['offset'].set(value=min(data), min=0, max=np.inf, vary=True)
 
         return estimate
