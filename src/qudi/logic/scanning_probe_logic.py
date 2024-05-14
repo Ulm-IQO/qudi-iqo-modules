@@ -23,12 +23,15 @@ If not, see <https://www.gnu.org/licenses/>.
 from PySide2 import QtCore
 import copy as cp
 import numpy as np
+from collections import OrderedDict
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
+from qudi.util.linear_transform import find_changing_axes, LinearTransformation3D
+from qudi.util.linear_transform import compute_rotation_matrix_to_plane, compute_reduced_vectors
 
 
 class ScanningProbeLogic(LogicBase):
@@ -57,6 +60,7 @@ class ScanningProbeLogic(LogicBase):
     _scan_ranges = StatusVar(name='scan_ranges', default=None)
     _scan_resolution = StatusVar(name='scan_resolution', default=None)
     _scan_frequency = StatusVar(name='scan_frequency', default=None)
+    _tilt_corr_settings = StatusVar(name='tilt_corr_settings', default={})
 
     # config options
     _min_poll_interval = ConfigOption(name='min_poll_interval', default=None)
@@ -65,6 +69,7 @@ class ScanningProbeLogic(LogicBase):
     sigScanStateChanged = QtCore.Signal(bool, object, object)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigScanSettingsChanged = QtCore.Signal(dict)
+    sigTiltCorrSettingsChanged = QtCore.Signal(dict)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -76,7 +81,8 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
-        return
+        self._tilt_corr_transform = None
+        self._tilt_corr_axes = []
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -113,7 +119,8 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_timer = QtCore.QTimer()
         self.__scan_poll_timer.setSingleShot(True)
         self.__scan_poll_timer.timeout.connect(self.__scan_poll_loop, QtCore.Qt.QueuedConnection)
-        return
+
+        self._scan_axes = OrderedDict(sorted(self._scanner().get_constraints().axes.items()))
 
     def on_deactivate(self):
         """ Reverse steps of activation
@@ -296,8 +303,13 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
+            #self.log.debug(f"Requested Set pos to= {pos_dict}")
             ax_constr = self.scanner_constraints.axes
-            new_pos = pos_dict.copy()
+            pos_dict = self._scanner()._expand_coordinate(cp.copy(pos_dict))
+            #self.log.debug(f"Expand to= {pos_dict}")
+
+            pos_dict = self._scanner().coordinate_transform(pos_dict)
+
             for ax, pos in pos_dict.items():
                 if ax not in ax_constr:
                     self.log.error('Unknown scanner axis: "{0}"'.format(ax))
@@ -305,19 +317,22 @@ class ScanningProbeLogic(LogicBase):
                     self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                     return new_pos
 
-                new_pos[ax] = ax_constr[ax].clip_value(pos)
-                if pos != new_pos[ax]:
-                    self.log.warning('Scanner position target value out of bounds for axis "{0}". '
-                                     'Clipping value to {1:.3e}.'.format(ax, new_pos[ax]))
+                pos_dict[ax] = ax_constr[ax].clip_value(pos)
+                if pos != pos_dict[ax]:
+                    self.log.warning(f'Scanner position target value {pos:.3e} out of bounds for axis "{ax}". '
+                                     f'Clipping value to {pos_dict[ax]:.3e}.')
 
-            new_pos = self._scanner().move_absolute(new_pos, blocking=move_blocking)
+
+            # move_absolute expects untransformed coordinatess, so invert clipped pos
+            pos_dict = self._scanner().coordinate_transform(pos_dict, inverse=True)
+            #self.log.debug(f"In front of hw.move_abs {pos_dict}")
+            new_pos = self._scanner().move_absolute(pos_dict, blocking=move_blocking)
+            #self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
             #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
-            self.sigScannerTargetChanged.emit(
-                new_pos,
-                self.module_uuid if caller_id is None else caller_id
-            )
+            self.sigScannerTargetChanged.emit(new_pos,
+                self.module_uuid if caller_id is None else caller_id)
             return new_pos
 
     def toggle_scan(self, start, scan_axes, caller_id=None):
@@ -325,6 +340,131 @@ class ScanningProbeLogic(LogicBase):
             if start:
                 return self.start_scan(scan_axes, caller_id)
             return self.stop_scan()
+
+    def toggle_tilt_correction(self, enable=True):
+
+        target_pos = self._scanner().get_target()
+        is_enabled = self._scanner().coordinate_transform_enabled
+
+        func = self.__transform_func if self._tilt_corr_transform else None
+
+        if enable:
+            self._scanner().set_coordinate_transform(func, self._tilt_corr_transform)
+        else:
+            self._scanner().set_coordinate_transform(None)
+
+        if enable != is_enabled:
+            # set target pos again with updated, (dis-) engaged tilt correction
+            self.set_target_position(target_pos, move_blocking=True)
+
+    @property
+    def tilt_correction_settings(self):
+        return self._tilt_corr_settings
+
+    def configure_tilt_correction(self, support_vecs=None, shift_vec=None):
+        """
+        Configure the tilt correction with a set of support vector that define the tilted plane
+        that should be horizontal after the correction
+
+        @param list support_vecs: list of dicts. Each dict contains the scan axis as keys.
+        @param dict shift_vec: Vector that defines the origin of rotation.
+        """
+
+        if support_vecs is None:
+            self._tilt_corr_transform = None
+            return
+
+        support_vecs_arr = np.asarray(self.tilt_vector_dict_2_array(support_vecs, reduced_dim=False))
+        if shift_vec is not None:
+            shift_vec_arr = np.array(self.tilt_vector_dict_2_array(shift_vec, reduced_dim=False))
+
+        if support_vecs_arr.shape[0] != 3:
+            raise ValueError(f"Need 3 n-dim support vectors, not {support_vecs_arr.shape[0]}")
+
+        auto_origin = False
+        if shift_vec is None:
+            auto_origin = True
+            red_support_vecs = compute_reduced_vectors(support_vecs_arr)
+            shift_vec_arr = np.mean(red_support_vecs, axis=0)
+            shift_vec = self.tilt_vector_array_2_dict(shift_vec_arr, reduced_dim=True)
+        else:
+            red_support_vecs = np.vstack([support_vecs_arr, shift_vec_arr])
+            red_vecs = compute_reduced_vectors(red_support_vecs)
+            red_support_vecs = red_vecs[:-1,:]
+            shift_vec_arr = red_vecs[-1,:]
+
+        tilt_axes = find_changing_axes(support_vecs_arr)
+
+        if red_support_vecs.shape != (3,3) or shift_vec_arr.shape[0] != 3:
+            n_dim = support_vecs_arr.shape[1]
+            raise ValueError(f"Can't calculate tilt in >3 dimensions. "
+                             f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. ")
+
+        rot_mat = compute_rotation_matrix_to_plane(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
+        shift = shift_vec_arr
+
+        # shift coord system to origin, rotate and shift shift back according to LT(x) = (R+s)*x - R*s
+        lin_transform = LinearTransformation3D()
+        shift_vec_transform = LinearTransformation3D()
+        
+        lin_transform.add_rotation(rot_mat)
+        lin_transform.translate(shift[0], shift[1], shift[2])
+
+        shift_vec_transform.add_rotation(rot_mat)
+        shift_back = shift_vec_transform(-shift)
+
+        lin_transform.translate(shift_back[0], shift_back[1], shift_back[2])
+
+        self._tilt_corr_transform = lin_transform
+        self._tilt_corr_axes = [el for idx, el in enumerate(self._scan_axes) if tilt_axes[idx]]
+        self._tilt_corr_settings = {'auto_origin': auto_origin,
+                                    'vec_1': support_vecs[0],
+                                    'vec_2': support_vecs[1],
+                                    'vec_3': support_vecs[2],
+                                    'vec_shift': shift_vec}
+
+        #self.log.debug(f"Shift vec {shift}, shift back {shift_back}")
+        #self.log.debug(f"Matrix: {lin_transform.matrix}")
+        #self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
+
+        self.sigTiltCorrSettingsChanged.emit(self._tilt_corr_settings)
+
+    def tilt_vector_dict_2_array(self, vector, reduced_dim=False):
+        """
+        Convert vectors given as dict (with axes keys) to arrays and ensure correct order.
+
+        @param dict vector: (single coord or arrays per key) or list of dicts
+        @param bool reduced_dim: The vector given has been reduced to 3 dims (from n-dim for arbitrary vectors)
+        @return np.array or list of np.array: vector(s) as array
+        """
+
+        axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
+
+        if type(vector) != list:
+            vectors = [vector]
+        else:
+            vectors = vector
+
+        vecs_arr = []
+        for vec in vectors:
+            if not isinstance(vec, dict):
+                raise ValueError
+
+            # vec_sorted dict has correct order (defined by order in axes). Then converted to array
+            vec_sorted = {ax: np.nan for ax in axes}
+            vec_sorted.update(vec)
+            vec_arr = np.asarray(list(vec_sorted.values()))
+
+            vecs_arr.append(vec_arr)
+
+        if len(vecs_arr) == 1:
+            return vecs_arr[0]
+        return vecs_arr
+
+    def tilt_vector_array_2_dict(self, array, reduced_dim=True):
+        axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
+
+        return {ax: array[idx] for idx, ax in enumerate(axes)}
 
     def _update_scan_settings(self, scan_axes, settings):
         for ax_index, ax in enumerate(scan_axes):
@@ -448,3 +588,25 @@ class ScanningProbeLogic(LogicBase):
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.stop()
+
+    def __transform_func(self, coord, inverse=False):
+        """
+        Takes a coordinate as dict (with axes keys) and applies the tilt correction transformation.
+        To this end, reduce dimensionality to 3d on the axes configured for the tilt transformation.
+        :param coord: dict of the coordinate. Keys are configured scanner axes.
+        :param inverse:
+        :return:
+        """
+
+        coord_reduced = {key:val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}
+        coord_reduced = OrderedDict(sorted(coord_reduced.items()))
+
+        # convert from coordinate dict to plain vector
+        transform = self._tilt_corr_transform.__call__
+        coord_vec = self.tilt_vector_dict_2_array(coord_reduced, reduced_dim=True).T
+        coord_vec_transf = transform(coord_vec, invert=inverse).T
+        # make dict again after vector rotation
+        coord_transf = cp.copy(coord)
+        [coord_transf.update({ax: coord_vec_transf[idx]}) for (idx, ax) in enumerate(self._tilt_corr_axes)]
+
+        return coord_transf
