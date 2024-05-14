@@ -11,6 +11,7 @@
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 - Improved support for Stanford Research Systems signal generators
 - Expanded documentation of the microwave interface
+- Added ADC from spectrum instrumentation as `FastCounterInterface` hardware.
 
 ### Other
 
