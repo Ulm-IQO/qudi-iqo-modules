@@ -29,13 +29,13 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 from qudi.interface.fast_counter_interface import FastCounterInterface
 
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_settings import CardSettings, MeasurementSettings
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_commands.si_commands import Commands
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_dataclass import Data
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_data_fetcher import DataFetcher
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_data_processer import DataProcessGated, DataProcessorUngated
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_commander import Commander
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_loop_manager import LoopManager
+from qudi.hardware.fast_adc.spectrum.si_utils.si_settings import CardSettings, MeasurementSettings
+from qudi.hardware.fast_adc.spectrum.si_commands.si_commands import Commands
+from qudi.hardware.fast_adc.spectrum.si_utils.si_dataclass import Data
+from qudi.hardware.fast_adc.spectrum.si_utils.si_data_fetcher import DataFetcher
+from qudi.hardware.fast_adc.spectrum.si_utils.si_data_processer import DataProcessGated, DataProcessorUngated
+from qudi.hardware.fast_adc.spectrum.si_utils.si_commander import Commander
+from qudi.hardware.fast_adc.spectrum.si_utils.si_loop_manager import LoopManager
 
 
 class CardStatus(IntEnum):
@@ -67,7 +67,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     Config example:
     si:
-        module.Class: 'fast_adc.spectrum_instrumentation.si_main.SpectrumInstrumentation'
+        module.Class: 'fast_adc.spectrum.si_main.SpectrumInstrumentation'
         options:
             ai_ch:
                 - 'CH0'

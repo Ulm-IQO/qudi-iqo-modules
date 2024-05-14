@@ -22,12 +22,12 @@ If not, see <https://www.gnu.org/licenses/>.
 import time
 import numpy as np
 
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_commands.card_commands import CardCommands
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_commands.buffer_commands \
+from qudi.hardware.fast_adc.spectrum.si_commands.card_commands import CardCommands
+from qudi.hardware.fast_adc.spectrum.si_commands.buffer_commands \
     import DataBufferCommands, TsBufferCommands
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_commands.configure_commands import ConfigureCommands
+from qudi.hardware.fast_adc.spectrum.si_commands.configure_commands import ConfigureCommands
 
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_settings import MeasurementSettings
+from qudi.hardware.fast_adc.spectrum.si_utils.si_settings import MeasurementSettings
 
 class Commands:
     '''

@@ -19,7 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_settings import MeasurementSettings
+from qudi.hardware.fast_adc.spectrum.si_utils.si_settings import MeasurementSettings
 
 class Commander:
     """

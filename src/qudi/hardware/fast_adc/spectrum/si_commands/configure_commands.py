@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import ctypes
 from functools import reduce
 from pyspcm import *
-from qudi.hardware.fast_adc.spectrum_instrumentation.si_settings import CardSettings
+from qudi.hardware.fast_adc.spectrum.si_utils.si_settings import CardSettings
 
 
 class ConfigureCommands:
