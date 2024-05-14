@@ -32,6 +32,9 @@ class DataFetcher:
         self.ts_dt = None
 
     def init_buffer(self, ms):
+        """
+        @param MeasurementSettings ms: MeasurementSettings instance from the main.
+        """
         self.hw_dt = DataTransfer(ms.c_buf_ptr, ms.data_type,
                                   ms.data_bytes_B, ms.seq_size_S, ms.reps_per_buf)
         if ms.gated:
@@ -61,7 +64,7 @@ class DataFetcher:
 class DataTransfer:
     '''
     This class can access the data stored in the buffer by specifying the buffer pointer.
-    Refer to 'Buffer handling' in the documentation.
+    Refer to the chapter 'Buffer handling' in the manual.
     '''
 
     def __init__(self, c_buf_ptr, data_type, data_bytes_B, seq_size_S, reps_per_buf):

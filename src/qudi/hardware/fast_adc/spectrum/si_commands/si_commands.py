@@ -29,13 +29,18 @@ from qudi.hardware.fast_adc.spectrum.si_commands.configure_commands import Confi
 
 from qudi.hardware.fast_adc.spectrum.si_utils.si_settings import MeasurementSettings
 
+
 class Commands:
-    '''
+    """
     This class has hardware commands and actions used in the data process.
     The commands class do not possess any measurement information.
     The action class has measurement information and interprets the information from the commands based on that.
-    '''
+    """
     def __init__(self, card, log):
+        """
+        @param str card: The card handle.
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
         self.card = CardCommands(card)
         self.data_buf = DataBufferCommands(card)
         self.ts_buf = TsBufferCommands(card)
@@ -44,10 +49,10 @@ class Commands:
 
 
 class ProcessAction:
-    '''
+    """
     This class has actions used in the data process. They modify the commands to be useful in the measurement.
-    '''
-    def __init__(self, commands):
+    """
+    def __init__(self, commands:Commands):
         self.cmd = commands
 
         self.wait_time_interval = 0.01

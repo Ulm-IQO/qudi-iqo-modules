@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 from qudi.hardware.fast_adc.spectrum.si_utils.si_settings import MeasurementSettings
 
+
 class Commander:
     """
     This class commands the process to be done in the measurement loop.
@@ -28,6 +29,10 @@ class Commander:
     Its main join is to ask the buffer about available data, process that data, and free that buffer.
     """
     def __init__(self, cmd, log):
+        """
+        @param Commands cmd: Command instance
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
         self.cmd = cmd
         self.processor = None
         self._log = log

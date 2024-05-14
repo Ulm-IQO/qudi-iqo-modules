@@ -25,13 +25,17 @@ from qudi.util.mutex import Mutex
 
 
 class LoopManager:
-    '''
+    """
     This is the main data process loop class.
     The loop keeps on asking the commander to do the measurement process.
-    '''
+    """
     threadlock = Mutex()
 
     def __init__(self, commander, log):
+        """
+        @param Commander commander: Commander instance from the main.
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
         self.commander = commander
         self._log = log
 

@@ -23,13 +23,16 @@ from pyspcm import *
 
 
 class CardCommands:
-    '''
+    """
     This class contains the methods which wrap the commands to control the SI card.
-    '''
+    Refer to the chapter 'Acquisition modes', the section 'Commands' for more information.
+    """
 
     def __init__(self, card):
+        """
+        @param str card: The card handle.
+        """
         self._card = card
-        self._error = None
 
     def start_all(self):
         spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START | M2CMD_CARD_ENABLETRIGGER
@@ -44,29 +47,29 @@ class CardCommands:
                             | M2CMD_DATA_STARTDMA | M2CMD_EXTRA_POLL)
 
     def card_start(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START)
 
     def card_stop(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_STOP)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_STOP)
 
     def card_reset(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_RESET)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_RESET)
 
     def enable_trigger(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_ENABLETRIGGER)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_ENABLETRIGGER)
 
     def disable_trigger(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_DISABLETRIGGER)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_DISABLETRIGGER)
 
     def force_trigger(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_FORCETRIGGER)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_FORCETRIGGER)
 
     def start_dma(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_STARTDMA)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_STARTDMA)
 
     def stop_dma(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_STOPDMA)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_STOPDMA)
 
     def wait_dma(self):
-        self._error = spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_WAITDMA)
+        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_WAITDMA)
 

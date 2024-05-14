@@ -20,11 +20,16 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import copy
 
+
 class DataProcessorUngated:
     """
     This class brings the data through the fetcher class and store it in the data class for ungated measurement.
     """
     def __init__(self, data, fetcher):
+        """
+        @param Data data: Data instance from the main.
+        @param DataFetcher fetcher: DataFetcher instance from the main.
+        """
         self.data = data
         self.fetcher = fetcher
 

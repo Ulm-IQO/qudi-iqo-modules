@@ -49,7 +49,8 @@ class CardStatus(IntEnum):
 class SpectrumInstrumentation(FastCounterInterface):
 
     '''
-    Hardware class for the spectrum instrumentation card
+    Hardware class for the spectrum instrumentation card.
+    pyspcm.py and spcm_tools.py from the spectrum instrumentation need to be stored in your library.
 
     Implemented mode:
     - trigger_mode:
@@ -215,7 +216,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
     def on_deactivate(self):
         """
-        Close the card
+        Close the card.
         """
         spcm_vClose(self.card)
 

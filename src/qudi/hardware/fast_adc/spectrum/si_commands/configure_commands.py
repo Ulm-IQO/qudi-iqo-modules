@@ -26,11 +26,16 @@ from qudi.hardware.fast_adc.spectrum.si_utils.si_settings import CardSettings
 
 
 class ConfigureCommands:
-    '''
+    """
     This class instantiates all the classes for configuration and input the card settings.
-    '''
+    """
 
     def __init__(self, card, log):
+        """
+        @param str card: The card handle.
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
+
         self._card = card
         self._log = log
 
@@ -78,11 +83,19 @@ class ConfigureCommands:
 
 
 class AnalogInputConfigureCommands:
+    """
+    This class configures the analog input.
+    Refer to the chapter 'Analog Inputs' in the manual for more information.
+    """
     ai_ch_dict = {'CH0': CHANNEL0, 'CH1': CHANNEL1}
     ai_term_dict = {'1MOhm': 0, '50Ohm': 1}
     ai_coupling_dict = {'DC': 0, 'AC': 1}
 
     def __init__(self, card, log):
+        """
+        @param str card: The card handle.
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
         self._card = card
         self._log = log
 
@@ -111,8 +124,15 @@ class AnalogInputConfigureCommands:
         self._error = spcm_dwSetParam_i32(self._card, SPC_ACDC1, self.ai_coupling_dict[ai_coupling])  # A "0"("1") sets he DC(AC)coupling
 
 class AcquisitionConfigureCommands:
-
+    """
+    This class configures the acquisition mode of the card.
+    Refer to the chapter 'Acquisition modes' in the manual for more information.
+    """
     def __init__(self, card, log):
+        """
+        @param str card: The card handle.
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
         self._card = card
         self._log = log
 
@@ -274,10 +294,15 @@ class AcquisitionConfigureCommands:
 
 
 class TriggerConfigureCommands:
-    ''''
+    """'
     This class configures the trigger modes and the input parameters accordingly.
-    '''
+    Refer to the chapter 'Trigger modes and appendant registers' for more information.
+    """
     def __init__(self, card, log):
+        """
+        @param str card: The card handle.
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
         self._card = card
         self._log = log
 
@@ -320,10 +345,15 @@ class TriggerConfigureCommands:
 
 
 class DataTransferConfigureCommands:
-    '''
+    """
     This class configures the transfer buffer dependent on the buffer type specified in the argument.
-    '''
+    Refer to the chapter 'Commands', the section 'Data transfer' for more information.
+    """
     def __init__(self, card, log):
+        """
+        @param str card: The card handle.
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
         self._card = card
         self._log = log
 
@@ -417,10 +447,15 @@ class DataTransferConfigureCommands:
 
 
 class TimestampConfigureCommands:
-    '''
+    """
     This class configures the timestamp mode.
-    '''
+    Refer to the chapter 'Timestamps', the section 'Timestamps mode' for more information.
+    """
     def __init__(self, card, log):
+        """
+        @param str card: The card handle.
+        @param log: qudi logger from the SpectrumInstrumentation.
+        """
         self._card = card
         self._log = log
 
@@ -438,10 +473,10 @@ class TimestampConfigureCommands:
 
 
 class ConfigureRegisterChecker:
-    '''
+    """
     This class can be used to check if the card settings are correctly input.
     The registers can be obtained from the card to the CardSettings (csr).
-    '''
+    """
     def __init__(self, card, log):
         self._card = card
         self._log = log

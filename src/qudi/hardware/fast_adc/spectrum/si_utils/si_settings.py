@@ -26,9 +26,9 @@ from ctypes import c_void_p, c_int16, c_int32, c_uint64
 
 @dataclass
 class CardSettings:
-    '''
+    """
     This dataclass contains parameters input to the card.
-    '''
+    """
     ai_ch: tuple = 'CH0'
     ai0_range_mV: int = 1000
     ai0_offset_mV: int = 0
@@ -95,9 +95,9 @@ class CardSettings:
 
 @dataclass
 class MeasurementSettings:
-    '''
+    """
     This dataclass contains paremeters given by the logic and used for data process.
-    '''
+    """
     #Fixed
     c_buf_ptr: typing.Any = c_void_p()
     #Given by the config
