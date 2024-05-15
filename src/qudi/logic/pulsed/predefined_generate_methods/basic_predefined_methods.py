@@ -1021,12 +1021,12 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
         delay_element = self._get_delay_gate_element()
         # Create PulseBlock and append PulseBlockElements
-        readout_block = PulseBlock(name='{0}_readout'.format(name))
+        readout_block = PulseBlock(name='{0}readout'.format(name))
         readout_block.append(laser_element)
         readout_block.append(delay_element)
         created_blocks.append(readout_block)
         # Create PulseBlockEnsemble and append block to it
-        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
+        readout_ensemble = PulseBlockEnsemble(name='{0}readout'.format(name), rotating_frame=False)
         readout_ensemble.append((readout_block.name, 0))
         created_ensembles.append(readout_ensemble)
 
@@ -1050,11 +1050,11 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # Get tau PulseBlockElement
         tau_element = self._get_idle_element(length=tau_start, increment=0)
         # Create PulseBlock and append PulseBlockElements
-        tau_block = PulseBlock(name='{0}_tau'.format(name))
+        tau_block = PulseBlock(name='{0}tau'.format(name))
         tau_block.append(tau_element)
         created_blocks.append(tau_block)
         # Create PulseBlockEnsemble and append block to it
-        tau_ensemble = PulseBlockEnsemble(name='{0}_tau'.format(name), rotating_frame=False)
+        tau_ensemble = PulseBlockEnsemble(name='{0}tau'.format(name), rotating_frame=False)
         tau_ensemble.append((tau_block.name, 0))
         created_ensembles.append(tau_ensemble)
 
@@ -1076,7 +1076,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                                             created_blocks=created_blocks)
         # Make the sequence loop infinitely by setting the go_to parameter of the last sequence
         # step to the first step.
-        t1_sequence[-1].go_to = 1
+        # t1_sequence[-1].go_to = 1
 
         # Trigger the calculation of parameters in the PulseSequence instance
         t1_sequence.refresh_parameters()
