@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Interface file for lasers whose frequency can be scanned
+Interface file for lasers whose frequency can be scanned and also stabilized
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
