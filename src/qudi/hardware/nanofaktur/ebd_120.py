@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from qudi.interface.process_control_interface import ProcessSetpointInterface
+import ctypes
 
 
 class EBD120(ProcessSetpointInterface):
@@ -29,13 +30,37 @@ class EBD120(ProcessSetpointInterface):
     This class is designed to work with the NiScanningProbeInterfuse to fullfill the ScanningProbeInterface.
     """
 
+    _dll_location = "C:/nanoFaktur/lib/mingw/x64/nF_interface_x64.dll"
+
+    def __init__(self):
+        self._dll = None
+
+    def on_activate(self) -> None:
+        self._dll = ctypes.cdll.LoadLibrary(self._dll_location)
+
+    def on_deactivate(self) -> None:
+        self.unload_dll(self._dll)
+
     def ___init__(self, *args, **kwargs):
         pass
 
-    def set_setpoint(self, channel: str, value: _Real) -> None:
+    def _get_device_info(self):
+        message = self._dll.nF_get_dll_revision()
+        self.log.warn(f"device_info = {message}")
+
+    def set_setpoint(self, channel: str, value) -> None:
         """Set new setpoint for a single channel"""
         pass
 
-    def get_setpoint(self, channel: str) -> _Real:
+    def get_setpoint(self, channel: str):
         """Get current setpoint for a single channel"""
         pass
+
+    def unload_dll(self, dll):
+        """
+        Method to free WD-DASK dll. This makes sure that the DLL can be accessed again without terminating the python thread first.
+        """
+        dll_handle = ctypes.c_void_p(dll._handle)
+        del dll
+        ctypes.windll.kernel32.FreeLibrary(dll_handle)
+        print(f"Freed DLL at location {dll_handle.value}")
