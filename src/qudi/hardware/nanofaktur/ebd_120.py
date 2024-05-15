@@ -20,7 +20,10 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from qudi.interface.process_control_interface import ProcessSetpointInterface
+from qudi.interface.process_control_interface import (
+    ProcessSetpointInterface,
+    ProcessControlConstraints,
+)
 import ctypes
 
 
