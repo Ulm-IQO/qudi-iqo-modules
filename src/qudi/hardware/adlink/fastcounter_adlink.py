@@ -22,279 +22,17 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from qudi.interface.fast_counter_interface import FastCounterInterface
 import ctypes
-from enum import Enum
 import os
-from datetime import datetime
 from qudi.core.configoption import ConfigOption
 import time
 import numpy as np
-
-
-class AdlinkDataTypes:
-    """
-    Utility class that wraps the datatype-naming-convention
-    of the adlink function manual to the original c-types datatypes.
-    """
-
-    U8 = ctypes.c_ubyte
-    I16 = ctypes.c_short
-    U16 = ctypes.c_ushort
-    I32 = ctypes.c_long
-    U32 = ctypes.c_ulong
-    I64 = ctypes.c_longlong
-    U64 = ctypes.c_ulonglong
-    F32 = ctypes.c_float
-    F64 = ctypes.c_double
-
-
-class AdlinkDeviceProperties(ctypes.Structure):
-    _fields_ = [
-        ("card_type", AdlinkDataTypes.I16),
-        ("num_of_channels", AdlinkDataTypes.I16),
-        ("data_width", AdlinkDataTypes.I16),
-        ("default_range", AdlinkDataTypes.I16),
-        ("ctrkHz", AdlinkDataTypes.U32),
-        ("bdbase", AdlinkDataTypes.U32),
-        ("mask", AdlinkDataTypes.U32),
-        ("maxscans", AdlinkDataTypes.U32),
-        ("alignForCnt", AdlinkDataTypes.U32),
-        ("reserved", AdlinkDataTypes.U32),
-    ]
-
-
-class AdlinkTimeBase(Enum):
-    WD_ExtTimeBase = AdlinkDataTypes.U16(0x0)
-    WD_SSITimeBase = AdlinkDataTypes.U16(0x1)
-    WD_StarTimeBase = AdlinkDataTypes.U16(0x2)
-    WD_IntTimeBase = AdlinkDataTypes.U16(0x3)
-    WD_PXI_CLK10 = AdlinkDataTypes.U16(0x4)
-    WD_PLL_REF_PXICLK10 = AdlinkDataTypes.U16(0x4)
-    WD_PLL_REF_EXT10 = AdlinkDataTypes.U16(0x5)
-    WD_PLL_REF_EXT = AdlinkDataTypes.U16(0x5)
-    WD_PXIe_CLK100 = AdlinkDataTypes.U16(0x6)
-    WD_PLL_REF_PXIeCLK100 = AdlinkDataTypes.U16(0x6)
-    WD_DBoard_TimeBase = AdlinkDataTypes.U16(0x7)
-
-
-class AdlinkTimePacer(Enum):
-    WD_AI_ADCONVSRC_TimePacer = AdlinkDataTypes.U16(0)
-
-
-class AdlinkAdvancedMode(Enum):
-    DAQSTEPPED = AdlinkDataTypes.U16(0x1)
-    RestartEn = AdlinkDataTypes.U16(0x2)
-    DualBufEn = AdlinkDataTypes.U16(0x4)
-    ManualSoftTrg = AdlinkDataTypes.U16(0x40)
-    DMASTEPPED = AdlinkDataTypes.U16(0x80)
-    AI_AVE = AdlinkDataTypes.U16(0x8)
-    AI_AVE_32 = AdlinkDataTypes.U16(0x10)
-
-
-class AdlinkCardType(Enum):
-    """
-    Utility class to wrap the card type integers to a human-readable name.
-    """
-
-    PCIe_9834 = AdlinkDataTypes.U16(0x37)
-    PXIe_9834 = AdlinkDataTypes.U16(0x39)
-
-
-class EnumSearchName(Enum):
-    def __init__(self, *args) -> None:
-        super().__init__()
-
-    @staticmethod
-    def get_value_from_name(enum_member: AdlinkCardType):
-        # Iterate through EnumClassB members
-        for member in AdlinkReadCount:
-            if member.name == enum_member.name:
-                return member.value
-        member = AdlinkReadCount.DEFAULT
-        print(
-            f"Error {enum_member} not found in AdlinkReadCount. Returning value of {member}."
-        )
-        return member.value
-
-
-class AdlinkTriggerSource(Enum):
-    WD_AI_TRGSRC_SOFT = AdlinkDataTypes.U16(0)
-    WD_AI_TRGSRC_ANA = AdlinkDataTypes.U16(1)
-    WD_AI_TRGSRC_ExtD = AdlinkDataTypes.U16(2)
-    WD_AI_TRSRC_SSI_1 = AdlinkDataTypes.U16(3)
-    WD_AI_TRSRC_SSI_2 = AdlinkDataTypes.U16(4)
-    WD_AI_TRSRC_PXIStar = AdlinkDataTypes.U16(5)
-    WD_AI_TRSRC_PXIeStar = AdlinkDataTypes.U16(6)
-    WD_AI_TRGSRC_ANA_MCHs = AdlinkDataTypes.U16(8)
-
-
-class AdlinkTriggerMode(Enum):
-    WD_AI_TRGMOD_POST = AdlinkDataTypes.U16(0)
-    WD_AI_TRGMOD_PRE = AdlinkDataTypes.U16(1)
-    WD_AI_TRGMOD_MIDL = AdlinkDataTypes.U16(2)
-    WD_AI_TRGMOD_DELAY = AdlinkDataTypes.U16(3)
-
-
-class AdlinkTriggerPolarity(Enum):
-    WD_AI_TrgPositive = AdlinkDataTypes.U16(1)
-    WD_AI_TrgNegative = AdlinkDataTypes.U16(0)
-
-
-class AdlinkAnalogTriggerChannel(Enum):
-    CH0ATRIG = AdlinkDataTypes.U16(0)
-    CH1ATRIG = AdlinkDataTypes.U16(1)
-    CH2ATRIG = AdlinkDataTypes.U16(2)
-    CH3ATRIG = AdlinkDataTypes.U16(3)
-    CH4ATRIG = AdlinkDataTypes.U16(4)
-    CH5ATRIG = AdlinkDataTypes.U16(5)
-    CH6ATRIG = AdlinkDataTypes.U16(6)
-    CH7ATRIG = AdlinkDataTypes.U16(7)
-
-
-class AdlinkADRange(Enum):
-    AD_B_10_V = 1
-    AD_B_5_V = 2
-    AD_B_2_5_V = 3
-    AD_B_1_25_V = 4
-    AD_B_0_625_V = 5
-    AD_B_0_3125_V = 6
-    AD_B_0_5_V = 7
-    AD_B_0_05_V = 8
-    AD_B_0_005_V = 9
-    AD_B_1_V = 10
-    AD_B_0_1_V = 11
-    AD_B_0_01_V = 12
-    AD_B_0_001_V = 13
-    AD_U_20_V = 14
-    AD_U_10_V = 15
-    AD_U_5_V = 16
-    AD_U_2_5_V = 17
-    AD_U_1_25_V = 18
-    AD_U_1_V = 19
-    AD_U_0_1_V = 20
-    AD_U_0_01_V = 21
-    AD_U_0_001_V = 22
-    AD_B_2_V = 23
-    AD_B_0_25_V = 24
-    AD_B_0_2_V = 25
-    AD_U_4_V = 26
-    AD_U_2_V = 27
-    AD_U_0_5_V = 28
-    AD_U_0_4_V = 29
-    AD_B_1_5_V = 30
-    AD_B_0_2145_V = 31
-
-
-class AdlinkSynchronousMode(Enum):
-    SYNCH_OP = AdlinkDataTypes.U16(1)
-    ASYNCH_OP = AdlinkDataTypes.U16(2)
-
-
-class AdlinkReadCount(EnumSearchName):
-    PXIe_9834 = AdlinkDataTypes.U16(8)
-    PCIe_9834 = AdlinkDataTypes.U16(8)
-    DEFAULT = AdlinkDataTypes.U16(1)
-
-    def scan_count_per_trigger(self, scan_count: int, device_type: int):
-        residual = (
-            scan_count
-            % AdlinkReadCount.get_value_from_name(AdlinkCardType(device_type)).value
-        )
-        if residual != 0:
-            return_value = scan_count - residual
-            self.scan_count_error(AdlinkDataTypes.I16(return_value), device_type)
-            return AdlinkDataTypes.U32(return_value)
-        return AdlinkDataTypes.U32(scan_count)
-
-    def scan_count_error(self, set_scan_count: AdlinkDataTypes.I16, device_type: int):
-        message = (
-            f"Warning: The set scan_count is not a multiple of {AdlinkReadCount.get_value_from_name(AdlinkCardType(device_type)).value} as required by AdlinkCardType(self._device_type).name for WD_AI_ContBufferSetup to work. Thus the scan_count has been set to the {set_scan_count} instead!",
-        )
-
-
-class AdlinkSoftwareTriggerOp(Enum):
-    SOFTTRIG_AI = AdlinkDataTypes.U16(1)
-
-
-class AdlinkTask(Enum):
-    AI = AdlinkDataTypes.U16(0)
-    DI = AdlinkDataTypes.U16(1)
-
-
-class AdlinkDefaultSettings:
-    def __init__(self, device_type: AdlinkDataTypes.U16) -> None:
-        self.savefile_location = self.get_default_save_location()
-
-        # AI_CH_Config
-        self.ad_range = AdlinkADRange.AD_B_1_V.value
-
-        # AI_CH_Config
-        self.timebase = AdlinkTimeBase.WD_IntTimeBase.value
-        self.ad_duty_restore = ctypes.c_bool(False)
-        self.ad_convert_source = AdlinkTimePacer.WD_AI_ADCONVSRC_TimePacer.value
-        self.double_edged = ctypes.c_bool(False)
-        self.buf_auto_reset = ctypes.c_bool(False)
-
-        # AI_Trig_Config
-        self.ad_trigger_mode = AdlinkDataTypes.U16(0)
-        self.ad_trigger_source = AdlinkTriggerSource.WD_AI_TRGSRC_ExtD.value
-        self.ad_trigger_polarity = AdlinkTriggerPolarity.WD_AI_TrgPositive.value
-        self.analog_trigger_channel = AdlinkDataTypes.U16(0)
-        self.analog_trigger_level = AdlinkDataTypes.F64(0.0)
-        self.post_trigger_scans = AdlinkDataTypes.U32(0)
-        self.pre_trigger_scans = AdlinkDataTypes.U32(0)
-        self.trigger_delay_ticks = AdlinkDataTypes.U32(0)
-        self.retrigger_count = AdlinkDataTypes.U32(0)
-
-        # AsyncDblBufferMode
-        self.double_buffered = ctypes.c_bool(False)
-
-        # SetLoggingDataCountPerFile
-        self.task = AdlinkDataTypes.U16(0)
-        self.data_counts_per_file = AdlinkDataTypes.U64(0)
-
-        self.scancount_per_trigger = AdlinkReadCount.get_value_from_name(
-            AdlinkCardType(device_type)
-        )
-
-        self.scan_interval = AdlinkDataTypes.U32(1)
-        self.channel_num = AdlinkDataTypes.U16(0)
-        self.data_type = AdlinkDataTypes.I16
-        self.synchronous_mode = AdlinkSynchronousMode.ASYNCH_OP.value
-
-        self.timeout = AdlinkDataTypes.U32(0)
-
-        # global measurement buffer setup
-        # this buffer is in the PC's memory and stores data from multiple measurements, until it is written to file
-        self.number_of_triggers_per_buffer = 1
-        self.callback_function = "copy_double_buffer_callback"
-        self.callback_signal = AdlinkDataTypes.I16(2)
-
-    def update_settings(self, arguments):
-        # update the settings dict
-        for arg_name, arg_value in arguments:
-            if arg_name in self.__dict__:
-                if arg_value is not None:
-                    setattr(self, arg_name, arg_value)
-
-    def get_default_save_location(self):
-        save_location = os.path.join(
-            os.getcwd(),
-            "AdlinkScanToFile_test_" + datetime.now().strftime("%Y%m%d-%H%M%S"),
-        )
-        return save_location
-
-    def _dictionary(self):
-        dictionary = {
-            key: value
-            for key, value in self.__dict__.items()
-            if not key.startswith("__") and not callable(key)
-        }
-        for key, value in dictionary.items():
-            if getattr(value, "__module__", None) == ctypes.c_short.__module__:
-                dictionary[key] = value.value
-            if key == "data_type":
-                dictionary[key] = value.__name__
-        return dictionary
+from qudi.hardware.adlink.config_options import (
+    AdlinkDataTypes,
+    AdlinkADRange,
+    AdlinkCardType,
+    AdlinkDeviceProperties,
+)
+from qudi.hardware.adlink.settings import AdlinkDefaultSettings
 
 
 class Adlink9834(FastCounterInterface):
@@ -530,7 +268,7 @@ class Adlink9834(FastCounterInterface):
         ]
         return constraints
 
-    def configure(self, bin_width_s, record_length_s, number_of_gates):
+    def configure(self, bin_width_s, record_length_s, number_of_gates=0):
         """Configuration of the fast counter.
 
         @param float bin_width_s: Length of a single time bin in the time race histogram in seconds.
@@ -694,6 +432,7 @@ class Adlink9834(FastCounterInterface):
             return 2
         if stopped.value == 1:
             return 1
+        return -1
 
     def start_measure(self):
         """Start the fast counter."""
@@ -902,29 +641,29 @@ class Adlink9834(FastCounterInterface):
         Helper method for printing the correct error
         """
         error_messages = {
-            "BufferAlloc": f"Buffer allocation failed (WD_Buffer_Alloc)!",
-            "CH_Config": f"Error while changing AI channel configuration (WD_AI_CH_Config)!",
-            "ContBufferSetup": f"Error while setting continuous buffer (WD_AI_ContBufferSetup)!",
-            "ContScanChannels": f"Error while starting continuous scan to file acquisition (WD_AI_ContScanChannels)!",
-            "AsyncClear": f"Error while stopping continuous acquisition (WD_AI_AsyncClear)!",
-            "Register_Card": f"Error while registering card (WD_Register_Card)!",
-            "GetDeviceProperties": f"Error while getting device properties (WD_GetDeviceProperties)!",
-            "Config": f"Error while setting AI config (WD_AI_Config)!",
-            "Trig_Config": f"Error while setting AI trigger configuration (WD_AI_Trig_Config)!",
-            "SetLoggingDataCountPerFile": f"Error while setting logging data count (WD_SetLoggingDataCountPerFile)!",
-            "SoftTriggerGen": f"Error while sending a software trigger to the card (WD_SoftTriggerGen)!",
-            "AsyncDblBufferToFile": f"Error while writing buffer to file. (WD_AI_AsyncDblBufferToFile)",
-            "AsyncReTrigNextReady": f"Error while determining if next data is ready (WD_AI_AsyncReTrigNextReady)!",
-            "AsyncCheck": f"Error while determining if next data is ready (WD_AI_AsyncCheck)!",
-            "EventCallBack": f"Error when setting the callback function (WD_AI_EventCallBack_x64)!",
-            "AsyncDblBufferMode": f"Error when setting double buffered mode (WD_AI_AsyncDblBufferMode)!",
-            "SetTimeout": f"Error when setting acquisition timeout (WD_AI_SetTimeout)!",
-            "ContBufferReset": f"Error when resetting Buffer (WD_AI_ContBufferReset)!",
+            "BufferAlloc": "Buffer allocation failed (WD_Buffer_Alloc)!",
+            "CH_Config": "Error while changing AI channel configuration (WD_AI_CH_Config)!",
+            "ContBufferSetup": "Error while setting continuous buffer (WD_AI_ContBufferSetup)!",
+            "ContScanChannels": "Error while starting continuous scan to file acquisition (WD_AI_ContScanChannels)!",
+            "AsyncClear": "Error while stopping continuous acquisition (WD_AI_AsyncClear)!",
+            "Register_Card": "Error while registering card (WD_Register_Card)!",
+            "GetDeviceProperties": "Error while getting device properties (WD_GetDeviceProperties)!",
+            "Config": "Error while setting AI config (WD_AI_Config)!",
+            "Trig_Config": "Error while setting AI trigger configuration (WD_AI_Trig_Config)!",
+            "SetLoggingDataCountPerFile": "Error while setting logging data count (WD_SetLoggingDataCountPerFile)!",
+            "SoftTriggerGen": "Error while sending a software trigger to the card (WD_SoftTriggerGen)!",
+            "AsyncDblBufferToFile": "Error while writing buffer to file. (WD_AI_AsyncDblBufferToFile)",
+            "AsyncReTrigNextReady": "Error while determining if next data is ready (WD_AI_AsyncReTrigNextReady)!",
+            "AsyncCheck": "Error while determining if next data is ready (WD_AI_AsyncCheck)!",
+            "EventCallBack": "Error when setting the callback function (WD_AI_EventCallBack_x64)!",
+            "AsyncDblBufferMode": "Error when setting double buffered mode (WD_AI_AsyncDblBufferMode)!",
+            "SetTimeout": "Error when setting acquisition timeout (WD_AI_SetTimeout)!",
+            "ContBufferReset": "Error when resetting Buffer (WD_AI_ContBufferReset)!",
         }
         self.log.error(
             error_messages[error_str]
             + f" ErrorCode {error_code.value}"
-            + f" Reload module!"
+            + " Reload module!"
         )
         try:
             self.on_deactivate()
