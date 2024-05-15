@@ -56,6 +56,15 @@ class EBD120(ProcessSetpointInterface):
         """Get current setpoint for a single channel"""
         pass
 
+    def get_activity_state(self, channel: str) -> bool:
+        pass
+
+    def set_activity_state(self, channel: str, active: bool) -> None:
+        pass
+
+    def constraints(self) -> ProcessControlConstraints:
+        pass
+
     def unload_dll(self, dll):
         """
         Method to free WD-DASK dll. This makes sure that the DLL can be accessed again without terminating the python thread first.
