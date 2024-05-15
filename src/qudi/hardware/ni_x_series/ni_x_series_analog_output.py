@@ -45,7 +45,7 @@ class NIXSeriesAnalogOutput(ProcessControlSwitchMixin, ProcessSetpointInterface)
     Example config for copy-paste:
 
     nicard_63XX_ao:
-        module.Class: 'ni_x_series.ni_x_series_in_streamer.NIXSeriesAnalogOutput'
+        module.Class: 'ni_x_series.ni_x_series_analog_output.NIXSeriesAnalogOutput'
         options:
             device_name: 'Dev1'
             channels:
