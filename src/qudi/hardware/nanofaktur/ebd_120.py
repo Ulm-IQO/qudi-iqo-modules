@@ -20,34 +20,80 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from qudi.core.configoption import ConfigOption
 from qudi.interface.process_control_interface import (
     ProcessSetpointInterface,
     ProcessControlConstraints,
 )
+from qudi.interface.mixins.process_control_switch import ProcessControlSwitchMixin
+from qudi.hardware.nanofaktur.settings import ConnectionType
+from qudi.hardware.nanofaktur.exceptions import ConnectionTypeException
 import ctypes
 
 
-class EBD120(ProcessSetpointInterface):
+class EBD120(ProcessControlSwitchMixin, ProcessSetpointInterface):
     """
     A module to control the nanoFaktur EBD 120 piezo scanner controller.
     This class is designed to work with the NiScanningProbeInterfuse to fullfill the ScanningProbeInterface.
     """
 
-    _dll_location = "C:/nanoFaktur/lib/mingw/x64/nF_interface_x64.dll"
+    _dll_location = ConfigOption(
+        name="dll_location",
+        default="C:/nanoFaktur/lib/mingw/x64/nF_interface_x64.dll",
+        missing="info",
+    )
+    _connection_type = ConfigOption(
+        name="connection_type",
+        default="simulation",
+        missing="info",
+        constructor=lambda x: x.lower(),
+    )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self._dll = None
+        self._interface = None
 
     def on_activate(self) -> None:
         self._dll = ctypes.CDLL(self._dll_location)
+        self._connect()
 
     def on_deactivate(self) -> None:
-        self.unload_dll(self._dll)
+        self._disconnect()
 
-    def _get_device_info(self):
-        message = self._dll.nF_get_dll_revision()
+    def _connect(self):
+        if self._connection_type == ConnectionType.simulation:
+            self.log.warn(
+                "NOTE: In order to connect to the simulation, the simulation.bat needs to be running and even if the command prompt says so. DO NOT close the terminal of the simulation.bat"
+            )
+            # TODO: Make commander class that catches any occuring errors and correctly notifies the user
+            self._interface = self._dll.nF_intf_connect_local(b"EBD-1202x0")
+            self.log.info(f"Connected to simulation")
+        else:
+            raise ConnectionTypeException(self._connection_type)
+
+    def _disconnect(self):
+        if self._dll is not None and self._interface >= 0:
+            self._dll.nF_intf_disconnect(self._interface)
+            self._dll = None
+            self._interface = None
+            self.log.warn("Device disconnected")
+
+    def _get_dll_error(self):
+        res = self._dll.nF_get_dll_last_error()
+        self.log.warn(f"DLL error code: {res}")
+
+    def _get_device_error(self):
+        res = self._dll.nF_get_dev_error()
+        self.log.warn(f"Device error code: {res}")
+
+    def _get_system_error(self):
+        res = self._dll.nF_get_sys_last_error()
+        self.log.warn(f"System error code: {res}")
+
+    def _get_dll_version(self):
+        message = float(self._dll.nF_get_dll_revision())
         self.log.warn(f"device_info = {message}")
 
     def set_setpoint(self, channel: str, value) -> None:
@@ -66,12 +112,3 @@ class EBD120(ProcessSetpointInterface):
 
     def constraints(self) -> ProcessControlConstraints:
         pass
-
-    def unload_dll(self, dll):
-        """
-        Method to free WD-DASK dll. This makes sure that the DLL can be accessed again without terminating the python thread first.
-        """
-        dll_handle = ctypes.c_void_p(dll._handle)
-        del dll
-        ctypes.windll.kernel32.FreeLibrary(dll_handle)
-        print(f"Freed DLL at location {dll_handle.value}")
