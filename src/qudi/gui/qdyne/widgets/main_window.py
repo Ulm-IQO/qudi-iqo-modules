@@ -50,8 +50,10 @@ class QdyneMainWindow(QtWidgets.QMainWindow):
         self.data_type_ComboBox = QtWidgets.QComboBox()
         self.data_type_ComboBox.addItems(self._logic.data_manager.save_data_types)
         self.save_tag_LineEdit = QtWidgets.QLineEdit()
+        self.save_tag_LineEdit.setPlaceholderText('save tag')
         self.save_tag_LineEdit.setToolTip('input save tag')
         self.data_index_LineEdit = QtWidgets.QLineEdit()
+        self.data_index_LineEdit.setPlaceholderText('data index')
         self.data_index_LineEdit.setToolTip('input data index if needed')
 
         self.data_manager_ToolBar.addWidget(self.data_type_ComboBox)
