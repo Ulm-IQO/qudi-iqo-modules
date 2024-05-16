@@ -35,17 +35,16 @@ class EBD120(ProcessSetpointInterface):
 
     _dll_location = "C:/nanoFaktur/lib/mingw/x64/nF_interface_x64.dll"
 
-    def __init__(self):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
         self._dll = None
 
     def on_activate(self) -> None:
-        self._dll = ctypes.cdll.LoadLibrary(self._dll_location)
+        self._dll = ctypes.CDLL(self._dll_location)
 
     def on_deactivate(self) -> None:
         self.unload_dll(self._dll)
-
-    def ___init__(self, *args, **kwargs):
-        pass
 
     def _get_device_info(self):
         message = self._dll.nF_get_dll_revision()
