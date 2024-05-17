@@ -31,4 +31,4 @@ class ConnectionType:
 
 @dataclass
 class ScannerSettings:
-    pass
+    connection_type: str = ConnectionType.simulation
