@@ -30,5 +30,12 @@ class ConnectionType:
 
 
 @dataclass
+class ChannelDefinition:
+    x: int = 1
+    y: int = 2
+    z: int = 3
+
+
+@dataclass
 class ScannerSettings:
     connection_type: str = ConnectionType.simulation

@@ -32,14 +32,21 @@ class NanoFakturDLLCommander:
     def __init__(self, dll_location: str):
         self._interface = None
         self._dll = ctypes.CDLL(dll_location)
+        self._dll_return_types()
 
     def connect(self, connection_type):
         if connection_type == ConnectionType.simulation:
-            _logger.warn(
-                "NOTE: In order to connect to the simulation, the simulation.bat needs to be running and even if the command prompt says so. DO NOT close the terminal of the simulation.bat"
-            )
-            # TODO: Make commander class that catches any occuring errors and correctly notifies the user
-            self._interface = self._dll.nF_intf_connect_local(b"EBD-1202x0")
+            try:
+                self._interface = self._send_command(
+                    self._dll.nF_intf_connect_local, b"EBD-120230"
+                )
+            except:
+                _logger.error(
+                    "An Error occured during simulation activation.\n"
+                    "NOTE: In order to connect to the simulation, the simulation.bat needs to be running and"
+                    " even if the command prompt says so: DO NOT close the terminal of the simulation.bat"
+                )
+                raise
             _logger.info(f"Connected to simulation")
         else:
             raise ConnectionTypeException(self._connection_type)
@@ -51,23 +58,52 @@ class NanoFakturDLLCommander:
             self._interface = None
             _logger.warn("Device disconnected")
 
+    def _dll_return_types(self):
+        self._dll.nF_intf_connect_local.restype = ctypes.c_int
+        self._dll.nF_get_dll_last_error.restype = ctypes.c_int
+        self._dll.nF_get_sys_last_error.restype = ctypes.c_int
+        self._dll.nF_get_dev_error.restype = ctypes.c_int
+        self._dll.nF_get_dll_revision.restype = ctypes.c_float
+
+    def get_axis_position(self, axis: int):
+        # TODO: Maybe the byref *args passing does not work
+        axis = ctypes.c_int(axis)
+        position = ctypes.c_float()
+        self._send_command(
+            self._dll.nF_get_dev_axis_position,
+            1,
+            ctypes.byref(axis),
+            ctypes.byref(position),
+        )
+        return axis.value, position.value
+
+    def get_axis_target(self, axis):
+        pass
+
     def _send_command(self, command, *args):
         return_value = command(*args)
         if return_value < 0:
-            _logger.error(f"Encountered an error with error code {return_value}")
+            _logger.error(
+                f"During {command.__name__} call encountered an error with error code {return_value}."
+                f"\nLast DLL error = {self.get_dll_error()}"
+                f"\nLast system error = {self.get_system_error()}"
+                f"\nLast device error = {self.get_device_error()}"
+            )
+            raise Exception(
+                f"During {command.__name__} call encountered an error with error code {return_value}"
+            )
+        return return_value
 
     def get_dll_error(self):
-        res = self._dll.nF_get_dll_last_error()
-        _logger.warn(f"DLL error code: {res}")
+        return self._dll.nF_get_dll_last_error()
 
     def get_device_error(self):
-        res = self._dll.nF_get_dev_error()
-        _logger.warn(f"Device error code: {res}")
+        return self._dll.nF_get_dev_error()
 
     def get_system_error(self):
-        res = self._dll.nF_get_sys_last_error()
-        _logger.warn(f"System error code: {res}")
+        return self._dll.nF_get_sys_last_error()
 
     def get_dll_version(self):
-        message = float(self._dll.nF_get_dll_revision())
-        _logger.warn(f"device_info = {message}")
+        res = float(self._dll.nF_get_dll_revision())
+        _logger.info(res)
+        return res
