@@ -19,7 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from pyspcm import *
+import pyspcm as spcm
 
 
 class CardCommands:
@@ -35,41 +35,41 @@ class CardCommands:
         self._card = card
 
     def start_all(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START | M2CMD_CARD_ENABLETRIGGER
-                            | M2CMD_DATA_STARTDMA)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_START | spcm.M2CMD_CARD_ENABLETRIGGER
+                            | spcm.M2CMD_DATA_STARTDMA)
 
     def start_all_with_extradma(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START | M2CMD_CARD_ENABLETRIGGER
-                            | M2CMD_DATA_STARTDMA | M2CMD_EXTRA_STARTDMA)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_START | spcm.M2CMD_CARD_ENABLETRIGGER
+                            | spcm.M2CMD_DATA_STARTDMA | spcm.M2CMD_EXTRA_STARTDMA)
 
     def start_all_with_poll(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START | M2CMD_CARD_ENABLETRIGGER
-                            | M2CMD_DATA_STARTDMA | M2CMD_EXTRA_POLL)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_START | spcm.M2CMD_CARD_ENABLETRIGGER
+                            | spcm.M2CMD_DATA_STARTDMA | spcm.M2CMD_EXTRA_POLL)
 
     def card_start(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_START)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_START)
 
     def card_stop(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_STOP)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_STOP)
 
     def card_reset(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_RESET)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_RESET)
 
     def enable_trigger(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_ENABLETRIGGER)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_ENABLETRIGGER)
 
     def disable_trigger(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_DISABLETRIGGER)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_DISABLETRIGGER)
 
     def force_trigger(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_CARD_FORCETRIGGER)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_CARD_FORCETRIGGER)
 
     def start_dma(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_STARTDMA)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_DATA_STARTDMA)
 
     def stop_dma(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_STOPDMA)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_DATA_STOPDMA)
 
     def wait_dma(self):
-        spcm_dwSetParam_i32(self._card, SPC_M2CMD, M2CMD_DATA_WAITDMA)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_M2CMD, spcm.M2CMD_DATA_WAITDMA)
 

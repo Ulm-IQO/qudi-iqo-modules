@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import ctypes
 from functools import reduce
-from pyspcm import *
+import pyspcm as spcm
 from qudi.hardware.fast_adc.spectrum.si_utils.si_settings import CardSettings
 
 
@@ -66,12 +66,12 @@ class ConfigureCommands:
                                        cs.acq_loops, cs.acq_HW_avg_num)
         self._acq.set_sampling_clock(cs.clk_ref_Hz, cs.clk_samplerate_Hz)
         self._trig.set_trigger(cs.trig_mode, cs.trig_level_mV)
-        self._buf.invalidate_buffer(SPCM_BUF_DATA)
-        self._c_buf_ptr = self._buf.configure_data_transfer(SPCM_BUF_DATA, self._c_buf_ptr,
+        self._buf.invalidate_buffer(spcm.SPCM_BUF_DATA)
+        self._c_buf_ptr = self._buf.configure_data_transfer(spcm.SPCM_BUF_DATA, self._c_buf_ptr,
                                                             cs.buf_size_B, cs.buf_notify_size_B)
         if cs.gated:
-            self._buf.invalidate_buffer(SPCM_BUF_TIMESTAMP)
-            self._c_ts_buf_ptr = self._buf.configure_data_transfer(SPCM_BUF_TIMESTAMP, self._c_ts_buf_ptr,
+            self._buf.invalidate_buffer(spcm.SPCM_BUF_TIMESTAMP)
+            self._c_ts_buf_ptr = self._buf.configure_data_transfer(spcm.SPCM_BUF_TIMESTAMP, self._c_ts_buf_ptr,
                                                                    cs.ts_buf_size_B, cs.ts_buf_notify_size_B)
             self._ts.configure_ts_standard()
 
@@ -87,7 +87,7 @@ class AnalogInputConfigureCommands:
     This class configures the analog input.
     Refer to the chapter 'Analog Inputs' in the manual for more information.
     """
-    ai_ch_dict = {'CH0': CHANNEL0, 'CH1': CHANNEL1}
+    ai_ch_dict = {'CH0': spcm.CHANNEL0, 'CH1': spcm.CHANNEL1}
     ai_term_dict = {'1MOhm': 0, '50Ohm': 1}
     ai_coupling_dict = {'DC': 0, 'AC': 1}
 
@@ -100,8 +100,8 @@ class AnalogInputConfigureCommands:
         self._log = log
 
     def set_analog_input_conditions(self, ai_ch):
-        spcm_dwSetParam_i32(self._card, SPC_TIMEOUT, 5000)
-        spcm_dwSetParam_i32(self._card, SPC_CHENABLE, self._get_ch_bitmap(ai_ch))
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TIMEOUT, 5000)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CHENABLE, self._get_ch_bitmap(ai_ch))
         return
 
     def _get_ch_bitmap(self, ai_ch):
@@ -112,16 +112,22 @@ class AnalogInputConfigureCommands:
         return enabled_ch_bitmap
 
     def set_ch0(self, ai_range_mV, ai_offset_mV, ai_term, ai_coupling):
-        spcm_dwSetParam_i32(self._card, SPC_AMP0, ai_range_mV) # +- 10 V
-        spcm_dwSetParam_i32(self._card, SPC_OFFS0, ai_offset_mV)
-        spcm_dwSetParam_i32(self._card, SPC_50OHM0, self.ai_term_dict[ai_term]) # A "1"("0") sets the 50(1M) ohm termination
-        self._error = spcm_dwSetParam_i32(self._card, SPC_ACDC0, self.ai_coupling_dict[ai_coupling])  # A "0"("1") sets he DC(AC)coupling
+        """
+        @param int ai_range_mV: Analog input range up to 10 V.
+        @param int ai_offset_mV: Analog input offset.
+        @param str ai_term: Analog input termination. '1MOhm' or '50Ohm'
+        @param str ai_coupling: Analog input coupling. 'DC' or 'AC'
+        """
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_AMP0, ai_range_mV)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_OFFS0, ai_offset_mV)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_50OHM0, self.ai_term_dict[ai_term])
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_ACDC0, self.ai_coupling_dict[ai_coupling])
 
     def set_ch1(self, ai_range_mV, ai_offset_mV, ai_term, ai_coupling):
-        spcm_dwSetParam_i32(self._card, SPC_AMP1, ai_range_mV) # +- 10 V
-        spcm_dwSetParam_i32(self._card, SPC_OFFS1, ai_offset_mV)
-        spcm_dwSetParam_i32(self._card, SPC_50OHM1, self.ai_term_dict[ai_term]) # A "1"("0") sets the 50(1M) ohm termination
-        self._error = spcm_dwSetParam_i32(self._card, SPC_ACDC1, self.ai_coupling_dict[ai_coupling])  # A "0"("1") sets he DC(AC)coupling
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_AMP1, ai_range_mV)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_OFFS1, ai_offset_mV)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_50OHM1, self.ai_term_dict[ai_term])
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_ACDC1, self.ai_coupling_dict[ai_coupling])
 
 class AcquisitionConfigureCommands:
     """
@@ -153,10 +159,10 @@ class AcquisitionConfigureCommands:
             raise ValueError('The acquisition mode is not proper')
 
     def set_sampling_clock(self, clk_ref_Hz, clk_samplerate_Hz):
-        spcm_dwSetParam_i32(self._card, SPC_CLOCKMODE, SPC_CM_INTPLL)
-        spcm_dwSetParam_i32(self._card, SPC_REFERENCECLOCK, clk_ref_Hz)
-        spcm_dwSetParam_i32(self._card, SPC_SAMPLERATE, clk_samplerate_Hz)
-        spcm_dwSetParam_i32(self._card, SPC_CLOCKOUT, 1)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CLOCKMODE, spcm.SPC_CM_INTPLL)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_REFERENCECLOCK, clk_ref_Hz)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_SAMPLERATE, clk_samplerate_Hz)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CLOCKOUT, 1)
         return
 
     def _set_STD_trigger_mode(self, acq_mode, post_trigs_S, seg_size_S, mem_size_S):
@@ -204,9 +210,9 @@ class AcquisitionConfigureCommands:
         @params int post_trig_S: the number of samples to be recorded after the trigger event has been detected.
         @params int memsize_S: the total number of samples to be recorded
         """
-        spcm_dwSetParam_i32(self._card, SPC_CARDMODE, SPC_REC_STD_SINGLE)
-        spcm_dwSetParam_i32(self._card, SPC_MEMSIZE, memsize_S)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_POSTTRIGGER, post_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CARDMODE, spcm.SPC_REC_STD_SINGLE)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_MEMSIZE, memsize_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_POSTTRIGGER, post_trigs_S)
         return
 
     def _mode_STD_MULTI(self, post_trigs_S, seg_size_S, mem_size_S):
@@ -219,10 +225,10 @@ class AcquisitionConfigureCommands:
         @params int seg_size_S:
         @params int reps: The number of repetitions.
         """
-        spcm_dwSetParam_i32(self._card, SPC_CARDMODE, SPC_REC_STD_MULTI)
-        spcm_dwSetParam_i32(self._card, SPC_SEGMENTSIZE, seg_size_S)
-        spcm_dwSetParam_i32(self._card, SPC_MEMSIZE, mem_size_S)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_POSTTRIGGER, post_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CARDMODE, spcm.SPC_REC_STD_MULTI)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_SEGMENTSIZE, seg_size_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_MEMSIZE, mem_size_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_POSTTRIGGER, post_trigs_S)
         return
 
     def _mode_STD_GATE(self, pre_trigs_S, post_trigs_S, mem_size_S):
@@ -231,10 +237,10 @@ class AcquisitionConfigureCommands:
         @params int post_trigs_S: the number of samples to be recorded after the gate end
         @params int mem_size_S: the total number of samples to be recorded
         """
-        spcm_dwSetParam_i32(self._card, SPC_CARDMODE, SPC_REC_STD_GATE)
-        spcm_dwSetParam_i32(self._card, SPC_PRETRIGGER, pre_trigs_S)
-        spcm_dwSetParam_i32(self._card, SPC_POSTTRIGGER, post_trigs_S)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_MEMSIZE, mem_size_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CARDMODE, spcm.SPC_REC_STD_GATE)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_PRETRIGGER, pre_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_POSTTRIGGER, post_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_MEMSIZE, mem_size_S)
         return
 
     def _mode_FIFO_SINGLE(self, pre_trigs_S, seg_size_S, loops=1):
@@ -248,10 +254,10 @@ class AcquisitionConfigureCommands:
         @params int loops: the total number of loops
         """
 
-        spcm_dwSetParam_i32(self._card, SPC_CARDMODE, SPC_REC_FIFO_SINGLE)
-        spcm_dwSetParam_i32(self._card, SPC_PRETRIGGER, pre_trigs_S)
-        spcm_dwSetParam_i32(self._card, SPC_SEGMENTSIZE, seg_size_S)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_LOOPS, loops)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CARDMODE, spcm.SPC_REC_FIFO_SINGLE)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_PRETRIGGER, pre_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_SEGMENTSIZE, seg_size_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_LOOPS, loops)
         return
 
     def _mode_FIFO_MULTI(self, post_trigs_S, seg_size_S, loops=0):
@@ -264,20 +270,20 @@ class AcquisitionConfigureCommands:
                                 including the pre trigger.
         @params int loops: the total number of loops
         """
-        spcm_dwSetParam_i32(self._card, SPC_CARDMODE, SPC_REC_FIFO_MULTI)
-        spcm_dwSetParam_i32(self._card, SPC_POSTTRIGGER, post_trigs_S)
-        spcm_dwSetParam_i32(self._card, SPC_SEGMENTSIZE, seg_size_S)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_LOOPS, loops)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CARDMODE, spcm.SPC_REC_FIFO_MULTI)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_POSTTRIGGER, post_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_SEGMENTSIZE, seg_size_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_LOOPS, loops)
         return
 
     def _mode_FIFO_AVERAGE(self, post_trigs_S, seg_size_S, loops, HW_avg_num):
         max_post_trigs_S = 127984
 
-        spcm_dwSetParam_i32(self._card, SPC_CARDMODE, SPC_REC_FIFO_AVERAGE)
-        spcm_dwSetParam_i32(self._card, SPC_AVERAGES, HW_avg_num)
-        spcm_dwSetParam_i32(self._card, SPC_POSTTRIGGER, post_trigs_S)
-        spcm_dwSetParam_i32(self._card, SPC_SEGMENTSIZE, seg_size_S)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_LOOPS, loops)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CARDMODE, spcm.SPC_REC_FIFO_AVERAGE)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_AVERAGES, HW_avg_num)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_POSTTRIGGER, post_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_SEGMENTSIZE, seg_size_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_LOOPS, loops)
         return
 
     def _mode_FIFO_GATE(self, pre_trigs_S, post_trigs_S, loops):
@@ -286,10 +292,10 @@ class AcquisitionConfigureCommands:
         @params int post_trigs_S: the number of samples to be recorded after the gate end
         @params int loops: the total number of loops
         """
-        spcm_dwSetParam_i32(self._card, SPC_CARDMODE, SPC_REC_FIFO_GATE)
-        spcm_dwSetParam_i32(self._card, SPC_PRETRIGGER, pre_trigs_S)
-        spcm_dwSetParam_i32(self._card, SPC_POSTTRIGGER, post_trigs_S)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_LOOPS, loops)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_CARDMODE, spcm.SPC_REC_FIFO_GATE)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_PRETRIGGER, pre_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_POSTTRIGGER, post_trigs_S)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_LOOPS, loops)
         return
 
 
@@ -326,22 +332,22 @@ class TriggerConfigureCommands:
             self._log.error('wrong trigger mode')
 
     def _trigger_EXT(self, trig_level_mV):
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_TERM, 0)
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_EXT0_ACDC, 0)
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_EXT0_MODE, SPC_TM_POS)
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_EXT0_LEVEL0, trig_level_mV)
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_ORMASK, SPC_TMASK_EXT0)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_TRIG_ANDMASK, 0)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_TERM, 0)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_EXT0_ACDC, 0)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_EXT0_MODE, spcm.SPC_TM_POS)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_EXT0_LEVEL0, trig_level_mV)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_ORMASK, spcm.SPC_TMASK_EXT0)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_ANDMASK, 0)
 
     def _trigger_SW(self):
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_ORMASK, SPC_TMASK_SOFTWARE)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_TRIG_ANDMASK, 0)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_ORMASK, spcm.SPC_TMASK_SOFTWARE)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_ANDMASK, 0)
 
     def _trigger_CH0(self, trig_level_mV):
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_ORMASK, SPC_TMASK_NONE)
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_CH_ANDMASK0, SPC_TMASK0_CH0)
-        spcm_dwSetParam_i32(self._card, SPC_TRIG_CH0_LEVEL0, trig_level_mV)
-        self._error = spcm_dwSetParam_i32(self._card, SPC_TRIG_CH0_MODE, SPC_TM_POS)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_ORMASK, spcm.SPC_TMASK_NONE)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_CH_ANDMASK0, spcm.SPC_TMASK0_CH0)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_CH0_LEVEL0, trig_level_mV)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TRIG_CH0_MODE, spcm.SPC_TM_POS)
 
 
 class DataTransferConfigureCommands:
@@ -393,8 +399,11 @@ class DataTransferConfigureCommands:
 
         @return int: length of the available continuous buffer
         """
-        c_cont_buf_len = uint64(0)
-        spcm_dwGetContBuf_i64(self._card, SPCM_BUF_DATA, byref(c_buf_ptr), byref(c_cont_buf_len))
+        c_cont_buf_len = spcm.uint64(0)
+        spcm.spcm_dwGetContBuf_i64(self._card,
+                                   spcm.SPCM_BUF_DATA,
+                                   ctypes.byref(c_buf_ptr),
+                                   ctypes.byref(c_cont_buf_len))
         return c_cont_buf_len.value
 
     def _pvAllocMemPageAligned(self, qwBytes):
@@ -427,21 +436,21 @@ class DataTransferConfigureCommands:
         @param int buf_notify_size_B: length of the notify size of the buffer in bytes
         """
 
-        c_buf_offset = uint64(0)
-        c_buf_size_B = uint64(buf_size_B)
-        spcm_dwDefTransfer_i64(self._card,
-                               buf_type,
-                               SPCM_DIR_CARDTOPC,
-                               buf_notify_size_B,
-                               byref(c_buf_ptr),
-                               c_buf_offset,
-                               c_buf_size_B
-                               )
+        c_buf_offset = spcm.uint64(0)
+        c_buf_size_B = spcm.uint64(buf_size_B)
+        spcm.spcm_dwDefTransfer_i64(self._card,
+                                    buf_type,
+                                    spcm.SPCM_DIR_CARDTOPC,
+                                    buf_notify_size_B,
+                                    ctypes.byref(c_buf_ptr),
+                                    c_buf_offset,
+                                    c_buf_size_B
+                                    )
         return
 
     def invalidate_buffer(self, buf_type):
         try:
-            spcm_dwInvalidateBuf(self._card, buf_type)
+            spcm.spcm_dwInvalidateBuf(self._card, buf_type)
         except:
             pass
 
@@ -463,13 +472,15 @@ class TimestampConfigureCommands:
         self.ts_standard_mode()
 
     def ts_standard_mode(self):
-        spcm_dwSetParam_i32(self._card, SPC_TIMESTAMP_CMD, SPC_TSMODE_STANDARD | SPC_TSCNT_INTERNAL | SPC_TSFEAT_NONE)
+        spcm.spcm_dwSetParam_i32(self._card,
+                                 spcm.SPC_TIMESTAMP_CMD,
+                                 spcm.SPC_TSMODE_STANDARD | spcm.SPC_TSCNT_INTERNAL | spcm.SPC_TSFEAT_NONE)
 
     def ts_internal_clock(self):
-        spcm_dwSetParam_i32(self._card, SPC_TIMESTAMP_CMD, SPC_TSCNT_INTERNAL)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TIMESTAMP_CMD, spcm.SPC_TSCNT_INTERNAL)
 
     def ts_no_additional_timestamp(self):
-        spcm_dwSetParam_i32(self._card, SPC_TIMESTAMP_CMD, SPC_TSFEAT_NONE)
+        spcm.spcm_dwSetParam_i32(self._card, spcm.SPC_TIMESTAMP_CMD, spcm.SPC_TSFEAT_NONE)
 
 
 class ConfigureRegisterChecker:
@@ -499,32 +510,32 @@ class ConfigureRegisterChecker:
         ai_term_dict = {0:'1Mohm', 1:'50Ohm'}
         ai_coupling_dict = {0:'DC', 1:'AC'}
 
-        c_ai_range_mV = c_int32()
-        c_ai_offset_mV = c_int32()
-        c_ai_term = c_int32()
-        c_ai_coupling = c_int32()
-        spcm_dwGetParam_i32(self._card, SPC_AMP0, byref(c_ai_range_mV)) # +- 10 V
-        spcm_dwGetParam_i32(self._card, SPC_OFFS0, byref(c_ai_offset_mV))
-        spcm_dwGetParam_i32(self._card, SPC_50OHM0, byref(c_ai_term))
-        self._error = spcm_dwGetParam_i32(self._card, SPC_ACDC0, byref(c_ai_coupling))
+        c_ai_range_mV = spcm.c_int32()
+        c_ai_offset_mV = spcm.c_int32()
+        c_ai_term = spcm.c_int32()
+        c_ai_coupling = spcm.c_int32()
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_AMP0, ctypes.byref(c_ai_range_mV))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_OFFS0, ctypes.byref(c_ai_offset_mV))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_50OHM0, ctypes.byref(c_ai_term))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_ACDC0, ctypes.byref(c_ai_coupling))
         self.csr.ai_range_mV = int(c_ai_range_mV.value)
         self.csr.ai_offset_mV = int(c_ai_offset_mV.value)
         self.csr.ai_term = ai_term_dict[c_ai_term.value]
         self.csr.ai_coupling = ai_coupling_dict[c_ai_coupling.value]
 
     def _check_csr_acq(self):
-        c_acq_mode = c_int32()
-        c_acq_HW_avg_num = c_int32()
-        c_acq_pre_trigs_S = c_int32()
-        c_acq_post_trigs_S = c_int32()
-        c_acq_mem_size_S = c_int32()
-        c_acq_seg_size_S = c_int32()
-        spcm_dwGetParam_i32(self._card, SPC_CARDMODE, byref(c_acq_mode))
-        spcm_dwGetParam_i32(self._card, SPC_AVERAGES, byref(c_acq_HW_avg_num))
-        spcm_dwGetParam_i32(self._card, SPC_PRETRIGGER, byref(c_acq_pre_trigs_S))
-        spcm_dwGetParam_i32(self._card, SPC_POSTTRIGGER, byref(c_acq_post_trigs_S))
-        spcm_dwGetParam_i32(self._card, SPC_MEMSIZE, byref(c_acq_mem_size_S))
-        self._error = spcm_dwGetParam_i32(self._card, SPC_SEGMENTSIZE, byref(c_acq_seg_size_S))
+        c_acq_mode = spcm.c_int32()
+        c_acq_HW_avg_num = spcm.c_int32()
+        c_acq_pre_trigs_S = spcm.c_int32()
+        c_acq_post_trigs_S = spcm.c_int32()
+        c_acq_mem_size_S = spcm.c_int32()
+        c_acq_seg_size_S = spcm.c_int32()
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_CARDMODE, ctypes.byref(c_acq_mode))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_AVERAGES, ctypes.byref(c_acq_HW_avg_num))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_PRETRIGGER, ctypes.byref(c_acq_pre_trigs_S))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_POSTTRIGGER, ctypes.byref(c_acq_post_trigs_S))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_MEMSIZE, ctypes.byref(c_acq_mem_size_S))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_SEGMENTSIZE, ctypes.byref(c_acq_seg_size_S))
         self.csr.acq_mode = c_acq_mode.value
         self.csr.acq_HW_avg_num = int(c_acq_HW_avg_num.value)
         self.csr.acq_pre_trigs_S = int(c_acq_pre_trigs_S.value)
@@ -533,17 +544,17 @@ class ConfigureRegisterChecker:
         self.csr.acq_seg_size_S = int(c_acq_seg_size_S.value)
 
     def _check_csr_clk(self):
-        c_clk_samplerate_Hz = c_int32()
-        c_clk_ref_Hz = c_int32()
-        spcm_dwGetParam_i32(self._card, SPC_REFERENCECLOCK, byref(c_clk_ref_Hz))
-        self._error = spcm_dwGetParam_i32(self._card, SPC_SAMPLERATE, byref(c_clk_samplerate_Hz))
+        c_clk_samplerate_Hz = spcm.c_int32()
+        c_clk_ref_Hz = spcm.c_int32()
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_REFERENCECLOCK, ctypes.byref(c_clk_ref_Hz))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_SAMPLERATE, ctypes.byref(c_clk_samplerate_Hz))
         self.csr.clk_samplerate_Hz = int(c_clk_samplerate_Hz.value)
         self.csr.clk_ref_Hz = int(c_clk_ref_Hz.value)
 
     def _check_csr_trig(self):
-        c_trig_mode = c_int32()
-        c_trig_level_mV = c_int32()
-        spcm_dwGetParam_i32(self._card, SPC_TRIG_EXT0_MODE, byref(c_trig_mode))
-        self._error = spcm_dwGetParam_i32(self._card, SPC_TRIG_EXT0_LEVEL0, byref(c_trig_level_mV))
+        c_trig_mode = spcm.c_int32()
+        c_trig_level_mV = spcm.c_int32()
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_TRIG_EXT0_MODE, ctypes.byref(c_trig_mode))
+        spcm.spcm_dwGetParam_i32(self._card, spcm.SPC_TRIG_EXT0_LEVEL0, ctypes.byref(c_trig_level_mV))
         self.csr.trig_mode = c_trig_mode.value
         self.csr.trig_level_mV = int(c_trig_level_mV.value)
