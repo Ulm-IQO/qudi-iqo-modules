@@ -20,10 +20,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import time
 import numpy as np
-
 from enum import IntEnum
 from pyspcm import *
 from spcm_tools import *
+from PySide2.QtCore import Signal
 
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
@@ -114,6 +114,7 @@ class SpectrumInstrumentation(FastCounterInterface):
     _modclass = 'hardware'
     _threaded = True
     _threadlock = Mutex()
+    _signal_measure = Signal()
 
     # ConfigOptions for card settings. See the manual for details.
     _ai_ch = ConfigOption('ai_ch', 'CH0', missing='nothing')
@@ -182,6 +183,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.fetcher = DataFetcher()
         self.commander = Commander(self.cmd, self.log)
         self.loop_manager = LoopManager(self.commander, self.log)
+        self._signal_measure.connect(self.loop_manager.start_data_process)
 
     def _load_settings_from_config_file(self):
         """
@@ -297,7 +299,8 @@ class SpectrumInstrumentation(FastCounterInterface):
         Start the acquisition and data process loop
         """
         self._start_acquisition()
-        self.loop_manager.start_data_process()
+        self._signal_measure.emit()
+        self.loop_manager.start()
 
         return 0
 
@@ -307,13 +310,13 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         self.log.info('Measurement started')
         if self._internal_status == CardStatus.idle:
-            self.loop_manager.init_measure_params()
+#            self.loop_manager.init_measure_params()
             if self.ms.gated:
                 self.cmd.ts_buf.reset_ts_counter()
                 self.cmd.card.start_all_with_extradma()
             else:
                 self.cmd.card.start_all()
-            self.log.info('card started')
+            self.log.debug('card started')
 
         elif self._internal_status == CardStatus.paused:
             self.cmd.card.enable_trigger()
@@ -353,11 +356,14 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         if self._internal_status == CardStatus.running:
             self.loop_manager.stop_data_process()
+            self.loop_manager.wait()
+            self.log.debug('Measurement thread stopped')
+
             self.cmd.card.disable_trigger()
             self.cmd.process.trigger_enabled = False
             self.cmd.card.stop_dma()
             self.cmd.card.card_stop()
-            self.log.info('card stopped')
+            self.log.debug('card stopped')
             self._internal_status = CardStatus.idle
             self.log.info('Measurement stopped')
             return 0
@@ -377,7 +383,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         self.loop_manager.stop_data_process()
 
         self._internal_status = CardStatus.paused
-        self.log.info('Measurement paused')
+        self.log.debug('Measurement paused')
         return
 
     def continue_measure(self):

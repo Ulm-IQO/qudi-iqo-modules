@@ -19,12 +19,12 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-import threading
 import time
 from qudi.util.mutex import Mutex
+from PySide2.QtCore import QThread
 
 
-class LoopManager:
+class LoopManager(QThread):
     """
     This is the main data process loop class.
     The loop keeps on asking the commander to do the measurement process.
@@ -36,6 +36,7 @@ class LoopManager:
         @param Commander commander: Commander instance from the main.
         @param log: qudi logger from the SpectrumInstrumentation.
         """
+        super().__init__()
         self.commander = commander
         self._log = log
 
@@ -55,13 +56,12 @@ class LoopManager:
         """
         Start the data process with creating a new thread.
         """
+        self.start_time = time.time()
         self.loop_on = True
-        self.data_proc_th = threading.Thread(target=self._start_data_process_loop)
-        self.data_proc_th.start()
-
         return
 
-    def _start_data_process_loop(self):
+    def run(self):
+        self._log.debug('loop running')
         time_out = self.commander.cmd.process.wait_avail_data()
         if time_out:
             return
@@ -72,26 +72,25 @@ class LoopManager:
             self._start_inifinite_loop()
         else:
             self._start_finite_loop()
+        self._log.debug('loop finished')
 
     def _start_inifinite_loop(self):
-        self._log.info('data process started')
+        self._log.debug('data process started')
         while self.loop_on:
             self.commander.command_process()
         else:
-            self._log.info('data process stopped')
+            self._log.debug('data process stopped')
             return
 
     def _start_finite_loop(self):
-        self._log.info('data process started')
+        self._log.debug('data process started')
         num_rep = self.commander.processor.data.dc.num_rep
         while self.loop_on and num_rep < self._reps:
             self.commander.command_process()
         else:
-            self._log.info('data process stopped')
+            self._log.debug('data process stopped')
             return
 
     def stop_data_process(self):
         with self.threadlock:
             self.loop_on = False
-
-        self.data_proc_th.join()
