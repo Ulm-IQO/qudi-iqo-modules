@@ -180,8 +180,8 @@ class QdyneLogic(LogicBase):
                 self.data, self.settings.data_manager_stg
             )
             self.measure = QdyneMeasurement(self)
-
-        #            self.fitting = QdyneFittingMain()
+            self.data_manager = QdyneDataManager(self.data, self.settings.data_manager_stg)
+#            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
             self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)

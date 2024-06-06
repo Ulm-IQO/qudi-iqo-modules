@@ -172,12 +172,12 @@ class QdyneMeasurement(QtCore.QObject):
 
     def analyze_time_trace(self):
         self.data.signal = self.analyzer.analyze(
-            self.data.time_trace, self.settings.analyzer_stg.current_setting
+            self.data, self.settings.analyzer_stg.current_setting
         )
 
     def get_spectrum(self):
-        self.data.spectrum = self.analyzer.get_spectrum(
-            self.data.signal, self.settings.analyzer_stg.current_setting
+        self.data.spectrum = self.analyzer.get_freq_domain_signal(
+            self.data, self.settings.analyzer_stg.current_setting
         )
         self.data.freq_data.x = self.data.spectrum[0]
         self.data.freq_data.y = self.data.spectrum[1]
