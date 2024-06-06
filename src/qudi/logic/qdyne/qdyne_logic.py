@@ -28,7 +28,9 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 
 from qudi.logic.qdyne.qdyne_measurement import (
-    QdyneMeasurement, QdyneMeasurementSettings)
+    QdyneMeasurement,
+    QdyneMeasurementSettings,
+)
 from qudi.logic.qdyne.qdyne_state_estimator import *
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
 from qudi.logic.qdyne.qdyne_fit import QdyneFit
@@ -42,6 +44,7 @@ class MeasurementGenerator:
     """
     Class that gives access to the settings for the generation of sequences from the pulsedmasterlogic.
     """
+
     def __init__(self, pulsedmasterlogic):
         self.pulsedmasterlogic = pulsedmasterlogic
 
@@ -49,6 +52,7 @@ class MeasurementGenerator:
         self.pulsedmasterlogic().generate_predefined_sequence(
             method_name, param_dict, sample_and_load
         )
+
     def set_generation_parameters(self, settings_dict):
         self.pulsedmasterlogic().set_generation_parameters(settings_dict)
 
@@ -112,30 +116,40 @@ class QdyneLogic(LogicBase):
     """
 
     # declare connectors
-    pulsedmasterlogic = Connector(interface='PulsedMasterLogic')
-    pulsedmeasurementlogic = Connector(interface='PulsedMeasurementLogic')
-    _data_streamer = Connector(name='data_streamer', interface='QdyneCounterInterface')
+    pulsedmasterlogic = Connector(interface="PulsedMasterLogic")
+    pulsedmeasurementlogic = Connector(interface="PulsedMeasurementLogic")
+    _data_streamer = Connector(name="data_streamer", interface="QdyneCounterInterface")
 
     # declare config options
-    estimator_method = ConfigOption(name='estimator_method', default='TimeTag', missing='warn')
-    analyzer_method = ConfigOption(name='analyzer_method', default='Fourier', missing='nothing')
-    default_estimator_method = ConfigOption(name='default_estimator_method', default='TimeTag', missing='warn')
-    default_analyzer_method = ConfigOption(name='analyzer_method', default='Fourier', missing='nothing')
-    #data_save_dir = ConfigOption(name='data_save_dir')
-    data_storage_class = ConfigOption(name='data_storage_class', default='text', missing='nothing')
+    estimator_method = ConfigOption(
+        name="estimator_method", default="TimeTag", missing="warn"
+    )
+    analyzer_method = ConfigOption(
+        name="analyzer_method", default="Fourier", missing="nothing"
+    )
+    default_estimator_method = ConfigOption(
+        name="default_estimator_method", default="TimeTag", missing="warn"
+    )
+    default_analyzer_method = ConfigOption(
+        name="analyzer_method", default="Fourier", missing="nothing"
+    )
+    # data_save_dir = ConfigOption(name='data_save_dir')
+    data_storage_class = ConfigOption(
+        name="data_storage_class", default="text", missing="nothing"
+    )
 
-#    estimator_method = StatusVar(default='TimeTag')
-#    analyzer_method = StatusVar(default='Fourier')
+    #    estimator_method = StatusVar(default='TimeTag')
+    #    analyzer_method = StatusVar(default='Fourier')
     _estimator_stg_dict = StatusVar(default=dict())
     _analyzer_stg_dict = StatusVar(default=dict())
-    _current_estimator_method = StatusVar(default='TimeTag')
-    _current_estimator_stg_name = StatusVar(default='default')
-    _current_analyzer_method = StatusVar(default='Fourier')
-    _current_analyzer_stg_name = StatusVar(default='default')
+    _current_estimator_method = StatusVar(default="TimeTag")
+    _current_estimator_stg_name = StatusVar(default="default")
+    _current_analyzer_method = StatusVar(default="Fourier")
+    _current_analyzer_stg_name = StatusVar(default="default")
 
-    _fit_configs = StatusVar(name='fit_configs', default=None)
-    _estimator_method = 'TimeTag'
-    _analysis_method = 'Fourier'
+    _fit_configs = StatusVar(name="fit_configs", default=None)
+    _estimator_method = "TimeTag"
+    _analysis_method = "Fourier"
 
     # signals for connecting modules
     sigFitUpdated = QtCore.Signal(str, object)
@@ -153,24 +167,33 @@ class QdyneLogic(LogicBase):
 
     def on_activate(self):
         def activate_classes():
-            self.measure = QdyneMeasurement(self)
+            self.data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
             self.settings = QdyneSettings()
-            self.settings.data_manager_stg.set_data_dir_all(self.module_default_data_dir)
+            self.settings.data_manager_stg.set_data_dir_all(
+                self.module_default_data_dir
+            )
             self.measurement_generator = MeasurementGenerator(self.pulsedmasterlogic)
-            self.data = MainDataClass()
             self.fit = QdyneFit(self, self._fit_configs)
-            self.data_manager = QdyneDataManager(self.data, self.settings.data_manager_stg)
-#            self.fitting = QdyneFittingMain()
+            self.data_manager = QdyneDataManager(
+                self.data, self.settings.data_manager_stg
+            )
+            self.measure = QdyneMeasurement(self)
+
+        #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
             self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
-            self.settings.estimator_stg.current_stg_name = self._current_estimator_stg_name
+            self.settings.estimator_stg.current_stg_name = (
+                self._current_estimator_stg_name
+            )
             self.settings.estimator_stg.current_method = self._current_estimator_method
 
             self.settings.analyzer_stg.initialize_settings(self._analyzer_stg_dict)
-            self.settings.analyzer_stg.current_stg_name = self._current_analyzer_stg_name
+            self.settings.analyzer_stg.current_stg_name = (
+                self._current_analyzer_stg_name
+            )
             self.settings.analyzer_stg.current_method = self._current_analyzer_method
 
         def input_initial_settings():
@@ -182,7 +205,8 @@ class QdyneLogic(LogicBase):
         input_initial_settings()
 
         self.sigToggleQdyneMeasurement.connect(
-            self.measure.toggle_qdyne_measurement, QtCore.Qt.QueuedConnection)
+            self.measure.toggle_qdyne_measurement, QtCore.Qt.QueuedConnection
+        )
         return
 
     def on_deactivate(self):
@@ -215,17 +239,18 @@ class QdyneLogic(LogicBase):
     @QtCore.Slot(str, bool)
     def do_fit(self, fit_config):
         try:
-            self.data.fit_config, self.data.fit_result \
-                = self.fit.perform_fit(self.data.freq_data.data_around_peak, fit_config)
+            self.data.fit_config, self.data.fit_result = self.fit.perform_fit(
+                self.data.freq_data.data_around_peak, fit_config
+            )
         except:
-            self.data.fit_config, self.data.fit_result = '', None
-            self.log.exception('Something went wrong while trying to perform data fit.')
+            self.data.fit_config, self.data.fit_result = "", None
+            self.log.exception("Something went wrong while trying to perform data fit.")
         self.sigFitUpdated.emit(self.data.fit_config, self.data.fit_result)
         return self.data.fit_result
 
     @QtCore.Slot(str)
     def save_data(self, data_type):
-        if 'all' in data_type:
+        if "all" in data_type:
             for data_type in self.data_manager.data_types:
                 self.data_manager.save_data(data_type)
         else:
@@ -233,7 +258,7 @@ class QdyneLogic(LogicBase):
 
     @QtCore.Slot(str, str, str)
     def load_data(self, data_type, file_path, index):
-        if 'all' in data_type:
-            self.log.error('Select one data type')
+        if "all" in data_type:
+            self.log.error("Select one data type")
             return
         self.data_manager.load_data(data_type, file_path, index)
