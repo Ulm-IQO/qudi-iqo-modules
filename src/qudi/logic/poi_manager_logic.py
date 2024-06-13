@@ -31,6 +31,8 @@ import time
 from datetime import datetime
 from collections import OrderedDict
 from PySide2 import QtCore
+from matplotlib import pyplot as plt, patches
+from matplotlib.figure import Figure
 
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
@@ -38,6 +40,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
+from qudi.util.units import ScaledFloat
 
 
 class RegionOfInterest:
@@ -378,6 +381,7 @@ class PoiManagerLogic(LogicBase):
 
     # config options
     _scan_axes = tuple(str(ConfigOption('data_scan_axes', default='xy', missing='info')))
+    _save_roi_image_as_png = ConfigOption('save_roi_image_as_png', default=False)
 
     # status vars
     _roi = StatusVar(default=RegionOfInterest())  # Notice constructor and representer further below
@@ -1072,7 +1076,7 @@ class PoiManagerLogic(LogicBase):
                                            column_formats=['s', '.6e', '.6e', '.6e'])
 
             # File path and names
-            #filepath = self.savelogic().get_path_for_module(module_name='ROIs')
+            # filepath = self.savelogic().get_path_for_module(module_name='ROIs')
             roi_name_no_blanks = self.roi_name.replace(' ', '_')
             timestamp = datetime.now()
             pois_filename = '{0}_poi_list'.format(roi_name_no_blanks)
@@ -1116,7 +1120,60 @@ class PoiManagerLogic(LogicBase):
             #######################################################
             if self.roi_scan_image is not None:
                 np.save(os.path.join(self.module_default_data_dir, roi_image_filename), self.roi_scan_image)
+                if self._save_roi_image_as_png:
+                    fig = self._draw_roi_scan_image()
+                    roi_png_image_filename = '{0}_{1}_scan_image.png'.format(
+                        timestamp.strftime('%Y%m%d-%H%M-%S'), roi_name_no_blanks)
+                    fig.savefig(os.path.join(self.module_default_data_dir, roi_png_image_filename))
         return
+
+    def _draw_roi_scan_image(self) -> Figure:
+        fig, ax = plt.subplots()
+
+        scan_range_x = (self.roi_scan_image_extent[0][1], self.roi_scan_image_extent[0][0])
+        scan_range_y = (self.roi_scan_image_extent[1][1], self.roi_scan_image_extent[1][0])
+        cbar_range = (np.nanmin(self.roi_scan_image), np.nanmax(self.roi_scan_image))
+
+        si_prefix_x = ScaledFloat(scan_range_x[1] - scan_range_x[0]).scale
+        si_factor_x = ScaledFloat(scan_range_x[1] - scan_range_x[0]).scale_val
+        si_prefix_y = ScaledFloat(scan_range_y[1] - scan_range_y[0]).scale
+        si_factor_y = ScaledFloat(scan_range_y[1] - scan_range_y[0]).scale_val
+        si_factor_cb = ScaledFloat(cbar_range[1] - cbar_range[0]).scale_val
+
+        cbar_range = (0, 3e5)
+        cfimage = ax.imshow(self.roi_scan_image.T / si_factor_cb,
+                            cmap='inferno',  # FIXME: reference the right place in qudi
+                            origin='lower',
+                            vmin=cbar_range[0] / si_factor_cb,
+                            vmax=cbar_range[1] / si_factor_cb,
+                            interpolation='none',
+                            extent=(*np.asarray(self.roi_scan_image_extent[0]) / si_factor_x,
+                                    *np.asarray(self.roi_scan_image_extent[1]) / si_factor_y))
+        # ax.pcolormesh(x_axis, y_axis, self.roi_scan_image.T)
+        ax.set_aspect(1)
+        ax.set_xlabel(f'Position ({si_prefix_x}m)')
+        ax.set_ylabel(f'Position ({si_prefix_y}m)')
+        ax.spines['bottom'].set_position(('outward', 10))
+        ax.spines['left'].set_position(('outward', 10))
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.get_xaxis().tick_bottom()
+        ax.get_yaxis().tick_left()
+
+        # add colorbar
+        cbar = plt.colorbar(cfimage, shrink=0.8)
+        cbar.ax.tick_params(which=u'both', length=0)
+
+        # add POIs
+        radius = abs(scan_range_y[1] - scan_range_y[0]) / si_factor_y * 0.025  # 2.5% of the y-range
+        marker_color = '#F0F'
+        for name, pos in self.poi_positions.items():
+            x = pos[0] / si_factor_x
+            y = pos[1] / si_factor_y
+            circle = patches.Circle((x, y), radius, edgecolor=marker_color, facecolor='None', zorder=10)
+            ax.add_patch(circle)
+            ax.annotate(name, xy=(x, y + radius * 1.2), fontsize=8, ha="left", color=marker_color)
+        return fig
 
     def load_roi(self, complete_path=None):
         if complete_path is None:
