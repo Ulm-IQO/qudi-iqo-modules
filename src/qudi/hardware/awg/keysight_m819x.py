@@ -67,8 +67,22 @@ class AWGM819X(PulserInterface):
 
     # explicitly set low/high levels for [[d_ch1_low, d_ch1_high], [d_ch2_low, d_ch2_high], ...]
     _d_ch_level_low_high = ConfigOption(name='d_ch_level_low_high', default=[], missing='nothing')
+
+    # Choose whether to use an external clock as reference and whether to pass it through to the clock output
     _ext_ref_clock_freq = ConfigOption(name='ext_ref_clock_freq', default=None, missing='nothing')
     _passthrough_clock = ConfigOption(name='passthrough_clock', default=False, missing='nothing')
+
+    # Optionally set the channel amplitude limits and offsets if they are in the config file
+    _ch1_amp = ConfigOption(name='ch1_amp', default=0.0, missing='nothing')
+    _ch2_amp = ConfigOption(name='ch2_amp', default=0.0, missing='nothing')
+    _ch3_amp = ConfigOption(name='ch3_amp', default=0.0, missing='nothing')
+    _ch4_amp = ConfigOption(name='ch4_amp', default=0.0, missing='nothing')
+    _ch1_offset = ConfigOption(name='ch1_offset', default=0.0, missing='nothing')
+    _ch2_offset = ConfigOption(name='ch2_offset', default=0.0, missing='nothing')
+    _ch3_offset = ConfigOption(name='ch3_offset', default=0.0, missing='nothing')
+    _ch4_offset = ConfigOption(name='ch4_offset', default=0.0, missing='nothing')
+
+
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -1831,7 +1845,7 @@ class AWGM819X(PulserInterface):
         """
         return [chnl for chnl in self._get_all_channels() if chnl.startswith('d')]
 
-    def _output_levels_by_config(self, d_ampl_low, d_ampl_high):
+    def _d_output_levels_by_config(self, d_ampl_low, d_ampl_high):
         if self._d_ch_level_low_high:
             for i in range(len(self._d_ch_level_low_high)):
                 ch_idx = i + 1
@@ -1849,6 +1863,39 @@ class AWGM819X(PulserInterface):
                     d_ampl_low, d_ampl_high))
 
         return d_ampl_low, d_ampl_high
+
+    def _a_output_levels_by_config(self, a_ampl, a_offset):
+
+        ch_ampls = [self._ch1_amp, self._ch2_amp, self._ch3_amp, self._ch4_amp]
+        ch_offsets = [self._ch1_offset, self._ch2_offset, self._ch3_offset, self._ch4_offset]
+
+        if not(self.awg_mode == 'FOUR'):
+            raise ValueError(f'Setting of analog amplitude and offset values via the config only supported for AWG mode\
+            FOUR, got AWG mode {self.awg_mode} instead.')
+
+        for i, ch_ampl in enumerate(ch_ampls):
+            if ch_ampl:
+                ch_idx = i + 1
+                ch_str = f'a_ch{ch_idx:d}'
+                if ch_str in a_ampl.keys():
+                    a_ampl[ch_str] = ch_ampl
+        else:  # TODO: Why are we using a for-else here?
+            pass  # use passed (default) values
+
+        self.log.debug(f'Setting amplitude levels from config: {a_ampl}')
+
+        for i, ch_offset in enumerate(ch_offsets):
+            if ch_offset:
+                ch_idx = i + 1
+                ch_str = f'a_ch{ch_idx:d}'
+                if ch_str in a_offset.keys():
+                    a_offset[ch_str] = ch_offset
+        else:  # TODO: Why are we using a for-else here?
+            pass  # use passed (default) values
+
+        self.log.debug(f'Setting offset levels from config: {a_offset}')
+
+        return a_ampl, a_offset
 
     def update_segment_table(self):
         segment_table_1 = self.read_segment_table(1)
@@ -2344,7 +2391,8 @@ class AWGM8195A(AWGM819X):
         else:
             self.log.error('The chosen AWG ({0}) mode is not implemented yet!'.format(self.awg_mode))
 
-        d_ampl_low, d_ampl_high = self._output_levels_by_config(d_ampl_low, d_ampl_high)
+        d_ampl_low, d_ampl_high = self._d_output_levels_by_config(d_ampl_low, d_ampl_high)
+        a_ampl, a_offs = self._a_output_levels_by_config(a_ampl, a_offs)  # TODO: Consistent variable naming
 
         return {'a_ampl': a_ampl, 'a_offs': a_offs,
                 'd_ampl_low': d_ampl_low, 'd_ampl_high': d_ampl_high}
@@ -2758,7 +2806,7 @@ class AWGM8190A(AWGM819X):
                       'd_ch3': constr.d_ch_low.default, 'd_ch4': constr.d_ch_low.default}
         d_ampl_high = {'d_ch1': constr.d_ch_high.default, 'd_ch2': constr.d_ch_high.default,
                        'd_ch3': constr.d_ch_high.default, 'd_ch4': constr.d_ch_high.default}
-        d_ampl_low, d_ampl_high = self._output_levels_by_config(d_ampl_low, d_ampl_high)
+        d_ampl_low, d_ampl_high = self._d_output_levels_by_config(d_ampl_low, d_ampl_high)
 
         a_offs = {}
 
