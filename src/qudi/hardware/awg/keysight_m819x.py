@@ -63,9 +63,12 @@ class AWGM819X(PulserInterface):
     _wave_mem_mode = None
     _wave_file_extension = '.bin'
     _wave_transfer_datatype = 'h'
+    _dynamic_sequence_mode = ConfigOption(name='dynamic_sequence_mode', default=True, missing='nothing')
 
     # explicitly set low/high levels for [[d_ch1_low, d_ch1_high], [d_ch2_low, d_ch2_high], ...]
     _d_ch_level_low_high = ConfigOption(name='d_ch_level_low_high', default=[], missing='nothing')
+    _ext_ref_clock_freq = ConfigOption(name='ext_ref_clock_freq', default=None, missing='nothing')
+    _passthrough_clock = ConfigOption(name='passthrough_clock', default=False, missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -320,7 +323,10 @@ class AWGM819X(PulserInterface):
         select the first segment in your sequence, before any dynamic sequence selection.
         """
         self.write_all_ch(":STAB{}:SEQ:SEL 0", all_by_one={'m8195a': True})
-        self.write_all_ch(":STAB{}:DYN ON", all_by_one={'m8195a': True})
+        if self._dynamic_sequence_mode:
+            self.write_all_ch(":STAB{}:DYN ON", all_by_one={'m8195a': True})
+        else:
+            self.write_all_ch(":STAB{}:DYN OFF", all_by_one={'m8195a': True})
 
         return 0
 
@@ -704,7 +710,7 @@ class AWGM819X(PulserInterface):
             if chnl not in digital_channels:
                 continue
 
-            offs =(high[chnl] + low[chnl])/2
+            offs = (high[chnl] + low[chnl]) / 2
             ampl = high[chnl] - low[chnl]
             self.write(self._get_digital_ch_cmd(chnl) + ':AMPL {}'.format(ampl))
             self.write(self._get_digital_ch_cmd(chnl) + ':OFFS {}'.format(offs))
@@ -834,6 +840,11 @@ class AWGM819X(PulserInterface):
 
         return total_number_of_samples, waveforms
 
+    @abstractmethod
+    def _create_raw_seg_table_entry(self, wfm_tuple, index, control, sequence_loop_count, segment_loop_count,
+                                    seg_start_offset, seg_end_offset):
+        pass
+
     def write_sequence(self, name, sequence_parameters):
         """
         Write a new sequence on the device memory.
@@ -927,56 +938,28 @@ class AWGM819X(PulserInterface):
 
             control = self._get_sequence_control_bin(sequence_parameters, index)
 
-            seq_loop_count = 1
+            sequence_loop_count = 1
             if seq_step.repetitions == -1:
                 # this is ugly, limits maximal waiting time. 1 Sa -> approx. 0.3 s
-                seg_loop_count = 4294967295  # max value, todo: from constraints
+                segment_loop_count = 4294967295  # max value, todo: from constraints
             else:
-                seg_loop_count = seq_step.repetitions + 1  # if repetitions = 0 then do it once
-            seg_start_offset = 0    # play whole segement from start...
-            seg_end_offset = 0xFFFFFFFF     # to end
+                segment_loop_count = seq_step.repetitions + 1  # if repetitions = 0 then do it once
+            seg_start_offset = 0  # play whole segement from start...
+            seg_end_offset = 0xFFFFFFFF  # to end
 
-            self.log.debug("For sequence table step {} with {} reps: control: {}".format(step,
-                                                                                         seq_loop_count,
-                                                                                         control))
+            self.log.debug(f"For sequence table step {step}:'{seq_step['ensemble']}' "
+                           f"with {segment_loop_count} reps: control bit= {control}")
 
-            segment_id_ch1 = self.get_segment_id(self._remove_file_extension(wfm_tuple[0]), 1) \
-                if len(wfm_tuple) >= 1 else -1
-            segment_id_ch2 = self.get_segment_id(self._remove_file_extension(wfm_tuple[1]), 2) \
-                if len(wfm_tuple) == 2 else -1
+            self._create_raw_seg_table_entry(wfm_tuple, index, control,
+                                             sequence_loop_count,
+                                             segment_loop_count,
+                                             seg_start_offset,
+                                             seg_end_offset)
 
-            try:
-                # creates all segments as data entries
-                if segment_id_ch1 > -1:
-                    # STAB will default to STAB1 on 8190A
-                    self.write(':STAB:DATA {0}, {1}, {2}, {3}, {4}, {5}, {6}'
-                               .format(index,
-                                       control,
-                                       seq_loop_count,
-                                       seg_loop_count,
-                                       segment_id_ch1,
-                                       seg_start_offset,
-                                       seg_end_offset))
-                if segment_id_ch2 > -1:
-                    self.write(':STAB2:DATA {0}, {1}, {2}, {3}, {4}, {5}, {6}'
-                               .format(index,
-                                       control,
-                                       seq_loop_count,
-                                       seg_loop_count,
-                                       segment_id_ch2,
-                                       seg_start_offset,
-                                       seg_end_offset))
+            ctr_steps_written += 1
+            self.log.debug("Writing seqtable entry {}: {}".format(index, step))
 
-                if segment_id_ch1 + segment_id_ch2 > -1:
-                    ctr_steps_written += 1
-                    self.log.debug("Writing seqtable entry {}: {}".format(index, step))
-                else:
-                    self.log.error("Failed while writing seqtable entry {}: {}".format(index, step))
-
-            except Exception as e:
-                self.log.error("Unknown error occured while writing to seq table: {}".format(str(e)))
-
-        if goto_in_sequence and self.get_constraints().sequence_order == "LINONLY": # SequenceOrderOption.LINONLY:
+        if goto_in_sequence and self.get_constraints().sequence_order == "LINONLY":  # SequenceOrderOption.LINONLY:
             self.log.warning("Found go_to in step of sequence {}. Not supported and ignored.".format(name))
 
         while int(self.query('*OPC?')) != 1:
@@ -1203,14 +1186,18 @@ class AWGM819X(PulserInterface):
     def _define_new_sequence(self, name, n_steps):
         pass
 
+    @property
+    def internal_mem_mode(self):
+        return None
+
     def _init_device(self):
         """ Run those methods during the initialization process."""
 
         self.reset()
         constr = self.get_constraints()
 
-        self.write(':ROSC:SOUR INT')  # Chose source for reference clock
-
+        self._set_ref_clock()
+        self._set_sample_rate_div()
         self._set_awg_mode()
 
         # General procedure according to Sec. 8.22.6 in AWG8190A manual:
@@ -1287,21 +1274,22 @@ class AWGM819X(PulserInterface):
             if not to_nextfree_segment:
                 self.clear_all()
 
-            for chnl_num, waveform in load_dict.items():
+            for idx, (chnl_num, waveform) in enumerate(load_dict.items()):
                 name = waveform.split('.bin', 1)[0]  # name in front of .bin/.bin8
                 filepath = os.path.join(path, waveform)
 
                 data = self.query_bin(':MMEM:DATA? "{0}"'.format(filepath))
                 n_samples = len(data)
-                if self.interleaved_wavefile:
+                if self.get_interleaved_wavefile(ch_num=chnl_num):
                     n_samples = int(n_samples / 2)
-                segment_id = self.query('TRAC{0:d}:DEF:NEW? {1:d}'.format(chnl_num, n_samples)) \
-                             + '_ch{:d}'.format(chnl_num)
-                segment_id_per_ch = segment_id.rsplit("_ch", 1)[0]
-                self.write_bin(':TRAC{0}:DATA {1}, {2},'.format(chnl_num, segment_id_per_ch, offset), data)
-                self.write(':TRAC{0}:NAME {1}, "{2}"'.format(chnl_num, segment_id_per_ch, name))
 
-                self._check_uploaded_wave_name(chnl_num, name, segment_id_per_ch)
+                segment_id = self._create_segment(chnl_num, name, n_samples,
+                                                  to_segment_id=-1,
+                                                  no_clear=(idx != 0 and self.internal_mem_mode == 'EXT'))
+                segment_id_plus_ch = f"{segment_id}_ch{chnl_num:d}"
+                self.write_bin(':TRAC{0}:DATA {1}, {2},'.format(chnl_num, segment_id, offset), data)
+
+                self._check_uploaded_wave_name(chnl_num, name, segment_id)
 
                 self._flag_segment_table_req_update = True
                 self.log.debug("Loading waveform {} of len {} to AWG ch {}, segment {}.".format(
@@ -1326,6 +1314,19 @@ class AWGM819X(PulserInterface):
 
         else:
             raise ValueError("Unknown memory mode: {}".format(self._wave_mem_mode))
+
+    def _set_ref_clock(self):
+        if self._ext_ref_clock_freq is None:
+            self.write(':ROSC:SOUR INT')
+        else:
+            self._ext_ref_clock_freq = int(self._ext_ref_clock_freq)
+            self.write(f':ROSC:FREQ {self._ext_ref_clock_freq:d}')
+            self.write(':ROSC:SOUR EXT')
+            self.log.debug(f"Setting to external ref clock with f= {self._ext_ref_clock_freq / 1e6} MHz")
+
+            if self._passthrough_clock:
+                self.write(':OUTP:ROSC:SOUR EXT')
+                self.log.debug("Passing external input reference clock through to clock output")
 
     def send_trigger_event(self):
         self.write(":TRIG:BEG")
@@ -1372,7 +1373,7 @@ class AWGM819X(PulserInterface):
 
         for i in range(30):  # error buffer of device is 30
             raw_str = self.query(':SYST:ERR?', force_no_check=True)
-            is_error = not ('0' in raw_str[0])
+            is_error = not ('0,' == raw_str[0:2])
             if is_error:
                 self.log.warn("AWG issued error: {}".format(raw_str))
                 has_error_occured = True
@@ -1392,7 +1393,7 @@ class AWGM819X(PulserInterface):
         if '1' in int_name:
             return 'a_ch1'
         elif '2' in int_name:
-            return  'a_ch2'
+            return 'a_ch2'
         else:
             raise RuntimeError("Unknown exception. Should only have 1 or 2 in marker name")
 
@@ -1406,7 +1407,7 @@ class AWGM819X(PulserInterface):
 
     @abstractmethod
     def float_to_sample(self, val):
-       pass
+        pass
 
     def _float_to_int(self, val, n_bits):
 
@@ -1500,6 +1501,58 @@ class AWGM819X(PulserInterface):
 
         return 0
 
+    def _create_segment(self, ch_num, wave_name, wave_len, to_segment_id=-1, no_clear=False):
+
+        seg_id_exist = None
+        segment_id = to_segment_id
+
+        # delete segment on all ch, if already existent
+        if wave_name in self.get_loaded_assets_name(ch_num):
+            for ch_str in self._get_active_d_or_a_channels(only_analog=True):
+                ch_num_i = self.chstr_2_chnum(ch_str)
+                wave_name_i = self._name_with_ch(wave_name.rsplit("_ch", 1)[0], ch_num_i)
+                try:
+                    seg_id_exist = self.asset_name_2_id(wave_name_i, ch_num_i, mode='segment')
+                except ValueError:
+                    continue  # already cleared
+                if not no_clear:
+                    # in awg8195a extended memory mode, all channel segment entries are written/cleared at once
+                    # on looping over channels, we might want to protect already defined segments from clear
+                    self.write("TRAC{:d}:DEL {}".format(ch_num, seg_id_exist))
+                    self.log.debug(
+                        "Deleting segment {} ch {} for existing wave {}".format(seg_id_exist, ch_num, wave_name))
+
+        if wave_name.split(',')[0] != wave_name:
+            # todo: this breaks if there is a , in the name without number
+            segment_id = np.int(wave_name.split(',')[0])
+            self.log.warning("Loading wave to specified segment ({}) via name will deprecate.".format(segment_id))
+        if segment_id == -1:
+            if not seg_id_exist:
+                # get id of new free segment
+                segment_id = self.query('TRAC{0:d}:DEF:NEW? {1:d}'.format(ch_num, wave_len))
+                # only need the next free id, definition and writing is performed below again
+                # so delete defined segment again
+                self.write("TRAC{:d}:DEL {}".format(ch_num, segment_id))
+            else:
+                segment_id = seg_id_exist
+
+        # define the size of a waveform segment, marker samples do not count. If the channel is sourced from
+        # Extended Memory, the same segment is defined on all other channels sourced from Extended Memory.
+        if not (no_clear and seg_id_exist != None):
+            self.write(':TRAC{0}:DEF {1}, {2}, {3}'.format(int(ch_num), segment_id, wave_len, 0))
+
+        # name the segment. For extended memory, loop over channels
+        for ch_str in self._get_active_d_or_a_channels(only_analog=True):
+            if self.internal_mem_mode == 'EXT':
+                ch_num_i = self.chstr_2_chnum(ch_str)
+                wave_name_i = self._name_with_ch(wave_name.rsplit("_ch", 1)[0], ch_num_i)
+                self.write(':TRAC{0}:NAME {1}, "{2}"'.format(int(ch_num_i), segment_id, wave_name_i))
+            else:
+                self.write(':TRAC{0}:NAME {1}, "{2}"'.format(int(ch_num), segment_id, wave_name))
+                break
+
+        return segment_id
+
     def _write_wave_to_memory(self, name, analog_samples, digital_samples, active_analog, to_segment_id=1):
         """
         :param name:
@@ -1538,39 +1591,13 @@ class AWGM819X(PulserInterface):
 
             elif self._wave_mem_mode == 'awg_segments':
 
-                if wave_name in self.get_loaded_assets_name(ch_num):
-                    seg_id_exist = self.asset_name_2_id(wave_name, ch_num, mode='segment')
-                    self.write("TRAC{:d}:DEL {}".format(ch_num, seg_id_exist))
-                    self.log.debug("Deleting segment {} ch {} for existing wave {}".format(seg_id_exist, ch_num, wave_name))
-
-                segment_id = to_segment_id
-                if name.split(',')[0] != name:
-                    # todo: this breaks if there is a , in the name without number
-                    segment_id = np.int(name.split(',')[0])
-                    self.log.warning("Loading wave to specified segment ({}) via name will deprecate.".format(segment_id))
-                if segment_id == -1:
-                    # to next free segment
-                    segment_id = self.query('TRAC{0:d}:DEF:NEW? {1:d}'.format(ch_num, len(analog_samples[ch_str])))
-                    # only need the next free id, definition and writing is performed below again
-                    # so delete defined segment again
-                    self.write("TRAC{:d}:DEL {}".format(ch_num, segment_id))
-
-                segment_id_ch = str(segment_id) + '_ch{:d}'.format(ch_num)
-                self.log.debug("Writing wave {} to ch {} segment_id {}".format(wave_name, ch_str, segment_id_ch))
-
-                # delete if the segment is already existing
-                loaded_segments_id = self.get_loaded_assets_id(ch_num)
-                if str(segment_id) in loaded_segments_id:
-                    # clear the segment
-                    self.write(':TRAC:DEL {0}'.format(segment_id))
-
-                # define the size of a waveform segment, marker samples do not count. If the channel is sourced from
-                # Extended Memory, the same segment is defined on all other channels sourced from Extended Memory.
                 # Comb samples written, but len(comb_samples) doesn't know whether interleaved data.
-                self.write(':TRAC{0}:DEF {1}, {2}, {3}'.format(int(ch_num), segment_id, len(analog_samples[ch_str]), 0))
+                segment_id = self._create_segment(ch_num, wave_name, len(analog_samples[ch_str]),
+                                                  to_segment_id=to_segment_id,
+                                                  no_clear=(idx_ch != 0 and self.internal_mem_mode == 'EXT'))
 
-                # name the segment
-                self.write(':TRAC{0}:NAME {1}, "{2}"'.format(int(ch_num), segment_id, wave_name))  # name the segment
+                segment_id_plus_ch = str(segment_id) + '_ch{:d}'.format(ch_num)
+                self.log.debug("Writing wave {} to ch {} segment_id {}".format(wave_name, ch_str, segment_id_plus_ch))
                 # upload
                 self.write_bin(':TRAC{0}:DATA {1}, {2},'.format(int(ch_num), segment_id, 0), comb_samples)
 
@@ -1581,11 +1608,13 @@ class AWGM819X(PulserInterface):
 
             else:
                 raise ValueError("Unknown memory mode: {}".format(self._wave_mem_mode))
-
-            transfer_speed_mbs = (comb_samples.nbytes/(1024*1024))/(time.time() - t_start)
-            self.log.debug('Written ({2:.1f} MB/s) to ch={0}: max ampl: {1}'.format(ch_str,
-                                                                                analog_samples[ch_str].max(),
-                                                                                transfer_speed_mbs))
+            try:
+                transfer_speed_mbs = (comb_samples.nbytes / (1024 * 1024)) / (time.perf_counter() - t_start)
+                self.log.debug('Written ({2:.1f} MB/s) to ch={0}: max ampl: {1}'.format(ch_str,
+                                                                                        analog_samples[ch_str].max(),
+                                                                                        transfer_speed_mbs))
+            except ZeroDivisionError:
+                pass
 
         return waveforms
 
@@ -1623,9 +1652,7 @@ class AWGM819X(PulserInterface):
                                                                        values=values)
         self.awg.timeout = self._awg_timeout * 1000
 
-        return 0
-
-    def write_all_ch(self, command, *args, all_by_one=None):
+    def write_all_ch(self, command, *args, all_by_one=None, d_chs=False):
         """
         :param command: visa command
         :param all_by_one:  dict, eg. {"m8190a": False, "m8195a": True}. Set true when for
@@ -1645,13 +1672,17 @@ class AWGM819X(PulserInterface):
 
         if single_cmd:
             # replace first braces that, usually to indicate channel
-            command = command.replace("{","", 1)
+            command = command.replace("{", "", 1)
             command = command.replace("}", "", 1)
             self.write(command.format(*args))
         else:
             for a_ch in self._get_all_analog_channels():
                 ch_num = self.chstr_2_chnum(a_ch)
                 self.write(command.format(ch_num, *args))
+            if d_chs:
+                for ch in self._get_all_channels():
+                    ch_num = self.chstr_2_chnum(ch)
+                    self.write(command.format(ch_num, *args))
 
     def query_all_ch(self, command, *args, all_by_one=None):
         """
@@ -1993,6 +2024,9 @@ class AWGM819X(PulserInterface):
 
         return self.get_loaded_assets_id(ch_num, mode)[idx]
 
+    def asset_name_2_load_id(self, name, ch_num, mode='segment'):
+        return self.asset_name_2_id(name, ch_num, mode)
+
     def get_sequencer_state(self, ch_num):
         """
         Queries the state of the sequencer.
@@ -2084,6 +2118,15 @@ class AWGM819X(PulserInterface):
 
         return num_list
 
+    def _rreplace(self, string, replace, new, n_occurrence=1):
+        """
+        Helper to replace the first n_occurence from the right
+        of a substring in a string with a new string.
+        Eg. _rreplace("wavech1_ch1", ch1, ch2, 1) => "wavech1_ch2"
+        """
+        left = string.rsplit(replace, n_occurrence)
+        return new.join(left)
+
 
 class AWGM8195A(AWGM819X):
     """ A hardware module for the Keysight M8195A series for generating
@@ -2136,12 +2179,25 @@ class AWGM8195A(AWGM819X):
 
     @property
     def interleaved_wavefile(self):
+        pass
+
+    def get_interleaved_wavefile(self, ch_num=None):
         """
         Whether wavefroms need to be uploaded in a interleaved intermediate format.
         Not to confuse with interleave mode from get_interleave().
         :return: True/False: need interleaved wavefile?
         """
-        return self.marker_on
+        if self.awg_mode in ['MARK', 'SING', 'DUAL', 'FOUR']:
+            return self.marker_on
+        elif self.awg_mode in ['DCM']:
+            if ch_num == 1:
+                return self.marker_on
+            elif ch_num == 2:
+                return False
+            else:
+                raise ValueError(f"Unexpected channel: {ch_num}")
+        else:
+            raise ValueError(f"Unexpected awg mode: {self.awg_mode}")
 
     def get_constraints(self):
         """
@@ -2252,6 +2308,8 @@ class AWGM8195A(AWGM819X):
                 activation_config['all'] = frozenset({'a_ch1', 'a_ch2'})
             elif awg_mode == 'FOUR':
                 activation_config['all'] = frozenset({'a_ch1', 'a_ch2', 'a_ch3', 'a_ch4'})
+            elif awg_mode == 'DCM':
+                activation_config['all'] = frozenset({'a_ch1', 'a_ch2', 'd_ch1', 'd_ch2'})
 
         constraints.activation_config = activation_config
 
@@ -2272,10 +2330,16 @@ class AWGM8195A(AWGM819X):
 
             a_ampl = {'a_ch1': constr.a_ch_amplitude.default, 'a_ch2': constr.a_ch_amplitude.default,
                       'a_ch3': constr.a_ch_amplitude.default, 'a_ch4': constr.a_ch_amplitude.default}
-            a_offs = {'a_ch1': constr.a_ch_offset.default, 'a_ch2': constr.a_ch_offset.default_marker,
-                      'a_ch3': constr.a_ch_offset.default_marker, 'a_ch4': constr.a_ch_offset.default_marker}
+            a_offs = {'a_ch1': constr.a_ch_offset.default, 'a_ch2': constr.a_ch_offset.default,
+                      'a_ch3': constr.a_ch_offset.default, 'a_ch4': constr.a_ch_offset.default}
             d_ampl_low = {}
             d_ampl_high = {}
+
+        elif self.awg_mode == 'DCM':
+            a_ampl = {'a_ch1': constr.a_ch_amplitude.default, 'a_ch2': constr.a_ch_amplitude.default}
+            a_offs = {'a_ch1': constr.a_ch_offset.default, 'a_ch2': constr.a_ch_offset.default}
+            d_ampl_low = {'d_ch1': constr.d_ch_low.default, 'd_ch2': constr.d_ch_low.default}
+            d_ampl_high = {'d_ch1': constr.d_ch_high.default, 'd_ch2': constr.d_ch_high.default}
 
         else:
             self.log.error('The chosen AWG ({0}) mode is not implemented yet!'.format(self.awg_mode))
@@ -2285,6 +2349,22 @@ class AWGM8195A(AWGM819X):
         return {'a_ampl': a_ampl, 'a_offs': a_offs,
                 'd_ampl_low': d_ampl_low, 'd_ampl_high': d_ampl_high}
 
+    @property
+    def internal_mem_mode(self):
+        mem_modes = []
+        chs = self.get_active_channels()
+
+        for ch_str in chs:
+            ch_num = self.chstr_2_chnum(ch_str)
+            mode = self.query(':TRAC{}:MMOD?'.format(int(ch_num)))
+            if mode != 'NONE':
+                mem_modes.append(mode)
+
+        if len(set(mem_modes)) != 1:
+            raise RuntimeError(f"Unexpectedly, internal memory mode is not equal for all channels: {mem_modes}")
+
+        return mem_modes[0]
+
     def _set_awg_mode(self):
         # set only on init by config option, not during runtime
 
@@ -2292,14 +2372,14 @@ class AWGM8195A(AWGM819X):
         self.write(':INSTrument:DACMode {0}'.format(awg_mode))
 
         # see manual 1.5.5
-        if awg_mode == 'MARK' or awg_mode == 'SING' or awg_mode == 'DUAL' or awg_mode == 'FOUR':
+        if awg_mode in ['MARK', 'SING', 'DUAL', 'FOUR', 'DCM']:
             self.write_all_ch(':TRAC{}:MMOD EXT')
         else:
             raise ValueError("Unknown mode: {}".format(awg_mode))
 
         if awg_mode != 'MARK':
-            self.log.error("Setting awg mode {} that is currently not supported! "
-                           "Be careful and please report bugs and bug fixes back on github.".format(awg_mode))
+            self.log.error(f"Setting experimental awg mode {awg_mode} that is not well tested! "
+                           "Be careful and please report bugs and bug fixes back on github.")
 
         if self.awg_mode != awg_mode:
             self.log.error("Setting awg mode failed, is still: {}".format(self.awg_mode))
@@ -2308,11 +2388,14 @@ class AWGM8195A(AWGM819X):
         self.write(':INST:MEM:EXT:RDIV DIV{0}'.format(self._sample_rate_div))  # TODO dependent on DACMode
 
     def _write_output_on(self):
-        self.write_all_ch("OUTP{} ON")
+        self.write_all_ch("OUTP{} ON", d_chs=True)
+
+    def _write_output_off(self):
+        self.write_all_ch("OUTP{} OFF", d_chs=True)
 
     def _compile_bin_samples(self, analog_samples, digital_samples, ch_str):
 
-        interleaved = self.interleaved_wavefile
+        interleaved = self.get_interleaved_wavefile(ch_num=self.chstr_2_chnum(ch_str))
         self.log.debug("Compiling samples for {}, interleaved: {}".format(ch_str, interleaved))
 
         a_samples = self.float_to_sample(analog_samples[ch_str])
@@ -2322,7 +2405,7 @@ class AWGM8195A(AWGM819X):
                                             int_type_str='int8')
             # the analog and digital samples are stored in the following format: a1, d1, a2, d2, a3, d3, ...
             comb_samples = np.zeros(2 * a_samples.size, dtype=np.int8)
-            comb_samples[::2] =  a_samples
+            comb_samples[::2] = a_samples
             comb_samples[1::2] = d_samples
 
         else:
@@ -2356,9 +2439,8 @@ class AWGM8195A(AWGM819X):
 
         active_ch = dict()
 
-        if ch ==[]:
+        if ch == []:
 
-            # because 0 = False and 1 = True
             awg_mode = self.awg_mode
 
             if awg_mode == 'MARK':
@@ -2375,6 +2457,11 @@ class AWGM8195A(AWGM819X):
                 active_ch['a_ch2'] = bool(int(self.query(':OUTP2?')))
                 active_ch['a_ch3'] = bool(int(self.query(':OUTP3?')))
                 active_ch['a_ch4'] = bool(int(self.query(':OUTP4?')))
+            elif awg_mode == 'DCM':
+                active_ch['a_ch1'] = bool(int(self.query(':OUTP1?')))
+                active_ch['a_ch2'] = bool(int(self.query(':OUTP2?')))
+                active_ch['d_ch1'] = bool(int(self.query(':OUTP3?')))
+                active_ch['d_ch2'] = bool(int(self.query(':OUTP4?')))
 
         else:
 
@@ -2383,7 +2470,7 @@ class AWGM8195A(AWGM819X):
                     ana_chan = int(channel[4:])
                     active_ch[channel] = bool(int(self.ask(':OUTP{0}?'.format(ana_chan))))
 
-                elif 'd_ch'in channel:
+                elif 'd_ch' in channel:
                     self.log.warning('Digital channel "{0}" cannot be '
                                      'activated! Command ignored.'
                                      ''.format(channel))
@@ -2444,30 +2531,56 @@ class AWGM8195A(AWGM819X):
         return self._sequence_names[0]
 
     def _get_sequence_control_bin(self, sequence_parameters, idx_step):
-
+        """
+        Control bytes as defined in 8195a manual table 35: control
+        """
         index = idx_step
         num_steps = len(sequence_parameters)
 
-        if self.awg_mode == 'MARK':
-            control = 2 ** 24  # set marker
-        elif self.awg_mode == 'FOUR':
+        if self.awg_mode in ['MARK', 'DCM']:
+            control = 2 << 23  # enable markers
+        elif self.awg_mode in ['SING', 'FOUR', 'DUAL']:
             control = 0
         else:
             self.log.error("The AWG mode '{0}' is not implemented yet!".format(self.awg_mode))
             return
 
         if index == 0:
-            control += 2 ** 28  # set start sequence
+            control += 2 << 27  # set start sequence
         if index + 1 == num_steps:
-            control += 2 ** 30  # set end sequence
+            control += 2 << 29  # set end sequence
 
         return control
 
-    def _name_with_ch(self, name, ch_num):
+    def asset_name_2_load_id(self, name, ch_num, mode='segment'):
         """
-        M8195A has only one wave file for all channels, no channel extension needed.
+        AWG8195a has only one segment table. If in DCM mode, data for channel 2 will go to a new segment.
+        However for playing, both channels have to select the first segment id (with waveform of ch 1).
         """
-        return name
+        if self.awg_mode != 'DCM':
+            return self.asset_name_2_id(name, ch_num, mode)
+        else:
+            return self.asset_name_2_id(self._rreplace(name, "_ch2", "_ch1", 1), 1, mode)
+
+    def _create_raw_seg_table_entry(self, wfm_tuple, index, control, sequence_loop_count, segment_loop_count,
+                                    seg_start_offset, seg_end_offset):
+        segment_id_ch1 = self.get_segment_id(self._remove_file_extension(wfm_tuple[0]), 1) \
+            if len(wfm_tuple) >= 1 else -1
+        # only single segment table for all channels. All ch data must be written to segment_id_ch1
+        segment_id_ch2 = -1
+
+        if segment_id_ch1 == -1:
+            raise ValueError(f"Couldn't find the necessary segments: {wfm_tuple}")
+
+        if segment_id_ch1 > -1:
+            self.write(':STAB:DATA {0}, {1}, {2}, {3}, {4}, {5}, {6}'
+                       .format(index,
+                               control,
+                               sequence_loop_count,
+                               segment_loop_count,
+                               segment_id_ch1,
+                               seg_start_offset,
+                               seg_end_offset))
 
 
 class AWGM8190A(AWGM819X):
@@ -2508,8 +2621,7 @@ class AWGM8190A(AWGM819X):
         # no reason to deactivate any marker for M8190A, as active makers do not impose restrcitions
         return True
 
-    @property
-    def interleaved_wavefile(self):
+    def get_interleaved_wavefile(self, ch_num=None):
         return False
 
     def get_constraints(self):
@@ -2820,7 +2932,43 @@ class AWGM8190A(AWGM819X):
             if 'pattern_jump_address' in next_step:
                 control = 0x1 << 30
 
+        if 'segment_advance_mode' in seq_step:
+            if seq_step['segment_advance_mode'] == 'conditional':
+                control += 0x1 << 16
+
         control += 0x1 << 24  # always enable markers
 
         return control
+
+    def _create_raw_seg_table_entry(self, wfm_tuple, index, control, sequence_loop_count, segment_loop_count,
+                                    seg_start_offset, seg_end_offset):
+        segment_id_ch1 = self.get_segment_id(self._remove_file_extension(wfm_tuple[0]), 1) \
+            if len(wfm_tuple) >= 1 else -1
+        segment_id_ch2 = self.get_segment_id(self._remove_file_extension(wfm_tuple[1]), 2) \
+            if len(wfm_tuple) == 2 else -1
+
+        if segment_id_ch1 == -1 or segment_id_ch2 == -1:
+            raise ValueError(f"Couldn't find the necessary segments: {wfm_tuple}")
+
+        # creates all segments as data entries
+        if segment_id_ch1 > -1:
+            # STAB will default to STAB1 on 8190A
+            self.write(':STAB:DATA {0}, {1}, {2}, {3}, {4}, {5}, {6}'
+                       .format(index,
+                               control,
+                               sequence_loop_count,
+                               segment_loop_count,
+                               segment_id_ch1,
+                               seg_start_offset,
+                               seg_end_offset))
+        if segment_id_ch2 > -1:
+            self.write(':STAB2:DATA {0}, {1}, {2}, {3}, {4}, {5}, {6}'
+                       .format(index,
+                               control,
+                               sequence_loop_count,
+                               segment_loop_count,
+                               segment_id_ch2,
+                               seg_start_offset,
+                               seg_end_offset))
+
 
