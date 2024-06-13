@@ -641,7 +641,6 @@ class PoiManagerLogic(LogicBase):
         Deletes the given poi from the ROI.
 
         @param str name: Name of the POI to delete. If None (default) delete active POI.
-        @param bool emit_change: Flag indicating if the changed POI set should be signaled.
         """
         with self._thread_lock:
             if len(self.poi_names) == 0:
@@ -1043,7 +1042,8 @@ class PoiManagerLogic(LogicBase):
         If desired the relative shift of the optimised POI can be used to update the ROI position.
         The scanner is moved to the optimised POI if desired.
 
-        @param optimal_pos:
+        @param is_running:
+        @param optimal_position:
         @param fit_data:
         """
         with self._thread_lock:
