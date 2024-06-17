@@ -546,10 +546,7 @@ class OdmrLogic(LogicBase):
                 self.sigScanStateUpdated.emit(False)
                 return
 
-            for channel, range_data in self._raw_data.items():
-                for range_index, _ in enumerate(range_data):
-                    self._fit_results[channel][range_index] = None
-                    self.sigFitUpdated.emit(self._fit_results[channel][range_index], channel, range_index)
+            # ToDo: Clear old fit
             self._elapsed_sweeps = 0
             self._elapsed_time = 0.0
             self.sigElapsedUpdated.emit(self._elapsed_time, self._elapsed_sweeps)
