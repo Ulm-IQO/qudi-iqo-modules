@@ -21,9 +21,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 
-import time
-import copy
 import datetime
+from typing import Callable
+
 import numpy as np
 from functools import reduce
 import operator
@@ -31,17 +31,87 @@ import operator
 import matplotlib as mpl
 import matplotlib.pyplot as plt
 from PySide2 import QtCore
+from matplotlib.axes import Axes
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.util.datastorage import ImageFormat, NpyDataStorage, TextDataStorage
+from qudi.util.datastorage import TextDataStorage
 from qudi.util.units import ScaledFloat
 
 
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.interface.scanning_probe_interface import ScanData, ScanImage
+
+
+def draw_2d_scan_figure(scan_image: ScanImage, cbar_range: tuple[float, float] = None,
+                        modification_function: Callable[[Axes, tuple[float, float], tuple[float, float], float, float],
+                        None] = None):
+    """ Create a 2-D color map figure of the scan image.
+
+    @param modification_function: function to modify the axes, params are Axes, scan_range_x, scan_range_y,
+    si_factor_x, si_factor_y
+    @return fig: a matplotlib figure object to be saved to file.
+    """
+    if not scan_image:
+        raise ValueError('ScanImage is required here.')
+    if not scan_image.scan_dimension == 2:
+        raise ValueError('Dimension of ScanImage has to be 2 here.')
+    image_arr = scan_image.data
+    scan_axes = scan_image.scan_axes
+
+    # If no colorbar range was given, take full range of data
+    if cbar_range is None:
+        cbar_range = (np.nanmin(image_arr), np.nanmax(image_arr))
+
+    # Create figure
+    fig, ax = plt.subplots()
+
+    # Scale axes and data
+    scan_range_x = (scan_image.scan_ranges[0][1], scan_image.scan_ranges[0][0])
+    scan_range_y = (scan_image.scan_ranges[1][1], scan_image.scan_ranges[1][0])
+    si_prefix_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale
+    si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
+    si_prefix_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale
+    si_factor_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale_val
+    si_prefix_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale if cbar_range[1]!=cbar_range[0] \
+        else ScaledFloat(cbar_range[1])
+    si_factor_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale_val
+
+    # Create image plot
+    cfimage = ax.imshow(image_arr.transpose() / si_factor_cb,
+                        cmap='inferno',  # FIXME: reference the right place in qudi
+                        origin='lower',
+                        vmin=cbar_range[0]/si_factor_cb,
+                        vmax=cbar_range[1]/si_factor_cb,
+                        interpolation='none',
+                        extent=(*np.asarray(scan_image.scan_ranges[0]) / si_factor_x,
+                                *np.asarray(scan_image.scan_ranges[1]) / si_factor_y))
+    ax.set_aspect(1)
+    ax.set_xlabel(f'{scan_axes[0].axis_name} position ({si_prefix_x}{scan_axes[0].axis_unit})')
+    ax.set_ylabel(f'{scan_axes[1].axis_name} position ({si_prefix_y}{scan_axes[1].axis_unit})')
+    ax.spines['bottom'].set_position(('outward', 10))
+    ax.spines['left'].set_position(('outward', 10))
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.get_xaxis().tick_bottom()
+    ax.get_yaxis().tick_left()
+
+    # Draw the colorbar
+    cbar = plt.colorbar(cfimage, shrink=0.8)  #, fraction=0.046, pad=0.08, shrink=0.75)
+    if scan_image.data_unit:
+        cbar.set_label(f'{scan_image.data_name} ({si_prefix_cb}{scan_image.data_unit})')
+    else:
+        cbar.set_label(f'{scan_image.data_name}')
+
+    # remove ticks from colorbar for cleaner image
+    cbar.ax.tick_params(which=u'both', length=0)
+
+    if modification_function:
+        modification_function(ax, scan_range_x, scan_range_y, si_factor_x, si_factor_y)
+
+    return fig
 
 
 class ScanningDataLogic(LogicBase):
@@ -346,7 +416,14 @@ class ScanningDataLogic(LogicBase):
                         figure = self.draw_1d_scan_figure(scan_data, channel)
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
                     elif len(scan_data.scan_axes) == 2:
-                        figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
+                        scan_image = scan_data.to_scan_image(channel)
+
+                        def add_scanner_pos(ax, scan_range_x, scan_range_y, si_factor_x, si_factor_y):
+                            self._add_scanner_position(ax, scan_range_x, scan_range_y, si_factor_x, si_factor_y,
+                                                       scan_data)
+
+                        figure = draw_2d_scan_figure(scan_image, cbar_range=color_range,
+                                                     modification_function=add_scanner_pos)
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
                     else:
                         self.log.warning('No figure saved for data with more than 2 dimensions.')
@@ -368,90 +445,32 @@ class ScanningDataLogic(LogicBase):
         tag = f"{axis_dim}D-scan with {axes_code} axes from channel {channel}"
         return tag
 
-    def draw_2d_scan_figure(self, scan_data, channel, cbar_range=None):
-        """ Create a 2-D color map figure of the scan image.
-
-        @return fig: a matplotlib figure object to be saved to file.
-        """
-        image_arr = scan_data.data[channel]
+    def _add_scanner_position(self, ax: Axes, scan_range_x, scan_range_y, si_factor_x, si_factor_y,
+                              scan_data: ScanData):
         scan_axes = scan_data.scan_axes
         scanner_pos = self._scan_logic().scanner_target
-
-
-        # If no colorbar range was given, take full range of data
-        if cbar_range is None:
-            cbar_range = (np.nanmin(image_arr), np.nanmax(image_arr))
-
-        # Create figure
-        fig, ax = plt.subplots()
-
-        # Scale axes and data
-        scan_range_x = (scan_data.scan_range[0][1], scan_data.scan_range[0][0])
-        scan_range_y =  (scan_data.scan_range[1][1], scan_data.scan_range[1][0])
-        si_prefix_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale
-        si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
-        si_prefix_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale
-        si_factor_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale_val
-        si_prefix_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale if cbar_range[1]!=cbar_range[0] \
-            else ScaledFloat(cbar_range[1])
-        si_factor_cb = ScaledFloat(cbar_range[1]-cbar_range[0]).scale_val
-
-        # Create image plot
-        cfimage = ax.imshow(image_arr.transpose()/si_factor_cb,
-                            cmap='inferno',  # FIXME: reference the right place in qudi
-                            origin='lower',
-                            vmin=cbar_range[0]/si_factor_cb,
-                            vmax=cbar_range[1]/si_factor_cb,
-                            interpolation='none',
-                            extent=(*np.asarray(scan_data.scan_range[0])/si_factor_x,
-                                    *np.asarray(scan_data.scan_range[1])/si_factor_y))
-
-        ax.set_aspect(1)
-        ax.set_xlabel(scan_axes[0] + f' position ({si_prefix_x}{scan_data.axes_units[scan_axes[0]]})')
-        ax.set_ylabel(scan_axes[1] + f' position ({si_prefix_y}{scan_data.axes_units[scan_axes[1]]})')
-        ax.spines['bottom'].set_position(('outward', 10))
-        ax.spines['left'].set_position(('outward', 10))
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.get_xaxis().tick_bottom()
-        ax.get_yaxis().tick_left()
-
-
         pos_x, pos_y = scanner_pos[scan_axes[0]], scanner_pos[scan_axes[1]]
-
         # draw the scanner position if defined and in range
         if pos_x > np.min(scan_range_x) and pos_x < np.max(scan_range_x) \
-            and pos_y > np.min(scan_range_y) and pos_y < np.max(scan_range_y):
+                and pos_y > np.min(scan_range_y) and pos_y < np.max(scan_range_y):
             trans_xmark = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
             trans_ymark = mpl.transforms.blended_transform_factory(ax.transAxes, ax.transData)
             ax.annotate('',
-                        xy=np.asarray([pos_x, 0])/si_factor_x,
-                        xytext=(pos_x/si_factor_x, -0.01),
+                        xy=np.asarray([pos_x, 0]) / si_factor_x,
+                        xytext=(pos_x / si_factor_x, -0.01),
                         xycoords=trans_xmark,
                         arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
             ax.annotate('',
-                        xy=np.asarray([0, pos_y])/si_factor_y,
-                        xytext=(-0.01, pos_y/si_factor_y),
+                        xy=np.asarray([0, pos_y]) / si_factor_y,
+                        xytext=(-0.01, pos_y / si_factor_y),
                         xycoords=trans_ymark,
                         arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
-
         metainfo_str = self._pretty_print_metainfo(scan_axes, scan_data, scanner_pos)
         if metainfo_str:
             ax.annotate(metainfo_str,
                         xy=(1.10, -.17), xycoords='axes fraction',
                         horizontalalignment='left', verticalalignment='bottom',
                         fontsize=7, color='grey')
-
-        # Draw the colorbar
-        cbar = plt.colorbar(cfimage, shrink=0.8)  #, fraction=0.046, pad=0.08, shrink=0.75)
-        if scan_data.channel_units[channel]:
-            cbar.set_label(f'{channel} ({si_prefix_cb}{scan_data.channel_units[channel]})')
-        else:
-            cbar.set_label(f'{channel}')
-
-        # remove ticks from colorbar for cleaner image
-        cbar.ax.tick_params(which=u'both', length=0)
-        return fig
 
     def _pretty_print_metainfo(self, scan_axes, scan_data, scanner_pos):
         metainfo_str = ""

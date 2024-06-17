@@ -21,6 +21,8 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import datetime
+from typing import Optional
+
 import numpy as np
 from abc import abstractmethod
 from qudi.core.module import Base
@@ -417,6 +419,133 @@ class ScanData:
     @coord_transform_info.setter
     def coord_transform_info(self, info_dict):
         self._coord_transform_info = info_dict
+
+    def to_scan_image(self, channel) -> 'ScanImage':
+        data = self._data[channel]
+        scan_axes = []
+        for i in range(len(self._scan_axes)):
+            axis = self._scan_axes[i]
+            scan_range = self._scan_range[i]
+            scan_resolution = self._scan_resolution[i]
+            scan_axis = ScanAxis(axis_name=axis.name, axis_unit=axis.unit, scan_range=scan_range,
+                                 scan_resolution=scan_resolution)
+            scan_axes.append(scan_axis)
+        return ScanImage(data=data, scan_axes=scan_axes, data_name=channel,
+                         data_unit=self.channel_units[channel])
+
+
+class ScanImage:
+    """
+    Immutable class containing all data associated to a SPM image.
+    """
+
+    def __init__(self, data: np.ndarray[np.ndarray], scan_axes: list['ScanAxis'], data_name: str = None,
+                 data_unit: str = None):
+        """
+        @param float[][] data: data of the scan
+        @param ScanAxis[] scan_axes: ScanAxis instances involved in the scan
+        """
+        # Sanity checking
+        if not len(np.array(data).shape) == len(scan_axes):
+            raise ValueError('Dimension of data and length of scan_axes have to be equal.')
+        if not all(isinstance(ax, ScanAxis) for ax in scan_axes):
+            raise TypeError(
+                'Parameter "scan_axes" must be iterable containing only ScanAxis objects')
+
+        self._data = data.copy()
+        self._scan_axes = tuple(scan_axes)
+        self._data_name = data_name
+        self._data_unit = data_unit
+        return
+
+    @property
+    def scan_axes(self) -> tuple['ScanAxis', ...]:
+        return self._scan_axes
+
+    @property
+    def scan_axes_names(self) -> tuple[str, ...]:
+        return tuple(ax.axis_name for ax in self._scan_axes)
+
+    @property
+    def scan_ranges(self) -> tuple[tuple[float, float], ...]:
+        return tuple(ax.scan_range for ax in self._scan_axes)
+
+    @property
+    def scan_resolutions(self) -> tuple[int, ...]:
+        return tuple(ax.scan_resolution for ax in self._scan_axes)
+
+    @property
+    def axes_units(self) -> dict[str, str]:
+        units = {ax.axis_name: ax.axis_unit for ax in self._scan_axes}
+        return units
+
+    @property
+    def data(self) -> np.ndarray[np.ndarray]:
+        return self._data.copy()
+
+    @property
+    def scan_dimension(self) -> int:
+        return len(self._scan_axes)
+
+    @property
+    def data_name(self) -> Optional[str]:
+        return self._data_name if self._data_name else ''
+
+    @property
+    def data_unit(self) -> Optional[str]:
+        return self._data_unit if self._data_unit else ''
+
+
+class ScanAxis:
+    """
+    Immutable class containing all data associated to a SPM axis.
+    """
+
+    def __init__(self, axis_name: str, axis_unit: str, scan_range: tuple[float, float], scan_resolution: int):
+        """
+        @param str axis_name: name of the axis
+        @param str axis_unit: unit of the axis
+        @param float[2] scan_range: inclusive range for the scan axis
+        @param int scan_resolution: number of points for the scan axis
+        """
+        # Sanity checking
+        if not isinstance(axis_name, str):
+            raise TypeError(
+                'Parameter "axis_name" must be of type str')
+        if not isinstance(axis_unit, str):
+            raise TypeError(
+                'Parameter "axis_unit" must be of type str')
+        if not len(scan_range) == 2:
+            raise TypeError(
+                'Parameter "scan_range" must be a pair (len=2).')
+        if not all(isinstance(scan_ran, float) for scan_ran in scan_range):
+            raise TypeError(
+                'Parameter "scan_range" must be iterable containing only floats')
+        if not isinstance(scan_resolution, int):
+            raise TypeError(
+                'Parameter "scan_resolution" must be an integers.')
+
+        self._axis_name = axis_name
+        self._axis_unit = axis_unit
+        self._scan_range = scan_range
+        self._scan_resolution = scan_resolution
+        return
+
+    @property
+    def axis_name(self) -> str:
+        return self._axis_name
+
+    @property
+    def axis_unit(self) -> str:
+        return self._axis_unit
+
+    @property
+    def scan_range(self) -> tuple[float, float]:
+        return self._scan_range
+
+    @property
+    def scan_resolution(self) -> int:
+        return self._scan_resolution
 
 
 class ScannerChannel:
