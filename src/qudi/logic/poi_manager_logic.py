@@ -1265,7 +1265,7 @@ class PoiManagerLogic(LogicBase):
 
     def _local_max(self, scan):
         scan = np.asarray(scan, order="C")  # scan has to be a 2-D array
-        filter_size = self._spot_filter(scan)
+        filter_size = max(self._spot_filter(scan), 1)
         scan_m = scan.mean()
         mid_f = int(filter_size / 2)
         xc = []
@@ -1275,14 +1275,15 @@ class PoiManagerLogic(LogicBase):
                 local_arr = scan[i:i + filter_size, j:j + filter_size]
                 local_arr = np.asarray(local_arr)
                 arr_threshold = scan_m * self._poi_threshold * 0.5
-                if scan[i + mid_f][j + mid_f] == local_arr.max() and self._is_spot_shape(
-                        local_arr) and local_arr.mean() > arr_threshold:
+                if (scan[i + mid_f][j + mid_f] == local_arr.max()
+                        and self._is_spot_shape(local_arr)
+                        and local_arr.mean() > arr_threshold):
                     xc.append(i + mid_f)
                     yc.append(j + mid_f)
         return xc, yc
 
     def auto_catch_poi(self):
-        scan_image = self.roi_scan_image.T
+        scan_image = self.roi_scan_image
         x_range = self.roi_scan_image_extent[0]
         y_range = self.roi_scan_image_extent[1]
         x_axis = np.arange(x_range[0], x_range[1], (x_range[1] - x_range[0]) / len(scan_image))
