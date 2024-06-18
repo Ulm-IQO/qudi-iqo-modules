@@ -12,6 +12,9 @@
 - Improved support for Stanford Research Systems signal generators
 - Expanded documentation of the microwave interface
 
+### Bugfixes
+- Old ODMR fits are now removed when starting a new measurement
+
 ### Other
 
 ## Version 0.5.1
