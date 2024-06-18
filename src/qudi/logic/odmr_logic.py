@@ -546,7 +546,7 @@ class OdmrLogic(LogicBase):
                 self.sigScanStateUpdated.emit(False)
                 return
 
-            self.clear_old_fits()
+            self.clear_all_fits()
             self._elapsed_sweeps = 0
             self._elapsed_time = 0.0
             self.sigElapsedUpdated.emit(self._elapsed_time, self._elapsed_sweeps)
@@ -556,7 +556,7 @@ class OdmrLogic(LogicBase):
             self._start_time = time.time()
             self._sigNextLine.emit()
 
-    def clear_old_fits(self):
+    def clear_all_fits(self):
         for channel, range_data in self._raw_data.items():
             for range_index, _ in enumerate(range_data):
                 self._fit_results[channel][range_index] = None
