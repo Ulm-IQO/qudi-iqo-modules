@@ -120,39 +120,26 @@ class QdyneMeasurement(QtCore.QObject):
         return
 
     def qdyne_analysis_loop(self):
-        logger.debug("In the analysis loop")
+        logger.debug("Entering Analysis loop")
         self.get_raw_data()
-        logger.debug("after get_raw_data")
-        try:
-            self.get_pulse()
-            logger.debug("after get_pulse")
-            self.sigPulseDataUpdated.emit()
+        self.get_pulse()
+        self.sigPulseDataUpdated.emit()
 
-            self.extract_data()
-            logger.debug("after extracted_data")
-            self.estimate_state()
-            logger.debug("after estimate_state")
-            self.sigTimeTraceDataUpdated.emit()
+        self.extract_data()
+        self.estimate_state()
+        self.sigTimeTraceDataUpdated.emit()
 
-            self.analyze_time_trace()
-            logger.debug("after analyze_time_trace")
-            self.get_spectrum()
-            logger.debug("after get_spectrum")
-            self.sigQdyneDataUpdated.emit()
-        except Exception as e:
-            logger.exception(e)
-            raise e
+        self.analyze_time_trace()
+        self.get_spectrum()
+        self.sigQdyneDataUpdated.emit()
 
     def get_raw_data(self):
-        logger.debug("get_raw_data")
         new_data, _ = self.qdyne_logic._data_streamer().get_data()
-        logger.debug("new_data")
         try:
             self.data.raw_data = np.append(self.data.raw_data, new_data)
         except Exception as e:
             logger.exception(e)
             raise e
-        logger.debug("raw_data assignment")
 
     def get_pulse(self):
         self.estimator.configure_method(self.settings.estimator_stg.current_method)
