@@ -133,22 +133,25 @@ class QdyneCounterDummy(QdyneCounterInterface):
         """ Start the qdyne counter. """
         time.sleep(1)
         self.statusvar = 2
+        _freq = self._sine_frequency
 
-        def sine_func(freq, t):
-            return numpy.sin(2*numpy.pi*freq*t)
+        def poisson_process(t):
+            mean = numpy.sin(2*numpy.pi*_freq*t)+1
+            num_photons = numpy.random.poisson(mean)
+            time_tags = sorted(numpy.random.choice(range(100, 500), num_photons))
+            return [0] + time_tags
 
         self._time_tagger_data = []
 
         num_samples = self._record_length*self._sample_rate
         sample_times = numpy.linspace(0, self._record_length, num_samples)
-        _freq = self._sine_frequency
 
         self.log.debug("I ran though start measure in the dummy")
 
         for t in sample_times:
-            self._time_tagger_data.append(sine_func(_freq, t))
+            self._time_tagger_data += poisson_process(t)
 
-        return 0
+        return self._time_tagger_data
 
     def stop_measure(self):
         """ Stop the qdyne counter. """
