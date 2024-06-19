@@ -43,8 +43,8 @@ class QdyneMainGui(GuiBase):
     def on_activate(self):
         self._instantiate_widgets()
         self._mainw.tabWidget.addTab(self._gw, 'Measurement Generation')
-        self._mainw.tabWidget.addTab(self._ttaw, 'Time Trace Analysis')
         self._mainw.tabWidget.addTab(self._sew, 'State Estimation')
+        self._mainw.tabWidget.addTab(self._ttaw, 'Time Trace Analysis')
         self._activate_ui()
         self._connect()
 

@@ -123,15 +123,12 @@ class QdyneMeasurement(QtCore.QObject):
         logger.debug("Entering Analysis loop")
         self.get_raw_data()
         self.get_pulse()
-        self.sigPulseDataUpdated.emit()
 
         self.extract_data()
         self.estimate_state()
-        self.sigTimeTraceDataUpdated.emit()
 
         self.analyze_time_trace()
         self.get_spectrum()
-        self.sigQdyneDataUpdated.emit()
 
     def get_raw_data(self):
         try:
@@ -146,6 +143,7 @@ class QdyneMeasurement(QtCore.QObject):
         self.data.pulse_data = self.estimator.get_pulse(
             self.data.raw_data, self.settings.estimator_stg.current_setting
         )
+        self.sigPulseDataUpdated.emit()
 
     def extract_data(self):
         self.data.extracted_data = self.estimator.extract(
@@ -156,6 +154,7 @@ class QdyneMeasurement(QtCore.QObject):
         self.data.time_trace = self.estimator.estimate(
             self.data.extracted_data, self.settings.estimator_stg.current_setting
         )
+        self.sigTimeTraceDataUpdated.emit()
 
     def analyze_time_trace(self):
         try:
@@ -173,6 +172,8 @@ class QdyneMeasurement(QtCore.QObject):
             )
             self.data.freq_data.x = self.data.freq_domain[0]
             self.data.freq_data.y = self.data.freq_domain[1]
+            self.sigQdyneDataUpdated.emit()
+
         except Exception as e:
             logger.exception(e)
             raise e
