@@ -17,22 +17,26 @@ If not, see <https://www.gnu.org/licenses/>.
 from dataclasses import dataclass
 import datetime
 from PySide2 import QtCore
+from logging import getLogger
+import numpy as np
 
-from PySide2 import QtCore
+logger = getLogger(__name__)
 
 
 @dataclass
 class QdyneMeasurementSettings:
-    data_type: str = ''
+    data_type: str = ""
     read_from_file: bool = False
     pass
+
 
 @dataclass
 class QdyneMeasurementStatus:
     running: bool = False
 
+
 class QdyneMeasurement(QtCore.QObject):
-    data_type_lists = ['TimeSeries', 'TimeTag']
+    data_type_lists = ["TimeSeries", "TimeTag"]
 
     # analysis timer interval
     __timer_interval = 5
@@ -62,12 +66,17 @@ class QdyneMeasurement(QtCore.QObject):
         # set up the analysis timer
         self.__analysis_timer = QtCore.QTimer()
         self.__analysis_timer.setSingleShot(False)
-        self.__analysis_timer.setInterval(round(1000. * self.__timer_interval))
-        self.__analysis_timer.timeout.connect(self.qdyne_analysis_loop,
-                                              QtCore.Qt.QueuedConnection)
+        self.__analysis_timer.setInterval(round(1000.0 * self.__timer_interval))
+        self.__analysis_timer.timeout.connect(
+            self.qdyne_analysis_loop, QtCore.Qt.QueuedConnection
+        )
         # set up the analysis timer signals
-        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.QueuedConnection)
-        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.QueuedConnection)
+        self.sigStartTimer.connect(
+            self.__analysis_timer.start, QtCore.Qt.QueuedConnection
+        )
+        self.sigStopTimer.connect(
+            self.__analysis_timer.stop, QtCore.Qt.QueuedConnection
+        )
 
     def __del__(self):
         """
@@ -94,20 +103,23 @@ class QdyneMeasurement(QtCore.QObject):
         return
 
     def start_qdyne_measurement(self, fname=None):
-        timestamp = datetime.datetime.now().strftime('%Y%m%d-%H%M-%S')
+        logger.debug("Starting QDyne measurement")
+        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
         fname = timestamp + fname if fname else timestamp
-        #self.qdyne_logic._data_streamer().change_filename(fname)
+        # self.qdyne_logic._data_streamer().change_filename(fname)
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_on()
         self.sigStartTimer.emit()
 
     def stop_qdyne_measurement(self):
+        logger.debug("Stopping QDyne measurement")
         self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_off()
         self.qdyne_logic._data_streamer().stop_measure()
         self.sigStopTimer.emit()
         return
 
     def qdyne_analysis_loop(self):
+        logger.debug("Entering Analysis loop")
         self.get_raw_data()
         self.get_pulse()
         self.sigPulseDataUpdated.emit()
@@ -122,25 +134,37 @@ class QdyneMeasurement(QtCore.QObject):
 
     def get_raw_data(self):
         new_data, _ = self.qdyne_logic._data_streamer().get_data()
-        self.data.raw_data = np.append(self.data.raw_data, new_data)
+        try:
+            self.data.raw_data = np.append(self.data.raw_data, new_data)
+        except Exception as e:
+            logger.exception(e)
+            raise e
 
     def get_pulse(self):
         self.estimator.configure_method(self.settings.estimator_stg.current_method)
-        self.data.pulse_data = self.estimator.get_pulse(self.data.raw_data, self.settings.estimator_stg.current_setting)
+        self.data.pulse_data = self.estimator.get_pulse(
+            self.data.raw_data, self.settings.estimator_stg.current_setting
+        )
 
     def extract_data(self):
-        self.data.extracted_data = self.estimator.extract(self.data.raw_data,
-                                                          self.settings.estimator_stg.current_setting)
+        self.data.extracted_data = self.estimator.extract(
+            self.data.raw_data, self.settings.estimator_stg.current_setting
+        )
 
     def estimate_state(self):
-        self.data.time_trace = self.estimator.estimate(self.data.extracted_data,
-                                                       self.settings.estimator_stg.current_setting)
+        self.data.time_trace = self.estimator.estimate(
+            self.data.extracted_data, self.settings.estimator_stg.current_setting
+        )
 
     def analyze_time_trace(self):
-        self.data.signal = self.analyzer.analyze(self.data.time_trace, self.settings.analyzer_stg.current_setting)
+        self.data.signal = self.analyzer.analyze(
+            self.data, self.settings.analyzer_stg.current_setting
+        )
 
     def get_spectrum(self):
-        self.data.spectrum = self.analyzer.get_spectrum(self.data.signal, self.settings.analyzer_stg.current_setting)
+        self.data.spectrum = self.analyzer.get_freq_domain_signal(
+            self.data, self.settings.analyzer_stg.current_setting
+        )
         self.data.freq_data.x = self.data.spectrum[0]
         self.data.freq_data.y = self.data.spectrum[1]
 
@@ -159,10 +183,11 @@ class QdyneMeasurement(QtCore.QObject):
         """
         self.__timer_interval = interval
         if self.__timer_interval > 0:
-            self.__analysis_timer.setInterval(int(1000. * self.__timer_interval))
+            self.__analysis_timer.setInterval(int(1000.0 * self.__timer_interval))
             self.sigStartTimer.emit()
         else:
             self.sigStopTimer.emit()
 
-        self.sigTimerUpdated.emit(self.__elapsed_time, self.__elapsed_sweeps,
-                                  self.__timer_interval)
+        self.sigTimerUpdated.emit(
+            self.__elapsed_time, self.__elapsed_sweeps, self.__timer_interval
+        )
