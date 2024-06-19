@@ -138,7 +138,7 @@ class QdyneCounterInterface(Base):
     @property
     @abstractmethod
     def record_length(self):
-        """ Read-only property returning the currently set recording length in seconds """
+        """ Read-only property returning the currently set recording length in seconds for a single trigger/gate """
         pass
 
     @property

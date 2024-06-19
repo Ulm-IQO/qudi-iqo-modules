@@ -31,6 +31,7 @@ from qudi.util.colordefs import QudiPalettePale as palette
 
 from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
 
+
 class TimeTraceAnalysisTab(QtWidgets.QWidget):
 
     def __init__(self, logic, gui):
@@ -219,12 +220,13 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.current_peak_comboBox.addItems(peak_str_list)
 
     def update_spectrum(self):
-        self.freq_data.current_peak = int(self.current_peak_comboBox.currentText())
-        self.freq_data.range_index = self.range_spinBox.value()
-        spectrum = self.freq_data.data_around_peak
-        self.signal_image.setData(x=spectrum[0], y=spectrum[1])
-        self.plot1_PlotWidget.clear()
-        self.plot1_PlotWidget.addItem(self.signal_image)
+        if self.current_peak_comboBox.currentText():
+            self.freq_data.current_peak = int(self.current_peak_comboBox.currentText())
+            self.freq_data.range_index = self.range_spinBox.value()
+            spectrum = self.freq_data.data_around_peak
+            self.signal_image.setData(x=spectrum[0], y=spectrum[1])
+            self.plot1_PlotWidget.clear()
+            self.plot1_PlotWidget.addItem(self.signal_image)
 
     def data_updated(self):
         self.get_peaks()

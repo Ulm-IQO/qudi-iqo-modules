@@ -134,8 +134,8 @@ class QdyneMeasurement(QtCore.QObject):
         self.sigQdyneDataUpdated.emit()
 
     def get_raw_data(self):
-        new_data, _ = self.qdyne_logic._data_streamer().get_data()
         try:
+            new_data, _ = self.qdyne_logic._data_streamer().get_data()
             self.data.raw_data = np.append(self.data.raw_data, new_data)
         except Exception as e:
             logger.exception(e)
@@ -158,16 +158,24 @@ class QdyneMeasurement(QtCore.QObject):
         )
 
     def analyze_time_trace(self):
-        self.data.signal = self.analyzer.analyze(
-            self.data, self.settings.analyzer_stg.current_setting
-        )
+        try:
+            self.data.signal = self.analyzer.analyze(
+                self.data, self.settings.analyzer_stg.current_setting
+            )
+        except Exception as e:
+            logger.exception(e)
+            raise e
 
     def get_spectrum(self):
-        self.data.spectrum = self.analyzer.get_freq_domain_signal(
-            self.data, self.settings.analyzer_stg.current_setting
-        )
-        self.data.freq_data.x = self.data.spectrum[0]
-        self.data.freq_data.y = self.data.spectrum[1]
+        try:
+            self.data.freq_domain = self.analyzer.get_freq_domain_signal(
+                self.data, self.settings.analyzer_stg.current_setting
+            )
+            self.data.freq_data.x = self.data.freq_domain[0]
+            self.data.freq_data.y = self.data.freq_domain[1]
+        except Exception as e:
+            logger.exception(e)
+            raise e
 
     @property
     def analysis_timer_interval(self) -> float:
