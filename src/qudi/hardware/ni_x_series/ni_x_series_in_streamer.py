@@ -640,7 +640,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
             # Set up digital counting tasks
             for i, chnl in enumerate(digital_channels):
                 chnl_name = f'/{self._device_name}/{chnl}'
-                task_name = f'PeriodCounter_{chnl}'
+                task_name = f'PeriodCounter_{self._device_name}_{chnl}'
                 # Try to find available counter
                 for ctr in self.__all_counters:
                     ctr_name = f'/{self._device_name}/{ctr}'
