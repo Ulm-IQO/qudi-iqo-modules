@@ -255,6 +255,9 @@ class RegionOfInterest:
             self._scan_image_extent = (x_extent, y_extent)
         return
 
+    def set_scan_data(self, scan_data):
+        self._scan_data = scan_data
+
     def add_history_entry(self, new_pos):
         """
         Add a new entry to the ROI position history and tag it with the current time.
@@ -381,7 +384,6 @@ class PoiManagerLogic(LogicBase):
 
     # config options
     _scan_axes = tuple(str(ConfigOption('data_scan_axes', default='xy', missing='info')))
-    _save_roi_image_as_png = ConfigOption('save_roi_image_as_png', default=False)
 
     # status vars
     _roi = StatusVar(default=RegionOfInterest())  # Notice constructor and representer further below
@@ -525,6 +527,10 @@ class PoiManagerLogic(LogicBase):
 
     @property
     def roi_scan_image(self):
+        return self._roi.scan_image
+
+    @property
+    def roi_scan_data(self):
         return self._roi.scan_image
 
     @property
@@ -870,6 +876,7 @@ class PoiManagerLogic(LogicBase):
             if scan_data:
                 self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
                                          scan_data.scan_range)
+                self._roi.set_scan_data(scan_data)
 
             if emit_change:
                 self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
@@ -1120,51 +1127,27 @@ class PoiManagerLogic(LogicBase):
             #######################################################
             if self.roi_scan_image is not None:
                 np.save(os.path.join(self.module_default_data_dir, roi_image_filename), self.roi_scan_image)
-                if self._save_roi_image_as_png:
-                    fig = self._draw_roi_scan_image()
-                    roi_png_image_filename = '{0}_{1}_scan_image.png'.format(
-                        timestamp.strftime('%Y%m%d-%H%M-%S'), roi_name_no_blanks)
-                    fig.savefig(os.path.join(self.module_default_data_dir, roi_png_image_filename))
+                fig = self._draw_roi_scan_image()
+                roi_png_image_filename = '{0}_{1}_scan_image.png'.format(
+                    timestamp.strftime('%Y%m%d-%H%M-%S'), roi_name_no_blanks)
+                fig.savefig(os.path.join(self.module_default_data_dir, roi_png_image_filename))
         return
 
     def _draw_roi_scan_image(self) -> Figure:
-        fig, ax = plt.subplots()
 
-        scan_range_x = (self.roi_scan_image_extent[0][1], self.roi_scan_image_extent[0][0])
-        scan_range_y = (self.roi_scan_image_extent[1][1], self.roi_scan_image_extent[1][0])
+        scan_data = self._roi._scan_data
         cbar_range = (np.nanmin(self.roi_scan_image), np.nanmax(self.roi_scan_image))
+        channel = self._optimizelogic()._data_channel
 
-        si_prefix_x = ScaledFloat(scan_range_x[1] - scan_range_x[0]).scale
-        si_factor_x = ScaledFloat(scan_range_x[1] - scan_range_x[0]).scale_val
-        si_prefix_y = ScaledFloat(scan_range_y[1] - scan_range_y[0]).scale
-        si_factor_y = ScaledFloat(scan_range_y[1] - scan_range_y[0]).scale_val
-        si_factor_cb = ScaledFloat(cbar_range[1] - cbar_range[0]).scale_val
-
-        cbar_range = (0, 3e5)
-        cfimage = ax.imshow(self.roi_scan_image.T / si_factor_cb,
-                            cmap='inferno',  # FIXME: reference the right place in qudi
-                            origin='lower',
-                            vmin=cbar_range[0] / si_factor_cb,
-                            vmax=cbar_range[1] / si_factor_cb,
-                            interpolation='none',
-                            extent=(*np.asarray(self.roi_scan_image_extent[0]) / si_factor_x,
-                                    *np.asarray(self.roi_scan_image_extent[1]) / si_factor_y))
-        # ax.pcolormesh(x_axis, y_axis, self.roi_scan_image.T)
-        ax.set_aspect(1)
-        ax.set_xlabel(f'Position ({si_prefix_x}m)')
-        ax.set_ylabel(f'Position ({si_prefix_y}m)')
-        ax.spines['bottom'].set_position(('outward', 10))
-        ax.spines['left'].set_position(('outward', 10))
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.get_xaxis().tick_bottom()
-        ax.get_yaxis().tick_left()
-
-        # add colorbar
-        cbar = plt.colorbar(cfimage, shrink=0.8)
-        cbar.ax.tick_params(which=u'both', length=0)
+        fig = self._data_logic().draw_2d_scan_figure(scan_data, channel, cbar_range=cbar_range)
+        ax = plt.gca()
 
         # add POIs
+        scan_range_x = (scan_data.scan_range[0][1], scan_data.scan_range[0][0])
+        scan_range_y =  (scan_data.scan_range[1][1], scan_data.scan_range[1][0])
+        si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
+        si_factor_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale_val
+
         radius = abs(scan_range_y[1] - scan_range_y[0]) / si_factor_y * 0.025  # 2.5% of the y-range
         marker_color = '#F0F'
         for name, pos in self.poi_positions.items():

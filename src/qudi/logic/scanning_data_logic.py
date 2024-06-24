@@ -347,6 +347,9 @@ class ScanningDataLogic(LogicBase):
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
                     elif len(scan_data.scan_axes) == 2:
                         figure = self.draw_2d_scan_figure(scan_data, channel, cbar_range=color_range)
+                        ax = plt.gca()
+                        self._add_draw_scanner_pos(ax, scan_data)
+
                         ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
                     else:
                         self.log.warning('No figure saved for data with more than 2 dimensions.')
@@ -375,8 +378,6 @@ class ScanningDataLogic(LogicBase):
         """
         image_arr = scan_data.data[channel]
         scan_axes = scan_data.scan_axes
-        scanner_pos = self._scan_logic().scanner_target
-
 
         # If no colorbar range was given, take full range of data
         if cbar_range is None:
@@ -417,11 +418,33 @@ class ScanningDataLogic(LogicBase):
         ax.get_yaxis().tick_left()
 
 
+        # Draw the colorbar
+        cbar = plt.colorbar(cfimage, shrink=0.8)  #, fraction=0.046, pad=0.08, shrink=0.75)
+        if scan_data.channel_units[channel]:
+            cbar.set_label(f'{channel} ({si_prefix_cb}{scan_data.channel_units[channel]})')
+        else:
+            cbar.set_label(f'{channel}')
+
+        # remove ticks from colorbar for cleaner image
+        cbar.ax.tick_params(which=u'both', length=0)
+        return fig
+
+    def _add_draw_scanner_pos(self, ax, scan_data):
+
+        scanner_pos = self._scan_logic().scanner_target
+        scan_axes = scan_data.scan_axes
+
+        scan_range_x = (scan_data.scan_range[0][1], scan_data.scan_range[0][0])
+        scan_range_y =  (scan_data.scan_range[1][1], scan_data.scan_range[1][0])
+
+        si_factor_x = ScaledFloat(scan_range_x[1]-scan_range_x[0]).scale_val
+        si_factor_y = ScaledFloat(scan_range_y[1]-scan_range_y[0]).scale_val
+
         pos_x, pos_y = scanner_pos[scan_axes[0]], scanner_pos[scan_axes[1]]
 
         # draw the scanner position if defined and in range
         if pos_x > np.min(scan_range_x) and pos_x < np.max(scan_range_x) \
-            and pos_y > np.min(scan_range_y) and pos_y < np.max(scan_range_y):
+                and pos_y > np.min(scan_range_y) and pos_y < np.max(scan_range_y):
             trans_xmark = mpl.transforms.blended_transform_factory(ax.transData, ax.transAxes)
             trans_ymark = mpl.transforms.blended_transform_factory(ax.transAxes, ax.transData)
             ax.annotate('',
@@ -442,16 +465,6 @@ class ScanningDataLogic(LogicBase):
                         horizontalalignment='left', verticalalignment='bottom',
                         fontsize=7, color='grey')
 
-        # Draw the colorbar
-        cbar = plt.colorbar(cfimage, shrink=0.8)  #, fraction=0.046, pad=0.08, shrink=0.75)
-        if scan_data.channel_units[channel]:
-            cbar.set_label(f'{channel} ({si_prefix_cb}{scan_data.channel_units[channel]})')
-        else:
-            cbar.set_label(f'{channel}')
-
-        # remove ticks from colorbar for cleaner image
-        cbar.ax.tick_params(which=u'both', length=0)
-        return fig
 
     def _pretty_print_metainfo(self, scan_axes, scan_data, scanner_pos):
         metainfo_str = ""
