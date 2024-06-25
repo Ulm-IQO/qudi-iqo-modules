@@ -21,8 +21,8 @@ If not, see <https://www.gnu.org/licenses/>.
 import time
 import numpy as np
 from enum import IntEnum
-from pyspcm import *
-from spcm_tools import *
+import pyspcm as spcm
+import spcm_tools
 from PySide2.QtCore import Signal
 
 from qudi.core.configoption import ConfigOption
@@ -164,7 +164,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
 
         if not self._card_on:
-            self.card = spcm_hOpen(create_string_buffer(b'/dev/spcm0'))
+            self.card = spcm.spcm_hOpen(spcm_tools.create_string_buffer(b'/dev/spcm0'))
             self._card_on = True
             self._generate_helpers()
             self._load_settings_from_config_file()
@@ -220,7 +220,7 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         Close the card.
         """
-        spcm_vClose(self.card)
+        spcm.spcm_vClose(self.card)
 
     def get_constraints(self):
 

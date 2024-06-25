@@ -17,7 +17,8 @@ unix_dep = [
     'PySide2',  # get fixed version from core
     'PyVisa>=1.12.0',
     'scipy>=1.9.1',
-    'zaber_motion>=2.14.6'
+    'zaber_motion>=2.14.6',
+    'spcm>=1.2.1'
 ]
 
 windows_dep = [
@@ -33,7 +34,8 @@ windows_dep = [
     'PySide2',  # get fixed version from core
     'PyVisa>=1.12.0',
     'scipy>=1.9.1',
-    'zaber_motion>=2.14.6'
+    'zaber_motion>=2.14.6',
+    'spcm>=1.2.1'
 ]
 
 with open('VERSION', 'r') as file:
