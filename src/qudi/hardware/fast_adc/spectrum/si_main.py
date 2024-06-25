@@ -291,6 +291,7 @@ class SpectrumInstrumentation(FastCounterInterface):
                 2 = running
                 3 = paused
                 -1 = error state
+                TODO Use error state when an error is caught.
         """
         return self._internal_status
 
