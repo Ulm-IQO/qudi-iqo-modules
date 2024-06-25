@@ -124,7 +124,6 @@ class Commander:
 
         if trig_reps == 0 or unprocessed_reps == 0:
             self.cmd.process.toggle_trigger(True)
-            self.cmd.process.wait_new_trig_reps(trig_reps)
 
         elif unprocessed_reps < self.unprocessed_reps_limit:
             self.cmd.process.toggle_trigger(True)
