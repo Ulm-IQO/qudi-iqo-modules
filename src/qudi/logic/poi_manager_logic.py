@@ -42,6 +42,7 @@ from qudi.interface.scanning_probe_interface import ScanImage, ScanAxis
 from qudi.logic.scanning_data_logic import draw_2d_scan_figure
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
+from qudi.interface.scanning_probe_interface import ScanData
 
 
 class RegionOfInterest:
@@ -888,18 +889,22 @@ class PoiManagerLogic(LogicBase):
     def set_scan_image(self, emit_change=True, scan_axes=None):
         """ Get the current xy scan data and set as scan_image of ROI. """
         with self._thread_lock:
-            scan_data = self._data_logic().get_current_scan_data(scan_axes)
+            data_logic: ScanningDataLogic = self._data_logic()
+            scan_data, back_scan_data = data_logic.get_last_history_entry(scan_axes)
             channel = self._optimizelogic()._data_channel
             if scan_data:
-                meta = ScanImageMeta(data_quantity=channel,
-                                     data_unit=scan_data.channel_units[channel],
-                                     x_label=scan_data.scan_axes[0],
-                                     x_unit=scan_data.axes_units[scan_data.scan_axes[0]],
-                                     y_label=scan_data.scan_axes[1],
-                                     y_unit=scan_data.axes_units[scan_data.scan_axes[1]],
-                                     )
-                self._roi.set_scan_image(scan_data.data[channel],
-                                         scan_data.scan_range, meta)
+                self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
+                                         scan_data.settings.range)
+
+            meta = ScanImageMeta(data_quantity=channel,
+                                 data_unit=scan_data.channel_units[channel],
+                                 x_label=scan_data.scan_axes[0],
+                                 x_unit=scan_data.axes_units[scan_data.scan_axes[0]],
+                                 y_label=scan_data.scan_axes[1],
+                                 y_unit=scan_data.axes_units[scan_data.scan_axes[1]],
+                                 )
+            self._roi.set_scan_image(scan_data.data[channel],
+                                     scan_data.scan_range, meta)
             if emit_change:
                 self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
                                          'scan_image_extent': self.roi_scan_image_extent})
