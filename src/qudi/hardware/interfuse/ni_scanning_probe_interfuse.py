@@ -142,12 +142,18 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         for axis in self._position_ranges:
             position_range = tuple(self._position_ranges[axis])
             resolution_range = tuple(self._resolution_ranges[axis])
+            res_default = 100
+            if not resolution_range[0] <= res_default <= resolution_range[1]:
+                res_default = resolution_range[0]
             frequency_range = tuple(self._frequency_ranges[axis])
+            freq_default = 500
+            if not frequency_range[0] <= freq_default <= frequency_range[1]:
+                freq_default = frequency_range[0]
             max_step = abs(position_range[1] - position_range[0])
 
             position = ScalarConstraint(default=min(position_range), bounds=position_range)
-            resolution = ScalarConstraint(default=min(resolution_range), bounds=resolution_range, enforce_int=True)
-            frequency = ScalarConstraint(default=min(frequency_range), bounds=frequency_range)
+            resolution = ScalarConstraint(default=res_default, bounds=resolution_range, enforce_int=True)
+            frequency = ScalarConstraint(default=freq_default, bounds=frequency_range)
             step = ScalarConstraint(default=0, bounds=(0, max_step))
 
             axes.append(ScannerAxis(name=axis,
