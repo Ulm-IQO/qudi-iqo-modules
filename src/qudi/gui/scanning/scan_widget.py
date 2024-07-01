@@ -84,7 +84,7 @@ class _BaseScanWidget(QtWidgets.QWidget):
         layout.setColumnStretch(2, 1)
         layout.setColumnStretch(3, 1)
 
-        self._scan_data = None
+        self._scan_data: Optional[ScanData] = None
 
 
 class Scan1DWidget(_BaseScanWidget):
@@ -155,8 +155,8 @@ class Scan1DWidget(_BaseScanWidget):
 
     def set_scan_data(self, data: ScanData) -> None:
         # Save reference for channel changes
-        update_range = (self._scan_data is None) or (self._scan_data.scan_range != data.scan_range) \
-                        or (self._scan_data.scan_resolution != data.scan_resolution)
+        update_range = (self._scan_data is None) or (self._scan_data.settings.range != data.settings.range) \
+                        or (self._scan_data.settings.resolution != data.settings.resolution)
         self._scan_data = data
         # Set data
         self._update_scan_data(update_range=update_range)
@@ -183,12 +183,12 @@ class Scan1DWidget(_BaseScanWidget):
     def _update_scan_data(self, update_range: bool) -> None:
         current_channel = self.channel_selection_combobox.currentText()
         if (self._scan_data is None) or (self._scan_data.data is None) \
-                or (current_channel not in self._scan_data.channels):
+                or (current_channel not in self._scan_data.settings.channels):
             self.plot_item.clear()
         else:
             if update_range:
-                x_data = np.linspace(*self._scan_data.scan_range[0],
-                                     self._scan_data.scan_resolution[0])
+                x_data = np.linspace(*self._scan_data.settings.range[0],
+                                     self._scan_data.settings.resolution[0])
                 self.plot_item.setData(y=self._scan_data.data[current_channel], x=x_data)
             else:
                 self.plot_item.setData(y=self._scan_data.data[current_channel],
@@ -321,10 +321,10 @@ class Scan2DWidget(_BaseScanWidget):
     def _update_scan_data(self) -> None:
         current_channel = self.channel_selection_combobox.currentText()
         if (self._scan_data is None) or (self._scan_data.data is None) \
-            or (current_channel not in self._scan_data.channels):
+            or (current_channel not in self._scan_data.settings.channels):
             self.image_widget.set_image(None)
         else:
             self.image_widget.set_image(self._scan_data.data[current_channel])
-            self.image_widget.set_image_extent(self._scan_data.scan_range,
+            self.image_widget.set_image_extent(self._scan_data.settings.range,
                                                adjust_for_px_size=True)
             self.image_widget.autoRange()

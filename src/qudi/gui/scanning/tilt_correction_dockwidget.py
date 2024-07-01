@@ -52,14 +52,18 @@ class TiltCorrectionDockWidget(QDockWidget):
         self.tilt_set_01_pushButton = QPushButton("Vec 1")
         self.tilt_set_01_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(self.tilt_set_01_pushButton, 1, 0)
+        self.tilt_set_01_pushButton.setToolTip("Take current scanner position as support vector 1.")
 
         self.tilt_set_02_pushButton = QPushButton("Vec 2")
         self.tilt_set_02_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(self.tilt_set_02_pushButton, 2, 0)
+        self.tilt_set_02_pushButton.setToolTip("Take current scanner position as support vector 2.")
+
 
         self.tilt_set_03_pushButton = QPushButton("Vec 3")
         self.tilt_set_03_pushButton.setMaximumSize(70, 16777215)
         dock_widget_layout.addWidget(self.tilt_set_03_pushButton, 3, 0)
+        self.tilt_set_03_pushButton.setToolTip("Take current scanner position as support vector 3.")
 
         origin_switch_label = QLabel("Auto rotation origin")
         dock_widget_layout.addWidget(origin_switch_label, 4, 0)
@@ -67,10 +71,13 @@ class TiltCorrectionDockWidget(QDockWidget):
         self.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.auto_origin_changed,
                                                                     QtCore.Qt.QueuedConnection)
         self.auto_origin_switch.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.auto_origin_switch.setToolTip("Automatically determine the rotation origin to be"
+                                           " in the plane of the support vectors. If turned off, set manually.")
         dock_widget_layout.addWidget(self.auto_origin_switch, 4, 1)
 
         self.tilt_set_04_pushButton = QPushButton("Origin")
         self.tilt_set_04_pushButton.setMaximumSize(70, 16777215)
+        self.tilt_set_04_pushButton.setToolTip("Take current scanner position as rotation origin.")
         dock_widget_layout.addWidget(self.tilt_set_04_pushButton, 5, 0)
 
         self.support_vecs_box = []  # row: idx of support vecs (1-4), col: dimension (0-n)
