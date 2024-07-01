@@ -26,6 +26,8 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import dataclasses
 import os
+from typing import Dict
+
 import numpy as np
 import time
 from datetime import datetime
@@ -38,11 +40,10 @@ from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.interface.scanning_probe_interface import ScanImage, ScanAxis
-from qudi.logic.scanning_data_logic import draw_2d_scan_figure
+from qudi.interface.scanning_probe_interface import ScanImage
+from qudi.logic.scanning_data_logic import ScanningDataLogic
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
-from qudi.interface.scanning_probe_interface import ScanData
 
 
 class RegionOfInterest:
@@ -299,6 +300,7 @@ class RegionOfInterest:
                 'pos_history': self.pos_history,
                 'scan_image': self.scan_image,
                 'scan_image_extent': self.scan_image_extent,
+                'scan_image_meta': self.scan_image_meta.to_dict(),
                 'pois': [poi.to_dict() for poi in self._pois.values()]}
 
     @classmethod
@@ -316,6 +318,7 @@ class RegionOfInterest:
                   history=dict_repr.get('pos_history'),
                   scan_image=dict_repr.get('scan_image'),
                   scan_image_extent=dict_repr.get('scan_image_extent'),
+                  scan_image_meta=ScanImageMeta.from_dict(dict_repr.get('scan_image_meta')),
                   poi_list=poi_list,
                   poi_nametag=dict_repr.get('poi_nametag'))
         return roi
@@ -329,6 +332,28 @@ class ScanImageMeta:
     x_unit: str = ''
     y_label: str = ''
     y_unit: str = ''
+
+    def to_dict(self) -> Dict[str, str]:
+        return {'data_quantity': self.data_quantity,
+                'data_unit': self.data_unit,
+                'x_label': self.x_label,
+                'x_unit': self.x_unit,
+                'y_label': self.y_label,
+                'y_unit': self.y_unit}
+
+    @classmethod
+    def from_dict(cls, dict_repr: Dict[str, str]) -> 'ScanImageMeta':
+        if not isinstance(dict_repr, dict):
+            raise TypeError(f'Parameter to generate {ScanImageMeta.__name__} instance from must be of type '
+                            'dict.')
+
+        meta = cls(data_quantity=dict_repr.get('data_quantity'),
+                  data_unit=dict_repr.get('data_unit'),
+                  x_label=dict_repr.get('x_label'),
+                  x_unit=dict_repr.get('x_unit'),
+                  y_label=dict_repr.get('y_label'),
+                  y_unit=dict_repr.get('y_unit'))
+        return meta
 
 
 class PointOfInterest:
@@ -893,18 +918,15 @@ class PoiManagerLogic(LogicBase):
             scan_data, back_scan_data = data_logic.get_last_history_entry(scan_axes)
             channel = self._optimizelogic()._data_channel
             if scan_data:
-                self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
-                                         scan_data.settings.range)
-
-            meta = ScanImageMeta(data_quantity=channel,
-                                 data_unit=scan_data.channel_units[channel],
-                                 x_label=scan_data.scan_axes[0],
-                                 x_unit=scan_data.axes_units[scan_data.scan_axes[0]],
-                                 y_label=scan_data.scan_axes[1],
-                                 y_unit=scan_data.axes_units[scan_data.scan_axes[1]],
-                                 )
-            self._roi.set_scan_image(scan_data.data[channel],
-                                     scan_data.scan_range, meta)
+                meta = ScanImageMeta(data_quantity=channel,
+                                     data_unit=scan_data.channel_units[channel],
+                                     x_label=scan_data.settings.axes[0],
+                                     x_unit=scan_data.axis_units[scan_data.settings.axes[0]],
+                                     y_label=scan_data.settings.axes[1],
+                                     y_unit=scan_data.axis_units[scan_data.settings.axes[1]],
+                                     )
+                self._roi.set_scan_image(scan_data.data[channel],
+                                         scan_data.settings.range, meta)
             if emit_change:
                 self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
                                          'scan_image_extent': self.roi_scan_image_extent})
@@ -1161,29 +1183,27 @@ class PoiManagerLogic(LogicBase):
         return
 
     def _draw_roi_scan_image(self) -> Figure:
-        meta = self._roi.scan_image_meta
-        if not meta:
-            meta = ScanImageMeta()
+        meta = self.roi_scan_image_meta if self.roi_scan_image_meta else ScanImageMeta()
+        scan_image = ScanImage(axis_units=(meta.x_unit, meta.y_unit), axis_names=(meta.x_label, meta.y_label),
+                               ranges=self.roi_scan_image_extent,
+                                data=self.roi_scan_image, data_name=meta.data_quantity, data_unit=meta.data_unit)
+        cbar_range = (np.nanmin(self.roi_scan_image), np.nanmax(self.roi_scan_image))
+        fig = self._data_logic().draw_2d_scan_figure(scan_image, cbar_range=cbar_range)
 
-        scan_axis_x = ScanAxis(axis_name=meta.x_label, axis_unit=meta.x_unit, scan_range=self.roi_scan_image_extent[0],
-                               scan_resolution=len(self.roi_scan_image))
-        scan_axis_y = ScanAxis(axis_name=meta.y_label, axis_unit=meta.y_unit, scan_range=self.roi_scan_image_extent[1],
-                               scan_resolution=len(self.roi_scan_image[0]))
-        scan_image = ScanImage(data=self.roi_scan_image, scan_axes=[scan_axis_x, scan_axis_y],
-                               data_name=meta.data_quantity, data_unit=meta.data_unit)
-
-        def add_pois(ax, scan_range_x, scan_range_y, si_factor_x, si_factor_y):
-            radius = abs(scan_range_y[1] - scan_range_y[0]) / si_factor_y * 0.025  # 2.5% of the y-range
-            marker_color = '#F0F'
-            for name, pos in self.poi_positions.items():
-                x = pos[0] / si_factor_x
-                y = pos[1] / si_factor_y
-                circle = patches.Circle((x, y), radius, edgecolor=marker_color, facecolor='None', zorder=10)
-                ax.add_patch(circle)
-                ax.annotate(name, xy=(x, y + radius * 1.2), fontsize=8, ha="left", color=marker_color)
-
-        fig = draw_2d_scan_figure(scan_image=scan_image, modification_function=add_pois)
+        # add POIs
+        si_factors = scan_image.si_factors
+        self.add_pois(plt.gca(), scan_image.ranges[1], si_factors[0].scale_val, si_factors[1].scale_val)
         return fig
+
+    def add_pois(self, ax, scan_range_y, si_factor_x, si_factor_y):
+        radius = abs(scan_range_y[1] - scan_range_y[0]) / si_factor_y * 0.025  # 2.5% of the y-range
+        marker_color = '#F0F'
+        for name, pos in self.poi_positions.items():
+            x = pos[0] / si_factor_x
+            y = pos[1] / si_factor_y
+            circle = patches.Circle((x, y), radius, edgecolor=marker_color, facecolor='None', zorder=10)
+            ax.add_patch(circle)
+            ax.annotate(name, xy=(x, y + radius * 1.2), fontsize=8, ha="left", color=marker_color)
 
     def load_roi(self, complete_path=None):
         if complete_path is None:

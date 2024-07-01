@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from enum import auto, Flag
 from dataclasses import dataclass, field, asdict, replace
-from typing import Optional, Tuple, Dict, Any
+from typing import Tuple, Dict, Any
 import datetime
 from typing import Optional
 
@@ -30,6 +30,7 @@ import numpy as np
 from abc import abstractmethod
 from qudi.core.module import Base
 from qudi.util.constraints import ScalarConstraint
+from qudi.util.units import ScaledFloat
 
 
 class BackScanCapability(Flag):
@@ -390,6 +391,65 @@ class ScanData:
                         dtype=self.channel_dtypes[ch]) for ch in self.settings.channels
         }
         return
+
+
+@dataclass(frozen=True)
+class ScanImage:
+    """
+    Immutable class containing all data associated to a SPM image.
+    """
+    axis_units: Tuple[str, ...]
+    axis_names: Tuple[str, ...]
+    ranges: Tuple[Tuple[float, float], ...]
+    data: np.ndarray
+    data_name: str
+    data_unit: Optional[str] = None
+
+    def __post_init__(self) -> None:
+        """
+        """
+        # Sanity checking
+        data_dimension = len(np.array(self.data).shape)
+        if not data_dimension == len(self.axis_units):
+            raise ValueError('Dimension of data and length of axis_units have to be equal.')
+        if not data_dimension == len(self.axis_names):
+            raise ValueError('Dimension of data and length of axis_names have to be equal.')
+        if not data_dimension == len(self.ranges):
+            raise ValueError('Dimension of data and length of ranges have to be equal.')
+
+    @classmethod
+    def from_scan_data(cls, scan_data: ScanData, channel_name: str) -> 'ScanImage':
+        if channel_name not in scan_data.settings.channels:
+            raise ValueError(f'{channel_name} is not a valid channel')
+        if not scan_data.data:
+            raise ValueError(f'No data set yet')
+        axis_units = tuple(scan_data.axis_units.values())
+        axis_names = scan_data.settings.axes
+        axis_ranges = scan_data.settings.range
+        data = scan_data.data[channel_name]
+        data_name: str = channel_name
+        channel_unit: str = scan_data.channel_units[channel_name]
+        return cls(axis_units=axis_units, axis_names=axis_names, ranges=axis_ranges, data=data,
+                   data_name=data_name, data_unit=channel_unit)
+
+    @property
+    def scan_resolutions(self) -> Tuple[int, ...]:
+        res = [len(data_tmp) for data_tmp in self.data]
+        return tuple(res)
+
+    @property
+    def scan_dimension(self) -> int:
+        return len(self.axis_names)
+
+    @property
+    def scan_ranges(self) -> Tuple[Tuple[float, float], ...]:
+        ranges = [(scan_range[0], scan_range[1]) for scan_range in self.ranges]
+        return tuple(ranges)
+
+    @property
+    def si_factors(self) -> Tuple[ScaledFloat, ...]:
+        factors = [ScaledFloat(scan_range[1] - scan_range[0]) for scan_range in self.scan_ranges]
+        return tuple(factors)
 
 
 class ScanningProbeInterface(Base):
