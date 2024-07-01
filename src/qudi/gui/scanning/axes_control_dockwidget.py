@@ -326,6 +326,7 @@ class AxesControlWidget(QtWidgets.QWidget):
                 forward_spinbox.valueChanged.connect(backward_spinbox.setValue)
                 # ensure that a sigBackResolutionChanged is emitted
                 forward_spinbox.editingFinished.connect(self.__get_axis_back_resolution_callback(axis, forward_spinbox))
+                forward_spinbox.editingFinished.emit()  # emit manually once
                 backward_spinbox.setValue(forward_spinbox.value())  # set manually once
             else:
                 # disconnect from everything and reconnect only to forward resolution callback
