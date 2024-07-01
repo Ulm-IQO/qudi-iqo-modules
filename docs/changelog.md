@@ -6,16 +6,19 @@
 
 ### Bugfixes
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
+- Remove hardcoded limits of the setpoint in the PID gui.
 
 ### New Features
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 - Improved support for Stanford Research Systems signal generators
 - Expanded documentation of the microwave interface
+- Add new hardware module for the PID laser control functionality of HighFinesse wavemeters.
 
 ### Bugfixes
 - Old ODMR fits are now removed when starting a new measurement
 
 ### Other
+- Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
 
 ## Version 0.5.1
 
