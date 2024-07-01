@@ -113,10 +113,13 @@ class ScanningDataLogic(LogicBase):
     def __scan_history_from_dicts(self, history_dicts: List[List[Optional[Dict]]])\
             -> List[Tuple[ScanData, Optional[ScanData]]]:
         history = []
-        for data_dict, back_data_dict in history_dicts:
-            data = ScanData.from_dict(data_dict)
-            back_data = ScanData.from_dict(back_data_dict) if back_data_dict is not None else None
-            history.append((data, back_data))
+        try:
+            for data_dict, back_data_dict in history_dicts:
+                data = ScanData.from_dict(data_dict)
+                back_data = ScanData.from_dict(back_data_dict) if back_data_dict is not None else None
+                history.append((data, back_data))
+        except Exception as e:
+            self.log.warning("Unable to load scan history. Deleting scan history.", exc_info=e)
         return history
 
     def get_last_history_entry(self, scan_axes: Optional[Tuple[str, ...]] = None)\
