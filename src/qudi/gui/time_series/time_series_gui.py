@@ -326,7 +326,7 @@ class TimeSeriesGui(GuiBase):
                                                     units=different_units[0])
                 self._mw.trace_plot_widget.setLabel('right',
                                                     self._channels_per_axis[1][0],
-                                                    units=different_units[1])
+                                rev                    units=different_units[1])
             else:
                 self._mw.trace_plot_widget.setLabel('left', 'Signal', units=different_units[0])
                 self._mw.trace_plot_widget.setLabel('right', 'Signal', units=different_units[1])
