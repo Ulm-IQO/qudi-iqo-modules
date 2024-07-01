@@ -207,6 +207,8 @@ class AxesControlWidget(QtWidgets.QWidget):
             widgets['pos_spinbox'].editingFinished.connect(
                 self.__get_axis_target_callback(ax_name, widgets['pos_spinbox'])
             )
+            if widgets['eq_checkbox'].isEnabled():
+                widgets['eq_checkbox'].setChecked(True)  # check equal checkbox by default
 
         layout.setColumnStretch(7, 1)
         self.setLayout(layout)

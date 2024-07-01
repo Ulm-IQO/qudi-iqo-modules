@@ -287,6 +287,10 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
                     for widget in ['freq_eq', 'backward_freq']:
                         self.axes_widgets[ax_name][widget].setToolTip("Back frequency is not configurable.")
 
+            for widget in ['res_eq', 'freq_eq']:
+                if self.axes_widgets[ax_name][widget].isEnabled():
+                    self.axes_widgets[ax_name][widget].setChecked(True)
+
             # Add to layout
             layout.addWidget(label, index, 0)
             layout.addWidget(self.axes_widgets[ax_name]['range'], index, 1)
