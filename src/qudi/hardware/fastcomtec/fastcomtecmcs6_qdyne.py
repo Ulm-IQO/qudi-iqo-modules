@@ -154,15 +154,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self._has_overflown = False
         self._read_lines = 0
 
-        self.configure(
-            active_channels=self._constraints.channel_units,
-            gate_mode=self.gate_mode,
-            bin_width_s=self.binwidth,
-            record_length_s=self.record_length,
-            buffer_size=self.buffer_size,
-            number_of_gates=self.number_of_gates,
-        )
-
     def on_deactivate(self):
         # Free memory if possible while module is inactive
         self._data_buffer = np.empty(0, dtype=self._data_type)
