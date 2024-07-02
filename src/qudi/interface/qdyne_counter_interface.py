@@ -20,7 +20,12 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['CounterType', 'GateMode', 'QdyneCounterConstraints', 'QdyneCounterInterface']
+__all__ = [
+    "CounterType",
+    "GateMode",
+    "QdyneCounterConstraints",
+    "QdyneCounterInterface",
+]
 
 import numpy as np
 from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence
@@ -41,18 +46,21 @@ class GateMode(Enum):
 
 
 class QdyneCounterConstraints:
-    """ Collection of constraints for hardware modules implementing QdyneCounterInterface """
-    def __init__(self,
-                 channel_units: Mapping[str, str],
-                 counter_type: Union[CounterType, int],
-                 gate_mode: Union[GateMode, int],
-                 data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
-                 binwidth: Optional[ScalarConstraint] = None,
-                 block_size: Optional[ScalarConstraint] = None):
+    """Collection of constraints for hardware modules implementing QdyneCounterInterface"""
+
+    def __init__(
+        self,
+        channel_units: Mapping[str, str],
+        counter_type: Union[CounterType, int],
+        gate_mode: Union[GateMode, int],
+        data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
+        binwidth: Optional[ScalarConstraint] = None,
+        block_size: Optional[ScalarConstraint] = None,
+    ):
         if not isinstance(binwidth, ScalarConstraint) and binwidth is not None:
             raise TypeError(
                 f'"sample_rate" must be None or'
-                f'{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance'
+                f"{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance"
             )
         self._channel_units = {**channel_units}
         self._counter_type = CounterType(counter_type)
@@ -85,8 +93,9 @@ class QdyneCounterConstraints:
     def block_size(self) -> ScalarConstraint:
         return self._block_size
 
+
 class QdyneCounterInterface(Base):
-    """ Interface class to define the controls for qdyne counting devices.
+    """Interface class to define the controls for qdyne counting devices.
 
     A "qdyne counter" is a hardware device that counts events with a time stamp (timetagger, usually digital counter)
     or as a stream of data (timeseries, usually analog counter) during the acquisition period.
@@ -102,43 +111,37 @@ class QdyneCounterInterface(Base):
     @property
     @abstractmethod
     def constraints(self) -> QdyneCounterConstraints:
-        """ Read-only property returning the constraints on the settings for this data streamer. """
+        """Read-only property returning the constraints on the settings for this data streamer."""
         pass
 
     @property
     @abstractmethod
     def active_channels(self) -> List[str]:
-        """ Read-only property returning the currently configured active channel names """
+        """Read-only property returning the currently configured active channel names"""
         pass
 
     @property
     @abstractmethod
     def gate_mode(self) -> GateMode:
-        """ Read-only property returning the currently configured GateMode Enum """
+        """Read-only property returning the currently configured GateMode Enum"""
         pass
 
     @property
     @abstractmethod
     def buffer_size(self) -> int:
-        """ Read-only property returning the currently set buffer size """
-        pass
-
-    @property
-    @abstractmethod
-    def sample_rate(self) -> float:
-        """ Read-only property returning the currently set sample rate in Hz """
+        """Read-only property returning the currently set buffer size"""
         pass
 
     @property
     @abstractmethod
     def binwidth(self):
-        """ Read-only property returning the currently set bin width in seconds """
+        """Read-only property returning the currently set bin width in seconds"""
         pass
 
     @property
     @abstractmethod
     def record_length(self):
-        """ Read-only property returning the currently set recording length in seconds for a single trigger/gate """
+        """Read-only property returning the currently set recording length in seconds for a single trigger/gate"""
         pass
 
     @property
@@ -147,41 +150,43 @@ class QdyneCounterInterface(Base):
         pass
 
     @abstractmethod
-    def configure(self,
-                  bin_width_s: float,
-                  record_length_s: float,
-                  active_channels: Sequence[str],
-                  gate_mode: Union[GateMode, int],
-                  buffer_size: int,
-                  sample_rate: float,
-                  number_of_gates) -> None:
-        """ Configure a Qdyne counter. See read-only properties for information on each parameter. """
+    def configure(
+        self,
+        bin_width_s: float,
+        record_length_s: float,
+        active_channels: Sequence[str],
+        gate_mode: Union[GateMode, int],
+        buffer_size: int,
+        sample_rate: float,
+        number_of_gates,
+    ) -> None:
+        """Configure a Qdyne counter. See read-only properties for information on each parameter."""
         pass
 
     @abstractmethod
     def get_status(self) -> int:
-        """ Receives the current status of the hardware and outputs it as return value.
+        """Receives the current status of the hardware and outputs it as return value.
 
-        0 = unconfigured
-        1 = idle
-        2 = running
-       -1 = error state
+         0 = unconfigured
+         1 = idle
+         2 = running
+        -1 = error state
         """
         pass
 
     @abstractmethod
     def start_measure(self):
-        """ Start the qdyne counter. """
+        """Start the qdyne counter."""
         pass
 
     @abstractmethod
     def stop_measure(self):
-        """ Stop the qdyne counter. """
+        """Stop the qdyne counter."""
         pass
 
     @abstractmethod
     def get_data(self) -> tuple:
-        """ Polls the current time tag data or time series data from the Qdyne counter.
+        """Polls the current time tag data or time series data from the Qdyne counter.
 
         Return value is a numpy array of type as given in the constraints.
         The counter will return a tuple (1D-numpy-array, info_dict).
