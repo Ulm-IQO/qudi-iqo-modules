@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import copy
+from inspect import Attribute
 import time
 import os
 import pyqtgraph as pg
@@ -253,6 +254,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
             logger.warn("update spectrum finished")
 
     def data_updated(self):
+        self.range_spinBox.setMaximum(self.freq_data.x.size)
+        self.range_spinBox.setMinimum(0)
         self.get_peaks()
         self.update_spectrum()
         pass
