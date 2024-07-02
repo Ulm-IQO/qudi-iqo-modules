@@ -117,6 +117,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
     method_updated_sig = QtCore.Signal()
     setting_name_updated_sig = QtCore.Signal()
     setting_widget_updated_sig = QtCore.Signal()
+    add_button_pushed_sig = QtCore.Signal(str)
 
     def __init__(self, logic):
         self.logic = logic()
@@ -139,6 +140,8 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.se_method_comboBox.setCurrentText(self.settings.current_method)
         self.se_setting_comboBox.addItems(self.settings.current_setting_list)
         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
+        self.se_setting_comboBox.setEditable(True)
+        self.se_setting_add_pushButton.setToolTip('Enter new name in combo box')
 
         self.se_settings_widget = DataclassWidget(self.settings.current_setting)
         self.se_settings_gridLayout.addWidget(self.se_settings_widget)
@@ -148,13 +151,11 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
 
     def connect_signals(self):
         self.se_method_comboBox.currentTextChanged.connect(self.update_current_method)
-        self.se_setting_comboBox.currentTextChanged.connect(self.update_current_setting)
+        self.se_setting_comboBox.currentIndexChanged.connect(self.update_current_setting)
         self.se_setting_add_pushButton.clicked.connect(self.add_setting)
         self.se_setting_delete_pushButton.clicked.connect(self.delete_setting)
-
-
 #        self.settings.current_stg_changed_sig.connect(self.update_current_setting)
-
+        self.add_button_pushed_sig.connect(self.settings.add_setting)
 
     def disconnect_signals(self):
         self.se_method_comboBox.currentTextChanged.disconnect()
@@ -181,9 +182,11 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.setting_widget_updated_sig.emit()
 
     def add_setting(self):
-        self.settings.add_setting()
+        new_name = self.se_setting_comboBox.currentText()
+        self.add_button_pushed_sig.emit(new_name)
         self.se_setting_comboBox.addItem(self.settings.current_stg_name)
         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
+        self.update_widget()
 
     def delete_setting(self):
         if self.settings.current_stg_name == 'default':

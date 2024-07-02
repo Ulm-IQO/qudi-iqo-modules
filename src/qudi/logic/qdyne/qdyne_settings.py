@@ -109,12 +109,14 @@ class SettingsManager():
             dict_tabledict[method_key] = dict_dict
         return dict_tabledict
 
-    @QtCore.Slot()
-    def add_setting(self):
-        new_setting = copy.deepcopy(self.current_setting)
-        if new_setting.name not in self.settings_dict.keys():
-            self.current_stg_name = new_setting.name
-            self.settings_dict[self.current_method].update({self.current_stg_name: new_setting})
+    @QtCore.Slot(str)
+    def add_setting(self, new_name):
+        default_setting = self.settings_dict[self.current_method]['default']
+        new_setting = copy.deepcopy(default_setting)
+        if new_name not in self.settings_dict.keys():
+            new_setting.name = new_name
+            self.settings_dict[self.current_method].update({new_name: new_setting})
+            self.current_stg_name = new_name
 
         else:
             self.log.error('Name already taken')
@@ -124,6 +126,7 @@ class SettingsManager():
 
     @property
     def current_setting(self):
+        print(self.current_stg_name)
         return self.settings_dict[self.current_method][self.current_stg_name]
 
     @property
