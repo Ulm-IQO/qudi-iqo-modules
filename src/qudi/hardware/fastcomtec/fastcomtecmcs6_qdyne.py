@@ -386,10 +386,10 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         The binwidth is converted into to an appropiate bitshift defined as
         2**bitshift*minimal_binwidth.
         """
-        bitshift = int(np.log2(binwidth / self.minimal_binwidth))
+        bitshift = int(np.log2(binwidth / self._minimal_binwidth))
         new_bitshift = self.set_bitshift(bitshift)
 
-        return self.minimal_binwidth * (2**new_bitshift)
+        return self._minimal_binwidth * (2**new_bitshift)
 
     def change_sweep_mode(self, gated, cycles=None, preset=None):
         """Change the sweep mode (gated, ungated)
