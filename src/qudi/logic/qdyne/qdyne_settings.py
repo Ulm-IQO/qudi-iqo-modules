@@ -20,6 +20,7 @@ import copy
 
 from PySide2 import QtCore
 
+from qudi.core.logger import get_logger
 from qudi.logic.qdyne.qdyne_state_estimator import *
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
@@ -63,6 +64,7 @@ class SettingsManager():
         self.settings_dict = dict() # [setting_class][setting_name]
         self.current_method = ''
         self.current_stg_name = ''
+        self.log = get_logger(__name__)
 
     def create_default_settings_dict(self):
         default_settings_dict = dict()
@@ -110,10 +112,12 @@ class SettingsManager():
     @QtCore.Slot()
     def add_setting(self):
         new_setting = copy.deepcopy(self.current_setting)
-        new_setting.name = new_setting.name +'_new'
-        self.current_stg_name = new_setting.name
-        self.settings_dict[self.current_method].update({self.current_stg_name: new_setting})
-#        self.settings_dict[self.current_method][self.current_setting.name] = new_setting
+        if new_setting.name not in self.settings_dict.keys():
+            self.current_stg_name = new_setting.name
+            self.settings_dict[self.current_method].update({self.current_stg_name: new_setting})
+
+        else:
+            self.log.error('Name already taken')
 
     def remove_setting(self):
         self.settings_dict[self.current_method].pop(self.current_stg_name)
