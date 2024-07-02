@@ -158,7 +158,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self.configure(
             active_channels=self._constraints.channel_units,
             gate_mode=self.gate_mode,
-            channel_buffer_size=self._available_memory,
         )
 
     def on_deactivate(self):
