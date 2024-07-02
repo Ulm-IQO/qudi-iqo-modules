@@ -624,10 +624,8 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         if read_lines is None:
             read_lines = 0
         if number_of_samples is None:
-            number_of_chunks = int(
-                self.channel_buffer_size / chunk_size
-            )  # float('inf')
-            remaining_samples = self.channel_buffer_size % chunk_size
+            number_of_chunks = int(self.buffer_size / chunk_size)  # float('inf')
+            remaining_samples = self.buffer_size % chunk_size
         else:
             number_of_chunks = int(number_of_samples / chunk_size)
             remaining_samples = number_of_samples % chunk_size
@@ -722,7 +720,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     def _init_buffer(self):
         # Todo properly
         self._data_buffer = np.zeros(
-            self.number_of_channels * self.channel_buffer_size, dtype=self._data_type
+            self.number_of_channels * self.buffer_size, dtype=self._data_type
         )
         self._has_overflown = False
         return
