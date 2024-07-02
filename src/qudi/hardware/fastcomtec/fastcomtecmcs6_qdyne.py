@@ -108,7 +108,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
 
         self._thread_lock = Mutex()
         self._active_channels = tuple()
-        self._sample_rate = None
         self._binwidth = None
         self._buffer_size = None
         self._use_circular_buffer = None
@@ -158,6 +157,10 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self.configure(
             active_channels=self._constraints.channel_units,
             gate_mode=self.gate_mode,
+            bin_width_s=self.binwidth,
+            record_length_s=self.record_length,
+            buffer_size=self.buffer_size,
+            number_of_gates=self.number_of_gates,
         )
 
     def on_deactivate(self):
@@ -210,7 +213,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         active_channels: Sequence[str],
         gate_mode: Union[GateMode, int],
         buffer_size: int,
-        sample_rate: float,
         number_of_gates: int,
     ) -> None:
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""
@@ -226,7 +228,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             old_channels = self.active_channels
             old_gate_mode = self.gate_mode
             old_buffer_size = self.buffer_size
-            old_sample_rate = self.sample_rate
             old_number_of_gates = self.number_of_gates
             try:
                 self.set_binwidth(bin_width_s)
@@ -235,7 +236,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                 self.set_record_length(record_length_s)
                 self._set_active_channels(active_channels)
                 self._set_buffer_size(buffer_size)
-                self._set_sample_rate(sample_rate)
                 self.change_sweep_mode(gated=False, cycles=None, preset=None)
                 self.set_length(no_of_bins)
                 self.set_cycles(number_of_gates)
@@ -244,7 +244,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                 self.set_record_length(old_record_length)
                 self._set_active_channels(old_channels)
                 self._set_buffer_size(old_buffer_size)
-                self._set_sample_rate(old_sample_rate)
                 self.change_sweep_mode(old_gate_mode)
                 self.set_cycles(old_number_of_gates)
                 raise RuntimeError(
@@ -272,11 +271,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     def _set_buffer_size(self, samples: int) -> None:
         self._constraints.channel_buffer_size.check(samples)
         self._buffer_size = samples
-
-    def _set_sample_rate(self, rate: Union[int, float]) -> None:
-        rate = float(rate)
-        self._constraints.sample_rate.check(rate)
-        self._sample_rate = rate
 
     def _is_not_settable(self, option: str = "") -> bool:
         """
