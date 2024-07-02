@@ -19,6 +19,9 @@
      <layout class="QGridLayout" name="gridLayout_2">
       <item row="0" column="0">
        <widget class="QPushButton" name="analyze_pushButton">
+        <property name="toolTip">
+         <string>Perform the fourier transform.</string>
+        </property>
         <property name="text">
          <string>Analyze</string>
         </property>
@@ -70,10 +73,21 @@
           </widget>
          </item>
          <item>
-          <widget class="QComboBox" name="current_peak_comboBox"/>
+          <widget class="QComboBox" name="current_peak_comboBox">
+           <property name="toolTip">
+            <string>Select the peak at the displayed index.</string>
+           </property>
+           <property name="placeholderText">
+            <string>Select the peak at the displayed index.</string>
+           </property>
+          </widget>
          </item>
          <item>
-          <widget class="QSpinBox" name="range_spinBox"/>
+          <widget class="QSpinBox" name="range_spinBox">
+           <property name="toolTip">
+            <string>Width around the peak that should be displayed.</string>
+           </property>
+          </widget>
          </item>
          <item>
           <spacer name="horizontalSpacer_2">
