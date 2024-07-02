@@ -44,6 +44,17 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     fastcomtec_mcs6_instreamer:
         module.Class: 'fastcomtec.fastcomtecmcs6_instreamer.FastComtecInstreamer'
         options:
+            channel_names:
+            channel_units:
+            data_type:
+            gated: False
+            minimal_binwidth: 0.2e-9
+            trigger_safety: 400e-9
+            dll_path: 'C:\Windows\System32\DMCS6.dll'
+            # optional options for performance
+            block_size: 10000
+            chunk_size: 10000
+            memory_ratio: 0.5
     """
     # config options
     _channel_names = ConfigOption(name='channel_names',
@@ -56,23 +67,22 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                               default='int32',
                               missing='info',
                               constructor=lambda typ: np.dtype(typ).type)
-    _block_size = ConfigOption(name='block_size', default=10000,
-                                        missing='info')  # specify the number of lines that can at max be read into the memory of the computer from the list file of the device
-    _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
-    _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
-    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8,
-                                 missing='nothing')  # relative amount of memory that can be used for reading measurement data into the system's memory
-    _gated = ConfigOption(name='gated',
-                                  missing='info',
-                          default=False,
-                                  constructor=lambda gated: int(gated))
-
-    # Todo: can be extracted from list file
-    _line_size = ConfigOption(name='line_size', default=4,
-                              missing='nothing')  # how many bytes does one line of measurement data have
-
+    _gated = ConfigOption(name='gated', missing='warn', default=False, constructor=lambda gated: int(gated))
     _minimal_binwidth = ConfigOption('minimal_binwidth', 0.2e-9, missing='warn')
     _trigger_safety = ConfigOption('trigger_safety', 400e-9, missing='warn')
+
+    _dll_path = ConfigOption(name='dll_path', default='C:\Windows\System32\DMCS6.dll', missing='info')
+    # specify the number of lines that can at max be read into the memory of the computer from
+    # the list file of the device
+    _block_size = ConfigOption(name='block_size', default=10000, missing='info')
+    # specify the amount of data that is processed at one read operation of the list file
+    _chunk_size = ConfigOption(name='chunk_size', default=10000, missing='nothing')
+    # relative amount of memory that can be used for reading measurement data into the system's memory
+    _memory_ratio = ConfigOption(name='memory_ratio', default=0.8, missing='nothing')
+
+    # Todo: can be extracted from list file
+    # how many bytes does one line of measurement data have
+    _line_size = ConfigOption(name='line_size', default=4, missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -107,10 +117,13 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             gate_mode=GateMode(0),
             data_type=self._data_type,
             block_size=ScalarConstraint(default=1024 ** 2,
-                                                 bounds=(128, self._available_memory),
-                                                 increment=1,
-                                                 enforce_int=True),
-            binwidth=ScalarConstraint(default=self._minimal_binwidth, bounds=(self._minimal_binwidth, self._minimal_binwidth * 2 ** 24), increment=0.1, enforce_int=False)
+                                        bounds=(128, self._available_memory),
+                                        increment=1,
+                                        enforce_int=True),
+            binwidth=ScalarConstraint(default=self._minimal_binwidth,
+                                      bounds=(self._minimal_binwidth, self._minimal_binwidth * 2 ** 24),
+                                      increment=0.1,
+                                      enforce_int=False)
         )
 
         # TODO implement the constraints for the fastcomtec max_bins, max_sweep_len and hardware_binwidth_list
@@ -319,11 +332,11 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         """
         setting = AcqSettings()
         self.dll.GetSettingData(ctypes.byref(setting), 0)
-        N = setting.range
-        time_trace = np.empty((N,), dtype=np.uint32)
+        new_data = self.read_data_from_file(filename=self._filename, read_lines=self._read_lines,
+                                            chunk_size=self._chunk_size, number_of_samples=None)
         info_dict = {'elapsed_sweeps': None,
                      'elapsed_time': None}  # TODO : implement that according to hardware capabilities
-        return time_trace, info_dict
+        return new_data, info_dict
 
     def set_binwidth(self, binwidth):
         """ Set defined binwidth in Card.
@@ -641,4 +654,3 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                                      dtype=self._data_type)
         self._has_overflown = False
         return
-
