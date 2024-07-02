@@ -146,8 +146,6 @@ class QdyneCounterDummy(QdyneCounterInterface):
         num_samples = self._record_length*self._sample_rate
         sample_times = numpy.linspace(0, self._record_length, num_samples)
 
-        self.log.debug("I ran though start measure in the dummy")
-
         for t in sample_times:
             self._time_tagger_data += poisson_process(t)
 
