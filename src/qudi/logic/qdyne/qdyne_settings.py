@@ -13,6 +13,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 from dataclasses import asdict
 import inspect
 import sys
@@ -24,10 +25,11 @@ from qudi.logic.qdyne.qdyne_state_estimator import *
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
 
+
 def get_subclasses(class_obj):
-    '''
+    """
     Given a class, find its subclasses and get their names.
-    '''
+    """
 
     subclasses = []
     for name, obj in inspect.getmembers(sys.modules[__name__]):
@@ -39,37 +41,39 @@ def get_subclasses(class_obj):
 
 def get_method_names(subclass_obj, class_obj):
     subclass_names = [cls.__name__ for cls in subclass_obj]
-    method_names = [subclass_name.replace(class_obj.__name__, '') for subclass_name in subclass_names]
+    method_names = [
+        subclass_name.replace(class_obj.__name__, "")
+        for subclass_name in subclass_names
+    ]
     return method_names
 
 
 def get_method_name(subclass_obj, class_obj):
     subclass_name = subclass_obj.__name__
-    method_name = subclass_name.replace(class_obj.__name__, '')
+    method_name = subclass_name.replace(class_obj.__name__, "")
     return method_name
 
 
 class QdyneSettings:
-
     def __init__(self):
         self.estimator_stg = SettingsManager(StateEstimatorSettings)
         self.analyzer_stg = SettingsManager(AnalyzerSettings)
         self.data_manager_stg = DataManagerSettings()
 
-class SettingsManager():
 
+class SettingsManager:
     def __init__(self, abstract_class_obj=None):
         self.abstract_class_obj = abstract_class_obj
-        self.settings_dict = dict() # [setting_class][setting_name]
-        self.current_method = ''
-        self.current_stg_name = ''
+        self.settings_dict = dict()  # [setting_class][setting_name]
+        self.current_method = ""
+        self.current_stg_name = ""
 
     def create_default_settings_dict(self):
         default_settings_dict = dict()
         setting_classes = get_subclasses(self.abstract_class_obj)
         for setting in setting_classes:
             method_name = get_method_name(setting, self.abstract_class_obj)
-            setting.name = 'default'
+            setting.name = "default"
             default_settings_dict[method_name] = {setting.name: setting()}
         return default_settings_dict
 
@@ -86,8 +90,8 @@ class SettingsManager():
             dict_dict = dict_tabledict[method_key]
             for setting_key in dict_dict.keys():
                 stg_dict = dict_dict[setting_key]
-                class_name = stg_dict['__class__']
-                stg_dict.pop('__class__', None)
+                class_name = stg_dict["__class__"]
+                stg_dict.pop("__class__", None)
                 stg_dataclass = globals()[class_name](**stg_dict)
                 dataclass_dict[setting_key] = stg_dataclass
             dataclass_tabledict[method_key] = dataclass_dict
@@ -102,7 +106,7 @@ class SettingsManager():
             for setting_key in dataclass_dict.keys():
                 stg_dataclass = dataclass_dict[setting_key]
                 stg_dict = asdict(stg_dataclass)
-                stg_dict['__class__'] = stg_dataclass.__class__.__name__
+                stg_dict["__class__"] = stg_dataclass.__class__.__name__
                 dict_dict[setting_key] = stg_dict
             dict_tabledict[method_key] = dict_dict
         return dict_tabledict
@@ -110,10 +114,13 @@ class SettingsManager():
     @QtCore.Slot()
     def add_setting(self):
         new_setting = copy.deepcopy(self.current_setting)
-        new_setting.name = new_setting.name +'_new'
+        new_setting.name = new_setting.name + "_new"
         self.current_stg_name = new_setting.name
-        self.settings_dict[self.current_method].update({self.current_stg_name: new_setting})
-#        self.settings_dict[self.current_method][self.current_setting.name] = new_setting
+        self.settings_dict[self.current_method].update(
+            {self.current_stg_name: new_setting}
+        )
+
+    #        self.settings_dict[self.current_method][self.current_setting.name] = new_setting
 
     def remove_setting(self):
         self.settings_dict[self.current_method].pop(self.current_stg_name)
