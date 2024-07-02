@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import datetime
-import numpy
+import numpy as np
 import os
 import time
 from typing import Sequence, Union
@@ -136,15 +136,15 @@ class QdyneCounterDummy(QdyneCounterInterface):
         _freq = self._sine_frequency
 
         def poisson_process(t):
-            mean = numpy.sin(2*numpy.pi*_freq*t)+1
-            num_photons = numpy.random.poisson(mean)
-            time_tags = sorted(numpy.random.choice(range(100, 500), num_photons))
+            mean = np.sin(2*np.pi*_freq*t)+1
+            num_photons = np.random.poisson(mean)
+            time_tags = sorted(np.random.choice(range(100, 500), num_photons))
             return [0] + time_tags
 
         self._time_tagger_data = []
 
         num_samples = self._record_length*self._sample_rate
-        sample_times = numpy.linspace(0, self._record_length, num_samples)
+        sample_times = np.linspace(0, self._record_length, num_samples)
 
         for t in sample_times:
             self._time_tagger_data += poisson_process(t)
