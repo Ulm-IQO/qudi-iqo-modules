@@ -154,6 +154,7 @@ class QdyneLogic(LogicBase):
     # signals for connecting modules
     sigFitUpdated = QtCore.Signal(str, object)
     sigToggleQdyneMeasurement = QtCore.Signal(bool)
+    sigToggleQdyneContinuePause = QtCore.Signal(bool)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -207,10 +208,16 @@ class QdyneLogic(LogicBase):
         self.sigToggleQdyneMeasurement.connect(
             self.measure.toggle_qdyne_measurement, QtCore.Qt.QueuedConnection
         )
+
+        self.sigToggleQdyneContinuePause.connect(
+            self.measure.toggle_qdyne_measurement_pause, QtCore.Qt.QueuedConnection
+        )
+
         return
 
     def on_deactivate(self):
         self.sigToggleQdyneMeasurement.disconnect()
+        self.sigToggleQdyneContinuePause.disconnect()
 
         self._save_status_variables()
         return
@@ -233,6 +240,15 @@ class QdyneLogic(LogicBase):
         """
         if isinstance(start, bool):
             self.sigToggleQdyneMeasurement.emit(start)
+        return
+    @QtCore.Slot(bool)
+    @QtCore.Slot(bool, str)
+    def toggle_qdyne_measurement_pause(self, start):
+        """
+        @param bool start: True for pause measurement, False for continue measurement
+        """
+        if isinstance(start, bool):
+            self.sigToggleQdyneContinuePause.emit(start)
         return
 
     @QtCore.Slot(str)
