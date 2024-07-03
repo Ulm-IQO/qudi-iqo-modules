@@ -157,6 +157,18 @@ class QdyneCounterDummy(QdyneCounterInterface):
         self.statusvar = 1
 
         return 0
+    def pause_measure(self):
+        """ Pause the qdyne counter. """
+        time.sleep(1)
+        self.statusvar = 1
+        return 1
+
+    def continue_measure(self):
+        """ Continue the qdyne counter. """
+        time.sleep(1)
+        self.statusvar = 2
+
+        return 0
 
     def get_data(self) -> tuple:
         """ Polls the current time tag data or time series data from the Qdyne counter.
