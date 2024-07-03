@@ -285,27 +285,6 @@ class FastComtecInstreamer(DataInStreamInterface):
             self.change_save_mode(0)
         return status
 
-    def pause_stream(self):
-        """Pause the measurement/streaming, which can be continued. """
-        self.stopped_or_halt = "halt"
-        status = self.dll.Halt(0)
-        while self.get_status() != 3:
-            time.sleep(0.05)
-
-        if self.gated:
-            self.timetrace_tmp = self.get_data_trace()
-        return status
-
-    def continue_stream(self):
-        """Continue a paused measurement/streaming. """
-        if self.gated:
-            status = self.start_measure()
-        else:
-            status = self.dll.Continue(0)
-            while self.get_status() != 2:
-                time.sleep(0.05)
-        return status
-
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
                               samples_per_channel: int,
