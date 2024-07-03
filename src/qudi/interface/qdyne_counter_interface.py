@@ -183,14 +183,7 @@ class QdyneCounterInterface(Base):
     def stop_measure(self):
         """Stop the qdyne counter."""
         pass
-    @abstractmethod
-    def pause_measure(self):
-        """Pause the qdyne counter."""
-        pass
-    @abstractmethod
-    def continue_measure(self):
-        """Continues the qdyne counter."""
-        pass
+
     @abstractmethod
     def get_data(self) -> tuple:
         """Polls the current time tag data or time series data from the Qdyne counter.
