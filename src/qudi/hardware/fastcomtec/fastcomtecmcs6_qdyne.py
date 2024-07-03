@@ -324,6 +324,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             while self.get_status() != 2:
                 time.sleep(0.05)
             return status
+
     def stop_measure(self):
         """Stop the qdyne counter."""
         with self._thread_lock:
@@ -335,25 +336,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                 time.sleep(0.05)
             self.change_save_mode(0)
             return status
-    def pause_measure(self):
-        """Pause the qdyne counter, which can be continued. """
-        self.stopped_or_halt = "halt"
-        status = self.dll.Halt(0)
-        while self.get_status() != 3:
-            time.sleep(0.05)
-
-        if self.gated:
-            self.timetrace_tmp = self.get_data_trace()
-        return status
-    def continue_measure(self):
-        """Continue paused qdyne counter. """
-        if self.gated:
-            status = self.start_measure()
-        else:
-            status = self.dll.Continue(0)
-            while self.get_status() != 2:
-                time.sleep(0.05)
-        return status
 
     def get_data(self):
         """Polls the current time tag data or time series data from the Qdyne counter.
