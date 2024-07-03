@@ -49,7 +49,7 @@ class QdyneMainGui(GuiBase):
         self._connect()
 
         self._mainw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
-        self._mainw.action_continue_pause.triggered.connect(self.measurement_continue_pause_clicked)
+
         self.show()
 
     def _instantiate_widgets(self):
@@ -99,8 +99,9 @@ class QdyneMainGui(GuiBase):
 #        self._pmw.disconnect_signals()
         self._sew.disconnect_signals()
         self._ttaw.disconnect_signals()
+
         self._mainw.action_run_stop.triggered.disconnect()
-        self._mainw.action_continue_pause.triggered.disconnect()
+
     def show(self):
         self._mainw.show()
         self._mainw.activateWindow()
@@ -114,8 +115,4 @@ class QdyneMainGui(GuiBase):
         """
         self.logic().toggle_qdyne_measurement(isChecked)
         return
-    @QtCore.Slot(bool)
-    def measurement_continue_pause_clicked(self, isChecked):
-        """ Continues and pauses the measurement. """
-        self.logic().toggle_qdyne_measurement_pause(isChecked)
-        return
+
