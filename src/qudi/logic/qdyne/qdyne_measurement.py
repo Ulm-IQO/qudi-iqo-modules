@@ -14,12 +14,14 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import numpy as np
+
 from dataclasses import dataclass
 import datetime
+import time
 from PySide2 import QtCore
 from logging import getLogger
 import numpy as np
+from qudi.util.mutex import Mutex
 
 logger = getLogger(__name__)
 
@@ -63,6 +65,13 @@ class QdyneMeasurement(QtCore.QObject):
         self.__start_time = 0
         self.__elapsed_time = 0
         self.__elapsed_sweeps = 0
+        # threading
+        self._threadlock = Mutex()
+
+        # Paused measurement flag
+        self.__is_paused = False
+        self._time_of_pause = None
+        self._elapsed_pause = 0
 
         # set up the analysis timer
         self.__analysis_timer = QtCore.QTimer()
@@ -103,6 +112,19 @@ class QdyneMeasurement(QtCore.QObject):
             self.stop_qdyne_measurement()
         return
 
+    @QtCore.Slot(bool, str)
+    def toggle_qdyne_measurement_pause(self, start):
+        """
+        Convenience method to pause/continue measurement
+
+        @param bool start: Start the measurement (True) or stop the measurement (False)
+        """
+        if start:
+            self.pause_qdyne_measurement()
+        else:
+            self.continue_qdyne_measurement()
+        return
+
     def start_qdyne_measurement(self, fname=None):
         logger.debug("Starting QDyne measurement")
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
@@ -118,6 +140,50 @@ class QdyneMeasurement(QtCore.QObject):
         self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_off()
         self.qdyne_logic._data_streamer().stop_measure()
         self.sigStopTimer.emit()
+        return
+
+    def continue_qdyne_measurement(self):
+        logger.debug("Continue QDyne measurement")
+        self.sigStartTimer.emit()
+        with self._threadlock:
+            if self.module_state() == 'locked':
+                self.qdyne_logic._data_streamer().continue_measure()
+                self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_on()
+                # un-pausing the timer
+                if not self.__analysis_timer.isActive():
+                    self.sigStartTimer.emit()
+
+                # Set measurement paused flag
+                self.__is_paused = False
+                self.__start_time += time.time() - self._time_of_pause
+
+                self.sigMeasurementStatusUpdated.emit(True, False)
+            else:
+                self.log.warning('Unable to continue Qdyne measurement. No measurement running.')
+                self.sigMeasurementStatusUpdated.emit(False, False)
+        return
+
+    def pause_qdyne_measurement(self):
+        logger.debug("Pause QDyne measurement")
+        self.sigStopTimer.emit()
+        with self._threadlock:
+            if self.module_state() == 'locked':
+                # pausing the timer
+                if self.__analysis_timer.isActive():
+                    # stopping the timer
+                    self.sigStopTimer.emit()
+
+                self.qdyne_logic._data_streamer().pause_measure()
+                self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_off()
+
+                # Set measurement paused flag
+                self.__is_paused = True
+                self._time_of_pause = time.time()
+
+                self.sigMeasurementStatusUpdated.emit(True, True)
+            else:
+                self.log.warning('Unable to pause Qdyne measurement. No measurement running.')
+                self.sigMeasurementStatusUpdated.emit(False, False)
         return
 
     def qdyne_analysis_loop(self):
