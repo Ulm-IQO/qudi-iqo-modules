@@ -245,7 +245,7 @@ class QdyneLogic(LogicBase):
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )
-            self.measurement_generator = MeasurementGenerator(self.pulsedmasterlogic)
+            self.measurement_generator = MeasurementGenerator(self.pulsedmasterlogic, self)
             self.fit = QdyneFit(self, self._fit_configs)
             self.data_manager = QdyneDataManager(
                 self.data, self.settings.data_manager_stg
