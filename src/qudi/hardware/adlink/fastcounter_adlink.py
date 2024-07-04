@@ -245,6 +245,7 @@ class Adlink9834(FastCounterInterface):
         self._number_of_gates = number_of_gates
         self._settings.scan_interval.value = round(bin_width_s * self._clock_freq)
         samples_per_laser = round(record_length_s / bin_width_s)
+        # The card expects the number of samples to be divisible by 8
         samples_per_laser_adjustment = samples_per_laser % 8
         self._settings.scancount_per_trigger.value = (
             samples_per_laser - samples_per_laser_adjustment
