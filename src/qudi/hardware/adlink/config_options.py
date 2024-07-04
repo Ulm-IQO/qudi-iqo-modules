@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from enum import Enum
+from qudi.hardware.adlink.custom_enum import EnumSearchName
 import ctypes
 
 
@@ -91,23 +92,6 @@ class AdlinkCardType(Enum):
 
     PCIe_9834 = AdlinkDataTypes.U16(0x37)
     PXIe_9834 = AdlinkDataTypes.U16(0x39)
-
-
-class EnumSearchName(Enum):
-    def __init__(self) -> None:
-        super().__init__()
-
-    @staticmethod
-    def get_value_from_name(enum_member: AdlinkCardType):
-        # Iterate through EnumClassB members
-        for member in AdlinkReadCount:
-            if member.name == enum_member.name:
-                return member.value
-        member = AdlinkReadCount.DEFAULT
-        print(
-            f"Error {enum_member} not found in AdlinkReadCount. Returning value of {member}."
-        )
-        return member.value
 
 
 class AdlinkTriggerSource(Enum):
