@@ -15,7 +15,7 @@ int test_callback() {
 }
 
 void sum_buffer(short *buffer_address) {
-  // Function that sums adlink buffer into measurment buffer, given the adlink
+  // Function that sums adlink buffer into measurement buffer, given the adlink
   // buffer address
   for (int i = 0; i < number_of_measurements; i++) {
     for (int j = 0; j < buffer_size; j++) {
@@ -27,7 +27,7 @@ void sum_buffer(short *buffer_address) {
 void sum_buffer_callback() {
   // Function that adds the adlink measurement buffers to a user-defined
   // measurement buffer. This measurement buffer only stores data of one
-  // measuerement and freshly acquired data is added on top.
+  // measurement and freshly acquired data is added on top.
   switch (buffer_id) {
   case 0:
     sum_buffer(ai_buff1_address);
