@@ -245,112 +245,13 @@ class Adlink9834(FastCounterInterface):
         """
         self._disarm_card()
         self._free_buffers()
-        self._number_of_gates = number_of_gates
-        self._settings.scan_interval.value = round(bin_width_s * self._clock_freq)
-        samples_per_laser = round(record_length_s / bin_width_s)
-        # The card expects the number of samples to be divisible by 8
-        samples_per_laser_adjustment = samples_per_laser % 8
-        self._settings.scancount_per_trigger.value = (
-            samples_per_laser - samples_per_laser_adjustment
-        )
-        self._settings.retrigger_count.value = self._max_number_retriggers()
-        self._buffer_size_bytes()
-        self._measurement_buffer = (
-            ctypes.c_int64 * self._buffer_size_samples_one_measurement()
-        )(*[0] * self._buffer_size_samples_one_measurement())
-        self._measurement_buffer_address = ctypes.cast(
-            self._measurement_buffer, ctypes.c_void_p
-        )
+        self._configure_settings(number_of_gates, bin_width_s, record_length_s)
 
-        err = AdlinkDataTypes.I16(
-            self._dll.WD_AI_CH_Config(
-                self._card,
-                AdlinkDataTypes.I16(-1),
-                AdlinkDataTypes.U16(self._settings.ad_range),
-            )
-        )
-        if self._check_if_error(err, "CH_Config"):
-            return
+        self._configure_card()
 
-        err = AdlinkDataTypes.I16(
-            self._dll.WD_AI_Config(
-                self._card,
-                self._settings.timebase,
-                self._settings.ad_duty_restore,
-                self._settings.ad_convert_source,
-                self._settings.double_edged,
-                self._settings.buf_auto_reset,
-            )
-        )
-        self._check_if_error(err, "Config")
+        self._configure_buffer()
 
-        err = AdlinkDataTypes.I16(
-            self._dll.WD_AI_Trig_Config(
-                self._card,
-                self._settings.ad_trigger_mode,
-                self._settings.ad_trigger_source,
-                self._settings.ad_trigger_polarity,
-                self._settings.analog_trigger_channel,
-                self._settings.analog_trigger_level,
-                self._settings.post_trigger_scans,
-                self._settings.pre_trigger_scans,
-                self._settings.trigger_delay_ticks,
-                AdlinkDataTypes.U32(0),
-            )
-        )
-        if self._check_if_error(err, "Trig_Config"):
-            return
-
-        # reserve memory using the DLL's function
-        self._buffer_size_bytes()
-        self._ai_buffer1 = ctypes.c_void_p(
-            self._dll.WD_Buffer_Alloc(self._card, self.__buffer_size_bytes)
-        )
-
-        if self._check_if_error(
-            AdlinkDataTypes.I16(self._ai_buffer1.value), "BufferAlloc"
-        ):
-            return
-        self._configure_buffer(self._ai_buffer1, self._buffer_id1)
-
-        self._ai_buffer2 = ctypes.c_void_p(
-            self._dll.WD_Buffer_Alloc(self._card, self.__buffer_size_bytes)
-        )
-
-        if self._check_if_error(
-            AdlinkDataTypes.I16(self._ai_buffer2.value), "BufferAlloc"
-        ):
-            return
-        self._configure_buffer(self._ai_buffer2, self._buffer_id2)
-
-        self._data_buffer = np.zeros(
-            (self._number_of_averages, self._buffer_size_samples_one_measurement()),
-            dtype=np.float64,
-        )
-        self._last_measurement = np.zeros(
-            (self._buffer_size_samples_one_measurement(),), dtype=np.float64
-        )
-
-        # set up variables in callback_dll
-        self._set_callback_dll_variables()
-
-        if self._settings.timeout.value > 0:
-            err = AdlinkDataTypes.I16(
-                self._dll.WD_AI_SetTimeout(self._card, self._settings.timeout)
-            )
-            if self._check_if_error(err, "SetTimeout"):
-                return
-
-        err = AdlinkDataTypes.I16(
-            self._dll.WD_AI_EventCallBack_x64(
-                self._card,
-                AdlinkDataTypes.I16(1),
-                self._settings.callback_signal,
-                self._callback_dll.sum_buffer_callback,
-            )
-        )
-        if self._check_if_error(err, "EventCallBack"):
-            return
+        self._configure_callback()
 
         return bin_width_s, record_length_s, number_of_gates
 
@@ -747,7 +648,7 @@ class Adlink9834(FastCounterInterface):
         buffer_size_c.value = self._buffer_size_samples_one_measurement()
         buffer_id_c.value = 0
 
-    def _configure_buffer(self, ai_buffer_address, buffer_id):
+    def _set_buffer(self, ai_buffer_address, buffer_id):
         """
         Function that configures the buffer on the card.
         Parameters
@@ -772,3 +673,128 @@ class Adlink9834(FastCounterInterface):
             return
 
         # TODO: Check whether buffer_id is properly changed after function execution
+
+    def _configure_settings(self, number_of_gates, bin_width_s, record_length_s):
+        """
+        Method that calculates and sets the correct settings of the card.
+        """
+        self._number_of_gates = number_of_gates
+        self._settings.scan_interval.value = round(bin_width_s * self._clock_freq)
+        samples_per_laser = round(record_length_s / bin_width_s)
+        # The card expects the number of samples to be divisible by 8
+        samples_per_laser_adjustment = samples_per_laser % 8
+        self._settings.scancount_per_trigger.value = (
+            samples_per_laser - samples_per_laser_adjustment
+        )
+        self._settings.retrigger_count.value = self._max_number_retriggers()
+        # calculate the resulting card buffer variables
+
+    def _configure_card(self):
+        """
+        Method that sets the cards settings.
+        """
+        err = AdlinkDataTypes.I16(
+            self._dll.WD_AI_CH_Config(
+                self._card,
+                AdlinkDataTypes.I16(-1),
+                AdlinkDataTypes.U16(self._settings.ad_range),
+            )
+        )
+        if self._check_if_error(err, "CH_Config"):
+            return
+
+        err = AdlinkDataTypes.I16(
+            self._dll.WD_AI_Config(
+                self._card,
+                self._settings.timebase,
+                self._settings.ad_duty_restore,
+                self._settings.ad_convert_source,
+                self._settings.double_edged,
+                self._settings.buf_auto_reset,
+            )
+        )
+        self._check_if_error(err, "Config")
+
+        err = AdlinkDataTypes.I16(
+            self._dll.WD_AI_Trig_Config(
+                self._card,
+                self._settings.ad_trigger_mode,
+                self._settings.ad_trigger_source,
+                self._settings.ad_trigger_polarity,
+                self._settings.analog_trigger_channel,
+                self._settings.analog_trigger_level,
+                self._settings.post_trigger_scans,
+                self._settings.pre_trigger_scans,
+                self._settings.trigger_delay_ticks,
+                AdlinkDataTypes.U32(0),
+            )
+        )
+        if self._check_if_error(err, "Trig_Config"):
+            return
+
+    def _configure_buffer(self):
+        """
+        Configures the computer buffer and the cards buffer to correctly read out the data.
+        """
+        self._buffer_size_bytes()
+        self._measurement_buffer = (
+            ctypes.c_int64 * self._buffer_size_samples_one_measurement()
+        )(*[0] * self._buffer_size_samples_one_measurement())
+        self._measurement_buffer_address = ctypes.cast(
+            self._measurement_buffer, ctypes.c_void_p
+        )
+
+        # reserve memory using the DLL's function
+        self._ai_buffer1 = ctypes.c_void_p(
+            self._dll.WD_Buffer_Alloc(self._card, self.__buffer_size_bytes)
+        )
+
+        if self._check_if_error(
+            AdlinkDataTypes.I16(self._ai_buffer1.value), "BufferAlloc"
+        ):
+            return
+        self._set_buffer(self._ai_buffer1, self._buffer_id1)
+
+        self._ai_buffer2 = ctypes.c_void_p(
+            self._dll.WD_Buffer_Alloc(self._card, self.__buffer_size_bytes)
+        )
+
+        if self._check_if_error(
+            AdlinkDataTypes.I16(self._ai_buffer2.value), "BufferAlloc"
+        ):
+            return
+        self._set_buffer(self._ai_buffer2, self._buffer_id2)
+
+        self._data_buffer = np.zeros(
+            (self._number_of_averages, self._buffer_size_samples_one_measurement()),
+            dtype=np.float64,
+        )
+        self._last_measurement = np.zeros(
+            (self._buffer_size_samples_one_measurement(),), dtype=np.float64
+        )
+
+    def _configure_callback(self):
+        """
+        Method that sets all necessary variables in the callback dll.
+        Also configures the card to use its callback functionality.
+        """
+        # set up variables in callback_dll
+        self._set_callback_dll_variables()
+
+        if self._settings.timeout.value > 0:
+            err = AdlinkDataTypes.I16(
+                self._dll.WD_AI_SetTimeout(self._card, self._settings.timeout)
+            )
+            if self._check_if_error(err, "SetTimeout"):
+                return
+
+        err = AdlinkDataTypes.I16(
+            self._dll.WD_AI_EventCallBack_x64(
+                self._card,
+                AdlinkDataTypes.I16(1),
+                self._settings.callback_signal,
+                self._callback_dll.sum_buffer_callback,
+            )
+        )
+        if self._check_if_error(err, "EventCallBack"):
+            return
