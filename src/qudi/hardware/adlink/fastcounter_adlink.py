@@ -311,18 +311,7 @@ class Adlink9834(FastCounterInterface):
             AdlinkDataTypes.I16(self._ai_buffer1.value), "BufferAlloc"
         ):
             return
-        ctypes.memset(self._ai_buffer1, 0, self._buffer_size_bytes.value)
-
-        err = AdlinkDataTypes.I16(
-            self._dll.WD_AI_ContBufferSetup(
-                self._card,
-                self._ai_buffer1,
-                self._buffer_size_samples,
-                ctypes.byref(self._buffer_id1),
-            )
-        )
-        if self.check_if_error(err, "ContBufferSetup"):
-            return
+        self._configure_buffer(self._ai_buffer1, self._buffer_id1)
 
         self._ai_buffer2 = ctypes.c_void_p(
             self._dll.WD_Buffer_Alloc(self._card, self._buffer_size_bytes)
@@ -332,18 +321,8 @@ class Adlink9834(FastCounterInterface):
             AdlinkDataTypes.I16(self._ai_buffer2.value), "BufferAlloc"
         ):
             return
-        ctypes.memset(self._ai_buffer2, 0, self._buffer_size_bytes.value)
+        self._configure_buffer(self._ai_buffer2, self._buffer_id2)
 
-        err = AdlinkDataTypes.I16(
-            self._dll.WD_AI_ContBufferSetup(
-                self._card,
-                self._ai_buffer2,
-                self._buffer_size_samples,
-                ctypes.byref(self._buffer_id2),
-            )
-        )
-        if self.check_if_error(err, "ContBufferSetup"):
-            return
         self._data_buffer = np.zeros(
             (self._number_of_averages, self.buffer_size_samples_one_measurement()),
             dtype=np.float64,
@@ -374,6 +353,32 @@ class Adlink9834(FastCounterInterface):
             return
 
         return bin_width_s, record_length_s, number_of_gates
+
+    def _configure_buffer(self, ai_buffer_address, buffer_id):
+        """
+        Function that configures the buffer on the card.
+        Parameters
+        ----------
+        ai_buffer_address: ctypes.c_void_p
+                           Pointer to the buffer on the computer
+        buffer_id: AdlinkDataTypes.U16
+                   Number specifying the buffer on the card
+
+        """
+        ctypes.memset(ai_buffer_address, 0, self._buffer_size_bytes.value)
+
+        err = AdlinkDataTypes.I16(
+            self._dll.WD_AI_ContBufferSetup(
+                self._card,
+                ai_buffer_address,
+                self._buffer_size_samples,
+                ctypes.byref(buffer_id),
+            )
+        )
+        if self.check_if_error(err, "ContBufferSetup"):
+            return
+
+        # TODO: Check whether buffer_id is properly changed after function execution
 
     def get_status(self):
         """Receives the current status of the hardware and outputs it as return value.
