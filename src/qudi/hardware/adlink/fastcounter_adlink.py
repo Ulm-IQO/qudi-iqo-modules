@@ -653,6 +653,8 @@ class Adlink9834(FastCounterInterface):
         """
         Calculates the number of samples that will be acquired
         """
+        # +1 is required as channel_num ranges from 0 to 3
+        # but always channel_num + 1 channels are active
         buffer_size = self._settings.scancount_per_trigger.value * (
             self._settings.channel_num.value + 1
         )
