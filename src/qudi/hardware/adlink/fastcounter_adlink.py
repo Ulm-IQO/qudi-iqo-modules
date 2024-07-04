@@ -552,7 +552,6 @@ class Adlink9834(FastCounterInterface):
         Method that transform the raw data array to the shape expected by qudi
         """
         temp = data.reshape(self._number_of_gates, -1)
-        temp += np.abs(np.min(temp))
         return temp
 
     def load_dll(self, location: str):
