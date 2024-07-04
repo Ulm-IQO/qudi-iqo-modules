@@ -568,7 +568,7 @@ class Adlink9834(FastCounterInterface):
         dll_handle = ctypes.c_void_p(dll._handle)
         del dll
         ctypes.windll.kernel32.FreeLibrary(dll_handle)
-        self.log.debug(f"Freed DLL at location {dll_handle.value}")
+        self.log.info(f"Freed DLL at location {dll_handle.value}")
         return None
 
     def free_buffers(self) -> None:
