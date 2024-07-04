@@ -25,6 +25,7 @@ import numpy as np
 from typing import Union, List, Sequence
 import time
 from os import path
+from datetime import datetime
 from psutil import virtual_memory
 from itertools import islice
 
@@ -47,11 +48,11 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     Example config for copy-paste:
 
     fastcomtec_mcs6_instreamer:
-        module.Class: 'fastcomtec.fastcomtecmcs6_instreamer.FastComtecInstreamer'
+        module.Class: 'fastcomtec.fastcomtecmcs6_qdyne.FastComtecQdyneCounter'
         options:
-            channel_names:
-            channel_units:
-            data_type:
+            channel_names: [0]
+            channel_units: ['']
+            data_type: 'int32'
             gated: False
             minimal_binwidth: 0.2e-9
             trigger_safety: 400e-9
@@ -109,10 +110,12 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self._thread_lock = Mutex()
         self._active_channels = tuple()
         self._binwidth = None
-        self._buffer_size = None
+        # Todo: handle buffer size
+        self._buffer_size = int(1e9)  # None
         self._use_circular_buffer = None
         self._record_length = None
-        self._number_of_gates = None
+        # Todo: is number of gates even needed?
+        self._number_of_gates = 1  # None
 
         self._data_buffer = np.empty(0, dtype=self._data_type)
         self._read_lines = None
@@ -135,14 +138,14 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             gate_mode=GateMode(0),
             data_type=self._data_type,
             block_size=ScalarConstraint(
-                default=1024**2,
+                default=1024 ** 2,
                 bounds=(128, self._available_memory),
                 increment=1,
                 enforce_int=True,
             ),
             binwidth=ScalarConstraint(
                 default=self._minimal_binwidth,
-                bounds=(self._minimal_binwidth, self._minimal_binwidth * 2**24),
+                bounds=(self._minimal_binwidth, self._minimal_binwidth * 2 ** 24),
                 increment=0.1,
                 enforce_int=False,
             ),
@@ -198,13 +201,13 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         return self._block_size
 
     def configure(
-        self,
-        bin_width_s: float,
-        record_length_s: float,
-        active_channels: Sequence[str],
-        gate_mode: Union[GateMode, int],
-        buffer_size: int,
-        number_of_gates: int,
+            self,
+            bin_width_s: float,
+            record_length_s: float,
+            active_channels: Sequence[str],
+            gate_mode: Union[GateMode, int],
+            buffer_size: int,
+            number_of_gates: int,
     ) -> None:
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""
         with self._thread_lock:
@@ -221,21 +224,22 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             old_buffer_size = self.buffer_size
             old_number_of_gates = self.number_of_gates
             try:
+                no_of_bins = int((record_length_s - self._trigger_safety) / bin_width_s)
                 self.set_binwidth(bin_width_s)
-                no_of_bins = int((record_length_s - self.trigger_safety) / bin_width_s)
-
-                self.set_record_length(record_length_s)
+                # self.set_record_length(record_length_s)
                 self._set_active_channels(active_channels)
                 self._set_buffer_size(buffer_size)
                 self.change_sweep_mode(gated=False, cycles=None, preset=None)
                 self.set_length(no_of_bins)
                 self.set_cycles(number_of_gates)
             except Exception as err:
+                old_no_of_bins = int((old_record_length - self._trigger_safety) / old_binwidth)
                 self.set_binwidth(old_binwidth)
-                self.set_record_length(old_record_length)
+                # self.set_record_length(old_record_length)
                 self._set_active_channels(old_channels)
                 self._set_buffer_size(old_buffer_size)
                 self.change_sweep_mode(old_gate_mode)
+                self.set_length(old_no_of_bins)
                 self.set_cycles(old_number_of_gates)
                 raise RuntimeError(
                     "Error while trying to configure data in-streamer"
@@ -260,7 +264,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self.dll.RunCmd(0, bytes(cmd, "ascii"))
 
     def _set_buffer_size(self, samples: int) -> None:
-        self._constraints.channel_buffer_size.check(samples)
+        # self._constraints.channel_buffer_size.check(samples)
         self._buffer_size = samples
 
     def _is_not_settable(self, option: str = "") -> bool:
@@ -297,16 +301,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         if status.started == 1:
             return 2
         elif status.started == 0:
-            if self.stopped_or_halt == "stopped":
-                return 1
-            elif self.stopped_or_halt == "halt":
-                return 3
-            else:
-                self.log.error(
-                    "There is an unknown status from FastComtec. The status message was %s"
-                    % (str(status.started))
-                )
-                return -1
+            return 1
         else:
             self.log.error(
                 "There is an unknown status from FastComtec. The status message was %s"
@@ -320,6 +315,9 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             if self.module_state() == "idle":
                 self.module_state.lock()
             self.change_save_mode(2)
+            timestamp = datetime.now()
+            self._filename = timestamp.strftime('%Y%m%d-%H%M-%S')
+            self.change_filename(self._filename)
             status = self.dll.Start(0)
             while self.get_status() != 2:
                 time.sleep(0.05)
@@ -330,7 +328,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         with self._thread_lock:
             if self.module_state() == "locked":
                 self.module_state.unlock()
-            self.stopped_or_halt = "stopped"
             status = self.dll.Halt(0)
             while self.get_status() != 1:
                 time.sleep(0.05)
@@ -356,7 +353,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         setting = AcqSettings()
         self.dll.GetSettingData(ctypes.byref(setting), 0)
         new_data = self.read_data_from_file(
-            filename=self._filename,
+            filename=self._filename + '.lst',
             read_lines=self._read_lines,
             chunk_size=self._chunk_size,
             number_of_samples=None,
@@ -367,20 +364,40 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         }  # TODO : implement that according to hardware capabilities
         return new_data, info_dict
 
+    def get_bitshift(self):
+        """Get bitshift from Fastcomtec.
+
+        @return int settings.bitshift: the red out bitshift
+        """
+        settings = AcqSettings()
+        self.dll.GetSettingData(ctypes.byref(settings), 0)
+        return int(settings.bitshift)
+
+    def set_bitshift(self, bitshift):
+        """ Sets the bitshift properly for this card.
+
+        @param int bitshift:
+
+        @return int: asks the actual bitshift and returns the read out value
+        """
+        cmd = 'BITSHIFT={0}'.format(hex(bitshift))
+        self.dll.RunCmd(0, bytes(cmd, 'ascii'))
+        return self.get_bitshift()
+
     def set_binwidth(self, binwidth):
         """Set defined binwidth in Card.
 
         @param float binwidth: the current binwidth in seconds
 
-        @return float: Red out bitshift converted to binwidth
+        @return float: Read out bitshift converted to binwidth
 
-        The binwidth is converted into to an appropiate bitshift defined as
+        The binwidth is converted into an appropriate bitshift defined as
         2**bitshift*minimal_binwidth.
         """
         bitshift = int(np.log2(binwidth / self._minimal_binwidth))
         new_bitshift = self.set_bitshift(bitshift)
 
-        return self._minimal_binwidth * (2**new_bitshift)
+        return self._minimal_binwidth * (2 ** new_bitshift)
 
     def change_sweep_mode(self, gated, cycles=None, preset=None):
         """Change the sweep mode (gated, ungated)
@@ -409,13 +426,12 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
 
         @return float: Red out length of measurement
         """
-        # First check if no constraint is
-        constraints = self.get_constraints()
-        if self.is_gated():
+        # Check that no constraint is violated
+        if self._gated:
             cycles = self.get_cycles()
         else:
             cycles = 1
-        if length_bins * cycles < constraints["max_bins"]:
+        if length_bins * cycles < 1e6:  # Todo: self.constraints["max_bins"]:
             # Smallest increment is 64 bins. Since it is better if the range is too short than too long, round down
             length_bins = int(64 * int(length_bins / 64))
             cmd = "RANGE={0}".format(int(length_bins))
@@ -442,10 +458,9 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         @return int mode: current cycles
         """
         # Check that no constraint is violated
-        constraints = self.get_constraints()
         if cycles == 0:
             cycles = 1
-        if self.get_length() * cycles < constraints["max_bins"]:
+        if self.get_length() * cycles < 1e6:  # Todo: self.constraints["max_bins"]:
             cmd = "cycles={0}".format(cycles)
             self.dll.RunCmd(0, bytes(cmd, "ascii"))
             time.sleep(0.5)
@@ -464,7 +479,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         @return int: length of the current measurement in bins
         """
 
-        if self.is_gated():
+        if self._gated:
             cycles = self.get_cycles()
             if cycles == 0:
                 cycles = 1
@@ -613,10 +628,10 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         return 0
 
     def read_data_from_file(
-        self, filename=None, read_lines=None, chunk_size=None, number_of_samples=None
+            self, filename=None, read_lines=None, chunk_size=None, number_of_samples=None
     ):
         if filename is None:
-            filename = self._filename
+            filename = self._filename + '.lst'
         if read_lines is None:
             read_lines = self._read_lines
         if chunk_size is None:
@@ -672,7 +687,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                 new_lines = [
                     int(
                         "0"
-                        + format(int(s, 16), "b")[timedata_bits[0] : timedata_bits[1]],
+                        + format(int(s, 16), "b")[timedata_bits[0]: timedata_bits[1]],
                         2,
                     )
                     for s in next_lines
@@ -697,21 +712,21 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                 if "datalength" in line:
                     data_length = int(
                         line[
-                            line.index("datalength") + 11 : line.index("datalength")
-                            + 12
+                        line.index("datalength") + 11: line.index("datalength")
+                                                       + 12
                         ]
                     )
                 if "channel" in line:
                     channel_bit = int(
-                        line[line.index("bit", 2) - 3 : line.index("bit", 2) - 1]
+                        line[line.index("bit", 2) - 3: line.index("bit", 2) - 1]
                     )
                 if "edge" in line:
                     edge_bit = int(
-                        line[line.index("bit", 2) - 3 : line.index("bit", 2) - 1]
+                        line[line.index("bit", 2) - 3: line.index("bit", 2) - 1]
                     )
                 if "timedata" in line:
                     timedata_bit = int(
-                        line[line.index("bit", 2) - 3 : line.index("bit", 2) - 1]
+                        line[line.index("bit", 2) - 3: line.index("bit", 2) - 1]
                     )
                 if channel_bit and edge_bit and timedata_bit:
                     break
