@@ -188,16 +188,6 @@ class AdlinkReadCount(EnumSearchName):
     PCIe_9834 = AdlinkDataTypes.U16(8)
     DEFAULT = AdlinkDataTypes.U16(1)
 
-    def scan_count_per_trigger(self, scan_count: int, device_type: int):
-        residual = (
-            scan_count
-            % AdlinkReadCount.get_value_from_name(AdlinkCardType(device_type)).value
-        )
-        if residual != 0:
-            return_value = scan_count - residual
-            return AdlinkDataTypes.U32(return_value)
-        return AdlinkDataTypes.U32(scan_count)
-
 
 class AdlinkSoftwareTriggerOp(Enum):
     SOFTTRIG_AI = AdlinkDataTypes.U16(1)
