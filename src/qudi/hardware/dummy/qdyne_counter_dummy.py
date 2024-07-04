@@ -31,6 +31,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.qdyne_counter_interface import QdyneCounterInterface, QdyneCounterConstraints, CounterType, GateMode
 
+
 class QdyneCounterDummy(QdyneCounterInterface):
     """ Implementation of the QdyneCounterInterface interface methods for a dummy usage.
 
@@ -56,6 +57,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
         self._record_length = 10
         self._sample_rate = 100
         self._active_channels = ['channel_1']
+        self._gate_mode = 0
         self._buffer_size = 2042
         return
 
@@ -85,37 +87,47 @@ class QdyneCounterDummy(QdyneCounterInterface):
                   active_channels: Sequence[str],
                   gate_mode: Union[GateMode, int],
                   buffer_size: int,
-                  sample_rate: float,
                   number_of_gates) -> None:
         """ Configure a Qdyne counter. See read-only properties for information on each parameter. """
-        self._binwidth_ns = bin_width_s*10e9
-        self._record_length_ns = record_length_s*10e9
-        return self._binwidth_ns, self._record_length_ns
+        self._binwidth = bin_width_s
+        self._record_length = record_length_s
+        self._active_channels = active_channels
+        self._gate_mode = gate_mode
+        self._buffer_size = buffer_size
+        #self._number_of_gates = number_of_gates
+        return
 
+    @property
     def active_channels(self) -> Sequence[str]:
         """ Read-only property returning the currently configured active channel names """
         return self._active_channels
 
+    @property
     def gate_mode(self) -> GateMode:
         """ Read-only property returning the currently configured GateMode Enum """
         return self._gate_mode
 
+    @property
     def buffer_size(self) -> int:
         """ Read-only property returning the currently set buffer size """
         return self._buffer_size
 
+    @property
     def sample_rate(self) -> float:
         """ Read-only property returning the currently set sample rate in Hz """
-        return self._sample_rate_Hz
+        return self._sample_rate
 
+    @property
     def binwidth(self):
         """ Read-only property returning the currently set bin width in seconds """
-        return self._binwidth_s
+        return self._binwidth
 
+    @property
     def record_length(self):
         """ Read-only property returning the currently set recording length in seconds """
-        return self._record_length_s
+        return self._record_length
 
+    @property
     def number_of_gates(self):
         return 1
 
@@ -132,24 +144,8 @@ class QdyneCounterDummy(QdyneCounterInterface):
     def start_measure(self):
         """ Start the qdyne counter. """
         time.sleep(1)
-        self.statusvar = 2
-        _freq = self._sine_frequency
-
-        def poisson_process(t):
-            mean = np.sin(2*np.pi*_freq*t)+1
-            num_photons = np.random.poisson(mean)
-            time_tags = sorted(np.random.choice(range(100, 500), num_photons))
-            return [0] + time_tags
-
         self._time_tagger_data = []
-
-        num_samples = self._record_length*self._sample_rate
-        sample_times = np.linspace(0, self._record_length, num_samples)
-
-        for t in sample_times:
-            self._time_tagger_data += poisson_process(t)
-
-        return self._time_tagger_data
+        self.statusvar = 2
 
     def stop_measure(self):
         """ Stop the qdyne counter. """
@@ -174,14 +170,18 @@ class QdyneCounterDummy(QdyneCounterInterface):
             - 'elapsed_time' : the elapsed time in seconds
         If the hardware does not support these features, the values should be None
         """
-        time.sleep(0.5)
-        info_dict = {'elapsed_sweeps': 10, 'elapsed_time': self._record_length}
+        _freq = self._sine_frequency
+
+        def poisson_process(t):
+            mean = (np.sin(2 * np.pi * _freq * t) + 1) * 1
+            num_photons = np.random.poisson(mean)
+            time_tags = sorted(np.random.choice(range(100, 500), num_photons))
+            return [0] + time_tags
+
+        num_samples = round(self.record_length * self.sample_rate)
+        sample_times = np.linspace(0, self.record_length, num_samples)
+
+        for t in sample_times:
+            self._time_tagger_data += poisson_process(t)
+        info_dict = {'elapsed_sweeps': 10, 'elapsed_time': self.record_length}
         return self._time_tagger_data, info_dict
-
-
-
-
-
-
-
-
