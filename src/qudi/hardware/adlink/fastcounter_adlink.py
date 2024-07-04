@@ -171,7 +171,7 @@ class Adlink9834(FastCounterInterface):
         try:
             self._dll = self.unload_dll(self._dll)
         except Exception as e:
-            self.log.error(e)
+            self.log.exception(e)
 
     def get_constraints(self):
         """Retrieve the hardware constrains from the Fast counting device.
@@ -569,7 +569,8 @@ class Adlink9834(FastCounterInterface):
         dll_handle = ctypes.c_void_p(dll._handle)
         del dll
         ctypes.windll.kernel32.FreeLibrary(dll_handle)
-        print(f"Freed DLL at location {dll_handle.value}")
+        self.log.debug(f"Freed DLL at location {dll_handle.value}")
+        return None
 
     def free_buffers(self) -> None:
         """
