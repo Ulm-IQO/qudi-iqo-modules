@@ -50,6 +50,7 @@ class Adlink9834(FastCounterInterface):
             module.Class: 'adlink.fastcounter_adlink.Adlink9834'
             options:
                 wddask_dll_location: "C:/ADLINK/WD-DASK/Lib/wd-dask64.dll"
+                # callback_dll_location: "C:/path/to/file.so"
                 card_number: 0
                 maximum_samples: 512e6
                 trigger_threshold: 1.67
@@ -62,8 +63,10 @@ class Adlink9834(FastCounterInterface):
         default="C:/ADLINK/WD-DASK/Lib/wd-dask64.dll",
         missing="error",
     )
-    _callback_dll_location = os.path.join(
-        os.path.dirname(__file__), "adlink_callback_functions.so"
+    _callback_dll_location = ConfigOption(
+        "callback_dll_location",
+        default=os.path.join(os.path.dirname(__file__), "adlink_callback_functions.so"),
+        missing="info",
     )
     _card_num = ConfigOption("card_number", default=0, missing="warn")
     _maximum_samples = ConfigOption(
