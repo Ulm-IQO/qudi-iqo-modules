@@ -577,16 +577,13 @@ class AWG70K(PulserInterface):
                                     waveform to load into the channel.
                                     Examples:   {1: rabi_ch1, 2: rabi_ch2} or
                                                 {1: rabi_ch2, 2: rabi_ch1}
-                                    If just a list of waveform names if given, the channel
+                                    If just a list of waveform names is given, the channel
                                     association will be invoked from the channel
                                     suffix '_ch1', '_ch2' etc.
                                         {1: rabi_ch1, 2: rabi_ch2}
                                     or
                                         {1: rabi_ch2, 2: rabi_ch1}
-                                    If just a list of waveform names if given,
-                                    the channel association will be invoked from
-                                    the channel suffix '_ch1', '_ch2' etc. A
-                                    possible configuration can be e.g.
+                                    A possible configuration can be e.g.
                                         ['rabi_ch1', 'rabi_ch2', 'rabi_ch3']
         @return dict: Dictionary containing the actually loaded waveforms per
                       channel.
@@ -679,8 +676,8 @@ class AWG70K(PulserInterface):
         Retrieve the currently loaded asset names for each active channel of the device.
         The returned dictionary will have the channel numbers as keys.
         In case of loaded waveforms the dictionary values will be the waveform names.
-        In case of a loaded sequence the values will be the sequence name appended by a suffix
-        representing the track loaded to the respective channel (i.e. '<sequence_name>_1').
+        In case of a loaded sequence the values will be the sequence name:
+        An implementation can append a suffix to keep track of the respective channel (i.e. '<sequence_name>_ch1').
 
         @return (dict, str): Dictionary with keys being the channel number and values being the
                              respective asset loaded into the channel,
