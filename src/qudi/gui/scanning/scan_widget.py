@@ -30,6 +30,7 @@ from typing import Optional, List
 from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWidget
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
 from qudi.util.widgets.plotting.plot_item import XYPlotItem
+from qudi.util.widgets.plotting.interactive_curve import CursorPositionLabel
 from qudi.util.paths import get_artwork_dir
 from qudi.interface.scanning_probe_interface import ScanData, ScannerAxis, ScannerChannel
 
@@ -206,14 +207,22 @@ class Scan2DWidget(_BaseScanWidget):
                  axes: Tuple[ScannerAxis, ScannerAxis],
                  channels: Sequence[ScannerChannel],
                  parent: Optional[QtWidgets.QWidget] = None,
-                 xy_region_min_size_percentile: Optional[float] = None
+                 xy_region_min_size_percentile: Optional[float] = None,
+                 max_mouse_pos_update_rate: Optional[float] = 20.
                  ) -> None:
         super().__init__(channels, parent=parent)
-
-        self.image_widget = RubberbandZoomSelectionImageWidget(allow_tracking_outside_data=True,
-                                                               xy_region_selection_crosshair=True,
-                                                               xy_region_selection_handles=False,
-                                                               xy_region_min_size_percentile=xy_region_min_size_percentile)
+         
+        self.position_label = CursorPositionLabel()
+        self.position_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        self.position_label.set_units(axes[0].unit, axes[1].unit)
+        self.image_widget = RubberbandZoomSelectionImageWidget(
+            allow_tracking_outside_data=True,
+            max_mouse_pos_update_rate=max_mouse_pos_update_rate,
+            xy_region_selection_crosshair=True,
+            xy_region_selection_handles=False,
+            xy_region_min_size_percentile=xy_region_min_size_percentile
+        )
+        self.image_widget.sigMouseMoved.connect(self.position_label.update_position)
         self.image_widget.set_selection_mutable(True)
         self.image_widget.add_region_selection(span=((-0.5, 0.5), (-0.5, 0.5)),
                                                mode=self.image_widget.SelectionMode.XY)
@@ -226,6 +235,7 @@ class Scan2DWidget(_BaseScanWidget):
         self.image_widget.set_data_label(label=channels[0].name, unit=channels[0].unit)
 
         self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
+        self.layout().addWidget(self.position_label, 2, 0, 1, 4)
 
         # disable buggy pyqtgraph 'Export..' context menu
         self.image_widget.plot_widget.getPlotItem().vb.scene().contextMenu[0].setVisible(False)
