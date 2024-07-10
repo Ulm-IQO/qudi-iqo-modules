@@ -8,6 +8,7 @@
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
 
 ### New Features
+- Get current sweeps and runtime of fastcomtec fastcounter MCS6 when pulling the data trace. 
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 - Improved support for Stanford Research Systems signal generators
 - Expanded documentation of the microwave interface
