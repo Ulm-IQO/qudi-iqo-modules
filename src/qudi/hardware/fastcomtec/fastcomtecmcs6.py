@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the Qudi hardware file implementation for FastComtec p7887 .
+This file contains the Qudi hardware file implementation for FastComtec MCS6.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -158,7 +158,7 @@ class BOARDSETTING(ctypes.Structure):
 
 
 class FastComtec(FastCounterInterface):
-    """ Hardware Class for the FastComtec Card.
+    """ Hardware Class for the FastComtec Card MCS6.
 
     stable: Jochen Scheuer, Simon Schmitt
 
