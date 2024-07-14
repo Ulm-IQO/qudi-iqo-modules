@@ -72,37 +72,42 @@ class AxesControlWidget(QtWidgets.QWidget):
 
         column = 1
 
-        for label_text in ['Resolution', '=', 'Back\nResolution']:
+        label = QtWidgets.QLabel('Resolution')
+        label.setFont(font)
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(label, 0, column, 1, 3)
+
+        for label_text in ['Forward', '=', 'Backward']:
             label = QtWidgets.QLabel(label_text)
             label.setFont(font)
             label.setAlignment(QtCore.Qt.AlignCenter)
-            layout.addWidget(label, 0, column)
+            layout.addWidget(label, 1, column)
             column += 1
 
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(vline, 0, column, len(scanner_axes) + 1, 1)
+        layout.addWidget(vline, 0, column, len(scanner_axes) + 2, 1)
         column += 1
 
         label = QtWidgets.QLabel('Scan Range')
         label.setFont(font)
         label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, column, 1, 2)
+        layout.addWidget(label, 0, column, 2, 2)
         column += 2
 
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(vline, 0, column, len(scanner_axes) + 1, 1)
+        layout.addWidget(vline, 0, column, len(scanner_axes) + 2, 1)
         column += 2
 
         label = QtWidgets.QLabel('Current Target')
         label.setFont(font)
         label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, column)
+        layout.addWidget(label, 0, column, 2, 1)
 
-        for index, axis in enumerate(scanner_axes, 1):
+        for index, axis in enumerate(scanner_axes, 2):
             ax_name = axis.name
             widgets = {}
             label = QtWidgets.QLabel('{0}-Axis:'.format(ax_name.title()))
