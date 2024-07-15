@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains the Qudi hardware file to control SRS SG devices.
+This file contains the Qudi hardware file to control Stanford Research Systems signal generators.
+Both basic (SG382, SG384, SG386) and vector generators (SG392, SG394, SG396) should work with this module.
+Manual and technical specifications can be found here:
+    - https://www.thinksrs.com/products/sg380.html (basic RF generators)
+    - https://www.thinksrs.com/products/sg390.html (vector signal generators)
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -23,8 +27,10 @@ If not, see <https://www.gnu.org/licenses/>.
 
 try:
     import pyvisa as visa
+    from pyvisa.resources import MessageBasedResource
 except ImportError:
     import visa
+    from visa.resources import MessageBasedResource
 import time
 import numpy as np
 
@@ -44,11 +50,9 @@ class MicrowaveSRSSG(MicrowaveInterface):
         options:
             visa_address: 'GPIB0::12::INSTR'
             comm_timeout: 10
-
     """
-
-    _visa_address = ConfigOption('visa_address', missing='error')
-    _comm_timeout = ConfigOption('comm_timeout', default=10, missing='warn')
+    _visa_address: str = ConfigOption('visa_address', missing='error')
+    _comm_timeout: float = ConfigOption('comm_timeout', default=10, missing='warn')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -56,7 +60,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
         self._thread_lock = Mutex()
         self._rm = None
         self._device = None
-        self._model = ''
+        self._is_vector_sg = False
         self._constraints = None
         self._scan_power = -20
         self._scan_frequencies = None
@@ -67,32 +71,47 @@ class MicrowaveSRSSG(MicrowaveInterface):
         """ Initialisation performed during activation of the module. """
         # trying to load the visa connection to the module
         self._rm = visa.ResourceManager()
-        self._device = self._rm.open_resource(self._visa_address,
-                                              timeout=int(self._comm_timeout * 1000))
+        self._device: MessageBasedResource = self._rm.open_resource(  # type: ignore
+            self._visa_address,
+            timeout=int(self._comm_timeout * 1000),
+            read_termination='\r\n'
+        )
 
         # Reset device
-        self._device.write('*RST')
-        self._device.write('ENBR 0')  # turn off Type N output
-        self._device.write('ENBL 0')  # turn off BNC output
+        self._write('*RST')
+        self._write('ENBR 0')  # turn off Type N output
+        self._write('ENBL 0')  # turn off BNC output
 
-        self._model = self._device.query('*IDN?').strip().split(',')[1]
+        # model identifiers are of the form SG3XY:
+        # X: 8 for signal generator, 9 for vector signal generator
+        # Y: specifies the maximum frequency of the N type output
+        model = self._device.query('*IDN?').strip().split(',')[1]
+        if not model.startswith('SG3'):
+            raise ValueError(f'Unknown model identifier "{model}". Is the address correct?')
 
-        # Generate constraints
-        # SRS has two output connectors. The specifications are used for the Type N output.
-        if self._model == 'SG392':
+        max_freq = model[4]
+        if max_freq == '2':
             freq_limits = (1e6, 2.025e9)
-        elif self._model == 'SG394':
+        elif max_freq == '4':
             freq_limits = (1e6, 4.050e9)
-        elif self._model == 'SG396':
+        elif max_freq == '6':
             freq_limits = (1e6, 6.075e9)
         else:
-            freq_limits = (1e6, 6.075e9)
-            self.log.error(f'Model brand "{self._model}" unknown, hardware limits may be wrong!')
+            raise ValueError(f'Unknown model identifier "{model}". Is the address correct?')
+
+        vector = model[3]
+        if vector == '8':
+            self._is_vector_sg = False
+        elif vector == '9':
+            self._is_vector_sg = True
+        else:
+            raise ValueError(f'Unknown model identifier "{model}". Is the address correct?')
+
         self._constraints = MicrowaveConstraints(
             power_limits=(-110, 16.5),
             frequency_limits=freq_limits,
             scan_size_limits=(2, 2000),
-            sample_rate_limits=(0.1, 100),  # FIXME: Look up the proper specs for sample rate
+            sample_rate_limits=(1e-6, 50e3),
             scan_modes=(SamplingOutputMode.JUMP_LIST,)
         )
 
@@ -196,11 +215,12 @@ class MicrowaveSRSSG(MicrowaveInterface):
             self._assert_cw_parameters_args(frequency, power)
 
             # disable modulation:
-            self._device.write('MODL 0')
-            # and the subtype (analog,)
-            self._device.write('STYP 0')
-            self._device.write(f'FREQ {frequency:e}')
-            self._device.write(f'AMPR {power:f}')
+            self._write('MODL 0')
+            if self._is_vector_sg:
+                # set the modulation subtype to analog
+                self._write('STYP 0')
+            self._write(f'FREQ {frequency:e}')
+            self._write(f'AMPR {power:f}')
 
     def configure_scan(self, power, frequencies, mode, sample_rate):
         """
@@ -223,7 +243,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
-                self._device.write('ENBR 0')
+                self._write('ENBR 0')
                 while self._output_active():
                     time.sleep(0.1)
                 self.module_state.unlock()
@@ -235,7 +255,7 @@ class MicrowaveSRSSG(MicrowaveInterface):
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
-                if self._in_cw_mode():
+                if self._in_cw_mode:
                     return
                 raise RuntimeError(
                     'Unable to start CW microwave output. Microwave output is currently active.'
@@ -272,29 +292,29 @@ class MicrowaveSRSSG(MicrowaveInterface):
             if self._in_cw_mode:
                 raise RuntimeError('Can not reset frequency scan. CW microwave output active.')
 
-            self._device.write('LSTR')
+            self._write('LSTR')
 
-    def _command_wait(self, command_str):
-        """ Writes the command in command_str via PyVisa and waits until the device has finished
-        processing it.
-
-        @param str command_str: The command to be written
-        """
-        self._device.write(command_str)
-        self._device.write('*WAI')
-        while int(float(self._device.query('*OPC?'))) != 1:
-            time.sleep(0.2)
+    def _write(self, command: str) -> None:
+        self._device.write(command)
+        err = self._device.query('LERR?')
+        if err != '0':
+            raise RuntimeError(f'Error code {err} received while sending command {command}.')
 
     def _write_list(self):
         # delete a previously created list:
-        self._device.write('LSTD')
+        self._write('LSTD')
 
         # ask for a new list
-        self._device.query(f'LSTC? {len(self._scan_frequencies):d}')
+        success = self._device.query(f'LSTC? {len(self._scan_frequencies):d}')
+        if success:
+            self.log.debug('Successfully created a new list.')
+        else:
+            raise RuntimeError('List creation was unsuccessful.')
 
         for ii, freq in enumerate(self._scan_frequencies):
-            self._device.write(
-                f'LSTP {ii:d},{freq:e},N,N,N,{self._scan_power:f},N,N,N,N,N,N,N,N,N,N'
+            self._write(
+                # cycle the frequency, set the power, display the frequency
+                f'LSTP {ii:d},{freq:e},N,N,N,{self._scan_power:f},2,N,N,N,N,N,N,N,N,N'
             )
         # the commands contains 15 entries, which are related to the
         # following commands (in brackets the explanation), if parameter is
@@ -365,18 +385,19 @@ class MicrowaveSRSSG(MicrowaveInterface):
         #  13 = Offset of clock output
         #  14 = Amplitude of HF (RF doubler output)
         #  15 = Offset of rear DC
+
         # enable the created list:
-        self._device.write('LSTE 1')
+        self._write('LSTE 1')
 
     def _rf_on(self):
         """ Switches on any preconfigured microwave output.
         """
-        self._device.write('ENBR 1')
+        self._write('ENBR 1')
         while not self._output_active():
             time.sleep(0.1)
 
     def _output_active(self):
-        return bool(int(self._ask('ENBR?').strip()))
+        return bool(int(self._device.query('ENBR?').strip()))
 
     ########################################################################################
     ########################################################################################
