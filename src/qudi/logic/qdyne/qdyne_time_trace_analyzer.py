@@ -13,6 +13,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 import sys
 import inspect
 from abc import ABC, abstractmethod
@@ -23,7 +24,6 @@ from qudi.util.network import netobtain
 
 
 class Analyzer(ABC):
-
     def analyze(self, data, settings):
         """
         @param MainDataClass data: qdyne dataclass
@@ -52,34 +52,37 @@ class Analyzer(ABC):
         @return time_domain_data
         """
         pass
+
+
 @dataclass
 class AnalyzerSettings(ABC):
-    name: str = ''
+    name: str = ""
+
 
 @dataclass
 class FourierAnalyzerSettings(AnalyzerSettings):
-    name: str = 'Fourier'
+    name: str = "Fourier"
     range_around_peak: int = 30
     padding_parameter: int = 1
     cut_time_trace: bool = False
-    spectrum_type: str = 'amp'
+    spectrum_type: str = "amp"
     sequence_length_s: float = 0
 
-class FourierAnalyzer(Analyzer):
 
-    def analyze(self, data, stg:FourierAnalyzerSettings):
+class FourierAnalyzer(Analyzer):
+    def analyze(self, data, stg: FourierAnalyzerSettings):
         time_trace = data.time_trace
         ft_signal = self.do_fft(time_trace, stg.cut_time_trace, stg.padding_parameter)
         return ft_signal
 
-    def get_freq_domain_signal(self, data, stg:FourierAnalyzerSettings):
+    def get_freq_domain_signal(self, data, stg: FourierAnalyzerSettings):
         ft_signal = data.signal
-        if stg.spectrum_type == 'amp':
+        if stg.spectrum_type == "amp":
             spectrum = self.get_norm_amp_spectrum(ft_signal)
-        elif stg.spectrum_type == 'power':
+        elif stg.spectrum_type == "power":
             spectrum = self.get_norm_psd(ft_signal)
         else:
-            print('{}_is not defined'.format(stg.spectrum_type))
+            print("{}_is not defined".format(stg.spectrum_type))
         return spectrum
 
     def do_fft(self, time_trace, cut_time_trace=False, padding_param=0):
@@ -87,16 +90,21 @@ class FourierAnalyzer(Analyzer):
         @return ft: complex ndarray
         """
         n_fft = len(time_trace)
-        input_time_trace = self._get_fft_input_time_trace(time_trace, cut_time_trace, n_fft)
+        input_time_trace = self._get_fft_input_time_trace(
+            time_trace, cut_time_trace, n_fft
+        )
         n_point = self._get_fft_n_point(padding_param, n_fft)
         ft = np.fft.fft(input_time_trace, n_point)
         freq = np.fft.fftfreq(len(ft))
-        signal = [freq, ft]
+        signal = [
+            freq[: n_fft // 2 + 1],
+            ft[: n_fft // 2 + 1],
+        ]  # only select positive frequencies
         return signal
 
     def _get_fft_input_time_trace(self, time_trace, cut_time_trace, n_fft):
         if cut_time_trace:
-            return time_trace[:int(n_fft/2)]
+            return time_trace[: int(n_fft / 2)]
         else:
             return time_trace
 
@@ -107,10 +115,10 @@ class FourierAnalyzer(Analyzer):
         """
         if padding_param == 0:
             return None
-        elif padding_param == 1 or padding_param ==2:
+        elif padding_param == 1 or padding_param == 2:
             return n_fft * padding_param
         else:
-            print('error')
+            print("error")
 
     def get_norm_amp_spectrum(self, signal):
         """
@@ -128,17 +136,18 @@ class FourierAnalyzer(Analyzer):
         """
         freq = signal[0]
         ft = signal[1]
-        psd = abs(ft)*2
-        norm_psd = psd / (len(psd))**2
+        psd = abs(ft) * 2
+        norm_psd = psd / (len(psd)) ** 2
         return [freq, norm_psd]
 
     def get_half_frequency_array(self, sequence_length_s, ft):
-        return 1 / (sequence_length_s * len(ft))*np.arange(len(ft)/2)
+        return 1 / (sequence_length_s * len(ft)) * np.arange(len(ft) / 2)
+
 
 def get_subclasses(class_obj):
-    '''
+    """
     Given a class, find its subclasses and get their names.
-    '''
+    """
 
     subclasses = []
     for name, obj in inspect.getmembers(sys.modules[__name__]):
@@ -147,17 +156,21 @@ def get_subclasses(class_obj):
 
     return subclasses
 
+
 def get_method_names(subclass_obj, class_obj):
     subclass_names = [cls.__name__ for cls in subclass_obj]
-    method_names = [subclass_name.replace(class_obj.__name__, '') for subclass_name in subclass_names]
+    method_names = [
+        subclass_name.replace(class_obj.__name__, "")
+        for subclass_name in subclass_names
+    ]
     return method_names
 
-class TimeTraceAnalyzerMain:
 
+class TimeTraceAnalyzerMain:
     def __init__(self):
         self.method_lists = []
         self.analyzer = None
-        self._method = 'Fourier'
+        self._method = "Fourier"
         self.generate_method_lists()
 
     def generate_method_lists(self):
@@ -174,7 +187,7 @@ class TimeTraceAnalyzerMain:
         self._configure_method(method)
 
     def _configure_method(self, method):
-        self.analyzer = globals()[method + 'Analyzer']()
+        self.analyzer = globals()[method + "Analyzer"]()
 
     def analyze(self, data, settings):
         signal = self.analyzer.analyze(data, settings)
