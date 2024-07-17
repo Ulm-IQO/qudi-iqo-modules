@@ -179,6 +179,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         )
         self.plot1_PlotWidget.addItem(self.signal_image)
         self.plot1_PlotWidget.showGrid(x=True, y=True, alpha=0.8)
+        self.plot1_PlotWidget.setLabel(axis="bottom", text="frequency", units="Hz")
+        self.plot1_PlotWidget.setLabel(axis="left", text="signal", units="")
 
         # Configure the fit of the data in the signal display:
         self.fit_image = pg.PlotDataItem(pen=palette.c3)
