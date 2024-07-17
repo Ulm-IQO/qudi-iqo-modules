@@ -346,7 +346,6 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
     def pulse_updated(self):
         pulse = self.logic.data.pulse_data
         self.pulse_image.setData(x=pulse[0], y=pulse[1])
-        self.pulse_PlotWidget.addItem(self.pulse_image)
 
 
 class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
