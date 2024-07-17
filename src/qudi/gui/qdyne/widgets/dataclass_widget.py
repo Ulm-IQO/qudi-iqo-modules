@@ -39,12 +39,11 @@ class DataclassWidget(QtWidgets.QWidget):
         self.set_data(self.data)
 
     def set_data(self, data):
-        print(data)
         self.data = data
         self.clear_layout()
         self.set_widgets(self.data)
         self.setLayout(self.layout)
-        self.widgets['name'].setReadOnly(False)
+        self.widgets['name'].setReadOnly(True)
 
     def update_data(self, data):
         self.disconnect_widgets()

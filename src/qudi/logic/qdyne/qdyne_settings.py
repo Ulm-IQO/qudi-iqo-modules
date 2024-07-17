@@ -121,12 +121,12 @@ class SettingsManager():
         else:
             self.log.error('Name already taken')
 
-    def remove_setting(self):
-        self.settings_dict[self.current_method].pop(self.current_stg_name)
+    @QtCore.Slot(str)
+    def remove_setting(self, stg_name):
+        self.settings_dict[self.current_method].pop(stg_name)
 
     @property
     def current_setting(self):
-        print(self.current_stg_name)
         return self.settings_dict[self.current_method][self.current_stg_name]
 
     @property

@@ -25,6 +25,7 @@ import numpy as np
 import pyqtgraph as pg
 from PySide2 import QtWidgets, QtCore
 
+from qudi.core.logger import get_logger
 from qudi.util import uic
 from qudi.util.colordefs import QudiPalettePale as palette
 
@@ -114,10 +115,12 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._ttw.deactivate()
 
 class StateEstimationSettingWidget(QtWidgets.QWidget):
+    _log = get_logger(__name__)
     method_updated_sig = QtCore.Signal()
     setting_name_updated_sig = QtCore.Signal()
     setting_widget_updated_sig = QtCore.Signal()
     add_button_pushed_sig = QtCore.Signal(str)
+    remove_setting_sig = QtCore.Signal(str)
 
     def __init__(self, logic):
         self.logic = logic()
@@ -156,6 +159,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.se_setting_delete_pushButton.clicked.connect(self.delete_setting)
 #        self.settings.current_stg_changed_sig.connect(self.update_current_setting)
         self.add_button_pushed_sig.connect(self.settings.add_setting)
+        self.remove_setting_sig.connect(self.settings.remove_setting)
 
     def disconnect_signals(self):
         self.se_method_comboBox.currentTextChanged.disconnect()
@@ -183,19 +187,27 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
 
     def add_setting(self):
         new_name = self.se_setting_comboBox.currentText()
-        self.add_button_pushed_sig.emit(new_name)
-        self.se_setting_comboBox.addItem(self.settings.current_stg_name)
-        self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-        self.update_widget()
+        if new_name in self.settings.current_setting_list:
+            self._log.error('Setting name already exists')
+        else:
+            self.add_button_pushed_sig.emit(new_name)
+            self.se_setting_comboBox.addItem(self.settings.current_stg_name)
+            self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
+            self.update_widget()
 
     def delete_setting(self):
-        if self.settings.current_stg_name == 'default':
+        stg_name_to_remove = self.se_setting_comboBox.currentText()
+
+        if stg_name_to_remove == 'default':
+            self._log.error('Cannot delete default setting')
             return
-        self.settings.current_stg_name = self.se_setting_comboBox.currentText()
-        current_index = self.se_setting_comboBox.currentIndex()
-        self.settings.remove_setting()
-        self.se_setting_comboBox.removeItem(current_index)
-#        self.update_widget()
+        else:
+            index_to_remove = self.se_setting_comboBox.findText(stg_name_to_remove)
+            next_index = int(index_to_remove - 1)
+            self.se_setting_comboBox.setCurrentIndex(next_index)
+            self.settings.current_stg_name = self.se_setting_comboBox.currentText()
+            self.se_setting_comboBox.removeItem(index_to_remove)
+            self.remove_setting_sig.emit(stg_name_to_remove)
 
     @QtCore.Slot(float, float)
     def update_from_sig_lines(self, sig_start, sig_end):

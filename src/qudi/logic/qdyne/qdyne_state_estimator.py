@@ -77,7 +77,7 @@ class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
 
 @dataclass
 class TimeTagStateEstimatorSettings(StateEstimatorSettings):
-    name: str = 'TimeTag'
+    name: str = 'default'
     count_mode: str = 'Average'
     sig_start: float = 0
     sig_end: float = 0
