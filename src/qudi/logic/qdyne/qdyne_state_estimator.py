@@ -81,8 +81,8 @@ class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
 
 @dataclass
 class TimeTagStateEstimatorSettings(StateEstimatorSettings):
-    name: str = "TimeTag"
-    count_mode: str = "Average"
+    name: str = 'default'
+    count_mode: str = 'Average'
     sig_start: float = 0
     sig_end: float = 0
     time_bin: float = 1e-9  # Todo: assign this from logic
