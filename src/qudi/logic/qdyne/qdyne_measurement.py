@@ -108,13 +108,15 @@ class QdyneMeasurement(QtCore.QObject):
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
         fname = timestamp + fname if fname else timestamp
         # self.qdyne_logic._data_streamer().change_filename(fname)
+        self.data.raw_data = list()
+        self.qdyne_logic.measurement_generator.set_fast_counter_settings(None)
         self.qdyne_logic._data_streamer().start_measure()
-        self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_on()
+        self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         self.sigStartTimer.emit()
 
     def stop_qdyne_measurement(self):
         logger.debug("Stopping QDyne measurement")
-        self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_off()
+        self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_off()
         self.qdyne_logic._data_streamer().stop_measure()
         self.sigStopTimer.emit()
         return
@@ -123,12 +125,15 @@ class QdyneMeasurement(QtCore.QObject):
         logger.debug("Entering Analysis loop")
         self.get_raw_data()
         self.get_pulse()
+        self.sigPulseDataUpdated.emit()
 
         self.extract_data()
         self.estimate_state()
+        self.sigTimeTraceDataUpdated.emit()
 
         self.analyze_time_trace()
         self.get_spectrum()
+        self.sigQdyneDataUpdated.emit()
 
     def get_raw_data(self):
         try:

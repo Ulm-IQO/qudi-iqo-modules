@@ -13,6 +13,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 import sys
 import inspect
 from abc import ABC, abstractmethod
@@ -25,8 +26,6 @@ from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
 
 
 class StateEstimator(ABC):
-
-
     @abstractmethod
     def extract(self, raw_data, settings):
         pass
@@ -39,13 +38,17 @@ class StateEstimator(ABC):
     def get_pulse(self, data, settings):
         pass
 
+
 @dataclass
 class StateEstimatorSettings(ABC):
-    name: str = ''
+    name: str = ""
+
 
 @dataclass
 class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
-    name: str = 'TimeSeries'
+    name: str = "TimeSeries"
+
+
 #    extractor_settings: dict
 #    estimator_settings: dict
 
@@ -75,14 +78,17 @@ class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
 #         pulse_array = [x, y]
 #         return pulse_array
 
+
 @dataclass
 class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     name: str = 'default'
     count_mode: str = 'Average'
     sig_start: float = 0
     sig_end: float = 0
-    time_bin: float = 1e-9 #Todo: assign this from logic
-    count_threshold: int = 10  # Todo: this has to be either estimated or set somewhere from the logic
+    time_bin: float = 1e-9  # Todo: assign this from logic
+    count_threshold: int = (
+        10  # Todo: this has to be either estimated or set somewhere from the logic
+    )
     max_bins: int = 90000  # Todo: this should be the maximum number of bins of the counter record length
     weight: list = field(default_factory=list)
 
@@ -90,7 +96,9 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
         count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
         return count_hist
 
-    def set_start_count(self, time_tag_data):  # Todo: or maybe this can be taken from the pulseextractor?
+    def set_start_count(
+        self, time_tag_data
+    ):  # Todo: or maybe this can be taken from the pulseextractor?
         count_hist = self.get_histogram(time_tag_data)
         self.sig_start = int(np.where(count_hist[1:] > self.count_threshold)[0][0])
 
@@ -113,18 +121,22 @@ class TimeTagStateEstimator(StateEstimator):
         return raw_data.tolist()
 
     def estimate(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
-        if settings.count_mode == 'Average':
-            counts_time_trace = self._photon_count(time_tag_data,
-                                                   settings.sig_start_int,
-                                                   settings.sig_end_int,
-                                                   settings.max_bins)
+        if settings.count_mode == "Average":
+            counts_time_trace = self._photon_count(
+                time_tag_data,
+                settings.sig_start_int,
+                settings.sig_end_int,
+                settings.max_bins,
+            )
 
-        elif settings.count_mode == 'WeightedAverage':
-            counts_time_trace = self._weighted_photon_count(time_tag_data,
-                                                            settings.weight,
-                                                            settings.sig_start_int,
-                                                            settings.sig_end_int,
-                                                            settings.max_bins)
+        elif settings.count_mode == "WeightedAverage":
+            counts_time_trace = self._weighted_photon_count(
+                time_tag_data,
+                settings.weight,
+                settings.sig_start_int,
+                settings.sig_end_int,
+                settings.max_bins,
+            )
         return counts_time_trace
 
     def _photon_count(self, time_tag, start_count, stop_count, max_bins):
@@ -134,8 +146,10 @@ class TimeTagStateEstimator(StateEstimator):
         for i in range(len(time_tag)):  # count and filter the photons here
             if time_tag[i] != 0:
                 if time_tag[i] > max_bins:
-                    self.log.debug(f'Encountered time bin {time_tag[i]} larger than counter '
-                                   f'record length ({max_bins} bins). Handle this as 0.')
+                    self.log.debug(
+                        f"Encountered time bin {time_tag[i]} larger than counter "
+                        f"record length ({max_bins} bins). Handle this as 0."
+                    )
                 else:
                     if start_count <= time_tag[i] < stop_count:
                         photon_counts = photon_counts + 1
@@ -144,15 +158,19 @@ class TimeTagStateEstimator(StateEstimator):
                 photon_counts = 0
         return np.array(counts_time_trace)
 
-    def _weighted_photon_count(self, time_tag, weight, start_count, stop_count, max_bins=90000):
+    def _weighted_photon_count(
+        self, time_tag, weight, start_count, stop_count, max_bins=90000
+    ):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
         for i in range(len(time_tag)):  # count and filter the photons here
             if time_tag[i] != 0:
                 if time_tag[i] > max_bins:
-                    self.log.debug(f'Encountered time bin {time_tag[i]} larger than counter '
-                                   f'record length ({max_bins} bins). Handle this as 0.')
+                    self.log.debug(
+                        f"Encountered time bin {time_tag[i]} larger than counter "
+                        f"record length ({max_bins} bins). Handle this as 0."
+                    )
                 else:
                     if start_count < time_tag[i] < stop_count:
                         photon_counts = photon_counts + weight[i]
@@ -162,15 +180,18 @@ class TimeTagStateEstimator(StateEstimator):
         return np.array(counts_time_trace)
 
     def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
-        count_hist, bin_edges = np.histogram(time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins))
+        count_hist, bin_edges = np.histogram(
+            time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins)
+        )
         time_array = settings.time_bin * np.arange(len(count_hist))
         pulse_array = [time_array, count_hist]
         return pulse_array
 
+
 def get_subclasses(class_obj):
-    '''
+    """
     Given a class, find its subclasses and get their names.
-    '''
+    """
 
     subclasses = []
     for name, obj in inspect.getmembers(sys.modules[__name__]):
@@ -179,13 +200,17 @@ def get_subclasses(class_obj):
 
     return subclasses
 
+
 def get_method_names(subclass_obj, class_obj):
     subclass_names = [cls.__name__ for cls in subclass_obj]
-    method_names = [subclass_name.replace(class_obj.__name__, '') for subclass_name in subclass_names]
+    method_names = [
+        subclass_name.replace(class_obj.__name__, "")
+        for subclass_name in subclass_names
+    ]
     return method_names
 
-class StateEstimatorMain:
 
+class StateEstimatorMain:
     def __init__(self, log):
         self.log = log
         self.method_lists = []
@@ -198,7 +223,7 @@ class StateEstimatorMain:
         self.method_lists = get_method_names(estimator_subclasses, StateEstimator)
 
     def configure_method(self, method):
-        self.estimator = globals()[method + 'StateEstimator'](self.log)
+        self.estimator = globals()[method + "StateEstimator"](self.log)
 
     def get_pulse(self, raw_data, settings):
         return self.estimator.get_pulse(raw_data, settings)

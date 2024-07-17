@@ -86,7 +86,6 @@
     <bool>false</bool>
    </attribute>
    <addaction name="action_run_stop"/>
-   <addaction name="action_continue_pause"/>
    <addaction name="action_pull_data"/>
   </widget>
   <widget class="QToolBar" name="data_manager_ToolBar">
