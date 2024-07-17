@@ -126,7 +126,7 @@ class MeasurementGenerator:
         else:
             self.log.warning('Fast counter is not idle (status: {0}).\n'
                              'Unable to apply new settings.'.format(counter_status))
-        return #self.fast_counter_settings
+        return self.fast_counter_settings
 
     def set_measurement_settings(self, settings_dict):
         self.pulsedmasterlogic().set_measurement_settings(settings_dict)
@@ -211,6 +211,7 @@ class QdyneLogic(LogicBase):
 
     #    estimator_method = StatusVar(default='TimeTag')
     #    analyzer_method = StatusVar(default='Fourier')
+    _measurement_generator_dict = StatusVar(default=dict())
     _estimator_stg_dict = StatusVar(default=dict())
     _analyzer_stg_dict = StatusVar(default=dict())
     _current_estimator_method = StatusVar(default="TimeTag")
@@ -255,6 +256,7 @@ class QdyneLogic(LogicBase):
 #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
+            self.measurement_generator.set_fast_counter_settings(self._measurement_generator_dict)
             self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
             self.settings.estimator_stg.current_stg_name = (
                 self._current_estimator_stg_name
@@ -287,6 +289,7 @@ class QdyneLogic(LogicBase):
         return
 
     def _save_status_variables(self):
+        self._measurement_generator_dict = self.measurement_generator.fast_counter_settings
         self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
         self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
 
