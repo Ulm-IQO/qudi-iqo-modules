@@ -125,17 +125,14 @@ class QdyneMeasurement(QtCore.QObject):
         logger.debug("Entering Analysis loop")
         self.get_raw_data()
         self.get_pulse()
-        logger.warn("Pulse Data Updated")
         self.sigPulseDataUpdated.emit()
 
         self.extract_data()
         self.estimate_state()
-        logger.warn("Timetrace Data Updated")
         self.sigTimeTraceDataUpdated.emit()
 
         self.analyze_time_trace()
         self.get_spectrum()
-        logger.warn("Qdyne Data Updated")
         self.sigQdyneDataUpdated.emit()
 
     def get_raw_data(self):
