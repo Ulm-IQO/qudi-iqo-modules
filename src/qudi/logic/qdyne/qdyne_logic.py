@@ -64,7 +64,7 @@ class MeasurementGenerator:
     def set_generation_parameters(self, settings_dict):
         self.pulsedmasterlogic().set_generation_parameters(settings_dict)
 
-    def set_fast_counter_settings(self,  settings_dict=None, **kwargs):
+    def set_fast_counter_settings(self, settings_dict=None, **kwargs):
         """
         Either accepts a settings dictionary as positional argument or keyword arguments.
         If both are present, both are being used by updating the settings_dict with kwargs.
@@ -86,47 +86,52 @@ class MeasurementGenerator:
                 settings_dict.update(kwargs)
 
             # Set parameters if present
-            if 'bin_width' in settings_dict:
-                self.__binwidth = float(settings_dict['bin_width'])
-            if 'record_length' in settings_dict:
-                self.__record_length = float(settings_dict['record_length'])
-            if 'active_channels' in settings_dict:
-                self.__active_channels = settings_dict['active_channels']
-            if 'gate_mode' in settings_dict:
-                self.__gate_mode = int(settings_dict['gate_mode'])
-            if 'buffer_size' in settings_dict:
-                self.__buffer_size = int(settings_dict['buffer_size'])
-            if 'number_of_gates' in settings_dict:
+            if "bin_width" in settings_dict:
+                self.__binwidth = float(settings_dict["bin_width"])
+            if "record_length" in settings_dict:
+                self.__record_length = float(settings_dict["record_length"])
+            if "active_channels" in settings_dict:
+                self.__active_channels = settings_dict["active_channels"]
+            if "gate_mode" in settings_dict:
+                self.__gate_mode = int(settings_dict["gate_mode"])
+            if "buffer_size" in settings_dict:
+                self.__buffer_size = int(settings_dict["buffer_size"])
+            if "number_of_gates" in settings_dict:
                 if self.qdyne_logic._data_streamer().gate_mode:
-                    self.__number_of_gates = int(settings_dict['number_of_gates'])
+                    self.__number_of_gates = int(settings_dict["number_of_gates"])
                 else:
                     self.__fast_counter_gates = 0
 
             # Set settings in pulsed to update to qdyne settings
-            settings = {'bin_width': self.__binwidth, 'record_length': self.__record_length,
-                        'number_of_gates': self.__number_of_gates}
+            settings = {
+                "bin_width": self.__binwidth,
+                "record_length": self.__record_length,
+                "number_of_gates": self.__number_of_gates,
+            }
             self.pulsedmasterlogic().set_fast_counter_settings(settings)
 
             # Apply the settings to hardware
             # TODO: Should we return the set values, similar to the fastcounter toolchain?
-            #self.__binwidth,
-            #self.__record_length, \
-            #self.__active_channels, \
-            #self.__gate_mode, \
-            #self.__buffer_size, \
-            #self.__number_of_gates =
+            # self.__binwidth,
+            # self.__record_length, \
+            # self.__active_channels, \
+            # self.__gate_mode, \
+            # self.__buffer_size, \
+            # self.__number_of_gates =
             self.qdyne_logic._data_streamer().configure(
                 self.__binwidth,
                 self.__record_length,
                 self.__active_channels,
                 self.__gate_mode,
                 self.__buffer_size,
-                self.__number_of_gates
+                self.__number_of_gates,
             )
         else:
-            self.log.warning('Fast counter is not idle (status: {0}).\n'
-                             'Unable to apply new settings.'.format(counter_status))
-        return #self.fast_counter_settings
+            self.log.warning(
+                "Fast counter is not idle (status: {0}).\n"
+                "Unable to apply new settings.".format(counter_status)
+            )
+        return  # self.fast_counter_settings
 
     def set_measurement_settings(self, settings_dict):
         self.pulsedmasterlogic().set_measurement_settings(settings_dict)
@@ -183,12 +188,10 @@ class QdyneLogic(LogicBase):
         connect:
             data_streamer: <qdyne_counter_name>
             pulsedmasterlogic: pulsed_master_logic
-            pulsedmeasurementlogic: pulsed_measurement_logic
     """
 
     # declare connectors
     pulsedmasterlogic = Connector(interface="PulsedMasterLogic")
-    pulsedmeasurementlogic = Connector(interface="PulsedMeasurementLogic")
     _data_streamer = Connector(name="data_streamer", interface="QdyneCounterInterface")
 
     # declare config options
@@ -245,14 +248,19 @@ class QdyneLogic(LogicBase):
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )
-            self.measurement_generator = MeasurementGenerator(self.pulsedmasterlogic, self)
+            self.measurement_generator = MeasurementGenerator(
+                self.pulsedmasterlogic, self
+            )
             self.fit = QdyneFit(self, self._fit_configs)
             self.data_manager = QdyneDataManager(
                 self.data, self.settings.data_manager_stg
             )
             self.measure = QdyneMeasurement(self)
-            self.data_manager = QdyneDataManager(self.data, self.settings.data_manager_stg)
-#            self.fitting = QdyneFittingMain()
+            self.data_manager = QdyneDataManager(
+                self.data, self.settings.data_manager_stg
+            )
+
+        #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
             self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)

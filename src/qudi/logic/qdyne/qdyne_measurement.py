@@ -111,12 +111,12 @@ class QdyneMeasurement(QtCore.QObject):
         self.data.raw_data = list()
         self.qdyne_logic.measurement_generator.set_fast_counter_settings(None)
         self.qdyne_logic._data_streamer().start_measure()
-        self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_on()
+        self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         self.sigStartTimer.emit()
 
     def stop_qdyne_measurement(self):
         logger.debug("Stopping QDyne measurement")
-        self.qdyne_logic.pulsedmeasurementlogic().pulse_generator_off()
+        self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_off()
         self.qdyne_logic._data_streamer().stop_measure()
         self.sigStopTimer.emit()
         return
