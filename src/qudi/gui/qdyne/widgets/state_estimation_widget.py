@@ -222,12 +222,6 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
             self.settings.current_stg_name = self.se_setting_comboBox.currentText()
             self.se_setting_comboBox.removeItem(index_to_remove)
             self.remove_setting_sig.emit(stg_name_to_remove)
-        self.settings.current_stg_name = self.se_setting_comboBox.currentText()
-        current_index = self.se_setting_comboBox.currentIndex()
-        self.settings.remove_setting()
-        self.se_setting_comboBox.removeItem(current_index)
-
-    #        self.update_widget()
 
     @QtCore.Slot(float, float)
     def update_from_sig_lines(self, sig_start, sig_end):
