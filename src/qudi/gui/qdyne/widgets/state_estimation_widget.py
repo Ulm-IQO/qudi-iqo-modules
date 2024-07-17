@@ -19,6 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 import copy
 import os
 import numpy as np
@@ -30,8 +31,8 @@ from qudi.util.colordefs import QudiPalettePale as palette
 
 from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
 
-class StateEstimationTab(QtWidgets.QWidget):
 
+class StateEstimationTab(QtWidgets.QWidget):
     def __init__(self, logic):
         super().__init__()
         self._instantiate_widgets(logic)
@@ -47,9 +48,15 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sew_layout.addWidget(self._ttw)
 
     def _form_layout(self):
-        self._sw.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self._pw.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
-        self._ttw.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self._sw.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        )
+        self._pw.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        )
+        self._ttw.setSizePolicy(
+            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        )
 
         self._sew_layout.setStretchFactor(self._sw, 1)
         self._sew_layout.setStretchFactor(self._pw, 3)
@@ -69,28 +76,36 @@ class StateEstimationTab(QtWidgets.QWidget):
 
     def connect_mutual_signals(self):
         param_names = self._sw.settings.current_setting.__annotations__
-        if 'sig_start' in param_names:
-            self._sw.se_settings_widget.widgets['sig_start'].valueChanged.connect(self._pw.update_lines)
-        if 'sig_end' in param_names:
-            self._sw.se_settings_widget.widgets['sig_end'].valueChanged.connect(self._pw.update_lines)
-        if 'ref_start' in param_names:
-            self._sw.se_settings_widget.widgets['ref_start'].valueChanged.connect(self._pw.update_lines)
-        if 'ref_end' in param_names:
-            self._sw.se_settings_widget.widgets['ref_end'].valueChanged.connect(self._pw.update_lines)
+        if "sig_start" in param_names:
+            self._sw.se_settings_widget.widgets["sig_start"].valueChanged.connect(
+                self._pw.update_lines
+            )
+        if "sig_end" in param_names:
+            self._sw.se_settings_widget.widgets["sig_end"].valueChanged.connect(
+                self._pw.update_lines
+            )
+        if "ref_start" in param_names:
+            self._sw.se_settings_widget.widgets["ref_start"].valueChanged.connect(
+                self._pw.update_lines
+            )
+        if "ref_end" in param_names:
+            self._sw.se_settings_widget.widgets["ref_end"].valueChanged.connect(
+                self._pw.update_lines
+            )
 
         self._pw.sig_line_changed_sig.connect(self._sw.update_from_sig_lines)
         self._pw.ref_line_changed_sig.connect(self._sw.update_from_ref_lines)
 
     def disconnect_mutual_signals(self):
         param_names = self._sw.settings.current_setting.__annotations__
-        if 'sig_start' in param_names:
-            self._sw.se_settings_widget.widgets['sig_start'].valueChanged.disconnect()
-        if 'sig_end' in param_names:
-            self._sw.se_settings_widget.widgets['sig_end'].valueChanged.disconnect()
-        if 'ref_start' in param_names:
-            self._sw.se_settings_widget.widgets['ref_start'].valueChanged.disconnect()
-        if 'ref_end' in param_names:
-            self._sw.se_settings_widget.widgets['ref_end'].valueChanged.disconnect()
+        if "sig_start" in param_names:
+            self._sw.se_settings_widget.widgets["sig_start"].valueChanged.disconnect()
+        if "sig_end" in param_names:
+            self._sw.se_settings_widget.widgets["sig_end"].valueChanged.disconnect()
+        if "ref_start" in param_names:
+            self._sw.se_settings_widget.widgets["ref_start"].valueChanged.disconnect()
+        if "ref_end" in param_names:
+            self._sw.se_settings_widget.widgets["ref_end"].valueChanged.disconnect()
 
         self._pw.sig_line_changed_sig.disconnect()
         self._pw.ref_line_changed_sig.disconnect()
@@ -113,6 +128,7 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._pw.deactivate()
         self._ttw.deactivate()
 
+
 class StateEstimationSettingWidget(QtWidgets.QWidget):
     method_updated_sig = QtCore.Signal()
     setting_name_updated_sig = QtCore.Signal()
@@ -124,7 +140,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, 'ui', 'state_estimation_setting_widget.ui')
+        ui_file = os.path.join(qdyne_dir, "ui", "state_estimation_setting_widget.ui")
 
         # Load it
         super(StateEstimationSettingWidget, self).__init__()
@@ -152,9 +168,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.se_setting_add_pushButton.clicked.connect(self.add_setting)
         self.se_setting_delete_pushButton.clicked.connect(self.delete_setting)
 
-
-#        self.settings.current_stg_changed_sig.connect(self.update_current_setting)
-
+    #        self.settings.current_stg_changed_sig.connect(self.update_current_setting)
 
     def disconnect_signals(self):
         self.se_method_comboBox.currentTextChanged.disconnect()
@@ -168,7 +182,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.se_setting_comboBox.clear()
         self.se_setting_comboBox.blockSignals(False)
         self.se_setting_comboBox.addItems(self.settings.current_setting_list)
-        self.settings.current_stg_name = 'default'
+        self.settings.current_stg_name = "default"
         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
 
     def update_current_setting(self):
@@ -186,34 +200,35 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
 
     def delete_setting(self):
-        if self.settings.current_stg_name == 'default':
+        if self.settings.current_stg_name == "default":
             return
         self.settings.current_stg_name = self.se_setting_comboBox.currentText()
         current_index = self.se_setting_comboBox.currentIndex()
         self.settings.remove_setting()
         self.se_setting_comboBox.removeItem(current_index)
-#        self.update_widget()
+
+    #        self.update_widget()
 
     @QtCore.Slot(float, float)
     def update_from_sig_lines(self, sig_start, sig_end):
         param_names = self.settings.current_setting.__annotations__
-        if 'sig_start' in param_names:
+        if "sig_start" in param_names:
             self.settings.current_setting.sig_start = sig_start
-            self.se_settings_widget.widgets['sig_start'].setValue(sig_start)
-        if 'sig_end' in param_names:
+            self.se_settings_widget.widgets["sig_start"].setValue(sig_start)
+        if "sig_end" in param_names:
             self.settings.current_setting.sig_end = sig_end
-            self.se_settings_widget.widgets['sig_end'].setValue(sig_end)
+            self.se_settings_widget.widgets["sig_end"].setValue(sig_end)
 
     @QtCore.Slot(float, float)
     def update_from_ref_lines(self, ref_start, ref_end):
         param_names = self.settings.current_setting.__annotations__
-        if 'ref_start' in param_names:
+        if "ref_start" in param_names:
             self.settings.current_setting.ref_start = ref_start
-            self.se_settings_widget.widgets['ref_start'].setValue(ref_start)
+            self.se_settings_widget.widgets["ref_start"].setValue(ref_start)
 
-        if 'ref_end' in param_names:
+        if "ref_end" in param_names:
             self.settings.current_setting.ref_end = ref_end
-            self.se_settings_widget.widgets['ref_end'].setValue(ref_end)
+            self.se_settings_widget.widgets["ref_end"].setValue(ref_end)
 
 
 class StateEstimationPulseWidget(QtWidgets.QWidget):
@@ -230,7 +245,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.ref_end = 0
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, 'ui','state_estimation_pulse_widget.ui')
+        ui_file = os.path.join(qdyne_dir, "ui", "state_estimation_pulse_widget.ui")
 
         # Load it
         super(StateEstimationPulseWidget, self).__init__()
@@ -241,28 +256,27 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self._activate_widgets()
 
     def _activate_widgets(self):
-        self.sig_start_line = pg.InfiniteLine(pos=0,
-                                              pen={'color': palette.c3, 'width': 1},
-                                              movable=True)
-        self.sig_end_line = pg.InfiniteLine(pos=0,
-                                            pen={'color': palette.c3, 'width': 1},
-                                            movable=True)
-        self.ref_start_line = pg.InfiniteLine(pos=0,
-                                              pen={'color': palette.c4, 'width': 1},
-                                              movable=True)
-        self.ref_end_line = pg.InfiniteLine(pos=0,
-                                            pen={'color': palette.c4, 'width': 1},
-                                            movable=True)
+        self.sig_start_line = pg.InfiniteLine(
+            pos=0, pen={"color": palette.c3, "width": 1}, movable=True
+        )
+        self.sig_end_line = pg.InfiniteLine(
+            pos=0, pen={"color": palette.c3, "width": 1}, movable=True
+        )
+        self.ref_start_line = pg.InfiniteLine(
+            pos=0, pen={"color": palette.c4, "width": 1}, movable=True
+        )
+        self.ref_end_line = pg.InfiniteLine(
+            pos=0, pen={"color": palette.c4, "width": 1}, movable=True
+        )
         self.pulse_image = pg.PlotDataItem(np.arange(10), np.zeros(10), pen=palette.c1)
-
 
         self.pulse_PlotWidget.addItem(self.pulse_image)
         self.pulse_PlotWidget.addItem(self.sig_start_line)
         self.pulse_PlotWidget.addItem(self.sig_end_line)
         self.pulse_PlotWidget.addItem(self.ref_start_line)
         self.pulse_PlotWidget.addItem(self.ref_end_line)
-        self.pulse_PlotWidget.setLabel(axis='bottom', text='time', units='s')
-        self.pulse_PlotWidget.setLabel(axis='left', text='events', units='#')
+        self.pulse_PlotWidget.setLabel(axis="bottom", text="time", units="s")
+        self.pulse_PlotWidget.setLabel(axis="left", text="events", units="#")
 
         self.toggle_lines()
 
@@ -278,7 +292,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         # Connect update signals from qdyne_measurement_logic
         self.logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
 
-#        self.settings.current_stg_changed_sig.connect(self.update_lines)
+    #        self.settings.current_stg_changed_sig.connect(self.update_lines)
     def disconnect_signals(self):
         self.sig_start_line.sigPositionChangeFinished.disconnect()
         self.sig_end_line.sigPositionChangeFinished.disconnect()
@@ -288,34 +302,42 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
 
     def toggle_lines(self):
         param_names = self.settings.current_setting.__annotations__
-        self.sig_start_line.setVisible('sig_start' in param_names)
-        self.sig_end_line.setVisible('sig_end' in param_names)
-        self.ref_start_line.setVisible('ref_start' in param_names)
-        self.ref_end_line.setVisible('ref_end' in param_names)
+        self.sig_start_line.setVisible("sig_start" in param_names)
+        self.sig_end_line.setVisible("sig_end" in param_names)
+        self.ref_start_line.setVisible("ref_start" in param_names)
+        self.ref_end_line.setVisible("ref_end" in param_names)
 
     def sig_lines_dragged(self):
         sig_start = self.sig_start_line.value()
         sig_end = self.sig_end_line.value()
-        self.settings.current_setting.sig_start = sig_start if sig_start <= sig_end else sig_end
-        self.settings.current_setting.sig_end = sig_end if sig_end >= sig_start else sig_start
+        self.settings.current_setting.sig_start = (
+            sig_start if sig_start <= sig_end else sig_end
+        )
+        self.settings.current_setting.sig_end = (
+            sig_end if sig_end >= sig_start else sig_start
+        )
         self.sig_line_changed_sig.emit(sig_start, sig_end)
 
     def ref_lines_dragged(self):
         ref_start = self.ref_start_line.value()
         ref_end = self.ref_end_line.value()
-        self.settings.current_setting.ref_start = ref_start if ref_start <= ref_end else ref_end
-        self.settings.current_setting.ref_end = ref_end if ref_end >= ref_start else ref_start
+        self.settings.current_setting.ref_start = (
+            ref_start if ref_start <= ref_end else ref_end
+        )
+        self.settings.current_setting.ref_end = (
+            ref_end if ref_end >= ref_start else ref_start
+        )
         self.ref_line_changed_sig.emit(ref_start, ref_end)
 
     def update_lines(self):
         param_names = self.settings.current_setting.__annotations__
-        if 'sig_start' in param_names:
+        if "sig_start" in param_names:
             self.sig_start_line.setValue(self.settings.current_setting.sig_start)
-        if 'sig_end' in param_names:
+        if "sig_end" in param_names:
             self.sig_end_line.setValue(self.settings.current_setting.sig_end)
-        if 'ref_start' in param_names:
+        if "ref_start" in param_names:
             self.ref_start_line.setValue(self.settings.current_setting.ref_start)
-        if 'ref_end' in param_names:
+        if "ref_end" in param_names:
             self.ref_end_line.setValue(self.settings.current_setting.ref_end)
 
     def update_pulse(self):
@@ -328,14 +350,13 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
 
 
 class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
-
     def __init__(self, logic):
         self.logic = logic()
         self.estimator = logic().estimator
         self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(qdyne_dir, 'ui', 'state_estimation_time_trace_widget.ui')
+        ui_file = os.path.join(qdyne_dir, "ui", "state_estimation_time_trace_widget.ui")
 
         # Load it
         super(StateEstimationTimeTraceWidget, self).__init__()
@@ -346,8 +367,13 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self._activate_widgets()
 
     def _activate_widgets(self):
-        self.time_trace_image = pg.PlotDataItem(np.arange(10), np.zeros(10), pen=palette.c1)
+        self.time_trace_image = pg.PlotDataItem(
+            np.arange(10), np.zeros(10), pen=palette.c1
+        )
         self.time_trace_PlotWidget.addItem(self.time_trace_image)
+        self.time_trace_PlotWidget.setLabel(axis="top", text="readouts", units="#")
+        self.time_trace_PlotWidget.setLabel(axis="bottom", text="time", units="s")
+        self.time_trace_PlotWidget.setLabel(axis="left", text="signal", units="")
 
     def deactivate(self):
         pass
@@ -368,5 +394,12 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
 
     def time_trace_updated(self):
         y = self.logic.data.time_trace
-        x = np.arange(len(y))
+        time_between_readouts = (
+            self.logic.pulsedmasterlogic()
+            .sequencegeneratorlogic()
+            .get_ensemble_info(
+                self.logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
+            )[0]
+        )
+        x = np.arange(len(y)) * time_between_readouts
         self.time_trace_image.setData(x=x, y=y)
