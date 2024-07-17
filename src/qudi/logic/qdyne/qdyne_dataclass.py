@@ -38,9 +38,17 @@ class FreqDomainData:
 
     @property
     def data_around_peak(self):
-        x_peak = self.x[self.current_peak - self.range_index: self.current_peak + self.range_index]
-        y_peak = self.y[self.current_peak - self.range_index: self.current_peak + self.range_index]
+        start_index = max(0, self.current_peak - self.range_index)
+        end_index = min(
+            self.x.size,
+            self.current_peak
+            + self.range_index
+            + 1,  # +1 because slicing is end exclusive
+        )
+        x_peak = self.x[start_index:end_index]
+        y_peak = self.y[start_index:end_index]
         return [x_peak, y_peak]
+
 
 @dataclass
 class MainDataClass:
@@ -57,6 +65,8 @@ class MainDataClass:
 
     @property
     def data_list(self):
-        return [attr for attr in dir(self.__class__) if not attr.startswith('__')
-                and not callable(getattr(self, attr))]
-
+        return [
+            attr
+            for attr in dir(self.__class__)
+            if not attr.startswith("__") and not callable(getattr(self, attr))
+        ]
