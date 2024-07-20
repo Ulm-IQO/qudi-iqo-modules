@@ -3,8 +3,6 @@
 """
 Interfuse adding a buffer to a DataInstreamInterface hardware module to allow multiple consumers
 reading from the same data stream.
-This will slightly adversely affect the performance of read_data_into_buffer and
-read_available_data_into_buffer.
 
 Copyright (c) 2024, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -23,29 +21,27 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['RingBuffer', 'DataInStreamBuffer']
+__all__ = ['RingBuffer', 'DataInStreamBuffer', 'DataInStreamReader', 'DataInStreamBufferProxy']
 
 import time
-from PySide2 import QtCore
 import numpy as np
-import logging
-from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence, Set, Callable
-from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
-from qudi.interface.data_instream_interface import StreamingMode
-from qudi.core.connector import Connector
-from qudi.core.configoption import ConfigOption
-from qudi.core.threadmanager import ThreadManager
-from qudi.util.mutex import Mutex
-from collections.abc import Iterable as _Iterable
-from collections.abc import Sized as _Sized
-from itertools import chain
-from contextlib import contextmanager
 from uuid import UUID
+from itertools import chain
 from weakref import WeakKeyDictionary
+from collections.abc import Sized as _Sized
+from collections.abc import Iterable as _Iterable
+from typing import Union, Optional, Dict, List, Tuple, Sequence, Callable
+from PySide2.QtCore import QObject
+
+from qudi.util.mutex import Mutex
+from qudi.core.connector import Connector
+from qudi.core.threadmanager import ThreadManager
+from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
+from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
 
 
 class RingBuffer(_Iterable, _Sized):
-    """ Ringbuffer using numpy arrays """
+    """ Ringbuffer using numpy arrays. Is fairly thread-safe. """
     def __init__(self,
                  size: int,
                  dtype: Optional[type] = float,
@@ -87,35 +83,36 @@ class RingBuffer(_Iterable, _Sized):
         with self._lock:
             self.__fill_count = self.__start = self.__end = 0
 
-    @contextmanager
-    def writeable_raw_buffer(self, size: int):
-        """ Contextmanager to directly write to free buffer space inside the ring buffer.
-        Will only yield the next chunk of consecutive buffer space, possibly up to requested size.
-        Caller is responsible to handle smaller buffer size yielded, e.g. by calling this context
-        multiple times.
-        """
+    def read(self, size: int, buffer: Optional[np.ndarray] = None) -> np.ndarray:
+        """ ToDo: Document """
         with self._lock:
-            if self.full:
-                if not self._allow_overwrite:
-                    raise IndexError('Buffer full and overwrite disabled')
-                self._increment(min(self._buffer.size - self.__start, size), 0)
-            buffer = self._free_chunk[:size]
-            yield buffer
-            self._increment(0, buffer.size)
+            if buffer is None:
+                buffer = np.empty(size, dtype=self._buffer.dtype.type)
+            read = 0
+            for chunk in self._filled_chunks:
+                chunk_size = min(chunk.size, size - read)
+                buffer[read:read + chunk_size] = chunk[:chunk_size]
+                read += chunk_size
+            self._increment(read, 0)
+            return buffer[:read]
 
-    @contextmanager
-    def readable_raw_buffer(self, size: int, pop: bool):
-        """ Contextmanager to directly access filled buffer space inside the ring buffer.
-        Will only yield the next chunk of consecutive buffer space, possibly up to requested size.
-        If requested, the yielded buffer chunk will be freed after exiting the context.
-        Caller is responsible to handle smaller buffer size yielded, e.g. by calling this context
-        multiple times.
-        """
+    def write(self, data: np.ndarray) -> bool:
+        """ ToDo: Document """
         with self._lock:
-            buffer = self._filled_chunks[0][:size]
-            yield buffer
-            if pop:
-                self._increment(buffer.size, 0)
+            written = 0
+            overflown = False
+            while written < data.size:
+                missing = data.size - written
+                if self.full:
+                    if not self._allow_overwrite:
+                        raise IndexError('Buffer full and overwrite disabled')
+                    overflown = True
+                    self._increment(min(self._buffer.size - self.__start, missing), 0)
+                chunk = self._free_chunk[:missing]
+                chunk[:] = data[written:written + chunk.size]
+                written += chunk.size
+                self._increment(0, chunk.size)
+            return overflown
 
     @property
     def _free_chunk(self) -> np.ndarray:
@@ -150,18 +147,27 @@ class RingBuffer(_Iterable, _Sized):
         return self.unwrap()
 
 
-class DataInStreamReader(QtCore.QObject):
+class DataInStreamReader(QObject):
     """ Worker class for periodically reading data from streaming hardware and distributing it to
     all ring buffers
     """
-    def __init__(self, streamer: DataInStreamInterface, buffers: Dict[UUID, RingBuffer]):
+    def __init__(self,
+                 streamer: DataInStreamInterface,
+                 buffers: Dict[UUID, RingBuffer],
+                 timestamp_buffers: Dict[UUID, RingBuffer]):
         super().__init__()
         self._streamer = streamer
         self._buffers = buffers
+        self._timestamp_buffers = timestamp_buffers
         self._tmp_buffer = np.empty(
             len(self._streamer.active_channels) * self._streamer.channel_buffer_size,
             dtype=self._streamer.constraints.data_type
         )
+        if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+            self._tmp_timestamp_buffer = np.empty(self._streamer.channel_buffer_size,
+                                                  dtype=self._streamer.constraints.data_type)
+        else:
+            self._tmp_timestamp_buffer = None
         self._stop_requested = False
 
     def run(self) -> None:
@@ -175,40 +181,55 @@ class DataInStreamReader(QtCore.QObject):
         self._stop_requested = True
 
     def _pull_data(self) -> None:
-        # ToDo: Handle timestamps
-        samples_per_channel = self._streamer.read_available_data_into_buffer(self._tmp_buffer)
+        samples_per_channel = self._streamer.read_available_data_into_buffer(
+            self._tmp_buffer,
+            self._tmp_timestamp_buffer
+        )
         if samples_per_channel > 0:
             sample_count = len(self._streamer.active_channels) * samples_per_channel
             for buffer in self._buffers.values():
-                written = 0
-                while written < sample_count:
-                    with buffer.writeable_raw_buffer(sample_count - written) as raw_buf:
-                        raw_buf[:] = self._tmp_buffer[written:written + raw_buf.size]
-                        written += raw_buf.size
+                buffer.write(self._tmp_buffer[:sample_count])
+            if self._tmp_timestamp_buffer is not None:
+                for buffer in self._timestamp_buffers.values():
+                    buffer.write(self._tmp_timestamp_buffer[:samples_per_channel])
 
 
 class DataInStreamBufferProxy:
-    """ Proxy class managing thread-safe hardware access from multiple DataInStreamBuffer instances.
+    """ Proxy class managing hardware access from multiple DataInStreamBuffer instances.
+    Periodically pulls data from hardware in a separate thread and distributes it to all registered
+    consumers.
     """
     _ALLOW_OVERWRITE = True
+    _WAIT_INTERVAL = 0.05  # default value
 
     def __init__(self, streamer: DataInStreamInterface):
         self._streamer = streamer
         self._lock = Mutex()
+
         self._run_state_callbacks: Dict[UUID, Callable[[bool], None]] = WeakKeyDictionary()
         self._buffers: Dict[UUID, RingBuffer] = WeakKeyDictionary()
+        self._timestamp_buffers: Dict[UUID, RingBuffer] = WeakKeyDictionary()
+
         self._reader: Union[None, DataInStreamReader] = None
         self._reader_thread_name = f'DataInStreamBufferProxy-{str(self._streamer.module_uuid)}'
+
+        # The time to wait for new samples (normally depends on sample_rate)
+        if self._streamer.constraints.sample_timing == SampleTiming.RANDOM:
+            self._wait_interval = self._WAIT_INTERVAL
+        else:
+            self._wait_interval = 1 / self._streamer.sample_rate
 
     def register_consumer(self, uuid: UUID, run_state_cb: Callable[[bool], None]) -> None:
         """ Register a new data consumer, e.g. a DataInStreamBuffer instance. """
         with self._lock:
             self._run_state_callbacks[uuid] = run_state_cb
-            self._buffers[uuid] = RingBuffer(
-                size=len(self._streamer.active_channels) * self._streamer.channel_buffer_size,
-                dtype=self._streamer.constraints.data_type,
-                allow_overwrite=self._ALLOW_OVERWRITE
-            )
+            self._buffers[uuid] = RingBuffer(size=self.raw_buffer_size,
+                                             dtype=self._streamer.constraints.data_type,
+                                             allow_overwrite=self._ALLOW_OVERWRITE)
+            if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+                self._timestamp_buffers[uuid] = RingBuffer(size=self.channel_buffer_size,
+                                                           dtype=np.float64,
+                                                           allow_overwrite=self._ALLOW_OVERWRITE)
             run_state_cb(self._streamer.module_state() == 'locked')
 
     def unregister_consumer(self, uuid: UUID) -> None:
@@ -217,42 +238,34 @@ class DataInStreamBufferProxy:
         with self._lock:
             self._run_state_callbacks.pop(uuid, None)
             self._buffers.pop(uuid, None)
+            self._timestamp_buffers.pop(uuid, None)
 
     def available_samples(self, uuid: UUID) -> int:
-        """ Available samples per channel for a certain consumer """
-        try:
-            return self._buffers[uuid].fill_count // len(self._streamer.active_channels)
-        except KeyError:
-            return 0
+        """ Available samples per channel for a certain consumer UID """
+        return self._buffers[uuid].fill_count // self.channel_count
+
+    @property
+    def channel_count(self) -> int:
+        return len(self._streamer.active_channels)
+
+    @property
+    def raw_buffer_size(self) -> int:
+        return self.channel_count * self._streamer.channel_buffer_size
 
     @property
     def sample_rate(self) -> float:
-        """ Read-only property returning the currently set sample rate in Hz.
-        For SampleTiming.CONSTANT this is the sample rate of the hardware, for any other timing mode
-        this property represents only a hint to the actual hardware timebase and can not be
-        considered accurate.
-        """
         return self._streamer.sample_rate
 
     @property
     def channel_buffer_size(self) -> int:
-        """ Read-only property returning the currently set buffer size in samples per channel.
-        The total buffer size in bytes can be estimated by:
-            <channel_buffer_size> * <channel_count> * numpy.nbytes[<data_type>]
-
-        For StreamingMode.FINITE this will also be the total number of samples to acquire per
-        channel.
-        """
         return self._streamer.channel_buffer_size
 
     @property
     def streaming_mode(self) -> StreamingMode:
-        """ Read-only property returning the currently configured StreamingMode Enum """
         return self._streamer.streaming_mode
 
     @property
     def active_channels(self) -> List[str]:
-        """ Read-only property returning the currently configured active channel names """
         return self._streamer.active_channels
 
     def configure(self,
@@ -260,25 +273,38 @@ class DataInStreamBufferProxy:
                   streaming_mode: Union[StreamingMode, int],
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
-        # ToDo: Handle timestamps
         with self._lock:
-            if (self._streamer.active_channels != active_channels) or (
-                    self._streamer.streaming_mode != streaming_mode) or (
-                    self._streamer.channel_buffer_size != channel_buffer_size) or (
-                    self._streamer.sample_rate != sample_rate):
+            if (self.active_channels != active_channels) or (
+                    self.streaming_mode != streaming_mode) or (
+                    self.channel_buffer_size != channel_buffer_size) or (
+                    self.sample_rate != sample_rate):
                 if self._streamer.module_state() != 'idle':
                     raise RuntimeError('Streamer not idle')
+
                 self._streamer.configure(active_channels,
                                          streaming_mode,
                                          channel_buffer_size,
                                          sample_rate)
 
-                buffer_size = len(self._streamer.active_channels) * self._streamer.channel_buffer_size
+                if self._streamer.constraints.sample_timing == SampleTiming.RANDOM:
+                    self._wait_interval = self._WAIT_INTERVAL
+                else:
+                    self._wait_interval = 1 / self.sample_rate
+
                 dtype = self._streamer.constraints.data_type
+                timestamped = self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP
                 for uid in list(self._buffers):
-                    self._buffers[uid] = RingBuffer(size=buffer_size,
+                    self._buffers[uid] = RingBuffer(size=self.raw_buffer_size,
                                                     dtype=dtype,
                                                     allow_overwrite=self._ALLOW_OVERWRITE)
+                    if timestamped:
+                        self._timestamp_buffers[uid] = RingBuffer(
+                            size=self.channel_buffer_size,
+                            dtype=np.float64,
+                            allow_overwrite=self._ALLOW_OVERWRITE
+                        )
+                    else:
+                        self._timestamp_buffers.pop(uid, None)
 
     def start_stream(self) -> None:
         """ Start the data acquisition/streaming """
@@ -287,7 +313,9 @@ class DataInStreamBufferProxy:
                 if self._streamer.module_state() == 'idle':
                     self._streamer.start_stream()
                 if self._reader is None:
-                    self._reader = DataInStreamReader(self._streamer, self._buffers)
+                    self._reader = DataInStreamReader(self._streamer,
+                                                      self._buffers,
+                                                      self._timestamp_buffers)
                     tm = ThreadManager.instance()
                     thread = tm.get_new_thread(self._reader_thread_name)
                     self._reader.moveToThread(thread)
@@ -324,56 +352,46 @@ class DataInStreamBufferProxy:
                               data_buffer: np.ndarray,
                               samples_per_channel: int,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        self._read_data_into_buffer(uuid, data_buffer, samples_per_channel, timestamp_buffer)
-
-    def _read_data_into_buffer(self,
-                              uuid: UUID,
-                              data_buffer: np.ndarray,
-                              samples_per_channel: int,
-                              timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        # ToDo: Handle timestamps
-        requested_samples = len(self._streamer.active_channels) * samples_per_channel
-        poll_pause = 2 / self._streamer.sample_rate  # minimal waiting time for new samples
-        buffer = self._buffers[uuid]
+        data = self._buffers[uuid]
+        timestamps = self._timestamp_buffers.get(uuid, None)
         # read data until desired amount is available. Raise RuntimeError if stream is stopped.
-        read_samples = 0
-        while read_samples < requested_samples:
-            with buffer.readable_raw_buffer(requested_samples - read_samples, pop=True) as buf:
-                if buf.size > 0:
-                    data_buffer[read_samples:read_samples + buf.size] = buf[:]
-                    read_samples += buf.size
-            if buffer.fill_count < (requested_samples - read_samples):
-                if self._streamer.module_state() == 'locked':
-                    time.sleep(poll_pause)
-                else:
+        read = 0
+        while read < samples_per_channel:
+            available = self.available_samples(uuid)
+            if available < 1:
+                if self._streamer.module_state() != 'locked':
                     raise RuntimeError('Streamer is not running.')
+                time.sleep(self._wait_interval)
+            else:
+                offset = read * self.channel_count
+                chunk_size = data.read(available * self.channel_count,
+                                       data_buffer[offset:]).size // self.channel_count
+                if timestamps is not None:
+                    timestamps.read(chunk_size, timestamp_buffer[read:])
+                read += chunk_size
 
     def read_available_data_into_buffer(self,
                                         uuid: UUID,
                                         data_buffer: np.ndarray,
                                         timestamp_buffer: Optional[np.ndarray] = None) -> int:
-        try:
-            available = min(self._buffers[uuid].fill_count, data_buffer.size) // len(
-                self._streamer.active_channels
-            )
-        except KeyError:
-            return 0
-        self._read_data_into_buffer(uuid, data_buffer, available, timestamp_buffer)
+
+        available = min(self.available_samples(uuid), data_buffer.size // self.channel_count)
+        self.read_data_into_buffer(uuid, data_buffer, available, timestamp_buffer)
         return available
 
     def read_data(self,
                   uuid: UUID,
                   samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
-        # ToDo: Handle timestamps
-        channel_count = len(self._streamer.active_channels)
         if samples_per_channel is None:
-            buffer_size = (self._buffers[uuid].fill_count // channel_count) * channel_count
+            samples_per_channel = self.available_samples(uuid)
+        data = np.empty(samples_per_channel * self.channel_count,
+                        dtype=self._streamer.constraints.data_type)
+        if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+            timestamps = np.empty(samples_per_channel, dtype=np.float64)
         else:
-            buffer_size = samples_per_channel * channel_count
-        data = np.empty(buffer_size, dtype=self._streamer.constraints.data_type)
-        timestamps = None
-        self._read_data_into_buffer(uuid, data, buffer_size // channel_count, timestamps)
+            timestamps = None
+        self.read_data_into_buffer(uuid, data, samples_per_channel, timestamps)
         return data, timestamps
 
     def read_single_point(self, uuid: UUID) -> Tuple[np.ndarray, Union[None, np.float64]]:
@@ -384,8 +402,19 @@ class DataInStreamBufferProxy:
 class DataInStreamBuffer(DataInStreamInterface):
     """ Interfuse adding a buffer to a DataInstreamInterface hardware module to allow multiple
     consumers reading from the same data stream.
-    This will slightly adversely affect the performance of read_data_into_buffer and
-    read_available_data_into_buffer.
+    Using this will adversely affect the performance of the interface compared to a
+    single-producer/single-consumer scenario.
+
+    Make sure all modules that need connection to the same streaming hardware are connected via
+    their own instance of this module, e.g.:
+
+              Logic1                 Logic2                Logic3
+                |                      |                      |
+                v                      v                      v
+        DataInStreamBuffer1    DataInStreamBuffer2    DataInStreamBuffer3
+                |                      |                      |
+                |                      v                      |
+                ------------> DataInStreamHardware <-----------
     """
 
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
@@ -423,46 +452,33 @@ class DataInStreamBuffer(DataInStreamInterface):
 
     @property
     def constraints(self) -> DataInStreamConstraints:
-        """ Read-only property returning the constraints on the settings for this data streamer. """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.constraints """
         return self._streamer().constraints
 
     @property
     def available_samples(self) -> int:
-        """ Read-only property to return the currently available number of samples per channel ready
-        to read from buffer.
-        It must be ensured that each channel can provide at least the number of samples returned
-        by this property.
-        """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.available_samples """
         return self._buffer_proxies[self._streamer_uid].available_samples(self.module_uuid)
 
     @property
     def sample_rate(self) -> float:
-        """ Read-only property returning the currently set sample rate in Hz.
-        For SampleTiming.CONSTANT this is the sample rate of the hardware, for any other timing mode
-        this property represents only a hint to the actual hardware timebase and can not be
-        considered accurate.
-        """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.sample_rate """
         return self._buffer_proxies[self._streamer_uid].sample_rate
 
     @property
     def channel_buffer_size(self) -> int:
-        """ Read-only property returning the currently set buffer size in samples per channel.
-        The total buffer size in bytes can be estimated by:
-            <channel_buffer_size> * <channel_count> * numpy.nbytes[<data_type>]
-
-        For StreamingMode.FINITE this will also be the total number of samples to acquire per
-        channel.
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.channel_buffer_size
         """
         return self._buffer_proxies[self._streamer_uid].channel_buffer_size
 
     @property
     def streaming_mode(self) -> StreamingMode:
-        """ Read-only property returning the currently configured StreamingMode Enum """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.streaming_mode """
         return self._buffer_proxies[self._streamer_uid].streaming_mode
 
     @property
     def active_channels(self) -> List[str]:
-        """ Read-only property returning the currently configured active channel names """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.active_channels """
         return self._buffer_proxies[self._streamer_uid].active_channels
 
     def configure(self,
@@ -470,39 +486,25 @@ class DataInStreamBuffer(DataInStreamInterface):
                   streaming_mode: Union[StreamingMode, int],
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
-        """ Configure a data stream. See read-only properties for information on each parameter. """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.configure """
         self._buffer_proxies[self._streamer_uid].configure(active_channels,
-                                                              streaming_mode,
-                                                              channel_buffer_size,
-                                                              sample_rate)
+                                                           streaming_mode,
+                                                           channel_buffer_size,
+                                                           sample_rate)
 
     def start_stream(self) -> None:
-        """ Start the data acquisition/streaming """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.start_stream """
         self._buffer_proxies[self._streamer_uid].start_stream()
 
     def stop_stream(self) -> None:
-        """ Stop the data acquisition/streaming """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.stop_stream """
         self._buffer_proxies[self._streamer_uid].stop_stream()
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
                               samples_per_channel: int,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        """ Read data from the stream buffer into a 1D numpy array given as parameter.
-        Samples of all channels are stored interleaved in contiguous memory.
-        In case of a multidimensional buffer array, this buffer will be flattened before written
-        into.
-        The 1D data_buffer can be unraveled into channel and sample indexing with:
-
-            data_buffer.reshape([<samples_per_channel>, <channel_count>])
-
-        The data_buffer array must have the same data type as self.constraints.data_type.
-
-        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array has to be
-        provided to be filled with timestamps corresponding to the data_buffer array. It must be
-        able to hold at least <samples_per_channel> items:
-
-        This function is blocking until the required number of samples has been acquired.
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_data_into_buffer
         """
         self._buffer_proxies[self._streamer_uid].read_data_into_buffer(self.module_uuid,
                                                                           data_buffer,
@@ -512,18 +514,8 @@ class DataInStreamBuffer(DataInStreamInterface):
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
                                         timestamp_buffer: Optional[np.ndarray] = None) -> int:
-        """ Read data from the stream buffer into a 1D numpy array given as parameter.
-        All samples for each channel are stored in consecutive blocks one after the other.
-        The number of samples read per channel is returned and can be used to slice out valid data
-        from the buffer arrays like:
-
-            valid_data = data_buffer[:<channel_count> * <return_value>]
-            valid_timestamps = timestamp_buffer[:<return_value>]
-
-        See "read_data_into_buffer" documentation for more details.
-
-        This method will read all currently available samples into buffer. If number of available
-        samples exceeds buffer size, read only as many samples as fit into the buffer.
+        """ See:
+        qudi.interface.data_instream_interface.DataInStreamInterface.read_available_data_into_buffer
         """
         return self._buffer_proxies[self._streamer_uid].read_available_data_into_buffer(
             self.module_uuid,
@@ -534,41 +526,23 @@ class DataInStreamBuffer(DataInStreamInterface):
     def read_data(self,
                   samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
-        """ Read data from the stream buffer into a 1D numpy array and return it.
-        All samples for each channel are stored in consecutive blocks one after the other.
-        The returned data_buffer can be unraveled into channel samples with:
-
-            data_buffer.reshape([<samples_per_channel>, <channel_count>])
-
-        The numpy array data type is the one defined in self.constraints.data_type.
-
-        In case of SampleTiming.TIMESTAMP a 1D numpy.float64 timestamp_buffer array will be
-        returned as well with timestamps corresponding to the data_buffer array.
-
-        If samples_per_channel is omitted all currently available samples are read from buffer.
-        This method will not return until all requested samples have been read or a timeout occurs.
-        """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_data """
         return self._buffer_proxies[self._streamer_uid].read_data(
             self.module_uuid,
             samples_per_channel
         )
 
     def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
-        """ This method will initiate a single sample read on each configured data channel.
-        In general this sample may not be acquired simultaneous for all channels and timing in
-        general can not be assured. Us this method if you want to have a non-timing-critical
-        snapshot of your current data channel input.
-        May not be available for all devices.
-        The returned 1D numpy array will contain one sample for each channel.
-
-        In case of SampleTiming.TIMESTAMP a single numpy.float64 timestamp value will be returned
-        as well.
-        """
+        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_single_point """
         return self._buffer_proxies[self._streamer_uid].read_single_point(
             self.module_uuid,
         )
 
     def _run_state_callback(self, running: bool) -> None:
+        """ Callback that is called whenever any DataInStreamBuffer is starting/stopping the
+        connected streaming hardware.
+        Sets the module_state of this interfuse accordingly.
+        """
         if running and (self.module_state() == 'idle'):
             self.module_state.lock()
         elif (not running) and (self.module_state() == 'locked'):
