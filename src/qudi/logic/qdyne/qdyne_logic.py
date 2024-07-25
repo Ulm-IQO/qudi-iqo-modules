@@ -64,7 +64,7 @@ class MeasurementGenerator:
     def set_generation_parameters(self, settings_dict):
         self.pulsedmasterlogic().set_generation_parameters(settings_dict)
 
-    def set_qdyne_counter_settings(self, settings_dict=None, **kwargs):
+    def set_counter_settings(self, settings_dict=None, **kwargs):
         """
         Either accepts a settings dictionary as positional argument or keyword arguments.
         If both are present, both are being used by updating the settings_dict with kwargs.
@@ -108,7 +108,8 @@ class MeasurementGenerator:
                 "record_length": self.__record_length,
                 "number_of_gates": self.__number_of_gates,
             }
-            self.pulsedmasterlogic().set_qdyne_counter_settings(settings)
+            # TODO: write own counter setter method not calling the one from pulsed
+            self.pulsedmasterlogic().set_fast_counter_settings(settings)
 
             # Apply the settings to hardware
             # TODO: Should we return the set values, similar to the fastcounter toolchain?
@@ -131,7 +132,7 @@ class MeasurementGenerator:
                 "Fast counter is not idle (status: {0}).\n"
                 "Unable to apply new settings.".format(counter_status)
             )
-        return  # self.fast_counter_settings
+        return
 
     def set_measurement_settings(self, settings_dict):
         self.pulsedmasterlogic().set_measurement_settings(settings_dict)
@@ -149,7 +150,8 @@ class MeasurementGenerator:
         return self.pulsedmasterlogic().measurement_settings
 
     @property
-    def fast_counter_settings(self):
+    def counter_settings(self):
+        # TODO: use not fast counter stuff but write own one
         return self.pulsedmasterlogic().fast_counter_settings
 
     @property
@@ -264,7 +266,7 @@ class QdyneLogic(LogicBase):
         #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
-            self.measurement_generator.set_qdyne_counter_settings(
+            self.measurement_generator.set_counter_settings(
                 self._measurement_generator_dict
             )
             self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
@@ -299,9 +301,7 @@ class QdyneLogic(LogicBase):
         return
 
     def _save_status_variables(self):
-        self._measurement_generator_dict = (
-            self.measurement_generator.fast_counter_settings
-        )
+        self._measurement_generator_dict = self.measurement_generator.counter_settings
         self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
         self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
 

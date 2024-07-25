@@ -59,8 +59,8 @@ class GenerationWidget(QtWidgets.QWidget):
         self.measurement_settings_updated(
             self._gui.logic().measurement_generator.measurement_settings
         )
-        self.fast_counter_settings_updated(
-            self._gui.logic().measurement_generator.fast_counter_settings
+        self.counter_settings_updated(
+            self._gui.logic().measurement_generator.counter_settings
         )
 
         # fill in the measurement parameter widgets
@@ -104,14 +104,14 @@ class GenerationWidget(QtWidgets.QWidget):
             self.measurement_settings_changed
         )
         self.ana_param_record_length_DoubleSpinBox.editingFinished.connect(
-            self.fast_counter_settings_changed
+            self.counter_settings_changed
         )
         self.ana_param_fc_bins_ComboBox.currentIndexChanged.connect(
-            self.fast_counter_settings_changed
+            self.counter_settings_changed
         )
 
         self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
-            self.fast_counter_settings_updated
+            self.counter_settings_updated
         )
         self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
             self.measurement_settings_updated
@@ -498,7 +498,7 @@ class GenerationWidget(QtWidgets.QWidget):
         return
 
     @QtCore.Slot()
-    def fast_counter_settings_changed(self):
+    def counter_settings_changed(self):
         """
 
         @return:
@@ -512,14 +512,12 @@ class GenerationWidget(QtWidgets.QWidget):
         settings_dict["bin_width"] = float(
             self.ana_param_fc_bins_ComboBox.currentText()
         )
-        self._gui.logic().measurement_generator.set_qdyne_counter_settings(
-            settings_dict
-        )
+        self._gui.logic().measurement_generator.set_counter_settings(settings_dict)
         print(settings_dict)
         return
 
     @QtCore.Slot(dict)
-    def fast_counter_settings_updated(self, settings_dict):
+    def counter_settings_updated(self, settings_dict):
         """
 
         @param dict settings_dict:
