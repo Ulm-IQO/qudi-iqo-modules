@@ -100,7 +100,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     # relative amount of memory that can be used for reading measurement data into the system's memory
     _memory_ratio = ConfigOption(name="memory_ratio", default=0.8, missing="nothing")
 
-    # Todo: can be extracted from list file
+    # Todo: not used; can be extracted from list file
     # how many bytes does one line of measurement data have
     _line_size = ConfigOption(name="line_size", default=4, missing="nothing")
 
@@ -114,8 +114,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self._buffer_size = int(1e9)  # None
         self._use_circular_buffer = None
         self._record_length = None
-        # Todo: is number of gates even needed?
-        self._number_of_gates = 1  # None
 
         self._data_buffer = np.empty(0, dtype=self._data_type)
         self._read_lines = None
@@ -135,20 +133,24 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self._constraints = QdyneCounterConstraints(
             channel_units=dict(zip(self._channel_names, self._channel_units)),
             counter_type=CounterType.TIMETAGGER.value,
-            gate_mode=GateMode(0),
+            gate_mode=GateMode.UNGATED.value,
             data_type=self._data_type,
-            block_size=ScalarConstraint(
-                default=1024 ** 2,
-                bounds=(128, self._available_memory),
-                increment=1,
-                enforce_int=True,
-            ),
             binwidth=ScalarConstraint(
                 default=self._minimal_binwidth,
                 bounds=(self._minimal_binwidth, self._minimal_binwidth * 2 ** 24),
                 increment=0.1,
                 enforce_int=False,
             ),
+            record_length=ScalarConstraint(  #Todo: find bounds
+                default=1e-6,
+                bounds=(1e-9, 6.8)
+            ),
+            block_size=ScalarConstraint(
+                default=1024 ** 2,
+                bounds=(128, self._available_memory),
+                increment=1,
+                enforce_int=True,
+            )
         )
 
         # TODO implement the constraints for the fastcomtec max_bins, max_sweep_len and hardware_binwidth_list
@@ -178,15 +180,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         return self._gated
 
     @property
-    def buffer_size(self) -> int:
-        """Read-only property returning the currently set buffer size"""
-        return self._buffer_size
-
-    @property
-    def number_of_gates(self) -> int:
-        return self._number_of_gates
-
-    @property
     def binwidth(self):
         """Read-only property returning the currently set bin width in seconds"""
         return self._binwidth
@@ -200,14 +193,19 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     def block_size(self):
         return self._block_size
 
+    @property
+    def buffer_size(self) -> int:
+        """Read-only property returning the currently set buffer size"""
+        return self._buffer_size
+
     def configure(
             self,
-            bin_width_s: float,
-            record_length_s: float,
             active_channels: Sequence[str],
+            bin_width: float,
+            record_length: float,
+            counter_type: Union[CounterType, int],
             gate_mode: Union[GateMode, int],
-            buffer_size: int,
-            number_of_gates: int,
+            data_type: type
     ) -> None:
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""
         with self._thread_lock:
@@ -217,30 +215,25 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                 )
 
             # Cache current values to restore them if configuration fails
+            old_channels = self.active_channels
             old_binwidth = self.binwidth
             old_record_length = self.record_length
-            old_channels = self.active_channels
             old_gate_mode = self.gate_mode
-            old_buffer_size = self.buffer_size
-            old_number_of_gates = self.number_of_gates
+            # old_buffer_size = self.buffer_size
             try:
-                no_of_bins = int((record_length_s - self._trigger_safety) / bin_width_s)
-                self.set_binwidth(bin_width_s)
-                # self.set_record_length(record_length_s)
+                no_of_bins = int((record_length - self._trigger_safety) / bin_width)
                 self._set_active_channels(active_channels)
-                self._set_buffer_size(buffer_size)
+                self.set_binwidth(bin_width)
                 self.change_sweep_mode(gated=False, cycles=None, preset=None)
                 self.set_length(no_of_bins)
-                self.set_cycles(number_of_gates)
+                # self._set_buffer_size(buffer_size)
             except Exception as err:
                 old_no_of_bins = int((old_record_length - self._trigger_safety) / old_binwidth)
-                self.set_binwidth(old_binwidth)
-                # self.set_record_length(old_record_length)
                 self._set_active_channels(old_channels)
-                self._set_buffer_size(old_buffer_size)
+                self.set_binwidth(old_binwidth)
                 self.change_sweep_mode(old_gate_mode)
                 self.set_length(old_no_of_bins)
-                self.set_cycles(old_number_of_gates)
+                # self._set_buffer_size(old_buffer_size)
                 raise RuntimeError(
                     "Error while trying to configure data in-streamer"
                 ) from err
