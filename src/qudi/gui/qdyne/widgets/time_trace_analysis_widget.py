@@ -33,7 +33,7 @@ from qudi.util import uic
 from qudi.util.colordefs import QudiPalettePale as palette
 
 from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
-
+from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
 
 logger = getLogger(__name__)
 
@@ -46,7 +46,8 @@ class TimeTraceAnalysisTab(QtWidgets.QWidget):
 
     def _instantiate_widgets(self, logic, gui):
         self._tta_layout = QtWidgets.QVBoxLayout(self)
-        self._sw = TimeTraceAnalysisSettingsWidget(logic, gui)
+        self._sw = SettingsWidget(logic().settings.analyzer_stg,
+                                  logic().analyzer.method_list)
         self._dw = TimeTraceAnalysisDataWidget(logic, gui)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)
@@ -75,64 +76,70 @@ class TimeTraceAnalysisTab(QtWidgets.QWidget):
         pass
 
 
-class TimeTraceAnalysisSettingsWidget(QtWidgets.QWidget):
-    def __init__(self, logic, gui):
-        self._logic = logic()
-        self._gui = gui
-        self.analyzer = logic().analyzer
-        self.settings = logic().settings.analyzer_stg
-        # Get the path to the *.ui file
-        qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-        ui_file = os.path.join(
-            qdyne_dir, "ui", "time_trace_analysis_settings_widget.ui"
-        )
 
-        # Load it
-        super(TimeTraceAnalysisSettingsWidget, self).__init__()
-
-        uic.loadUi(ui_file, self)
-
-    def activate(self):
-        self._activate_widgets()
-
-    def _activate_widgets(self):
-        self.tta_method_comboBox.addItems(self.analyzer.method_lists)
-        self.tta_setting_comboBox.addItems(self.settings.current_setting_list)
-        self.tta_settings_widget = DataclassWidget(self.settings.current_setting)
-        self.tta_settings_gridLayout.addWidget(self.tta_settings_widget)
-
-    def connect_signals(self):
-        self.tta_method_comboBox.currentTextChanged.connect(self.update_current_method)
-        self.tta_setting_comboBox.currentTextChanged.connect(
-            self.update_current_setting
-        )
-        self.tta_setting_add_pushButton.clicked.connect(self.add_setting)
-        self.tta_setting_delete_pushButton.clicked.connect(self.delete_setting)
-
-    def disconnect_signals(self):
-        self.tta_method_comboBox.currentTextChanged.disconnect()
-        self.tta_setting_comboBox.currentTextChanged.disconnect()
-        self.tta_setting_add_pushButton.clicked.disconnect()
-        self.tta_setting_delete_pushButton.clicked.disconnect()
-
-    def update_current_method(self):
-        self.settings.current_method = self.tta_method_comboBox.currentText()
-
-    def update_current_setting(self):
-        self.settings.current_stg_name = self.tta_setting_comboBox.currentText()
-        current_setting = copy.deepcopy(self.settings.current_setting)
-        self.tta_settings_widget.update_data(current_setting)
-
-    def add_setting(self):
-        self.settings.add_setting()
-        self.tta_setting_comboBox.addItem(self.settings.current_stg_name)
-        self.tta_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-
-    def delete_setting(self):
-        self.settings.current_stg_name = self.tta_setting_comboBox.currentText()
-        current_index = self.tta_setting_comboBox.currentIndex()
-        self.settings.remove_setting()
-        self.tta_setting_comboBox.removeItem(current_index)
+# class TimeTraceAnalysisSettingsWidget(QtWidgets.QWidget):
+#     def __init__(self, logic, gui):
+#         self._logic = logic()
+#         self._gui = gui
+#         self.analyzer = logic().analyzer
+#         self.settings = logic().settings.analyzer_stg
+#         # Get the path to the *.ui file
+#         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
+#         ui_file = os.path.join(
+#             qdyne_dir, "ui", "time_trace_analysis_settings_widget.ui"
+#         )
+#
+#         # Load it
+#         super(TimeTraceAnalysisSettingsWidget, self).__init__()
+#
+#         uic.loadUi(ui_file, self)
+#
+#     def activate(self):
+#         self._activate_widgets()
+#
+#     def _activate_widgets(self):
+#         self.tta_method_comboBox.addItems(self.analyzer.method_lists)
+#         self.tta_method_comboBox.setCurrentText(self.settings.current_method)
+#         self.tta_setting_comboBox.addItems(self.settings.current_setting_list)
+#         self.tta_setting_comboBox.setCurrentText(self.settings.current_stg_name)
+#         self.tta_setting_comoBox.setEditable(True)
+#         self.tta_setting_add_pushButton.setToolTip('Enter new name in combo box')
+#
+#         self.tta_settings_widget = DataclassWidget(self.settings.current_setting)
+#         self.tta_settings_gridLayout.addWidget(self.tta_settings_widget)
+#
+#     def connect_signals(self):
+#         self.tta_method_comboBox.currentTextChanged.connect(self.update_current_method)
+#         self.tta_setting_comboBox.currentTextChanged.connect(
+#             self.update_current_setting
+#         )
+#         self.tta_setting_add_pushButton.clicked.connect(self.add_setting)
+#         self.tta_setting_delete_pushButton.clicked.connect(self.delete_setting)
+#
+#     def disconnect_signals(self):
+#         self.tta_method_comboBox.currentTextChanged.disconnect()
+#         self.tta_setting_comboBox.currentTextChanged.disconnect()
+#         self.tta_setting_add_pushButton.clicked.disconnect()
+#         self.tta_setting_delete_pushButton.clicked.disconnect()
+#
+#     def update_current_method(self):
+#         self.settings.current_method = self.tta_method_comboBox.currentText()
+#
+#     def update_current_setting(self):
+#         self.settings.current_stg_name = self.tta_setting_comboBox.currentText()
+#         current_setting = copy.deepcopy(self.settings.current_setting)
+#         self.tta_settings_widget.update_data(current_setting)
+#
+#     def add_setting(self):
+#         self.settings.add_setting()
+#         self.tta_setting_comboBox.addItem(self.settings.current_stg_name)
+#         self.tta_setting_comboBox.setCurrentText(self.settings.current_stg_name)
+#
+#     def delete_setting(self):
+#         self.settings.current_stg_name = self.tta_setting_comboBox.currentText()
+#         current_index = self.tta_setting_comboBox.currentIndex()
+#         self.settings.remove_setting()
+#         self.tta_setting_comboBox.removeItem(current_index)
 
 
 class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):

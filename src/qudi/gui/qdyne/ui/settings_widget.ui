@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1229</width>
+    <width>1259</width>
     <height>696</height>
    </rect>
   </property>
@@ -15,33 +15,33 @@
   </property>
   <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0">
    <item>
-    <widget class="QGroupBox" name="tta_setting_gridGroupBox">
+    <widget class="QGroupBox" name="setting_gridGroupBox">
      <layout class="QGridLayout" name="gridLayout_10">
       <item row="0" column="0">
-       <layout class="QGridLayout" name="tta_method_gridLayout">
+       <layout class="QGridLayout" name="method_gridLayout">
         <item row="0" column="4">
-         <widget class="QPushButton" name="tta_setting_add_pushButton">
+         <widget class="QPushButton" name="setting_add_pushButton">
           <property name="text">
            <string>add</string>
           </property>
          </widget>
         </item>
         <item row="0" column="0">
-         <widget class="QLabel" name="tta_method_label">
+         <widget class="QLabel" name="method_label">
           <property name="text">
            <string>Time trace analysis method:</string>
           </property>
          </widget>
         </item>
         <item row="0" column="2">
-         <widget class="QLabel" name="tta_setting_label">
+         <widget class="QLabel" name="setting_label">
           <property name="text">
            <string>setting</string>
           </property>
          </widget>
         </item>
         <item row="0" column="6">
-         <spacer name="tta_method_horizontalSpacer">
+         <spacer name="method_horizontalSpacer">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>
           </property>
@@ -54,13 +54,13 @@
          </spacer>
         </item>
         <item row="0" column="1">
-         <widget class="QComboBox" name="tta_method_comboBox"/>
+         <widget class="QComboBox" name="method_comboBox"/>
         </item>
         <item row="0" column="3">
-         <widget class="QComboBox" name="tta_setting_comboBox"/>
+         <widget class="QComboBox" name="setting_comboBox"/>
         </item>
         <item row="0" column="5">
-         <widget class="QPushButton" name="tta_setting_delete_pushButton">
+         <widget class="QPushButton" name="setting_delete_pushButton">
           <property name="text">
            <string>delete</string>
           </property>
@@ -69,7 +69,7 @@
        </layout>
       </item>
       <item row="4" column="0">
-       <layout class="QGridLayout" name="tta_settings_gridLayout"/>
+       <layout class="QGridLayout" name="setting_gridLayout"/>
       </item>
      </layout>
     </widget>

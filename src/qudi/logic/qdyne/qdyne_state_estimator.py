@@ -213,14 +213,14 @@ def get_method_names(subclass_obj, class_obj):
 class StateEstimatorMain:
     def __init__(self, log):
         self.log = log
-        self.method_lists = []
+        self.method_list = []
         self._method = None
         self.estimator = None
-        self.generate_method_lists()
+        self.generate_method_list()
 
-    def generate_method_lists(self):
+    def generate_method_list(self):
         estimator_subclasses = get_subclasses(StateEstimator)
-        self.method_lists = get_method_names(estimator_subclasses, StateEstimator)
+        self.method_list = get_method_names(estimator_subclasses, StateEstimator)
 
     def configure_method(self, method):
         self.estimator = globals()[method + "StateEstimator"](self.log)
