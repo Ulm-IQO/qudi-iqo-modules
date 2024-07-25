@@ -29,11 +29,16 @@ from typing import Sequence, Union
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.constraints import ScalarConstraint
-from qudi.interface.qdyne_counter_interface import QdyneCounterInterface, QdyneCounterConstraints, CounterType, GateMode
+from qudi.interface.qdyne_counter_interface import (
+    QdyneCounterInterface,
+    QdyneCounterConstraints,
+    CounterType,
+    GateMode,
+)
 
 
 class QdyneCounterDummy(QdyneCounterInterface):
-    """ Implementation of the QdyneCounterInterface interface methods for a dummy usage.
+    """Implementation of the QdyneCounterInterface interface methods for a dummy usage.
 
     Example config for copy-paste:
 
@@ -42,28 +47,27 @@ class QdyneCounterDummy(QdyneCounterInterface):
         options:
             'sine_frequency_Hz': 200e6
     """
+
     # Declare config options
-    _sine_frequency = ConfigOption('sine_frequency_Hz', default=200e6, missing='warn')
+    _sine_frequency = ConfigOption("sine_frequency_Hz", default=200e6, missing="warn")
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
-        """
+        """Initialisation performed during activation of the module."""
         self.statusvar = 0
         self._binwidth = 0.1
         self._block_size = 10
         self._record_length = 10
         self._sample_rate = 100
-        self._active_channels = ['channel_1']
-        self._gate_mode = 0
+        self._active_channels = ["channel_1"]
+        self._gate_mode = GateMode(0)
         self._buffer_size = 2042
         return
 
     def on_deactivate(self):
-        """ Deinitialisation performed during deactivation of the module.
-        """
+        """Deinitialisation performed during deactivation of the module."""
         self.statusvar = -1
         return
 
@@ -74,57 +78,60 @@ class QdyneCounterDummy(QdyneCounterInterface):
         :return: QdyneCounterConstraints
         """
         self.constraints = QdyneCounterConstraints(
-            channel_units={'channel_1': 'counts'},
+            channel_units={"channel_1": "counts"},
             counter_type=CounterType.TIMETAGGER,
             gate_mode=GateMode.UNGATED,
-            data_type=float)
+            data_type=float,
+        )
 
         return self.constraints
 
-    def configure(self,
-                  bin_width_s: float,
-                  record_length_s: float,
-                  active_channels: Sequence[str],
-                  gate_mode: Union[GateMode, int],
-                  buffer_size: int,
-                  number_of_gates) -> None:
-        """ Configure a Qdyne counter. See read-only properties for information on each parameter. """
+    def configure(
+        self,
+        bin_width_s: float,
+        record_length_s: float,
+        active_channels: Sequence[str],
+        gate_mode: int,
+        buffer_size: int,
+        number_of_gates,
+    ) -> None:
+        """Configure a Qdyne counter. See read-only properties for information on each parameter."""
         self._binwidth = bin_width_s
         self._record_length = record_length_s
         self._active_channels = active_channels
-        self._gate_mode = gate_mode
+        self._gate_mode = GateMode(gate_mode)
         self._buffer_size = buffer_size
-        #self._number_of_gates = number_of_gates
+        # self._number_of_gates = number_of_gates
         return
 
     @property
     def active_channels(self) -> Sequence[str]:
-        """ Read-only property returning the currently configured active channel names """
+        """Read-only property returning the currently configured active channel names"""
         return self._active_channels
 
     @property
-    def gate_mode(self) -> GateMode:
-        """ Read-only property returning the currently configured GateMode Enum """
-        return self._gate_mode
+    def gate_mode(self) -> int:
+        """Read-only property returning the currently configured GateMode Enum"""
+        return self._gate_mode.value
 
     @property
     def buffer_size(self) -> int:
-        """ Read-only property returning the currently set buffer size """
+        """Read-only property returning the currently set buffer size"""
         return self._buffer_size
 
     @property
     def sample_rate(self) -> float:
-        """ Read-only property returning the currently set sample rate in Hz """
+        """Read-only property returning the currently set sample rate in Hz"""
         return self._sample_rate
 
     @property
     def binwidth(self):
-        """ Read-only property returning the currently set bin width in seconds """
+        """Read-only property returning the currently set bin width in seconds"""
         return self._binwidth
 
     @property
     def record_length(self):
-        """ Read-only property returning the currently set recording length in seconds """
+        """Read-only property returning the currently set recording length in seconds"""
         return self._record_length
 
     @property
@@ -132,30 +139,30 @@ class QdyneCounterDummy(QdyneCounterInterface):
         return 1
 
     def get_status(self) -> int:
-        """ Receives the current status of the hardware and outputs it as return value.
+        """Receives the current status of the hardware and outputs it as return value.
 
-        0 = unconfigured
-        1 = idle
-        2 = running
-       -1 = error state
+         0 = unconfigured
+         1 = idle
+         2 = running
+        -1 = error state
         """
         return self.statusvar
 
     def start_measure(self):
-        """ Start the qdyne counter. """
+        """Start the qdyne counter."""
         time.sleep(1)
         self._time_tagger_data = []
         self.statusvar = 2
 
     def stop_measure(self):
-        """ Stop the qdyne counter. """
+        """Stop the qdyne counter."""
         time.sleep(1)
         self.statusvar = 1
 
         return 0
 
     def get_data(self) -> tuple:
-        """ Polls the current time tag data or time series data from the Qdyne counter.
+        """Polls the current time tag data or time series data from the Qdyne counter.
 
         Return value is a numpy array of type as given in the constraints.
         The counter will return a tuple (1D-numpy-array, info_dict).
@@ -183,5 +190,5 @@ class QdyneCounterDummy(QdyneCounterInterface):
 
         for t in sample_times:
             self._time_tagger_data += poisson_process(t)
-        info_dict = {'elapsed_sweeps': 10, 'elapsed_time': self.record_length}
+        info_dict = {"elapsed_sweeps": 10, "elapsed_time": self.record_length}
         return self._time_tagger_data, info_dict

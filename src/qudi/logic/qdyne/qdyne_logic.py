@@ -108,17 +108,6 @@ class MeasurementGenerator:
                 "record_length": self.__record_length,
                 "number_of_gates": self.__number_of_gates,
             }
-            # TODO: write own counter setter method not calling the one from pulsed
-            self.pulsedmasterlogic().set_fast_counter_settings(settings)
-
-            # Apply the settings to hardware
-            # TODO: Should we return the set values, similar to the fastcounter toolchain?
-            # self.__binwidth,
-            # self.__record_length, \
-            # self.__active_channels, \
-            # self.__gate_mode, \
-            # self.__buffer_size, \
-            # self.__number_of_gates =
             self.qdyne_logic._data_streamer().configure(
                 self.__binwidth,
                 self.__record_length,
@@ -129,7 +118,7 @@ class MeasurementGenerator:
             )
         else:
             self.log.warning(
-                "Fast counter is not idle (status: {0}).\n"
+                "Qdyne counter is not idle (status: {0}).\n"
                 "Unable to apply new settings.".format(counter_status)
             )
         return
@@ -151,8 +140,17 @@ class MeasurementGenerator:
 
     @property
     def counter_settings(self):
-        # TODO: use not fast counter stuff but write own one
-        return self.pulsedmasterlogic().fast_counter_settings
+        settings_dict = dict()
+        settings_dict["bin_width"] = float(self.qdyne_logic._data_streamer().binwidth)
+        settings_dict["record_length"] = float(
+            self.qdyne_logic._data_streamer().record_length
+        )
+        settings_dict["number_of_gates"] = int(
+            self.qdyne_logic._data_streamer().number_of_gates
+        )
+        settings_dict["is_gated"] = bool(self.qdyne_logic._data_streamer().gate_mode)
+        self.qdyne_logic.log.warn(f"{settings_dict=}")
+        return settings_dict
 
     @property
     def loaded_asset(self):

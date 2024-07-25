@@ -52,7 +52,7 @@ class QdyneCounterConstraints:
         self,
         channel_units: Mapping[str, str],
         counter_type: Union[CounterType, int],
-        gate_mode: Union[GateMode, int],
+        gate_mode: GateMode,
         data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
         binwidth: Optional[ScalarConstraint] = None,
         block_size: Optional[ScalarConstraint] = None,
@@ -64,7 +64,7 @@ class QdyneCounterConstraints:
             )
         self._channel_units = {**channel_units}
         self._counter_type = CounterType(counter_type)
-        self._gate_mode = GateMode(gate_mode)
+        self._gate_mode = gate_mode
         self._data_type = np.dtype(data_type).type
         self._binwidth = binwidth
         self._block_size = block_size
@@ -122,7 +122,7 @@ class QdyneCounterInterface(Base):
 
     @property
     @abstractmethod
-    def gate_mode(self) -> GateMode:
+    def gate_mode(self) -> int:
         """Read-only property returning the currently configured GateMode Enum"""
         pass
 
@@ -155,7 +155,7 @@ class QdyneCounterInterface(Base):
         bin_width_s: float,
         record_length_s: float,
         active_channels: Sequence[str],
-        gate_mode: Union[GateMode, int],
+        gate_mode: int,
         buffer_size: int,
         sample_rate: float,
         number_of_gates,
