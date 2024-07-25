@@ -64,7 +64,7 @@ class MeasurementGenerator:
     def set_generation_parameters(self, settings_dict):
         self.pulsedmasterlogic().set_generation_parameters(settings_dict)
 
-    def set_fast_counter_settings(self, settings_dict=None, **kwargs):
+    def set_qdyne_counter_settings(self, settings_dict=None, **kwargs):
         """
         Either accepts a settings dictionary as positional argument or keyword arguments.
         If both are present, both are being used by updating the settings_dict with kwargs.
@@ -108,7 +108,7 @@ class MeasurementGenerator:
                 "record_length": self.__record_length,
                 "number_of_gates": self.__number_of_gates,
             }
-            self.pulsedmasterlogic().set_fast_counter_settings(settings)
+            self.pulsedmasterlogic().set_qdyne_counter_settings(settings)
 
             # Apply the settings to hardware
             # TODO: Should we return the set values, similar to the fastcounter toolchain?
@@ -264,7 +264,7 @@ class QdyneLogic(LogicBase):
         #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
-            self.measurement_generator.set_fast_counter_settings(
+            self.measurement_generator.set_qdyne_counter_settings(
                 self._measurement_generator_dict
             )
             self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
