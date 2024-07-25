@@ -21,252 +21,141 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['RingBuffer', 'DataInStreamBuffer', 'DataInStreamReader', 'DataInStreamBufferProxy']
+__all__ = ['DataInStreamBuffer', 'DataInStreamDistributionWorker',
+           'DataInStreamMultiConsumerDelegate']
 
 import time
 import numpy as np
+from PySide2 import QtCore
 from uuid import UUID
-from itertools import chain
 from weakref import WeakKeyDictionary
-from collections.abc import Sized as _Sized
-from collections.abc import Iterable as _Iterable
-from typing import Union, Optional, Dict, List, Tuple, Sequence, Callable
-from PySide2.QtCore import QObject
+from typing import Union, Optional, Dict, List, Tuple, Sequence, Callable, Mapping, Any, MutableMapping
+# from PySide2.QtCore import QObject, Signal, Slot, Qt
 
 from qudi.util.mutex import Mutex
+from qudi.util.ringbuffer import RingBuffer, InterleavedRingBuffer
 from qudi.core.connector import Connector
 from qudi.core.threadmanager import ThreadManager
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
 
 
-class RingBuffer(_Iterable, _Sized):
-    """ Ringbuffer using numpy arrays. Is fairly thread-safe. """
-    def __init__(self,
-                 size: int,
-                 dtype: Optional[type] = float,
-                 allow_overwrite: Optional[bool] = True):
-        self.__start = 0
-        self.__end = 0
-        self.__fill_count = 0
-        self._allow_overwrite = allow_overwrite
-        self._buffer = np.empty(size, dtype)
-        self._lock = Mutex()
-
-    @property
-    def size(self) -> int:
-        return self._buffer.size
-
-    @property
-    def full(self) -> bool:
-        return self.__fill_count >= self._buffer.size
-
-    @property
-    def empty(self) -> bool:
-        return self.__fill_count <= 0
-
-    @property
-    def free_count(self) -> int:
-        return self._buffer.size - self.__fill_count
-
-    @property
-    def fill_count(self) -> int:
-        return self.__fill_count
-
-    def unwrap(self) -> np.ndarray:
-        """ Copy the data from this buffer into unwrapped form """
-        with self._lock:
-            return np.concatenate(self._filled_chunks)
-
-    def clear(self) -> None:
-        """ Clears all data from buffer """
-        with self._lock:
-            self.__fill_count = self.__start = self.__end = 0
-
-    def read(self, size: int, buffer: Optional[np.ndarray] = None) -> np.ndarray:
-        """ ToDo: Document """
-        with self._lock:
-            if buffer is None:
-                buffer = np.empty(size, dtype=self._buffer.dtype.type)
-            read = 0
-            for chunk in self._filled_chunks:
-                chunk_size = min(chunk.size, size - read)
-                buffer[read:read + chunk_size] = chunk[:chunk_size]
-                read += chunk_size
-            self._increment(read, 0)
-            return buffer[:read]
-
-    def write(self, data: np.ndarray) -> bool:
-        """ ToDo: Document """
-        with self._lock:
-            written = 0
-            overflown = False
-            while written < data.size:
-                missing = data.size - written
-                if self.full:
-                    if not self._allow_overwrite:
-                        raise IndexError('Buffer full and overwrite disabled')
-                    overflown = True
-                    self._increment(min(self._buffer.size - self.__start, missing), 0)
-                chunk = self._free_chunk[:missing]
-                chunk[:] = data[written:written + chunk.size]
-                written += chunk.size
-                self._increment(0, chunk.size)
-            return overflown
-
-    @property
-    def _free_chunk(self) -> np.ndarray:
-        """ Returns next free buffer chunk without wrapping around """
-        if (self.__start > self.__end) or self.full:
-            return self._buffer[self.__end:self.__start]
-        else:
-            return self._buffer[self.__end:]
-
-    @property
-    def _filled_chunks(self) -> Tuple[np.ndarray, np.ndarray]:
-        if self.empty:
-            return self._buffer[0:0], self._buffer[0:0]
-        elif self.__start >= self.__end:
-            return self._buffer[self.__start:], self._buffer[:self.__end]
-        else:
-            return self._buffer[self.__start:self.__end], self._buffer[0:0]
-
-    def _increment(self, start: int, end: int) -> None:
-        self.__fill_count += end - start
-        self.__start = (self.__start + start) % self._buffer.size
-        self.__end = (self.__end + end) % self._buffer.size
-
-    def __len__(self) -> int:
-        return self.__fill_count
-
-    def __iter__(self):
-        return chain(*[iter(chunk) for chunk in self._filled_chunks])
-
-    def __array__(self) -> np.ndarray:
-        # numpy compatibility
-        return self.unwrap()
-
-
-class DataInStreamReader(QObject):
-    """ Worker class for periodically reading data from streaming hardware and distributing it to
-    all ring buffers
+class DataInStreamDistributionWorker(QtCore.QObject):
+    """ Worker class for periodically reading data from streaming hardware and distributing copies
+    to a number of ring buffers
     """
     def __init__(self,
                  streamer: DataInStreamInterface,
-                 buffers: Dict[UUID, RingBuffer],
-                 timestamp_buffers: Dict[UUID, RingBuffer]):
+                 buffers: Mapping[Any, Tuple[InterleavedRingBuffer, Union[None, RingBuffer]]]):
+        if streamer.constraints.sample_timing == SampleTiming.RANDOM:
+            raise ValueError(f'{DataInStreamInterface.__name__} hardware with '
+                             f'{SampleTiming.RANDOM} is not supported')
         super().__init__()
         self._streamer = streamer
         self._buffers = buffers
-        self._timestamp_buffers = timestamp_buffers
-        self._tmp_buffer = np.empty(
-            len(self._streamer.active_channels) * self._streamer.channel_buffer_size,
-            dtype=self._streamer.constraints.data_type
-        )
-        if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
-            self._tmp_timestamp_buffer = np.empty(self._streamer.channel_buffer_size,
-                                                  dtype=self._streamer.constraints.data_type)
-        else:
-            self._tmp_timestamp_buffer = None
+        self._tmp_buffer = self._tmp_timestamp_buffer = None
         self._stop_requested = False
 
     def run(self) -> None:
         """ The worker task. Runs until an external thread calls self.stop() """
-        interval = 1 / self._streamer.sample_rate
+        interval = 1. / self._streamer.sample_rate
+        channel_count = len(self._streamer.active_channels)
+        channel_buffer_size = self._streamer.channel_buffer_size
+        dtype = self._streamer.constraints.data_type
+        # Setup buffers
+        self._tmp_buffer = np.empty(channel_count * channel_buffer_size, dtype=dtype)
+        if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+            self._tmp_timestamp_buffer = np.empty(channel_buffer_size, dtype=dtype)
+        # Loop until stopped
         while not self._stop_requested:
             time.sleep(interval)
-            self._pull_data()
+            self._pull_data(channel_count)
+        # delete tmp buffers
+        self._tmp_buffer = self._tmp_timestamp_buffer = None
 
     def stop(self) -> None:
         self._stop_requested = True
 
-    def _pull_data(self) -> None:
+    def _pull_data(self, channel_count: int) -> None:
         samples_per_channel = self._streamer.read_available_data_into_buffer(
             self._tmp_buffer,
             self._tmp_timestamp_buffer
         )
         if samples_per_channel > 0:
-            sample_count = len(self._streamer.active_channels) * samples_per_channel
-            for buffer in self._buffers.values():
-                buffer.write(self._tmp_buffer[:sample_count])
-            if self._tmp_timestamp_buffer is not None:
-                for buffer in self._timestamp_buffers.values():
-                    buffer.write(self._tmp_timestamp_buffer[:samples_per_channel])
+            for data, timestamps in self._buffers.values():
+                data.write(self._tmp_buffer[:samples_per_channel * channel_count])
+                if self._tmp_timestamp_buffer is not None:
+                    timestamps.write(self._tmp_timestamp_buffer[:samples_per_channel])
 
 
-class DataInStreamBufferProxy:
+class DataInStreamMultiConsumerDelegate(QtCore.QObject):
     """ Proxy class managing hardware access from multiple DataInStreamBuffer instances.
     Periodically pulls data from hardware in a separate thread and distributes it to all registered
     consumers.
     """
-    _ALLOW_OVERWRITE = True
-    _WAIT_INTERVAL = 0.05  # default value
+    _lock: Mutex
+    _streamer: DataInStreamInterface
+    _buffers: MutableMapping[UUID, Tuple[InterleavedRingBuffer, Union[None, RingBuffer]]]
+    __worker: Union[None, DataInStreamDistributionWorker]
+    _worker_thread: str
 
-    def __init__(self, streamer: DataInStreamInterface):
-        self._streamer = streamer
+    sigRunStateChanged = QtCore.Signal(bool)  # is_running flag
+
+    def __init__(self,
+                 streamer: DataInStreamInterface,
+                 allow_overwrite: Optional[bool] = False,
+                 parent: Optional[QtCore.QObject] = None):
+        super().__init__(parent=parent)
+
         self._lock = Mutex()
 
-        self._run_state_callbacks: Dict[UUID, Callable[[bool], None]] = WeakKeyDictionary()
-        self._buffers: Dict[UUID, RingBuffer] = WeakKeyDictionary()
-        self._timestamp_buffers: Dict[UUID, RingBuffer] = WeakKeyDictionary()
+        self._streamer = streamer
+        self._allow_overwrite = allow_overwrite
+        self._buffers = WeakKeyDictionary()
 
-        self._reader: Union[None, DataInStreamReader] = None
-        self._reader_thread_name = f'DataInStreamBufferProxy-{str(self._streamer.module_uuid)}'
+        self.__worker = None
+        self._worker_thread = f'{DataInStreamDistributionWorker.__name__}-{str(streamer.module_uuid)}'
 
-        # The time to wait for new samples (normally depends on sample_rate)
-        if self._streamer.constraints.sample_timing == SampleTiming.RANDOM:
-            self._wait_interval = self._WAIT_INTERVAL
-        else:
-            self._wait_interval = 1 / self._streamer.sample_rate
-
-    def register_consumer(self, uuid: UUID, run_state_cb: Callable[[bool], None]) -> None:
+    def register_consumer(self, uuid: UUID) -> None:
         """ Register a new data consumer, e.g. a DataInStreamBuffer instance. """
         with self._lock:
-            self._run_state_callbacks[uuid] = run_state_cb
-            self._buffers[uuid] = RingBuffer(size=self.raw_buffer_size,
-                                             dtype=self._streamer.constraints.data_type,
-                                             allow_overwrite=self._ALLOW_OVERWRITE)
-            if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
-                self._timestamp_buffers[uuid] = RingBuffer(size=self.channel_buffer_size,
-                                                           dtype=np.float64,
-                                                           allow_overwrite=self._ALLOW_OVERWRITE)
-            run_state_cb(self._streamer.module_state() == 'locked')
+            self._buffers[uuid] = self._create_buffer()
+            self.sigRunStateChanged.emit(self._streamer.module_state() == 'locked')
 
     def unregister_consumer(self, uuid: UUID) -> None:
         """ Unregisters a previously registered data consumer, e.g. a DataInStreamBuffer instance.
         """
         with self._lock:
-            self._run_state_callbacks.pop(uuid, None)
             self._buffers.pop(uuid, None)
-            self._timestamp_buffers.pop(uuid, None)
 
     def available_samples(self, uuid: UUID) -> int:
         """ Available samples per channel for a certain consumer UID """
-        return self._buffers[uuid].fill_count // self.channel_count
+        return self._buffers[uuid][0].fill_count
 
-    @property
-    def channel_count(self) -> int:
-        return len(self._streamer.active_channels)
+    def _config_equal(self,
+                      active_channels: Sequence[str],
+                      streaming_mode: Union[StreamingMode, int],
+                      channel_buffer_size: int,
+                      sample_rate: float) -> bool:
+        return (active_channels == self._streamer.active_channels) and \
+            (StreamingMode(streaming_mode) == self._streamer.streaming_mode) and \
+            (channel_buffer_size == self._streamer.channel_buffer_size) and \
+            (sample_rate == self._streamer.sample_rate)
 
-    @property
-    def raw_buffer_size(self) -> int:
-        return self.channel_count * self._streamer.channel_buffer_size
-
-    @property
-    def sample_rate(self) -> float:
-        return self._streamer.sample_rate
-
-    @property
-    def channel_buffer_size(self) -> int:
-        return self._streamer.channel_buffer_size
-
-    @property
-    def streaming_mode(self) -> StreamingMode:
-        return self._streamer.streaming_mode
-
-    @property
-    def active_channels(self) -> List[str]:
-        return self._streamer.active_channels
+    def _create_buffer(self) -> Tuple[InterleavedRingBuffer, Union[RingBuffer, None]]:
+        channel_count = len(self._streamer.active_channels)
+        channel_buffer_size = self._streamer.channel_buffer_size
+        data_buffer = InterleavedRingBuffer(interleave_factor=channel_count,
+                                            size=channel_buffer_size,
+                                            dtype=self._streamer.constraints.data_type,
+                                            allow_overwrite=self._allow_overwrite)
+        if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+            timestamp_buffer = RingBuffer(size=channel_buffer_size,
+                                          dtype=np.float64,
+                                          allow_overwrite=self._allow_overwrite)
+        else:
+            timestamp_buffer = None
+        return data_buffer, timestamp_buffer
 
     def configure(self,
                   active_channels: Sequence[str],
@@ -274,37 +163,19 @@ class DataInStreamBufferProxy:
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
         with self._lock:
-            if (self.active_channels != active_channels) or (
-                    self.streaming_mode != streaming_mode) or (
-                    self.channel_buffer_size != channel_buffer_size) or (
-                    self.sample_rate != sample_rate):
+            # Only act if the config should be changed
+            if not self._config_equal(active_channels,
+                                      streaming_mode,
+                                      channel_buffer_size,
+                                      sample_rate):
                 if self._streamer.module_state() != 'idle':
                     raise RuntimeError('Streamer not idle')
-
                 self._streamer.configure(active_channels,
                                          streaming_mode,
                                          channel_buffer_size,
                                          sample_rate)
-
-                if self._streamer.constraints.sample_timing == SampleTiming.RANDOM:
-                    self._wait_interval = self._WAIT_INTERVAL
-                else:
-                    self._wait_interval = 1 / self.sample_rate
-
-                dtype = self._streamer.constraints.data_type
-                timestamped = self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP
                 for uid in list(self._buffers):
-                    self._buffers[uid] = RingBuffer(size=self.raw_buffer_size,
-                                                    dtype=dtype,
-                                                    allow_overwrite=self._ALLOW_OVERWRITE)
-                    if timestamped:
-                        self._timestamp_buffers[uid] = RingBuffer(
-                            size=self.channel_buffer_size,
-                            dtype=np.float64,
-                            allow_overwrite=self._ALLOW_OVERWRITE
-                        )
-                    else:
-                        self._timestamp_buffers.pop(uid, None)
+                    self._buffers[uid] = self._create_buffer()
 
     def start_stream(self) -> None:
         """ Start the data acquisition/streaming """
@@ -312,19 +183,14 @@ class DataInStreamBufferProxy:
             try:
                 if self._streamer.module_state() == 'idle':
                     self._streamer.start_stream()
-                if self._reader is None:
-                    self._reader = DataInStreamReader(self._streamer,
-                                                      self._buffers,
-                                                      self._timestamp_buffers)
-                    tm = ThreadManager.instance()
-                    thread = tm.get_new_thread(self._reader_thread_name)
-                    self._reader.moveToThread(thread)
-                    thread.started.connect(self._reader.run)
+                if self.__worker is None:
+                    self.__worker = DataInStreamDistributionWorker(self._streamer, self._buffers)
+                    thread = ThreadManager.instance().get_new_thread(self._worker_thread)
+                    self.__worker.moveToThread(thread)
+                    thread.started.connect(self.__worker.run)
                     thread.start()
             finally:
-                running = self._streamer.module_state() == 'locked'
-                for callback in self._run_state_callbacks.values():
-                    callback(running)
+                self.sigRunStateChanged.emit(self._streamer.module_state() == 'locked')
 
     def stop_stream(self) -> None:
         """ Stop the data acquisition/streaming """
@@ -334,48 +200,49 @@ class DataInStreamBufferProxy:
                     self._streamer.stop_stream()
             finally:
                 try:
-                    self._reader.stop()
-                except AttributeError:
-                    pass
-                else:
-                    tm = ThreadManager.instance()
-                    tm.quit_thread(self._reader_thread_name)
-                    tm.join_thread(self._reader_thread_name)
+                    if self.__worker is not None:
+                        self.__worker.stop()
+                        tm = ThreadManager.instance()
+                        tm.quit_thread(self._worker_thread)
+                        tm.join_thread(self._worker_thread)
+                        self.__worker = None
                 finally:
-                    self._reader = None
-                    running = self._streamer.module_state() == 'locked'
-                    for callback in self._run_state_callbacks.values():
-                        callback(running)
+                    self.sigRunStateChanged.emit(self._streamer.module_state() == 'locked')
 
     def read_data_into_buffer(self,
                               uuid: UUID,
                               data_buffer: np.ndarray,
                               samples_per_channel: int,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        data = self._buffers[uuid]
-        timestamps = self._timestamp_buffers.get(uuid, None)
-        # read data until desired amount is available. Raise RuntimeError if stream is stopped.
+        data, timestamps = self._buffers[uuid]
+        channel_count = len(self._streamer.active_channels)
+        # Reshape buffers without copy
+        data_buffer = data_buffer[:(samples_per_channel * channel_count)].reshape(
+            [samples_per_channel, channel_count]
+        )
+        if timestamps is not None:
+            timestamp_buffer = timestamp_buffer[:samples_per_channel]
+        # Read until you have all requested samples acquired
         read = 0
+        print('starting loop')
         while read < samples_per_channel:
-            available = self.available_samples(uuid)
-            if available < 1:
+            if data.fill_count < 1:
                 if self._streamer.module_state() != 'locked':
                     raise RuntimeError('Streamer is not running.')
-                time.sleep(self._wait_interval)
+                time.sleep(1. / data.average_rate)
             else:
-                offset = read * self.channel_count
-                chunk_size = data.read(available * self.channel_count,
-                                       data_buffer[offset:]).size // self.channel_count
+                remaining = samples_per_channel - read
+                new = data.read(remaining, data_buffer[read:, :]).shape[0]
                 if timestamps is not None:
-                    timestamps.read(chunk_size, timestamp_buffer[read:])
-                read += chunk_size
+                    timestamps.read(remaining, timestamp_buffer[read:])
+                read += new
 
     def read_available_data_into_buffer(self,
                                         uuid: UUID,
                                         data_buffer: np.ndarray,
                                         timestamp_buffer: Optional[np.ndarray] = None) -> int:
-
-        available = min(self.available_samples(uuid), data_buffer.size // self.channel_count)
+        channel_count = len(self._streamer.active_channels)
+        available = min(self.available_samples(uuid), data_buffer.size // channel_count)
         self.read_data_into_buffer(uuid, data_buffer, available, timestamp_buffer)
         return available
 
@@ -383,10 +250,11 @@ class DataInStreamBufferProxy:
                   uuid: UUID,
                   samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
+        channel_count = len(self._streamer.active_channels)
+        dtype = self._streamer.constraints.data_type
         if samples_per_channel is None:
             samples_per_channel = self.available_samples(uuid)
-        data = np.empty(samples_per_channel * self.channel_count,
-                        dtype=self._streamer.constraints.data_type)
+        data = np.empty(samples_per_channel * channel_count, dtype=dtype)
         if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
             timestamps = np.empty(samples_per_channel, dtype=np.float64)
         else:
@@ -419,36 +287,38 @@ class DataInStreamBuffer(DataInStreamInterface):
 
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
 
-    _buffer_proxies: Dict[UUID, DataInStreamBufferProxy] = WeakKeyDictionary()
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._streamer_uid: Union[None, UUID] = None
+    _buffer_delegates: Dict[UUID, DataInStreamMultiConsumerDelegate] = WeakKeyDictionary()
 
     def on_activate(self) -> None:
-        streamer = self._streamer()
-        # If there is already a buffer proxy for the connected hardware present, just register
-        # this interfuse as additional consumer. Otherwise, also create the proxy first.
-        self._streamer_uid = streamer.module_uuid
+        # If there is already a buffer delegate for the connected hardware present, just register
+        # this interfuse as additional consumer. Otherwise, also create the delegate first.
         try:
-            proxy = self._buffer_proxies[self._streamer_uid]
+            delegate = self._buffer_delegates[self._streamer_uid]
         except KeyError:
-            proxy = DataInStreamBufferProxy(streamer=streamer)
-            self._buffer_proxies[self._streamer_uid] = proxy
-        proxy.register_consumer(self.module_uuid, self._run_state_callback)
+            delegate = DataInStreamMultiConsumerDelegate(streamer=self._streamer())
+            self._buffer_delegates[self._streamer_uid] = delegate
+        delegate.register_consumer(self.module_uuid)
+        delegate.sigRunStateChanged.connect(self._run_state_callback, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self) -> None:
         if self.module_state() == 'locked':
             self.module_state.unlock()
-        # Unregister this interfuse as consumer from the buffer roxy.
+        # Unregister this interfuse as consumer from the buffer delegate.
         try:
-            proxy = self._buffer_proxies[self._streamer_uid]
+            delegate = self._buffer_delegates[self._streamer_uid]
         except KeyError:
             pass
         else:
-            proxy.unregister_consumer(self.module_uuid)
-        finally:
-            self._streamer_uid = None
+            delegate.unregister_consumer(self.module_uuid)
+            delegate.sigRunStateChanged.disconnect(self._run_state_callback)
+
+    @property
+    def _streamer_uid(self) -> UUID:
+        return self._streamer().module_uuid
+
+    @property
+    def _buffer_delegate(self) -> DataInStreamMultiConsumerDelegate:
+        return self._buffer_delegates[self._streamer_uid]
 
     @property
     def constraints(self) -> DataInStreamConstraints:
@@ -458,28 +328,28 @@ class DataInStreamBuffer(DataInStreamInterface):
     @property
     def available_samples(self) -> int:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.available_samples """
-        return self._buffer_proxies[self._streamer_uid].available_samples(self.module_uuid)
+        return self._buffer_delegate.available_samples(self.module_uuid)
 
     @property
     def sample_rate(self) -> float:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.sample_rate """
-        return self._buffer_proxies[self._streamer_uid].sample_rate
+        return self._streamer().sample_rate
 
     @property
     def channel_buffer_size(self) -> int:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.channel_buffer_size
         """
-        return self._buffer_proxies[self._streamer_uid].channel_buffer_size
+        return self._streamer().channel_buffer_size
 
     @property
     def streaming_mode(self) -> StreamingMode:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.streaming_mode """
-        return self._buffer_proxies[self._streamer_uid].streaming_mode
+        return self._streamer().streaming_mode
 
     @property
     def active_channels(self) -> List[str]:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.active_channels """
-        return self._buffer_proxies[self._streamer_uid].active_channels
+        return self._streamer().active_channels
 
     def configure(self,
                   active_channels: Sequence[str],
@@ -487,18 +357,24 @@ class DataInStreamBuffer(DataInStreamInterface):
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.configure """
-        self._buffer_proxies[self._streamer_uid].configure(active_channels,
-                                                           streaming_mode,
-                                                           channel_buffer_size,
-                                                           sample_rate)
+        self._buffer_delegate.configure(active_channels,
+                                        streaming_mode,
+                                        channel_buffer_size,
+                                        sample_rate)
 
     def start_stream(self) -> None:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.start_stream """
-        self._buffer_proxies[self._streamer_uid].start_stream()
+        if self.module_state() == 'idle':
+            self._buffer_delegate.start_stream()
+            self.module_state.lock()
 
     def stop_stream(self) -> None:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.stop_stream """
-        self._buffer_proxies[self._streamer_uid].stop_stream()
+        if self.module_state() == 'locked':
+            try:
+                self._buffer_delegate.stop_stream()
+            finally:
+                self.module_state.unlock()
 
     def read_data_into_buffer(self,
                               data_buffer: np.ndarray,
@@ -506,10 +382,10 @@ class DataInStreamBuffer(DataInStreamInterface):
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_data_into_buffer
         """
-        self._buffer_proxies[self._streamer_uid].read_data_into_buffer(self.module_uuid,
-                                                                          data_buffer,
-                                                                          samples_per_channel,
-                                                                          timestamp_buffer)
+        self._buffer_delegate.read_data_into_buffer(self.module_uuid,
+                                                    data_buffer,
+                                                    samples_per_channel,
+                                                    timestamp_buffer)
 
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
@@ -517,27 +393,21 @@ class DataInStreamBuffer(DataInStreamInterface):
         """ See:
         qudi.interface.data_instream_interface.DataInStreamInterface.read_available_data_into_buffer
         """
-        return self._buffer_proxies[self._streamer_uid].read_available_data_into_buffer(
-            self.module_uuid,
-            data_buffer,
-            timestamp_buffer
-        )
+        return self._buffer_delegate.read_available_data_into_buffer(self.module_uuid,
+                                                                     data_buffer,
+                                                                     timestamp_buffer)
 
     def read_data(self,
                   samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_data """
-        return self._buffer_proxies[self._streamer_uid].read_data(
-            self.module_uuid,
-            samples_per_channel
-        )
+        return self._buffer_delegate.read_data(self.module_uuid, samples_per_channel)
 
     def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_single_point """
-        return self._buffer_proxies[self._streamer_uid].read_single_point(
-            self.module_uuid,
-        )
+        return self._buffer_delegate.read_single_point(self.module_uuid)
 
+    @QtCore.Slot(bool)
     def _run_state_callback(self, running: bool) -> None:
         """ Callback that is called whenever any DataInStreamBuffer is starting/stopping the
         connected streaming hardware.
