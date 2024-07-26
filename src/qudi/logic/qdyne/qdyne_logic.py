@@ -49,12 +49,11 @@ class MeasurementGenerator:
         self.pulsedmasterlogic = pulsedmasterlogic
         self.qdyne_logic = qdyne_logic
 
+        self.__active_channels = self.qdyne_logic._data_streamer().active_channels
         self.__binwidth = self.qdyne_logic._data_streamer().binwidth
         self.__record_length = self.qdyne_logic._data_streamer().record_length
-        self.__active_channels = self.qdyne_logic._data_streamer().active_channels
         self.__gate_mode = self.qdyne_logic._data_streamer().gate_mode
-        self.__buffer_size = self.qdyne_logic._data_streamer().buffer_size
-        self.__number_of_gates = self.qdyne_logic._data_streamer().number_of_gates
+        self.__data_type = self.qdyne_logic._data_streamer().data_type
 
     def generate_predefined_sequence(self, method_name, param_dict, sample_and_load):
         self.pulsedmasterlogic().generate_predefined_sequence(
@@ -94,19 +93,14 @@ class MeasurementGenerator:
                 self.__active_channels = settings_dict["active_channels"]
             if "gate_mode" in settings_dict:
                 self.__gate_mode = int(settings_dict["gate_mode"])
-            if "buffer_size" in settings_dict:
-                self.__buffer_size = int(settings_dict["buffer_size"])
-            if "number_of_gates" in settings_dict:
-                if self.qdyne_logic._data_streamer().gate_mode:
-                    self.__number_of_gates = int(settings_dict["number_of_gates"])
-                else:
-                    self.__fast_counter_gates = 0
+            if "data_type" in settings_dict:
+                self.__data_type = settings_dict["data_type"]
 
             # Set settings in pulsed to update to qdyne settings
             settings = {
                 "bin_width": self.__binwidth,
                 "record_length": self.__record_length,
-                "number_of_gates": self.__number_of_gates,
+                "number_of_gates": 0,
             }
             self.pulsedmasterlogic().set_fast_counter_settings(settings)
 
@@ -115,16 +109,14 @@ class MeasurementGenerator:
             # self.__binwidth,
             # self.__record_length, \
             # self.__active_channels, \
-            # self.__gate_mode, \
-            # self.__buffer_size, \
-            # self.__number_of_gates =
+            # self.__gate_mode,
+            # self.__data_type =
             self.qdyne_logic._data_streamer().configure(
+                self.__active_channels,
                 self.__binwidth,
                 self.__record_length,
-                self.__active_channels,
                 self.__gate_mode,
-                self.__buffer_size,
-                self.__number_of_gates,
+                self.__data_type
             )
         else:
             self.log.warning(

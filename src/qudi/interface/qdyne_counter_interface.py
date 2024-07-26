@@ -127,8 +127,20 @@ class QdyneCounterInterface(Base):
 
     @property
     @abstractmethod
+    def counter_type(self) -> CounterType:
+        """Read-only property returning the CounterType Enum"""
+        pass
+
+    @property
+    @abstractmethod
     def gate_mode(self) -> GateMode:
         """Read-only property returning the currently configured GateMode Enum"""
+        pass
+
+    @property
+    @abstractmethod
+    def data_type(self) -> type:
+        """Read-only property returning the current data type"""
         pass
 
     @property
@@ -149,7 +161,6 @@ class QdyneCounterInterface(Base):
         active_channels: Sequence[str],
         bin_width: float,
         record_length: float,
-        counter_type: Union[CounterType, int],
         gate_mode: Union[GateMode, int],
         data_type: type
     ) -> None:
