@@ -160,7 +160,7 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
         self.se_setting_comboBox.addItems(self.settings.current_setting_list)
         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
         self.se_setting_comboBox.setEditable(True)
-        self.se_setting_add_pushButton.setToolTip('Enter new name in combo box')
+        self.se_setting_add_pushButton.setToolTip("Enter new name in combo box")
 
         self.se_settings_widget = DataclassWidget(self.settings.current_setting)
         self.se_settings_gridLayout.addWidget(self.se_settings_widget)
@@ -170,7 +170,9 @@ class StateEstimationSettingWidget(QtWidgets.QWidget):
 
     def connect_signals(self):
         self.se_method_comboBox.currentTextChanged.connect(self.update_current_method)
-        self.se_setting_comboBox.currentIndexChanged.connect(self.update_current_setting)
+        self.se_setting_comboBox.currentIndexChanged.connect(
+            self.update_current_setting
+        )
         self.se_setting_add_pushButton.clicked.connect(self.add_setting)
         self.se_setting_delete_pushButton.clicked.connect(self.delete_setting)
         self.add_button_pushed_sig.connect(self.settings.add_setting)
@@ -363,6 +365,8 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
 
 
 class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
+    _log = get_logger(__name__)
+
     def __init__(self, logic):
         self.logic = logic()
         self.estimator = logic().estimator
@@ -384,7 +388,6 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
             np.arange(10), np.zeros(10), pen=palette.c1
         )
         self.time_trace_PlotWidget.addItem(self.time_trace_image)
-        self.time_trace_PlotWidget.setLabel(axis="top", text="readouts", units="#")
         self.time_trace_PlotWidget.setLabel(axis="bottom", text="time", units="s")
         self.time_trace_PlotWidget.setLabel(axis="left", text="signal", units="")
 
@@ -414,5 +417,14 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
                 self.logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
             )[0]
         )
+        self.time_trace_PlotWidget.setLabel(axis="bottom", text="time", units="s")
+        if time_between_readouts == 0:
+            time_between_readouts = 1
+            self._log.warn(
+                "Time between readouts could not be determined from loaded pulse sequence. Make sure a pulse sequence is loaded. Switching to number of readouts as x axis."
+            )
+            self.time_trace_PlotWidget.setLabel(
+                axis="bottom", text="readouts", units="#"
+            )
         x = np.arange(len(y)) * time_between_readouts
         self.time_trace_image.setData(x=x, y=y)
