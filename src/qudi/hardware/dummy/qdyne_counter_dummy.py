@@ -64,6 +64,12 @@ class QdyneCounterDummy(QdyneCounterInterface):
         self._active_channels = ["channel_1"]
         self._gate_mode = GateMode(0)
         self._buffer_size = 2042
+        self._constraints = QdyneCounterConstraints(
+            channel_units={"channel_1": "counts"},
+            counter_type=CounterType.TIMETAGGER,
+            gate_mode=GateMode.UNGATED,
+            data_type=float,
+        )
         return
 
     def on_deactivate(self):
@@ -77,14 +83,8 @@ class QdyneCounterDummy(QdyneCounterInterface):
 
         :return: QdyneCounterConstraints
         """
-        self.constraints = QdyneCounterConstraints(
-            channel_units={"channel_1": "counts"},
-            counter_type=CounterType.TIMETAGGER,
-            gate_mode=GateMode.UNGATED,
-            data_type=float,
-        )
 
-        return self.constraints
+        return self._constraints
 
     def configure(
         self,
