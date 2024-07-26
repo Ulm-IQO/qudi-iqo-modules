@@ -27,6 +27,9 @@ from PySide2 import QtCore, QtWidgets
 from qudi.util import uic
 from qudi.util.helpers import natural_sort
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
+from logging import getLogger
+
+_logger = getLogger(__name__)
 
 
 class GenerationWidget(QtWidgets.QWidget):
@@ -63,8 +66,6 @@ class GenerationWidget(QtWidgets.QWidget):
             self._gui.logic().measurement_generator.counter_settings
         )
 
-        # fill in the measurement parameter widgets
-        self._pa_apply_hardware_constraints()
 
         # Dynamically create GUI elements for predefined methods
         self.gen_buttons = dict()
@@ -106,9 +107,7 @@ class GenerationWidget(QtWidgets.QWidget):
         self.ana_param_record_length_DoubleSpinBox.editingFinished.connect(
             self.counter_settings_changed
         )
-        self.ana_param_fc_bins_ComboBox.currentIndexChanged.connect(
-            self.counter_settings_changed
-        )
+        self.binwidth_spinbox.valueChanged.connect(self.counter_settings_changed)
 
         self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
             self.counter_settings_updated
@@ -128,7 +127,7 @@ class GenerationWidget(QtWidgets.QWidget):
 
         self.ana_param_invoke_settings_CheckBox.stateChanged.disconnect()
         self.ana_param_record_length_DoubleSpinBox.editingFinished.disconnect()
-        self.ana_param_fc_bins_ComboBox.currentIndexChanged.disconnect()
+        self.binwidth_spinbox.editingFinished.disconnect()
 
     def sampling_or_loading_busy(self):
         if self._gui.logic().measurement_generator.status_dict["sampload_busy"]:
@@ -509,11 +508,16 @@ class GenerationWidget(QtWidgets.QWidget):
         settings_dict["record_length"] = (
             self.ana_param_record_length_DoubleSpinBox.value()
         )
-        settings_dict["bin_width"] = float(
-            self.ana_param_fc_bins_ComboBox.currentText()
-        )
+        current_binwidth = self.binwidth_spinbox.value()
+        correct_binwidth = self._gui.logic().measurement_generator.check_counter_constraints(current_binwidth)
+        if correct_binwidth != current_binwidth:
+            _logger.warn(f"Selected binwidth {current_binwidth} s is not in the hardware constraints. Changed binwidth to closest allowed binwidth: {correct_binwidth} s!")
+            self.binwidth_spinbox.blockSignals(True)
+            self.binwidth_spinbox.setValue(correct_binwidth)
+            self.binwidth_spinbox.blockSignals(False)
+        settings_dict["bin_width"] = correct_binwidth
         self._gui.logic().measurement_generator.set_counter_settings(settings_dict)
-        print(settings_dict)
+        _logger.debug(f"{settings_dict=}")
         return
 
     @QtCore.Slot(dict)
@@ -526,17 +530,14 @@ class GenerationWidget(QtWidgets.QWidget):
         print(settings_dict)
         # block signals
         self.ana_param_record_length_DoubleSpinBox.blockSignals(True)
-        self.ana_param_fc_bins_ComboBox.blockSignals(True)
+        self.binwidth_spinbox.blockSignals(True)
         # set widgets
         if "record_length" in settings_dict:
             self.ana_param_record_length_DoubleSpinBox.setValue(
                 settings_dict["record_length"]
             )
         if "bin_width" in settings_dict:
-            index = self.ana_param_fc_bins_ComboBox.findText(
-                str(settings_dict["bin_width"])
-            )
-            self.ana_param_fc_bins_ComboBox.setCurrentIndex(index)
+            self.binwidth_spinbox.setValue(float(settings_dict["bin_width"]))            )
         if "is_gated" in settings_dict:
             if settings_dict.get("is_gated"):
                 self.toggle_global_param_enable("gate_channel", True)
@@ -548,7 +549,7 @@ class GenerationWidget(QtWidgets.QWidget):
 
         # unblock signals
         self.ana_param_record_length_DoubleSpinBox.blockSignals(False)
-        self.ana_param_fc_bins_ComboBox.blockSignals(False)
+        self.binwidth_spinbox.blockSignals(False)
         return
 
     def toggle_global_param_enable(self, name: str, enable: bool) -> None:
@@ -601,22 +602,4 @@ class GenerationWidget(QtWidgets.QWidget):
             self.ana_param_record_length_DoubleSpinBox.setEnabled(False)
         else:
             self.ana_param_record_length_DoubleSpinBox.setEnabled(True)
-        return
-
-    def _pa_apply_hardware_constraints(self):
-        """
-        Retrieve the constraints from pulser and fast counter hardware and apply these constraints
-        to the analysis tab GUI elements.
-        """
-        fc_constraints = (
-            self._gui.logic().measurement_generator.fast_counter_constraints
-        )
-        # block signals
-        self.ana_param_fc_bins_ComboBox.blockSignals(True)
-        # apply constraints
-        self.ana_param_fc_bins_ComboBox.clear()
-        for binwidth in fc_constraints["hardware_binwidth_list"]:
-            self.ana_param_fc_bins_ComboBox.addItem(str(binwidth))
-        # unblock signals
-        self.ana_param_fc_bins_ComboBox.blockSignals(False)
         return
