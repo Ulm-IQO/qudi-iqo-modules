@@ -106,7 +106,7 @@ class GenerationWidget(QtWidgets.QWidget):
         self.ana_param_record_length_DoubleSpinBox.editingFinished.connect(
             self.counter_settings_changed
         )
-        self.binwidth_spinbox.valueChanged.connect(self.counter_settings_changed)
+        self.binwidth_spinbox.editingFinished.connect(self.counter_settings_changed)
 
         self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
             self.counter_settings_updated
@@ -126,7 +126,7 @@ class GenerationWidget(QtWidgets.QWidget):
 
         self.ana_param_invoke_settings_CheckBox.stateChanged.disconnect()
         self.ana_param_record_length_DoubleSpinBox.editingFinished.disconnect()
-        self.binwidth_spinbox.valueChanged.disconnect()
+        self.binwidth_spinbox.editingFinished.disconnect()
 
     def sampling_or_loading_busy(self):
         if self._gui.logic().measurement_generator.status_dict["sampload_busy"]:
@@ -505,10 +505,8 @@ class GenerationWidget(QtWidgets.QWidget):
             return
 
         current_length = self.ana_param_record_length_DoubleSpinBox.value()
-        correct_length = (
-            self._gui.logic().measurement_generator.check_counter_record_length_constraint(
-                current_length
-            )
+        correct_length = self._gui.logic().measurement_generator.check_counter_record_length_constraint(
+            current_length
         )
         if correct_length != current_length:
             self.ana_param_record_length_DoubleSpinBox.blockSignals(True)
