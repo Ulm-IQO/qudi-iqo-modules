@@ -503,10 +503,18 @@ class GenerationWidget(QtWidgets.QWidget):
         """
         if self._gui._mainw.action_run_stop.isChecked():
             return
-        settings_dict = dict()
-        settings_dict["record_length"] = (
-            self.ana_param_record_length_DoubleSpinBox.value()
+
+        current_length = self.ana_param_record_length_DoubleSpinBox.value()
+        correct_length = (
+            self._gui.logic().measurement_generator.check_counter_record_length_constraint(
+                current_length
+            )
         )
+        if correct_length != current_length:
+            self.ana_param_record_length_DoubleSpinBox.blockSignals(True)
+            self.ana_param_record_length_DoubleSpinBox.setValue(correct_length)
+            self.ana_param_record_length_DoubleSpinBox.blockSignals(False)
+
         current_binwidth = self.binwidth_spinbox.value()
         correct_binwidth = (
             self._gui.logic().measurement_generator.check_counter_binwidth_constraint(
@@ -514,12 +522,12 @@ class GenerationWidget(QtWidgets.QWidget):
             )
         )
         if correct_binwidth != current_binwidth:
-            _logger.warn(
-                f"Selected binwidth {current_binwidth} s is not in the hardware constraints. Changed binwidth to closest allowed binwidth: {correct_binwidth} s!"
-            )
             self.binwidth_spinbox.blockSignals(True)
             self.binwidth_spinbox.setValue(correct_binwidth)
             self.binwidth_spinbox.blockSignals(False)
+
+        settings_dict = dict()
+        settings_dict["record_length"] = correct_length
         settings_dict["bin_width"] = correct_binwidth
         self._gui.logic().measurement_generator.set_counter_settings(settings_dict)
         _logger.debug(f"{settings_dict=}")

@@ -124,10 +124,39 @@ class MeasurementGenerator:
     def set_measurement_settings(self, settings_dict):
         self.pulsedmasterlogic().set_measurement_settings(settings_dict)
 
+    def check_counter_record_length_constraint(self, record_length: float):
+        record_length_constraint = self.counter_constraints.record_length
+        if not record_length_constraint.is_valid(record_length):
+            try:
+                record_length_constraint.check_value_type(record_length)
+                record_length_constraint.check_value_range(record_length)
+            except TypeError:
+                record_length = self.__record_length
+                self.qdyne_logic.log.error(f'Record length is not of correct type. Keep record length {self.__record_length}s.')
+            except ValueError:
+                record_length = record_length_constraint.clip(record_length)
+                self.qdyne_logic.log.error(f'Record length out of bounds. Clipping to bound {record_length}s.')
+        return record_length
+
     def check_counter_binwidth_constraint(self, binwidth: float):
         binwidth_constraint = self.counter_constraints.binwidth
-        if binwidth_constraint.is_valid(binwidth):
-            return binwidth
+        if not binwidth_constraint.is_valid(binwidth):
+            try:
+                binwidth_constraint.check_value_type(binwidth)
+                binwidth_constraint.check_value_range(binwidth)
+            except TypeError:
+                binwidth = self.__binwidth
+                self.qdyne_logic.log.error(f'Binwidth is not of correct type. Keep binwidth {self.__binwidth}s.')
+            except ValueError:
+                binwidth = binwidth_constraint.clip(binwidth)
+                self.qdyne_logic.log.error(f'Binwidth out of bounds. Clipping to bound {binwidth}s.')
+            try:
+                binwidth_constraint.check_custom(binwidth)
+            except ValueError:
+                binwidth = binwidth_constraint.increment * round(binwidth / binwidth_constraint.increment)
+                self.qdyne_logic.log.warning(f'Binwidth does not match increment condition of hardware.'
+                                             f'Set closest allowed binwidth {binwidth}s.')
+        return binwidth
 
     @property
     def status_dict(self):

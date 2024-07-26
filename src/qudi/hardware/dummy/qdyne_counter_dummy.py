@@ -68,8 +68,9 @@ class QdyneCounterDummy(QdyneCounterInterface):
             counter_type=CounterType.TIMETAGGER,
             gate_mode=GateMode.UNGATED,
             data_type=float,
-            binwidth=ScalarConstraint(default=1e-9, bounds=(1e-9, 1e-6)),
-            record_length=ScalarConstraint(default=1e-6, bounds=(1e-9, 1)),
+            binwidth=ScalarConstraint(default=1e-6, bounds=(1e-6, 1e-3), increment=1e-6,
+                                      checker=lambda x: (x / 1e-6).is_integer()),
+            record_length=ScalarConstraint(default=1e-3, bounds=(10e-6, 1)),
         )
         self._elapsed_sweeps = 0
         return
@@ -203,7 +204,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
             time_tags = sorted(np.random.choice(range(100, 500), num_photons))
             return [0] + time_tags
 
-        num_samples = 200  # round(self.record_length / self.binwidth)
+        num_samples = round(self.record_length / self.binwidth)
         sample_times = np.linspace(0, self.record_length, num_samples)
 
         for t in sample_times:
