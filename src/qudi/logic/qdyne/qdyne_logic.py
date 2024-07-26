@@ -126,6 +126,11 @@ class MeasurementGenerator:
     def set_measurement_settings(self, settings_dict):
         self.pulsedmasterlogic().set_measurement_settings(settings_dict)
 
+    def check_counter_binwidth_constraint(self, binwidth: float):
+        binwidth_constraint = self.counter_constraints.binwidth
+        if binwidth_constraint.is_valid(binwidth):
+            return binwidth
+
     @property
     def status_dict(self):
         return self.pulsedmasterlogic().status_dict
@@ -173,8 +178,8 @@ class MeasurementGenerator:
         return self.pulsedmasterlogic().generate_methods
 
     @property
-    def fast_counter_constraints(self):
-        return self.pulsedmasterlogic().fast_counter_constraints
+    def counter_constraints(self):
+        return self.qdyne_logic._data_streamer().constraints()
 
 
 class QdyneLogic(LogicBase):
