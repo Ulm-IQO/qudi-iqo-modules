@@ -37,7 +37,12 @@ from qudi.logic.qdyne.qdyne_fit import QdyneFit
 from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
+from qudi.interface.qdyne_counter_interface import GateMode
+
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
+from logging import getLogger
+
+_logger = getLogger(__name__)
 
 
 class MeasurementGenerator:
@@ -49,12 +54,11 @@ class MeasurementGenerator:
         self.pulsedmasterlogic = pulsedmasterlogic
         self.qdyne_logic = qdyne_logic
 
+        self.__active_channels = self.qdyne_logic._data_streamer().active_channels
         self.__binwidth = self.qdyne_logic._data_streamer().binwidth
         self.__record_length = self.qdyne_logic._data_streamer().record_length
-        self.__active_channels = self.qdyne_logic._data_streamer().active_channels
         self.__gate_mode = self.qdyne_logic._data_streamer().gate_mode
-        self.__buffer_size = self.qdyne_logic._data_streamer().buffer_size
-        self.__number_of_gates = self.qdyne_logic._data_streamer().number_of_gates
+        self.__data_type = self.qdyne_logic._data_streamer().data_type
 
     def generate_predefined_sequence(self, method_name, param_dict, sample_and_load):
         self.pulsedmasterlogic().generate_predefined_sequence(
@@ -93,31 +97,25 @@ class MeasurementGenerator:
             if "active_channels" in settings_dict:
                 self.__active_channels = settings_dict["active_channels"]
             if "gate_mode" in settings_dict:
-                self.__gate_mode = int(settings_dict["gate_mode"])
-            if "buffer_size" in settings_dict:
-                self.__buffer_size = int(settings_dict["buffer_size"])
-            if "number_of_gates" in settings_dict:
-                if self.qdyne_logic._data_streamer().gate_mode:
-                    self.__number_of_gates = int(settings_dict["number_of_gates"])
-                else:
-                    self.__fast_counter_gates = 0
+                self.__gate_mode = GateMode(int(settings_dict["gate_mode"]))
+            if "data_type" in settings_dict:
+                self.__data_type = settings_dict["data_type"]
 
             # Set settings in pulsed to update to qdyne settings
             settings = {
                 "bin_width": self.__binwidth,
                 "record_length": self.__record_length,
-                "number_of_gates": self.__number_of_gates,
+                "number_of_gates": 0,
             }
             self.qdyne_logic._data_streamer().configure(
+                self.__active_channels,
                 self.__binwidth,
                 self.__record_length,
-                self.__active_channels,
-                self.__gate_mode,
-                self.__buffer_size,
-                self.__number_of_gates,
+                self.__gate_mode.value,
+                self.__data_type,
             )
         else:
-            self.log.warning(
+            _logger.warn(
                 "Qdyne counter is not idle (status: {0}).\n"
                 "Unable to apply new settings.".format(counter_status)
             )
@@ -153,7 +151,9 @@ class MeasurementGenerator:
         settings_dict["number_of_gates"] = int(
             self.qdyne_logic._data_streamer().number_of_gates
         )
-        settings_dict["is_gated"] = bool(self.qdyne_logic._data_streamer().gate_mode)
+        settings_dict["is_gated"] = bool(
+            self.qdyne_logic._data_streamer().gate_mode.value
+        )
         self.qdyne_logic.log.warn(f"{settings_dict=}")
         return settings_dict
 

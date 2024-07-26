@@ -66,7 +66,6 @@ class GenerationWidget(QtWidgets.QWidget):
             self._gui.logic().measurement_generator.counter_settings
         )
 
-
         # Dynamically create GUI elements for predefined methods
         self.gen_buttons = dict()
         self.samplo_buttons = dict()
@@ -509,9 +508,15 @@ class GenerationWidget(QtWidgets.QWidget):
             self.ana_param_record_length_DoubleSpinBox.value()
         )
         current_binwidth = self.binwidth_spinbox.value()
-        correct_binwidth = self._gui.logic().measurement_generator.check_counter_constraints(current_binwidth)
+        correct_binwidth = (
+            self._gui.logic().measurement_generator.check_counter_binwidth_constraint(
+                current_binwidth
+            )
+        )
         if correct_binwidth != current_binwidth:
-            _logger.warn(f"Selected binwidth {current_binwidth} s is not in the hardware constraints. Changed binwidth to closest allowed binwidth: {correct_binwidth} s!")
+            _logger.warn(
+                f"Selected binwidth {current_binwidth} s is not in the hardware constraints. Changed binwidth to closest allowed binwidth: {correct_binwidth} s!"
+            )
             self.binwidth_spinbox.blockSignals(True)
             self.binwidth_spinbox.setValue(correct_binwidth)
             self.binwidth_spinbox.blockSignals(False)
@@ -537,7 +542,7 @@ class GenerationWidget(QtWidgets.QWidget):
                 settings_dict["record_length"]
             )
         if "bin_width" in settings_dict:
-            self.binwidth_spinbox.setValue(float(settings_dict["bin_width"]))            )
+            self.binwidth_spinbox.setValue(float(settings_dict["bin_width"]))
         if "is_gated" in settings_dict:
             if settings_dict.get("is_gated"):
                 self.toggle_global_param_enable("gate_channel", True)

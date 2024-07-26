@@ -60,16 +60,18 @@ class QdyneCounterDummy(QdyneCounterInterface):
         self._binwidth = 0.1
         self._block_size = 10
         self._record_length = 10
-        self._sample_rate = 100
         self._active_channels = ["channel_1"]
         self._gate_mode = GateMode(0)
-        self._buffer_size = 2042
+        self._number_of_gates = 0
         self._constraints = QdyneCounterConstraints(
             channel_units={"channel_1": "counts"},
             counter_type=CounterType.TIMETAGGER,
             gate_mode=GateMode.UNGATED,
             data_type=float,
+            binwidth=ScalarConstraint(default=1e-9, bounds=(1e-9, 1e-6)),
+            record_length=ScalarConstraint(default=1e-6, bounds=(1e-9, 1)),
         )
+        self._elapsed_sweeps = 0
         return
 
     def on_deactivate(self):
@@ -83,26 +85,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
 
         :return: QdyneCounterConstraints
         """
-
         return self._constraints
-
-    def configure(
-        self,
-        bin_width_s: float,
-        record_length_s: float,
-        active_channels: Sequence[str],
-        gate_mode: int,
-        buffer_size: int,
-        number_of_gates,
-    ) -> None:
-        """Configure a Qdyne counter. See read-only properties for information on each parameter."""
-        self._binwidth = bin_width_s
-        self._record_length = record_length_s
-        self._active_channels = active_channels
-        self._gate_mode = GateMode(gate_mode)
-        self._buffer_size = buffer_size
-        # self._number_of_gates = number_of_gates
-        return
 
     @property
     def active_channels(self) -> Sequence[str]:
@@ -110,9 +93,9 @@ class QdyneCounterDummy(QdyneCounterInterface):
         return self._active_channels
 
     @property
-    def gate_mode(self) -> int:
+    def gate_mode(self) -> GateMode:
         """Read-only property returning the currently configured GateMode Enum"""
-        return self._gate_mode.value
+        return self._gate_mode
 
     @property
     def buffer_size(self) -> int:
@@ -123,6 +106,15 @@ class QdyneCounterDummy(QdyneCounterInterface):
     def sample_rate(self) -> float:
         """Read-only property returning the currently set sample rate in Hz"""
         return self._sample_rate
+
+    def counter_type(self) -> CounterType:
+        """Read-only property returning the CounterType Enum"""
+        return self._counter_type
+
+    @property
+    def data_type(self) -> type:
+        """Read-only property returning the current data type"""
+        return self._constraints.data_type
 
     @property
     def binwidth(self):
@@ -136,7 +128,31 @@ class QdyneCounterDummy(QdyneCounterInterface):
 
     @property
     def number_of_gates(self):
-        return 1
+        return self._number_of_gates
+
+    def configure(
+        self,
+        active_channels: Sequence[str],
+        bin_width: float,
+        record_length: float,
+        gate_mode: int,
+        data_type: type,
+    ) -> None:
+        """Configure a Qdyne counter. See read-only properties for information on each parameter."""
+        self._binwidth = bin_width
+        self._record_length = record_length
+        self._active_channels = active_channels
+        if gate_mode != 0:
+            self.log.error(
+                f"Cannot set gate mode {gate_mode} ({GateMode(gate_mode)}). "
+                + f"Use gate mode {0} ({GateMode(0)}) instead."
+            )
+            self._gate_mode = GateMode(0)
+        if any((data_type == dtype for dtype in (int, float, np.int64, np.float64))):
+            self._data_type = data_type
+        else:
+            self.log.error(f"Data type {data_type} is not a valid data type.")
+        return
 
     def get_status(self) -> int:
         """Receives the current status of the hardware and outputs it as return value.
@@ -152,6 +168,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
         """Start the qdyne counter."""
         time.sleep(1)
         self._time_tagger_data = []
+        self._elapsed_sweeps = 0
         self.statusvar = 2
 
     def stop_measure(self):
@@ -185,10 +202,14 @@ class QdyneCounterDummy(QdyneCounterInterface):
             time_tags = sorted(np.random.choice(range(100, 500), num_photons))
             return [0] + time_tags
 
-        num_samples = round(self.record_length * self.sample_rate)
+        num_samples = 200  # round(self.record_length / self.binwidth)
         sample_times = np.linspace(0, self.record_length, num_samples)
 
         for t in sample_times:
             self._time_tagger_data += poisson_process(t)
-        info_dict = {"elapsed_sweeps": 10, "elapsed_time": self.record_length}
+        self._elapsed_sweeps += 1
+        info_dict = {
+            "elapsed_sweeps": self._elapsed_sweeps,
+            "elapsed_time": self.record_length,
+        }
         return self._time_tagger_data, info_dict
