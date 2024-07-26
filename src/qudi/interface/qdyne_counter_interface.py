@@ -148,14 +148,20 @@ class QdyneCounterInterface(Base):
 
     @property
     @abstractmethod
-    def binwidth(self):
+    def binwidth(self) -> float:
         """Read-only property returning the currently set bin width in seconds"""
         pass
 
     @property
     @abstractmethod
-    def record_length(self):
+    def record_length(self) -> float:
         """Read-only property returning the currently set recording length in seconds for a single trigger/gate"""
+        pass
+
+    @property
+    @abstractmethod
+    def number_of_gates(self) -> int:
+        """Read-only property returning the currently set number of gates"""
         pass
 
     @abstractmethod

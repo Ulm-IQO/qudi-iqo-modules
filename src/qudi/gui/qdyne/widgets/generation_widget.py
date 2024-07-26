@@ -126,7 +126,7 @@ class GenerationWidget(QtWidgets.QWidget):
 
         self.ana_param_invoke_settings_CheckBox.stateChanged.disconnect()
         self.ana_param_record_length_DoubleSpinBox.editingFinished.disconnect()
-        self.binwidth_spinbox.editingFinished.disconnect()
+        self.binwidth_spinbox.valueChanged.disconnect()
 
     def sampling_or_loading_busy(self):
         if self._gui.logic().measurement_generator.status_dict["sampload_busy"]:

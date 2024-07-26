@@ -127,7 +127,8 @@ class QdyneCounterDummy(QdyneCounterInterface):
         return self._record_length
 
     @property
-    def number_of_gates(self):
+    def number_of_gates(self) -> int:
+        """Read-only property returning the currently set number of gates"""
         return self._number_of_gates
 
     def configure(
