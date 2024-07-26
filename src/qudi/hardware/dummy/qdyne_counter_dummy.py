@@ -80,14 +80,16 @@ class QdyneCounterDummy(QdyneCounterInterface):
             counter_type=CounterType.TIMETAGGER,
             gate_mode=GateMode.UNGATED,
             data_type=float,
-            binwidth=ScalarConstraint(
-                default=0.01,
-                bounds=[0.001, 1],
-                increment=0.001),
-            record_length=ScalarConstraint(
-                default=0.1,
-                bounds=[0.01, 10]
-            ))
+            #binwidth=ScalarConstraint(
+            #    default=0.01,
+            #    bounds=[0.001, 1],
+            #    increment=0.001),
+            binwidth=float,
+            #record_length=ScalarConstraint(
+            #    default=0.1,
+            #    bounds=[0.001, 10])
+            record_length=float
+            )
 
         return self.constraints
 
@@ -97,9 +99,19 @@ class QdyneCounterDummy(QdyneCounterInterface):
         return self._active_channels
 
     @property
+    def counter_type(self) -> CounterType:
+        """Read-only property returning the CounterType Enum"""
+        return self._counter_type
+
+    @property
     def gate_mode(self) -> GateMode:
         """ Read-only property returning the currently configured GateMode Enum """
         return self._gate_mode
+
+    @property
+    def data_type(self) -> type:
+        """Read-only property returning the current data type"""
+        return self._data_type
 
     @property
     def binwidth(self):
@@ -115,7 +127,6 @@ class QdyneCounterDummy(QdyneCounterInterface):
                   active_channels: Sequence[str],
                   bin_width: float,
                   record_length: float,
-                  counter_type: int,
                   gate_mode: int,
                   data_type: type
                   ) -> None:
@@ -123,15 +134,11 @@ class QdyneCounterDummy(QdyneCounterInterface):
         self._binwidth = bin_width
         self._record_length = record_length
         self._active_channels = active_channels
-        if counter_type != 0:
-            self.log.error(f'Cannot set counter type {counter_type} ({CounterType(counter_type)}). ' +
-                           f'Use counter type {0} ({CounterType(0)}) instead.')
-            self._counter_type = 0
         if gate_mode != 0:
             self.log.error(f'Cannot set gate mode {gate_mode} ({GateMode(gate_mode)}). ' +
                            f'Use gate mode {0} ({GateMode(0)}) instead.')
             self._gate_mode = 0
-        if any((data_type == dtype for dtype in (int, float, np.int, np.float))):
+        if any((data_type == dtype for dtype in (int, float, np.int64, np.float64))):
             self._data_type = data_type
         else:
             self.log.error(f'Data type {data_type} is not a valid data type.')
@@ -185,7 +192,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
             time_tags = sorted(np.random.choice(range(100, 500), num_photons))
             return [0] + time_tags
 
-        num_samples = round(self.record_length / self.binwidth)
+        num_samples = 200  #round(self.record_length / self.binwidth)
         sample_times = np.linspace(0, self.record_length, num_samples)
 
         for t in sample_times:

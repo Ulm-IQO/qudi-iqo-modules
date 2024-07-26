@@ -74,18 +74,19 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         missing="error",
         constructor=lambda units: [str(x) for x in units],
     )
+    _gated = ConfigOption(
+        name="gated",
+        missing="warn",
+        default=GateMode.UNGATED.value,
+    )
     _data_type = ConfigOption(
         name="data_type",
         default="int32",
         missing="info",
         constructor=lambda typ: np.dtype(typ).type,
     )
-    _gated = ConfigOption(
-        name="gated",
-        missing="warn",
-        default=False,
-        constructor=lambda gated: int(gated),
-    )
+
+    _counter_type = CounterType.TIMETAGGER.value
     _minimal_binwidth = ConfigOption("minimal_binwidth", 0.2e-9, missing="warn")
     _trigger_safety = ConfigOption("trigger_safety", 400e-9, missing="warn")
 
@@ -175,9 +176,19 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         return list(self._active_channels)
 
     @property
+    def counter_type(self) -> CounterType:
+        """Read-only property returning the CounterType Enum"""
+        return self._counter_type
+
+    @property
     def gate_mode(self) -> GateMode:
         """Read-only property returning the currently configured GateMode Enum"""
         return self._gated
+
+    @property
+    def data_type(self) -> type:
+        """Read-only property returning the current data type"""
+        self._data_type
 
     @property
     def binwidth(self):
@@ -203,7 +214,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             active_channels: Sequence[str],
             bin_width: float,
             record_length: float,
-            counter_type: Union[CounterType, int],
             gate_mode: Union[GateMode, int],
             data_type: type
     ) -> None:
