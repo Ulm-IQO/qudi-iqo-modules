@@ -906,8 +906,10 @@ class ScannerGui(GuiBase):
         self.scanner_control_dockwidget.set_range(rng)
         self.scanner_control_dockwidget.set_resolution(res)
         if back_scan_data is not None:
-            back_res = {ax: val for ax, val in zip(back_scan_data.settings.axes, back_scan_data.settings.resolution)}
-            self.scanner_control_dockwidget.set_back_resolution(back_res)
+            # update back resolution for fast axis
+            fast_axis = back_scan_data.settings.axes[0]
+            back_res = back_scan_data.settings.resolution[0]
+            self.scanner_control_dockwidget.set_back_resolution({fast_axis: back_res})
 
     def _toggle_enable_scan_crosshairs(self, enable):
         for dockwidget in self.scan_2d_dockwidgets.values():

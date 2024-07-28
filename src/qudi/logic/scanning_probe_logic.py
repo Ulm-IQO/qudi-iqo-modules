@@ -178,6 +178,7 @@ class ScanningProbeLogic(LogicBase):
 
     @property
     def back_scan_resolution(self) -> Dict[str, int]:
+        """Resolution for the backwards scan of the fast axis."""
         with self._thread_lock:
             # use value of forward scan if not configured otherwise (merge dictionaries)
             return {**self._scan_resolution, **self._back_scan_resolution}
@@ -218,11 +219,16 @@ class ScanningProbeLogic(LogicBase):
     def create_back_scan_settings(self, scan_axes: Sequence[str]) -> ScanSettings:
         """Create a ScanSettings object for the backwards direction of a selected 1D or 2D scan."""
         with self._thread_lock:
+            # only use backwards scan resolution for the fast axis
+            resolution = [self.back_scan_resolution[scan_axes[0]]]
+            if len(scan_axes) > 1:
+                # slow axis resolution always matches the forward scan
+                resolution += [self.scan_resolution[ax] for ax in scan_axes[1:]]
             return ScanSettings(
                 channels=tuple(self.scanner_channels),
                 axes=tuple(scan_axes),
                 range=tuple(tuple(self._scan_ranges[ax]) for ax in scan_axes),
-                resolution=tuple(self.back_scan_resolution[ax] for ax in scan_axes),
+                resolution=tuple(resolution),
                 frequency=self.back_scan_frequency[scan_axes[0]],
             )
 
