@@ -69,15 +69,18 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
         font.setBold(True)
         layout = QtWidgets.QGridLayout()
 
-        label = QtWidgets.QLabel('Forward')
-        label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, 1)
+        forward_label = QtWidgets.QLabel('Forward')
+        forward_label.setFont(font)
+        forward_label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(forward_label, 0, 1)
 
-        label = QtWidgets.QLabel('Backward')
-        label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, 2)
+        backward_label = QtWidgets.QLabel('Backward')
+        backward_label.setFont(font)
+        backward_label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(backward_label, 0, 2)
+        if BackScanCapability.AVAILABLE not in self._back_scan_capability:
+            forward_label.hide()
+            backward_label.hide()
 
         for index, axis in enumerate(scanner_axes, 1):
             ax_name = axis.name
@@ -108,9 +111,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
                 backward_spinbox.setEnabled(False)
                 forward_spinbox.valueChanged.connect(backward_spinbox.setValue)
             if BackScanCapability.AVAILABLE not in self._back_scan_capability:
-                backward_spinbox.setToolTip("Back scan is not available.")
-                backward_spinbox.setValue(0)
-                backward_spinbox.setRange(0, 0)
+                backward_spinbox.hide()
 
             # Add to layout
             layout.addWidget(label, index, 0)
