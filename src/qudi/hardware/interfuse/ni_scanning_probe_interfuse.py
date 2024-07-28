@@ -142,7 +142,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         for axis in self._position_ranges:
             position_range = tuple(self._position_ranges[axis])
             resolution_range = tuple(self._resolution_ranges[axis])
-            res_default = 100
+            res_default = 50
             if not resolution_range[0] <= res_default <= resolution_range[1]:
                 res_default = resolution_range[0]
             frequency_range = tuple(self._frequency_ranges[axis])
