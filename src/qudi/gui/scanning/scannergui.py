@@ -131,6 +131,7 @@ class ScannerGui(GuiBase):
     # status vars
     _window_state = StatusVar(name='window_state', default=None)
     _window_geometry = StatusVar(name='window_geometry', default=None)
+    show_backward_resolution = StatusVar(name='show_backward_resolution', default=False)
 
     # signals
     sigScannerTargetChanged = QtCore.Signal(dict, object)
@@ -148,18 +149,17 @@ class ScannerGui(GuiBase):
 
         # QMainWindow and QDialog child instances
         self._mw = None
-        self._ssd = None
+        self._ssd: Optional[ScannerSettingDialog] = None
         self._osd: Optional[OptimizerSettingsDialog] = None
 
         # References to automatically generated GUI elements
         self.optimizer_settings_axes_widgets = None
-        self.scanner_settings_axes_widgets = None
         self.scan_2d_dockwidgets = None
         self.scan_1d_dockwidgets = None
 
         # References to static dockwidgets
         self.optimizer_dockwidget = None
-        self.scanner_control_dockwidget = None
+        self.scanner_control_dockwidget: Optional[AxesControlDockWidget] = None
 
         # misc
         self._optimizer_id = 0
@@ -373,6 +373,8 @@ class ScannerGui(GuiBase):
         self._ssd = ScannerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
                                          self._scanning_logic().scanner_constraints)
 
+        self._ssd.settings_widget.show_backward_resolution_checkbox.setChecked(self.show_backward_resolution)
+
         # Connect MainWindow actions
         self._mw.action_scanner_settings.triggered.connect(lambda x: self._ssd.exec_())
 
@@ -387,6 +389,7 @@ class ScannerGui(GuiBase):
             tuple(scan_logic.scanner_axes.values()),
             scan_logic.back_scan_capability
         )
+        self.scanner_control_dockwidget.set_backward_settings_visibility(self.show_backward_resolution)
         if self._default_position_unit_prefix is not None:
             self.scanner_control_dockwidget.set_assumed_unit_prefix(
                 self._default_position_unit_prefix
@@ -667,6 +670,10 @@ class ScannerGui(GuiBase):
         for ax, (forward, backward) in self._ssd.settings_widget.frequency.items():
             self.sigFrequencyChanged.emit(ax, forward)
             self.sigBackFrequencyChanged.emit(ax, backward)
+        self.scanner_control_dockwidget.set_backward_settings_visibility(
+            self._ssd.settings_widget.show_backward_resolution
+        )
+        self.show_backward_resolution = self._ssd.settings_widget.show_backward_resolution
 
     @QtCore.Slot()
     def update_scanner_settings_from_logic(self):

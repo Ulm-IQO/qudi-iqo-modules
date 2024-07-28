@@ -36,7 +36,8 @@ class AxesControlDockWidget(QtWidgets.QDockWidget):
                                       'sigTargetChanged', 'sigSliderMoved', 'axes', 'resolution', 'back_resolution',
                                       'range', 'target', 'set_resolution', 'set_back_resolution',
                                       'get_range', 'set_range', 'get_target', 'set_target',
-                                      'set_assumed_unit_prefix', 'emit_current_settings'})
+                                      'set_assumed_unit_prefix', 'emit_current_settings',
+                                      'set_backward_settings_visibility'})
 
     def __init__(self, scanner_axes: Tuple[ScannerAxis], back_scan_capability: BackScanCapability):
         super().__init__('Axes Control')

@@ -131,8 +131,25 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
         frequency_groupbox.setFont(font)
         frequency_groupbox.setLayout(layout)
 
+        # display settings
+        h_layout = QtWidgets.QHBoxLayout()
+        self.show_backward_resolution_checkbox = QtWidgets.QCheckBox()
+        h_layout.addWidget(self.show_backward_resolution_checkbox)
+        label = QtWidgets.QLabel('Show backward scan resolution settings')
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        h_layout.addWidget(label)
+
+        display_groupbox = QtWidgets.QGroupBox('Display')
+        display_groupbox.setFont(font)
+        display_groupbox.setLayout(h_layout)
+
         self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().addWidget(display_groupbox)
         self.layout().addWidget(frequency_groupbox)
+
+    @property
+    def show_backward_resolution(self) -> bool:
+        return self.show_backward_resolution_checkbox.isChecked()
 
     @property
     def axes(self):
