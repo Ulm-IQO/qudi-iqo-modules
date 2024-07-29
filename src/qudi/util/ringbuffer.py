@@ -20,11 +20,12 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ['RingBuffer', 'InterleavedRingBuffer', 'RateAverageCalculator']
+__all__ = ['RingBuffer', 'InterleavedRingBuffer', 'RateAverageCalculator', 'RingBufferReader',
+           'SyncRingBufferReader']
 
 import time
 import numpy as np
-from typing import Optional, Tuple, Callable
+from typing import Optional, Tuple, Callable, Sequence, List
 from collections.abc import Sized as _Sized
 
 from qudi.util.mutex import Mutex
@@ -64,7 +65,8 @@ class RingBuffer(_Sized):
     def __init__(self,
                  size: int,
                  dtype: Optional[type] = float,
-                 allow_overwrite: Optional[bool] = True):
+                 allow_overwrite: Optional[bool] = True,
+                 expected_sample_rate: Optional[float] = None):
         super().__init__()
         self._lock = Mutex()
         self.__start = 0
@@ -72,7 +74,10 @@ class RingBuffer(_Sized):
         self.__fill_count = 0
         self._allow_overwrite = allow_overwrite
         self._buffer = np.empty(size, dtype)
-        self.__rate_calculator = RateAverageCalculator()
+        if expected_sample_rate is None:
+            self.__rate_calculator = RateAverageCalculator()
+        else:
+            self.__rate_calculator = RateAverageCalculator(default=expected_sample_rate)
 
     @property
     def size(self) -> int:
@@ -182,11 +187,13 @@ class InterleavedRingBuffer(RingBuffer):
                  interleave_factor: int,
                  size: int,
                  dtype: Optional[type] = float,
-                 allow_overwrite: Optional[bool] = True):
+                 allow_overwrite: Optional[bool] = True,
+                 expected_sample_rate: Optional[float] = None):
         self._interleave_factor = max(1, int(interleave_factor))
         super().__init__(size=size * self._interleave_factor,
                          dtype=dtype,
-                         allow_overwrite=allow_overwrite)
+                         allow_overwrite=allow_overwrite,
+                         expected_sample_rate=expected_sample_rate)
 
     @property
     def size(self) -> int:
@@ -203,6 +210,10 @@ class InterleavedRingBuffer(RingBuffer):
     @property
     def average_rate(self) -> float:
         return super().average_rate / self._interleave_factor
+
+    @property
+    def interleave_factor(self) -> int:
+        return self._interleave_factor
 
     def unwrap(self) -> np.ndarray:
         """ Copy the data from this buffer into unwrapped form as a 2D array """
@@ -226,3 +237,80 @@ class InterleavedRingBuffer(RingBuffer):
                 f'Data size must be multiple of interleave_factor ({self._interleave_factor:d})'
             )
         return super().write(data.reshape(data.size))
+
+
+class RingBufferReader:
+    """ Helper class to pull arbitrary amounts of data from a RingBuffer with a single "read" call
+    """
+
+    def __init__(self, buffer: RingBuffer, max_poll_rate: Optional[float] = 30.):
+        self._buffer = buffer
+        self._max_poll_rate = max_poll_rate
+
+    def __call__(self, size: int, buffer: Optional[np.ndarray] = None) -> np.ndarray:
+        if buffer is None:
+            if isinstance(self._buffer, InterleavedRingBuffer):
+                buffer = np.empty([size, self._buffer.interleave_factor], dtype=self._buffer.dtype)
+            else:
+                buffer = np.empty(size, dtype=self._buffer.dtype)
+        # Read until you have all requested samples acquired
+        read = 0
+        while read < size:
+            # Request either all remaining samples or at maximum half the RingBuffer size
+            request = min(self._buffer.size // 2, size - read)
+            # If not all requested samples are available yet, wait for a bit
+            available = self._buffer.fill_count
+            if available < request:
+                time.sleep(
+                    max((request - available) / self._buffer.average_rate, 1. / self._max_poll_rate)
+                )
+            read += self._buffer.read(request, buffer[read:]).shape[0]
+        return buffer[:read]
+
+
+class SyncRingBufferReader:
+    """ Helper class to pull arbitrary amounts of data from multiple RingBuffers with same data
+    rate and size by a single "read" call
+    """
+
+    def __init__(self, buffers: Sequence[RingBuffer], max_poll_rate: Optional[float] = 30.):
+        self._buffers = buffers
+        self._min_poll_interval = 1. / max_poll_rate
+        self._min_request_size = max(1, min(buf.size for buf in self._buffers) // 2)
+
+    @staticmethod
+    def _get_return_buffer(size: int, ringbuffer: RingBuffer) -> np.ndarray:
+        if isinstance(ringbuffer, InterleavedRingBuffer):
+            return np.empty([size, ringbuffer.interleave_factor], dtype=ringbuffer.dtype)
+        else:
+            return np.empty(size, dtype=ringbuffer.dtype)
+
+    @property
+    def min_fill_count(self) -> int:
+        return min(buf.fill_count for buf in self._buffers)
+
+    @property
+    def average_rate(self) -> float:
+        return sum(buf.average_rate for buf in self._buffers) / len(self._buffers)
+
+    def __call__(self,
+                 size: int,
+                 buffers: Optional[Sequence[np.ndarray]] = None) -> List[np.ndarray]:
+        if buffers is None:
+            buffers = [self._get_return_buffer(size, ringbuf) for ringbuf in self._buffers]
+        else:
+            buffers = [buf[:size] for buf in buffers]
+        # Read until you have all requested samples acquired
+        read = 0
+        while read < size:
+            # Request either all remaining samples or at maximum half the RingBuffer size
+            request = min(self._min_request_size, size - read)
+            # If not all requested samples are available yet, wait for a bit
+            available = self.min_fill_count
+            if available < request:
+                time.sleep(max((request - available) / self.average_rate, self._min_poll_interval))
+            request = min(request, self.min_fill_count)
+            read_counts = [ringbuf.read(request, buf[read:]).shape[0] for buf, ringbuf in
+                           zip(buffers, self._buffers)]
+            read += read_counts[0]
+        return buffers
