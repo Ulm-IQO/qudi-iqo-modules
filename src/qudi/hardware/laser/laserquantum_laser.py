@@ -61,6 +61,9 @@ class LaserQuantumLaser(SimpleLaserInterface):
         """
         self.psu = PSUTypes[self.psu_type]
         self.connect_laser(self.serial_interface)
+        # initialize the last set power as is, if the laser is still running
+        # or set it to 0 if the laser is off
+        self._last_set_power = self.get_power()
 
     def on_deactivate(self):
         """ Deactivate module.
@@ -150,8 +153,7 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return float: laser power setpoint in watts
         """
-        # FIXME: This is just wrong
-        return self.get_power()
+        return self._last_set_power
 
     def get_power_range(self):
         """ Get laser power range.
@@ -165,6 +167,7 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @param float power: desired laser power in watts
         """
+        self._last_set_power = power
         self.inst.query('POWER={0:f}'.format(power*1000))
 
     def get_current_unit(self):
@@ -216,7 +219,7 @@ class LaserQuantumLaser(SimpleLaserInterface):
 
         @return ShutterState: laser shutter state
         """
-        return ShutterState.NOSHUTTER
+        return ShutterState.NO_SHUTTER
 
     def set_shutter_state(self, state):
         """ Set the desired laser shutter state.
@@ -338,9 +341,6 @@ class LaserQuantumLaser(SimpleLaserInterface):
         extra = ''
         extra += '\n'.join(self.get_firmware_version())
         extra += '\n'
-        if self.psu == PSUTypes.FPU:
-            extra += '\n'.join(self.dump())
-            extra += '\n'
         extra += '\n'.join(self.timers())
         extra += '\n'
         return extra

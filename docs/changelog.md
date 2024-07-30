@@ -6,6 +6,9 @@
 
 ### Bugfixes
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
+- Fixed typo in `LaserQuantumLaser` when returning the `ShutterState`
+- Removed `PSUTypes.FPU` if statement in `LaserQuantumLaser` as it is not an existing `PSUTypes`
+- Fixed `LaserQuantumLaser.get_power_setpoint` to return last set power instead of current power
 
 ### New Features
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
