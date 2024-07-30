@@ -372,7 +372,7 @@ class QDPlotLogic(LogicBase):
         while self.plot_count < plot_count:
             self._add_plot()
         while self.plot_count > plot_count:
-            self._remove_plot()
+            self._remove_plot(0)
 
     def get_data(self, plot_index: int) -> QDPlotDataSet:
         with self._thread_lock:
