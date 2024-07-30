@@ -34,6 +34,7 @@ from typing import Union, Optional, Dict, List, Tuple, Sequence, Mapping, Any, M
 from qudi.util.mutex import Mutex
 from qudi.util.ringbuffer import RingBuffer, InterleavedRingBuffer, RingBufferReader, SyncRingBufferReader
 from qudi.core.connector import Connector
+from qudi.core.configoption import ConfigOption
 from qudi.core.threadmanager import ThreadManager
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints
@@ -57,7 +58,7 @@ class DataInStreamDistributionWorker(QtCore.QObject):
 
     def run(self) -> None:
         """ The worker task. Runs until an external thread calls self.stop() """
-        interval = 1. / self._streamer.sample_rate
+        interval = max(0.01, 1. / self._streamer.sample_rate)
         channel_count = len(self._streamer.active_channels)
         channel_buffer_size = self._streamer.channel_buffer_size
         dtype = self._streamer.constraints.data_type
@@ -104,7 +105,7 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
     def __init__(self,
                  streamer: DataInStreamInterface,
                  allow_overwrite: Optional[bool] = False,
-                 max_poll_rate: Optional[float] = 30.,
+                 max_poll_rate: Optional[float] = 100.,
                  parent: Optional[QtCore.QObject] = None):
         super().__init__(parent=parent)
 
@@ -215,11 +216,13 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
                 if self._streamer.module_state() == 'locked':
                     self._streamer.stop_stream()
             finally:
-                self.sigRunStateChanged.emit(self._streamer.module_state() == 'locked')
-                if self.__worker is not None:
-                    self.__worker = None
-                    for lock in self._read_locks.values():
-                        lock.unlock()
+                try:
+                    if self.__worker is not None:
+                        self.__worker = None
+                        for lock in self._read_locks.values():
+                            lock.unlock()
+                finally:
+                    self.sigRunStateChanged.emit(self._streamer.module_state() == 'locked')
 
     def read_data_into_buffer(self,
                               uuid: UUID,
@@ -295,6 +298,12 @@ class DataInStreamBuffer(DataInStreamInterface):
 
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
 
+    _max_poll_rate: float = ConfigOption(name='max_poll_rate', default=100., missing='warn')
+    _allow_overwrite: bool = ConfigOption(name='allow_overwrite',
+                                          default=False,
+                                          missing='warn',
+                                          constructor=lambda x: bool(x))
+
     _buffer_delegates: Dict[UUID, DataInStreamMultiConsumerDelegate] = WeakKeyDictionary()
 
     def on_activate(self) -> None:
@@ -303,7 +312,9 @@ class DataInStreamBuffer(DataInStreamInterface):
         try:
             delegate = self._buffer_delegates[self._streamer_uid]
         except KeyError:
-            delegate = DataInStreamMultiConsumerDelegate(streamer=self._streamer())
+            delegate = DataInStreamMultiConsumerDelegate(streamer=self._streamer(),
+                                                         allow_overwrite=self._allow_overwrite,
+                                                         max_poll_rate=self._max_poll_rate)
             self._buffer_delegates[self._streamer_uid] = delegate
         delegate.register_consumer(self.module_uuid)
         delegate.sigRunStateChanged.connect(self._run_state_callback, QtCore.Qt.QueuedConnection)
