@@ -130,7 +130,7 @@ class ScannerGui(GuiBase):
     sigToggleScan = QtCore.Signal(bool, tuple, object)
     sigOptimizerSettingsChanged = QtCore.Signal(dict)
     sigToggleOptimize = QtCore.Signal(bool)
-    sigSaveScan = QtCore.Signal(object, object)
+    sigSaveScan = QtCore.Signal(object, object, str)
     sigSaveFinished = QtCore.Signal()
     sigShowSaveDialog = QtCore.Signal(bool)
 
@@ -548,7 +548,13 @@ class ScannerGui(GuiBase):
                     cbar_range = self.scan_2d_dockwidgets[ax].scan_widget.image_widget.levels
                 except KeyError:
                     cbar_range = None
-                self.sigSaveScan.emit(ax, cbar_range)
+                if ax in self.scan_1d_dockwidgets:
+                    tag = self.scan_1d_dockwidgets[ax].scan_widget.save_nametag_lineedit.text()
+                elif ax in self.scan_2d_dockwidgets:
+                    tag = self.scan_2d_dockwidgets[ax].scan_widget.save_nametag_lineedit.text()
+                else:
+                    tag = None
+                self.sigSaveScan.emit(ax, cbar_range, tag)
         finally:
             pass
 
