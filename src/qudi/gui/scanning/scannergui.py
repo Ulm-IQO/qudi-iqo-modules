@@ -375,7 +375,8 @@ class ScannerGui(GuiBase):
         scan_logic: ScanningProbeLogic = self._scanning_logic()
         self._ssd = ScannerSettingDialog(scan_logic.scanner_axes.values(), scan_logic.scanner_constraints)
 
-        self._ssd.settings_widget.show_backward_resolution_checkbox.setChecked(scan_logic.use_back_scan_settings)
+        self._ssd.settings_widget.configure_backward_scan_checkbox.setChecked(scan_logic.use_back_scan_settings)
+        self._ssd.settings_widget.set_backward_settings_visibility(scan_logic.use_back_scan_settings)
         # Connect MainWindow actions
         self._mw.action_scanner_settings.triggered.connect(lambda x: self._ssd.exec_())
 
@@ -672,7 +673,7 @@ class ScannerGui(GuiBase):
             self.sigFrequencyChanged.emit(ax, forward)
             self.sigBackFrequencyChanged.emit(ax, backward)
 
-        use_back_settings = self._ssd.settings_widget.show_backward_resolution
+        use_back_settings = self._ssd.settings_widget.configure_backward_scan
         self.sigUseBackScanSettings.emit(use_back_settings)
         self.scanner_control_dockwidget.set_backward_settings_visibility(use_back_settings)
 
