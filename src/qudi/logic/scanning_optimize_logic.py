@@ -241,6 +241,9 @@ class ScanningOptimizeLogic(LogicBase):
             for ax, res in self.back_scan_frequency.items():
                 scan_logic.set_back_scan_frequency(ax, res)
 
+            # optimizer scans always explicitly configure the backwards scan settings
+            scan_logic.set_use_back_scan_settings(True)
+
             self.module_state.lock()
             with self._result_lock:
                 self._last_scans = list()

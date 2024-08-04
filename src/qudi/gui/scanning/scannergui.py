@@ -131,12 +131,12 @@ class ScannerGui(GuiBase):
     # status vars
     _window_state = StatusVar(name='window_state', default=None)
     _window_geometry = StatusVar(name='window_geometry', default=None)
-    show_backward_resolution = StatusVar(name='show_backward_resolution', default=False)
 
     # signals
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigFrequencyChanged = QtCore.Signal(str, float)
     sigBackFrequencyChanged = QtCore.Signal(str, float)
+    sigUseBackScanSettings = QtCore.Signal(bool)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
     sigOptimizerSettingsChanged = QtCore.Signal(str, list, dict, dict, dict, dict, dict)
     sigToggleOptimize = QtCore.Signal(bool)
@@ -214,6 +214,7 @@ class ScannerGui(GuiBase):
         )
         self.sigFrequencyChanged.connect(scan_logic.set_scan_frequency, QtCore.Qt.QueuedConnection)
         self.sigBackFrequencyChanged.connect(scan_logic.set_back_scan_frequency, QtCore.Qt.QueuedConnection)
+        self.sigUseBackScanSettings.connect(scan_logic.set_use_back_scan_settings, QtCore.Qt.QueuedConnection)
         self.sigToggleScan.connect(scan_logic.toggle_scan, QtCore.Qt.QueuedConnection)
         self.sigToggleOptimize.connect(
             self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection
@@ -297,6 +298,7 @@ class ScannerGui(GuiBase):
         self.sigScannerTargetChanged.disconnect()
         self.sigFrequencyChanged.disconnect()
         self.sigBackFrequencyChanged.disconnect()
+        self.sigUseBackScanSettings.disconnect()
         self.sigToggleScan.disconnect()
         self.sigToggleOptimize.disconnect()
         self.sigOptimizerSettingsChanged.disconnect()
@@ -370,11 +372,10 @@ class ScannerGui(GuiBase):
         """
         """
         # Create the Settings dialog
-        self._ssd = ScannerSettingDialog(tuple(self._scanning_logic().scanner_axes.values()),
-                                         self._scanning_logic().scanner_constraints)
+        scan_logic: ScanningProbeLogic = self._scanning_logic()
+        self._ssd = ScannerSettingDialog(scan_logic.scanner_axes.values(), scan_logic.scanner_constraints)
 
-        self._ssd.settings_widget.show_backward_resolution_checkbox.setChecked(self.show_backward_resolution)
-
+        self._ssd.settings_widget.show_backward_resolution_checkbox.setChecked(scan_logic.use_back_scan_settings)
         # Connect MainWindow actions
         self._mw.action_scanner_settings.triggered.connect(lambda x: self._ssd.exec_())
 
@@ -389,7 +390,7 @@ class ScannerGui(GuiBase):
             tuple(scan_logic.scanner_axes.values()),
             scan_logic.back_scan_capability
         )
-        self.scanner_control_dockwidget.set_backward_settings_visibility(self.show_backward_resolution)
+        self.scanner_control_dockwidget.set_backward_settings_visibility(scan_logic.use_back_scan_settings)
         if self._default_position_unit_prefix is not None:
             self.scanner_control_dockwidget.set_assumed_unit_prefix(
                 self._default_position_unit_prefix
@@ -670,10 +671,10 @@ class ScannerGui(GuiBase):
         for ax, (forward, backward) in self._ssd.settings_widget.frequency.items():
             self.sigFrequencyChanged.emit(ax, forward)
             self.sigBackFrequencyChanged.emit(ax, backward)
-        self.scanner_control_dockwidget.set_backward_settings_visibility(
-            self._ssd.settings_widget.show_backward_resolution
-        )
-        self.show_backward_resolution = self._ssd.settings_widget.show_backward_resolution
+
+        use_back_settings = self._ssd.settings_widget.show_backward_resolution
+        self.sigUseBackScanSettings.emit(use_back_settings)
+        self.scanner_control_dockwidget.set_backward_settings_visibility(use_back_settings)
 
     @QtCore.Slot()
     def update_scanner_settings_from_logic(self):
