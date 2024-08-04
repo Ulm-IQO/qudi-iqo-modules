@@ -461,21 +461,23 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self.bare_scanner.move_absolute(self, self._stored_target_pos)
         self._stored_target_pos = dict()
 
-    def get_scan_data(self) -> ScanData:
+    def get_scan_data(self) -> Optional[ScanData]:
         """ Read-only property returning the ScanData instance used in the scan.
         """
         if self._scan_data is None:
-            raise RuntimeError('ScanData is not yet configured, please set scan settings first')
-        with self._thread_lock_data:
-            return self._scan_data.copy()
+            return None
+        else:
+            with self._thread_lock_data:
+                return self._scan_data.copy()
 
-    def get_back_scan_data(self) -> ScanData:
+    def get_back_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the backwards scan.
         """
         if self._scan_data is None:
-            raise RuntimeError('ScanData is not yet configured, please set scan settings first')
-        with self._thread_lock_data:
-            return self._back_scan_data.copy()
+            return None
+        else:
+            with self._thread_lock_data:
+                return self._back_scan_data.copy()
 
     def emergency_stop(self):
         """

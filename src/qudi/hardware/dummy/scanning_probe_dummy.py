@@ -543,20 +543,21 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         else:
             self.__start_timer()
 
-    def get_scan_data(self) -> ScanData:
+    def get_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the scan.
         """
         with self._thread_lock:
             if self._scan_data is None:
-                raise RuntimeError('No scan data in hardware.')
-            return self._scan_data.copy()
+                return None
+            else:
+                return self._scan_data.copy()
 
-    def get_back_scan_data(self) -> ScanData:
+    def get_back_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the backwards scan.
         """
         with self._thread_lock:
             if self._back_scan_data is None:
-                raise RuntimeError('No back scan data in hardware.')
+                return None
             return self._back_scan_data.copy()
 
     def __start_timer(self):
