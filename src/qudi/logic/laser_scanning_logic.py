@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 """
-This file contains the qudi logic to continuously read data from a wavemeter device and eventually interpolates the
- acquired data with the simultaneously obtained counts from a time_series_reader_logic. It is intended to be used in
- conjunction with the high_finesse_wavemeter.py.
+This file contains the qudi logic to continuously read data from a wavemeter device and eventually
+interpolates the acquired data with the simultaneously obtained counts from a
+time_series_reader_logic. It is intended to be used in conjunction with the
+high_finesse_wavemeter.py.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
@@ -24,50 +25,83 @@ If not, see <https://www.gnu.org/licenses/>.
 from PySide2 import QtCore
 import numpy as np
 import time
+import math
 import matplotlib.pyplot as plt
 import scipy.interpolate as interpolate
+from enum import Enum
 
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
-from qudi.interface.data_instream_interface import DataInStreamConstraints
+from qudi.interface.data_instream_interface import DataInStreamConstraints, DataInStreamInterface
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.core.statusvariable import StatusVar
 from qudi.util.network import netobtain
-from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping
+from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping, Callable
 from lmfit.model import ModelResult as _ModelResult
 from qudi.util.datastorage import TextDataStorage
-from scipy import constants
+from scipy.constants import speed_of_light as _SPEED_OF_LIGHT
 
 
-class WavemeterLogic(LogicBase):
+class AxisType(Enum):
+    WAVELENGTH = 'wavelength'
+    FREQUENCY = 'frequency'
+
+
+class LaserScanningLogic(LogicBase):
     """
     Example config for copy-paste:
 
-    wavemeter_scanning_logic:
+    laser_scanning_logic:
         module.Class: 'wavemeter_scanning_logic_3.WavemeterLogic'
         connect:
             streamer: wavemeter
             counterlogic: time_series_reader_logic
     """
+
+    @staticmethod
+    def __construct_histogram_range(value: Sequence[float]) -> Tuple[float, float]:
+        if len(value) != 2:
+            raise ValueError(f'Expected exactly two values (min, max) but received "{value}"')
+        return min(value), max(value)
+
+    @staticmethod
+    def __construct_histogram_bins(value: int) -> int:
+        value = int(value)
+        if value < 3:
+            raise ValueError(f'Number of histogram bins must be >= 3 but received "{value:d}"')
+        return value
+
     # declare signals
     sigDataChanged = QtCore.Signal(object, object, object, object, object, object, object)
     sigStatusChanged = QtCore.Signal(bool)
     sigStatusChangedDisplaying = QtCore.Signal()
     sigNewWavelength2 = QtCore.Signal(object, object)
     sigFitChanged = QtCore.Signal(str, dict)  # fit_name, fit_results
-    _sigNextWavelength = QtCore.Signal()  # internal signal
+    _sigNextDataFrame = QtCore.Signal()  # internal signal
 
-    # declare connectors
+    # connectors
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
-    # access on timeseries logic and thus nidaq instreamer
-    _timeserieslogic = Connector(name='counterlogic', interface='TimeSeriesReaderLogic')
+    _laser = Connector(name='laser', interface='LaserControlInterface', optional=True)
 
-    # TODO status vars...
     # config options
-    _fit_config_model = StatusVar(name='fit_configs', default=list())
+    _max_update_rate: float = ConfigOption(name='max_update_rate', default=30.)
+    _laser_channel: str = ConfigOption(name='laser_channel', missing='error')
+    _laser_channel_type: AxisType = ConfigOption(name='laser_channel_type',
+                                                 default=AxisType.WAVELENGTH,
+                                                 missing='warn',
+                                                 constructor=lambda x: AxisType(x))
+
+    # status variables
+    _fit_config_model: FitConfigurationsModel = StatusVar(name='fit_configs', default=list())
+    _histogram_range: Tuple[float, float] = StatusVar(name='histogram_range',
+                                                      default=(500.0e-9, 750.0e-9),
+                                                      constructor=__construct_histogram_range)
+    _histogram_bins: int = StatusVar(name='histogram_bins',
+                                     default=200,
+                                     constructor=__construct_histogram_bins)
 
     def __init__(self, *args, **kwargs):
         """
@@ -75,13 +109,31 @@ class WavemeterLogic(LogicBase):
         super().__init__(*args, **kwargs)
 
         # locking for thread safety
-        self.threadlock = Mutex()
-        self.complete_histogram = False
-        self._fit_container = None
+        self._threadlock = Mutex()
+        self._stop_requested: bool = False
+
+        # data fitting
+        self._fit_container: FitContainer = None
+        self._fit_histogram: bool = True
+        self._last_fit_result = None
+
+        # raw data
+        self._scan_data: np.ndarray = np.empty(0)
+        self._timestamps: Union[None, np.ndarray] = None
+        self._valid_samples: int = 0
+        self._alt_laser_axes: Dict[AxisType, np.ndarray] = dict()
+        self.__laser_axis_converters: Dict[AxisType, Callable[[np.ndarray], np.ndarray]] = dict()
+        self._laser_channel_type: AxisType = None
+
+        # histogram data
+        self._histo_xmin: float = np.inf  # _xmin
+        self._histo_xmax: float = -np.inf  # _xmax
+        self._histogram_data: np.ndarray = None
+
+
         self.x_axis_hz_bool = False  # by default display wavelength
         self._is_wavelength_displaying = False
         self._delay_time = None
-        self._stop_flag = False
 
         # Data arrays #timings, counts, wavelength, wavelength in Hz
         self._trace_data = np.empty((4, 0), dtype=np.float64)
@@ -90,48 +142,34 @@ class WavemeterLogic(LogicBase):
         self.wavelength = []
         self.frequency = []
 
-        self._bins = 200
-        self._data_index = 0
-        self._xmin_histo = 500.0e-9  # in SI units, default starting range
-        self._xmax_histo = 750.0e-9
-        self._xmin = 1  # default; to be changed upon first iteration
-        self._xmax = -1
-        self.number_of_displayed_points = 1000
-        self.fit_histogram = True
-
-        return
-
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
-        """
+        if self._laser_channel not in self.streamer_constraints.channel_units:
+            raise ValueError(f'ConfigOption "{self.__class__._laser_channel.name}" value not found '
+                             f'in streaming hardware available channels')
+
+        # Initialize data fitting
         self._fit_container = FitContainer(config_model=self._fit_config_model)
         self._last_fit_result = None
 
-        # connect to time series
-        self._time_series_logic = self._timeserieslogic()
+        # Alternative axis settings. Assume frequency laser axis if unit is not in meters.
+        self.__laser_axis_converters = {
+            AxisType.WAVELENGTH: self.__convert_wavelength_frequency,
+            AxisType.FREQUENCY : self.__convert_wavelength_frequency
+        }
+        if self.streamer_constraints.channel_units[self._laser_channel].lower() == 'm':
+            self._laser_channel_type = AxisType.WAVELENGTH
+        else:
+            self._laser_channel_type = AxisType.FREQUENCY
 
-        # create a new x axis from xmin to xmax with bins points
-        self.histogram_axis = np.linspace(self._xmin_histo, self._xmax_histo, self._bins)
-        self.histogram = np.zeros(self._bins)
-        self.envelope_histogram = np.zeros(self._bins)
-        self.rawhisto = np.zeros(self._bins)
-        self.sumhisto = np.ones(self._bins) * 1.0e-10
+        # initialize all data arrays
+        self.__init_data_buffers()
 
-        self._time_series_logic.sigStopped.connect(
-            self.stop_scanning, QtCore.Qt.QueuedConnection)
-        return
+        # Connect signals
+        self._sigNextDataFrame.connect(self._measurement_loop_body, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
-        """ De-initialisation performed during deactivation of the module.
-                """
-        # Stop measurement
-        if self._is_wavelength_displaying:
-            self.stop_displaying_current_wavelength()
-        elif self.module_state() == 'locked':
-            self.stop_scanning()
-
-        self._time_series_logic.sigStopped.disconnect()
-        return
+        self._stop_scanning()
+        self._sigNextDataFrame.disconnect()
 
     @property
     def streamer_constraints(self) -> DataInStreamConstraints:
@@ -139,194 +177,179 @@ class WavemeterLogic(LogicBase):
         # netobtain is required if streamer is a remote module
         return netobtain(self._streamer().constraints)
 
-    @QtCore.Slot(object)
-    def _counts_and_wavelength(self, new_count_data=None, new_count_timings=None) -> None:
+    @property
+    def laser_contraints(self) -> Union[None, Any]:
+        """ Returns constraints of connected laser control hardware """
+        # ToDo: Implement
+        return None
+
+    @property
+    def _laser_ch_index(self) -> int:
+        return self._streamer().active_channels.index(self._laser_channel)
+
+    def __init_data_buffers(self) -> None:
+        init_samples = 1024  # Initial number of samples per channel for buffer size
+        streamer: DataInStreamInterface = self._streamer()
+        dtype = streamer.constraints.data_type
+        self._valid_samples = 0
+        # data buffer
+        self._scan_data = np.empty([init_samples, len(streamer.active_channels)], dtype=dtype)
+        # timestamps buffer
+        if streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+            self._timestamps = np.empty(init_samples, dtype=np.float64)
+        else:
+            self._timestamps = None
+        # Alternative axis buffer
+        if self._laser_channel_type == AxisType.WAVELENGTH:
+            self._alt_laser_axes = {AxisType.FREQUENCY, np.empty(init_samples, dtype=dtype)}
+        else:
+            self._alt_laser_axes = {AxisType.WAVELENGTH, np.empty(init_samples, dtype=dtype)}
+
+    def __expand_data_buffers(self) -> None:
+        """ Double the existing data buffers """
+        factor = 2  # Expand array size by this factor
+        # Expand data buffer
+        new_shape = [self._scan_data.shape[0] * factor, self._scan_data.shape[1]]
+        new_scan_data = np.empty(new_shape, dtype=self._scan_data.dtype)
+        new_scan_data[:self._valid_samples, :] = self._scan_data[:self._valid_samples, :]
+        self._scan_data = new_scan_data
+        # Expand alternative axis buffers
+        for typ, axis in self._alt_laser_axes.items():
+            new_axis = np.empty(axis.size * factor, dtype=axis.dtype)
+            new_axis[:self._valid_samples] = axis[:self._valid_samples]
+            self._alt_laser_axes[typ] = new_axis
+        # Expand timestamps buffer
+        if self._timestamps is not None:
+            new_timestamps = np.empty(self._timestamps.size * factor, dtype=self._timestamps.dtype)
+            new_timestamps[:self._valid_samples] = self._timestamps[:self._valid_samples]
+            self._timestamps = new_timestamps
+
+    def __pull_new_data(self) -> int:
+        """ Pulls new available samples from streaming device, appends them to existing data arrays
+        and returns number of new samples per channel.
+        Will stall to satisfy "max_update_rate" in case this method is called too frequent.
         """
-                This method synchronizes (interpolates) the available data from both the timeseries logic and the wavemeter hardware module.
-                It runs repeatedly by being connected to a QTimer timeout signal from the time series (sigNewRawData).
-                Note: new_count_timing is currently unused, but might be used for a more elaborate synchronization.
-                #TODO Assure that the timing below is synchronized at an acceptable level and saving of raw data
-                """
-        with self.threadlock:
-            if self.module_state() == 'locked':
-                # Determine samples to read according to new_count_data size (!one channel only!)
-                if new_count_data is not None:
-                    samples_to_read_counts = len(new_count_data)
+        streamer: DataInStreamInterface = self._streamer()
+        sample_rate = streamer.sample_rate
+        min_samples = max(1, int(math.ceil(sample_rate / self._max_update_rate)))
+        samples = max(streamer.available_samples, min_samples)
+        new_data, new_timestamps = streamer.read_data(samples)
+        # Expand data buffers if needed
+        if (self._scan_data.shape[0] - self._valid_samples) < samples:
+            self.__expand_data_buffers()
+        new_data = netobtain(new_data).reshape([samples, -1])
+        self._scan_data[self._valid_samples:self._valid_samples + samples, :] = new_data
+        if self._timestamps is not None:
+            new_timestamps = netobtain(new_timestamps)
+            self._timestamps[self._valid_samples:self._valid_samples + samples] = new_timestamps
+        return samples
 
-                try:
-                    n = self._streamer().available_samples if self._streamer().available_samples > 1 else 1
+    @staticmethod
+    def __convert_wavelength_frequency(data: np.ndarray) -> np.ndarray:
+        return _SPEED_OF_LIGHT / data
 
-                    raw_data_wavelength, raw_timings = self._streamer().read_data(samples_per_channel=n)
-                    raw_data_wavelength = netobtain(raw_data_wavelength)  # netobtain due to remote connection
-                    raw_timings = netobtain(raw_timings)
-                    # Above buffers as an option to save the raw wavemeter values
-                    if self._delay_time:
-                        raw_timings += self._delay_time
-                    # Here the interpolation is performed to match the counts onto wavelength
-                    if n == 1:
-                        wavemeter_data, new_timings = np.ones(samples_to_read_counts) * raw_data_wavelength, np.ones(
-                            samples_to_read_counts) * raw_timings
-                    else:
-                        arr_interp = interpolate.interp1d(raw_timings, raw_data_wavelength)
-                        new_timings = np.linspace(raw_timings[0],
-                                                  raw_timings[-1],
-                                                  samples_to_read_counts) if samples_to_read_counts > 1 else np.ones(
-                            1) * np.mean(raw_timings)
-                        wavemeter_data = arr_interp(new_timings)
+    def __calculate_alt_laser_axes(self, new_samples: int) -> None:
+        x_data = self._scan_data[
+                 self._valid_samples:self._valid_samples + new_samples, self._laser_ch_index
+                 ]
+        for axis_type, axis_data in self._alt_laser_axes.items():
+            converter = self.__laser_axis_converters[axis_type]
+            axis_data[self._valid_samples:self._valid_samples + new_samples] = converter(x_data)
 
-                    if len(wavemeter_data) != len(new_timings) != len(new_count_data) != samples_to_read_counts:
-                        self.log.error('Reading data from streamers went wrong; '
-                                       'stopping the stream.')
-                        self.stop_scanning()
-                        return
-
-                    # Process data
-                    self._process_data_for_histogram(wavemeter_data, new_count_data, new_timings)
-                    self._update_histogram(self.complete_histogram)
-
-                    # Emit update signal for Gui
-                    self.sigNewWavelength2.emit(self.wavelength[-1], self.frequency[-1])
-                    # only display self.number_of_displayed_points most recent values
-                    start = len(self.wavelength) - self.number_of_displayed_points if len(
-                        self.wavelength) > self.number_of_displayed_points else 0
-                    self.sigDataChanged.emit(self.timings[start:], self.counts[start:],
-                                             self.wavelength[start:], self.frequency[start:], self.histogram_axis,
-                                             self.histogram, self.envelope_histogram)
-
-                except TimeoutError as err:
-                    self.log.warning(f'Timeout error: {err}')
-                    self.stop_scanning()
-                    return
-
-                except Exception as e:
-                    self.log.warning(f'Reading data from streamer went wrong: {e}')
-                    self._time_series_logic.sigNewRawData.disconnect()
-                    self._stop_cleanup()
-                    return
-
-    def _process_data_for_histogram(self, data_wavelength, data_counts, data_wavelength_timings):
-        """Method for appending to whole data set of wavelength and counts (already interpolated)"""
-        data_freq = constants.speed_of_light / data_wavelength
-        for i in range(len(data_wavelength)):
-            self.wavelength.append(data_wavelength[i])
-            self.counts.append(data_counts[i])
-            self.timings.append(data_wavelength_timings[i])
-            self.frequency.append(data_freq[i])
-        return
-
-    def _update_histogram(self, complete_histogram):
-        """ Calculate new points for the histogram.
-        @param bool complete_histogram: should the complete histogram be recalculated, or just the
-                                                most recent data?
-        @return:
-        """
-        # reset data index
-        if complete_histogram:
-            self._data_index = 0
-            self.complete_histogram = False
-
+    def __calculate_histogram(self, new_samples: int) -> None:
+        """ Calculate new points for the histogram """
         # n+1-dimensional binning axis, to avoid empty bin when using np.digitize
-        offset = (self.histogram_axis[1] - self.histogram_axis[0]) / 2
-        binning_axis = np.linspace(self.histogram_axis[0] - offset, self.histogram_axis[-1] + offset,
-                                   len(self.histogram_axis) + 1)
+        offset = (self._histogram_range[1] - self._histogram_range[0]) / (self._histogram_bins - 1)
+        offset /= 2
+        binning = np.linspace(self._histogram_range[0] - offset,
+                              self._histogram_range[1] + offset,
+                              self._histogram_bins + 1)
+        # Distinguish between wavelength and frequency
+        wavelength_data = self._scan_data[
+                          self._valid_samples:self._valid_samples + new_samples,
+                          self._laser_ch_index
+                          ]
 
-        for i in self.wavelength[self._data_index:]:
-            self._data_index += 1  # before because of continue
-
-            if i < self._xmin:
-                self._xmin = i
-            if i > self._xmax:
-                self._xmax = i
-            if i < self._xmin_histo or i > self._xmax_histo or np.isnan(i):
+        for idx, wavelength in enumerate(wavelength_data, start=self._valid_samples):
+            if wavelength < self._histo_xmin:
+                self._histo_xmin = wavelength
+            if wavelength > self._histo_xmax:
+                self._histo_xmax = wavelength
+            if not (self._histogram_range[0] <= wavelength <= self._histogram_range[1]) or np.isnan(wavelength):
                 continue
 
             # calculate the bin the new wavelength needs to go in
-            newbin = np.digitize([i], binning_axis)[0]
-
-            # sum the counts in rawhisto and count the occurence of the bin in sumhisto
-            self.rawhisto[newbin - 1] += self.counts[self._data_index - 1]
-            self.sumhisto[newbin - 1] += 1.0
-
-            self.envelope_histogram[newbin - 1] = np.max(
-                [self.counts[self._data_index - 1], self.envelope_histogram[newbin - 1]])
+            # new_bin = np.digitize([wavelength], binning)[0] - 1
 
         # the plot data is the summed counts divided by the occurence of the respective bins
-        self.histogram = self.rawhisto / self.sumhisto
-        return
+        # self.histogram = self.rawhisto / self.sumhisto
+
+    def _measurement_loop_body(self) -> None:
+        """ This method is periodically called during a running measurement.
+        It pulls new data from hardware and processes it.
+        """
+        with self._threadlock:
+            # Abort condition
+            if self.module_state() != 'locked':
+                return
+
+            samples = self.__pull_new_data()
+            self.__calculate_alt_laser_axes(samples)
+            self.__calculate_histogram(samples)
+            self._valid_samples += samples
+            # Call this method again via event queue
+            self._sigNextDataFrame.emit()
 
     @QtCore.Slot()
-    def start_scanning(self):
-        """
-                Start data acquisition loop.
-                """
-
-        if self.module_state() == 'locked':
-            self.log.warning('Data acquisition already running. "start_scanning" call ignored.')
-            self.sigStatusChanged.emit(True)
-            return
-
-        if not self._time_series_logic.module_state() == 'locked':
-            self.log.warning('Time series data acquisition has to be running!')
-            self.sigStatusChanged.emit(False)
-            return
-
-        if not len(self._time_series_logic.active_channel_names) == 1:
-            self.log.warning('Number of channels of time series data acquisition has to be 1!')
-            self.sigStatusChanged.emit(False)
-            return
-
-        if len(self._streamer().active_channels) != 1:
-            self.log.warning('Only a single wavemeter channel supported.')
-            self.sigStatusChanged.emit(False)
-            return
-
-        constraints = self.streamer_constraints
-        unit = constraints.channel_units[self._streamer().active_channels[0]]
-        if unit != 'm':
-            self.log.warning('Make sure acquisition unit is m!')
-            self.sigStatusChanged.emit(False)
-            return
-
-        self.module_state.lock()
-
-        self.sigStatusChanged.emit(True)
-
-        if self._is_wavelength_displaying:
-            self.stop_displaying_current_wavelength()
-
-        self._time_series_logic.sigNewRawData.connect(
-            self._counts_and_wavelength, QtCore.Qt.QueuedConnection)
-
-        if not len(self.timings) == 0:
-            self._delay_time = self.timings[-1] + time.time() - self._start
-        self._streamer().start_stream()
-        return 0
+    def start_scanning(self) -> None:
+        """ Start data acquisition loop """
+        with self._threadlock:
+            streamer: DataInStreamInterface = self._streamer()
+            laser: Any = self._laser()
+            try:
+                if self.module_state() == 'locked':
+                    self.log.warning('Measurement already running. "start_scanning" call ignored.')
+                else:
+                    self.module_state.lock()
+                    try:
+                        # Reset data buffers
+                        self.__init_data_buffers()
+                        # Start laser scan and stream acquisition
+                        if laser is not None:
+                            if laser.module_state() == 'idle':
+                                laser.start_scan()
+                        if streamer.module_state() == 'idle':
+                            streamer.start_stream()
+                    except Exception:
+                        self.module_state.unlock()
+                        raise
+                    # Kick-off measurement loop
+                    self._sigNextDataFrame.emit()
+            finally:
+                self.sigStatusChanged.emit(self.module_state() == 'locked')
 
     @QtCore.Slot()
     def stop_scanning(self):
-        """
-                Send a request to stop counting.
-                """
-        if self.module_state() == 'locked':
+        """ Send a request to stop counting. """
+        with self._threadlock:
             try:
-                # disconnect to time series signal
-                self._time_series_logic.sigNewRawData.disconnect()
-
-                # terminate the hardware streaming device #TODO test with remote module
-                self._streamer().stop_stream()
-            except:
-                self.log.exception('Error while trying to stop stream reader:')
-                raise
+                self._stop_scanning()
             finally:
-                self._stop_cleanup()
-        return 0
+                self.sigStatusChanged.emit(self.module_state() == 'locked')
 
-    def _stop_cleanup(self) -> None:
-        # save start_time information of high finesse wavemeter
-        self.module_state.unlock()
-        self._start = time.time()
-        self.sigStatusChanged.emit(False)
-        self._trace_data = np.vstack(((self.timings, self.counts), (self.wavelength, self.frequency)))
+    def _stop_scanning(self):
+        if self.module_state() == 'locked':
+            streamer: DataInStreamInterface = self._streamer()
+            laser = self._laser()
+            try:
+                # stop streamer and laser
+                streamer.stop_stream()
+            finally:
+                try:
+                    if laser is not None:
+                        laser.stop_scan()
+                finally:
+                    self.module_state.unlock()
 
     def get_max_wavelength(self):
         """ Current maximum wavelength of the scan.
@@ -382,7 +405,6 @@ class WavemeterLogic(LogicBase):
             self._sigNextWavelength.emit()
         except Exception as e:
             self.log.warning(f'Reading data from streamer went wrong: {e}')
-            self._stop_flag = True
             self.sigStatusChangedDisplaying.emit()
             return
 
@@ -433,7 +455,7 @@ class WavemeterLogic(LogicBase):
         return self._fit_config_model
 
     def get_fit_container(self) -> FitContainer:
-        # with self.threadlock:
+        # with self._threadlock:
         return self._get_fit_container()
 
     def _get_fit_container(self) -> FitContainer:
@@ -444,7 +466,7 @@ class WavemeterLogic(LogicBase):
 
         @param str fit_config: name of the fit. Must match a fit configuration in fit_config_model.
         """
-        with self.threadlock:
+        with self._threadlock:
             valid_fit_configs = self._fit_config_model.configuration_names
             if (fit_config != 'No Fit') and (fit_config not in valid_fit_configs):
                 raise ValueError(f'Unknown fit configuration "{fit_config}" encountered. '
@@ -472,7 +494,7 @@ class WavemeterLogic(LogicBase):
         return fit_results
 
     def get_fit_results(self) -> Tuple[str, Dict[str, Union[None, _ModelResult]]]:
-        # with self.threadlock:
+        # with self._threadlock:
         return self._get_fit_results()
 
     def _get_fit_results(self) -> Tuple[str, Dict[str, Union[None, _ModelResult]]]:
@@ -487,7 +509,7 @@ class WavemeterLogic(LogicBase):
         @return str: file path the data was saved to
         """
         self._trace_data = np.vstack(((self.timings, self.counts), (self.wavelength, self.frequency)))
-        with self.threadlock:
+        with self._threadlock:
             return self._save_data(postfix, root_dir)
 
     def _save_data(self, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> str:
