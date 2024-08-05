@@ -5,7 +5,10 @@
 ### Breaking Changes
 
 ### Bugfixes
+- Now correct microwave phases in predefined method generate_hahnecho_exp()
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
+- Old ODMR fits are now removed when starting a new measurement
+
 
 ### New Features
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
@@ -13,7 +16,6 @@
 - Expanded documentation of the microwave interface
 
 ### Bugfixes
-- Old ODMR fits are now removed when starting a new measurement
 
 ### Other
 
