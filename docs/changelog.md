@@ -11,7 +11,7 @@
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 - Improved support for Stanford Research Systems signal generators
 - Expanded documentation of the microwave interface
-- Added option to specify custom save file name in scanning GUI
+- Added option to specify custom save file name in scanning GUI (PR #148)
 
 ### Bugfixes
 - Old ODMR fits are now removed when starting a new measurement
