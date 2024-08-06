@@ -33,6 +33,7 @@ from qudi.util.widgets.plotting.plot_item import XYPlotItem
 from qudi.util.widgets.plotting.interactive_curve import CursorPositionLabel
 from qudi.util.paths import get_artwork_dir
 from qudi.interface.scanning_probe_interface import ScanData, ScannerAxis, ScannerChannel
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
 class _BaseScanWidget(QtWidgets.QWidget):
@@ -77,12 +78,23 @@ class _BaseScanWidget(QtWidgets.QWidget):
             QtWidgets.QComboBox.AdjustToContentsOnFirstShow
         )
 
+        # Create QLineEdit for save tag
+        self.save_nametag_lineedit = QtWidgets.QLineEdit()
+        self.save_nametag_lineedit.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                                 QtWidgets.QSizePolicy.Fixed)
+        self.save_nametag_lineedit.setMinimumWidth(
+            QtGui.QFontMetrics(ScienDSpinBox().font()).width(75 * ' ')  # roughly 75 chars shown
+        )
+        self.save_nametag_lineedit.setToolTip('Enter a nametag to include in saved file name')
+
         layout.addWidget(self.toggle_scan_button, 0, 0)
         layout.addWidget(self.save_scan_button, 0, 1)
-        layout.addWidget(self.channel_selection_label, 0, 2)
-        layout.addWidget(self.channel_selection_combobox, 0, 3)
+        layout.addWidget(self.save_nametag_lineedit, 0, 2)
+        layout.addWidget(self.channel_selection_label, 0, 3)
+        layout.addWidget(self.channel_selection_combobox, 0, 4)
         layout.setColumnStretch(2, 1)
         layout.setColumnStretch(3, 1)
+        layout.setColumnStretch(4, 1)
 
         self._scan_data = None
 
@@ -113,7 +125,7 @@ class Scan1DWidget(_BaseScanWidget):
         self.plot_widget.setLabel('bottom', text=axes[0].name.title(), units=axes[0].unit)
         self.plot_widget.setLabel('left', text=channels[0].name, units=channels[0].unit)
 
-        self.layout().addWidget(self.plot_widget, 1, 0, 1, 4)
+        self.layout().addWidget(self.plot_widget, 1, 0, 1, 5)
 
         # disable buggy pyqtgraph 'Export..' context menu
         self.plot_widget.getPlotItem().vb.scene().contextMenu[0].setVisible(False)
@@ -234,8 +246,8 @@ class Scan2DWidget(_BaseScanWidget):
         self.image_widget.set_axis_label('left', label=axes[1].name.title(), unit=axes[1].unit)
         self.image_widget.set_data_label(label=channels[0].name, unit=channels[0].unit)
 
-        self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
-        self.layout().addWidget(self.position_label, 2, 0, 1, 4)
+        self.layout().addWidget(self.image_widget, 1, 0, 1, 5)
+        self.layout().addWidget(self.position_label, 2, 0, 1, 5)
 
         # disable buggy pyqtgraph 'Export..' context menu
         self.image_widget.plot_widget.getPlotItem().vb.scene().contextMenu[0].setVisible(False)
