@@ -222,7 +222,7 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             label.setFont(font)
             label.setAlignment(QtCore.Qt.AlignCenter)
             layout.addWidget(label, 0, i + 1)
-            if '=' in label_text or 'Back' in label_text and BackScanCapability.AVAILABLE not in self._back_scan_capability:
+            if ('=' in label_text or 'Back' in label_text) and BackScanCapability.AVAILABLE not in self._back_scan_capability:
                 label.hide()
 
         for index, axis in enumerate(scanner_axes, 1):
