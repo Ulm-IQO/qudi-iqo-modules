@@ -74,6 +74,10 @@ class LaserScanningLogic(LogicBase):
             raise ValueError(f'Number of histogram bins must be >= 3 but received "{value:d}"')
         return value
 
+    @staticmethod
+    def _convert_wavelength_frequency(data: np.ndarray) -> np.ndarray:
+        return _SPEED_OF_LIGHT / data
+
     # declare signals
     sigDataChanged = QtCore.Signal(object, object, object, object, object, object, object)
     sigStatusChanged = QtCore.Signal(bool)
@@ -103,6 +107,11 @@ class LaserScanningLogic(LogicBase):
                                      default=200,
                                      constructor=__construct_histogram_bins)
 
+    _laser_axis_converters = {
+        AxisType.WAVELENGTH: _convert_wavelength_frequency,
+        AxisType.FREQUENCY : _convert_wavelength_frequency
+    }
+
     def __init__(self, *args, **kwargs):
         """
         """
@@ -119,28 +128,19 @@ class LaserScanningLogic(LogicBase):
 
         # raw data
         self._scan_data: np.ndarray = np.empty(0)
+        self._laser_data: Dict[AxisType, np.ndarray] = dict()
         self._timestamps: Union[None, np.ndarray] = None
         self._valid_samples: int = 0
-        self._alt_laser_axes: Dict[AxisType, np.ndarray] = dict()
-        self.__laser_axis_converters: Dict[AxisType, Callable[[np.ndarray], np.ndarray]] = dict()
-        self._laser_channel_type: AxisType = None
+        # min, max (changes on each iteration)
+        self._laser_range: Dict[AxisType, List[float]] = dict()
 
         # histogram data
-        self._histo_xmin: float = np.inf  # _xmin
-        self._histo_xmax: float = -np.inf  # _xmax
-        self._histogram_data: np.ndarray = None
-
-
-        self.x_axis_hz_bool = False  # by default display wavelength
-        self._is_wavelength_displaying = False
-        self._delay_time = None
-
-        # Data arrays #timings, counts, wavelength, wavelength in Hz
-        self._trace_data = np.empty((4, 0), dtype=np.float64)
-        self.timings = []
-        self.counts = []
-        self.wavelength = []
-        self.frequency = []
+        self._histogram_data: np.ndarray = np.empty(0)
+        self._histogram_axis: np.ndarray = np.empty(0)
+        self._histogram_envelope: np.ndarray = np.empty(0)
+        self.__binning: np.ndarray = np.empty(0)
+        self.__rawhisto: np.ndarray = np.empty(0)
+        self.__sumhisto: np.ndarray = np.empty(0)
 
     def on_activate(self):
         if self._laser_channel not in self.streamer_constraints.channel_units:
@@ -149,17 +149,8 @@ class LaserScanningLogic(LogicBase):
 
         # Initialize data fitting
         self._fit_container = FitContainer(config_model=self._fit_config_model)
+        self._fit_histogram = False
         self._last_fit_result = None
-
-        # Alternative axis settings. Assume frequency laser axis if unit is not in meters.
-        self.__laser_axis_converters = {
-            AxisType.WAVELENGTH: self.__convert_wavelength_frequency,
-            AxisType.FREQUENCY : self.__convert_wavelength_frequency
-        }
-        if self.streamer_constraints.channel_units[self._laser_channel].lower() == 'm':
-            self._laser_channel_type = AxisType.WAVELENGTH
-        else:
-            self._laser_channel_type = AxisType.FREQUENCY
 
         # initialize all data arrays
         self.__init_data_buffers()
@@ -192,18 +183,36 @@ class LaserScanningLogic(LogicBase):
         streamer: DataInStreamInterface = self._streamer()
         dtype = streamer.constraints.data_type
         self._valid_samples = 0
-        # data buffer
-        self._scan_data = np.empty([init_samples, len(streamer.active_channels)], dtype=dtype)
+        self._laser_range = {
+            axis_type: [np.inf, -np.inf] for axis_type in self._laser_axis_converters
+        }
+        # data buffers
+        self._scan_data = np.empty([init_samples, len(streamer.active_channels) - 1], dtype=dtype)
+        self._laser_data = {axis_type: np.empty(init_samples, dtype=dtype) for axis_type in
+                            self._laser_axis_converters}
         # timestamps buffer
         if streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
             self._timestamps = np.empty(init_samples, dtype=np.float64)
         else:
             self._timestamps = None
-        # Alternative axis buffer
-        if self._laser_channel_type == AxisType.WAVELENGTH:
-            self._alt_laser_axes = {AxisType.FREQUENCY, np.empty(init_samples, dtype=dtype)}
-        else:
-            self._alt_laser_axes = {AxisType.WAVELENGTH, np.empty(init_samples, dtype=dtype)}
+
+    def __init_histogram(self) -> None:
+        self._histogram_axis = np.linspace(*self._histogram_range, self._histogram_bins,
+                                           dtype=np.float64)
+        self._histogram_data = np.zeros([self._histogram_bins, self._scan_data.shape[1]],
+                                        dtype=np.float64)
+        self._histogram_envelope = np.zeros([self._histogram_bins, self._scan_data.shape[1]],
+                                            dtype=np.float64)
+        # n+1-dimensional binning axis, to avoid empty bin when using np.digitize
+        offset = (self._histogram_range[1] - self._histogram_range[0]) / (self._histogram_bins - 1)
+        offset /= 2
+        self.__binning = np.linspace(self._histogram_range[0] - offset,
+                                     self._histogram_range[1] + offset,
+                                     self._histogram_bins + 1)
+        # working arrays for histogram
+        self.__rawhisto = np.zeros([self._histogram_bins, self._scan_data.shape[1]],
+                                   dtype=np.float64)
+        self.__sumhisto = np.zeros(self._bins, dtype=np.int64)
 
     def __expand_data_buffers(self) -> None:
         """ Double the existing data buffers """
@@ -213,11 +222,11 @@ class LaserScanningLogic(LogicBase):
         new_scan_data = np.empty(new_shape, dtype=self._scan_data.dtype)
         new_scan_data[:self._valid_samples, :] = self._scan_data[:self._valid_samples, :]
         self._scan_data = new_scan_data
-        # Expand alternative axis buffers
-        for typ, axis in self._alt_laser_axes.items():
-            new_axis = np.empty(axis.size * factor, dtype=axis.dtype)
-            new_axis[:self._valid_samples] = axis[:self._valid_samples]
-            self._alt_laser_axes[typ] = new_axis
+        # Expand laser data buffers
+        for axis_type, laser_data in self._laser_data.items():
+            new_data = np.empty(laser_data.size * factor, dtype=laser_data.dtype)
+            new_data[:self._valid_samples] = laser_data[:self._valid_samples]
+            self._laser_data[axis_type] = new_data
         # Expand timestamps buffer
         if self._timestamps is not None:
             new_timestamps = np.empty(self._timestamps.size * factor, dtype=self._timestamps.dtype)
@@ -233,56 +242,67 @@ class LaserScanningLogic(LogicBase):
         sample_rate = streamer.sample_rate
         min_samples = max(1, int(math.ceil(sample_rate / self._max_update_rate)))
         samples = max(streamer.available_samples, min_samples)
+        end_index = self._valid_samples + samples
         new_data, new_timestamps = streamer.read_data(samples)
         # Expand data buffers if needed
         if (self._scan_data.shape[0] - self._valid_samples) < samples:
             self.__expand_data_buffers()
         new_data = netobtain(new_data).reshape([samples, -1])
-        self._scan_data[self._valid_samples:self._valid_samples + samples, :] = new_data
+        # efficient slicing for laser data at boundaries
+        scan_data_buf = self._scan_data[self._valid_samples:end_index, :]
+        if self._laser_ch_index == 0:
+            scan_data_buf[:, :] = new_data[:, 1:]
+        elif self._laser_ch_index == self._scan_data.shape[1]:
+            scan_data_buf[:, :] = new_data[:, :-1]
+        else:
+            scan_data_buf[:, :self._laser_ch_index] = new_data[:, :self._laser_ch_index]
+            scan_data_buf[:, self._laser_ch_index:] = new_data[:, self._laser_ch_index+1:]
+        laser_data_buf = self._laser_data[self._laser_channel_type]
+        laser_data_buf[self._valid_samples:end_index] = new_data[:, self._laser_ch_index]
         if self._timestamps is not None:
             new_timestamps = netobtain(new_timestamps)
             self._timestamps[self._valid_samples:self._valid_samples + samples] = new_timestamps
         return samples
 
-    @staticmethod
-    def __convert_wavelength_frequency(data: np.ndarray) -> np.ndarray:
-        return _SPEED_OF_LIGHT / data
-
-    def __calculate_alt_laser_axes(self, new_samples: int) -> None:
-        x_data = self._scan_data[
-                 self._valid_samples:self._valid_samples + new_samples, self._laser_ch_index
-                 ]
-        for axis_type, axis_data in self._alt_laser_axes.items():
-            converter = self.__laser_axis_converters[axis_type]
-            axis_data[self._valid_samples:self._valid_samples + new_samples] = converter(x_data)
+    def __calculate_laser_data(self, new_samples: int) -> None:
+        end_index = self._valid_samples + new_samples
+        orig_data = self._laser_data[self._laser_channel_type][self._valid_samples:end_index]
+        orig_range = self._laser_range[self._laser_channel_type]
+        orig_range[0] = min(orig_range[0], orig_data.min())
+        orig_range[1] = max(orig_range[1], orig_data.max())
+        for axis_type, laser_data in self._laser_data.items():
+            if axis_type != self._laser_channel_type:
+                converter = self._laser_axis_converters[axis_type]
+                laser_data[self._valid_samples:end_index] = converter(orig_data)
+                laser_range = self._laser_range[axis_type]
+                laser_range[0] = min(laser_range[0],
+                                     laser_data[self._valid_samples:end_index].min())
+                laser_range[1] = max(laser_range[1],
+                                     laser_data[self._valid_samples:end_index].max())
 
     def __calculate_histogram(self, new_samples: int) -> None:
         """ Calculate new points for the histogram """
-        # n+1-dimensional binning axis, to avoid empty bin when using np.digitize
-        offset = (self._histogram_range[1] - self._histogram_range[0]) / (self._histogram_bins - 1)
-        offset /= 2
-        binning = np.linspace(self._histogram_range[0] - offset,
-                              self._histogram_range[1] + offset,
-                              self._histogram_bins + 1)
-        # Distinguish between wavelength and frequency
-        wavelength_data = self._scan_data[
-                          self._valid_samples:self._valid_samples + new_samples,
-                          self._laser_ch_index
-                          ]
-
-        for idx, wavelength in enumerate(wavelength_data, start=self._valid_samples):
-            if wavelength < self._histo_xmin:
-                self._histo_xmin = wavelength
-            if wavelength > self._histo_xmax:
-                self._histo_xmax = wavelength
-            if not (self._histogram_range[0] <= wavelength <= self._histogram_range[1]) or np.isnan(wavelength):
-                continue
-
-            # calculate the bin the new wavelength needs to go in
-            # new_bin = np.digitize([wavelength], binning)[0] - 1
-
-        # the plot data is the summed counts divided by the occurence of the respective bins
-        # self.histogram = self.rawhisto / self.sumhisto
+        end_index = self._valid_samples + new_samples
+        # ToDo: Distinguish between wavelength and frequency
+        scan_data = self._scan_data[self._valid_samples:end_index, :]
+        laser_data = self._laser_data[self._laser_channel_type][self._valid_samples:end_index]
+        # create data mask for sample outside histogram range
+        mask = np.logical_and(laser_data >= self._histogram_range[0],
+                              laser_data <= self._histogram_range[1])
+        laser_data = laser_data[mask]
+        scan_data = scan_data[mask]
+        # occurrences = np.histogram(laser_data, self.__binning)[0]
+        bin_indices = np.digitize(laser_data, self.__binning)
+        bin_indices -= 1
+        for sample_index, bin_index in enumerate(bin_indices):
+            self.__sumhisto[bin_index] += 1
+            tmp = scan_data[sample_index, :] - self._histogram_data[bin_index, :]
+            tmp /= self.__sumhisto[bin_index]
+            self._histogram_data[bin_index, :] += tmp
+            self._histogram_envelope[bin_index, :] = np.max(
+                [scan_data[sample_index, :], self._histogram_envelope[bin_index, :]],
+                axis=0
+            )
 
     def _measurement_loop_body(self) -> None:
         """ This method is periodically called during a running measurement.
@@ -294,7 +314,7 @@ class LaserScanningLogic(LogicBase):
                 return
 
             samples = self.__pull_new_data()
-            self.__calculate_alt_laser_axes(samples)
+            self.__calculate_laser_data(samples)
             self.__calculate_histogram(samples)
             self._valid_samples += samples
             # Call this method again via event queue
