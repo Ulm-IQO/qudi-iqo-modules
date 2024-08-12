@@ -10,20 +10,26 @@
 
 ### Bugfixes
 - Improve handling of errors during start of a scan in the scanning probe toolchain.
+- Now correct microwave phases in predefined method generate_hahnecho_exp()
+- "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
+- Old ODMR fits are now removed when starting a new measurement
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
 - Checkers and clipping methods added to `qudi.interface.scanning_probe_interface.Constraints`
 - Data classes of the scanning probe interface now have an improved hierarchy
   (e.g. `ScanData` contains `ScanSettings`).
-- Improved support for Stanford Research Systems signal generators
 - Improved scanning probe dummy: new image generator class, more realistic forward and backward scan simulation.
 - Major refactoring of scanning probe toolchain, including scanning probe logic, optimizer logic and gui modules.
   Implementation of configurable backward scans.
 - Add widgets to configure back scan resolution and frequency from scanning GUI.
 - Add config option to save backward scan data to scanning data logic.
-- NFiniteSamplingInput supporting both trigger polarities via ConfigOption
+- Get current sweeps and runtime of fastcomtec fastcounter MCS6 when pulling the data trace. 
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
+- Improved support for Stanford Research Systems signal generators
+- Expanded documentation of the microwave interface
+
+
 
 ### Other
 
@@ -43,6 +49,7 @@ Configuration for time series toolchain needs changes as well. See `default.cfg`
 docstrings.
 
 ### Bugfixes
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Basic data saving in `TimeSeriesReaderLogic` works now.
 - Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
 - Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle
