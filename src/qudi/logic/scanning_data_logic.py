@@ -293,12 +293,13 @@ class ScanningDataLogic(LogicBase):
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
                 return
 
-            if scan_data is None:
-                raise ValueError('Unable to save 2D scan. No data available.')
-
             self.sigSaveStateChanged.emit(True)
             self.module_state.lock()
             try:
+                if scan_data is None:
+                    self.log.error('Unable to save 2D scan. No data available.')
+                    raise ValueError('Unable to save 2D scan. No data available.')
+
                 ds = TextDataStorage(root_dir=self.module_default_data_dir)
                 timestamp = datetime.datetime.now()
 
