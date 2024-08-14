@@ -61,7 +61,7 @@ class AnalyzerSettings(ABC):
 
 @dataclass
 class FourierAnalyzerSettings(AnalyzerSettings):
-    name: str = "Fourier"
+    name: str = "default"
     range_around_peak: int = 30
     padding_parameter: int = 1
     cut_time_trace: bool = False
