@@ -37,7 +37,12 @@ from qudi.logic.qdyne.qdyne_fit import QdyneFit
 from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
+from qudi.interface.qdyne_counter_interface import GateMode
+
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
+from logging import getLogger
+
+_logger = getLogger(__name__)
 
 
 class MeasurementGenerator:
@@ -49,12 +54,11 @@ class MeasurementGenerator:
         self.pulsedmasterlogic = pulsedmasterlogic
         self.qdyne_logic = qdyne_logic
 
+        self.__active_channels = self.qdyne_logic._data_streamer().active_channels
         self.__binwidth = self.qdyne_logic._data_streamer().binwidth
         self.__record_length = self.qdyne_logic._data_streamer().record_length
-        self.__active_channels = self.qdyne_logic._data_streamer().active_channels
         self.__gate_mode = self.qdyne_logic._data_streamer().gate_mode
-        self.__buffer_size = self.qdyne_logic._data_streamer().buffer_size
-        self.__number_of_gates = self.qdyne_logic._data_streamer().number_of_gates
+        self.__data_type = self.qdyne_logic._data_streamer().data_type
 
     def generate_predefined_sequence(self, method_name, param_dict, sample_and_load):
         self.pulsedmasterlogic().generate_predefined_sequence(
@@ -64,7 +68,7 @@ class MeasurementGenerator:
     def set_generation_parameters(self, settings_dict):
         self.pulsedmasterlogic().set_generation_parameters(settings_dict)
 
-    def set_fast_counter_settings(self, settings_dict=None, **kwargs):
+    def set_counter_settings(self, settings_dict=None, **kwargs):
         """
         Either accepts a settings dictionary as positional argument or keyword arguments.
         If both are present, both are being used by updating the settings_dict with kwargs.
@@ -93,48 +97,66 @@ class MeasurementGenerator:
             if "active_channels" in settings_dict:
                 self.__active_channels = settings_dict["active_channels"]
             if "gate_mode" in settings_dict:
-                self.__gate_mode = int(settings_dict["gate_mode"])
-            if "buffer_size" in settings_dict:
-                self.__buffer_size = int(settings_dict["buffer_size"])
-            if "number_of_gates" in settings_dict:
-                if self.qdyne_logic._data_streamer().gate_mode:
-                    self.__number_of_gates = int(settings_dict["number_of_gates"])
-                else:
-                    self.__fast_counter_gates = 0
+                self.__gate_mode = GateMode(int(settings_dict["gate_mode"]))
+            if "data_type" in settings_dict:
+                self.__data_type = settings_dict["data_type"]
 
             # Set settings in pulsed to update to qdyne settings
             settings = {
                 "bin_width": self.__binwidth,
                 "record_length": self.__record_length,
-                "number_of_gates": self.__number_of_gates,
+                "number_of_gates": 0,
             }
-            self.pulsedmasterlogic().set_fast_counter_settings(settings)
-
-            # Apply the settings to hardware
-            # TODO: Should we return the set values, similar to the fastcounter toolchain?
-            # self.__binwidth,
-            # self.__record_length, \
-            # self.__active_channels, \
-            # self.__gate_mode, \
-            # self.__buffer_size, \
-            # self.__number_of_gates =
             self.qdyne_logic._data_streamer().configure(
+                self.__active_channels,
                 self.__binwidth,
                 self.__record_length,
-                self.__active_channels,
-                self.__gate_mode,
-                self.__buffer_size,
-                self.__number_of_gates,
+                self.__gate_mode.value,
+                self.__data_type,
             )
         else:
-            self.log.warning(
-                "Fast counter is not idle (status: {0}).\n"
+            _logger.warn(
+                "Qdyne counter is not idle (status: {0}).\n"
                 "Unable to apply new settings.".format(counter_status)
             )
-        return  # self.fast_counter_settings
+        return
 
     def set_measurement_settings(self, settings_dict):
         self.pulsedmasterlogic().set_measurement_settings(settings_dict)
+
+    def check_counter_record_length_constraint(self, record_length: float):
+        record_length_constraint = self.counter_constraints.record_length
+        if not record_length_constraint.is_valid(record_length):
+            try:
+                record_length_constraint.check_value_type(record_length)
+                record_length_constraint.check_value_range(record_length)
+            except TypeError:
+                record_length = self.__record_length
+                self.qdyne_logic.log.error(f'Record length is not of correct type. Keep record length {self.__record_length}s.')
+            except ValueError:
+                record_length = record_length_constraint.clip(record_length)
+                self.qdyne_logic.log.error(f'Record length out of bounds. Clipping to bound {record_length}s.')
+        return record_length
+
+    def check_counter_binwidth_constraint(self, binwidth: float):
+        binwidth_constraint = self.counter_constraints.binwidth
+        if not binwidth_constraint.is_valid(binwidth):
+            try:
+                binwidth_constraint.check_value_type(binwidth)
+                binwidth_constraint.check_value_range(binwidth)
+            except TypeError:
+                binwidth = self.__binwidth
+                self.qdyne_logic.log.error(f'Binwidth is not of correct type. Keep binwidth {self.__binwidth}s.')
+            except ValueError:
+                binwidth = binwidth_constraint.clip(binwidth)
+                self.qdyne_logic.log.error(f'Binwidth out of bounds. Clipping to bound {binwidth}s.')
+            try:
+                binwidth_constraint.check_custom(binwidth)
+            except ValueError:
+                binwidth = binwidth_constraint.increment * round(binwidth / binwidth_constraint.increment)
+                self.qdyne_logic.log.warning(f'Binwidth does not match increment condition of hardware.'
+                                             f'Set closest allowed binwidth {binwidth}s.')
+        return binwidth
 
     @property
     def status_dict(self):
@@ -149,8 +171,20 @@ class MeasurementGenerator:
         return self.pulsedmasterlogic().measurement_settings
 
     @property
-    def fast_counter_settings(self):
-        return self.pulsedmasterlogic().fast_counter_settings
+    def counter_settings(self):
+        settings_dict = dict()
+        settings_dict["bin_width"] = float(self.qdyne_logic._data_streamer().binwidth)
+        settings_dict["record_length"] = float(
+            self.qdyne_logic._data_streamer().record_length
+        )
+        settings_dict["number_of_gates"] = int(
+            self.qdyne_logic._data_streamer().number_of_gates
+        )
+        settings_dict["is_gated"] = bool(
+            self.qdyne_logic._data_streamer().gate_mode.value
+        )
+        self.qdyne_logic.log.warn(f"{settings_dict=}")
+        return settings_dict
 
     @property
     def loaded_asset(self):
@@ -173,8 +207,8 @@ class MeasurementGenerator:
         return self.pulsedmasterlogic().generate_methods
 
     @property
-    def fast_counter_constraints(self):
-        return self.pulsedmasterlogic().fast_counter_constraints
+    def counter_constraints(self):
+        return self.qdyne_logic._data_streamer().constraints()
 
 
 class QdyneLogic(LogicBase):
@@ -264,7 +298,7 @@ class QdyneLogic(LogicBase):
         #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
-            self.measurement_generator.set_fast_counter_settings(
+            self.measurement_generator.set_counter_settings(
                 self._measurement_generator_dict
             )
             self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
@@ -299,9 +333,7 @@ class QdyneLogic(LogicBase):
         return
 
     def _save_status_variables(self):
-        self._measurement_generator_dict = (
-            self.measurement_generator.fast_counter_settings
-        )
+        self._measurement_generator_dict = self.measurement_generator.counter_settings
         self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
         self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
 

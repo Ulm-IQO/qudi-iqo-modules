@@ -109,7 +109,7 @@ class QdyneMeasurement(QtCore.QObject):
         fname = timestamp + fname if fname else timestamp
         # self.qdyne_logic._data_streamer().change_filename(fname)
         self.data.raw_data = list()
-        self.qdyne_logic.measurement_generator.set_fast_counter_settings(None)
+        self.qdyne_logic.measurement_generator.set_counter_settings(None)
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         self.sigStartTimer.emit()

@@ -24,6 +24,7 @@ import copy
 from inspect import Attribute
 import time
 import os
+from PySide2.QtGui import QStandardItem, QStandardItemModel
 import pyqtgraph as pg
 import numpy as np
 from PySide2 import QtCore, QtWidgets
@@ -186,6 +187,8 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         )
         self.plot1_PlotWidget.addItem(self.signal_image)
         self.plot1_PlotWidget.showGrid(x=True, y=True, alpha=0.8)
+        self.plot1_PlotWidget.setLabel(axis="bottom", text="frequency", units="Hz")
+        self.plot1_PlotWidget.setLabel(axis="left", text="signal", units="")
 
         # Configure the fit of the data in the signal display:
         self.fit_image = pg.PlotDataItem(pen=palette.c3)
@@ -197,6 +200,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         )
 
         self.plot1_fitwidget.link_fit_container(self._logic.fit.fit_container)
+        self.model = QStandardItemModel()
 
     def _activate_plot2_widget(self):
         # Configure the second signal plot display:
@@ -243,22 +247,24 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
     def get_peaks(self):
         self.freq_data.get_peaks()
-        self.current_peak_comboBox.clear()
-        peak_str_list = [str(peak) for peak in self.freq_data.peaks]
-        self.current_peak_comboBox.addItems(peak_str_list)
+        self.model.clear()
+        for peak in self.freq_data.peaks:
+            item = QStandardItem(str(self.freq_data.x[peak]))
+            item.setData(peak)
+            self.model.appendRow(item)
+
+        self.current_peak_comboBox.setModel(self.model)
 
     def update_spectrum(self):
         if self.current_peak_comboBox.currentText():
-            self.freq_data.current_peak = int(self.current_peak_comboBox.currentText())
+            self.freq_data.current_peak = self.model.item(
+                self.current_peak_comboBox.currentIndex()
+            ).data()
             self.freq_data.range_index = self.range_spinBox.value()
             spectrum = self.freq_data.data_around_peak
-            logger.warn("adding image data")
             self.signal_image.setData(x=spectrum[0], y=spectrum[1])
-            logger.warn("clearing plot")
             self.plot1_PlotWidget.clear()
-            logger.warn("adding item")
             self.plot1_PlotWidget.addItem(self.signal_image)
-            logger.warn("update spectrum finished")
 
     def data_updated(self):
         self.range_spinBox.setMaximum(self.freq_data.x.size)
