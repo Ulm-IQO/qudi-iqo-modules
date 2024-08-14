@@ -14,6 +14,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+import os
 from os import stat
 import numpy as np
 import time
@@ -21,6 +22,7 @@ from collections import OrderedDict
 from PySide2 import QtCore
 import datetime
 
+from qudi.util.paths import get_userdata_dir
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -228,6 +230,10 @@ class QdyneLogic(LogicBase):
     pulsedmasterlogic = Connector(interface="PulsedMasterLogic")
     _data_streamer = Connector(name="data_streamer", interface="QdyneCounterInterface")
 
+    _settings_storage_dir = ConfigOption(name='settings_storage_dir',
+                                         default=os.path.join(get_userdata_dir(), r'settings\qdyne_settings'),
+                                         missing='nothing')
+
     # declare config options
     estimator_method = ConfigOption(
         name="estimator_method", default="TimeTag", missing="warn"
@@ -279,7 +285,7 @@ class QdyneLogic(LogicBase):
             self.data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
-            self.settings = QdyneSettings()
+            self.settings = QdyneSettings(self._settings_storage_dir)
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )
@@ -298,16 +304,21 @@ class QdyneLogic(LogicBase):
         #            self.fitting = QdyneFittingMain()
 
         def initialize_settings():
+            if not os.path.exists(self._settings_storage_dir):
+                os.makedirs(self._settings_storage_dir)
+
             self.measurement_generator.set_counter_settings(
                 self._measurement_generator_dict
             )
-            self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
+            # self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
+            self.settings.estimator_stg.initialize_settings()
             self.settings.estimator_stg.current_stg_name = (
                 self._current_estimator_stg_name
             )
             self.settings.estimator_stg.current_method = self._current_estimator_method
 
-            self.settings.analyzer_stg.initialize_settings(self._analyzer_stg_dict)
+            # self.settings.analyzer_stg.initialize_settings(self._analyzer_stg_dict)
+            self.settings.analyzer_stg.initialize_settings()
             self.settings.analyzer_stg.current_stg_name = (
                 self._current_analyzer_stg_name
             )
@@ -334,8 +345,10 @@ class QdyneLogic(LogicBase):
 
     def _save_status_variables(self):
         self._measurement_generator_dict = self.measurement_generator.counter_settings
-        self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
-        self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
+        # self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
+        # self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
+        self.settings.estimator_stg.save_settings()
+        self.settings.analyzer_stg.save_settings()
 
     def input_estimator_method(self):
         self.estimator.method = self.settings.estimator_stg.current_method

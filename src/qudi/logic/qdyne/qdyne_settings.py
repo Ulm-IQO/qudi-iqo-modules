@@ -17,6 +17,8 @@ If not, see <https://www.gnu.org/licenses/>.
 from dataclasses import asdict
 import inspect
 import sys
+import os
+import pickle
 import copy
 
 from PySide2 import QtCore
@@ -56,18 +58,21 @@ def get_method_name(subclass_obj, class_obj):
 
 
 class QdyneSettings:
-    def __init__(self):
-        self.estimator_stg = SettingsManager(StateEstimatorSettings)
-        self.analyzer_stg = SettingsManager(AnalyzerSettings)
+    def __init__(self, settings_dir):
+        self.estimator_stg = SettingsManager(StateEstimatorSettings,
+                                             os.path.join(settings_dir, 'estimator_stg.pickle'))
+        self.analyzer_stg = SettingsManager(AnalyzerSettings,
+                                            os.path.join(settings_dir, 'analyzer_stg.pickle'))
         self.data_manager_stg = DataManagerSettings()
 
 
 class SettingsManager:
-    def __init__(self, abstract_class_obj=None):
+    def __init__(self, abstract_class_obj=None, save_path=None):
         self.abstract_class_obj = abstract_class_obj
         self.settings_dict = dict()  # [setting_class][setting_name]
         self.current_method = ""
         self.current_stg_name = ""
+        self.save_path = save_path
         self.log = get_logger(__name__)
 
     def create_default_settings_dict(self):
@@ -79,39 +84,19 @@ class SettingsManager:
             default_settings_dict[method_name] = {setting.name: setting()}
         return default_settings_dict
 
-    def initialize_settings(self, settings_dict):
-        if any(settings_dict):
-            self.settings_dict = self.load_settings(settings_dict)
+    def initialize_settings(self):
+        if os.path.exists(self.save_path):
+            self.load_settings()
         else:
             self.settings_dict = self.create_default_settings_dict()
 
-    def load_settings(self, dict_tabledict):
-        dataclass_tabledict = dict()
-        for method_key in dict_tabledict.keys():
-            dataclass_dict = dict()
-            dict_dict = dict_tabledict[method_key]
-            for setting_key in dict_dict.keys():
-                stg_dict = dict_dict[setting_key]
-                class_name = stg_dict["__class__"]
-                stg_dict.pop("__class__", None)
-                stg_dataclass = globals()[class_name](**stg_dict)
-                dataclass_dict[setting_key] = stg_dataclass
-            dataclass_tabledict[method_key] = dataclass_dict
-        return dataclass_tabledict
+    def save_settings(self):
+        with open(self.save_path, 'wb') as f:
+            pickle.dump(self.settings_dict, f)
 
-    def convert_settings(self):
-        dataclass_tabledict = self.settings_dict
-        dict_tabledict = dict()
-        for method_key in dataclass_tabledict.keys():
-            dict_dict = dict()
-            dataclass_dict = dataclass_tabledict[method_key]
-            for setting_key in dataclass_dict.keys():
-                stg_dataclass = dataclass_dict[setting_key]
-                stg_dict = asdict(stg_dataclass)
-                stg_dict["__class__"] = stg_dataclass.__class__.__name__
-                dict_dict[setting_key] = stg_dict
-            dict_tabledict[method_key] = dict_dict
-        return dict_tabledict
+    def load_settings(self):
+        with open(self.save_path, 'rb') as f:
+            self.settings_dict = pickle.load(f)
 
     @QtCore.Slot(str)
     def add_setting(self, new_name):
