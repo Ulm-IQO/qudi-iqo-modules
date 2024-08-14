@@ -28,7 +28,7 @@ from typing import Sequence, Union
 
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
-from qudi.util.constraints import ScalarConstraint
+from qudi.util.constraints import DiscreteScalarConstraint, ScalarConstraint
 from qudi.interface.qdyne_counter_interface import (
     QdyneCounterInterface,
     QdyneCounterConstraints,
@@ -68,9 +68,9 @@ class QdyneCounterDummy(QdyneCounterInterface):
             counter_type=CounterType.TIMETAGGER,
             gate_mode=GateMode.UNGATED,
             data_type=float,
-            binwidth=ScalarConstraint(
+            binwidth=DiscreteScalarConstraint(
                 default=1e-6,
-                bounds=(1e-6, 1e-3),
+                value_set=set(np.arange(1e-6, 1e-3, 1e-6)),
                 increment=1e-6,
                 checker=lambda x: (x / 1e-6).is_integer(),
             ),

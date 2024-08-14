@@ -32,7 +32,7 @@ from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, 
 from enum import Enum
 from abc import abstractmethod
 from qudi.core.module import Base
-from qudi.util.constraints import ScalarConstraint
+from qudi.util.constraints import DiscreteScalarConstraint, ScalarConstraint
 
 
 class CounterType(Enum):
@@ -54,13 +54,13 @@ class QdyneCounterConstraints:
         counter_type: Union[CounterType, int],
         gate_mode: GateMode,
         data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
-        binwidth: Optional[ScalarConstraint] = None,
+        binwidth: Optional[DiscreteScalarConstraint] = None,
         record_length: Optional[ScalarConstraint] = None,
     ):
-        if not isinstance(binwidth, ScalarConstraint) and binwidth is not None:
+        if not isinstance(binwidth, DiscreteScalarConstraint) and binwidth is not None:
             raise TypeError(
                 f'"binwidth" must be None or'
-                f"{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance"
+                f"{DiscreteScalarConstraint.__module__}.{DiscreteScalarConstraint.__qualname__} instance"
             )
         if (
             not isinstance(record_length, ScalarConstraint)
@@ -94,7 +94,7 @@ class QdyneCounterConstraints:
         return self._data_type
 
     @property
-    def binwidth(self) -> ScalarConstraint:
+    def binwidth(self) -> DiscreteScalarConstraint:
         return self._binwidth
 
     @property
