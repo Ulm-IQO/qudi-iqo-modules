@@ -190,9 +190,9 @@ class MeasurementGenerator:
         settings_dict["record_length"] = float(
             self.qdyne_logic._data_streamer().record_length
         )
-        settings_dict["number_of_gates"] = int(
-            self.qdyne_logic._data_streamer().number_of_gates
-        )
+        #settings_dict["number_of_gates"] = int(
+        #    self.qdyne_logic._data_streamer().number_of_gates
+        #)
         settings_dict["is_gated"] = bool(
             self.qdyne_logic._data_streamer().gate_mode.value
         )

@@ -52,7 +52,7 @@ class QdyneCounterConstraints:
         self,
         channel_units: Mapping[str, str],
         counter_type: Union[CounterType, int],
-        gate_mode: GateMode,
+        gate_mode: Union[GateMode, int],
         data_type: Union[Type[int], Type[float], Type[np.integer], Type[np.floating]],
         binwidth: Optional[DiscreteScalarConstraint] = None,
         record_length: Optional[ScalarConstraint] = None,
@@ -62,17 +62,14 @@ class QdyneCounterConstraints:
                 f'"binwidth" must be None or'
                 f"{DiscreteScalarConstraint.__module__}.{DiscreteScalarConstraint.__qualname__} instance"
             )
-        if (
-            not isinstance(record_length, ScalarConstraint)
-            and record_length is not None
-        ):
+        if not isinstance(record_length, ScalarConstraint) and record_length is not None:
             raise TypeError(
                 f'"record_length" must be None or'
                 f"{ScalarConstraint.__module__}.{ScalarConstraint.__qualname__} instance"
             )
         self._channel_units = {**channel_units}
         self._counter_type = CounterType(counter_type)
-        self._gate_mode = gate_mode
+        self._gate_mode = GateMode(gate_mode)
         self._data_type = np.dtype(data_type).type
         self._binwidth = binwidth
         self._record_length = record_length
@@ -148,33 +145,24 @@ class QdyneCounterInterface(Base):
 
     @property
     @abstractmethod
-    def binwidth(self) -> float:
+    def binwidth(self):
         """Read-only property returning the currently set bin width in seconds"""
         pass
 
     @property
     @abstractmethod
-    def record_length(self) -> float:
+    def record_length(self):
         """Read-only property returning the currently set recording length in seconds for a single trigger/gate"""
-        pass
-
-    @property
-    @abstractmethod
-    def number_of_gates(self) -> int:
-        """Read-only property returning the currently set number of gates"""
         pass
 
     @abstractmethod
     def configure(
         self,
         active_channels: Sequence[str],
-        gate_mode: int,
-        buffer_size: int,
-        sample_rate: float,
-        number_of_gates,
         bin_width: float,
         record_length: float,
-        data_type: type,
+        gate_mode: Union[GateMode, int],
+        data_type: type
     ) -> None:
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""
         pass
