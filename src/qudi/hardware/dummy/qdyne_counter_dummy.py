@@ -68,8 +68,12 @@ class QdyneCounterDummy(QdyneCounterInterface):
             counter_type=CounterType.TIMETAGGER,
             gate_mode=GateMode.UNGATED,
             data_type=float,
-            binwidth=ScalarConstraint(default=1e-6, bounds=(1e-6, 1e-3), increment=1e-6,
-                                      checker=lambda x: (x / 1e-6).is_integer()),
+            binwidth=ScalarConstraint(
+                default=1e-6,
+                bounds=(1e-6, 1e-3),
+                increment=1e-6,
+                checker=lambda x: (x / 1e-6).is_integer(),
+            ),
             record_length=ScalarConstraint(default=1e-3, bounds=(10e-6, 1)),
         )
         self._elapsed_sweeps = 0
@@ -198,17 +202,22 @@ class QdyneCounterDummy(QdyneCounterInterface):
         """
         _freq = self._sine_frequency
 
-        def poisson_process(t):
+        def poisson_process(t, number_samples):
             mean = (np.sin(2 * np.pi * _freq * t) + 1) * 1
             num_photons = np.random.poisson(mean)
-            time_tags = sorted(np.random.choice(range(100, 500), num_photons))
+            time_tags = sorted(
+                np.random.choice(
+                    range(int(0.1 * number_samples), int(0.6 * number_samples)),
+                    num_photons,
+                )
+            )
             return [0] + time_tags
 
         num_samples = round(self.record_length / self.binwidth)
-        sample_times = np.linspace(0, self.record_length, num_samples)
+        sample_times = np.linspace(self.binwidth, self.record_length, num_samples)
 
         for t in sample_times:
-            self._time_tagger_data += poisson_process(t)
+            self._time_tagger_data += poisson_process(t, num_samples)
         self._elapsed_sweeps += 1
         info_dict = {
             "elapsed_sweeps": self._elapsed_sweeps,
