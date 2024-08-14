@@ -27,6 +27,7 @@ from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
+from qudi.util.constraints import DiscreteScalarConstraint
 from qudi.util.mutex import RecursiveMutex
 
 from qudi.logic.qdyne.qdyne_measurement import (
@@ -134,10 +135,14 @@ class MeasurementGenerator:
                 record_length_constraint.check_value_range(record_length)
             except TypeError:
                 record_length = self.__record_length
-                self.qdyne_logic.log.error(f'Record length is not of correct type. Keep record length {self.__record_length}s.')
+                self.qdyne_logic.log.error(
+                    f"Record length is not of correct type. Keep record length {self.__record_length}s."
+                )
             except ValueError:
                 record_length = record_length_constraint.clip(record_length)
-                self.qdyne_logic.log.error(f'Record length out of bounds. Clipping to bound {record_length}s.')
+                self.qdyne_logic.log.error(
+                    f"Record length out of bounds. Clipping to bound {record_length}s."
+                )
         return record_length
 
     def check_counter_binwidth_constraint(self, binwidth: float):
@@ -148,16 +153,24 @@ class MeasurementGenerator:
                 binwidth_constraint.check_value_range(binwidth)
             except TypeError:
                 binwidth = self.__binwidth
-                self.qdyne_logic.log.error(f'Binwidth is not of correct type. Keep binwidth {self.__binwidth}s.')
+                self.qdyne_logic.log.error(
+                    f"Binwidth is not of correct type. Keep binwidth {self.__binwidth}s."
+                )
             except ValueError:
                 binwidth = binwidth_constraint.clip(binwidth)
-                self.qdyne_logic.log.error(f'Binwidth out of bounds. Clipping to bound {binwidth}s.')
+                self.qdyne_logic.log.error(
+                    f"Binwidth out of bounds. Clipping to bound {binwidth}s."
+                )
             try:
-                binwidth_constraint.check_custom(binwidth)
+                binwidth_constraint.check_value_set(binwidth)
             except ValueError:
-                binwidth = binwidth_constraint.increment * round(binwidth / binwidth_constraint.increment)
-                self.qdyne_logic.log.warning(f'Binwidth does not match increment condition of hardware.'
-                                             f'Set closest allowed binwidth {binwidth}s.')
+                binwidth = min(
+                    binwidth_constraint.value_set, key=lambda x: abs(x - binwidth)
+                )
+                self.qdyne_logic.log.warning(
+                    f"Binwidth does not match allowed binwidth condition of hardware."
+                    f"Set closest allowed binwidth {binwidth}s."
+                )
         return binwidth
 
     @property
@@ -179,9 +192,9 @@ class MeasurementGenerator:
         settings_dict["record_length"] = float(
             self.qdyne_logic._data_streamer().record_length
         )
-        settings_dict["number_of_gates"] = int(
-            self.qdyne_logic._data_streamer().number_of_gates
-        )
+        #settings_dict["number_of_gates"] = int(
+        #    self.qdyne_logic._data_streamer().number_of_gates
+        #)
         settings_dict["is_gated"] = bool(
             self.qdyne_logic._data_streamer().gate_mode.value
         )
@@ -209,7 +222,7 @@ class MeasurementGenerator:
         return self.pulsedmasterlogic().generate_methods
 
     @property
-    def counter_constraints(self):
+    def counter_constraints(self) -> DiscreteScalarConstraint:
         return self.qdyne_logic._data_streamer().constraints()
 
 

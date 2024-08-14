@@ -28,7 +28,7 @@ from typing import Sequence, Union
 
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
-from qudi.util.constraints import ScalarConstraint
+from qudi.util.constraints import DiscreteScalarConstraint, ScalarConstraint
 from qudi.interface.qdyne_counter_interface import (
     QdyneCounterInterface,
     QdyneCounterConstraints,
@@ -68,9 +68,9 @@ class QdyneCounterDummy(QdyneCounterInterface):
             counter_type=CounterType.TIMETAGGER,
             gate_mode=GateMode.UNGATED,
             data_type=float,
-            binwidth=ScalarConstraint(
+            binwidth=DiscreteScalarConstraint(
                 default=1e-6,
-                bounds=(1e-6, 1e-3),
+                value_set=set(np.arange(1e-6, 1e-3, 1e-6)),
                 increment=1e-6,
                 checker=lambda x: (x / 1e-6).is_integer(),
             ),
@@ -97,24 +97,14 @@ class QdyneCounterDummy(QdyneCounterInterface):
         """Read-only property returning the currently configured active channel names"""
         return self._active_channels
 
+    def counter_type(self) -> CounterType:
+        """Read-only property returning the CounterType Enum"""
+        return self._counter_type
+
     @property
     def gate_mode(self) -> GateMode:
         """Read-only property returning the currently configured GateMode Enum"""
         return self._gate_mode
-
-    @property
-    def buffer_size(self) -> int:
-        """Read-only property returning the currently set buffer size"""
-        return self._buffer_size
-
-    @property
-    def sample_rate(self) -> float:
-        """Read-only property returning the currently set sample rate in Hz"""
-        return self._sample_rate
-
-    def counter_type(self) -> CounterType:
-        """Read-only property returning the CounterType Enum"""
-        return self._counter_type
 
     @property
     def data_type(self) -> type:
@@ -130,11 +120,6 @@ class QdyneCounterDummy(QdyneCounterInterface):
     def record_length(self):
         """Read-only property returning the currently set recording length in seconds"""
         return self._record_length
-
-    @property
-    def number_of_gates(self) -> int:
-        """Read-only property returning the currently set number of gates"""
-        return self._number_of_gates
 
     def configure(
         self,

@@ -113,7 +113,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self._binwidth = None
         # Todo: handle buffer size
         self._buffer_size = int(1e9)  # None
-        self._use_circular_buffer = None
         self._record_length = None
 
         self._data_buffer = np.empty(0, dtype=self._data_type)
@@ -134,7 +133,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self._constraints = QdyneCounterConstraints(
             channel_units=dict(zip(self._channel_names, self._channel_units)),
             counter_type=CounterType.TIMETAGGER.value,
-            gate_mode=GateMode.UNGATED.value,
+            gate_mode=self._gated,
             data_type=self._data_type,
             binwidth=ScalarConstraint(
                 default=self._minimal_binwidth,
@@ -146,12 +145,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                 default=1e-6,
                 bounds=(1e-9, 6.8)
             ),
-            block_size=ScalarConstraint(
-                default=1024 ** 2,
-                bounds=(128, self._available_memory),
-                increment=1,
-                enforce_int=True,
-            )
         )
 
         # TODO implement the constraints for the fastcomtec max_bins, max_sweep_len and hardware_binwidth_list
@@ -229,21 +222,18 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             old_binwidth = self.binwidth
             old_record_length = self.record_length
             old_gate_mode = self.gate_mode
-            # old_buffer_size = self.buffer_size
             try:
                 no_of_bins = int((record_length - self._trigger_safety) / bin_width)
                 self._set_active_channels(active_channels)
                 self.set_binwidth(bin_width)
                 self.change_sweep_mode(gated=False, cycles=None, preset=None)
                 self.set_length(no_of_bins)
-                # self._set_buffer_size(buffer_size)
             except Exception as err:
                 old_no_of_bins = int((old_record_length - self._trigger_safety) / old_binwidth)
                 self._set_active_channels(old_channels)
                 self.set_binwidth(old_binwidth)
                 self.change_sweep_mode(old_gate_mode)
                 self.set_length(old_no_of_bins)
-                # self._set_buffer_size(old_buffer_size)
                 raise RuntimeError(
                     "Error while trying to configure data in-streamer"
                 ) from err
@@ -267,7 +257,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         self.dll.RunCmd(0, bytes(cmd, "ascii"))
 
     def _set_buffer_size(self, samples: int) -> None:
-        # self._constraints.channel_buffer_size.check(samples)
         self._buffer_size = samples
 
     def _is_not_settable(self, option: str = "") -> bool:
@@ -621,10 +610,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         elif buffer.ndim != 1:
             self.log.error("Buffer must be a 1D or 2D numpy.ndarray.")
             return -1
-
-        # Check for buffer overflow
-        # if self.available_samples > self.channel_buffer_size:
-        #    self._has_overflown = True
 
         if self._filename is None:
             raise TypeError("No filename for data analysis is given.")
