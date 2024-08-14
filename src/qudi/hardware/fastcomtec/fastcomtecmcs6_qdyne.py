@@ -29,9 +29,10 @@ from datetime import datetime
 from psutil import virtual_memory
 from itertools import islice
 
+from qudi.core.connector import Connector
 from qudi.util.datastorage import create_dir_for_file
 from qudi.core.configoption import ConfigOption
-from qudi.util.constraints import ScalarConstraint
+from qudi.util.constraints import DiscreteScalarConstraint, ScalarConstraint
 from qudi.util.mutex import Mutex
 from qudi.interface.qdyne_counter_interface import (
     GateMode,
@@ -47,13 +48,13 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
 
     Example config for copy-paste:
 
-    fastcomtec_mcs6_instreamer:
+    fastcomtec_mcs6_qdyne:
         module.Class: 'fastcomtec.fastcomtecmcs6_qdyne.FastComtecQdyneCounter'
         options:
             channel_names: [0]
             channel_units: ['']
             data_type: 'int32'
-            gated: False
+            gated: 0  # 0: ungated, 1: gated
             minimal_binwidth: 0.2e-9
             trigger_safety: 400e-9
             dll_path: 'C:\Windows\System32\DMCS6.dll'
@@ -62,6 +63,9 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             chunk_size: 10000
             memory_ratio: 0.5
     """
+
+    # connecotr to fastcounter from pulsed measurements
+    #pulsed_fastcounter = Connector(name="pulsed_fastcounter", interface="FastCounterInterface")
 
     # config options
     _channel_names = ConfigOption(
@@ -77,7 +81,8 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     _gated = ConfigOption(
         name="gated",
         missing="warn",
-        default=GateMode.UNGATED.value,
+        default=GateMode.UNGATED,
+        constructor=lambda gated: GateMode(gated)
     )
     _data_type = ConfigOption(
         name="data_type",
@@ -93,6 +98,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     _dll_path = ConfigOption(
         name="dll_path", default="C:\Windows\System32\DMCS6.dll", missing="info"
     )
+
     # specify the number of lines that can at max be read into the memory of the computer from
     # the list file of the device
     _block_size = ConfigOption(name="block_size", default=10000, missing="info")
@@ -110,10 +116,10 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
 
         self._thread_lock = Mutex()
         self._active_channels = tuple()
-        self._binwidth = None
+        self._binwidth = 3.2e-9
         # Todo: handle buffer size
         self._buffer_size = int(1e9)  # None
-        self._record_length = None
+        self._record_length = 3e-6
 
         self._data_buffer = np.empty(0, dtype=self._data_type)
         self._read_lines = None
@@ -126,7 +132,8 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
 
     def on_activate(self):
         self.dll = ctypes.windll.LoadLibrary(self._dll_path)
-        if self._gated:
+        #self.dll = self.pulsed_fastcounter().dll
+        if self._gated.value:
             self.log.error("Gated mode is not yet implemented!")
 
         # Create constraints
@@ -135,14 +142,14 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             counter_type=CounterType.TIMETAGGER.value,
             gate_mode=self._gated,
             data_type=self._data_type,
-            binwidth=ScalarConstraint(
+            binwidth=DiscreteScalarConstraint(
                 default=self._minimal_binwidth,
-                bounds=(self._minimal_binwidth, self._minimal_binwidth * 2 ** 24),
+                value_set={self._minimal_binwidth * 2 ** ii for ii in range(0,25)},
                 increment=0.1,
                 enforce_int=False,
             ),
             record_length=ScalarConstraint(  #Todo: find bounds
-                default=1e-6,
+                default=3e-6,
                 bounds=(1e-9, 6.8)
             ),
         )
@@ -419,7 +426,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         @return float: Red out length of measurement
         """
         # Check that no constraint is violated
-        if self._gated:
+        if self._gated.value:
             cycles = self.get_cycles()
         else:
             cycles = 1
@@ -471,7 +478,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         @return int: length of the current measurement in bins
         """
 
-        if self._gated:
+        if self._gated.value:
             cycles = self.get_cycles()
             if cycles == 0:
                 cycles = 1
