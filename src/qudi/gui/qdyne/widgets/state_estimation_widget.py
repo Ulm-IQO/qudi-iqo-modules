@@ -389,6 +389,8 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
 
 
 class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
+    _log = get_logger(__name__)
+
     def __init__(self, logic):
         self.logic = logic()
         self.estimator = logic().estimator
@@ -432,7 +434,6 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self.time_trace_updated()
 
     def time_trace_updated(self):
-        print('update')
         y = self.logic.data.time_trace
         time_between_readouts = (
             self.logic.pulsedmasterlogic()
@@ -441,5 +442,14 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
                 self.logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
             )[0]
         )
+        self.time_trace_PlotWidget.setLabel(axis="bottom", text="time", units="s")
+        if time_between_readouts == 0:
+            time_between_readouts = 1
+            self._log.warn(
+                "Time between readouts could not be determined from loaded pulse sequence. Make sure a pulse sequence is loaded. Switching to number of readouts as x axis."
+            )
+            self.time_trace_PlotWidget.setLabel(
+                axis="bottom", text="readouts", units="#"
+            )
         x = np.arange(len(y)) * time_between_readouts
         self.time_trace_image.setData(x=x, y=y)
