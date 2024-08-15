@@ -71,6 +71,8 @@ class LaserQuantumLaser(SimpleLaserInterface):
             self.cmd = QL_MPC_command(self.psu)
 
         self.connect_laser()
+        self.cmd.power_setpoint = self.get_power()
+        self.cmd.current_setpoint_pct = self.get_current()
     def on_deactivate(self):
         """ Deactivate module.
         """
