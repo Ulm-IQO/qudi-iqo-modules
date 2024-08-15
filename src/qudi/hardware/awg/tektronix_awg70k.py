@@ -44,7 +44,7 @@ class AWG70K(PulserInterface):
     Example config for copy-paste:
 
     pulser_awg70000:
-        module.Class: 'awg.tektronix_awg70k.AWG70k'
+        module.Class: 'awg.tektronix_awg70k.AWG70K'
         options:
             awg_visa_address: 'TCPIP::10.42.0.211::INSTR'
             awg_ip_address: '10.42.0.211'
@@ -198,10 +198,10 @@ class AWG70K(PulserInterface):
         constraints.waveform_length.max = self.__max_waveform_length
         if self.awg_model == 'AWG70002A':
             constraints.waveform_length.step = 1
-            constraints.waveform_length.default = 1
+            constraints.waveform_length.default = self.__min_waveform_length
         elif self.awg_model == 'AWG70001A':
             constraints.waveform_length.step = 2
-            constraints.waveform_length.default = 2
+            constraints.waveform_length.default = self.__min_waveform_length
 
         # FIXME: Check the proper number for your device
         constraints.waveform_num.min = 1
@@ -708,7 +708,6 @@ class AWG70K(PulserInterface):
                     self.log.error('Unable to determine loaded assets.')
                     return dict(), ''
                 current_type = 'sequence'
-                asset_name += '_' + splitted[1]
             else:
                 if current_type is not None and current_type != 'waveform':
                     self.log.error('Unable to determine loaded assets.')

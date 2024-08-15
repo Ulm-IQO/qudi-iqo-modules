@@ -6,17 +6,17 @@ A typical working toolchain consists out of the following qudi modules:
 
 logic:
 - [scanning_data_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_data_logic.py#L50)
-- scanning_probe_logic
-- scanning_optimize_logic
+- [scanning_probe_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_probe_logic.py#L33)
+- [scanning_optimize_logic](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/logic/scanning_optimize_logic.py#L33)
 
 hardware (here NI X-series):
-- [analog_output](ttps://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_analog_output.py#L39)
+- [analog_output](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_analog_output.py#L39)
 - [finite_sampling_input](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_input.py#L46)
 - [finite_sampling_io](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_finite_sampling_io.py#L50)
 - ([in_streamer](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/hardware/ni_x_series/ni_x_series_in_streamer.py#L45), optional)
 
 gui:
-- scannergui
+- [scannergui](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/gui/scanning/scannergui.py#L83)
 
 # Example config
 
@@ -151,19 +151,18 @@ docstring of every module's python file. In the list above, a direct link for ev
             module.Class: 'ni_x_series.ni_x_series_analog_output.NIXSeriesAnalogOutput'
             options:
                 device_name: 'Dev1'
-        
-                setpoint_channels:
+                channels:
                     ao0:
-                        unit: 'V'
-                        limits: [-10, 10]
+                        limits: [-10.0, 10.0]
                         keep_value: True
                     ao1:
-                        unit: 'V'
-                        limits: [-10, 10]
+                        limits: [-10.0, 10.0]
                         keep_value: True
                     ao2:
-                        unit: 'V'
-                        limits: [-10, 10]
+                        limits: [-10.0, 10.0]
+                        keep_value: True
+                    ao3:
+                        limits: [-10.0, 10.0]
                         keep_value: True
 
         
@@ -183,8 +182,18 @@ docstring of every module's python file. In the list above, a direct link for ev
                 max_channel_samples_buffer: 10000000  # optional
                 read_write_timeout: 10  # optional
 
-# Configuration hints:
+# Configuration hints
 - The scanning gui's `optimizer_plot_dimensions` ConfigOption allows to specify the optimizer's scanning behavior. The default setting `[2,1]` enables one 2D and one 1D optimization step. You may set to eg. `[2,2,2]` to have three two-dimensionsal scans done for optimzation. In the gui (Settings/Optimizer Settings), this will change the list of possible optimizer sequences.  
 - The maximum scanning frequency is given by the bandwidth of your Piezo controller (check the datasheet). It might make sense to put an even smaller limit into your config, since scanning at the hardware limit might introduce artifacts/offsets to your confocal scan.
 
-# Todo this readme:
+# Tilt correction
+
+The above configuration will enable the tilt correction feature for the ScanningProbeDummy and NiScanningProbeInterfuse.
+This allows to perform scans in tilted layers, eg. along the surface of a non-flat sample. 
+- In the scanning_probe_gui, you can configure this feature in the menu enabled by 'View' -> 'Tilt correction'.
+- Choose three support vectors in the plane that should become the new $\hat{e}_z$ plane.
+  Instead of manually typing the coordinates of a support vector, hitting the 'Vec 1" button will
+  insert the current crosshair position as support vector 1. 
+- Enable the transformation by the "Tilt correction" button.
+
+# Todo this readme

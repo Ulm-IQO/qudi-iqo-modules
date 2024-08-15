@@ -8,11 +8,6 @@ If you're migrating an existing qudi v0.1 installation, there is a dedicated [po
 
 Follow the [qudi-core installation](https://ulm-iqo.github.io/qudi-core/setup/installation.html) instructions to setup your Python environment and the basic qudi installation. We recommend installing qudi-core from PyPI (non dev), as typical users shouldn't need to change core code too often. You can still change your measurements modules that are installed next.
 
-> **⚠ WARNING:**
-> 
-> Currently (2022/07/12), qudi-core as installed from PyPi is incompatible with iqo-modules. If you installed in non-dev mode, you need to manually update to 
-> the latest github release via `python -m pip install git+https://github.com/Ulm-IQO/qudi-core.git@main` after the qudi-core installation.
-
 ## Install qudi-iqo-modules
 
 The last step in the qudi-core installation instructions briefly explains setting up the measurement modules. More detailedly, this is how you install the qudi-iqo-modules in dev mode. In this way, you can easily change code in the measurement toolchains.
@@ -26,6 +21,17 @@ The last step in the qudi-core installation instructions briefly explains settin
 - Install and register the modules to your current qudi environment via `python -m pip install -e .`
 
 Now you qudi-core installation will know about the measurement modules and it's time to set up a proper qudi configuration file.
+
+## ⚠ Troubleshooting
+
+- Installing according to this guide will leave you with the most recent version of qudi and all dependency packages. 
+  If you encounter bugs, especially ones that relate to dependency packages, you can roll back to the latest stable release by:
+
+        cd C:/Software/qudi-iqo-modules
+        git checkout tags/v0.5.1
+        python -m pip install -e .
+
+- In rare cases and mostly with old versions of qudi-core, qudi-iqo-modules can be incompatible with qudi-core. If you encounter errors related to this, try to update manually to the latest qudi-core github release via `python -m pip install git+https://github.com/Ulm-IQO/qudi-core.git@main`.
 
 ## Configure Pycharm
 It is possible to run Qudi just from the command line. To this end, just type `qudi` into your console.
@@ -70,7 +76,7 @@ without the need to attach real hardware.
     - [Time series](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_timeseries.md) (/_slow counting_)
     - [Scanning](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_confocal_scanning.md) (/_confocal_)
     - Poi manager 
-    - CW ODMR 
+    - [CW ODMR](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/setup_odmr.md) 
     - Pulsed
     - Camera
     - Switches
@@ -99,29 +105,13 @@ Whenever you make changes to your configuration, you should create such an commi
 ### Remote
 
 Qudi allows to access modules (including hardware) that run on a different computer that is connected to the same LAN network.
-Please find the instruction to configure the [server](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#remote_modules_server) and each of the [remote modules](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md#Remote%20Module).
+Please find the [configuration instructions](https://ulm-iqo.github.io/qudi-core/design_concepts/remote_modules.html) in the qudi-core docs. 
 
 
 ## Jupyter notebooks/ measurement scripts
 
 Qudi runs a IPython kernel that can be accessed from a jupyter notebook. In this way you can write your own measurements
-scripts that employ qudi modules just from their configured names (like in the qudi manager.)
-
-- Open your Anaconda prompt and `activate qudi-env` (or activate your venv in your other Python distro)
-- Change to the folder where you store your jupyter notebooks. `cd C:\Users\quantumguy\qudi\notebooks`
-- Type `jupyter notebook` to start the notebook server
-- Open a browser and navigate to http://localhost:8888/
-
-Now you can create a new notebook that has access to all qudi modules and variables. A first example might be outputting
-the current countrate to the qudi log:
-
-```python
-    counter = time_series_reader_logic
-    ch = 'pfi3'
-    last_sample = counter.trace_data[1][ch][-1]
-    
-    logger.info(f"I am a confocal microsopce and counted {last_sample} photons.")
-```
+scripts as described [here](https://ulm-iqo.github.io/qudi-core/setup/jupyter.html).
 
 ### Comparing notebooks
 Pycharm lets you easily compare text based files (like .py) between different branches or versions by right-clicking 

@@ -40,6 +40,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.datastorage import ImageFormat, NpyDataStorage, TextDataStorage
 from qudi.util.units import ScaledFloat
 
+
 from qudi.interface.scanning_probe_interface import ScanData
 
 
@@ -71,8 +72,8 @@ class ScanningDataLogic(LogicBase):
     sigHistoryScanDataRestored = QtCore.Signal(object)
     sigSaveStateChanged = QtCore.Signal(bool)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         self._thread_lock = RecursiveMutex()
 
@@ -106,7 +107,13 @@ class ScanningDataLogic(LogicBase):
 
     @_scan_history.constructor
     def __scan_history_from_dicts(self, history_dicts):
-        return [ScanData.from_dict(hist_dict) for hist_dict in history_dicts]
+        try:
+            history = [ScanData.from_dict(hist_dict) for hist_dict in history_dicts]
+        except Exception as e:
+            self.log.warning(f"Couldn't restore scan history from StatusVar. Scan history will be empty: {repr(e)}")
+            history = []
+
+        return history
 
     def get_current_scan_data(self, scan_axes=None):
         """
@@ -280,18 +287,19 @@ class ScanningDataLogic(LogicBase):
                         arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
         return fig
 
-    def save_scan(self, scan_data, color_range=None):
+    def save_scan(self, scan_data, color_range=None, custom_tag=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
                 return
 
-            if scan_data is None:
-                raise ValueError('Unable to save 2D scan. No data available.')
-
             self.sigSaveStateChanged.emit(True)
             self.module_state.lock()
             try:
+                if scan_data is None:
+                    self.log.error('Unable to save 2D scan. No data available.')
+                    raise ValueError('Unable to save 2D scan. No data available.')
+
                 ds = TextDataStorage(root_dir=self.module_default_data_dir)
                 timestamp = datetime.datetime.now()
 
@@ -312,6 +320,7 @@ class ScanningDataLogic(LogicBase):
                 parameters["pixel frequency"] = scan_data.scan_frequency
                 parameters[f"scanner target at start"] = scan_data.scanner_target_at_start
                 parameters['measurement start'] = str(scan_data._timestamp)
+                parameters['coordinate transform info'] = scan_data.coord_transform_info
 
                 # add meta data for axes in full target, but not scan axes
                 if scan_data.scanner_target_at_start:
@@ -327,7 +336,10 @@ class ScanningDataLogic(LogicBase):
                 for channel, data in scan_data.data.items():
                     # data
                     # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.scan_axes)
-                    tag = self.create_tag_from_scan_data(scan_data, channel)
+                    if custom_tag:
+                        tag = custom_tag
+                    else:
+                        tag = self.create_tag_from_scan_data(scan_data, channel)
                     file_path, _, _ = ds.save_data(data,
                                                    metadata=parameters,
                                                    nametag=tag,
@@ -348,10 +360,10 @@ class ScanningDataLogic(LogicBase):
                 self.sigSaveStateChanged.emit(False)
             return
 
-    def save_scan_by_axis(self, scan_axes=None, color_range=None):
+    def save_scan_by_axis(self, scan_axes=None, color_range=None, custom_tag=None):
         # wrapper for self.save_scan. Avoids copying scan_data through QtSignals
         scan = self.get_current_scan_data(scan_axes=scan_axes)
-        self.save_scan(scan, color_range=color_range)
+        self.save_scan(scan, color_range=color_range, custom_tag=custom_tag)
 
     def create_tag_from_scan_data(self, scan_data, channel):
         axes = scan_data.scan_axes

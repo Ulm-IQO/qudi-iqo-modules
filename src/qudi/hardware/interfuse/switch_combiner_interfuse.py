@@ -29,7 +29,19 @@ class SwitchCombinerInterfuse(SwitchInterface):
     """ Methods to control slow (mechanical) laser switching devices.
     This interfuse in particular combines two switches into one.
 
-    Todo: write Example config for copy-paste:
+    Example config for copy-paste:
+
+    switch_combiner:
+        module.Class: 'interfuse.switch_combiner_interfuse.SwitchCombinerInterfuse'
+        connect:
+            switch1: switch_1
+            switch2: switch_2
+        options:
+            name: combined_switches  # optional name of the combined hardware
+
+            # if True the switch names will be extended by the hardware name of the individual switches in front.
+            extend_hardware_name: False
+
     """
 
     # connectors for the switches to be combined
@@ -49,7 +61,7 @@ class SwitchCombinerInterfuse(SwitchInterface):
         """ Activate the module and fill status variables.
         """
         if self._hardware_name is None:
-            self._hardware_name = self._meta['name']
+            self._hardware_name = self.module_name
 
     def on_deactivate(self):
         """ Deactivate the module and clean up.

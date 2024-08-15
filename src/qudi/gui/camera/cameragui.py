@@ -76,10 +76,14 @@ class CameraMainWindow(QtWidgets.QMainWindow):
 
 
 class CameraGui(GuiBase):
-    """
-    Main spectrometer camera class.
+    """ Main camera gui class.
 
-    Todo: Example config for copy-paste:
+    Example config for copy-paste:
+
+    camera_gui:
+        module.Class: 'camera.cameragui.CameraGui'
+        connect:
+            camera_logic: camera_logic
 
     """
 
@@ -137,7 +141,7 @@ class CameraGui(GuiBase):
         self.sigCaptureFrameTriggered.disconnect()
         self.sigStartStopVideoToggled.disconnect()
         logic.sigAcquisitionFinished.disconnect(self._acquisition_finished)
-        logic.sigUpdateDisplay.disconnect(self._update_frame)
+        logic.sigFrameChanged.disconnect(self._update_frame)
         self._mw.action_save_frame.triggered.disconnect()
         self._mw.action_show_settings.triggered.disconnect()
         self._mw.action_capture_frame.triggered.disconnect()

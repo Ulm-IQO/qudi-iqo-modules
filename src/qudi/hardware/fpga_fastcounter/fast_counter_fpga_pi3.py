@@ -21,10 +21,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
+import sys
 import numpy as np
-import thirdparty.stuttgart_counter.TimeTagger as tt
 
-from qudi.util.paths import get_main_dir
 from qudi.core.configoption import ConfigOption
 from qudi.interface.fast_counter_interface import FastCounterInterface
 
@@ -37,6 +36,7 @@ class FastCounterFGAPiP3(FastCounterInterface):
     fpga_pi3:
         module.Class: 'fpga_fastcounter.fast_counter_fpga_pi3.FastCounterFGAPiP3'
         options:
+            counter_package_path: C:\Software\qudi-iqo-thirdparty
             fpgacounter_serial: '143400058N'
             fpgacounter_channel_apd_0: 1
             fpgacounter_channel_apd_1: 3
@@ -46,6 +46,7 @@ class FastCounterFGAPiP3(FastCounterInterface):
     """
 
     # config options
+    _package_path = ConfigOption('counter_package_path', missing='error')
     _fpgacounter_serial = ConfigOption('fpgacounter_serial', missing='error')
     _channel_apd_0 = ConfigOption('fpgacounter_channel_apd_0', 1, missing='warn')
     _channel_apd_1 = ConfigOption('fpgacounter_channel_apd_1', 3, missing='warn')
@@ -55,11 +56,15 @@ class FastCounterFGAPiP3(FastCounterInterface):
     def on_activate(self):
         """ Connect and configure the access to the FPGA.
         """
-        tt._Tagger_setSerial(self._fpgacounter_serial)
-        thirdpartypath = os.path.join(get_main_dir(), 'thirdparty')
-        bitfilepath = os.path.join(thirdpartypath, 'stuttgart_counter', 'TimeTaggerController.bit')
-        tt._Tagger_setBitfilePath(bitfilepath)
-        del bitfilepath, thirdpartypath
+        sys.path.append(self._package_path)
+        try:
+            import stuttgart_counter.TimeTagger as tt
+            self._tt = tt
+        finally:
+            sys.path.remove(self._package_path)
+        self._tt._Tagger_setSerial(self._fpgacounter_serial)
+        bitfilepath = os.path.join(self._package_path, 'stuttgart_counter', 'TimeTaggerController.bit')
+        self._tt._Tagger_setBitfilePath(bitfilepath)
 
         self._number_of_gates = int(100)
         self._bin_width = 1
@@ -147,7 +152,7 @@ class FastCounterFGAPiP3(FastCounterInterface):
         self._record_length = int(record_length_s / bin_width_s)
         self.statusvar = 1
 
-        self.pulsed = tt.Pulsed(
+        self.pulsed = self._tt.Pulsed(
             self._record_length,
             int(np.round(self._bin_width*1000)),
             self._number_of_gates,

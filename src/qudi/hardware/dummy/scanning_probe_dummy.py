@@ -25,11 +25,11 @@ from PySide2 import QtCore
 from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
-from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData
+from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData, CoordinateTransformMixin
 from qudi.interface.scanning_probe_interface import ScanConstraints, ScannerAxis, ScannerChannel
 
 
-class ScanningProbeDummy(ScanningProbeInterface):
+class ScanningProbeDummyBare(ScanningProbeInterface):
     """
     Dummy scanning probe microscope. Produces a picture with several gaussian spots.
 
@@ -71,8 +71,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
     _spot_amplitude_dist = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
     _require_square_pixels = ConfigOption(name='require_square_pixels', default=False)
 
-    def __init__(self, config, **kwargs):
-        super().__init__(config=config, **kwargs)
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
         # Scan process parameters
         self._current_scan_frequency = -1
@@ -93,6 +93,10 @@ class ScanningProbeDummy(ScanningProbeInterface):
         self.__scan_start = 0
         self.__last_line = -1
         self.__update_timer = None
+
+        # handle to the uncorrected scanner instance, not wrapped by a potential CoordinateTransformMixin
+        # that transforms to a tilted, virtual coordinate system.
+        self.bare_scanner = ScanningProbeDummyBare
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -262,7 +266,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             self._current_scan_frequency = frequency
             return False, self.scan_settings
 
-    def move_absolute(self, position, velocity=None):
+    def move_absolute(self, position, velocity=None, blocking=False):
         """ Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
@@ -288,7 +292,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                 self._current_position.update(position)
             return self._current_position
 
-    def move_relative(self, distance, velocity=None):
+    def move_relative(self, distance, velocity=None, blocking=False):
         """ Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 
@@ -319,7 +323,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_target" called.')
+            #self.log.debug('Scanning probe dummy "get_target" called.')
             return self._current_position.copy()
 
     def get_position(self):
@@ -328,7 +332,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_position" called.')
+            #self.log.debug('Scanning probe dummy "get_position" called.')
             position = {ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in
                         self._current_position.items()}
             return position
@@ -364,7 +368,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                        self._current_scan_resolution[1])
             else:
                 y_values = np.linspace(self._current_position['y'], self._current_position['y'], 1)
-            xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
+            xy_grid = self._init_scan_grid(x_values, y_values)
 
             include_dist = self._spot_size_dist[0] + 5 * self._spot_size_dist[1]
             self._scan_image = np.random.uniform(0, 2e4, self._current_scan_resolution)
@@ -446,7 +450,7 @@ class ScanningProbeDummy(ScanningProbeInterface):
             # if self.thread() is not QtCore.QThread.currentThread():
             #     self.log.debug('Scanning probe dummy "get_scan_data" called.')
             if self._scan_data is None:
-                print('nope, no scan data in hardware')
+                self.log.debug('No scan data in hardware, returning None')
                 return None
 
             if self.module_state() != 'idle':
@@ -506,6 +510,8 @@ class ScanningProbeDummy(ScanningProbeInterface):
                                             QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
+    def _init_scan_grid(self, x_values, y_values):
+        return np.meshgrid(x_values, y_values, indexing='ij')
 
     @staticmethod
     def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
@@ -519,3 +525,26 @@ class ScanningProbeDummy(ScanningProbeInterface):
         y_prime = y - y0
         return offset + amp * np.exp(
             -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
+
+
+class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
+
+    def _init_scan_grid(self, x_values, y_values):
+        # this is fake transformation, as only 2 coordinates of the scan_grid are taken
+
+        vectors = {'x': x_values, 'y': y_values}
+        vectors = self._expand_coordinate(vectors)
+        vectors_tilted = self.coordinate_transform(vectors)
+
+        grid = np.meshgrid(vectors_tilted['x'], vectors_tilted['y'], indexing='ij')
+
+        #if self.coordinate_transform_enabled:
+        #    self.log.debug(f"Transforming scan grid: {grid}")
+
+        return grid
+
+
+
+
+
+

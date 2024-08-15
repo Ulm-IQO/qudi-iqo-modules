@@ -20,43 +20,23 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
+__all__ = ['TimeSeriesGui']
+
 import pyqtgraph as pg
+import numpy as np
 from PySide2 import QtCore, QtWidgets
+from typing import Union, Dict, Tuple
 
 from qudi.core.statusvariable import StatusVar
-from qudi.util.uic import loadUi
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.colordefs import QudiPalettePale as palette
+from qudi.util.helpers import is_integer_type
+from qudi.util.units import ScaledFloat
 from qudi.core.module import GuiBase
-from qudi.interface.data_instream_interface import StreamChannelType
-
-
-class TimeSeriesMainWindow(QtWidgets.QMainWindow):
-    """ Create the Main Window based on the *.ui file. """
-
-    def __init__(self, **kwargs):
-        # Get the path to the *.ui file
-        this_dir = os.path.dirname(__file__)
-        ui_file = os.path.join(this_dir, 'ui_time_series_gui.ui')
-
-        # Load it
-        super().__init__(**kwargs)
-        loadUi(ui_file, self)
-
-
-class TimeSeriesSelectionDialog(QtWidgets.QDialog):
-    """ Create the trace selection dialog based on the *.ui file. """
-
-    def __init__(self, **kwargs):
-        # Get the path to the *.ui file
-        this_dir = os.path.dirname(__file__)
-        ui_file = os.path.join(this_dir, 'time_series_selector_dialog.ui')
-
-        # Load it
-        super().__init__(**kwargs)
-        loadUi(ui_file, self)
+from qudi.gui.time_series.main_window import TimeSeriesGuiMainWindow
+from qudi.gui.time_series.settings_dialog import TraceViewDialog, ChannelSettingsDialog
+from qudi.interface.data_instream_interface import SampleTiming
 
 
 class TimeSeriesGui(GuiBase):
@@ -77,73 +57,68 @@ class TimeSeriesGui(GuiBase):
     _time_series_logic_con = Connector(interface='TimeSeriesReaderLogic')
 
     # declare ConfigOptions
-    _use_antialias = ConfigOption('use_antialias', default=True)
+    _use_antialias = ConfigOption('use_antialias', default=True, constructor=lambda x: bool(x))
 
     sigStartCounter = QtCore.Signal()
     sigStopCounter = QtCore.Signal()
     sigStartRecording = QtCore.Signal()
     sigStopRecording = QtCore.Signal()
-    sigSettingsChanged = QtCore.Signal(dict)
+    sigTraceSettingsChanged = QtCore.Signal(dict)
+    sigChannelSettingsChanged = QtCore.Signal(list, list)
 
-    _view_settings = StatusVar(name='visible_settings', default={})
+    _current_value_channel = StatusVar(name='current_value_channel', default='None')
+    _visible_traces = StatusVar(name='visible_traces', default=dict())
+    _current_value_channel_precision = StatusVar(name='current_value_channel_precision',
+                                                 default=dict())
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._time_series_logic = None
+        self._streamer_constraints = None
         self._mw = None
-        self._pw = None
         self._vb = None
-        self._vsd = None
-        self._vsd_widgets = dict()
-        self._csd = None
-        self._csd_widgets = dict()
         self.curves = dict()
         self.averaged_curves = dict()
 
         self._channels_per_axis = [set(), set()]
 
-        self._hidden_data_traces = None
-        self._hidden_averaged_traces = None
-
     def on_activate(self):
-        """ Definition and initialisation of the GUI.
-        """
-        self._use_antialias = bool(self._use_antialias)
+        """ Initialisation of the GUI """
+        self._mw = TimeSeriesGuiMainWindow()
+        # Get hardware constraints
+        logic = self._time_series_logic_con()
+        self._streamer_constraints = logic.streamer_constraints
+        all_channels = list(self._streamer_constraints.channel_units)
 
-        self._time_series_logic = self._time_series_logic_con()
-
-        #####################
-        # Configuring the dock widgets
-        # Use the inherited class 'TimeSeriesMainWindow' to create the GUI window
-        self._mw = TimeSeriesMainWindow()
-
-        # Setup dock widgets
-        # self._mw.centralwidget.hide()
-        self._mw.setDockNestingEnabled(True)
-
-        # Get hardware constraints and extract channel names
-        hw_constr = self._time_series_logic.streamer_constraints
-        digital_channels = [ch.name for ch in hw_constr.digital_channels]
-        analog_channels = [ch.name for ch in hw_constr.analog_channels]
-        all_channels = digital_channels + analog_channels
+        # Refine ConfigOptions
+        self._visible_traces = {
+            ch: self._visible_traces.get(ch, (True, True)) for ch in all_channels
+        }
+        self._current_value_channel_precision = {
+            ch: self._current_value_channel_precision.get(ch, None) for ch in all_channels
+        }
 
         # Configure PlotWidget
-        self._pw = self._mw.data_trace_PlotWidget
-        self._pw.setLabel('bottom', 'Time', units='s')
-        self._pw.setMouseEnabled(x=False, y=False)
-        self._pw.setMouseTracking(False)
-        self._pw.setMenuEnabled(False)
-        self._pw.hideButtons()
+        if self._streamer_constraints.sample_timing == SampleTiming.RANDOM:
+            self._mw.trace_plot_widget.setLabel('bottom', 'Sample')
+        else:
+            self._mw.trace_plot_widget.setLabel('bottom', 'Time', units='s')
+        self._mw.trace_plot_widget.setMouseEnabled(x=False, y=False)
+        self._mw.trace_plot_widget.setMouseTracking(False)
+        self._mw.trace_plot_widget.setMenuEnabled(False)
+        self._mw.trace_plot_widget.hideButtons()
         # Create second ViewBox to plot with two independent y-axes
         self._vb = pg.ViewBox()
-        self._pw.scene().addItem(self._vb)
-        self._pw.getAxis('right').linkToView(self._vb)
-        self._vb.setXLink(self._pw)
+        self._mw.trace_plot_widget.scene().addItem(self._vb)
+        self._mw.trace_plot_widget.getAxis('right').linkToView(self._vb)
+        self._vb.setXLink(self._mw.trace_plot_widget)
         self._vb.setMouseEnabled(x=False, y=False)
         self._vb.setMenuEnabled(False)
         # Sync resize events
-        self._pw.plotItem.vb.sigResized.connect(self.__update_viewbox_sync)
+        self._mw.trace_plot_widget.plotItem.vb.sigResized.connect(self.__update_viewbox_sync)
+
+        self._mw.trace_plot_widget.disableAutoRange(axis='x')
+        # self._mw.trace_plot_widget.setAutoVisible(x=True)
 
         self.curves = dict()
         self.averaged_curves = dict()
@@ -152,14 +127,7 @@ class TimeSeriesGui(GuiBase):
             # FIXME: Choosing a pen width != 1px (not cosmetic) causes massive performance drops
             # For mixed signals each signal type (digital or analog) has the same color
             # If just a single signal type is present, alternate the colors accordingly
-            if digital_channels and analog_channels:
-                if ch in digital_channels:
-                    pen1 = pg.mkPen(palette.c2, cosmetic=True)
-                    pen2 = pg.mkPen(palette.c1, cosmetic=True)
-                else:
-                    pen1 = pg.mkPen(palette.c3, cosmetic=True)
-                    pen2 = pg.mkPen(palette.c4, cosmetic=True)
-            elif i % 3 == 0:
+            if i % 3 == 0:
                 pen1 = pg.mkPen(palette.c2, cosmetic=True)
                 pen2 = pg.mkPen(palette.c1, cosmetic=True)
             elif i % 3 == 1:
@@ -179,569 +147,386 @@ class TimeSeriesGui(GuiBase):
                                                autoDownsample=True,
                                                antialias=self._use_antialias)
 
-        #####################
-        # Set up channel settings dialog
-        self._init_channel_settings_dialog()
-
-        #####################
-        # Set up trace view selection dialog
-        self._init_trace_view_selection_dialog()
-
-        #####################
-        # Setting default parameters
-        self.update_status()
-        self.update_settings()
-        self.update_data()
-
-        #####################
         # Connecting user interactions
-        self._mw.start_trace_Action.triggered.connect(self.start_clicked)
-        self._mw.record_trace_Action.triggered.connect(self.record_clicked)
-        self._mw.trace_snapshot_Action.triggered.connect(
-            self._time_series_logic.save_trace_snapshot, QtCore.Qt.QueuedConnection
+        self._mw.toggle_trace_action.triggered[bool].connect(self._trace_toggled)
+        self._mw.record_trace_action.triggered[bool].connect(self._record_toggled)
+        self._mw.snapshot_trace_action.triggered.connect(logic.save_trace_snapshot,
+                                                         QtCore.Qt.QueuedConnection)
+        self._mw.settings_dockwidget.trace_length_spinbox.editingFinished.connect(
+            self._trace_settings_changed
+        )
+        self._mw.settings_dockwidget.data_rate_spinbox.editingFinished.connect(
+            self._trace_settings_changed
+        )
+        self._mw.settings_dockwidget.oversampling_spinbox.editingFinished.connect(
+            self._trace_settings_changed
+        )
+        self._mw.settings_dockwidget.moving_average_spinbox.editingFinished.connect(
+            self._trace_settings_changed
+        )
+        self._mw.current_value_combobox.currentIndexChanged.connect(
+            self._current_value_channel_changed
         )
 
-        self._mw.trace_length_DoubleSpinBox.editingFinished.connect(self.data_window_changed)
-        self._mw.data_rate_DoubleSpinBox.editingFinished.connect(self.data_rate_changed)
-        self._mw.oversampling_SpinBox.editingFinished.connect(self.oversampling_changed)
-        self._mw.moving_average_spinBox.editingFinished.connect(self.moving_average_changed)
-        self._mw.curr_value_comboBox.currentIndexChanged.connect(self.current_value_channel_changed)
+        # Connect the default view and settings actions
+        self._mw.restore_default_view_action.triggered.connect(self._restore_default_view)
+        self._mw.trace_view_selection_action.triggered.connect(self._exec_trace_view_dialog)
+        self._mw.channel_settings_action.triggered.connect(self._exec_channel_settings_dialog)
 
-        # Connect the default view action
-        self._mw.restore_default_view_Action.triggered.connect(self.restore_default_view)
-        self._mw.trace_toolbar_view_Action.triggered[bool].connect(
-            self._mw.trace_control_ToolBar.setVisible
-        )
-        self._mw.trace_settings_view_Action.triggered[bool].connect(
-            self._mw.trace_settings_DockWidget.setVisible
-        )
-        self._mw.trace_settings_DockWidget.visibilityChanged.connect(
-            self._mw.trace_settings_view_Action.setChecked
-        )
-        self._mw.trace_control_ToolBar.visibilityChanged.connect(
-            self._mw.trace_toolbar_view_Action.setChecked
-        )
+        # Connect signals to/from logic
+        self.sigStartCounter.connect(logic.start_reading, QtCore.Qt.QueuedConnection)
+        self.sigStopCounter.connect(logic.stop_reading, QtCore.Qt.QueuedConnection)
+        self.sigStartRecording.connect(logic.start_recording, QtCore.Qt.QueuedConnection)
+        self.sigStopRecording.connect(logic.stop_recording, QtCore.Qt.QueuedConnection)
+        self.sigTraceSettingsChanged.connect(logic.set_trace_settings, QtCore.Qt.QueuedConnection)
+        self.sigChannelSettingsChanged.connect(logic.set_channel_settings,
+                                               QtCore.Qt.QueuedConnection)
 
-        self._mw.trace_view_selection_Action.triggered.connect(self._vsd.show)
-        self._mw.channel_settings_Action.triggered.connect(self._csd.show)
+        logic.sigDataChanged.connect(self.update_data, QtCore.Qt.QueuedConnection)
+        logic.sigTraceSettingsChanged.connect(self.update_trace_settings,
+                                              QtCore.Qt.QueuedConnection)
+        logic.sigChannelSettingsChanged.connect(self.update_channel_settings,
+                                                QtCore.Qt.QueuedConnection)
+        logic.sigStatusChanged.connect(self.update_status, QtCore.Qt.QueuedConnection)
 
-        self._vsd.accepted.connect(self.apply_trace_view_selection)
-        self._vsd.rejected.connect(self.keep_former_trace_view_selection)
-        self._vsd.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
-            self.apply_trace_view_selection)
-        self._csd.accepted.connect(self.apply_channel_settings)
-        self._csd.rejected.connect(self.keep_former_channel_settings)
-        self._csd.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
-            self.apply_channel_settings)
-
-        #####################
-        # starting the physical measurement
-        self.sigStartCounter.connect(
-            self._time_series_logic.start_reading, QtCore.Qt.QueuedConnection)
-        self.sigStopCounter.connect(
-            self._time_series_logic.stop_reading, QtCore.Qt.QueuedConnection)
-        self.sigStartRecording.connect(
-            self._time_series_logic.start_recording, QtCore.Qt.QueuedConnection)
-        self.sigStopRecording.connect(
-            self._time_series_logic.stop_recording, QtCore.Qt.QueuedConnection)
-        self.sigSettingsChanged.connect(
-            self._time_series_logic.configure_settings, QtCore.Qt.QueuedConnection)
-
-        ##################
-        # Handling signals from the logic
-        self._time_series_logic.sigDataChanged.connect(
-            self.update_data, QtCore.Qt.QueuedConnection)
-        self._time_series_logic.sigSettingsChanged.connect(
-            self.update_settings, QtCore.Qt.QueuedConnection)
-        self._time_series_logic.sigStatusChanged.connect(
-            self.update_status, QtCore.Qt.QueuedConnection)
-
-        self._init_gui_view()
-
+        self.update_status(running=logic.module_state() == 'locked',
+                           recording=logic.data_recording_active)
+        self.update_channel_settings(logic.active_channel_names, logic.averaged_channel_names)
+        self.update_trace_settings(logic.trace_settings)
+        self.update_data(*logic.trace_data, *logic.averaged_trace_data)
+        self._apply_trace_view_settings(self.trace_view_settings)
+        index = self._mw.current_value_combobox.findText(self._current_value_channel)
+        if index < 0:
+            self._mw.current_value_combobox.setCurrentIndex(0)
+        else:
+            self._mw.current_value_combobox.setCurrentIndex(index)
         self.show()
-        return
 
     def show(self):
         """Make window visible and put it above all other windows.
         """
-        QtWidgets.QMainWindow.show(self._mw)
-        self._mw.activateWindow()
+        self._mw.show()
         self._mw.raise_()
-        return
+        self._mw.activateWindow()
 
     def on_deactivate(self):
         """ Deactivate the module
         """
+        logic = self._time_series_logic_con()
+
         # disconnect signals
-        self._pw.plotItem.vb.sigResized.disconnect()
-
-        self._vsd.accepted.disconnect()
-        self._vsd.rejected.disconnect()
-        self._vsd.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
-        self._csd.accepted.disconnect()
-        self._csd.rejected.disconnect()
-        self._csd.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
-
-        self._mw.start_trace_Action.triggered.disconnect()
-        self._mw.record_trace_Action.triggered.disconnect()
-        self._mw.trace_snapshot_Action.triggered.disconnect()
-        self._mw.trace_length_DoubleSpinBox.editingFinished.disconnect()
-        self._mw.data_rate_DoubleSpinBox.editingFinished.disconnect()
-        self._mw.oversampling_SpinBox.editingFinished.disconnect()
-        self._mw.moving_average_spinBox.editingFinished.disconnect()
-        self._mw.restore_default_view_Action.triggered.disconnect()
-        self._mw.trace_toolbar_view_Action.triggered[bool].disconnect()
-        self._mw.trace_settings_view_Action.triggered[bool].disconnect()
-        self._mw.trace_settings_DockWidget.visibilityChanged.disconnect()
-        self._mw.trace_control_ToolBar.visibilityChanged.disconnect()
+        self._mw.trace_plot_widget.plotItem.vb.sigResized.disconnect()
+        self._mw.toggle_trace_action.triggered.disconnect()
+        self._mw.record_trace_action.triggered.disconnect()
+        self._mw.snapshot_trace_action.triggered.disconnect()
+        self._mw.settings_dockwidget.trace_length_spinbox.editingFinished.disconnect()
+        self._mw.settings_dockwidget.data_rate_spinbox.editingFinished.disconnect()
+        self._mw.settings_dockwidget.oversampling_spinbox.editingFinished.disconnect()
+        self._mw.settings_dockwidget.moving_average_spinbox.editingFinished.disconnect()
+        self._mw.restore_default_view_action.triggered.disconnect()
         self.sigStartCounter.disconnect()
         self.sigStopCounter.disconnect()
         self.sigStartRecording.disconnect()
         self.sigStopRecording.disconnect()
-        self.sigSettingsChanged.disconnect()
-        self._time_series_logic.sigDataChanged.disconnect()
-        self._time_series_logic.sigSettingsChanged.disconnect()
-        self._time_series_logic.sigStatusChanged.disconnect()
-
+        self.sigTraceSettingsChanged.disconnect()
+        self.sigChannelSettingsChanged.disconnect()
+        logic.sigDataChanged.disconnect(self.update_data)
+        logic.sigTraceSettingsChanged.disconnect(self.update_trace_settings)
+        logic.sigChannelSettingsChanged.disconnect(self.update_channel_settings)
+        logic.sigStatusChanged.disconnect(self.update_status)
         self._mw.close()
 
-    @_view_settings.representer
-    def __repr_view_settings(self, value):
+    @property
+    def trace_view_settings(self) -> Dict[str, Tuple[bool, bool, Union[int, None]]]:
+        """ Read-only """
+        return {
+            ch: [*flags, self._current_value_channel_precision[ch]] for ch, flags in
+            self._visible_traces.items()
+        }
 
-        view_settings = {}
+    def _exec_trace_view_dialog(self):
+        current_settings = self.trace_view_settings
+        dialog = TraceViewDialog(current_settings.keys(), parent=self._mw)
+        dialog.set_channel_states(current_settings)
+        # Show modal dialog and update logic if necessary
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            self._apply_trace_view_settings(dialog.get_channel_states())
 
-        vis_settings = self.visible_settings
-        curr_ch = self._mw.curr_value_comboBox.currentText()
-
-        view_settings['current_channel'] = curr_ch
-        view_settings.update(vis_settings)
-
-        return view_settings
-
-    def _init_trace_view_selection_dialog(self):
-        all_channels = tuple(ch.name for ch in self._time_series_logic.available_channels)
-        self._vsd = TimeSeriesSelectionDialog()
-        self._vsd.setWindowTitle('View Trace Selection')
-        self._vsd_widgets = dict()
-        layout = QtWidgets.QGridLayout()
-        layout.addWidget(QtWidgets.QLabel('Channel Name'), 0, 0)
-        layout.addWidget(QtWidgets.QLabel('Hide Data?'), 0, 1)
-        layout.addWidget(QtWidgets.QLabel('Hide Average?'), 0, 2)
-        line = QtWidgets.QFrame()
-        line.setFrameShape(QtWidgets.QFrame.HLine)
-        line.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(line, 1, 0, 1, 3)
-        for i, chnl in enumerate(all_channels, 2):
-            widget_dict = dict()
-            widget_dict['label'] = QtWidgets.QLabel(chnl)
-            widget_dict['checkbox1'] = QtWidgets.QCheckBox()
-            widget_dict['checkbox2'] = QtWidgets.QCheckBox()
-            layout.addWidget(widget_dict['label'], i, 0)
-            layout.addWidget(widget_dict['checkbox1'], i, 1)
-            layout.addWidget(widget_dict['checkbox2'], i, 2)
-            widget_dict['checkbox1'].setChecked(False)
-            widget_dict['checkbox2'].setChecked(False)
-            self._vsd_widgets[chnl] = widget_dict
-        layout.setRowStretch(i + 1, 1)
-        self._vsd.trace_selection_scrollArea.setLayout(layout)
-
-    def _init_channel_settings_dialog(self):
-        all_channels = tuple(ch.name for ch in self._time_series_logic.available_channels)
-        self._csd = TimeSeriesSelectionDialog()
-        self._csd.setWindowTitle('Data Channel Settings')
-        self._csd_widgets = dict()
-        layout = QtWidgets.QGridLayout()
-        layout.addWidget(QtWidgets.QLabel('Channel Name'), 0, 0)
-        layout.addWidget(QtWidgets.QLabel('Is Active?'), 0, 1)
-        layout.addWidget(QtWidgets.QLabel('Moving Average?'), 0, 2)
-        line = QtWidgets.QFrame()
-        line.setFrameShape(QtWidgets.QFrame.HLine)
-        line.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(line, 1, 0, 1, 3)
-        for i, chnl in enumerate(all_channels, 2):
-            widget_dict = dict()
-            widget_dict['label'] = QtWidgets.QLabel(chnl)
-            widget_dict['checkbox1'] = QtWidgets.QCheckBox()
-            widget_dict['checkbox2'] = QtWidgets.QCheckBox()
-            layout.addWidget(widget_dict['label'], i, 0)
-            layout.addWidget(widget_dict['checkbox1'], i, 1)
-            layout.addWidget(widget_dict['checkbox2'], i, 2)
-            widget_dict['checkbox1'].setChecked(True)
-            widget_dict['checkbox1'].stateChanged.connect(widget_dict['checkbox2'].setEnabled)
-            widget_dict['checkbox2'].setChecked(True)
-            self._csd_widgets[chnl] = widget_dict
-        layout.setRowStretch(i + 1, 1)
-        self._csd.trace_selection_scrollArea.setLayout(layout)
-
-    def _init_gui_view(self):
-        self.visible_settings = self._view_settings
-
-        # Set 'current channel' text box
-        try:
-            index = self._mw.curr_value_comboBox.findText(self._view_settings['current_channel'])
-            self.current_value_channel = index if not index < 0 else 0
-        except (IndexError, KeyError):
-            self.current_value_channel = 0
+    def _exec_channel_settings_dialog(self):
+        logic = self._time_series_logic_con()
+        active_channels, averaged_channels = logic.channel_settings
+        channels = list(self._streamer_constraints.channel_units)
+        channel_states = {ch: (ch in active_channels, ch in averaged_channels) for ch in channels}
+        dialog = ChannelSettingsDialog(channels, parent=self._mw)
+        dialog.set_channel_states(channel_states)
+        # Show modal dialog and update logic if necessary
+        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+            self._apply_channel_settings(dialog.get_channel_states())
 
     @QtCore.Slot()
     def __update_viewbox_sync(self):
-        """
-        Helper method to sync plots for both y-axes.
-        """
-        self._vb.setGeometry(self._pw.plotItem.vb.sceneBoundingRect())
-        self._vb.linkedViewChanged(self._pw.plotItem.vb, self._vb.XAxis)
-        return
+        """ Helper method to sync plots for both y-axes """
+        try:
+            self._vb.setGeometry(self._mw.trace_plot_widget.plotItem.vb.sceneBoundingRect())
+            self._vb.linkedViewChanged(self._mw.trace_plot_widget.plotItem.vb, self._vb.XAxis)
+        except:
+            self.log.exception('sdsdasd')
+            raise
 
-    @QtCore.Slot()
-    def apply_trace_view_selection(self):
-        """
-        """
-        for chnl, widgets in self._csd_widgets.items():
-            data_active = widgets['checkbox1'].isChecked()
-            average_active = widgets['checkbox2'].isChecked() and data_active
+    def _apply_trace_view_settings(self, setting):
+        active_channels, averaged_channels = self._time_series_logic_con().channel_settings
+        for chnl, (show_data, show_average, precision) in setting.items():
+            chnl_active = chnl in active_channels
+            data_visible = show_data and chnl_active
+            average_visible = show_average and chnl_active and (chnl in averaged_channels)
+            self._toggle_channel_data_plot(chnl, data_visible, average_visible)
+            self._visible_traces[chnl] = (show_data, show_average)
+            self._current_value_channel_precision[chnl] = precision
 
-            self._toggle_channel_data_plot(chnl, data_active, average_active)
-        return
+    def _apply_channel_settings(self, setting):
+        self.sigChannelSettingsChanged.emit(
+            [ch for ch, (enabled, _) in setting.items() if enabled],
+            [ch for ch, (_, averaged) in setting.items() if averaged]
+        )
 
-    @QtCore.Slot()
-    def keep_former_trace_view_selection(self):
-        """
-        """
-        curr_items = self._pw.items()
-        for chnl, widgets in self._vsd_widgets.items():
-            if not widgets['checkbox1'].isVisible():
-                continue
-            widgets['checkbox1'].setChecked(self.curves[chnl] not in curr_items)
-            if widgets['checkbox2'].isEnabled():
-                widgets['checkbox2'].setChecked(self.averaged_curves[chnl] not in curr_items)
-        return
-
-    @property
-    def current_value_channel(self):
-        value = self._mw.curr_value_comboBox.currentText()
-        index = self._mw.curr_value_comboBox.findText(value)
-
-        return index, value
-
-    @current_value_channel.setter
-    def current_value_channel(self, index):
-        self._mw.curr_value_comboBox.setCurrentIndex(index)
-
-    @property
-    def visible_settings(self):
-        settings = {}
-
-        for chnl, widgets in self._vsd_widgets.items():
-            visible = not widgets['checkbox1'].isChecked()
-            av_visible = not widgets['checkbox2'].isChecked()
-
-            settings[chnl] = {'visible': visible, 'avg_visible': av_visible}
-
-        return settings
-
-    @visible_settings.setter
-    def visible_settings(self, settings):
-
-        channels = tuple(ch for ch, w in self._csd_widgets.items() if w['checkbox1'].isChecked())
-        av_channels = tuple(ch for ch, w in self._csd_widgets.items() if
-                            w['checkbox2'].isChecked() and ch in channels)
-
-        # Update view selection dialog
-        for chnl, widgets in self._vsd_widgets.items():
-            # Hide corresponding view selection
-            if chnl in settings.keys():
-                visible = settings[chnl]['visible']
-                av_visible = settings[chnl]['avg_visible']
-            else:
-                visible = chnl in channels
-                av_visible = chnl in av_channels
-
-            widgets['checkbox1'].setChecked(not visible)
-            widgets['checkbox2'].setChecked(not av_visible)
-
-        self._vsd.accepted.emit()
-
-    @QtCore.Slot()
-    def apply_channel_settings(self, update_logic=True):
-        """
-        """
-        channels = tuple(ch for ch, w in self._csd_widgets.items() if w['checkbox1'].isChecked())
-        av_channels = tuple(ch for ch, w in self._csd_widgets.items() if
-                            w['checkbox2'].isChecked() and ch in channels)
+    @QtCore.Slot(list, list)
+    def update_channel_settings(self, enabled, averaged):
         # Update combobox
-        _, old_value = self.current_value_channel
-        self._mw.curr_value_comboBox.clear()
-        self._mw.curr_value_comboBox.addItem('None')
-        self._mw.curr_value_comboBox.addItems(['average {0}'.format(ch) for ch in av_channels])
-        self._mw.curr_value_comboBox.addItems(channels)
-        index = self._mw.curr_value_comboBox.findText(old_value)
-        if index < 0:
-            self._mw.curr_value_comboBox.setCurrentIndex(0)
-        else:
-            self._mw.curr_value_comboBox.setCurrentIndex(index)
+        self._mw.current_value_combobox.blockSignals(True)
+        try:
+            self._mw.current_value_combobox.clear()
+            self._mw.current_value_combobox.addItem('None')
+            self._mw.current_value_combobox.addItems(
+                [f'average {ch}' for ch in averaged if ch in enabled]
+            )
+            self._mw.current_value_combobox.addItems(enabled)
+            index = self._mw.current_value_combobox.findText(self._current_value_channel)
+            if index < 0:
+                self._mw.current_value_combobox.setCurrentIndex(0)
+            else:
+                self._mw.current_value_combobox.setCurrentIndex(index)
+        finally:
+            self._mw.current_value_combobox.blockSignals(False)
+        self._current_value_channel = self._mw.current_value_combobox.currentText()
 
         # Update plot widget axes
-        ch_list = self._time_series_logic.active_channels
-        digital_channels = tuple(ch for ch in ch_list if ch.type == StreamChannelType.DIGITAL)
-        analog_channels = tuple(ch for ch in ch_list if ch.type == StreamChannelType.ANALOG)
+        self._streamer_constraints = self._time_series_logic_con().streamer_constraints
+        channel_units = self._streamer_constraints.channel_units
+        different_units = list({unit for ch, unit in channel_units.items() if ch in enabled})
         self._channels_per_axis = list()
-        if digital_channels:
-            self._channels_per_axis.append(tuple(ch.name for ch in digital_channels))
-            self._pw.setLabel('left', 'Digital Channels', units=digital_channels[0].unit)
-        if analog_channels:
-            self._channels_per_axis.append(tuple(ch.name for ch in analog_channels))
-            axis = 'right' if digital_channels else 'left'
-            self._pw.setLabel(axis, 'Analog Channels', units=analog_channels[0].unit)
-        if analog_channels and digital_channels:
-            self._pw.showAxis('right')
+        if len(different_units) == 2:
+            self._mw.trace_plot_widget.showAxis('right')
+            self._channels_per_axis = [
+                tuple(ch for ch in enabled if channel_units[ch] == different_units[0]),
+                tuple(ch for ch in enabled if channel_units[ch] == different_units[1])
+            ]
+            if len(enabled) == 2:
+                self._mw.trace_plot_widget.setLabel('left',
+                                                    self._channels_per_axis[0][0],
+                                                    units=different_units[0])
+                self._mw.trace_plot_widget.setLabel('right',
+                                                    self._channels_per_axis[1][0],
+                                                    units=different_units[1])
+            else:
+                self._mw.trace_plot_widget.setLabel('left', 'Signal', units=different_units[0])
+                self._mw.trace_plot_widget.setLabel('right', 'Signal', units=different_units[1])
+        elif len(different_units) > 2:
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [tuple(enabled), tuple()]
+            self._mw.trace_plot_widget.setLabel('left', 'Signal', units='')
+        elif len(enabled) == 2:
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [(enabled[0],), (enabled[1],)]
+            self._mw.trace_plot_widget.setLabel('left',
+                                                enabled[0],
+                                                units=channel_units[enabled[0]])
+            self._mw.trace_plot_widget.setLabel('right',
+                                                enabled[1],
+                                                units=channel_units[enabled[1]])
+        elif len(enabled) > 2:
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [tuple(enabled), tuple()]
+            self._mw.trace_plot_widget.setLabel('left', 'Signal', units=different_units[0])
         else:
-            self._pw.hideAxis('right')
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [tuple(enabled), tuple()]
+            self._mw.trace_plot_widget.setLabel('left', enabled[0], units=different_units[0])
 
-        # Update view selection dialog
-        for chnl, widgets in self._vsd_widgets.items():
-            # Hide corresponding view selection
-            visible = chnl in channels
-            av_visible = chnl in av_channels
-            widgets['label'].setVisible(visible)
-            widgets['checkbox1'].setVisible(visible)
-            widgets['checkbox2'].setVisible(visible)
-            widgets['checkbox2'].setEnabled(av_visible)
-            # hide/show corresponding plot curves
-            self._toggle_channel_data_plot(chnl, visible, av_visible)
-
-        if update_logic:
-            self.sigSettingsChanged.emit(
-                {'active_channels': channels, 'averaged_channels': av_channels})
-        return
-
-    @QtCore.Slot()
-    def keep_former_channel_settings(self):
-        """
-        """
-        curr_channels = self._time_series_logic.active_channel_names
-        curr_av_channels = self._time_series_logic.averaged_channel_names
-        for chnl, widgets in self._csd_widgets.items():
-            widgets['checkbox1'].setChecked(chnl in curr_channels)
-            widgets['checkbox2'].setChecked(chnl in curr_av_channels)
-        return
+        for ch in channel_units:
+            show_channel = (ch in enabled) and self._visible_traces[ch][0]
+            show_average = show_channel and (ch in averaged) and self._visible_traces[ch][1]
+            self._toggle_channel_data_plot(ch, show_channel, show_average)
 
     @QtCore.Slot(object, object, object, object)
-    def update_data(self, data_time=None, data=None, smooth_time=None, smooth_data=None):
-        """ The function that grabs the data and sends it to the plot.
-        """
-        if data_time is None and data is None and smooth_data is None and smooth_time is None:
-            data_time, data = self._time_series_logic.trace_data
-            smooth_time, smooth_data = self._time_series_logic.averaged_trace_data
-        elif (data_time is None) ^ (data is None) or (smooth_time is None) ^ (smooth_data is None):
-            self.log.error('Must provide a full data set of x and y values. update_data failed.')
-            return
-
+    def update_data(self, data_time, data, smooth_time, smooth_data):
+        """ The function that grabs the data and sends it to the plot """
+        shift_time = data_time[0] != 0
         if data is not None:
+            if shift_time:
+                data_time = data_time - data_time[0]
             for channel, y_arr in data.items():
                 self.curves[channel].setData(y=y_arr, x=data_time)
         if smooth_data is not None:
+            if shift_time:
+                smooth_time = smooth_time + (
+                    data_time[data_time.shape[0] - smooth_time.shape[0]] - smooth_time[0]
+                )
             for channel, y_arr in smooth_data.items():
                 self.averaged_curves[channel].setData(y=y_arr, x=smooth_time)
 
-        curr_value_channel = self._mw.curr_value_comboBox.currentText()
-        if curr_value_channel != 'None':
-            if curr_value_channel.startswith('average '):
-                chnl = curr_value_channel.split('average ', 1)[-1]
-                val = smooth_data[chnl][-1]
-            else:
-                chnl = curr_value_channel
-                val = data[chnl][-1]
-            ch_type = self._time_series_logic.active_channel_types[chnl]
-            ch_unit = self._time_series_logic.active_channel_units[chnl]
-            if ch_type == StreamChannelType.ANALOG:
-                self._mw.curr_value_Label.setText('{0:.3f} {1}'.format(val, ch_unit))
-            else:
-                self._mw.curr_value_Label.setText('{0:,d} {1}'.format(int(round(val)), ch_unit))
-        return 0
+        channel = self._mw.current_value_combobox.currentText()
+        if channel and channel != 'None':
+            try:
+                if channel.startswith('average '):
+                    channel = channel.split('average ', 1)[-1]
+                    val = smooth_data[channel][-1]
+                else:
+                    val = data[channel][-1]
+                constraints = self._time_series_logic_con().streamer_constraints
+                ch_unit = constraints.channel_units[channel]
+                precision = self._current_value_channel_precision[channel]
+                if np.isnan(val):
+                    self._mw.current_value_label.setText(f'{val} {ch_unit}')
+                elif is_integer_type(constraints.data_type):
+                    self._mw.current_value_label.setText(f'{val:,d} {ch_unit}')
+                elif precision is None:
+                    self._mw.current_value_label.setText(f'{ScaledFloat(val):.5r}{ch_unit}')
+                else:
+                    self._mw.current_value_label.setText(f'{val:,.{precision:d}f} {ch_unit}')
+            except (TypeError, IndexError, KeyError):
+                pass
 
-    @QtCore.Slot()
-    def start_clicked(self):
-        """ Handling the Start button to stop and restart the counter.
-        """
-        self._mw.start_trace_Action.setEnabled(False)
-        self._mw.record_trace_Action.setEnabled(False)
-        self._mw.data_rate_DoubleSpinBox.setEnabled(False)
-        self._mw.oversampling_SpinBox.setEnabled(False)
-        self._mw.trace_length_DoubleSpinBox.setEnabled(False)
-        self._mw.moving_average_spinBox.setEnabled(False)
-        self._mw.channel_settings_Action.setEnabled(False)
-        if self._mw.start_trace_Action.isChecked():
-            settings = {'trace_window_size': self._mw.trace_length_DoubleSpinBox.value(),
-                        'data_rate': self._mw.data_rate_DoubleSpinBox.value(),
-                        'oversampling_factor': self._mw.oversampling_SpinBox.value(),
-                        'moving_average_width': self._mw.moving_average_spinBox.value()}
-            self.sigSettingsChanged.emit(settings)
+    @QtCore.Slot(bool)
+    def _trace_toggled(self, enabled: bool) -> None:
+        """ Handling the toggle button to stop and start the stream """
+        self._mw.toggle_trace_action.setEnabled(False)
+        self._mw.record_trace_action.setEnabled(False)
+        self._mw.settings_dockwidget.setEnabled(False)
+        self._mw.channel_settings_action.setEnabled(False)
+        if enabled:
+            self._trace_settings_changed()
             self.sigStartCounter.emit()
         else:
             self.sigStopCounter.emit()
-        return
 
-    @QtCore.Slot()
-    def record_clicked(self):
-        """ Handling the save button to save the data into a file.
-        """
-        self._mw.start_trace_Action.setEnabled(False)
-        self._mw.record_trace_Action.setEnabled(False)
-        if self._mw.record_trace_Action.isChecked():
+    @QtCore.Slot(bool)
+    def _record_toggled(self, enabled: bool) -> None:
+        """ Handling the save button to save the data into a file """
+        self._mw.toggle_trace_action.setEnabled(False)
+        self._mw.record_trace_action.setEnabled(False)
+        if enabled:
             self.sigStartRecording.emit()
         else:
             self.sigStopRecording.emit()
-        return
 
     @QtCore.Slot(bool, bool)
-    def update_status(self, running=None, recording=None):
-        """
-        Function to ensure that the GUI displays the current measurement status
-
-        @param bool running: True if the data trace streaming is running
-        @param bool recording: True if the data trace recording is active
-        """
-        if running is None:
-            running = self._time_series_logic.module_state() == 'locked'
-        if recording is None:
-            recording = self._time_series_logic.data_recording_active
-
-        self._mw.start_trace_Action.setChecked(running)
-        self._mw.start_trace_Action.setText('Stop trace' if running else 'Start trace')
-
-        self._mw.record_trace_Action.setChecked(recording)
-        self._mw.record_trace_Action.setText('Save recorded' if recording else 'Start recording')
-
-        self._mw.data_rate_DoubleSpinBox.setEnabled(not running)
-        self._mw.oversampling_SpinBox.setEnabled(not running)
-        self._mw.trace_length_DoubleSpinBox.setEnabled(not running)
-        self._mw.moving_average_spinBox.setEnabled(not running)
-        self._mw.channel_settings_Action.setEnabled(not running)
-
-        self._mw.start_trace_Action.setEnabled(True)
-        self._mw.record_trace_Action.setEnabled(running)
-        return
+    def update_status(self, running: bool, recording: bool) -> None:
+        """ Function to ensure that the GUI represents the current measurement status """
+        # Update toolbutton states
+        self._mw.toggle_trace_action.setChecked(running)
+        self._mw.toggle_trace_action.setText('Stop trace' if running else 'Start trace')
+        self._mw.record_trace_action.setChecked(recording)
+        self._mw.record_trace_action.setText('Save recorded' if recording else 'Start recording')
+        # Enable/Disable widgets and actions
+        self._mw.settings_dockwidget.setEnabled(True)
+        self._mw.channel_settings_action.setEnabled(not running)
+        self._mw.toggle_trace_action.setEnabled(True)
+        self._mw.record_trace_action.setEnabled(running)
 
     @QtCore.Slot()
-    def data_window_changed(self):
+    def _trace_settings_changed(self):
         """ Handling the change of the count_length and sending it to the measurement.
         """
-        val = self._mw.trace_length_DoubleSpinBox.value()
-        self.sigSettingsChanged.emit({'trace_window_size': val})
-        return
+        settings = {
+            'trace_window_size': self._mw.settings_dockwidget.trace_length_spinbox.value(),
+            'data_rate': self._mw.settings_dockwidget.data_rate_spinbox.value(),
+            'oversampling_factor': self._mw.settings_dockwidget.oversampling_spinbox.value(),
+            'moving_average_width': self._mw.settings_dockwidget.moving_average_spinbox.value()
+        }
+        self.sigTraceSettingsChanged.emit(settings)
 
     @QtCore.Slot()
-    def data_rate_changed(self):
-        """ Handling the change of the count_frequency and sending it to the measurement.
-        """
-        val = self._mw.data_rate_DoubleSpinBox.value()
-        self.sigSettingsChanged.emit({'data_rate': val})
-        return
+    def _current_value_channel_changed(self):
+        val = self._mw.current_value_combobox.currentText()
+        if val == 'None':
+            self._mw.current_value_label.setVisible(False)
+            self._mw.current_value_label.setText('0')
+        else:
+            self._mw.current_value_label.setVisible(True)
+        self._current_value_channel = val
 
     @QtCore.Slot()
-    def oversampling_changed(self):
-        """ Handling the change of the oversampling and sending it to the measurement.
-        """
-        val = self._mw.oversampling_SpinBox.value()
-        self.sigSettingsChanged.emit({'oversampling_factor': val})
-        return
-
-    @QtCore.Slot()
-    def moving_average_changed(self):
-        """
-        """
-        val = self._mw.moving_average_spinBox.value()
-        self.sigSettingsChanged.emit({'moving_average_width': val})
-
-    @QtCore.Slot()
-    def current_value_channel_changed(self):
-        """
-        """
-        val = self._mw.curr_value_comboBox.currentText()
-        self._mw.curr_value_Label.setVisible(val != 'None')
-
-    @QtCore.Slot()
-    def restore_default_view(self):
+    def _restore_default_view(self):
         """ Restore the arrangement of DockWidgets to the default
         """
-        # Show hidden dock widget
-        self._mw.trace_settings_DockWidget.show()
-
-        # re-dock floating dock widget
-        self._mw.trace_settings_DockWidget.setFloating(False)
-
-        # Arrange docks widget
-        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea,
-                               self._mw.trace_settings_DockWidget)
-
+        # Show hidden dock widget and re-dock
+        self._mw.settings_dockwidget.show()
+        self._mw.settings_dockwidget.setFloating(False)
+        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.settings_dockwidget)
         # Set the toolbar to its initial top area
-        self._mw.addToolBar(QtCore.Qt.TopToolBarArea,
-                            self._mw.trace_control_ToolBar)
-
+        self._mw.toolbar.show()
+        self._mw.addToolBar(QtCore.Qt.TopToolBarArea, self._mw.toolbar)
         # Restore status if something went wrong
-        self.update_status()
+        self.update_status(running=self._time_series_logic_con().module_state() == 'locked',
+                           recording=self._time_series_logic_con().data_recording_active)
 
     @QtCore.Slot(dict)
-    def update_settings(self, settings_dict=None):
-        if settings_dict is None:
-            settings_dict = self._time_series_logic.all_settings
+    def update_trace_settings(self, settings_dict):
+        if settings_dict['oversampling_factor'] != self._mw.settings_dockwidget.oversampling_spinbox.value():
+            self._mw.settings_dockwidget.oversampling_spinbox.blockSignals(True)
+            self._mw.settings_dockwidget.oversampling_spinbox.setValue(
+                settings_dict['oversampling_factor']
+            )
+            self._mw.settings_dockwidget.oversampling_spinbox.blockSignals(False)
+        if settings_dict['trace_window_size'] != self._mw.settings_dockwidget.trace_length_spinbox.value():
+            self._mw.settings_dockwidget.trace_length_spinbox.blockSignals(True)
+            self._mw.settings_dockwidget.trace_length_spinbox.setValue(
+                settings_dict['trace_window_size']
+            )
+            self._mw.settings_dockwidget.trace_length_spinbox.blockSignals(False)
+        if settings_dict['data_rate'] != self._mw.settings_dockwidget.data_rate_spinbox.value():
+            self._mw.settings_dockwidget.data_rate_spinbox.blockSignals(True)
+            self._mw.settings_dockwidget.data_rate_spinbox.setValue(settings_dict['data_rate'])
+            self._mw.settings_dockwidget.data_rate_spinbox.blockSignals(False)
+        if settings_dict['moving_average_width'] != self._mw.settings_dockwidget.moving_average_spinbox.value():
+            self._mw.settings_dockwidget.moving_average_spinbox.blockSignals(True)
+            self._mw.settings_dockwidget.moving_average_spinbox.setValue(
+                settings_dict['moving_average_width']
+            )
+            self._mw.settings_dockwidget.moving_average_spinbox.blockSignals(False)
+        self._streamer_constraints = self._time_series_logic_con().streamer_constraints
+        if self._streamer_constraints.sample_timing == SampleTiming.RANDOM:
+            self._mw.trace_plot_widget.setRange(
+                xRange=[0, settings_dict['trace_window_size'] * settings_dict['data_rate']],
+                disableAutoRange=False
+            )
+        else:
+            self._mw.trace_plot_widget.setRange(
+                xRange=[0, settings_dict['trace_window_size']],
+                disableAutoRange=False
+            )
 
-        if 'oversampling_factor' in settings_dict:
-            self._mw.oversampling_SpinBox.blockSignals(True)
-            self._mw.oversampling_SpinBox.setValue(settings_dict['oversampling_factor'])
-            self._mw.oversampling_SpinBox.blockSignals(False)
-        if 'trace_window_size' in settings_dict:
-            self._mw.trace_length_DoubleSpinBox.blockSignals(True)
-            self._mw.trace_length_DoubleSpinBox.setValue(settings_dict['trace_window_size'])
-            self._mw.trace_length_DoubleSpinBox.blockSignals(False)
-        if 'data_rate' in settings_dict:
-            self._mw.data_rate_DoubleSpinBox.blockSignals(True)
-            self._mw.data_rate_DoubleSpinBox.setValue(settings_dict['data_rate'])
-            self._mw.data_rate_DoubleSpinBox.blockSignals(False)
-        if 'active_channels' in settings_dict:
-            val = tuple(ch.name for ch in settings_dict['active_channels'])
-            for chnl, w in self._csd_widgets.items():
-                enabled = chnl in val
-                w['checkbox1'].setChecked(enabled)
-        if 'averaged_channels' in settings_dict:
-            val = settings_dict['averaged_channels']
-            for chnl, w in self._csd_widgets.items():
-                enabled = chnl in val
-                w['checkbox2'].setChecked(enabled)
-        if 'moving_average_width' in settings_dict:
-            val = settings_dict['moving_average_width']
-            self._mw.moving_average_spinBox.blockSignals(True)
-            self._mw.moving_average_spinBox.setValue(val)
-            self._mw.moving_average_spinBox.blockSignals(False)
+    def _remove_channel_from_plot(self, channel: str) -> None:
+        data_curve = self.curves[channel]
+        average_curve = self.averaged_curves[channel]
+        if data_curve in self._vb.addedItems:
+            self._vb.removeItem(data_curve)
+        if data_curve in self._mw.trace_plot_widget.items():
+            self._mw.trace_plot_widget.removeItem(data_curve)
+        if average_curve in self._vb.addedItems:
+            self._vb.removeItem(average_curve)
+        if average_curve in self._mw.trace_plot_widget.items():
+            self._mw.trace_plot_widget.removeItem(average_curve)
 
-        self.apply_channel_settings(update_logic=False)
-
-    def _toggle_channel_data_plot(self, channel, show_data, show_average):
-        """
-        """
-        if channel not in self.curves or channel not in self.averaged_curves:
-            self.log.warning('Unknown channel name "{0}" encountered in _toggle_channel_data_plot.'
-                             ''.format(channel))
-            return
-
-        if self.curves[channel] in self._vb.addedItems:
-            self._vb.removeItem(self.curves[channel])
-        if self.curves[channel] in self._pw.items():
-            self._pw.removeItem(self.curves[channel])
-        if self.averaged_curves[channel] in self._vb.addedItems:
-            self._vb.removeItem(self.averaged_curves[channel])
-        if self.averaged_curves[channel] in self._pw.items():
-            self._pw.removeItem(self.averaged_curves[channel])
-
-        if show_data and not self._vsd_widgets[channel]['checkbox1'].isChecked():
+    def _toggle_channel_data_plot(self, channel, show_data: bool, show_average: bool):
+        self._remove_channel_from_plot(channel)
+        if show_data:
             if channel in self._channels_per_axis[0]:
-                self._pw.addItem(self.curves[channel])
+                self._mw.trace_plot_widget.addItem(self.curves[channel])
             else:
                 self._vb.addItem(self.curves[channel])
-        checkbox = self._vsd_widgets[channel]['checkbox2']
-        average_enabled = not checkbox.isChecked() and checkbox.isEnabled()
-        if show_average and average_enabled and self._time_series_logic.moving_average_width > 1:
+        if show_average:
             if channel in self._channels_per_axis[0]:
-                self._pw.addItem(self.averaged_curves[channel])
+                self._mw.trace_plot_widget.addItem(self.averaged_curves[channel])
             else:
                 self._vb.addItem(self.averaged_curves[channel])

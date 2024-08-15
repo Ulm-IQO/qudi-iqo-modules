@@ -32,7 +32,14 @@ from qudi.interface.simple_laser_interface import ControlMode, ShutterState, Las
 
 
 class LaserLogic(LogicBase):
-    """ ToDo: Document
+    """ Logic class for controlling a laser.
+
+    Example config for copy-paste:
+
+    laser_logic:
+        module.Class: 'laser_logic.LaserLogic'
+        connect:
+            laser: laser_hardware
     """
 
     _laser = Connector(name='laser', interface='SimpleLaserInterface')
