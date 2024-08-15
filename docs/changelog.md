@@ -9,6 +9,7 @@
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
 - Old ODMR fits are now removed when starting a new measurement
 - Fixed psu-dependent bugs for laser_quantum_laser
+- Laser logic does not automatically start query loop, gui will still start it on startup
 
 
 ### New Features
