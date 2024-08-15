@@ -172,6 +172,8 @@ class LaserGui(GuiBase):
         """ Definition and initialisation of the GUI plus staring the measurement.
         """
         logic = self._laser_logic()
+        # initialize data and start the laser data query loop
+        logic._initialize_data()
         logic.start_query_loop()
         #####################
         # create main window
