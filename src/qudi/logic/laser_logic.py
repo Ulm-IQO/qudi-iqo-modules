@@ -93,8 +93,6 @@ class LaserLogic(LogicBase):
         self._last_current_setpoint = laser.get_current_setpoint()
         self._last_control_mode = laser.get_control_mode()
 
-        # start timed query loop
-        QtCore.QTimer.singleShot(0, self.start_query_loop)
 
     def on_deactivate(self):
         """ Deactivate module
