@@ -39,7 +39,6 @@ from qudi.util.widgets.fitting import FitWidget, FitConfigurationsModel, FitCont
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.widgets.plotting.interactive_curve import InteractiveCurvesWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
-from scipy import constants
 
 
 class _HistogramSettingsWidget(QtWidgets.QWidget):
@@ -52,20 +51,23 @@ class _HistogramSettingsWidget(QtWidgets.QWidget):
         # labels
         self.bin_label = QtWidgets.QLabel('Bins:')
         self.bin_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.min_label = QtWidgets.QLabel('Minimum wavelength:')
+        self.min_label = QtWidgets.QLabel('Minimum:')
         self.min_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        self.max_label = QtWidgets.QLabel('Maximum wavelength:')
+        self.max_label = QtWidgets.QLabel('Maximum:')
         self.max_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         # spin boxes
         self.bins_spinbox = QtWidgets.QSpinBox()
+        self.bins_spinbox.setMinimumWidth(100)
         self.bins_spinbox.setRange(1, 10000)
         self.bins_spinbox.setValue(200)
         self.min_spinbox = ScienDSpinBox()
+        self.min_spinbox.setMinimumWidth(100)
         self.min_spinbox.setDecimals(7, dynamic_precision=False)
         self.min_spinbox.setRange(1e-9, 10000e-9)
         self.min_spinbox.setValue(550e-9)
         self.min_spinbox.setSuffix('m')
         self.max_spinbox = ScienDSpinBox()
+        self.max_spinbox.setMinimumWidth(100)
         self.max_spinbox.setDecimals(7, dynamic_precision=False)
         self.max_spinbox.setRange(1e-9, 10000e-9)
         self.max_spinbox.setValue(750e-9)
@@ -230,15 +232,6 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         super().__init__()
         self.setWindowTitle('qudi: Laser Scanning')
 
-        # Create central widget with wavelength/freq display
-        self.current_laser_label = QtWidgets.QLabel()
-        font = self.current_laser_label.font()
-        font.setPointSize(16)
-        self.current_laser_label.setFont(font)
-        self.current_laser_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        # self.current_laser_label.setMinimumHeight(20)
-        self.setCentralWidget(self.current_laser_label)
-
         # Create QActions
         self.gui_actions = _LaserScanningActions()
         # Create menu bar and add actions
@@ -247,16 +240,30 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         self.toolbar = _LaserScanningToolBar(self.gui_actions)
         self.addToolBar(QtCore.Qt.TopToolBarArea, self.toolbar)
 
-        # Create dockwidgets and add them
+        # Create central widget with wavelength/freq display and histogram plot
         self.histogram_widget = InteractiveCurvesWidget()
+        self.histogram_widget.setMinimumHeight(400)
         self.histogram_widget.add_marker_selection(position=(0, 0),
                                                    mode=InteractiveCurvesWidget.SelectionMode.X)
         self.histogram_widget.toggle_plot_editor(False)
-        # self.histogram_widget.toggle_plot_selector(False)
-        self.histogram_dockwidget = QtWidgets.QDockWidget('Histogram Data')
-        self.histogram_dockwidget.setWidget(self.histogram_widget)
 
-        self.scatter_widget = InteractiveCurvesWidget()  #xy_region_selection_handles=False
+        self.current_laser_label = QtWidgets.QLabel()
+        font = self.current_laser_label.font()
+        font.setPointSize(16)
+        self.current_laser_label.setFont(font)
+        self.current_laser_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+
+        layout = QtWidgets.QVBoxLayout()
+        layout.addWidget(self.current_laser_label)
+        layout.addWidget(self.histogram_widget)
+        layout.setStretch(1, 1)
+        layout.setContentsMargins(0, 0, 0, 0)
+        widget = QtWidgets.QWidget()
+        widget.setLayout(layout)
+        self.setCentralWidget(widget)
+
+        # Create dockwidgets and add them
+        self.scatter_widget = InteractiveCurvesWidget()  # xy_region_selection_handles=False
         self.scatter_widget.toggle_plot_selector(False)
         self.scatter_widget.toggle_plot_editor(False)
         # self.scatter_widget.toggle_plot_selector(False)
@@ -271,11 +278,6 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         self.histogram_settings_widget = _HistogramSettingsWidget()
         self.histogram_settings_dockwidget.setWidget(self.histogram_settings_widget)
 
-        self.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.histogram_settings_dockwidget)
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.fit_dockwidget)
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.scatter_dockwidget)
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.histogram_dockwidget)
-
         # Create child dialog for fit settings and link it to the fit widget
         self.fit_config_dialog = FitConfigurationDialog(parent=self,
                                                         fit_config_model=fit_config_model)
@@ -287,31 +289,24 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         self.gui_actions.action_show_fit_configuration.triggered.connect(
             self.fit_config_dialog.show
         )
-
         self.restore_default()
 
     def restore_default(self) -> None:
         """ """
         # Show all hidden dock widgets
-        self.histogram_dockwidget.show()
         self.scatter_dockwidget.show()
         self.fit_dockwidget.show()
         self.histogram_settings_dockwidget.show()
 
         # re-dock floating dock widgets
-        self.histogram_dockwidget.setFloating(False)
         self.scatter_dockwidget.setFloating(False)
         self.fit_dockwidget.setFloating(False)
         self.histogram_settings_dockwidget.setFloating(False)
 
         # Arrange dock widgets
+        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.fit_dockwidget)
         self.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.histogram_settings_dockwidget)
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.histogram_dockwidget)
         self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.scatter_dockwidget)
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.fit_dockwidget)
-
-        self.splitDockWidget(self.histogram_dockwidget, self.scatter_dockwidget, QtCore.Qt.Vertical)
-        self.splitDockWidget(self.histogram_dockwidget, self.fit_dockwidget, QtCore.Qt.Horizontal)
 
 
 class LaserScanningGui(GuiBase):
