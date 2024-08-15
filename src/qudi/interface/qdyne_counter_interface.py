@@ -161,7 +161,7 @@ class QdyneCounterInterface(Base):
         active_channels: Sequence[str],
         bin_width: float,
         record_length: float,
-        gate_mode: Union[GateMode, int],
+        gate_mode: GateMode,
         data_type: type
     ) -> None:
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""

@@ -85,6 +85,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
         return
 
     # Defining methods satisfying the qdyne_counter_interface
+    @property
     def constraints(self):
         """
 
@@ -126,24 +127,24 @@ class QdyneCounterDummy(QdyneCounterInterface):
         active_channels: Sequence[str],
         bin_width: float,
         record_length: float,
-        gate_mode: int,
+        gate_mode: GateMode,
         data_type: type,
     ) -> None:
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""
         self._binwidth = bin_width
         self._record_length = record_length
         self._active_channels = active_channels
-        if gate_mode != 0:
+        if gate_mode != GateMode.UNGATED:
             self.log.error(
-                f"Cannot set gate mode {gate_mode} ({GateMode(gate_mode)}). "
+                f"Cannot set gate mode {gate_mode}. "
                 + f"Use gate mode {0} ({GateMode(0)}) instead."
             )
-            self._gate_mode = GateMode(0)
+            self._gate_mode = GateMode.UNGATED
         if any((data_type == dtype for dtype in (int, float, np.int64, np.float64))):
             self._data_type = data_type
         else:
             self.log.error(f"Data type {data_type} is not a valid data type.")
-        return
+        return self._active_channels, self._binwidth, self._record_length, self._gate_mode, self._data_type
 
     def get_status(self) -> int:
         """Receives the current status of the hardware and outputs it as return value.

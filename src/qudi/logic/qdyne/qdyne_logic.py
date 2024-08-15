@@ -110,11 +110,17 @@ class MeasurementGenerator:
                 "record_length": self.__record_length,
                 "number_of_gates": 0,
             }
-            self.qdyne_logic._data_streamer().configure(
+            #self.pulsedmasterlogic().set_fast_counter_settings(settings)
+
+            (self.__active_channels,
+            self.__binwidth,
+            self.__record_length,
+            self.__gate_mode,
+            self.__data_type) = self.qdyne_logic._data_streamer().configure(
                 self.__active_channels,
                 self.__binwidth,
                 self.__record_length,
-                self.__gate_mode.value,
+                self.__gate_mode,
                 self.__data_type,
             )
         else:
@@ -223,7 +229,7 @@ class MeasurementGenerator:
 
     @property
     def counter_constraints(self) -> DiscreteScalarConstraint:
-        return self.qdyne_logic._data_streamer().constraints()
+        return self.qdyne_logic._data_streamer().constraints
 
 
 class QdyneLogic(LogicBase):

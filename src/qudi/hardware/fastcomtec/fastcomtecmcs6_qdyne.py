@@ -214,7 +214,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             active_channels: Sequence[str],
             bin_width: float,
             record_length: float,
-            gate_mode: Union[GateMode, int],
+            gate_mode: GateMode,
             data_type: type
     ) -> None:
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""
@@ -229,23 +229,24 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             old_binwidth = self.binwidth
             old_record_length = self.record_length
             old_gate_mode = self.gate_mode
+            self.log.warning(['settings:', bin_width, record_length])
             try:
-                no_of_bins = int((record_length - self._trigger_safety) / bin_width)
                 self._set_active_channels(active_channels)
-                self.set_binwidth(bin_width)
+                self._binwidth = self.set_binwidth(bin_width)
                 self.change_sweep_mode(gated=False, cycles=None, preset=None)
-                self.set_length(no_of_bins)
+                no_of_bins = int((record_length - self._trigger_safety) / self.binwidth)
+                self._record_length = self.set_length(no_of_bins) * self._binwidth
             except Exception as err:
-                old_no_of_bins = int((old_record_length - self._trigger_safety) / old_binwidth)
                 self._set_active_channels(old_channels)
-                self.set_binwidth(old_binwidth)
+                self._binwidth = self.set_binwidth(old_binwidth)
                 self.change_sweep_mode(old_gate_mode)
-                self.set_length(old_no_of_bins)
+                old_no_of_bins = int((old_record_length - self._trigger_safety) / self.binwidth)
+                self._record_length = self.set_length(old_no_of_bins) * self._binwidth
                 raise RuntimeError(
                     "Error while trying to configure data in-streamer"
                 ) from err
 
-        # TODO: Should we return the set values, similar to the fastcounter toolchain?
+        return self._active_channels, self._binwidth, self._record_length, self._gated, self._data_type
 
     def _set_active_channels(self, channels: Sequence[str]) -> None:
         if self._is_not_settable("active channels"):
