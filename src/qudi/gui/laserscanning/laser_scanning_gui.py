@@ -30,52 +30,32 @@ import pyqtgraph as pg
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
+from qudi.core.configoption import ConfigOption
 from qudi.util.paths import get_artwork_dir
 from typing import Optional, Mapping, Sequence, Union, Tuple, List
 from lmfit.model import ModelResult as _ModelResult
 
-from qudi.util.widgets.fitting import FitWidget
+from qudi.util.widgets.fitting import FitWidget, FitConfigurationsModel, FitContainer
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.widgets.plotting.interactive_curve import InteractiveCurvesWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from scipy import constants
 
 
-class HistogramDockWidget(QtWidgets.QDockWidget):
+class _HistogramSettingsWidget(QtWidgets.QWidget):
     """ """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.plot_widget = InteractiveCurvesWidget()
-        self.plot_widget.add_marker_selection(position=(0, 0),
-                                              mode=self.plot_widget.SelectionMode.X)
-        self.plot_widget._plot_editor.setVisible(False)
-        self.setWidget(self.plot_widget)
 
+    sigSettingsChanged = QtCore.Signal(tuple, int)
 
-class ScatterPlotDockWidget(QtWidgets.QDockWidget):
-    """ """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.plot_widget = PlotWidget()
-        self.setWidget(self.plot_widget)
-
-
-class FitDockWidget(QtWidgets.QDockWidget):
-    """ """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fit_widget = FitWidget()
-        self.setWidget(self.fit_widget)
-
-
-class HistogramSettingsWidget(QtWidgets.QWidget):
-    """ """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # labels
         self.bin_label = QtWidgets.QLabel('Bins:')
+        self.bin_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.min_label = QtWidgets.QLabel('Minimum wavelength:')
+        self.min_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         self.max_label = QtWidgets.QLabel('Maximum wavelength:')
+        self.max_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         # spin boxes
         self.bins_spinbox = QtWidgets.QSpinBox()
         self.bins_spinbox.setRange(1, 10000)
@@ -90,19 +70,50 @@ class HistogramSettingsWidget(QtWidgets.QWidget):
         self.max_spinbox.setRange(1e-9, 10000e-9)
         self.max_spinbox.setValue(750e-9)
         self.max_spinbox.setSuffix('m')
+        # layout
+        layout = QtWidgets.QHBoxLayout()
+        layout.addWidget(self.bin_label)
+        layout.addWidget(self.bins_spinbox)
+        layout.addWidget(self.min_label)
+        layout.addWidget(self.min_spinbox)
+        layout.addWidget(self.max_label)
+        layout.addWidget(self.max_spinbox)
+        layout.setStretch(0, 1)
+        layout.setStretch(2, 1)
+        layout.setStretch(4, 1)
+        self.setLayout(layout)
+        # Connect signals
+        self.min_spinbox.editingFinished.connect(self.__emit_changes)
+        self.max_spinbox.editingFinished.connect(self.__emit_changes)
+        self.bins_spinbox.editingFinished.connect(self.__emit_changes)
+
+    def get_histogram_settings(self) -> Tuple[Tuple[float, float], int]:
+        """ """
+        span = [self.min_spinbox.value(), self.max_spinbox.value()]
+        return (min(span), max(span)), self.bins_spinbox.value()
+
+    def set_histogram_settings(self, span: Tuple[float, float], bins: int) -> None:
+        """ """
+        self.min_spinbox.blockSignals(True)
+        self.max_spinbox.blockSignals(True)
+        self.bins_spinbox.blockSignals(True)
+        self.min_spinbox.setValue(min(span))
+        self.max_spinbox.setValue(max(span))
+        self.bins_spinbox.setValue(bins)
+        self.min_spinbox.blockSignals(False)
+        self.max_spinbox.blockSignals(False)
+        self.bins_spinbox.blockSignals(False)
+        self.__emit_changes()
+
+    @QtCore.Slot()
+    def __emit_changes(self) -> None:
+        self.sigSettingsChanged.emit(self.get_histogram_settings())
 
 
-class LaserScanningMainWindow(QtWidgets.QMainWindow):
-    """ Create the main window for laser scanning toolchain """
-
-    sigFitClicked = QtCore.Signal(str)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.setWindowTitle('qudi: Laser Scanning')
-
-        # Create QActions
+class _LaserScanningActions:
+    """ """
+    def __init__(self):
+        super().__init__()
         icon_path = os.path.join(get_artwork_dir(), 'icons')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
@@ -122,16 +133,16 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         self.action_show_fit_configuration.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'record-counter'))
-        self.start_trace_Action2 = QtWidgets.QAction('Start Wavemeter')
-        self.start_trace_Action2.setCheckable(True)
-        self.start_trace_Action2.setToolTip('Start/stop wavemeter to display wavelength')
-        self.start_trace_Action2.setIcon(icon)
+        self.action_laser_only = QtWidgets.QAction('Start Laser Reading')
+        self.action_laser_only.setCheckable(True)
+        self.action_laser_only.setToolTip('Start/Stop laser wavelength/frequency acquisition only')
+        self.action_laser_only.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
-        self.action_start_scan = QtWidgets.QAction('Start trace')
-        self.action_start_scan.setCheckable(True)
-        self.action_start_scan.setToolTip('Start/pause wavemeter for data acquisition with counts')
-        self.action_start_scan.setIcon(icon)
+        self.action_start_stop = QtWidgets.QAction('Start Laser Scanning')
+        self.action_start_stop.setCheckable(True)
+        self.action_start_stop.setToolTip('Start/Stop laser scanning')
+        self.action_start_stop.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'edit-clear'))
         self.action_clear_data = QtWidgets.QAction('Clear trace data')
@@ -161,56 +172,63 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
 
         self.action_restore_view = QtWidgets.QAction('Restore default')
 
+
+class _LaserScanningMenuBar(QtWidgets.QMenuBar):
+    """ """
+    def __init__(self, actions: _LaserScanningActions, parent: Optional[QtWidgets.QWidget] = None):
+        super().__init__(parent=parent)
+        menu = self.addMenu('File')
+        menu.addAction(actions.action_laser_only)
+        menu.addAction(actions.action_start_stop)
+        menu.addAction(actions.action_clear_data)
+        menu.addSeparator()
+        menu.addAction(actions.action_save)
+        menu.addSeparator()
+        menu.addAction(actions.action_close)
+        menu = self.addMenu('View')
+        menu.addAction(actions.action_show_fit_configuration)
+        menu.addAction(actions.action_show_all_data)
+        menu.addAction(actions.action_show_frequency)
+        menu.addAction(actions.action_autoscale_histogram)
+        menu.addAction(actions.action_show_histogram_region)
+        menu.addAction(actions.action_fit_envelope_histogram)
+        menu.addSeparator()
+        menu.addAction(actions.action_restore_view)
+
+
+class _LaserScanningToolBar(QtWidgets.QToolBar):
+    """ """
+    def __init__(self,
+                 actions: _LaserScanningActions,
+                 parent: Optional[QtWidgets.QWidget] = None):
+        super().__init__(parent=parent)
+        self.setMovable(False)
+        self.setFloatable(False)
+
         self.save_tag_line_edit = QtWidgets.QLineEdit()
         self.save_tag_line_edit.setMaximumWidth(400)
         self.save_tag_line_edit.setMinimumWidth(150)
         self.save_tag_line_edit.setToolTip('Enter a nametag which will be added to the filename.')
 
-        # Create menu bar and add actions
-        menu_bar = QtWidgets.QMenuBar()
-        menu = menu_bar.addMenu('File')
-        menu.addAction(self.start_trace_Action2)
-        menu.addAction(self.action_start_scan)
-        menu.addAction(self.action_clear_data)
-        menu.addSeparator()
-        menu.addAction(self.action_save)
-        menu.addSeparator()
-        menu.addAction(self.action_close)
-        menu = menu_bar.addMenu('View')
-        menu.addAction(self.action_show_fit_configuration)
-        menu.addAction(self.action_show_all_data)
-        menu.addAction(self.action_show_frequency)
-        menu.addAction(self.action_autoscale_histogram)
-        menu.addAction(self.action_show_histogram_region)
-        menu.addAction(self.action_fit_envelope_histogram)
-        menu.addSeparator()
-        menu.addAction(self.action_restore_view)
-        self.setMenuBar(menu_bar)
+        self.addAction(actions.action_laser_only)
+        self.addAction(actions.action_start_stop)
+        self.addAction(actions.action_clear_data)
+        self.addAction(actions.action_save)
+        self.addWidget(self.save_tag_line_edit)
+        self.addSeparator()
+        self.addAction(actions.action_show_fit_configuration)
+        self.addAction(actions.action_show_all_data)
+        self.addAction(actions.action_show_frequency)
+        self.addAction(actions.action_autoscale_histogram)
+        self.addAction(actions.action_show_histogram_region)
 
-        # Create toolbar
-        toolbar = QtWidgets.QToolBar()
-        toolbar.addAction(self.start_trace_Action2)
-        toolbar.addAction(self.action_start_scan)
-        toolbar.addAction(self.action_clear_data)
-        toolbar.addAction(self.action_save)
-        toolbar.addWidget(self.save_tag_line_edit)
-        toolbar.addSeparator()
-        toolbar.addAction(self.action_show_fit_configuration)
-        toolbar.addAction(self.action_show_all_data)
-        toolbar.addAction(self.action_show_frequency)
-        toolbar.addAction(self.action_autoscale_histogram)
-        toolbar.addAction(self.action_show_histogram_region)
-        self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
 
-        # Create dockwidgets
-        self.histogram_dockwidget = HistogramDockWidget()
-        self.histogram_widget = self.histogram_dockwidget.plot_widget
+class LaserScanningMainWindow(QtWidgets.QMainWindow):
+    """ Create the main window for laser scanning toolchain """
 
-        self.scatter_dockwidget = ScatterPlotDockWidget()  # for timeseries scatterplot
-        self.scatter_widget = self.scatter_dockwidget.plot_widget
-
-        self.fit_dockwidget = FitDockWidget()  # for fit widget
-        self.fit_widget = self.fit_dockwidget.fit_widget
+    def __init__(self, fit_config_model: FitConfigurationsModel, fit_container: FitContainer):
+        super().__init__()
+        self.setWindowTitle('qudi: Laser Scanning')
 
         # Create central widget with wavelength/freq display
         self.current_laser_label = QtWidgets.QLabel()
@@ -219,571 +237,579 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         self.current_laser_label.setFont(font)
         self.current_laser_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         # self.current_laser_label.setMinimumHeight(20)
+        self.setCentralWidget(self.current_laser_label)
 
-        # Create Histogram parameter dock widget
-        self.DockWidget = QtWidgets.QDockWidget()
-        self.dockWidgetContents = QtWidgets.QWidget()
+        # Create QActions
+        self.gui_actions = _LaserScanningActions()
+        # Create menu bar and add actions
+        self.setMenuBar(_LaserScanningMenuBar(self.gui_actions))
+        # Create toolbar and add actions
+        self.toolbar = _LaserScanningToolBar(self.gui_actions)
+        self.addToolBar(QtCore.Qt.TopToolBarArea, self.toolbar)
+
+        # Create dockwidgets and add them
+        self.histogram_widget = InteractiveCurvesWidget()
+        self.histogram_widget.add_marker_selection(position=(0, 0),
+                                                   mode=InteractiveCurvesWidget.SelectionMode.X)
+        self.histogram_widget.toggle_plot_editor(False)
+        # self.histogram_widget.toggle_plot_selector(False)
+        self.histogram_dockwidget = QtWidgets.QDockWidget('Histogram Data')
+        self.histogram_dockwidget.setWidget(self.histogram_widget)
+
+        self.scatter_widget = InteractiveCurvesWidget()  #xy_region_selection_handles=False
+        self.scatter_widget.toggle_plot_selector(False)
+        self.scatter_widget.toggle_plot_editor(False)
+        # self.scatter_widget.toggle_plot_selector(False)
+        self.scatter_dockwidget = QtWidgets.QDockWidget('Scan Data')
+        self.scatter_dockwidget.setWidget(self.scatter_widget)
+
+        self.fit_dockwidget = QtWidgets.QDockWidget('Fit')
+        self.fit_widget = FitWidget()
+        self.fit_dockwidget.setWidget(self.fit_widget)
+
+        self.histogram_settings_dockwidget = QtWidgets.QDockWidget('Histogram Settings')
+        self.histogram_settings_widget = _HistogramSettingsWidget()
+        self.histogram_settings_dockwidget.setWidget(self.histogram_settings_widget)
+
+        self.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.histogram_settings_dockwidget)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.fit_dockwidget)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.scatter_dockwidget)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.histogram_dockwidget)
+
+        # Create child dialog for fit settings and link it to the fit widget
+        self.fit_config_dialog = FitConfigurationDialog(parent=self,
+                                                        fit_config_model=fit_config_model)
+        self.fit_widget.link_fit_container(fit_container)
+
+        # Connect some actions
+        self.gui_actions.action_close.triggered.connect(self.close)
+        self.gui_actions.action_restore_view.triggered.connect(self.restore_default)
+        self.gui_actions.action_show_fit_configuration.triggered.connect(
+            self.fit_config_dialog.show
+        )
+
+        self.restore_default()
+
+    def restore_default(self) -> None:
+        """ """
+        # Show all hidden dock widgets
+        self.histogram_dockwidget.show()
+        self.scatter_dockwidget.show()
+        self.fit_dockwidget.show()
+        self.histogram_settings_dockwidget.show()
+
+        # re-dock floating dock widgets
+        self.histogram_dockwidget.setFloating(False)
+        self.scatter_dockwidget.setFloating(False)
+        self.fit_dockwidget.setFloating(False)
+        self.histogram_settings_dockwidget.setFloating(False)
+
+        # Arrange dock widgets
+        self.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.histogram_settings_dockwidget)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.histogram_dockwidget)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.scatter_dockwidget)
+        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.fit_dockwidget)
+
+        self.splitDockWidget(self.histogram_dockwidget, self.scatter_dockwidget, QtCore.Qt.Vertical)
+        self.splitDockWidget(self.histogram_dockwidget, self.fit_dockwidget, QtCore.Qt.Horizontal)
 
 
-        # Layouts
-        layout1 = QtWidgets.QHBoxLayout()
-        layout1.addWidget(self.wavelengthLabel2)
-        layout1.addStretch()
-        layout1.addWidget(self.frequencyLabel)
-
-        layout3 = QtWidgets.QVBoxLayout()
-        layout3.addWidget(self.DockWidget5)
-        layout3.addWidget(self.scatter_dockwidget)
-
-        layout = QtWidgets.QHBoxLayout()
-        layout.addLayout(layout3)
-        layout.addWidget(self.fit_dockwidget)
-
-        layout2 = QtWidgets.QHBoxLayout()
-        layout2.addWidget(self.binLabel)
-        layout2.addWidget(self.binSpinBox)
-        layout2.addStretch()
-        layout2.addWidget(self.minLabel)
-        layout2.addWidget(self.minDoubleSpinBox)
-        layout2.addStretch()
-        layout2.addWidget(self.maxLabel)
-        layout2.addWidget(self.maxDoubleSpinBox)
-
-        central_widget = QtWidgets.QWidget()
-        central_widget.setLayout(layout)
-        self.setCentralWidget(central_widget)
-
-        self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.fit_dockwidget)
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.scatter_dockwidget)
-        self.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.DockWidget5)
-
-        self.dockWidgetContents.setLayout(layout2)
-        self.DockWidget.setWidget(self.dockWidgetContents)
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.DockWidget)
-
-        self.dockWidgetContents2.setLayout(layout1)
-        # Connect close actions
-        self.action_close.triggered.connect(self.close)
-
-        self.sigFitClicked = self.fit_widget.sigDoFit
-
-
-class WavemeterHistogramGui(GuiBase):
-    """
-    GUI module to be used in conjunction with WavemeterLogic.
+class LaserScanningGui(GuiBase):
+    """ GUI module to be used in conjunction with qudi.logic.laser_scanning_logic.LaserScanningLogic
 
     Example config for copy-paste:
 
-    wavemeter_scanning_gui:
-        module.Class: 'wavemeter.wavemeter_scanning_gui.WavemeterHistogramGui'
+    laser_scanning_gui:
+        module.Class: 'laserscanning.laser_scanning_gui.LaserScanningGui'
         connect:
-            _wavemeter_histogram_logic_con: wavemeter_scanning_logic
+            laser_scanning_logic: <laser_scanning_logic>
     """
-    sigStartCounter = QtCore.Signal()
-    sigStopCounter = QtCore.Signal()
+    sigStartScan = QtCore.Signal()
+    sigStopScan = QtCore.Signal()
     sigDoFit = QtCore.Signal(str)  # fit_config_name
-    sigSaveData = QtCore.Signal(str)  # postfix_string
+    sigSaveData = QtCore.Signal(str)  # save_tag
+    sigClearData = QtCore.Signal()
+    sigAutoscaleHistogram = QtCore.Signal()
 
     # declare connectors
-    _wavemeter_histogram_logic_con = Connector(interface='WavemeterLogic')
+    _laser_scanning_logic = Connector(name='laser_scanning_logic', interface='LaserScanningLogic')
+
+    # declare config options
+    _max_display_points = ConfigOption(name='max_display_points',
+                                       default=1_000,
+                                       missing='warn',
+                                       constructor=lambda x: max(1, int(x)))
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self._mw: LaserScanningMainWindow = None
+        self.__is_frequency: bool = False
+        self.__time_axis = None
 
-        self._wavemeter_logic = None
-        self._mw = None
-        self._pw = None
+    def on_activate(self) -> None:
+        # Initialize main window
+        logic = self._laser_scanning_logic()
+        self._mw = LaserScanningMainWindow(fit_config_model=logic.fit_config_model,
+                                           fit_container=logic.fit_container)
 
-        self._fit_config_dialog = None
-
-    def on_activate(self):
-        """ Definition and initialisation of the GUI.
-        """
-
-        self._wavemeter_logic = self._wavemeter_histogram_logic_con()
-
-        # Use the inherited class 'WavemeterHistogramMainWindow' to create the GUI window
-        self._mw = WavemeterHistogramMainWindow()
-
-        # fit stuff
-        self._fit_config_dialog = FitConfigurationDialog(parent=self._mw,
-                                                         fit_config_model=self._wavemeter_logic.fit_config_model)
-        self._mw.fit_widget.link_fit_container(self._wavemeter_logic.get_fit_container())
-
-        # histogram plot widget
-        self._pw = self._mw.PlotWidget
-        self._pw.set_labels('Wavelength', 'Fluorescence')
-        self._pw.set_units('m', 'counts/s')
-
-        # Create an empty plot curve to be filled later, set its pen
-        self.curve_data_points = pg.ScatterPlotItem(
-            pen=pg.mkPen(palette.c1)
-        )
-        self._pw._plot_widget.addItem(self.curve_data_points)
-
-        # Add plot for interactive plot widget
-        self._pw.plot(name='Histogram', pen=pg.mkPen(palette.c2))
-        self._pw.plot(name='Envelope')
-        # add fit plot for histogram data
-        self._pw.plot_fit(name='Histogram')
-
-        # scatter plot
-        self._spw = self._mw.scatter_widget
-        self._spw.setLabel('bottom', 'Wavelength', units='m')
-        self._spw.setLabel('left', 'Time', units='s')
-        self._scatterplot = pg.ScatterPlotItem(
-            pen=pg.mkPen(palette.c3)
-        )
-        self._spw.setXLink(self._pw._plot_widget)
-        self._spw.addItem(self._scatterplot)
-
-        #####################
-        # Connecting file interactions
-        self._mw.action_show_fit_configuration.triggered.connect(self._fit_config_dialog.show)
-        self._mw.action_start_scan.triggered.connect(self.start_clicked)
-        self._mw.start_trace_Action2.triggered.connect(self.start_clicked_wavemeter)
-        self._mw.action_clear_data.triggered.connect(self.clear_trace_data)
-        self._mw.action_save.triggered.connect(self._save_clicked)
-        # Connect the view actions
-        self._mw.action_show_frequency.triggered.connect(self.toggle_axis)
-        self._mw.sigFitClicked.connect(self._fit_clicked)
-        self._mw.action_autoscale_histogram.triggered.connect(self.autoscale_histogram_gui)
-        self._mw.action_show_histogram_region.triggered.connect(self.histogram_region)
-        self._mw.action_restore_view.triggered.connect(self.restore_default_view)
-        self._mw.action_show_all_data.triggered.connect(self.show_all_data)
-        self._mw.action_fit_envelope_histogram.triggered.connect(self.fit_which_histogram)
-
-        # Connect signals to logic
-        self.sigStartCounter.connect(
-            self._wavemeter_logic.start_scanning, QtCore.Qt.QueuedConnection)
-        self.sigStopCounter.connect(
-            self._wavemeter_logic.stop_scanning, QtCore.Qt.QueuedConnection)
-        self.sigDoFit.connect(self._wavemeter_logic.do_fit, QtCore.Qt.QueuedConnection)
-        self.sigSaveData.connect(self._wavemeter_logic.save_data, QtCore.Qt.BlockingQueuedConnection)
-
-        # Connect signals from logic
-        self._wavemeter_logic.sigDataChanged.connect(
-            self.update_data, QtCore.Qt.QueuedConnection)
-        self._wavemeter_logic.sigStatusChanged.connect(
-            self.update_status, QtCore.Qt.QueuedConnection)
-        self._wavemeter_logic.sigStatusChangedDisplaying.connect(
-            self.start_clicked_wavemeter, QtCore.Qt.QueuedConnection)
-        self._wavemeter_logic.sigFitChanged.connect(self._update_fit_data, QtCore.Qt.QueuedConnection)
-
-        # signal for current wavelength
-        self._wavemeter_logic.sigNewWavelength2.connect(self.display_current_wavelength,
-                                                        QtCore.Qt.QueuedConnection)
-        # Double spin box actions
-        self._mw.binSpinBox.setValue(self._wavemeter_logic.get_bins())
-        self._mw.binSpinBox.editingFinished.connect(self.recalculate_histogram)
-        self._mw.minDoubleSpinBox.editingFinished.connect(self.recalculate_histogram)
-        self._mw.maxDoubleSpinBox.editingFinished.connect(self.recalculate_histogram)
-
+        # Configure plot widgets
+        self.__init_histogram_plot()
+        self.__init_scatter_plot()
+        # Connect signals
+        self.__connect_actions()
+        self.__connect_widgets()
+        self.__connect_logic()
+        # Show GUI window
         self.show()
-        self.restore_default_view()
 
-    def show(self):
-        """ Make window visible and put it above all other windows. """
+    def show(self) -> None:
         self._mw.show()
-        self._mw.activateWindow()
         self._mw.raise_()
+        self._mw.activateWindow()
 
-    def on_deactivate(self):
-        """ Deactivate the module """
+    def on_deactivate(self) -> None:
+        # Disconnect signals
+        self.__disconnect_actions()
+        self.__disconnect_widgets()
+        self.__disconnect_logic()
 
-        # Connect the main window restore view actions
+        # Close and delete main window
+        self._mw.close()
+        self._mw.deleteLater()
+        self._mw = None
 
-        # disconnect signals
-        self._mw.action_save.triggered.disconnect()
-        self._mw.action_start_scan.triggered.disconnect()
-        self._mw.start_trace_Action2.triggered.disconnect()
-        self._mw.action_clear_data.triggered.disconnect()
-        self._mw.action_show_frequency.triggered.disconnect()
-        self._mw.action_autoscale_histogram.triggered.disconnect()
-        self._mw.sigFitClicked.disconnect()
-        self._mw.action_show_histogram_region.triggered.disconnect()
-        self._mw.action_restore_view.triggered.disconnect()
-        self._mw.action_show_all_data.triggered.disconnect()
-        self._mw.action_fit_envelope_histogram.triggered.disconnect()
+    @property
+    def save_tag(self) -> str:
+        try:
+            return self._mw.toolbar.save_tag_line_edit.text()
+        except AttributeError:
+            return ''
 
-        self._mw.binSpinBox.editingFinished.disconnect()
-        self._mw.maxDoubleSpinBox.editingFinished.disconnect()
-        self._mw.minDoubleSpinBox.editingFinished.disconnect()
+    def __init_histogram_plot(self) -> None:
+        channel, unit = next(iter(self._laser_scanning_logic().data_channel_units.items()))
+        for plot in self._mw.histogram_widget.plot_names:
+            self._mw.histogram_widget.remove_fit_plot(plot)
+            self._mw.histogram_widget.remove_plot(plot)
+        if self.__is_frequency:
+            self._mw.histogram_widget.set_labels('frequency', channel)
+            self._mw.histogram_widget.set_units('Hz', unit)
+        else:
+            self._mw.histogram_widget.set_labels('wavelength', channel)
+            self._mw.histogram_widget.set_units('m', unit)
+        self._mw.histogram_widget.plot(name='Data', pen=None, symbol='o')  # symbolPen=pg.mkPen(palette.c1))
+        self._mw.histogram_widget.plot(name='Histogram')  # , pen=pg.mkPen(palette.c2))
+        self._mw.histogram_widget.plot(name='Envelope')
+        self._mw.histogram_widget.plot_fit(name='Histogram', pen='r')
 
-        # Disconnect signals to logic
-        self.sigStartCounter.disconnect()
-        self.sigStopCounter.disconnect()
+    def __init_scatter_plot(self) -> None:
+        for plot in self._mw.scatter_widget.plot_names:
+            self._mw.scatter_widget.remove_plot(plot)
+        if self.__is_frequency:
+            self._mw.scatter_widget.set_labels('frequency', 'time')
+            self._mw.scatter_widget.set_units('Hz', 's')
+        else:
+            self._mw.scatter_widget.set_labels('wavelength', 'time')
+            self._mw.scatter_widget.set_units('m', 's')
+        self._mw.scatter_widget.plot('Data', pen=None, symbol='o')  # symbolPen=pg.mkPen(palette.c3))
+
+    def __connect_logic(self) -> None:
+        logic = self._laser_scanning_logic()
+        # To logic
+        self.sigStartScan.connect(logic.start_scan, QtCore.Qt.QueuedConnection)
+        self.sigStopScan.connect(logic.stop_scan, QtCore.Qt.QueuedConnection)
+        self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
+        self.sigSaveData.connect(logic.save_data, QtCore.Qt.BlockingQueuedConnection)
+        self.sigClearData.connect(logic.clear_data, QtCore.Qt.QueuedConnection)
+        self.sigAutoscaleHistogram.connect(logic.autoscale_histogram, QtCore.Qt.QueuedConnection)
+        # From logic
+        logic.sigDataChanged.connect(self._update_data, QtCore.Qt.QueuedConnection)
+        logic.sigStatusChanged.connect(self._update_status, QtCore.Qt.QueuedConnection)
+        logic.sigFitChanged.connect(self._update_fit_data, QtCore.Qt.QueuedConnection)
+        logic.sigConfigurationChanged.connect(self._update_configuration,
+                                              QtCore.Qt.QueuedConnection)
+
+    def __disconnect_logic(self) -> None:
+        logic = self._laser_scanning_logic()
+        # To logic
+        self.sigStartScan.disconnect()
+        self.sigStopScan.disconnect()
         self.sigDoFit.disconnect()
         self.sigSaveData.disconnect()
+        self.sigClearData.disconnect()
+        self.sigAutoscaleHistogram.disconnect()
+        # From logic
+        logic.sigDataChanged.disconnect(self._update_data)
+        logic.sigStatusChanged.disconnect(self._update_status)
+        logic.sigFitChanged.disconnect(self._update_fit_data)
+        logic.sigConfigurationChanged.disconnect(self._update_configuration)
 
-        # Disconnect signals from logic
-        self._wavemeter_logic.sigDataChanged.disconnect()
-        self._wavemeter_logic.sigNewWavelength2.disconnect()
-        self._wavemeter_logic.sigStatusChanged.disconnect()
-        self._wavemeter_logic.sigFitChanged.disconnect()
+    def __connect_actions(self) -> None:
+        # FIXME:
+        # File actions
+        self._mw.gui_actions.action_start_stop.triggered.connect(self._start_stop_clicked)
+        self._mw.gui_actions.action_clear_data.triggered.connect(self._clear_data_clicked)
+        self._mw.gui_actions.action_save.triggered.connect(self._save_clicked)
+        # View actions
+        # self._mw.action_show_frequency.triggered.connect(self.toggle_axis)
+        # self._mw.sigFitClicked.connect(self._fit_clicked)
+        self._mw.gui_actions.action_autoscale_histogram.triggered.connect(
+            self._autoscale_histogram_clicked
+        )
+        # self._mw.gui_actions.action_show_histogram_region.triggered.connect(self.histogram_region)
+        # self._mw.gui_actions.action_restore_view.triggered.connect(self.restore_default_view)
+        # self._mw.gui_actions.action_show_all_data.triggered.connect(self.show_all_data)
+        # self._mw.gui_actions.action_fit_envelope_histogram.triggered.connect(self.fit_which_histogram)
 
-        self._fit_config_dialog.close()
-        self._mw.close()
+    def __disconnect_actions(self) -> None:
+        # FIXME:
+        # File actions
+        self._mw.gui_actions.action_start_stop.triggered.disconnect()
+        self._mw.gui_actions.action_clear_data.triggered.disconnect()
+        self._mw.gui_actions.action_save.triggered.disconnect()
+        # View actions
+        self._mw.gui_actions.action_show_frequency.triggered.disconnect()
+        # self._mw.sigFitClicked.disconnect()
+        self._mw.gui_actions.action_autoscale_histogram.triggered.disconnect()
+        self._mw.gui_actions.action_show_histogram_region.triggered.disconnect()
+        self._mw.gui_actions.action_restore_view.triggered.disconnect()
+        self._mw.gui_actions.action_show_all_data.triggered.disconnect()
+        self._mw.gui_actions.action_fit_envelope_histogram.triggered.disconnect()
 
-        self._fit_config_dialog = None
-        self._mw = None
+    def __connect_widgets(self) -> None:
+        self._mw.histogram_settings_widget.sigSettingsChanged.connect(
+            self._histogram_settings_edited
+        )
+
+    def __disconnect_widgets(self) -> None:
+        self._mw.histogram_settings_widget.sigSettingsChanged.disconnect()
+
+    def _update_current_laser_value(self, value: float) -> None:
+        """ """
+        if self.__is_frequency:
+            self._mw.current_laser_label.setText(f'{value / 1e12:.9f} THz')
+        else:
+            self._mw.current_laser_label.setText(f'{value * 1e9:.6f} nm')
+        self._mw.histogram_widget.move_marker_selection((value, 0), 0)
+
+    def _update_configuration(self, config) -> None:
+        # FIXME:
+        self.__is_frequency = False
+        self.__init_scatter_plot()
+        self.__init_histogram_plot()
+
+    @QtCore.Slot(object, object, object, object, object)
+    def _update_data(self,
+                     timestamps: Union[None, np.ndarray],
+                     laser_data: np.ndarray,
+                     scan_data: np.ndarray,
+                     bins: np.ndarray,
+                     histogram: np.ndarray,
+                     envelope: np.ndarray) -> None:
+        # Create time axis if none is provided by streamer
+        if timestamps is None:
+            sample_rate = self._laser_scanning_logic().sample_rate
+            timestamps = np.arange(min(self._max_display_points, laser_data.size), dtype=np.float64)
+            timestamps /= sample_rate
+        self._update_scan_data(timestamps=timestamps, laser_data=laser_data, data=scan_data)
+        self._update_histogram_data(bins=bins, histogram=histogram, envelope=envelope)
+
+    def _update_scan_data(self,
+                          timestamps: np.ndarray,
+                          laser_data: np.ndarray,
+                          data: np.ndarray) -> None:
+        """ """
+        if laser_data.size == 0:
+            self._update_current_laser_value(0)
+            self._mw.histogram_widget.set_data('Data', x=None, y=None)
+            self._mw.scatter_widget.set_data('Data', x=None, y=None)
+        else:
+            self._update_current_laser_value(laser_data[-1])
+            if data.size == 0:
+                self._mw.histogram_widget.set_data('Data', x=None, y=None)
+                self._mw.scatter_widget.set_data('Data', x=None, y=None)
+            else:
+                # FIXME: Support multiple data channels. Ignore all additional channels for now.
+                if data.ndim > 1:
+                    data = data[:, 0]
+                laser_data = laser_data[-self._max_display_points:]
+                timestamps = timestamps[-self._max_display_points:]
+                self._mw.histogram_widget.set_data('Data',
+                                                   x=laser_data,
+                                                   y=data[-self._max_display_points:])
+                self._mw.scatter_widget.set_data('Data',
+                                                 x=laser_data,
+                                                 y=timestamps - timestamps[0])
+
+    def _update_histogram_data(self,
+                               bins: np.ndarray,
+                               histogram: np.ndarray,
+                               envelope: np.ndarray) -> None:
+        """ """
+        if histogram.size == 0:
+            self._mw.histogram_widget.set_data('Histogram', x=None, y=None)
+            self._mw.histogram_widget.set_data('Envelope', x=None, y=None)
+        else:
+            # FIXME: Support multiple data channels. Ignore all additional channels for now.
+            if histogram.ndim > 1:
+                histogram = histogram[:, 0]
+                envelope = envelope[:, 0]
+            self._mw.histogram_widget.set_data('Histogram', x=bins, y=histogram)
+            self._mw.histogram_widget.set_data('Envelope', x=bins, y=envelope)
 
     @QtCore.Slot(object, object)
-    def display_current_wavelength(self, current_wavelength, current_freq):
-        if np.isnan(current_wavelength):
-            self._mw.wavelengthLabel2.setText(f'{current_wavelength} nm')
-            self._mw.frequencyLabel.setText(f'{current_freq} THz')
-        elif current_wavelength is not None:
-            self._mw.wavelengthLabel2.setText('{0:,.6f} nm '.format(current_wavelength * 1.0e9))
-            self._mw.frequencyLabel.setText('{0:,.9f} THz '.format(current_freq / 1.0e12))
-        return
-
-    @QtCore.Slot(object, object, object, object)
-    def update_data(self, timings, counts, wavelength, frequency, histogram_axis, histogram, envelope_histogram):
-        """ The function that grabs the data and sends it to the plot.
-        """
-        self._wavemeter_logic.sigDataChanged.disconnect(self.update_data)
-
-        if not self._wavemeter_logic.x_axis_hz_bool:
-            if len(wavelength) > 0 and len(wavelength) == len(counts) == len(timings):
-                if not np.isnan(wavelength).all():
-                    self.curve_data_points.setData(wavelength, counts)
-                    self._scatterplot.setData(wavelength, timings)
-                if not np.isnan(wavelength[-1]):
-                    self._pw.move_marker_selection((wavelength[-1], 0), 0)
-                self._pw.set_data('Histogram', x=histogram_axis, y=histogram)
-                self._pw.set_data('Envelope', x=histogram_axis, y=envelope_histogram)
-
+    def _update_fit_data(self, fit_config: str, fit_result: Union[None, _ModelResult]) -> None:
+        """ Function that handles the fit results received from the logic via a signal """
+        if (not fit_config) or (fit_config == 'No Fit') or (fit_result is None):
+            self._mw.histogram_widget.clear_fits()
         else:
-            if len(wavelength) > 0 and len(counts) == len(timings) == len(frequency):
-                if not np.isnan(frequency).all():
-                    self.curve_data_points.setData(frequency, counts)
-                    self._scatterplot.setData(frequency, timings)
-                if not np.isnan(frequency[-1]):
-                    self._pw.move_marker_selection((frequency[-1], 0), 0)
-                self._pw.set_data('Histogram', x=constants.speed_of_light / histogram_axis, y=histogram)
-                self._pw.set_data('Envelope', x=constants.speed_of_light / histogram_axis,
-                                  y=envelope_histogram)
-
-        self._wavemeter_logic.sigDataChanged.connect(
-            self.update_data, QtCore.Qt.QueuedConnection)
-        return 0
+            fit_data = fit_result.high_res_best_fit
+            self._mw.histogram_widget.set_fit_data('Histogram',
+                                                   x=fit_data[0],
+                                                   y=fit_data[1])
 
     @QtCore.Slot(bool)
-    def update_status(self, running=None):
-        """
-        Function to ensure that the GUI displays the current measurement status
-
-        @param bool running: True if the data trace streaming is running
-        """
-        if running is None:
-            running = self._wavemeter_logic.module_state() == 'locked'
-
-        self._mw.action_start_scan.setChecked(running)
-        self._mw.action_start_scan.setText('Stop trace' if running else 'Start trace')
+    def _update_status(self, running: bool) -> None:
+        """ Function to ensure that the GUI displays the current measurement status """
+        self._mw.gui_actions.action_start_stop.setChecked(running)
+        self._mw.gui_actions.action_start_stop.setText('Stop Scan' if running else 'Start Scan')
         icon_path = os.path.join(get_artwork_dir(), 'icons')
         icon1 = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
         icon2 = QtGui.QIcon(os.path.join(icon_path, 'stop-counter'))
-        self._mw.action_start_scan.setIcon(icon2 if running else icon1)
+        self._mw.gui_actions.action_start_stop.setIcon(icon2 if running else icon1)
 
-        self._mw.action_start_scan.setEnabled(True)
-        self._mw.action_clear_data.setEnabled(not running)
-        self._mw.action_show_frequency.setEnabled(not running)
-        self._mw.action_show_all_data.setEnabled(not running)
-        self._mw.start_trace_Action2.setEnabled(not running)
-        return
+        self._mw.gui_actions.action_start_stop.setEnabled(True)
+        self._mw.gui_actions.action_clear_data.setEnabled(not running)
+        self._mw.gui_actions.action_show_frequency.setEnabled(not running)
+        self._mw.gui_actions.action_show_all_data.setEnabled(not running)
+        self._mw.gui_actions.action_laser_only.setEnabled(not running)
 
-    @QtCore.Slot()
-    def start_clicked(self):
-        """ Handling the Start button to stop and restart the counter.
-        """
-        self._mw.action_start_scan.setEnabled(False)
-        self._mw.action_clear_data.setEnabled(False)
-        self._mw.action_show_frequency.setEnabled(False)
-        # self._mw.action_save.setEnabled(False)
-        self._mw.action_show_all_data.setEnabled(False)
-        if self._wavemeter_logic._time_series_logic.module_state() == 'locked':
-            if self._mw.start_trace_Action2.isChecked():
-                self._mw.start_trace_Action2.setChecked(False)
-                self._mw.start_trace_Action2.setText('Start Wavemeter')
-                icon_path = os.path.join(get_artwork_dir(), 'icons')
-                icon1 = QtGui.QIcon(os.path.join(icon_path, 'record-counter'))
-                self._mw.start_trace_Action2.setIcon(icon1)
-            self._mw.start_trace_Action2.setEnabled(False)
-
-        if self._mw.action_start_scan.isChecked():
-            self.sigStartCounter.emit()
+    def _start_stop_clicked(self):
+        """ Handling the Start button to stop and restart the counter """
+        # FIXME: Configure logic
+        if self._mw.gui_actions.action_start_stop.isChecked():
+            self.sigStartScan.emit()
         else:
-            self.sigStopCounter.emit()
-        return
+            self.sigStopScan.emit()
+        # self._mw.gui_actions.action_start_stop.setEnabled(False)
+        # self._mw.gui_actions.action_clear_data.setEnabled(False)
+        # self._mw.gui_actions.action_show_frequency.setEnabled(False)
+        # # self._mw.gui_actions.action_save.setEnabled(False)
+        # self._mw.gui_actions.action_show_all_data.setEnabled(False)
+        # if self._wavemeter_logic._time_series_logic.module_state() == 'locked':
+        #     if self._mw.action_laser_only.isChecked():
+        #         self._mw.action_laser_only.setChecked(False)
+        #         self._mw.action_laser_only.setText('Start Wavemeter')
+        #         icon_path = os.path.join(get_artwork_dir(), 'icons')
+        #         icon1 = QtGui.QIcon(os.path.join(icon_path, 'record-counter'))
+        #         self._mw.action_laser_only.setIcon(icon1)
+        #     self._mw.action_laser_only.setEnabled(False)
+        #
+        # if self._mw.action_start_stop.isChecked():
+        #     self.sigStartCounter.emit()
+        # else:
+        #     self.sigStopCounter.emit()
 
-    @QtCore.Slot()
-    def start_clicked_wavemeter(self):
-        if self._wavemeter_logic._stop_flag:
-            self._mw.start_trace_Action2.setChecked(False)
-            self._wavemeter_logic._stop_flag = False
+    # @QtCore.Slot()
+    # def start_clicked_wavemeter(self):
+    #     if self._wavemeter_logic._stop_flag:
+    #         self._mw.action_laser_only.setChecked(False)
+    #         self._wavemeter_logic._stop_flag = False
+    #
+    #     if self._mw.action_laser_only.isChecked():
+    #         if self._wavemeter_logic.start_displaying_current_wavelength() < 0:
+    #             self._mw.action_laser_only.setChecked(False)
+    #             return
+    #         self._mw.action_laser_only.setText('Stop Wavemeter')
+    #         icon_path = os.path.join(get_artwork_dir(), 'icons')
+    #         icon2 = QtGui.QIcon(os.path.join(icon_path, 'stop-counter'))
+    #         self._mw.action_laser_only.setIcon(icon2)
+    #     else:
+    #         self._wavemeter_logic.stop_displaying_current_wavelength()
+    #         self._mw.action_laser_only.setText('Start Wavemeter')
+    #         icon_path = os.path.join(get_artwork_dir(), 'icons')
+    #         icon1 = QtGui.QIcon(os.path.join(icon_path, 'record-counter'))
+    #         self._mw.action_laser_only.setIcon(icon1)
 
-        if self._mw.start_trace_Action2.isChecked():
-            if self._wavemeter_logic.start_displaying_current_wavelength() < 0:
-                self._mw.start_trace_Action2.setChecked(False)
-                return
-            self._mw.start_trace_Action2.setText('Stop Wavemeter')
-            icon_path = os.path.join(get_artwork_dir(), 'icons')
-            icon2 = QtGui.QIcon(os.path.join(icon_path, 'stop-counter'))
-            self._mw.start_trace_Action2.setIcon(icon2)
-        else:
-            self._wavemeter_logic.stop_displaying_current_wavelength()
-            self._mw.start_trace_Action2.setText('Start Wavemeter')
-            icon_path = os.path.join(get_artwork_dir(), 'icons')
-            icon1 = QtGui.QIcon(os.path.join(icon_path, 'record-counter'))
-            self._mw.start_trace_Action2.setIcon(icon1)
-        return
+    # @QtCore.Slot()
+    # def toggle_axis(self):
+    #     self._mw.action_show_frequency.setEnabled(False)
+    #
+    #     if self._mw.action_show_frequency.isChecked():
+    #         # if true toggle to Hz and change boolean x_axis_hz_bool to True and change gui dispaly
+    #
+    #         self._mw.action_show_frequency.setText('Change to wavelength')
+    #         # clear any fits
+    #         self._pw.clear_fits()
+    #         # Change the curve plot
+    #         self._wavemeter_logic.x_axis_hz_bool = True
+    #         x_axis_hz = constants.speed_of_light / self._wavemeter_logic.histogram_axis
+    #         self._pw.set_data('Histogram', x=x_axis_hz, y=self._wavemeter_logic.histogram)
+    #         self._pw.set_data('Envelope', x=x_axis_hz, y=self._wavemeter_logic.envelope_histogram)
+    #         data = self._wavemeter_logic._trace_data
+    #         if len(data[0]) > 0:
+    #             self.curve_data_points.setData(data[3, :], data[1, :])
+    #             self._pw.move_marker_selection((data[3, -1], 0), 0)
+    #             # Change the scatterplot
+    #             self._scatterplot.setData(data[3, :], data[0, :])
+    #
+    #         # change labels
+    #         self._pw.set_labels('Frequency', 'Flourescence')
+    #         self._pw.set_units('Hz', 'counts/s')
+    #         self._spw.setLabel('bottom', 'Frequency', units='Hz')
+    #         # change dockwidget
+    #         self._mw.minLabel.setText("Minimum Frequency (THz)")
+    #         temp = self._mw.minDoubleSpinBox.value()
+    #         self._mw.minDoubleSpinBox.setValue(constants.speed_of_light * 1e-3 / self._mw.maxDoubleSpinBox.value())
+    #         self._mw.maxLabel.setText('Maximum Frequency (Thz)')
+    #         self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light * 1e-3 / temp)
+    #         if self._mw.action_show_histogram_region.isChecked():
+    #             min, max = self.region.getRegion()
+    #             self.region.setRegion([constants.speed_of_light / max, constants.speed_of_light / min])
+    #
+    #     else:
+    #         self._mw.action_show_frequency.setText('Change to frequency')
+    #         self._wavemeter_logic.x_axis_hz_bool = False
+    #         # clear any  fits
+    #         self._pw.clear_fits()
+    #         x_axis = self._wavemeter_logic.histogram_axis
+    #         self._pw.set_data('Histogram', x=x_axis, y=self._wavemeter_logic.histogram)
+    #         self._pw.set_data('Envelope', x=x_axis, y=self._wavemeter_logic.envelope_histogram)
+    #         data = self._wavemeter_logic._trace_data
+    #         if len(data[0]) > 0:
+    #             self.curve_data_points.setData(data[2, :], data[1, :])
+    #             self._pw.move_marker_selection((data[2, -1], 0), 0)
+    #             # Change the scatterplot
+    #             self._scatterplot.setData(data[2, :], data[0, :])
+    #
+    #         self._pw.set_labels('Wavelength', 'Flourescence')
+    #         self._pw.set_units('m', 'counts/s')
+    #         self._spw.setLabel('bottom', 'Wavelength', units='m')
+    #         # change dockwidget
+    #         self._mw.minLabel.setText("Minimum Wavelength (nm)")
+    #         temp = self._mw.minDoubleSpinBox.value()
+    #         self._mw.minDoubleSpinBox.setValue(constants.speed_of_light * 1e-3 / self._mw.maxDoubleSpinBox.value())
+    #         self._mw.maxLabel.setText('Maximum Wavelength (nm)')
+    #         self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light * 1e-3 / temp)
+    #         if self._mw.action_show_histogram_region.isChecked():
+    #             min, max = self.region.getRegion()
+    #             self.region.setRegion([constants.speed_of_light / max, constants.speed_of_light / min])
+    #
+    #     self._mw.action_show_frequency.setEnabled(True)
+    #     return
 
-    @QtCore.Slot()
-    def toggle_axis(self):
-        self._mw.action_show_frequency.setEnabled(False)
+    # def fit_which_histogram(self) -> None:
+    #     self._mw.action_fit_envelope_histogram.setEnabled(False)
+    #     if self._mw.action_fit_envelope_histogram.isChecked():
+    #         self._mw.action_fit_envelope_histogram.setText('Fit histogram')
+    #         self._wavemeter_logic.fit_histogram = False
+    #     else:
+    #         self._mw.action_fit_envelope_histogram.setText('Fit envelope')
+    #         self._wavemeter_logic.fit_histogram = True
+    #     self._mw.action_fit_envelope_histogram.setEnabled(True)
+    #
+    # @QtCore.Slot()
+    # def histogram_region(self):
+    #     if self._mw.action_show_histogram_region.isChecked():
+    #         if not len(self._wavemeter_logic.wavelength) > 0:
+    #             self.log.warning('No data accumulated yet. Showing rectangular window not possible.')
+    #             self._mw.action_show_histogram_region.setChecked(False)
+    #             return
+    #         if not self._wavemeter_logic.x_axis_hz_bool:
+    #             self.region = pg.LinearRegionItem(
+    #                 values=(self._wavemeter_logic._xmin_histo, self._wavemeter_logic._xmax_histo),
+    #                 orientation='vertical')
+    #         else:
+    #             self.region = pg.LinearRegionItem(
+    #                 values=(constants.speed_of_light / self._wavemeter_logic._xmin_histo,
+    #                         constants.speed_of_light / self._wavemeter_logic._xmax_histo),
+    #                 orientation='vertical'
+    #             )
+    #         self._pw._plot_widget.addItem(self.region)
+    #         self.region.sigRegionChangeFinished.connect(self.region_update)
+    #     else:
+    #         self.region.sigRegionChangeFinished.disconnect()
+    #         self._pw._plot_widget.removeItem(self.region)
+    #     return
+    #
+    # @QtCore.Slot()
+    # def region_update(self):
+    #     min, max = self.region.getRegion()
+    #     if not self._wavemeter_logic.x_axis_hz_bool:
+    #         self._mw.minDoubleSpinBox.setValue(min * 1e9)
+    #         self._mw.maxDoubleSpinBox.setValue(max * 1e9)
+    #     else:
+    #         self._mw.minDoubleSpinBox.setValue(min * 1e-12)
+    #         self._mw.maxDoubleSpinBox.setValue(max * 1e-12)
+    #     self.recalculate_histogram()
+    #     return
 
-        if self._mw.action_show_frequency.isChecked():
-            # if true toggle to Hz and change boolean x_axis_hz_bool to True and change gui dispaly
+    def _histogram_settings_edited(self, span: Tuple[float, float], bins: int) -> None:
+        self._laser_scanning_logic().configure_histogram(span, bins)
 
-            self._mw.action_show_frequency.setText('Change to wavelength')
-            # clear any fits
-            self._pw.clear_fits()
-            # Change the curve plot
-            self._wavemeter_logic.x_axis_hz_bool = True
-            x_axis_hz = constants.speed_of_light / self._wavemeter_logic.histogram_axis
-            self._pw.set_data('Histogram', x=x_axis_hz, y=self._wavemeter_logic.histogram)
-            self._pw.set_data('Envelope', x=x_axis_hz, y=self._wavemeter_logic.envelope_histogram)
-            data = self._wavemeter_logic._trace_data
-            if len(data[0]) > 0:
-                self.curve_data_points.setData(data[3, :], data[1, :])
-                self._pw.move_marker_selection((data[3, -1], 0), 0)
-                # Change the scatterplot
-                self._scatterplot.setData(data[3, :], data[0, :])
-
-            # change labels
-            self._pw.set_labels('Frequency', 'Flourescence')
-            self._pw.set_units('Hz', 'counts/s')
-            self._spw.setLabel('bottom', 'Frequency', units='Hz')
-            # change dockwidget
-            self._mw.minLabel.setText("Minimum Frequency (THz)")
-            temp = self._mw.minDoubleSpinBox.value()
-            self._mw.minDoubleSpinBox.setValue(constants.speed_of_light * 1e-3 / self._mw.maxDoubleSpinBox.value())
-            self._mw.maxLabel.setText('Maximum Frequency (Thz)')
-            self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light * 1e-3 / temp)
-            if self._mw.action_show_histogram_region.isChecked():
-                min, max = self.region.getRegion()
-                self.region.setRegion([constants.speed_of_light / max, constants.speed_of_light / min])
-
-        else:
-            self._mw.action_show_frequency.setText('Change to frequency')
-            self._wavemeter_logic.x_axis_hz_bool = False
-            # clear any  fits
-            self._pw.clear_fits()
-            x_axis = self._wavemeter_logic.histogram_axis
-            self._pw.set_data('Histogram', x=x_axis, y=self._wavemeter_logic.histogram)
-            self._pw.set_data('Envelope', x=x_axis, y=self._wavemeter_logic.envelope_histogram)
-            data = self._wavemeter_logic._trace_data
-            if len(data[0]) > 0:
-                self.curve_data_points.setData(data[2, :], data[1, :])
-                self._pw.move_marker_selection((data[2, -1], 0), 0)
-                # Change the scatterplot
-                self._scatterplot.setData(data[2, :], data[0, :])
-
-            self._pw.set_labels('Wavelength', 'Flourescence')
-            self._pw.set_units('m', 'counts/s')
-            self._spw.setLabel('bottom', 'Wavelength', units='m')
-            # change dockwidget
-            self._mw.minLabel.setText("Minimum Wavelength (nm)")
-            temp = self._mw.minDoubleSpinBox.value()
-            self._mw.minDoubleSpinBox.setValue(constants.speed_of_light * 1e-3 / self._mw.maxDoubleSpinBox.value())
-            self._mw.maxLabel.setText('Maximum Wavelength (nm)')
-            self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light * 1e-3 / temp)
-            if self._mw.action_show_histogram_region.isChecked():
-                min, max = self.region.getRegion()
-                self.region.setRegion([constants.speed_of_light / max, constants.speed_of_light / min])
-
-        self._mw.action_show_frequency.setEnabled(True)
-        return
-
-    def fit_which_histogram(self) -> None:
-        self._mw.action_fit_envelope_histogram.setEnabled(False)
-        if self._mw.action_fit_envelope_histogram.isChecked():
-            self._mw.action_fit_envelope_histogram.setText('Fit histogram')
-            self._wavemeter_logic.fit_histogram = False
-        else:
-            self._mw.action_fit_envelope_histogram.setText('Fit envelope')
-            self._wavemeter_logic.fit_histogram = True
-        self._mw.action_fit_envelope_histogram.setEnabled(True)
-
-    @QtCore.Slot()
-    def histogram_region(self):
-        if self._mw.action_show_histogram_region.isChecked():
-            if not len(self._wavemeter_logic.wavelength) > 0:
-                self.log.warning('No data accumulated yet. Showing rectangular window not possible.')
-                self._mw.action_show_histogram_region.setChecked(False)
-                return
-            if not self._wavemeter_logic.x_axis_hz_bool:
-                self.region = pg.LinearRegionItem(
-                    values=(self._wavemeter_logic._xmin_histo, self._wavemeter_logic._xmax_histo),
-                    orientation='vertical')
-            else:
-                self.region = pg.LinearRegionItem(
-                    values=(constants.speed_of_light / self._wavemeter_logic._xmin_histo,
-                            constants.speed_of_light / self._wavemeter_logic._xmax_histo),
-                    orientation='vertical'
-                )
-            self._pw._plot_widget.addItem(self.region)
-            self.region.sigRegionChangeFinished.connect(self.region_update)
-        else:
-            self.region.sigRegionChangeFinished.disconnect()
-            self._pw._plot_widget.removeItem(self.region)
-        return
-
-    @QtCore.Slot()
-    def region_update(self):
-        min, max = self.region.getRegion()
-        if not self._wavemeter_logic.x_axis_hz_bool:
-            self._mw.minDoubleSpinBox.setValue(min * 1e9)
-            self._mw.maxDoubleSpinBox.setValue(max * 1e9)
-        else:
-            self._mw.minDoubleSpinBox.setValue(min * 1e-12)
-            self._mw.maxDoubleSpinBox.setValue(max * 1e-12)
-        self.recalculate_histogram()
-        return
-
-    @QtCore.Slot()
-    def clear_trace_data(self):
-        # clear trace data and histogram
-        self._wavemeter_logic._data_index = 0
-        self._wavemeter_logic._trace_data = np.empty((4, 0), dtype=np.float64)
-        self._wavemeter_logic.wavelength = []
-        self._wavemeter_logic.frequency = []
-        self._wavemeter_logic.timings = []
-        self._wavemeter_logic.counts = []
-        self._wavemeter_logic._xmax = -1
-        self._wavemeter_logic._xmin = 1
-
-        self.curve_data_points.clear()
-        self._scatterplot.clear()
-        self._wavemeter_logic._delay_time = None
-        self._pw.clear_fits()
-
-        self._wavemeter_logic.histogram = np.zeros(self._wavemeter_logic.histogram_axis.shape)
-        self._wavemeter_logic.envelope_histogram = np.zeros(self._wavemeter_logic.histogram_axis.shape)
-        self._wavemeter_logic.rawhisto = np.zeros(self._wavemeter_logic.get_bins())
-        self._wavemeter_logic.sumhisto = np.ones(self._wavemeter_logic.get_bins()) * 1.0e-10
-        return
-
-    def recalculate_histogram(self) -> None:
-        if not self._wavemeter_logic.x_axis_hz_bool:
-            self._wavemeter_logic.recalculate_histogram(
-                bins=self._mw.binSpinBox.value(),
-                xmin=self._mw.minDoubleSpinBox.value() / 1.0e9,
-                xmax=self._mw.maxDoubleSpinBox.value() / 1.0e9
-            )
-        else:  # when in Hz return value into wavelength in m
-            self._wavemeter_logic.recalculate_histogram(
-                bins=self._mw.binSpinBox.value(),
-                xmin=constants.speed_of_light * 1.0e-12 / self._mw.maxDoubleSpinBox.value(),
-                xmax=constants.speed_of_light * 1.0e-12 / self._mw.minDoubleSpinBox.value()
-            )
-        if not self._wavemeter_logic.module_state() == 'locked':
-            self.update_histogram_only()
-
-    def autoscale_histogram_gui(self) -> None:
-        self._wavemeter_logic.autoscale_histogram()
-        self.update_histogram_only()
-
-        if not self._wavemeter_logic.x_axis_hz_bool:
-            self._mw.minDoubleSpinBox.setValue(self._wavemeter_logic._xmin_histo * 1.0e9)
-            self._mw.maxDoubleSpinBox.setValue(self._wavemeter_logic._xmax_histo * 1.0e9)
-        else:
-            self._mw.minDoubleSpinBox.setValue(constants.speed_of_light * 1.0e-12 / self._wavemeter_logic._xmax_histo)
-            self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light * 1.0e-12 / self._wavemeter_logic._xmin_histo)
-
-    def update_histogram_only(self) -> None:
-        if not self._wavemeter_logic.x_axis_hz_bool:
-            x_axis = self._wavemeter_logic.histogram_axis
-            self._pw.set_data('Histogram', x=x_axis, y=self._wavemeter_logic.histogram)
-            self._pw.set_data('Envelope', x=x_axis, y=self._wavemeter_logic.envelope_histogram)
-        else:
-            x_axis_hz = constants.speed_of_light / self._wavemeter_logic.histogram_axis
-            self._pw.set_data('Histogram', x=x_axis_hz, y=self._wavemeter_logic.histogram)
-            self._pw.set_data('Envelope', x=x_axis_hz, y=self._wavemeter_logic.envelope_histogram)
-
-    @QtCore.Slot()
-    def restore_default_view(self):
-        """ Restore the arrangement of DockWidgets to the default
-                """
-        # Show all hidden dock widgets
-        self._mw.DockWidget.show()
-        self._mw.fit_dockwidget.show()
-        self._mw.scatter_dockwidget.show()
-        self._mw.DockWidget5.show()
-
-        # re-dock floating dock widgets
-        self._mw.DockWidget.setFloating(False)
-        self._mw.fit_dockwidget.setFloating(False)
-        self._mw.scatter_dockwidget.setFloating(False)
-        self._mw.DockWidget5.setFloating(False)
-
-        # Arrange dock widgets
-        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea,
-                               self._mw.DockWidget)
-        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea,
-                               self._mw.fit_dockwidget)
-        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea,
-                               self._mw.DockWidget5)
-        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea,
-                               self._mw.scatter_dockwidgetscatter_dockwidget)
-
-        # toolbar
-        self._mw.addToolBar(QtCore.Qt.TopToolBarArea, self._mw.toolbar)
-
-        # Restore status if something went wrong?
-        self.update_status()
-
-    @QtCore.Slot()
-    def show_all_data(self):
-        self._mw.action_show_all_data.setEnabled(False)
-
-        if self._wavemeter_logic.x_axis_hz_bool:
-            data = self._wavemeter_logic._trace_data
-            if len(data[0]) > 0:
-                self.curve_data_points.setData(data[3, :], data[1, :])
-                self._scatterplot.setData(data[3, :], data[0, :])
-
-        else:
-            data = self._wavemeter_logic._trace_data
-            if len(data[0]) > 0:
-                self.curve_data_points.setData(data[2, :], data[1, :])
-                self._scatterplot.setData(data[2, :], data[0, :])
-
-        self._mw.action_show_all_data.setEnabled(True)
-        return
+    def _clear_data_clicked(self):
+        self.sigClearData.emit()
 
     def _fit_clicked(self, fit_config: str) -> None:
         self.sigDoFit.emit(fit_config)
 
-    def _update_fit_data(self, fit_config: Optional[str] = None,
-                         fit_results: Optional[Mapping[str, Union[None, _ModelResult]]] = None
-                         ) -> None:
-        """ Function that handles the fit results received from the logic via a signal """
-        if fit_config is None or fit_results is None:
-            fit_config, fit_results = self._wavemeter_logic.get_fit_results()
-        if not fit_config:
-            fit_config = 'No Fit'
-
-        if fit_config == 'No Fit':
-            self._pw.clear_fits()
-        else:
-            fit_data = fit_results.high_res_best_fit
-
-            x_data = fit_data[0]
-            y_data = fit_data[1]
-            self._pw.set_fit_data(name='Histogram', x=x_data, y=y_data, pen='r')
-
     def _save_clicked(self) -> None:
-        filetag = self._mw.save_tag_line_edit.text()
-        self.sigSaveData.emit(filetag)
+        self.sigSaveData.emit(self.save_tag)
+
+    def _autoscale_histogram_clicked(self) -> None:
+        self.sigAutoscaleHistogram.emit()
+
+    # def recalculate_histogram(self) -> None:
+    #     if not self._wavemeter_logic.x_axis_hz_bool:
+    #         self._wavemeter_logic.recalculate_histogram(
+    #             bins=self._mw.binSpinBox.value(),
+    #             xmin=self._mw.minDoubleSpinBox.value() / 1.0e9,
+    #             xmax=self._mw.maxDoubleSpinBox.value() / 1.0e9
+    #         )
+    #     else:  # when in Hz return value into wavelength in m
+    #         self._wavemeter_logic.recalculate_histogram(
+    #             bins=self._mw.binSpinBox.value(),
+    #             xmin=constants.speed_of_light * 1.0e-12 / self._mw.maxDoubleSpinBox.value(),
+    #             xmax=constants.speed_of_light * 1.0e-12 / self._mw.minDoubleSpinBox.value()
+    #         )
+    #     if not self._wavemeter_logic.module_state() == 'locked':
+    #         self.update_histogram_only()
+    #
+    # def autoscale_histogram_gui(self) -> None:
+    #     self._wavemeter_logic.autoscale_histogram()
+    #     self.update_histogram_only()
+    #
+    #     if not self._wavemeter_logic.x_axis_hz_bool:
+    #         self._mw.minDoubleSpinBox.setValue(self._wavemeter_logic._xmin_histo * 1.0e9)
+    #         self._mw.maxDoubleSpinBox.setValue(self._wavemeter_logic._xmax_histo * 1.0e9)
+    #     else:
+    #         self._mw.minDoubleSpinBox.setValue(constants.speed_of_light * 1.0e-12 / self._wavemeter_logic._xmax_histo)
+    #         self._mw.maxDoubleSpinBox.setValue(constants.speed_of_light * 1.0e-12 / self._wavemeter_logic._xmin_histo)
+    #
+    # def update_histogram_only(self) -> None:
+    #     if not self._wavemeter_logic.x_axis_hz_bool:
+    #         x_axis = self._wavemeter_logic.histogram_axis
+    #         self._pw.set_data('Histogram', x=x_axis, y=self._wavemeter_logic.histogram)
+    #         self._pw.set_data('Envelope', x=x_axis, y=self._wavemeter_logic.envelope_histogram)
+    #     else:
+    #         x_axis_hz = constants.speed_of_light / self._wavemeter_logic.histogram_axis
+    #         self._pw.set_data('Histogram', x=x_axis_hz, y=self._wavemeter_logic.histogram)
+    #         self._pw.set_data('Envelope', x=x_axis_hz, y=self._wavemeter_logic.envelope_histogram)
+
+    # @QtCore.Slot()
+    # def show_all_data(self):
+    #     self._mw.action_show_all_data.setEnabled(False)
+    #
+    #     if self._wavemeter_logic.x_axis_hz_bool:
+    #         data = self._wavemeter_logic._trace_data
+    #         if len(data[0]) > 0:
+    #             self.curve_data_points.setData(data[3, :], data[1, :])
+    #             self._scatterplot.setData(data[3, :], data[0, :])
+    #
+    #     else:
+    #         data = self._wavemeter_logic._trace_data
+    #         if len(data[0]) > 0:
+    #             self.curve_data_points.setData(data[2, :], data[1, :])
+    #             self._scatterplot.setData(data[2, :], data[0, :])
+    #
+    #     self._mw.action_show_all_data.setEnabled(True)
+    #     return

@@ -25,6 +25,7 @@ import time
 import numpy as np
 from PySide2 import QtCore
 from scipy import interpolate
+from enum import Enum
 
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -35,7 +36,13 @@ from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.interface.data_instream_interface import DataInStreamConstraints, DataInStreamInterface
 from typing import Tuple, Optional, Sequence, Union, List
 
-# ToDo: Add config option for settings behaviour
+# ToDo: Add config option for settings behaviour, i.e. streamer configuration priority
+
+
+class IgnoreStream(Enum):
+    NONE = 0
+    PRIMARY = 1
+    SECONDARY = 2
 
 
 class DataInStreamSync(DataInStreamInterface):
@@ -81,13 +88,13 @@ class DataInStreamSync(DataInStreamInterface):
         super().__init__(*args, **kwargs)
 
         self._lock = Mutex()
-        self._stop_requested = True
+        self._stop_requested: bool = True
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
 
         # Serves as time base reference if no timestamps are returned by the hardware
-        self._primary_sample_count = 0
-        self._secondary_sample_count = 0
+        self._primary_sample_count: int = 0
+        self._secondary_sample_count: int = 0
 
         # sample buffers
         self._data_buffer: InterleavedRingBuffer = None
@@ -101,8 +108,12 @@ class DataInStreamSync(DataInStreamInterface):
         # combined streamer constraints
         self._constraints: DataInStreamConstraints = None
 
+        # mute streamer flag
+        self.__ignore: IgnoreStream = IgnoreStream.NONE
+
     def on_activate(self):
         self._stop_requested = True
+        self.__ignore = IgnoreStream.NONE
         self._primary_sample_count = self._secondary_sample_count = 0
         self._constraints = self.__combine_constraints()
 
@@ -157,6 +168,12 @@ class DataInStreamSync(DataInStreamInterface):
         secondary_buffer_size = secondary.channel_buffer_size
         primary_channels = len(primary.active_channels)
         secondary_channels = len(secondary.active_channels)
+        sample_rate = primary.sample_rate
+        if self.__ignore == IgnoreStream.PRIMARY:
+            primary_channels = 0
+            sample_rate = secondary.sample_rate
+        elif self.__ignore == IgnoreStream.SECONDARY:
+            secondary_channels = 0
         total_channels = primary_channels + secondary_channels
         primary_dtype = primary.constraints.data_type
         secondary_dtype = secondary.constraints.data_type
@@ -164,11 +181,13 @@ class DataInStreamSync(DataInStreamInterface):
         self._data_buffer = InterleavedRingBuffer(interleave_factor=total_channels,
                                                   size=primary_buffer_size,
                                                   dtype=np.float64,
-                                                  allow_overwrite=self._allow_overwrite)
+                                                  allow_overwrite=self._allow_overwrite,
+                                                  expected_sample_rate=sample_rate)
         if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
             self._timestamp_buffer = RingBuffer(size=primary_buffer_size,
                                                 dtype=np.float64,
-                                                allow_overwrite=self._allow_overwrite)
+                                                allow_overwrite=self._allow_overwrite,
+                                                expected_sample_rate=sample_rate)
         else:
             self._timestamp_buffer = None
         # Create intermediate buffer arrays to minimize memory allocation on each read at the
@@ -199,6 +218,8 @@ class DataInStreamSync(DataInStreamInterface):
 
     @property
     def sample_rate(self) -> float:
+        if self.__ignore == IgnoreStream.PRIMARY:
+            return self._secondary_streamer().sample_rate
         return self._primary_streamer().sample_rate
 
     @property
@@ -211,8 +232,13 @@ class DataInStreamSync(DataInStreamInterface):
 
     @property
     def active_channels(self) -> List[str]:
-        return [*self._primary_streamer().active_channels,
-                *self._secondary_streamer().active_channels]
+        if self.__ignore == IgnoreStream.NONE:
+            return [*self._primary_streamer().active_channels,
+                    *self._secondary_streamer().active_channels]
+        elif self.__ignore == IgnoreStream.PRIMARY:
+            return self._secondary_streamer().active_channels
+        else:
+            return self._primary_streamer().active_channels
 
     def configure(self,
                   active_channels: Sequence[str],
@@ -222,22 +248,36 @@ class DataInStreamSync(DataInStreamInterface):
         with self._lock:
             if self.module_state() == 'locked':
                 raise RuntimeError('Streamer is running.')
-            primary = self._primary_streamer()
-            secondary = self._secondary_streamer()
-            primary_channels = primary.constraints.channel_units
-            secondary_channels = secondary.constraints.channel_units
-            primary.configure(
-                active_channels=[ch for ch in active_channels if ch in primary_channels],
-                streaming_mode=StreamingMode.CONTINUOUS,
-                channel_buffer_size=channel_buffer_size,
-                sample_rate=sample_rate
-            )
-            secondary.configure(
-                active_channels=[ch for ch in active_channels if ch in secondary_channels],
-                streaming_mode=StreamingMode.CONTINUOUS,
-                channel_buffer_size=secondary.channel_buffer_size,
-                sample_rate=secondary.sample_rate
-            )
+            primary: DataInStreamInterface = self._primary_streamer()
+            secondary: DataInStreamInterface = self._secondary_streamer()
+            primary_channels = [
+                ch for ch in active_channels if ch in primary.constraints.channel_units
+            ]
+            secondary_channels = [
+                ch for ch in active_channels if ch in secondary.constraints.channel_units
+            ]
+            if len(primary_channels) == len(secondary_channels) == 0:
+                raise ValueError('At least one channel needs to be active')
+            elif len(primary_channels) == 0:
+                self.__ignore = IgnoreStream.PRIMARY
+            elif len(secondary_channels) == 0:
+                self.__ignore = IgnoreStream.SECONDARY
+            else:
+                self.__ignore = IgnoreStream.NONE
+            if self.__ignore != IgnoreStream.PRIMARY and primary.module_state() == 'idle':
+                primary.configure(
+                    active_channels=primary_channels,
+                    streaming_mode=StreamingMode.CONTINUOUS,
+                    channel_buffer_size=channel_buffer_size,
+                    sample_rate=sample_rate
+                )
+            if self.__ignore != IgnoreStream.SECONDARY and secondary.module_state() == 'idle':
+                secondary.configure(
+                    active_channels=secondary_channels,
+                    streaming_mode=StreamingMode.CONTINUOUS,
+                    channel_buffer_size=secondary.channel_buffer_size,
+                    sample_rate=secondary.sample_rate
+                )
             self.__create_buffers()
 
     def start_stream(self) -> None:
@@ -247,17 +287,18 @@ class DataInStreamSync(DataInStreamInterface):
                 try:
                     primary = self._primary_streamer()
                     secondary = self._secondary_streamer()
+                    self._primary_sample_count = self._secondary_sample_count = 0
                     self.__create_buffers()
                     self._timer.setInterval(max(10, int(1000. / self._data_buffer.average_rate)))
-                    if primary.module_state() == 'idle':
+                    if self.__ignore != IgnoreStream.PRIMARY and primary.module_state() == 'idle':
                         primary.start_stream()
-                    if secondary.module_state() == 'idle':
+                    if self.__ignore != IgnoreStream.SECONDARY and secondary.module_state() == 'idle':
                         secondary.start_stream()
                     self._stop_requested = False
                     self._sigStartLoop.emit()
                 except Exception:
-                    self.module_state.unlock()
                     self._stop_requested = True
+                    self.module_state.unlock()
                     raise
 
     def stop_stream(self) -> None:
@@ -371,78 +412,85 @@ class DataInStreamSync(DataInStreamInterface):
     # Data poll and interpolation loop below
     #########################################
 
+    def __pull_primary_data(self, samples: int) -> Tuple[np.ndarray, np.ndarray]:
+        streamer: DataInStreamInterface = self._primary_streamer()
+        tmp_data = self._tmp_primary_data_buf[:samples, :]
+        tmp_times = self._tmp_primary_timestamp_buf[:samples]
+        streamer.read_data_into_buffer(data_buffer=tmp_data.reshape(-1),
+                                       samples_per_channel=samples,
+                                       timestamp_buffer=tmp_times)
+        if streamer.constraints.sample_timing != SampleTiming.TIMESTAMP:
+            tmp_times = np.arange(self._primary_sample_count,
+                                  self._primary_sample_count + samples,
+                                  dtype=np.float64)
+            tmp_times /= streamer.sample_rate
+            self._primary_sample_count += samples
+        return tmp_times, tmp_data
+
+    def __pull_secondary_data(self, samples: int) -> Tuple[np.ndarray, np.ndarray]:
+        streamer: DataInStreamInterface = self._secondary_streamer()
+        tmp_data = self._tmp_secondary_data_buf[:samples, :]
+        tmp_times = self._tmp_secondary_timestamp_buf[:samples]
+        streamer.read_data_into_buffer(data_buffer=tmp_data.reshape(-1),
+                                       samples_per_channel=samples,
+                                       timestamp_buffer=tmp_times)
+        if streamer.constraints.sample_timing != SampleTiming.TIMESTAMP:
+            tmp_times = np.arange(self._secondary_sample_count,
+                                  self._secondary_sample_count + samples,
+                                  dtype=np.float64)
+            tmp_times /= streamer.sample_rate
+            self._secondary_sample_count += samples
+        return tmp_times, tmp_data
+
     def _pull_data(self) -> None:
         """ This method synchronizes (interpolates) the available data from both the timeseries
         logic and the wavemeter hardware module. It runs repeatedly by being connected to a QTimer timeout signal from the time series (sigNewRawData).
         Note: new_count_timing is currently unused, but might be used for a more elaborate synchronization.
         #TODO Assure that the timing below is synchronized at an acceptable level and saving of raw data
         """
-        primary: DataInStreamInterface = self._primary_streamer()
-        secondary: DataInStreamInterface = self._secondary_streamer()
-
         # Break loop if stop is requested
         if self._stop_requested:
             self.__terminate()
             return
 
         try:
-            primary_available = primary.available_samples
-            secondary_available = secondary.available_samples
+            primary: DataInStreamInterface = self._primary_streamer()
+            secondary: DataInStreamInterface = self._secondary_streamer()
 
-            # Only act if both streams deliver samples at this time. Skip this iteration if not.
-            if (primary_available >= self._min_interpolation_samples) and (
-                    secondary_available >= self._min_interpolation_samples):
-                primary_has_timestamps = primary.constraints.sample_timing == SampleTiming.TIMESTAMP
-                secondary_has_timestamps = secondary.constraints.sample_timing == SampleTiming.TIMESTAMP
-
-                # Truncate temp buffers to match samples to process
-                primary_tmp_data = self._tmp_primary_data_buf[:primary_available, :]
-                secondary_tmp_data = self._tmp_secondary_data_buf[:secondary_available, :]
-                combined_tmp_buf = self._tmp_combined_data_buf[:primary_available, :]
-                primary_tmp_times = self._tmp_primary_timestamp_buf[:primary_available]
-                secondary_tmp_times = self._tmp_secondary_timestamp_buf[:secondary_available]
-
-                # Read data from streamers
-                primary.read_data_into_buffer(data_buffer=primary_tmp_data,
-                                              samples_per_channel=primary_available,
-                                              timestamp_buffer=primary_tmp_times)
-                secondary.read_data_into_buffer(data_buffer=secondary_tmp_data,
-                                                samples_per_channel=secondary_available,
-                                                timestamp_buffer=secondary_tmp_times)
-
-                # Create timestamps if not present
-                if not primary_has_timestamps:
-                    primary_tmp_times = np.arange(self._primary_sample_count,
-                                                  self._primary_sample_count + primary_available,
-                                                  dtype=np.float64)
-                    primary_tmp_times /= primary.sample_rate
-                    self._primary_sample_count += primary_available
-                if not secondary_has_timestamps:
-                    secondary_tmp_times = np.arange(
-                        self._secondary_sample_count,
-                        self._secondary_sample_count + secondary_available,
-                        dtype=np.float64
-                    )
-                    secondary_tmp_times /= secondary.sample_rate
-                    self._secondary_sample_count += secondary_available
-
-                # Add offset to secondary stream timebase if required
-                if self._delay_time is not None:
-                    secondary_tmp_times += self._delay_time
-
-                # Here the interpolation is performed to match the secondary stream onto the primary
-                interpolated_data = self._interpolate_data(secondary_tmp_times,
-                                                           secondary_tmp_data,
-                                                           primary_tmp_times)
-
-                # Fill data into combined buffer
-                primary_channels = primary_tmp_data.shape[1]
-                combined_tmp_buf[:, :primary_channels] = primary_tmp_data
-                combined_tmp_buf[:, primary_channels:] = interpolated_data
-                # Write (interpolated) data into ring buffers
-                self._data_buffer.write(combined_tmp_buf)
+            if self.__ignore == IgnoreStream.PRIMARY:
+                samples = max(1, secondary.available_samples)
+                timestamps, data = self.__pull_secondary_data(samples)
+                self._data_buffer.write(data)
                 if self._timestamp_buffer is not None:
-                    self._timestamp_buffer.write(primary_tmp_times)
+                    self._timestamp_buffer.write(timestamps)
+            elif self.__ignore == IgnoreStream.SECONDARY:
+                samples = max(1, primary.available_samples)
+                timestamps, data = self.__pull_primary_data(samples)
+                self._data_buffer.write(data)
+                if self._timestamp_buffer is not None:
+                    self._timestamp_buffer.write(timestamps)
+            else:
+                primary_samples = primary.available_samples
+                secondary_samples = secondary.available_samples
+                if (primary_samples >= self._min_interpolation_samples) and (secondary_samples >= self._min_interpolation_samples):
+                    primary_times, primary_data = self.__pull_primary_data(primary_samples)
+                    secondary_times, secondary_data = self.__pull_secondary_data(secondary_samples)
+                    # Add offset to secondary stream timebase if required
+                    if self._delay_time is not None:
+                        secondary_times += self._delay_time
+                    # Perform interpolation to match the secondary stream onto the primary
+                    interpolated_data = self._interpolate_data(secondary_times,
+                                                               secondary_data,
+                                                               primary_times)
+                    # Fill data into combined buffer
+                    combined_tmp_buf = self._tmp_combined_data_buf[:primary_samples, :]
+                    primary_channels = primary_data.shape[1]
+                    combined_tmp_buf[:, :primary_channels] = primary_data
+                    combined_tmp_buf[:, primary_channels:] = interpolated_data
+                    # Write interpolated combined data into ring buffers
+                    self._data_buffer.write(combined_tmp_buf)
+                    if self._timestamp_buffer is not None:
+                        self._timestamp_buffer.write(primary_times)
 
             # Call this method again via QTimer for next loop iteration
             self._timer.start(max(10, int(1000. / self._data_buffer.average_rate)))
@@ -455,12 +503,16 @@ class DataInStreamSync(DataInStreamInterface):
     def __terminate(self) -> None:
         primary: DataInStreamInterface = self._primary_streamer()
         secondary: DataInStreamInterface = self._secondary_streamer()
-        if self.module_state() == 'locked':
-            self.module_state.unlock()
-        if primary.module_state() == 'locked':
-            primary.stop_stream()
-        if secondary.module_state() == 'locked':
-            secondary.stop_stream()
+        try:
+            if self.__ignore != IgnoreStream.PRIMARY and primary.module_state() == 'locked':
+                primary.stop_stream()
+        finally:
+            try:
+                if self.__ignore != IgnoreStream.SECONDARY and secondary.module_state() == 'locked':
+                    secondary.stop_stream()
+            finally:
+                if self.module_state() == 'locked':
+                    self.module_state.unlock()
 
     @staticmethod
     def _interpolate_data(x: np.ndarray, y: np.ndarray, x_interp: np.ndarray) -> np.ndarray:

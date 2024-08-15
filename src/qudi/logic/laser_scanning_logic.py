@@ -22,27 +22,28 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore
-import numpy as np
-import time
 import math
+import numpy as np
 import matplotlib.pyplot as plt
-import scipy.interpolate as interpolate
 from enum import Enum
-
-from qudi.core.connector import Connector
-from qudi.core.configoption import ConfigOption
-from qudi.core.module import LogicBase
-from qudi.util.mutex import Mutex
-from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
-from qudi.interface.data_instream_interface import DataInStreamConstraints, DataInStreamInterface
-from qudi.util.datafitting import FitContainer, FitConfigurationsModel
-from qudi.core.statusvariable import StatusVar
-from qudi.util.network import netobtain
-from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping, Callable
+from PySide2 import QtCore
+from dataclasses import dataclass
 from lmfit.model import ModelResult as _ModelResult
-from qudi.util.datastorage import TextDataStorage
 from scipy.constants import speed_of_light as _SPEED_OF_LIGHT
+from typing import Tuple, Optional, Sequence, Union, List, Dict, Any, Mapping
+
+from qudi.core.module import LogicBase
+from qudi.core.connector import Connector
+from qudi.core.statusvariable import StatusVar
+from qudi.core.configoption import ConfigOption
+from qudi.interface.data_instream_interface import SampleTiming
+from qudi.interface.data_instream_interface import DataInStreamConstraints, DataInStreamInterface
+from qudi.util.mutex import Mutex
+from qudi.util.network import netobtain
+from qudi.util.datastorage import TextDataStorage
+from qudi.util.ringbuffer import InterleavedRingBuffer, RingBuffer
+from qudi.util.datafitting import FitContainer, FitConfigurationsModel
+from qudi.util.thread_exception_watchdog import threaded_exception_watchdog
 
 
 class AxisType(Enum):
@@ -50,19 +51,181 @@ class AxisType(Enum):
     FREQUENCY = 'frequency'
 
 
+@dataclass
+class LaserDataHistogram:
+    span: Tuple[float, float]
+    bins: int
+    channel_count: int
+
+    def __post_init__(self):
+        self.span = (min(self.span), max(self.span))
+        self.histogram_axis = np.linspace(*self.span, self.bins, dtype=np.float64)
+        self.histogram_data = np.zeros([self.bins, self.channel_count], dtype=np.float64)
+        self.envelope_data = np.zeros([self.bins, self.channel_count], dtype=np.float64)
+        # n+1-dimensional binning axis, to avoid empty bin when using np.digitize
+        offset = (self.span[1] - self.span[0]) / (self.bins - 1)
+        offset /= 2
+        self.__binning = np.linspace(self.span[0] - offset, self.span[1] + offset, self.bins + 1)
+        # working array for histogram. Stores the number of occurrences for each bin.
+        self.__bin_count = np.zeros(self.bins, dtype=np.int64)
+
+    def add_data_frame(self, laser_data: np.ndarray, scan_data: np.ndarray) -> None:
+        # create data mask for sample outside histogram range
+        mask = np.logical_and(laser_data >= self.span[0], laser_data <= self.span[1])
+        laser_data = laser_data[mask]
+        scan_data = scan_data[mask]
+        # occurrences = np.histogram(laser_data, self.__binning)[0]
+        bin_indices = np.digitize(laser_data, self.__binning)
+        bin_indices -= 1
+        for sample_index, bin_index in enumerate(bin_indices):
+            self.__bin_count[bin_index] += 1
+            tmp = scan_data[sample_index, :] - self.histogram_data[bin_index, :]
+            tmp /= self.__bin_count[bin_index]
+            self.histogram_data[bin_index, :] += tmp
+            self.envelope_data[bin_index, :] = np.max(
+                [scan_data[sample_index, :], self.envelope_data[bin_index, :]],
+                axis=0
+            )
+
+
+@dataclass
+class LaserDataBuffer:
+    channel_count: int
+    has_timestamps: bool
+    dtype: type = np.float64
+    max_samples: int = -1
+    initial_size: int = 1024
+    grow_factor: float = 2.
+
+    def __post_init__(self):
+        self._sample_count = 0
+        self._laser_span = [float('inf'), float('-inf')]
+        if self.max_samples > 0:
+            self._scan_data = InterleavedRingBuffer(interleave_factor=self.channel_count,
+                                                    size=self.max_samples,
+                                                    dtype=self.dtype,
+                                                    allow_overwrite=True)
+            self._laser_data = RingBuffer(size=self.max_samples,
+                                          dtype=self.dtype,
+                                          allow_overwrite=True)
+            self._alt_laser_data = RingBuffer(size=self.max_samples,
+                                              dtype=self.dtype,
+                                              allow_overwrite=True)
+            if self.has_timestamps:
+                self._timestamps = RingBuffer(size=self.max_samples,
+                                              dtype=np.float64,
+                                              allow_overwrite=True)
+            else:
+                self._timestamps = None
+        else:
+            self._scan_data = np.empty([self.initial_size, self.channel_count],
+                                       dtype=self.dtype)
+            self._laser_data = np.empty(self.initial_size, dtype=self.dtype)
+            self._alt_laser_data = np.empty(self.initial_size, dtype=self.dtype)
+            if self.has_timestamps:
+                self._timestamps = np.empty(self.initial_size, dtype=np.float64)
+            else:
+                self._timestamps = None
+
+    def _grow_buffers(self) -> None:
+        old_sample_size = self._scan_data.shape[0]
+        # grow by at least 1 sample
+        new_sample_size = max(old_sample_size + 1, int(round(old_sample_size * self.grow_factor)))
+        # Expand scan data buffer
+        new_data = np.empty([new_sample_size, self._scan_data.shape[1]],
+                            dtype=self._scan_data.dtype)
+        new_data[:self._sample_count, :] = self._scan_data[:self._sample_count, :]
+        self._scan_data = new_data
+        # Expand laser data buffers
+        new_data = np.empty(new_sample_size, dtype=self._laser_data.dtype)
+        new_data[:self._sample_count] = self._laser_data[:self._sample_count]
+        self._laser_data = new_data
+        new_data = np.empty(new_sample_size, dtype=self._alt_laser_data.dtype)
+        new_data[:self._sample_count] = self._alt_laser_data[:self._sample_count]
+        self._alt_laser_data = new_data
+        # Expand timestamps buffer
+        if self._timestamps is not None:
+            new_data = np.empty(new_sample_size, dtype=self._timestamps.dtype)
+            new_data[:self._sample_count] = self._timestamps[:self._sample_count]
+            self._timestamps = new_data
+
+    @property
+    def laser_data(self) -> np.ndarray:
+        if self.max_samples > 0:
+            return self._laser_data.unwrap()
+        else:
+            return self._laser_data[:self._sample_count]
+
+    @property
+    def alt_laser_data(self) -> np.ndarray:
+        if self.max_samples > 0:
+            return self._alt_laser_data.unwrap()
+        else:
+            return self._alt_laser_data[:self._sample_count]
+
+    @property
+    def scan_data(self) -> np.ndarray:
+        if self.max_samples > 0:
+            return self._scan_data.unwrap()
+        else:
+            return self._scan_data[:self._sample_count, :]
+
+    @property
+    def timestamps(self) -> Union[None, np.ndarray]:
+        if self.max_samples > 0:
+            return None if self._timestamps is None else self._timestamps.unwrap()
+        else:
+            return None if self._timestamps is None else self._timestamps[:self._sample_count]
+
+    def add_data_frame(self,
+                       laser_data: np.ndarray,
+                       scan_data: np.ndarray,
+                       timestamps: Optional[np.ndarray] = None):
+        new_sample_count = self._sample_count + laser_data.size
+        alt_laser_data = self._convert_wavelength_frequency(laser_data)
+        if self.max_samples > 0:
+            # Add samples to buffers
+            self._laser_data.write(laser_data)
+            self._alt_laser_data.write(alt_laser_data)
+            self._scan_data.write(scan_data)
+            if self._timestamps is not None:
+                self._timestamps.write(timestamps)
+        else:
+            # Grow buffers if necessary
+            if new_sample_count > self._laser_data.size:
+                self._grow_buffers()
+            # Add samples to buffers
+            self._laser_data[self._sample_count:new_sample_count] = laser_data
+            self._alt_laser_data[self._sample_count:new_sample_count] = alt_laser_data
+            self._scan_data[self._sample_count:new_sample_count, :] = scan_data
+            if self._timestamps is not None:
+                self._timestamps[self._sample_count:new_sample_count] = timestamps
+        self._sample_count = new_sample_count
+
+    @staticmethod
+    def _convert_wavelength_frequency(data: np.ndarray) -> np.ndarray:
+        return _SPEED_OF_LIGHT / data
+
+
+@dataclass(frozen=True)
+class ScanSettings:
+    """ """
+    laser_channel_only: bool
+
+
 class LaserScanningLogic(LogicBase):
     """
     Example config for copy-paste:
 
     laser_scanning_logic:
-        module.Class: 'wavemeter_scanning_logic_3.WavemeterLogic'
+        module.Class: 'laser_scanning_logic.LaserScanningLogic'
         connect:
-            streamer: wavemeter
-            counterlogic: time_series_reader_logic
+            streamer: <data_instream_hardware>
+            laser: <laser_control_hardware>  # optional
     """
 
     @staticmethod
-    def __construct_histogram_range(value: Sequence[float]) -> Tuple[float, float]:
+    def __construct_histogram_span(value: Sequence[float]) -> Tuple[float, float]:
         if len(value) != 2:
             raise ValueError(f'Expected exactly two values (min, max) but received "{value}"')
         return min(value), max(value)
@@ -74,16 +237,13 @@ class LaserScanningLogic(LogicBase):
             raise ValueError(f'Number of histogram bins must be >= 3 but received "{value:d}"')
         return value
 
-    @staticmethod
-    def _convert_wavelength_frequency(data: np.ndarray) -> np.ndarray:
-        return _SPEED_OF_LIGHT / data
-
     # declare signals
-    sigDataChanged = QtCore.Signal(object, object, object, object, object, object, object)
+    sigDataChanged = QtCore.Signal(object, object, object, object, object, object)
     sigStatusChanged = QtCore.Signal(bool)
     sigStatusChangedDisplaying = QtCore.Signal()
     sigNewWavelength2 = QtCore.Signal(object, object)
     sigFitChanged = QtCore.Signal(str, dict)  # fit_name, fit_results
+    sigConfigurationChanged = QtCore.Signal()
     _sigNextDataFrame = QtCore.Signal()  # internal signal
 
     # connectors
@@ -92,6 +252,7 @@ class LaserScanningLogic(LogicBase):
 
     # config options
     _max_update_rate: float = ConfigOption(name='max_update_rate', default=30.)
+    _max_samples: int = ConfigOption(name='max_samples', default=-1)
     _laser_channel: str = ConfigOption(name='laser_channel', missing='error')
     _laser_channel_type: AxisType = ConfigOption(name='laser_channel_type',
                                                  default=AxisType.WAVELENGTH,
@@ -100,17 +261,14 @@ class LaserScanningLogic(LogicBase):
 
     # status variables
     _fit_config_model: FitConfigurationsModel = StatusVar(name='fit_configs', default=list())
-    _histogram_range: Tuple[float, float] = StatusVar(name='histogram_range',
-                                                      default=(500.0e-9, 750.0e-9),
-                                                      constructor=__construct_histogram_range)
+    _histogram_span: Tuple[float, float] = StatusVar(name='histogram_span',
+                                                     default=(500.0e-9, 750.0e-9),
+                                                     constructor=__construct_histogram_span)
     _histogram_bins: int = StatusVar(name='histogram_bins',
                                      default=200,
                                      constructor=__construct_histogram_bins)
-
-    _laser_axis_converters = {
-        AxisType.WAVELENGTH: _convert_wavelength_frequency,
-        AxisType.FREQUENCY : _convert_wavelength_frequency
-    }
+    # Fixme:
+    _scan_settings: ScanSettings = StatusVar(name='scan_settings', default=None)
 
     def __init__(self, *args, **kwargs):
         """
@@ -123,24 +281,13 @@ class LaserScanningLogic(LogicBase):
 
         # data fitting
         self._fit_container: FitContainer = None
-        self._fit_histogram: bool = True
+        self._fit_envelope: bool = False
         self._last_fit_result = None
 
         # raw data
-        self._scan_data: np.ndarray = np.empty(0)
-        self._laser_data: Dict[AxisType, np.ndarray] = dict()
-        self._timestamps: Union[None, np.ndarray] = None
-        self._valid_samples: int = 0
-        # min, max (changes on each iteration)
-        self._laser_range: Dict[AxisType, List[float]] = dict()
-
+        self._data_buffer: LaserDataBuffer = LaserDataBuffer(1, False)
         # histogram data
-        self._histogram_data: np.ndarray = np.empty(0)
-        self._histogram_axis: np.ndarray = np.empty(0)
-        self._histogram_envelope: np.ndarray = np.empty(0)
-        self.__binning: np.ndarray = np.empty(0)
-        self.__rawhisto: np.ndarray = np.empty(0)
-        self.__sumhisto: np.ndarray = np.empty(0)
+        self._histogram: LaserDataHistogram = LaserDataHistogram((0, 1), 3, 1)
 
     def on_activate(self):
         if self._laser_channel not in self.streamer_constraints.channel_units:
@@ -149,18 +296,28 @@ class LaserScanningLogic(LogicBase):
 
         # Initialize data fitting
         self._fit_container = FitContainer(config_model=self._fit_config_model)
-        self._fit_histogram = False
+        self._fit_envelope = False
         self._last_fit_result = None
 
         # initialize all data arrays
         self.__init_data_buffers()
+        self.__init_histogram()
 
         # Connect signals
         self._sigNextDataFrame.connect(self._measurement_loop_body, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
-        self._stop_scanning()
+        self._stop_scan()
         self._sigNextDataFrame.disconnect()
+
+    @property
+    def controllable_laser(self) -> bool:
+        """ Flag indicating if a scannable laser is connected and controllable """
+        return self._laser() is not None
+
+    @property
+    def laser_constraints(self) -> Union[None, Any]:
+        return self._laser().constraints if self.controllable_laser else None
 
     @property
     def streamer_constraints(self) -> DataInStreamConstraints:
@@ -175,65 +332,47 @@ class LaserScanningLogic(LogicBase):
         return None
 
     @property
+    def data_channel_units(self) -> Dict[str, str]:
+        streamer: DataInStreamInterface = self._streamer()
+        channels = [ch for ch in streamer.active_channels if ch != self._laser_channel]
+        return {ch: u for ch, u in streamer.constraints.channel_units.items() if ch in channels}
+
+    @property
+    def sample_rate(self) -> float:
+        streamer: DataInStreamInterface = self._streamer()
+        return streamer.sample_rate
+
+    @property
+    def histogram_settings(self) -> Tuple[Tuple[float, float], int]:
+        return self._histogram_span, self._histogram_bins
+
+    @property
+    def scan_settings(self) -> ScanSettings:
+        return self._scan_settings
+
+    @property
     def _laser_ch_index(self) -> int:
         return self._streamer().active_channels.index(self._laser_channel)
 
     def __init_data_buffers(self) -> None:
-        init_samples = 1024  # Initial number of samples per channel for buffer size
         streamer: DataInStreamInterface = self._streamer()
         dtype = streamer.constraints.data_type
-        self._valid_samples = 0
-        self._laser_range = {
-            axis_type: [np.inf, -np.inf] for axis_type in self._laser_axis_converters
-        }
-        # data buffers
-        self._scan_data = np.empty([init_samples, len(streamer.active_channels) - 1], dtype=dtype)
-        self._laser_data = {axis_type: np.empty(init_samples, dtype=dtype) for axis_type in
-                            self._laser_axis_converters}
-        # timestamps buffer
-        if streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
-            self._timestamps = np.empty(init_samples, dtype=np.float64)
-        else:
-            self._timestamps = None
+        channel_count = len(streamer.active_channels) - 1
+        has_timestamps = streamer.constraints.sample_timing == SampleTiming.TIMESTAMP
+        self._data_buffer = LaserDataBuffer(channel_count=channel_count,
+                                            has_timestamps=has_timestamps,
+                                            dtype=dtype,
+                                            max_samples=self._max_samples)
 
     def __init_histogram(self) -> None:
-        self._histogram_axis = np.linspace(*self._histogram_range, self._histogram_bins,
-                                           dtype=np.float64)
-        self._histogram_data = np.zeros([self._histogram_bins, self._scan_data.shape[1]],
-                                        dtype=np.float64)
-        self._histogram_envelope = np.zeros([self._histogram_bins, self._scan_data.shape[1]],
-                                            dtype=np.float64)
-        # n+1-dimensional binning axis, to avoid empty bin when using np.digitize
-        offset = (self._histogram_range[1] - self._histogram_range[0]) / (self._histogram_bins - 1)
-        offset /= 2
-        self.__binning = np.linspace(self._histogram_range[0] - offset,
-                                     self._histogram_range[1] + offset,
-                                     self._histogram_bins + 1)
-        # working arrays for histogram
-        self.__rawhisto = np.zeros([self._histogram_bins, self._scan_data.shape[1]],
-                                   dtype=np.float64)
-        self.__sumhisto = np.zeros(self._bins, dtype=np.int64)
+        channel_count = len(self._streamer().active_channels) - 1
+        self._histogram = LaserDataHistogram(
+            span=self._histogram_span,
+            bins=self._histogram_bins,
+            channel_count=channel_count
+        )
 
-    def __expand_data_buffers(self) -> None:
-        """ Double the existing data buffers """
-        factor = 2  # Expand array size by this factor
-        # Expand data buffer
-        new_shape = [self._scan_data.shape[0] * factor, self._scan_data.shape[1]]
-        new_scan_data = np.empty(new_shape, dtype=self._scan_data.dtype)
-        new_scan_data[:self._valid_samples, :] = self._scan_data[:self._valid_samples, :]
-        self._scan_data = new_scan_data
-        # Expand laser data buffers
-        for axis_type, laser_data in self._laser_data.items():
-            new_data = np.empty(laser_data.size * factor, dtype=laser_data.dtype)
-            new_data[:self._valid_samples] = laser_data[:self._valid_samples]
-            self._laser_data[axis_type] = new_data
-        # Expand timestamps buffer
-        if self._timestamps is not None:
-            new_timestamps = np.empty(self._timestamps.size * factor, dtype=self._timestamps.dtype)
-            new_timestamps[:self._valid_samples] = self._timestamps[:self._valid_samples]
-            self._timestamps = new_timestamps
-
-    def __pull_new_data(self) -> int:
+    def __pull_new_data(self) -> Tuple[np.ndarray, np.ndarray, Union[None, np.ndarray]]:
         """ Pulls new available samples from streaming device, appends them to existing data arrays
         and returns number of new samples per channel.
         Will stall to satisfy "max_update_rate" in case this method is called too frequent.
@@ -242,222 +381,149 @@ class LaserScanningLogic(LogicBase):
         sample_rate = streamer.sample_rate
         min_samples = max(1, int(math.ceil(sample_rate / self._max_update_rate)))
         samples = max(streamer.available_samples, min_samples)
-        end_index = self._valid_samples + samples
-        new_data, new_timestamps = streamer.read_data(samples)
-        # Expand data buffers if needed
-        if (self._scan_data.shape[0] - self._valid_samples) < samples:
-            self.__expand_data_buffers()
-        new_data = netobtain(new_data).reshape([samples, -1])
-        # efficient slicing for laser data at boundaries
-        scan_data_buf = self._scan_data[self._valid_samples:end_index, :]
+        data, timestamps = streamer.read_data(samples)
+        # transfer data if obtained via remote module
+        data = netobtain(data).reshape([samples, -1])
+        if timestamps is not None:
+            timestamps = netobtain(timestamps)
+        # Separate laser data from scan data
+        laser_data = data[:, self._laser_ch_index]
         if self._laser_ch_index == 0:
-            scan_data_buf[:, :] = new_data[:, 1:]
-        elif self._laser_ch_index == self._scan_data.shape[1]:
-            scan_data_buf[:, :] = new_data[:, :-1]
+            scan_data = data[:, 1:]
+        elif self._laser_ch_index == (data.shape[1] - 1):
+            scan_data = data[:, :-1]
         else:
-            scan_data_buf[:, :self._laser_ch_index] = new_data[:, :self._laser_ch_index]
-            scan_data_buf[:, self._laser_ch_index:] = new_data[:, self._laser_ch_index+1:]
-        laser_data_buf = self._laser_data[self._laser_channel_type]
-        laser_data_buf[self._valid_samples:end_index] = new_data[:, self._laser_ch_index]
-        if self._timestamps is not None:
-            new_timestamps = netobtain(new_timestamps)
-            self._timestamps[self._valid_samples:self._valid_samples + samples] = new_timestamps
-        return samples
-
-    def __calculate_laser_data(self, new_samples: int) -> None:
-        end_index = self._valid_samples + new_samples
-        orig_data = self._laser_data[self._laser_channel_type][self._valid_samples:end_index]
-        orig_range = self._laser_range[self._laser_channel_type]
-        orig_range[0] = min(orig_range[0], orig_data.min())
-        orig_range[1] = max(orig_range[1], orig_data.max())
-        for axis_type, laser_data in self._laser_data.items():
-            if axis_type != self._laser_channel_type:
-                converter = self._laser_axis_converters[axis_type]
-                laser_data[self._valid_samples:end_index] = converter(orig_data)
-                laser_range = self._laser_range[axis_type]
-                laser_range[0] = min(laser_range[0],
-                                     laser_data[self._valid_samples:end_index].min())
-                laser_range[1] = max(laser_range[1],
-                                     laser_data[self._valid_samples:end_index].max())
-
-    def __calculate_histogram(self, new_samples: int) -> None:
-        """ Calculate new points for the histogram """
-        end_index = self._valid_samples + new_samples
-        # ToDo: Distinguish between wavelength and frequency
-        scan_data = self._scan_data[self._valid_samples:end_index, :]
-        laser_data = self._laser_data[self._laser_channel_type][self._valid_samples:end_index]
-        # create data mask for sample outside histogram range
-        mask = np.logical_and(laser_data >= self._histogram_range[0],
-                              laser_data <= self._histogram_range[1])
-        laser_data = laser_data[mask]
-        scan_data = scan_data[mask]
-        # occurrences = np.histogram(laser_data, self.__binning)[0]
-        bin_indices = np.digitize(laser_data, self.__binning)
-        bin_indices -= 1
-        for sample_index, bin_index in enumerate(bin_indices):
-            self.__sumhisto[bin_index] += 1
-            tmp = scan_data[sample_index, :] - self._histogram_data[bin_index, :]
-            tmp /= self.__sumhisto[bin_index]
-            self._histogram_data[bin_index, :] += tmp
-            self._histogram_envelope[bin_index, :] = np.max(
-                [scan_data[sample_index, :], self._histogram_envelope[bin_index, :]],
-                axis=0
-            )
+            mask = np.ones(data.size, dtype=bool)
+            mask[self._laser_ch_index::data.shape[1]] = 0
+            scan_data = data.reshape(data.size)[mask].reshape([samples, -1])
+        return laser_data, scan_data, timestamps
 
     def _measurement_loop_body(self) -> None:
         """ This method is periodically called during a running measurement.
         It pulls new data from hardware and processes it.
         """
         with self._threadlock:
-            # Abort condition
-            if self.module_state() != 'locked':
-                return
+            with threaded_exception_watchdog(self.log):
+                # Abort condition
+                if self.module_state() != 'locked':
+                    return
 
-            samples = self.__pull_new_data()
-            self.__calculate_laser_data(samples)
-            self.__calculate_histogram(samples)
-            self._valid_samples += samples
-            # Call this method again via event queue
-            self._sigNextDataFrame.emit()
+                laser_data, scan_data, timestamps = self.__pull_new_data()
+                self._data_buffer.add_data_frame(laser_data=laser_data,
+                                                 scan_data=scan_data,
+                                                 timestamps=timestamps)
+                self._histogram.add_data_frame(laser_data=laser_data, scan_data=scan_data)
+                # Emit update signals
+                self.__emit_data_update()
+                # Call this method again via event queue
+                self._sigNextDataFrame.emit()
 
     @QtCore.Slot()
-    def start_scanning(self) -> None:
+    def start_scan(self) -> None:
         """ Start data acquisition loop """
         with self._threadlock:
-            streamer: DataInStreamInterface = self._streamer()
-            laser: Any = self._laser()
-            try:
-                if self.module_state() == 'locked':
-                    self.log.warning('Measurement already running. "start_scanning" call ignored.')
-                else:
-                    self.module_state.lock()
-                    try:
-                        # Reset data buffers
-                        self.__init_data_buffers()
-                        # Start laser scan and stream acquisition
-                        if laser is not None:
-                            if laser.module_state() == 'idle':
+            with threaded_exception_watchdog(self.log):
+                streamer: DataInStreamInterface = self._streamer()
+                laser: Any = self._laser()
+                try:
+                    if self.module_state() == 'locked':
+                        self.log.warning('Measurement already running. "start_scan" call ignored.')
+                    else:
+                        if self._laser_channel not in streamer.active_channels:
+                            raise RuntimeError(f'Laser channel "{self._laser_channel}" not active')
+                        self.module_state.lock()
+                        try:
+                            # Start laser scan and stream acquisition
+                            if streamer.module_state() == 'idle':
+                                streamer.start_stream()
+                            if (laser is not None) and (laser.module_state() == 'idle'):
                                 laser.start_scan()
-                        if streamer.module_state() == 'idle':
-                            streamer.start_stream()
-                    except Exception:
-                        self.module_state.unlock()
-                        raise
-                    # Kick-off measurement loop
-                    self._sigNextDataFrame.emit()
-            finally:
-                self.sigStatusChanged.emit(self.module_state() == 'locked')
+                            # Reset data buffers
+                            self.__init_data_buffers()
+                            self.__init_histogram()
+                            # Kick-off measurement loop
+                            self._sigNextDataFrame.emit()
+                        except Exception:
+                            self.module_state.unlock()
+                            raise
+                finally:
+                    self.sigStatusChanged.emit(self.module_state() == 'locked')
 
     @QtCore.Slot()
-    def stop_scanning(self):
+    def stop_scan(self):
         """ Send a request to stop counting. """
         with self._threadlock:
             try:
-                self._stop_scanning()
+                self._stop_scan()
             finally:
                 self.sigStatusChanged.emit(self.module_state() == 'locked')
 
-    def _stop_scanning(self):
-        if self.module_state() == 'locked':
-            streamer: DataInStreamInterface = self._streamer()
-            laser = self._laser()
-            try:
-                # stop streamer and laser
-                streamer.stop_stream()
-            finally:
+    def _stop_scan(self):
+        with threaded_exception_watchdog(self.log):
+            if self.module_state() == 'locked':
+                streamer: DataInStreamInterface = self._streamer()
+                laser = self._laser()
                 try:
-                    if laser is not None:
-                        laser.stop_scan()
+                    # stop streamer and laser
+                    streamer.stop_stream()
                 finally:
-                    self.module_state.unlock()
+                    try:
+                        if laser is not None:
+                            laser.stop_scan()
+                    finally:
+                        self.module_state.unlock()
 
-    def get_max_wavelength(self):
-        """ Current maximum wavelength of the scan.
-            @return float: current maximum wavelength
-        """
-        return self._xmax
+    @QtCore.Slot()
+    def clear_data(self) -> None:
+        with self._threadlock:
+            with threaded_exception_watchdog(self.log):
+                self.__init_histogram()
+                self.__init_data_buffers()
+                self.__emit_data_update()
 
-    def get_min_wavelength(self):
-        """ Current minimum wavelength of the scan.
-            @return float: current minimum wavelength
-        """
-        return self._xmin
+    @QtCore.Slot()
+    def clear_histogram(self) -> None:
+        with self._threadlock:
+            with threaded_exception_watchdog(self.log):
+                self.__init_histogram()
+                self.__emit_data_update()
 
-    def get_bins(self):
-        """ Current number of bins in the spectrum.
-            @return int: current number of bins in the scan
-        """
-        return self._bins
-
-    def recalculate_histogram(self, bins=None, xmin=None, xmax=None):
-        """ Recalculate the current spectrum from raw data.
-            @praram int bins: new number of bins
-            @param float xmin: new minimum wavelength
-            @param float xmax: new maximum wavelength
-        """
-        if bins is not None:
-            self._bins = bins
-        if xmin is not None:
-            self._xmin_histo = xmin
-        if xmax is not None:
-            self._xmax_histo = xmax
-
-        # create a new x axis from xmin to xmax with bins points
-        self.rawhisto = np.zeros(self._bins)
-        self.envelope_histogram = np.zeros(self._bins)
-        self.sumhisto = np.ones(self._bins) * 1.0e-10
-        self.histogram_axis = np.linspace(self._xmin_histo, self._xmax_histo, self._bins)
-        self.complete_histogram = True
-        if not self.module_state() == 'locked':
-            self._update_histogram(self.complete_histogram)
-        return
-
-    def display_current_wavelength(self) -> None:
-        try:
-            current_wavelength, trash_time = self._streamer().read_single_point()
-            # netobtain due to remote connection
-            current_wavelength = netobtain(current_wavelength)
-            if len(current_wavelength) > 0:
-                current_freq = constants.speed_of_light / current_wavelength  # in Hz
-                self.sigNewWavelength2.emit(current_wavelength[0], current_freq[0])
-            # display data at a rate of 10Hz
-            time.sleep(0.1)
-            self._sigNextWavelength.emit()
-        except Exception as e:
-            self.log.warning(f'Reading data from streamer went wrong: {e}')
-            self.sigStatusChangedDisplaying.emit()
-            return
-
-    def start_displaying_current_wavelength(self):
-        if len(self._streamer().active_channels) != 1:
-            self.log.warning('Only a single wavemeter channel supported.')
-            self.sigStatusChanged.emit(False)
-            return -1
-
-        constraints = self.streamer_constraints
-        unit = constraints.channel_units[self._streamer().active_channels[0]]
-        if unit != 'm':
-            self.log.warning('Make sure acquisition unit is m!')
-            self.sigStatusChanged.emit(False)
-            return -1
-
-        self._streamer().start_stream()
-        self._sigNextWavelength.connect(self.display_current_wavelength, QtCore.Qt.QueuedConnection)
-        self._is_wavelength_displaying = True
-        self._sigNextWavelength.emit()
-        return 0
-
-    def stop_displaying_current_wavelength(self) -> None:
-        self._sigNextWavelength.disconnect()
-        self._is_wavelength_displaying = False
-        self._streamer().stop_stream()
-        # TODO
-
+    @QtCore.Slot()
     def autoscale_histogram(self):
-        self._xmax_histo = self._xmax
-        self._xmin_histo = self._xmin
-        self.recalculate_histogram(self._bins, self._xmin_histo, self._xmax_histo)
-        return
+        with self._threadlock:
+            with threaded_exception_watchdog(self.log):
+                laser_data = self._data_buffer.laser_data
+                scan_data = self._data_buffer.scan_data
+                if len(laser_data) > 1:
+                    new_span = (laser_data.min(), laser_data.max())
+                    if new_span[0] != new_span[1]:
+                        self._histogram_span = new_span
+                        # ToDo: Emit changed settings
+                    self.__init_histogram()
+                    self._histogram.add_data_frame(laser_data=laser_data, scan_data=scan_data)
+                self.__emit_data_update()
+
+    def configure_histogram(self, span: Tuple[float, float], bins: int) -> None:
+        with self._threadlock:
+            with threaded_exception_watchdog(self.log):
+                self._histogram_span = (min(span), max(span))
+                self._histogram_bins = int(bins)
+                self.__init_histogram()
+                self._histogram.add_data_frame(laser_data=self._data_buffer.laser_data,
+                                               scan_data=self._data_buffer.scan_data)
+                self.__emit_data_update()
+
+    def configure_scan(self, settings: ScanSettings) -> None:
+        with self._threadlock:
+            self._scan_settings = settings
+
+    def __emit_data_update(self) -> None:
+        self.sigDataChanged.emit(self._data_buffer.timestamps,
+                                 self._data_buffer.laser_data,
+                                 self._data_buffer.scan_data,
+                                 self._histogram.histogram_axis,
+                                 self._histogram.histogram_data,
+                                 self._histogram.envelope_data)
 
     @staticmethod
     @_fit_config_model.representer
@@ -474,8 +540,8 @@ class LaserScanningLogic(LogicBase):
     def fit_config_model(self) -> FitConfigurationsModel:
         return self._fit_config_model
 
-    def get_fit_container(self) -> FitContainer:
-        # with self._threadlock:
+    @property
+    def fit_container(self) -> FitContainer:
         return self._get_fit_container()
 
     def _get_fit_container(self) -> FitContainer:
