@@ -25,7 +25,6 @@ If not, see <https://www.gnu.org/licenses/>.
 import math
 import numpy as np
 import matplotlib.pyplot as plt
-from enum import Enum
 from PySide2 import QtCore
 from dataclasses import dataclass
 from datetime import datetime
@@ -44,11 +43,6 @@ from qudi.util.datastorage import TextDataStorage
 from qudi.util.ringbuffer import InterleavedRingBuffer, RingBuffer
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.util.thread_exception_watchdog import threaded_exception_watchdog
-
-
-class AxisType(Enum):
-    WAVELENGTH = 'wavelength'
-    FREQUENCY = 'frequency'
 
 
 def _convert_wavelength_frequency(data: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
