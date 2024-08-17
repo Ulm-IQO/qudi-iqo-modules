@@ -37,7 +37,6 @@ from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
-from qudi.interface.data_instream_interface import SampleTiming
 from qudi.interface.data_instream_interface import DataInStreamConstraints, DataInStreamInterface
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
@@ -243,10 +242,6 @@ class LaserScanningLogic(LogicBase):
     _max_update_rate: float = ConfigOption(name='max_update_rate', default=30.)
     _max_samples: int = ConfigOption(name='max_samples', default=-1)
     _laser_channel: str = ConfigOption(name='laser_channel', missing='error')
-    _laser_channel_type: AxisType = ConfigOption(name='laser_channel_type',
-                                                 default=AxisType.WAVELENGTH,
-                                                 missing='warn',
-                                                 constructor=lambda x: AxisType(x))
 
     # status variables
     _fit_config_model: FitConfigurationsModel = StatusVar(name='fit_configs', default=list())
@@ -278,6 +273,7 @@ class LaserScanningLogic(LogicBase):
         # locking for thread safety
         self._threadlock = Mutex()
         self.__laser_ch_index: int = 0
+        self.__laser_is_frequency: bool = False
         self.__channel_units: Dict[str, str] = dict()
 
         # data fitting
@@ -306,6 +302,9 @@ class LaserScanningLogic(LogicBase):
         self.__init_data_channels()
         self.__init_data_buffers()
         self.__init_histograms()
+
+        # Determine if laser data is frequency or wavelength (hardware side)
+        self.__init_laser_data_type()
 
         # Connect signals
         self._sigNextDataFrame.connect(self._measurement_loop_body, QtCore.Qt.QueuedConnection)
@@ -666,12 +665,12 @@ class LaserScanningLogic(LogicBase):
 
                 laser_data, scan_data, timestamps = self.__pull_new_data()
                 # Convert laser data to/from frequency
-                if self._laser_channel_type == AxisType.WAVELENGTH:
-                    wavelength_data = laser_data
-                    frequency_data = _convert_wavelength_frequency(laser_data)
-                else:
+                if self.__laser_is_frequency:
                     frequency_data = laser_data
                     wavelength_data = _convert_wavelength_frequency(laser_data)
+                else:
+                    wavelength_data = laser_data
+                    frequency_data = _convert_wavelength_frequency(laser_data)
                 # Generate timestamps if none are returned from streamer
                 if timestamps is None:
                     count = self._data_buffer.sample_count
@@ -690,6 +689,17 @@ class LaserScanningLogic(LogicBase):
                 self.sigDataChanged.emit(*self.scan_data, *self.histogram_data)
                 # Call this method again via event queue
                 self._sigNextDataFrame.emit()
+
+    def __init_laser_data_type(self) -> None:
+        laser_unit = self.streamer_constraints.channel_units[self._laser_channel].lower()
+        if laser_unit == 'm':
+            self.__laser_is_frequency = False
+        elif laser_unit in ('hz', '1/s'):
+            self.__laser_is_frequency = True
+        else:
+            raise RuntimeError(
+                f'Laser channel "{self._laser_channel}" has unsupported unit ("{laser_unit}")'
+            )
 
     def __init_data_channels(self) -> None:
         streamer: DataInStreamInterface = self._streamer()
