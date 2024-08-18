@@ -5,7 +5,7 @@ interpolates the acquired data with the simultaneously obtained counts from a
 time_series_reader_logic. It is intended to be used in conjunction with the
 high_finesse_wavemeter.py.
 
-Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+Copyright (c) 2024, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
@@ -21,6 +21,8 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
+__all__ = ['LaserScanningLogic']
 
 import math
 import numpy as np
@@ -45,7 +47,7 @@ from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.util.thread_exception_watchdog import threaded_exception_watchdog
 
 
-def _convert_wavelength_frequency(data: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
+def convert_wavelength_frequency(data: Union[float, np.ndarray]) -> Union[float, np.ndarray]:
     return _SPEED_OF_LIGHT / data
 
 
@@ -222,7 +224,7 @@ class LaserScanningLogic(LogicBase):
 
     # declare signals
     sigDataChanged = QtCore.Signal(object, object, object, object, object, object)
-    sigStatusChanged = QtCore.Signal(bool)
+    sigStatusChanged = QtCore.Signal(bool, bool)  # running, laser_only
     sigFitChanged = QtCore.Signal(str, object)  # fit_name, fit_results
     sigLaserTypeChanged = QtCore.Signal(bool)  # is_frequency
     sigHistogramSettingsChanged = QtCore.Signal(tuple, int)  # span, bins
@@ -246,7 +248,6 @@ class LaserScanningLogic(LogicBase):
                                      default=200,
                                      constructor=__construct_histogram_bins)
     _current_laser_is_frequency: bool = StatusVar(name='current_laser_is_frequency', default=False)
-    _fit_envelope: bool = StatusVar(name='fit_envelope', default=False)
 
     @staticmethod
     @_fit_config_model.representer
@@ -269,6 +270,7 @@ class LaserScanningLogic(LogicBase):
         self.__laser_ch_index: int = 0
         self.__laser_is_frequency: bool = False
         self.__channel_units: Dict[str, str] = dict()
+        self.__laser_only_mode: bool = False
 
         # data fitting
         self._fit_container: FitContainer = None
@@ -288,6 +290,7 @@ class LaserScanningLogic(LogicBase):
         if self._laser_channel not in self.streamer_constraints.channel_units:
             raise ValueError(f'ConfigOption "{self.__class__._laser_channel.name}" value not found '
                              f'in streaming hardware available channels')
+        self.__laser_only_mode = False
 
         # Initialize data fitting
         self._fit_container = FitContainer(config_model=self._fit_config_model)
@@ -338,6 +341,10 @@ class LaserScanningLogic(LogicBase):
         return self._current_laser_is_frequency
 
     @property
+    def laser_only_mode(self) -> bool:
+        return self.__laser_only_mode
+
+    @property
     def scan_data(self) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
         timestamps = self._data_buffer.timestamps
         scan_data = self._data_buffer.scan_data
@@ -367,7 +374,7 @@ class LaserScanningLogic(LogicBase):
     def fit_result(self) -> Tuple[str, Union[None, _ModelResult]]:
         return self._last_fit_result
 
-    def start_scan(self) -> None:
+    def start_scan(self, laser_only: Optional[bool] = False) -> None:
         """ Start data acquisition loop """
         with self._threadlock:
             with threaded_exception_watchdog(self.log):
@@ -377,21 +384,28 @@ class LaserScanningLogic(LogicBase):
                     if self.module_state() == 'locked':
                         self.log.warning('Measurement already running. "start_scan" call ignored.')
                     else:
-                        if self._laser_channel not in streamer.active_channels:
-                            raise RuntimeError(f'Laser channel "{self._laser_channel}" not active')
                         self.module_state.lock()
                         try:
                             # Start laser scan and stream acquisition
                             if streamer.module_state() == 'idle':
+                                if laser_only:
+                                    channels = [self._laser_channel]
+                                else:
+                                    channels = list(streamer.constraints.channel_units)
+                                streamer.configure(active_channels=channels,
+                                                   streaming_mode=streamer.streaming_mode,
+                                                   channel_buffer_size=streamer.channel_buffer_size,
+                                                   sample_rate=streamer.sample_rate)
                                 streamer.start_stream()
-                            if (laser is not None) and (laser.module_state() == 'idle'):
+                            if (not laser_only) and (laser is not None) and (laser.module_state() == 'idle'):
                                 laser.start_scan()
+                            self.__laser_only_mode = laser_only
                             # Reset data buffers
                             self.__init_data_channels()
                             self.__init_data_buffers()
                             self.__init_histograms()
                             # Reset fit
-                            self._do_fit('No Fit')
+                            self._do_fit('No Fit', False)
                             # Determine laser channel index
                             self.__laser_ch_index = streamer.active_channels.index(
                                 self._laser_channel
@@ -399,10 +413,11 @@ class LaserScanningLogic(LogicBase):
                             # Kick-off measurement loop
                             self._sigNextDataFrame.emit()
                         except Exception:
-                            self.module_state.unlock()
+                            self._stop_scan()
                             raise
                 finally:
-                    self.sigStatusChanged.emit(self.module_state() == 'locked')
+                    self.sigStatusChanged.emit(self.module_state() == 'locked',
+                                               self.__laser_only_mode)
 
     def stop_scan(self):
         """ Send a request to stop counting. """
@@ -410,7 +425,7 @@ class LaserScanningLogic(LogicBase):
             try:
                 self._stop_scan()
             finally:
-                self.sigStatusChanged.emit(self.module_state() == 'locked')
+                self.sigStatusChanged.emit(self.module_state() == 'locked', self.__laser_only_mode)
 
     def clear_data(self) -> None:
         with self._threadlock:
@@ -439,8 +454,8 @@ class LaserScanningLogic(LogicBase):
             with threaded_exception_watchdog(self.log):
                 try:
                     if self.laser_is_frequency:
-                        span = (_convert_wavelength_frequency(span[1]),
-                                _convert_wavelength_frequency(span[0]))
+                        span = (convert_wavelength_frequency(span[1]),
+                                convert_wavelength_frequency(span[0]))
                     self.__configure_histogram(span, bins)
                     self.__reset_histogram()
                     self.sigDataChanged.emit(*self.scan_data, *self.histogram_data)
@@ -454,21 +469,21 @@ class LaserScanningLogic(LogicBase):
                     if self.laser_is_frequency != is_frequency:
                         self._current_laser_is_frequency = bool(is_frequency)
                         self.sigDataChanged.emit(*self.scan_data, *self.histogram_data)
+                        self.sigHistogramSettingsChanged.emit(*self.histogram_settings)
                 finally:
                     self.sigLaserTypeChanged.emit(self.laser_is_frequency)
 
-    def do_fit(self, fit_config: str) -> Union[None, _ModelResult]:
-        """ Perform desired fit
-
-        @param str fit_config: name of the fit. Must match a fit configuration in fit_config_model.
-        """
+    def do_fit(self,
+               fit_config: str,
+               fit_envelope: Optional[bool] = False) -> Union[None, _ModelResult]:
+        """ Perform desired fit """
         with self._threadlock:
             with threaded_exception_watchdog(self.log):
                 valid_fit_configs = self._fit_config_model.configuration_names
                 if (fit_config != 'No Fit') and (fit_config not in valid_fit_configs):
                     raise ValueError(f'Unknown fit configuration "{fit_config}" encountered. '
                                      f'Options are: {valid_fit_configs}')
-                return self._do_fit(fit_config)
+                return self._do_fit(fit_config, fit_envelope)
 
     def save_data(self, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> str:
         """ Save data of a single plot to file.
@@ -488,8 +503,8 @@ class LaserScanningLogic(LogicBase):
 
     @property
     def _histogram_frequency_settings(self) -> Tuple[Tuple[float, float], int]:
-        span = (_convert_wavelength_frequency(self._histogram_span[1]),
-                _convert_wavelength_frequency(self._histogram_span[0]))
+        span = (convert_wavelength_frequency(self._histogram_span[1]),
+                convert_wavelength_frequency(self._histogram_span[0]))
         return span, self._histogram_bins
 
     @property
@@ -506,14 +521,19 @@ class LaserScanningLogic(LogicBase):
                     streamer.stop_stream()
                 finally:
                     try:
-                        if laser is not None:
+                        if (laser is not None) and (not self.__laser_only_mode):
                             laser.stop_scan()
                     finally:
                         self.module_state.unlock()
 
-    def _do_fit(self, fit_config: str, channel: Optional[int] = 0) -> Union[None, _ModelResult]:
+    def _do_fit(self,
+                fit_config: str,
+                fit_envelope: bool,
+                channel: Optional[int] = 0) -> Union[None, _ModelResult]:
         histo = self._frequency_histogram if self.laser_is_frequency else self._wavelength_histogram
-        data = histo.envelope_data if self._fit_envelope else histo.histogram_data
+        data = histo.envelope_data if fit_envelope else histo.histogram_data
+        if data.size == 0:
+            return None
         fit_config, fit_result = self.fit_container.fit_data(fit_config=fit_config,
                                                              x=histo.histogram_axis,
                                                              data=data[:, channel])
@@ -523,6 +543,8 @@ class LaserScanningLogic(LogicBase):
 
     def _save_histogram(self, save_tag: str, root_dir: str, timestamp: Optional = None) -> None:
         histo_x, histo_y, histo_env = self.histogram_data
+        if histo_y.size == 0:
+            return
         span, bins = self.histogram_settings
         is_frequency = self.laser_is_frequency
         fit_config, fit_result = self._last_fit_result
@@ -661,10 +683,10 @@ class LaserScanningLogic(LogicBase):
                 # Convert laser data to/from frequency
                 if self.__laser_is_frequency:
                     frequency_data = laser_data
-                    wavelength_data = _convert_wavelength_frequency(laser_data)
+                    wavelength_data = convert_wavelength_frequency(laser_data)
                 else:
                     wavelength_data = laser_data
-                    frequency_data = _convert_wavelength_frequency(laser_data)
+                    frequency_data = convert_wavelength_frequency(laser_data)
                 # Generate timestamps if none are returned from streamer
                 if timestamps is None:
                     count = self._data_buffer.sample_count
@@ -705,13 +727,13 @@ class LaserScanningLogic(LogicBase):
     def __init_data_buffers(self) -> None:
         streamer: DataInStreamInterface = self._streamer()
         dtype = streamer.constraints.data_type
-        channel_count = len(streamer.active_channels) - 1
+        channel_count = 0 if self.__laser_only_mode else len(streamer.active_channels) - 1
         self._data_buffer = LaserDataBuffer(channel_count=channel_count,
                                             dtype=dtype,
                                             max_samples=self._max_samples)
 
     def __init_histograms(self) -> None:
-        channel_count = len(self._streamer().active_channels) - 1
+        channel_count = 0 if self.__laser_only_mode else len(self._streamer().active_channels) - 1
         span, bins = self._histogram_wavelength_settings
         self._wavelength_histogram = LaserDataHistogram(span=span,
                                                         bins=bins,
@@ -737,10 +759,8 @@ class LaserScanningLogic(LogicBase):
             timestamps = netobtain(timestamps)
         # Separate laser data from scan data
         laser_data = data[:, self.__laser_ch_index]
-        if self.__laser_ch_index == 0:
-            scan_data = data[:, 1:]
-        elif self.__laser_ch_index == (data.shape[1] - 1):
-            scan_data = data[:, :-1]
+        if self.__laser_only_mode or data.shape[1] < 2:
+            scan_data = np.empty([samples, 0], dtype=data.dtype)
         else:
             mask = np.ones(data.size, dtype=bool)
             mask[self.__laser_ch_index::data.shape[1]] = 0
@@ -762,7 +782,8 @@ class LaserScanningLogic(LogicBase):
         wavelength_data = self._data_buffer.wavelength_data
         frequency_data = self._data_buffer.frequency_data
         scan_data = self._data_buffer.scan_data
-        self._wavelength_histogram.add_data_frame(laser_data=wavelength_data,
-                                                  scan_data=scan_data)
-        self._frequency_histogram.add_data_frame(laser_data=frequency_data,
-                                                 scan_data=scan_data)
+        if scan_data.shape[1] > 0:
+            self._wavelength_histogram.add_data_frame(laser_data=wavelength_data,
+                                                      scan_data=scan_data)
+            self._frequency_histogram.add_data_frame(laser_data=frequency_data,
+                                                     scan_data=scan_data)
