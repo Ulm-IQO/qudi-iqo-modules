@@ -1,9 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-This file contains the qudi gui to continuously display data from a wavemeter device and eventually displays the
- acquired data with the simultaneously obtained counts from a time_series_reader_logic.
+Contains the GUI module for the laser scanning toolchain.
 
-Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+Copyright (c) 2024, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
@@ -22,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import numpy as np
-from pyqtgraph import mkPen, mkBrush
+from pyqtgraph import mkPen
 from PySide2 import QtCore, QtWidgets, QtGui
 
 from qudi.core.module import GuiBase
@@ -30,7 +29,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.paths import get_artwork_dir
 from qudi.util.colordefs import QudiPalette
-from typing import Optional, Mapping, Sequence, Union, Tuple, List
+from typing import Optional, Union, Tuple
 from lmfit.model import ModelResult as _ModelResult
 
 from qudi.util.datafitting import FitConfigurationsModel, FitContainer
