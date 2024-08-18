@@ -22,20 +22,23 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import numpy as np
 from pyqtgraph import mkPen
+from typing import Optional, Union, Tuple
+
 from PySide2 import QtCore, QtWidgets, QtGui
+from lmfit.model import ModelResult as _ModelResult
 
 from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.paths import get_artwork_dir
 from qudi.util.colordefs import QudiPalette
-from typing import Optional, Union, Tuple
-from lmfit.model import ModelResult as _ModelResult
-
 from qudi.util.datafitting import FitConfigurationsModel, FitContainer
 from qudi.util.widgets.fitting import FitWidget, FitConfigurationDialog
 from qudi.util.widgets.plotting.interactive_curve import InteractiveCurvesWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
+from qudi.interface.scannable_laser_interface import ScannableLaserConstraints, LaserScanMode
+from qudi.interface.scannable_laser_interface import ScannableLaserSettings, LaserScanDirection
+
 
 
 class _HistogramSettingsWidget(QtWidgets.QWidget):
@@ -116,6 +119,115 @@ class _HistogramSettingsWidget(QtWidgets.QWidget):
         self.sigSettingsChanged.emit(*self.get_histogram_settings())
 
 
+class _LaserScanSettingsWidget(QtWidgets.QWidget):
+    """ """
+    def __init__(self,
+                 constraints: ScannableLaserConstraints,
+                 parent: Optional[QtWidgets.QWidget] = None):
+        super().__init__(parent=parent)
+        self.min_spinbox = ScienDSpinBox()
+        self.min_spinbox.setMinimumWidth(100)
+        self.min_spinbox.setRange(*constraints.value.bounds)
+        self.min_spinbox.setSuffix(constraints.unit)
+        self.min_spinbox.setDecimals(6)
+        self.min_spinbox.setValue(constraints.value.minimum)
+        if constraints.value.increment:
+            self.min_spinbox.setSingleStep(constraints.value.increment, dynamic_stepping=False)
+
+        self.max_spinbox = ScienDSpinBox()
+        self.max_spinbox.setMinimumWidth(100)
+        self.max_spinbox.setRange(*constraints.value.bounds)
+        self.max_spinbox.setSuffix(constraints.unit)
+        self.max_spinbox.setDecimals(6)
+        self.max_spinbox.setValue(constraints.value.maximum)
+        if constraints.value.increment:
+            self.max_spinbox.setSingleStep(constraints.value.increment, dynamic_stepping=False)
+
+        self.speed_spinbox = ScienDSpinBox()
+        self.speed_spinbox.setMinimumWidth(100)
+        self.speed_spinbox.setRange(*constraints.speed.bounds)
+        self.speed_spinbox.setSuffix(f'{constraints.unit}/s')
+        self.speed_spinbox.setDecimals(6)
+        self.speed_spinbox.setValue(constraints.speed.default)
+        if constraints.speed.increment:
+            self.speed_spinbox.setSingleStep(constraints.speed.increment, dynamic_stepping=False)
+
+        self.repetitions_spinbox = QtWidgets.QSpinBox()
+        self.repetitions_spinbox.setMinimumWidth(100)
+        self.repetitions_spinbox.setRange(*constraints.repetitions.bounds)
+        self.repetitions_spinbox.setValue(constraints.repetitions.default)
+        if constraints.repetitions.increment:
+            self.repetitions_spinbox.setSingleStep(constraints.repetitions.increment)
+
+        self.mode_combobox = QtWidgets.QComboBox()
+        self.mode_combobox.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow
+        )
+        self.mode_combobox.addItems([mode.name for mode in constraints.modes])
+        self.mode_combobox.setCurrentIndex(0)
+
+        self.direction_combobox = QtWidgets.QComboBox()
+        self.direction_combobox.setSizeAdjustPolicy(
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow
+        )
+        self.direction_combobox.addItems([mode.name for mode in constraints.initial_directions])
+        self.direction_combobox.setCurrentIndex(0)
+
+        # layout widgets
+        layout = QtWidgets.QGridLayout()
+        label = QtWidgets.QLabel('Scan bounds:')
+        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        layout.addWidget(label, 0, 0)
+        layout.addWidget(self.min_spinbox, 0, 1)
+        layout.addWidget(self.max_spinbox, 0, 2)
+        label = QtWidgets.QLabel('Scan speed:')
+        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        layout.addWidget(label, 1, 0)
+        layout.addWidget(self.speed_spinbox, 1, 1, 1, 2)
+        label = QtWidgets.QLabel('Scan repetitions:')
+        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        layout.addWidget(label, 2, 0)
+        layout.addWidget(self.repetitions_spinbox, 2, 1, 1, 2)
+        label = QtWidgets.QLabel('Scan mode:')
+        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        layout.addWidget(label, 3, 0)
+        layout.addWidget(self.mode_combobox, 3, 1, 1, 2)
+        label = QtWidgets.QLabel('Initial direction:')
+        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        layout.addWidget(label, 4, 0)
+        layout.addWidget(self.direction_combobox, 4, 1, 1, 2)
+        layout.setColumnStretch(1, 1)
+        layout.setColumnStretch(2, 1)
+        layout.setRowStretch(5, 1)
+        self.setLayout(layout)
+
+        # disable/enable repetitions according to scan mode
+        self.mode_combobox.currentIndexChanged.connect(self._mode_changed)
+        self._mode_changed()
+
+    def get_settings(self) -> ScannableLaserSettings:
+        return ScannableLaserSettings(
+            bounds=(self.min_spinbox.value(), self.max_spinbox.value()),
+            speed=self.speed_spinbox.value(),
+            mode=LaserScanMode[self.mode_combobox.currentText()],
+            initial_direction=LaserScanDirection[self.direction_combobox.currentText()],
+            repetitions=self.repetitions_spinbox.value()
+        )
+
+    def update_settings(self, settings: ScannableLaserSettings) -> None:
+        self.min_spinbox.setValue(min(settings.bounds))
+        self.max_spinbox.setValue(max(settings.bounds))
+        self.speed_spinbox.setValue(settings.speed)
+        self.repetitions_spinbox.setValue(settings.repetitions)
+        self.direction_combobox.setCurrentText(settings.initial_direction.name)
+        self.mode_combobox.setCurrentText(settings.mode.name)
+
+    def _mode_changed(self):
+        self.repetitions_spinbox.setEnabled(
+            self.mode_combobox.currentText() == LaserScanMode.REPETITIONS.name
+        )
+
+
 class _LaserValueDisplayWidget(QtWidgets.QWidget):
     """ """
     def __init__(self, parent: Optional[QtWidgets.QWidget] = None):
@@ -181,6 +293,13 @@ class _LaserScanningActions:
         )
         self.action_show_fit_configuration.setIcon(icon)
 
+        icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
+        self.action_show_scan_settings = QtWidgets.QAction('Laser Scan Settings')
+        self.action_show_scan_settings.setToolTip(
+            'Open a dialog to edit settings for scannable lasers.'
+        )
+        self.action_show_scan_settings.setIcon(icon)
+
         icon = QtGui.QIcon(os.path.join(icon_path, 'record-counter'))
         icon.addFile(os.path.join(icon_path, 'stop-counter'), state=QtGui.QIcon.State.On)
         self.action_laser_only = QtWidgets.QAction('Start/Stop Laser Recording')
@@ -232,6 +351,7 @@ class _LaserScanningMenuBar(QtWidgets.QMenuBar):
         menu.addAction(actions.action_save)
         menu.addSeparator()
         menu.addAction(actions.action_show_fit_configuration)
+        menu.addAction(actions.action_show_scan_settings)
         menu.addAction(actions.action_fit_envelope_histogram)
         menu.addAction(actions.action_autoscale_histogram)
         menu.addSeparator()
@@ -260,7 +380,7 @@ class _LaserScanningToolBar(QtWidgets.QToolBar):
         self.addAction(actions.action_laser_only)
         self.addAction(actions.action_start_stop)
         self.addAction(actions.action_clear_data)
-        self.addAction(actions.action_show_fit_configuration)
+        self.addAction(actions.action_show_scan_settings)
         self.addAction(actions.action_save)
         self.addWidget(self.save_tag_line_edit)
         self.addSeparator()
@@ -270,10 +390,37 @@ class _LaserScanningToolBar(QtWidgets.QToolBar):
         self.addAction(actions.action_fit_envelope_histogram)
 
 
+class _LaserScanSettingsDialog(QtWidgets.QDialog):
+    """ A settings dialog for scannable lasers """
+    def __init__(self,
+                 constraints: ScannableLaserConstraints,
+                 parent: Optional[QtWidgets.QWidget] = None):
+        super().__init__(parent=parent)
+        self.setWindowTitle('qudi: Laser Scan Settings')
+        self.settings_widget = _LaserScanSettingsWidget(constraints=constraints)
+        self.button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
+            QtCore.Qt.Horizontal
+        )
+        self.button_box.accepted.connect(self.accept)
+        self.button_box.rejected.connect(self.reject)
+        layout = QtWidgets.QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.settings_widget)
+        layout.addWidget(self.button_box)
+        layout.setStretch(0, 1)
+        self.setLayout(layout)
+        self.get_settings = self.settings_widget.get_settings
+        self.update_settings = self.settings_widget.update_settings
+
+
 class LaserScanningMainWindow(QtWidgets.QMainWindow):
     """ Create the main window for laser scanning toolchain """
 
-    def __init__(self, fit_config_model: FitConfigurationsModel, fit_container: FitContainer):
+    def __init__(self,
+                 fit_config_model: FitConfigurationsModel,
+                 fit_container: FitContainer,
+                 laser_constraints: Optional[ScannableLaserConstraints] = None):
         super().__init__()
         self.setWindowTitle('qudi: Laser Scanning')
 
@@ -328,12 +475,26 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
                                                         fit_config_model=fit_config_model)
         self.fit_widget.link_fit_container(fit_container)
 
+        # Create child dialog for laser scan settings
+        if laser_constraints is None:
+            self.laser_scan_settings_dialog = None
+            self.gui_actions.action_show_scan_settings.setVisible(False)
+        else:
+            self.laser_scan_settings_dialog = _LaserScanSettingsDialog(
+                constraints=laser_constraints,
+                parent=self
+            )
+
         # Connect some actions
         self.gui_actions.action_close.triggered.connect(self.close)
         self.gui_actions.action_restore_view.triggered.connect(self.restore_default)
         self.gui_actions.action_show_fit_configuration.triggered.connect(
             self.fit_config_dialog.show
         )
+        if self.laser_scan_settings_dialog is not None:
+            self.gui_actions.action_show_scan_settings.triggered.connect(
+                self.laser_scan_settings_dialog.show
+            )
         self.restore_default()
 
     def restore_default(self) -> None:
@@ -372,6 +533,7 @@ class LaserScanningGui(GuiBase):
     sigAutoscaleHistogram = QtCore.Signal()
     sigHistogramSettingsChanged = QtCore.Signal(tuple, int)  # span, bins
     sigLaserTypeToggled = QtCore.Signal(bool)  # is_frequency
+    sigLaserScanSettingsChanged = QtCore.Signal(object)  # ScannableLaserSettings
 
     # declare connectors
     _laser_scanning_logic = Connector(name='laser_scanning_logic', interface='LaserScanningLogic')
@@ -390,8 +552,8 @@ class LaserScanningGui(GuiBase):
         # Initialize main window
         logic = self._laser_scanning_logic()
         self._mw = LaserScanningMainWindow(fit_config_model=logic.fit_config_model,
-                                           fit_container=logic.fit_container)
-
+                                           fit_container=logic.fit_container,
+                                           laser_constraints=logic.laser_constraints)
         # Configure plot widgets
         self.__init_histogram_plot()
         self.__init_scatter_plot()
@@ -404,6 +566,7 @@ class LaserScanningGui(GuiBase):
         self._update_status(logic.module_state() == 'locked', logic.laser_only_mode)
         self._update_histogram_settings(*logic.histogram_settings)
         self._update_data(*logic.scan_data, *logic.histogram_data)
+        self._update_laser_scan_settings(logic.laser_scan_settings)
 
         # Show GUI window
         self.show()
@@ -460,6 +623,8 @@ class LaserScanningGui(GuiBase):
         self.sigHistogramSettingsChanged.connect(logic.configure_histogram,
                                                  QtCore.Qt.QueuedConnection)
         self.sigLaserTypeToggled.connect(logic.toggle_laser_type, QtCore.Qt.QueuedConnection)
+        self.sigLaserScanSettingsChanged.connect(logic.configure_laser_scan,
+                                                 QtCore.Qt.QueuedConnection)
         # From logic
         logic.sigDataChanged.connect(self._update_data, QtCore.Qt.QueuedConnection)
         logic.sigStatusChanged.connect(self._update_status, QtCore.Qt.QueuedConnection)
@@ -467,6 +632,8 @@ class LaserScanningGui(GuiBase):
         logic.sigHistogramSettingsChanged.connect(self._update_histogram_settings,
                                                   QtCore.Qt.QueuedConnection)
         logic.sigLaserTypeChanged.connect(self._update_laser_type, QtCore.Qt.QueuedConnection)
+        logic.sigLaserScanSettingsChanged.connect(self._update_laser_scan_settings,
+                                                  QtCore.Qt.QueuedConnection)
 
     def __disconnect_logic(self) -> None:
         logic = self._laser_scanning_logic()
@@ -479,12 +646,14 @@ class LaserScanningGui(GuiBase):
         self.sigAutoscaleHistogram.disconnect()
         self.sigHistogramSettingsChanged.disconnect()
         self.sigLaserTypeToggled.disconnect()
+        self.sigLaserScanSettingsChanged.disconnect()
         # From logic
         logic.sigDataChanged.disconnect(self._update_data)
         logic.sigStatusChanged.disconnect(self._update_status)
         logic.sigFitChanged.disconnect(self._update_fit_data)
         logic.sigHistogramSettingsChanged.disconnect(self._update_histogram_settings)
         logic.sigLaserTypeChanged.disconnect(self._update_laser_type)
+        logic.sigLaserScanSettingsChanged.disconnect(self._update_laser_scan_settings)
 
     def __connect_actions(self) -> None:
         # File actions
@@ -519,10 +688,14 @@ class LaserScanningGui(GuiBase):
             self._histogram_settings_edited
         )
         self._mw.fit_widget.sigDoFit.connect(self._fit_clicked)
+        if self._mw.laser_scan_settings_dialog is not None:
+            self._mw.laser_scan_settings_dialog.rejected.connect(self._restore_laser_scan_settings)
 
     def __disconnect_widgets(self) -> None:
         self._mw.histogram_settings_widget.sigSettingsChanged.disconnect()
         self._mw.fit_widget.sigDoFit.disconnect()
+        if self._mw.laser_scan_settings_dialog is not None:
+            self._mw.laser_scan_settings_dialog.rejected.disconnect()
 
     def _update_current_laser_value(self, value: float) -> None:
         """ """
@@ -637,11 +810,22 @@ class LaserScanningGui(GuiBase):
         self._mw.gui_actions.action_autoscale_histogram.setEnabled(True)
         self._mw.gui_actions.action_fit_envelope_histogram.setEnabled(True)
         self._mw.gui_actions.action_show_histogram_region.setEnabled(True)
+        self._mw.gui_actions.action_show_scan_settings.setEnabled(not running or laser_only)
+
+    @QtCore.Slot(object)
+    def _update_laser_scan_settings(self, settings: Union[None, ScannableLaserSettings]) -> None:
+        if settings is not None:
+            dialog = self._mw.laser_scan_settings_dialog
+            if dialog is not None:
+                dialog.update_settings(settings)
 
     def _start_stop_clicked(self):
         """ Handling the Start button to stop and restart the counter """
         start = self._mw.gui_actions.action_start_stop.isChecked()
         if start:
+            dialog = self._mw.laser_scan_settings_dialog
+            if dialog is not None:
+                self.sigLaserScanSettingsChanged.emit(dialog.get_settings())
             self.sigStartScan.emit(False)
         else:
             self.sigStopScan.emit()
@@ -653,6 +837,7 @@ class LaserScanningGui(GuiBase):
         self._mw.gui_actions.action_autoscale_histogram.setEnabled(False)
         self._mw.gui_actions.action_fit_envelope_histogram.setEnabled(False)
         self._mw.gui_actions.action_show_histogram_region.setEnabled(False)
+        self._mw.gui_actions.action_show_scan_settings.setEnabled(False)
 
     def _laser_only_clicked(self):
         start = self._mw.gui_actions.action_laser_only.isChecked()
@@ -694,3 +879,7 @@ class LaserScanningGui(GuiBase):
 
     def _toggle_laser_type_clicked(self) -> None:
         self.sigLaserTypeToggled.emit(self._mw.gui_actions.action_show_frequency.isChecked())
+
+    def _restore_laser_scan_settings(self) -> None:
+        settings = self._laser_scanning_logic().laser_scan_settings
+        self._update_laser_scan_settings(settings)

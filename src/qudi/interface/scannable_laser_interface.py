@@ -49,7 +49,7 @@ class ScannableLaserConstraints:
     unit: str
     speed: ScalarConstraint
     repetitions: ScalarConstraint
-    initial_direction: Sequence[LaserScanDirection]
+    initial_directions: Sequence[LaserScanDirection]
     modes: Sequence[LaserScanMode]
 
     def __post_init__(self) -> None:
@@ -73,10 +73,10 @@ class ScannableLaserConstraints:
         if not all(isinstance(mode, LaserScanMode) for mode in self.modes):
             raise TypeError(f'"mode" sequence must only contain '
                             f'{LaserScanMode.__module__}.{LaserScanMode.__name__}')
-        if len(self.initial_direction) < 1:
-            raise ValueError('"initial_direction" sequence must contain at least one element')
-        if not all(isinstance(d, LaserScanDirection) for d in self.initial_direction):
-            raise TypeError(f'"initial_direction" sequence must only contain '
+        if len(self.initial_directions) < 1:
+            raise ValueError('"initial_directions" sequence must contain at least one element')
+        if not all(isinstance(d, LaserScanDirection) for d in self.initial_directions):
+            raise TypeError(f'"initial_directions" sequence must only contain '
                             f'{LaserScanDirection.__module__}.{LaserScanDirection.__name__}')
 
 

@@ -39,6 +39,8 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.interface.data_instream_interface import DataInStreamConstraints, DataInStreamInterface
+from qudi.interface.scannable_laser_interface import ScannableLaserConstraints
+from qudi.interface.scannable_laser_interface import ScannableLaserSettings, ScannableLaserInterface
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.util.datastorage import TextDataStorage
@@ -228,11 +230,12 @@ class LaserScanningLogic(LogicBase):
     sigFitChanged = QtCore.Signal(str, object)  # fit_name, fit_results
     sigLaserTypeChanged = QtCore.Signal(bool)  # is_frequency
     sigHistogramSettingsChanged = QtCore.Signal(tuple, int)  # span, bins
+    sigLaserScanSettingsChanged = QtCore.Signal(object)  # laser_scan_settings
     _sigNextDataFrame = QtCore.Signal()  # internal signal
 
     # connectors
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')
-    _laser = Connector(name='laser', interface='LaserControlInterface', optional=True)
+    _laser = Connector(name='laser', interface='ScannableLaserInterface', optional=True)
 
     # config options
     _max_update_rate: float = ConfigOption(name='max_update_rate', default=30.)
@@ -311,19 +314,26 @@ class LaserScanningLogic(LogicBase):
         self._sigNextDataFrame.disconnect()
 
     @property
-    def controllable_laser(self) -> bool:
-        """ Flag indicating if a scannable laser is connected and controllable """
-        return self._laser() is not None
-
-    @property
-    def laser_constraints(self) -> Union[None, Any]:
-        return self._laser().constraints if self.controllable_laser else None
+    def laser_constraints(self) -> Union[None, ScannableLaserConstraints]:
+        laser = self._laser()
+        if laser is None:
+            return None
+        else:
+            return laser.constraints
 
     @property
     def streamer_constraints(self) -> DataInStreamConstraints:
         """ Retrieve the hardware constrains from the counter device """
         # netobtain is required if streamer is a remote module
         return netobtain(self._streamer().constraints)
+
+    @property
+    def laser_scan_settings(self) -> Union[None, ScannableLaserSettings]:
+        laser = self._laser()
+        if laser is None:
+            return None
+        else:
+            return netobtain(laser.scan_settings)
 
     @property
     def data_channel_units(self) -> Dict[str, str]:
@@ -379,7 +389,7 @@ class LaserScanningLogic(LogicBase):
         with self._threadlock:
             with threaded_exception_watchdog(self.log):
                 streamer: DataInStreamInterface = self._streamer()
-                laser: Any = self._laser()
+                laser: Union[None, ScannableLaserInterface] = self._laser()
                 try:
                     if self.module_state() == 'locked':
                         self.log.warning('Measurement already running. "start_scan" call ignored.')
@@ -462,6 +472,24 @@ class LaserScanningLogic(LogicBase):
                 finally:
                     self.sigHistogramSettingsChanged.emit(*self.histogram_settings)
 
+    def configure_laser_scan(self, settings: ScannableLaserSettings) -> None:
+        with self._threadlock:
+            with threaded_exception_watchdog(self.log):
+                try:
+                    laser = self._laser()
+                    if laser is None:
+                        raise RuntimeError(
+                            'Unable to configure laser scan. No scannable laser connected.'
+                        )
+                    laser.configure_scan(bounds=settings.bounds,
+                                         speed=settings.speed,
+                                         mode=settings.mode,
+                                         repetitions=settings.repetitions,
+                                         initial_direction=settings.initial_direction)
+                finally:
+                    self.sigLaserScanSettingsChanged.emit(self.laser_scan_settings)
+
+
     def toggle_laser_type(self, is_frequency: bool) -> None:
         with self._threadlock:
             with threaded_exception_watchdog(self.log):
@@ -515,7 +543,7 @@ class LaserScanningLogic(LogicBase):
         with threaded_exception_watchdog(self.log):
             if self.module_state() == 'locked':
                 streamer: DataInStreamInterface = self._streamer()
-                laser = self._laser()
+                laser: Union[None, ScannableLaserInterface] = self._laser()
                 try:
                     # stop streamer and laser
                     streamer.stop_stream()

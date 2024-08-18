@@ -54,9 +54,9 @@ class ScannableLaserDummy(ScannableLaserInterface):
             unit='V',
             speed=speed,
             repetitions=repetitions,
-            initial_direction=(LaserScanDirection.UNDEFINED,
-                               LaserScanDirection.DOWN,
-                               LaserScanDirection.UP),
+            initial_directions=(LaserScanDirection.UNDEFINED,
+                                LaserScanDirection.DOWN,
+                                LaserScanDirection.UP),
             modes=(LaserScanMode.CONTINUOUS,)
         )
         # Create default scan settings
@@ -126,10 +126,10 @@ class ScannableLaserDummy(ScannableLaserInterface):
             if settings.mode not in self.__constraints.modes:
                 raise ValueError(f'Invalid mode "{settings.mode}". '
                                  f'Valid modes are: {self.__constraints.modes}')
-            if settings.initial_direction not in self.__constraints.initial_direction:
+            if settings.initial_direction not in self.__constraints.initial_directions:
                 raise ValueError(
                     f'Invalid initial_direction "{settings.initial_direction}". '
-                    f'Valid initial_directions are: {self.__constraints.initial_direction}'
+                    f'Valid initial_directions are: {self.__constraints.initial_directions}'
                 )
             if settings.mode == LaserScanMode.REPETITIONS:
                 self.__constraints.repetitions.check(settings.repetitions)
