@@ -44,9 +44,11 @@ class DataInStreamDistributionWorker(QtCore.QObject):
     """ Worker class for periodically reading data from streaming hardware and distributing copies
     to a number of ring buffers
     """
-    def __init__(self,
-                 streamer: DataInStreamInterface,
-                 buffers: Mapping[Any, Tuple[InterleavedRingBuffer, Union[None, RingBuffer]]]):
+    def __init__(
+            self,
+            streamer: DataInStreamInterface,
+            buffers: Mapping[Any, Union[None, Tuple[InterleavedRingBuffer, Union[None, RingBuffer]]]]
+    ):
         if streamer.constraints.sample_timing == SampleTiming.RANDOM:
             raise ValueError(f'{DataInStreamInterface.__name__} hardware with '
                              f'{SampleTiming.RANDOM} is not supported')
@@ -82,10 +84,17 @@ class DataInStreamDistributionWorker(QtCore.QObject):
             self._tmp_timestamp_buffer
         )
         if samples_per_channel > 0:
-            for data, timestamps in self._buffers.values():
-                data.write(self._tmp_buffer[:samples_per_channel * channel_count])
-                if self._tmp_timestamp_buffer is not None:
-                    timestamps.write(self._tmp_timestamp_buffer[:samples_per_channel])
+            tmp_data = self._tmp_buffer[:samples_per_channel * channel_count]
+            if self._tmp_timestamp_buffer is None:
+                tmp_timestamps = None
+            else:
+                tmp_timestamps = self._tmp_timestamp_buffer[:samples_per_channel]
+            for buffers in self._buffers.values():
+                if buffers is not None:
+                    data, timestamps = buffers
+                    data.write(tmp_data)
+                    if tmp_timestamps is not None:
+                        timestamps.write(tmp_timestamps)
 
 
 class DataInStreamMultiConsumerDelegate(QtCore.QObject):
@@ -96,11 +105,9 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
     _lock: Mutex
     _read_locks: MutableMapping[UUID, Mutex]
     _streamer: DataInStreamInterface
-    _buffers: MutableMapping[UUID, Tuple[InterleavedRingBuffer, Union[None, RingBuffer]]]
+    _buffers: MutableMapping[UUID, Union[None, Tuple[InterleavedRingBuffer, Union[None, RingBuffer]]]]
     __worker: Union[None, DataInStreamDistributionWorker]
     _worker_thread: str
-
-    sigRunStateChanged = QtCore.Signal(bool)  # is_running flag
 
     def __init__(self,
                  streamer: DataInStreamInterface,
@@ -123,20 +130,27 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
     def register_consumer(self, uuid: UUID) -> None:
         """ Register a new data consumer, e.g. a DataInStreamBuffer instance. """
         with self._lock:
-            self._buffers[uuid] = self._create_buffer()
+            self._buffers[uuid] = None
             self._read_locks[uuid] = Mutex()
-            self.sigRunStateChanged.emit(self._streamer.module_state() == 'locked')
 
     def unregister_consumer(self, uuid: UUID) -> None:
         """ Unregisters a previously registered data consumer, e.g. a DataInStreamBuffer instance.
         """
         with self._lock:
-            self._buffers.pop(uuid, None)
-            self._read_locks.pop(uuid, None)
+            mutex = self._read_locks.get(uuid, None)
+            if mutex is not None:
+                with mutex:
+                    self._buffers.pop(uuid, None)
+                    self._read_locks.pop(uuid, None)
 
     def available_samples(self, uuid: UUID) -> int:
         """ Available samples per channel for a certain consumer UID """
-        return self._buffers[uuid][0].fill_count
+        with self._read_locks[uuid]:
+            buffers = self._buffers[uuid]
+            if buffers is None:
+                return 0
+            else:
+                return buffers[0].fill_count
 
     def _config_equal(self,
                       active_channels: Sequence[str],
@@ -148,24 +162,31 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
             (channel_buffer_size == self._streamer.channel_buffer_size) and \
             (sample_rate == self._streamer.sample_rate)
 
-    def _create_buffer(self) -> Tuple[InterleavedRingBuffer, Union[RingBuffer, None]]:
-        channel_count = len(self._streamer.active_channels)
-        channel_buffer_size = self._streamer.channel_buffer_size
-        data_buffer = InterleavedRingBuffer(interleave_factor=channel_count,
-                                            size=channel_buffer_size,
-                                            dtype=self._streamer.constraints.data_type,
-                                            allow_overwrite=self._allow_overwrite)
-        if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
-            timestamp_buffer = RingBuffer(size=channel_buffer_size,
-                                          dtype=np.float64,
-                                          allow_overwrite=self._allow_overwrite)
-        else:
-            timestamp_buffer = None
-        return data_buffer, timestamp_buffer
+    def _create_buffer(self, uuid: UUID) -> None:
+        with self._read_locks[uuid]:
+            if self._buffers[uuid] is not None:
+                raise RuntimeError(f'Can not create buffers for {uuid}. Delete old buffers first.')
+            channel_count = len(self._streamer.active_channels)
+            channel_buffer_size = self._streamer.channel_buffer_size
+            data_buffer = InterleavedRingBuffer(interleave_factor=channel_count,
+                                                size=channel_buffer_size,
+                                                dtype=self._streamer.constraints.data_type,
+                                                allow_overwrite=self._allow_overwrite)
+            if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+                timestamp_buffer = RingBuffer(size=channel_buffer_size,
+                                              dtype=np.float64,
+                                              allow_overwrite=self._allow_overwrite)
+            else:
+                timestamp_buffer = None
+            self._buffers[uuid] = (data_buffer, timestamp_buffer)
 
-    def _reset_buffers(self) -> None:
+    def _clear_buffer(self, uuid: UUID) -> None:
+        with self._read_locks[uuid]:
+            self._buffers[uuid] = None
+
+    def _clear_buffers(self) -> None:
         for uid in list(self._buffers):
-            self._buffers[uid] = self._create_buffer()
+            self._clear_buffer(uid)
 
     def configure(self,
                   active_channels: Sequence[str],
@@ -180,49 +201,51 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
                                       sample_rate):
                 if self._streamer.module_state() != 'idle':
                     raise RuntimeError('Streamer not idle')
+                self._clear_buffers()
                 self._streamer.configure(active_channels,
                                          streaming_mode,
                                          channel_buffer_size,
                                          sample_rate)
-                self._reset_buffers()
 
-    def start_stream(self) -> None:
+    def start_stream(self, uuid: UUID) -> None:
         """ Start the data acquisition/streaming """
         with self._lock:
+            self._clear_buffer(uuid)
+            self._create_buffer(uuid)
             try:
                 if self._streamer.module_state() == 'idle':
                     self._streamer.start_stream()
                 if self.__worker is None:
-                    self._reset_buffers()
                     self.__worker = DataInStreamDistributionWorker(self._streamer, self._buffers)
                     thread = ThreadManager.instance().get_new_thread(self._worker_thread)
                     self.__worker.moveToThread(thread)
                     thread.started.connect(self.__worker.run)
                     thread.start()
-            finally:
-                self.sigRunStateChanged.emit(self._streamer.module_state() == 'locked')
+            except Exception:
+                self._clear_buffer(uuid)
+                raise
 
-    def stop_stream(self) -> None:
+    def stop_stream(self, uuid: UUID) -> None:
         """ Stop the data acquisition/streaming """
         with self._lock:
-            try:
-                if self.__worker is not None:
-                    for lock in self._read_locks.values():
-                        lock.lock()
-                    self.__worker.stop()
-                    tm = ThreadManager.instance()
-                    tm.quit_thread(self._worker_thread)
-                    tm.join_thread(self._worker_thread)
-                if self._streamer.module_state() == 'locked':
-                    self._streamer.stop_stream()
-            finally:
+            self._clear_buffer(uuid)
+            # Terminate streamer if all consumers have stopped listening
+            if all(buffer is None for buffer in self._buffers.values()):
                 try:
+                    if self.__worker is not None:
+                        for lock in self._read_locks.values():
+                            lock.lock()
+                        self.__worker.stop()
+                        tm = ThreadManager.instance()
+                        tm.quit_thread(self._worker_thread)
+                        tm.join_thread(self._worker_thread)
+                    if self._streamer.module_state() == 'locked':
+                        self._streamer.stop_stream()
+                finally:
                     if self.__worker is not None:
                         self.__worker = None
                         for lock in self._read_locks.values():
                             lock.unlock()
-                finally:
-                    self.sigRunStateChanged.emit(self._streamer.module_state() == 'locked')
 
     def read_data_into_buffer(self,
                               uuid: UUID,
@@ -230,9 +253,10 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
                               samples_per_channel: int,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
         with self._read_locks[uuid]:
-            if self._streamer.module_state() != 'locked':
+            buffers = self._buffers[uuid]
+            if (buffers is None) or (self._streamer.module_state() != 'locked'):
                 raise RuntimeError('Streamer is not running')
-            data, timestamps = self._buffers[uuid]
+            data, timestamps = buffers
             channel_count = len(self._streamer.active_channels)
             # Reshape buffers without copy
             data_buffer = data_buffer[:(samples_per_channel * channel_count)].reshape(
@@ -317,7 +341,6 @@ class DataInStreamBuffer(DataInStreamInterface):
                                                          max_poll_rate=self._max_poll_rate)
             self._buffer_delegates[self._streamer_uid] = delegate
         delegate.register_consumer(self.module_uuid)
-        delegate.sigRunStateChanged.connect(self._run_state_callback, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self) -> None:
         if self.module_state() == 'locked':
@@ -329,7 +352,6 @@ class DataInStreamBuffer(DataInStreamInterface):
             pass
         else:
             delegate.unregister_consumer(self.module_uuid)
-            delegate.sigRunStateChanged.disconnect(self._run_state_callback)
 
     @property
     def _streamer_uid(self) -> UUID:
@@ -384,15 +406,15 @@ class DataInStreamBuffer(DataInStreamInterface):
     def start_stream(self) -> None:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.start_stream """
         if self.module_state() == 'idle':
-            self._buffer_delegate.start_stream()
+            self._buffer_delegate.start_stream(self.module_uuid)
             self.module_state.lock()
 
     def stop_stream(self) -> None:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.stop_stream """
-        if self.module_state() == 'locked':
-            try:
-                self._buffer_delegate.stop_stream()
-            finally:
+        try:
+            self._buffer_delegate.stop_stream(self.module_uuid)
+        finally:
+            if self.module_state() == 'locked':
                 self.module_state.unlock()
 
     def read_data_into_buffer(self,
@@ -425,14 +447,3 @@ class DataInStreamBuffer(DataInStreamInterface):
     def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
         """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_single_point """
         return self._buffer_delegate.read_single_point(self.module_uuid)
-
-    @QtCore.Slot(bool)
-    def _run_state_callback(self, running: bool) -> None:
-        """ Callback that is called whenever any DataInStreamBuffer is starting/stopping the
-        connected streaming hardware.
-        Sets the module_state of this interfuse accordingly.
-        """
-        if running and (self.module_state() == 'idle'):
-            self.module_state.lock()
-        elif (not running) and (self.module_state() == 'locked'):
-            self.module_state.unlock()
