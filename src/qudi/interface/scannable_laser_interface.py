@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Interface file for lasers whose frequency can be scanned and also stabilized
+Interface file for lasers whose frequency can be scanned and stabilized to a fixed value.
 
-Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+Copyright (c) 2024, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
@@ -19,146 +19,151 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-__all__ = ('ScannableLaserInterface', 'ScannableLaserConstraints', 'LaserScanMode',
-           'LaserScanDirection', 'ScannableLaserSettings', 'StabilizationMixin')
+__all__ = ['ScannableLaserInterface', 'ScannableLaserConstraints', 'ScannableLaserSettings',
+           'LaserScanMode', 'LaserScanDirection']
 
+from enum import Enum
 from abc import abstractmethod
 from dataclasses import dataclass
-from enum import Enum
-from typing import Union, Iterable, Optional, Tuple
+from typing import Sequence, Optional, Tuple
 
 from qudi.core.module import Base
 from qudi.util.constraints import ScalarConstraint
 
-from qudi.interface.process_control_interface import ProcessControlConstraints, ProcessSetpointInterface, \
-    ProcessControlInterface
-
 
 class LaserScanMode(Enum):
     CONTINUOUS = 0
-    FIXED_REPETITIONS = 1  # Includes single sweep
+    REPETITIONS = 1  # Includes single sweep
 
 
 class LaserScanDirection(Enum):
-    UP = 0
-    DOWN = 1
+    UNDEFINED = 0
+    UP = 1
+    DOWN = 2
 
 
 @dataclass(frozen=True)
 class ScannableLaserConstraints:
-
-    scan_limits: Tuple[float, float]
-    scan_unit: str
-    scan_speed: ScalarConstraint
-    scan_modes: Iterable[Union[LaserScanMode, int]]
+    """ """
+    value: ScalarConstraint
+    unit: str
+    speed: ScalarConstraint
+    repetitions: ScalarConstraint
+    initial_direction: Sequence[LaserScanDirection]
+    modes: Sequence[LaserScanMode]
 
     def __post_init__(self) -> None:
-        # TODO implement sanity checks
-        pass
+        if not isinstance(self.value, ScalarConstraint):
+            raise TypeError(
+                f'"value" must be {ScalarConstraint.__module__}.{ScalarConstraint.__name__} type'
+            )
+        if not isinstance(self.speed, ScalarConstraint):
+            raise TypeError(
+                f'"speed" must be {ScalarConstraint.__module__}.{ScalarConstraint.__name__} type'
+            )
+        if not isinstance(self.unit, str):
+            raise TypeError(f'"unit" must be str type')
+        if not isinstance(self.repetitions, ScalarConstraint):
+            raise TypeError(f'"repetitions" must be '
+                            f'{ScalarConstraint.__module__}.{ScalarConstraint.__name__} type')
+        if not self.repetitions.enforce_int:
+            raise ValueError(f'"repetitions" must have ScalarConstraint.enforce_int flag set')
+        if len(self.modes) < 1:
+            raise ValueError('"mode" sequence must contain at least one element')
+        if not all(isinstance(mode, LaserScanMode) for mode in self.modes):
+            raise TypeError(f'"mode" sequence must only contain '
+                            f'{LaserScanMode.__module__}.{LaserScanMode.__name__}')
+        if len(self.initial_direction) < 1:
+            raise ValueError('"initial_direction" sequence must contain at least one element')
+        if not all(isinstance(d, LaserScanDirection) for d in self.initial_direction):
+            raise TypeError(f'"initial_direction" sequence must only contain '
+                            f'{LaserScanDirection.__module__}.{LaserScanDirection.__name__}')
 
 
 @dataclass(frozen=True)
 class ScannableLaserSettings:
+    """ """
+    bounds: Tuple[float, float]
+    speed: float
+    mode: LaserScanMode
+    initial_direction: LaserScanDirection
+    repetitions: Optional[int] = 0
 
-    scan_range: Tuple[float, float]
-    scan_speed: Union[int, float]
-    scan_mode: Union[LaserScanMode, int]
-    initial_scan_direction: Union[LaserScanDirection, int]
-    scan_repetitions: Optional[int]
-
-    def __post_init__(self) -> None:
-        # TODO implement sanity checks
-        pass
+    def __post_init__(self):
+        min_val, max_val = self.bounds
+        if min_val == max_val:
+            raise ValueError('"bounds" must represent non-empty span')
+        if min_val > max_val:
+            raise ValueError('"bounds" must be sorted from small to large value')
+        if self.speed <= 0:
+            raise ValueError('"speed" must be value > 0')
+        if not isinstance(self.mode, LaserScanMode):
+            raise TypeError(
+                f'"mode" must be {LaserScanMode.__module__}.{LaserScanMode.__name__} type'
+            )
+        if not isinstance(self.initial_direction, LaserScanDirection):
+            raise TypeError(f'"initial_direction" must be '
+                            f'{LaserScanDirection.__module__}.{LaserScanDirection.__name__} type')
+        if not isinstance(self.repetitions, int):
+            raise TypeError(f'"repetitions" must be int type')
+        if (self.mode == LaserScanMode.REPETITIONS) and (self.repetitions < 1):
+            raise ValueError(
+                f'"repetitions" value must be >= 1 for mode {LaserScanMode.REPETITIONS}'
+            )
 
 
 class ScannableLaserInterface(Base):
-    """
-    # TODO Docstring
+    """ # TODO Docstring
     """
 
     @property
     @abstractmethod
     def constraints(self) -> ScannableLaserConstraints:
-        """
-        returns the ScannableLaserConstraints
-        """
-        pass
+        """ returns the ScannableLaserConstraints """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def scan_settings(self) -> ScannableLaserSettings:
+        raise NotImplementedError
 
     @abstractmethod
     def start_scan(self) -> None:
-        """Starts the fine scan of the laser as configured with ScannableLaserSettings without blocking"""
-        pass
+        """ Starts the fine scan of the laser as configured with ScannableLaserSettings. Blocks
+        until the scan has actually started. Does nothing if a scan is already running.
+        :raises RuntimeError: If something goes wrong
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def stop_scan(self) -> None:
-        """Stops the scan immediately"""
-        pass
+        """ Stops the scan immediately. Blocks until the scan has actually stopped. Does nothing if
+        no scan is running.
+        """
+        raise NotImplementedError
 
     @abstractmethod
-    def scan_to(self, value, blocking=False) -> None:
+    def move_to(self, value: float, blocking: Optional[bool] = False) -> None:
+        """ Moves the laser wavelength/frequency to a certain value. Only works if the laser is not
+        actively scanning, i.e. the module state must be idle.
+        :raises ValueError: If value is out of bounds (see constraints)
+        :raises RuntimeError: If called while a laser scan is running, i.e. module_state == 'locked'
         """
-        Fine scans the laser to value, potentially also blocking, to e.g afterwards stabilize the laser afterwards
-        :raises ValueError: When value is out of constraints
-        """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
-    def set_scan_settings(self, scan_settings: ScannableLaserSettings) -> ScannableLaserSettings:
+    def configure_scan(
+            self,
+            bounds: Tuple[float, float],
+            speed: float,
+            mode: LaserScanMode,
+            repetitions: Optional[int] = 0,
+            initial_direction: Optional[LaserScanDirection] = LaserScanDirection.UNDEFINED
+    ) -> None:
+        """ Configure scan settings. Check actually configuration with "scan_settings" property.
+        Can only be called if no scan is running.
+        :raises ValueError: If any setting does not comply with constraints or "mode" is set to
+        LaserScanMode.REPETITIONS without providing "repetitions" argument.
+        :raises RuntimeError: If called while a laser scan is running, i.e. module_state == 'locked'
         """
-        Set scan settings
-        Returns the actual ScannableLaserSettings, if e.g. the scan_range was clipped to boundaries
-        """
-        pass
-
-    # non abstract properties
-
-    @property
-    def has_setpoints(self):
-        """
-        When Laser is a subclass of ProcessSetpointInterface, it has some working points which can be set
-        e.g. a Motor Position for a grating tilt or some Operating wavelength.
-        """
-        return issubclass(self.__class__, ProcessSetpointInterface)
-
-    @property
-    def has_controlled_values(self):
-        """
-        When Laser is a subclass of ProcessControlInterface, it has some actively controlled working points
-        e.g. a Diode Current or a Temperature, which also can be read back.
-        """
-        return issubclass(self.__class__, ProcessControlInterface)
-
-    @property
-    def has_hardware_stabilization(self):
-        """
-        When has the StabilizationMixin, the hardware itself has stabilization capabilities and can be kept at a
-        certain value to which it can be scanned.
-        """
-        return issubclass(self.__class__, StabilizationMixin)
-
-
-class StabilizationMixin:
-
-    @abstractmethod
-    def stabilize_laser(self, state: bool) -> None:
-        """
-        Stabilizes the laser frequency depending on state at its current position if hardware_stabilization is
-        available as stated in ScannableLaserConstraints.
-        :raises RuntimeError: If laser is scanning and stabilization is requested.
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def is_stable(self):
-        """
-        Read-only property if the laser is currently stable.
-        """
-        # TODO Should be read by logic and user informed if out of lock.
-        pass
-
-
-
-
-
-
+        raise NotImplementedError
