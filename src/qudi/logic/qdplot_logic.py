@@ -650,7 +650,7 @@ class QDPlotLogic(LogicBase):
                      ) -> plt.Figure:
         fit_config, fit_results = fit_container.last_fits
         # High-resolution fit data and formatted result string
-        fit_data = [None if result is None else result.high_res_best_fit for result in fit_results]
+        fit_data = [None if result is None else result.high_res_best_fit for result in fit_results.values()]
         fit_result_str = fit_container.formatted_result(fit_results)
         if not fit_data:
             fit_data = [None] * len(data_set)
