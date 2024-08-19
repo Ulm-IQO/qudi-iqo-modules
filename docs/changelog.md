@@ -1,15 +1,13 @@
 # Changelog
 
-Note: Newer changes are at the top of the item lists. 
-
 ## Pre-Release
 
 ### Breaking Changes
 
 ### Bugfixes
-- Fixed missing `plot_index` when calling `QDPlotLogic._remove_plot` in `QDPlotLogic._set_plot_count`
-- Fixed `QDPlotterGui` example config
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
+- Fixed `QDPlotterGui` example config
+- Fixed missing `plot_index` when calling `QDPlotLogic._remove_plot` in `QDPlotLogic._set_plot_count`
 
 ### New Features
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
