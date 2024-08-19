@@ -8,7 +8,8 @@
 - Now correct microwave phases in predefined method generate_hahnecho_exp()
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
 - Old ODMR fits are now removed when starting a new measurement
-
+- Fixed missing `plot_index` when calling `QDPlotLogic._remove_plot` in `QDPlotLogic._set_plot_count`
+- Fixed `QDPlotterGui` example config
 
 ### New Features
 - Get current sweeps and runtime of fastcomtec fastcounter MCS6 when pulling the data trace. 

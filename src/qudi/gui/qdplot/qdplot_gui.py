@@ -57,7 +57,7 @@ class QDPlotterGui(GuiBase):
     Example config for copy-paste:
 
     qdplotter:
-        module.Class: 'qdplotter.qdplotter_gui.QDPlotterGui'
+        module.Class: 'qdplot.qdplot_gui.QDPlotterGui'
         options:
             pen_color_list: [[100, 100, 100], 'c', 'm', 'g']
         connect:
