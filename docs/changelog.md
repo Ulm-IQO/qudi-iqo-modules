@@ -9,12 +9,18 @@
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
 - Old ODMR fits are now removed when starting a new measurement
 - Remove hardcoded limits of the setpoint in the PID gui.
+- Fixed missing `plot_index` when calling `QDPlotLogic._remove_plot` in `QDPlotLogic._set_plot_count`
+- Fixed `QDPlotterGui` example config
+- Fixed psu-dependent bugs for laser_quantum_laser
+- Laser logic does not automatically start query loop, gui will still start it on startup
 
 ### New Features
+- Get current sweeps and runtime of fastcomtec fastcounter MCS6 when pulling the data trace. 
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 - Improved support for Stanford Research Systems signal generators
 - Expanded documentation of the microwave interface
 - Add new hardware module for the PID laser control functionality of HighFinesse wavemeters.
+- Added option to specify custom save file name in scanning GUI (PR #148)
 
 ### Bugfixes
 
@@ -37,6 +43,7 @@ Configuration for time series toolchain needs changes as well. See `default.cfg`
 docstrings.
 
 ### Bugfixes
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Basic data saving in `TimeSeriesReaderLogic` works now.
 - Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
 - Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle
