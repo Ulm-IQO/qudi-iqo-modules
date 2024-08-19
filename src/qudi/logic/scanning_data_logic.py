@@ -332,7 +332,7 @@ class ScanningDataLogic(LogicBase):
                     # data
                     # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.settings.axes)
                     if custom_tag:
-                        tag = custom_tag
+                        tag = f"{custom_tag} {channel}"
                     else:
                         tag = self.create_tag_from_scan_data(scan_data, channel)
                     if is_back:
