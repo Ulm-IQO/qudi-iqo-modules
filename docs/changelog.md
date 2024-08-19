@@ -13,6 +13,10 @@
 - Now correct microwave phases in predefined method generate_hahnecho_exp()
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
 - Old ODMR fits are now removed when starting a new measurement
+- Fixed missing `plot_index` when calling `QDPlotLogic._remove_plot` in `QDPlotLogic._set_plot_count`
+- Fixed `QDPlotterGui` example config
+- Fixed psu-dependent bugs for laser_quantum_laser
+- Laser logic does not automatically start query loop, gui will still start it on startup
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
@@ -28,6 +32,7 @@
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 - Improved support for Stanford Research Systems signal generators
 - Expanded documentation of the microwave interface
+- Added option to specify custom save file name in scanning GUI (PR #148)
 
 
 

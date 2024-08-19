@@ -282,18 +282,19 @@ class ScanningDataLogic(LogicBase):
                         arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
         return fig
 
-    def save_scan(self, scan_data, color_range=None, is_back: bool = False):
+    def save_scan(self, scan_data, color_range=None, is_back: bool = False, custom_tag=None):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
                 return
 
-            if scan_data is None:
-                raise ValueError('Unable to save 2D scan. No data available.')
-
             self.sigSaveStateChanged.emit(True)
             self.module_state.lock()
             try:
+                if scan_data is None:
+                    self.log.error('Unable to save 2D scan. No data available.')
+                    raise ValueError('Unable to save 2D scan. No data available.')
+
                 ds = TextDataStorage(root_dir=self.module_default_data_dir)
                 timestamp = datetime.datetime.now()
 
@@ -330,7 +331,12 @@ class ScanningDataLogic(LogicBase):
                 for channel, data in scan_data.data.items():
                     # data
                     # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.settings.axes)
-                    tag = self.create_tag_from_scan_data(scan_data, channel, is_back=is_back)
+                    if custom_tag:
+                        tag = custom_tag
+                    else:
+                        tag = self.create_tag_from_scan_data(scan_data, channel)
+                    if is_back:
+                        tag = "back " + tag
                     file_path, _, _ = ds.save_data(data,
                                                    metadata=parameters,
                                                    nametag=tag,
@@ -351,28 +357,26 @@ class ScanningDataLogic(LogicBase):
                 self.sigSaveStateChanged.emit(False)
             return
 
-    def save_scan_by_axis(self, scan_axes=None, color_range=None):
+    def save_scan_by_axis(self, scan_axes=None, color_range=None, custom_tag=None):
         # wrapper for self.save_scan. Avoids copying scan_data through QtSignals
         scan_data, back_scan_data = self.get_last_history_entry(scan_axes=scan_axes)
         self.log.debug(f"Attempting to save {scan_data}")
         if scan_data is not None:
-            self.save_scan(scan_data, color_range=color_range)
+            self.save_scan(scan_data, color_range=color_range, custom_tag=custom_tag)
             if self._save_back_scan_data and back_scan_data is None:
                 self.log.warning(f"No back scan data to save.")
             elif self._save_back_scan_data:
-                self.save_scan(back_scan_data, color_range=color_range, is_back=True)
+                self.save_scan(back_scan_data, color_range=color_range, is_back=True, custom_tag=custom_tag)
         else:
             self.log.warning(f"No data in history for {scan_axes} scan.")
             self.sigSaveStateChanged.emit(False)
 
     @staticmethod
-    def create_tag_from_scan_data(scan_data: ScanData, channel: str, is_back: bool = False):
+    def create_tag_from_scan_data(scan_data: ScanData, channel: str):
         axes = scan_data.settings.axes
         axis_dim = len(axes)
         axes_code = reduce(operator.add, axes)
         tag = f"{axis_dim}D-scan with {axes_code} axes from channel {channel}"
-        if is_back:
-            tag = "back " + tag
         return tag
 
     def draw_2d_scan_figure(self, scan_data, channel, cbar_range=None):
