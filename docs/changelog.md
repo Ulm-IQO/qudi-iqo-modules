@@ -8,9 +8,10 @@
 - Now correct microwave phases in predefined method generate_hahnecho_exp()
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
 - Old ODMR fits are now removed when starting a new measurement
+- Fixed missing `plot_index` when calling `QDPlotLogic._remove_plot` in `QDPlotLogic._set_plot_count`
+- Fixed `QDPlotterGui` example config
 - Fixed psu-dependent bugs for laser_quantum_laser
 - Laser logic does not automatically start query loop, gui will still start it on startup
-
 
 ### New Features
 - Get current sweeps and runtime of fastcomtec fastcounter MCS6 when pulling the data trace. 
