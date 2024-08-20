@@ -282,7 +282,8 @@ class ScanningDataLogic(LogicBase):
                         arrowprops={'facecolor': '#17becf', 'shrink': 0.05})
         return fig
 
-    def save_scan(self, scan_data, color_range=None, is_back: bool = False, custom_tag=None):
+    def save_scan(self, scan_data, color_range=None, is_back: bool = False,
+                  custom_tag: str = None):
         with self._thread_lock:
             if self.module_state() != 'idle':
                 self.log.error('Unable to save 2D scan. Saving still in progress...')
@@ -369,7 +370,7 @@ class ScanningDataLogic(LogicBase):
 
     @staticmethod
     def create_tag_from_scan_data(scan_data: ScanData, channel: str,
-                                  is_back:bool=False, custom_tag:str=None):
+                                  is_back: bool = False, custom_tag: str = None):
         axes = scan_data.settings.axes
         axis_dim = len(axes)
         axes_code = reduce(operator.add, axes)
