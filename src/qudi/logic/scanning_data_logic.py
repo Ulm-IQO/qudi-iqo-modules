@@ -329,14 +329,10 @@ class ScanningDataLogic(LogicBase):
 
                 # Save data and thumbnail to file
                 for channel, data in scan_data.data.items():
-                    # data
-                    # nametag = '{0}_{1}{2}_image_scan'.format(channel, *scan_data.settings.axes)
-                    if custom_tag:
-                        tag = f"{custom_tag} {channel}"
-                    else:
-                        tag = self.create_tag_from_scan_data(scan_data, channel)
-                    if is_back:
-                        tag = "back " + tag
+
+                    tag = self.create_tag_from_scan_data(scan_data, channel, is_back,
+                                                         custom_tag)
+
                     file_path, _, _ = ds.save_data(data,
                                                    metadata=parameters,
                                                    nametag=tag,
@@ -372,11 +368,19 @@ class ScanningDataLogic(LogicBase):
             self.sigSaveStateChanged.emit(False)
 
     @staticmethod
-    def create_tag_from_scan_data(scan_data: ScanData, channel: str):
+    def create_tag_from_scan_data(scan_data: ScanData, channel: str,
+                                  is_back:bool=False, custom_tag:str=None):
         axes = scan_data.settings.axes
         axis_dim = len(axes)
         axes_code = reduce(operator.add, axes)
+
         tag = f"{axis_dim}D-scan with {axes_code} axes from channel {channel}"
+        if custom_tag:
+            tag = f"{custom_tag} {channel}"
+
+        if is_back:
+            tag = "back " + tag
+
         return tag
 
     def draw_2d_scan_figure(self, scan_data, channel, cbar_range=None):
