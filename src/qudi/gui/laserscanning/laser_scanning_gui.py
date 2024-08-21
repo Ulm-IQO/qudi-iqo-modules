@@ -28,7 +28,7 @@ from qudi.core.module import GuiBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.interface.scannable_laser_interface import ScannableLaserSettings
-from qudi.gui.laserscanning.main_window import LaserScanningMainWindow
+from qudi.gui.laserscanning.widgets.main_window import LaserScanningMainWindow
 
 
 class LaserScanningGui(GuiBase):
