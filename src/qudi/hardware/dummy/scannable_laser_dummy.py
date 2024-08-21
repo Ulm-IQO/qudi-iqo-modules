@@ -96,13 +96,13 @@ class ScannableLaserDummy(ScannableLaserInterface):
                 self.module_state.unlock()
                 self.log.info('Laser scan stopped')
 
-    def move_to(self, value: float, blocking: Optional[bool] = False) -> None:
+    def scan_to(self, value: float, blocking: Optional[bool] = False) -> None:
         with self._thread_lock:
             if self.module_state() == 'locked':
                 raise RuntimeError('Unable to set laser target. Laser scan in progress.')
             if blocking:
                 time.sleep(0.5)
-            self.log.info(f'Moved to {value} {self.__constraints.unit}')
+            self.log.info(f'Scanned to {value} {self.__constraints.unit}')
 
     def configure_scan(
             self,

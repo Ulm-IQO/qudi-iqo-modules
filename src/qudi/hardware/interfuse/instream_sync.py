@@ -30,6 +30,8 @@ from enum import Enum
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
+from qudi.util.network import netobtain
+from qudi.util.constraints import ScalarConstraint
 from qudi.util.ringbuffer import RingBuffer, InterleavedRingBuffer
 from qudi.util.ringbuffer import RingBufferReader, SyncRingBufferReader
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
@@ -88,6 +90,8 @@ class DataInStreamSync(DataInStreamInterface):
         super().__init__(*args, **kwargs)
 
         self._lock = Mutex()
+        self.__primary_is_remote: bool = False
+        self.__secondary_is_remote: bool = False
         self._stop_requested: bool = True
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
@@ -100,10 +104,10 @@ class DataInStreamSync(DataInStreamInterface):
         self._data_buffer: InterleavedRingBuffer = None
         self._timestamp_buffer: Union[None, RingBuffer] = None
         self._tmp_combined_data_buf: np.ndarray = None
-        self._tmp_primary_data_buf: np.ndarray = None
-        self._tmp_secondary_data_buf: np.ndarray = None
-        self._tmp_primary_timestamp_buf: np.ndarray = None
-        self._tmp_secondary_timestamp_buf: np.ndarray = None
+        self._tmp_primary_data_buf: Union[None, np.ndarray] = None
+        self._tmp_secondary_data_buf: Union[None, np.ndarray] = None
+        self._tmp_primary_timestamp_buf: Union[None, np.ndarray] = None
+        self._tmp_secondary_timestamp_buf: Union[None, np.ndarray] = None
 
         # combined streamer constraints
         self._constraints: DataInStreamConstraints = None
@@ -112,10 +116,22 @@ class DataInStreamSync(DataInStreamInterface):
         self.__ignore: IgnoreStream = IgnoreStream.NONE
 
     def on_activate(self):
+        primary: DataInStreamInterface = self._primary_streamer()
+        secondary: DataInStreamInterface = self._secondary_streamer()
+        primary_constr = netobtain(primary.constraints)
+        secondary_constr = netobtain(secondary.constraints)
+        if type(primary_constr) == type(primary.constraints):
+            self.__primary_is_remote = False
+        else:
+            self.__primary_is_remote = True
+        if type(secondary_constr) == type(secondary.constraints):
+            self.__secondary_is_remote = False
+        else:
+            self.__secondary_is_remote = True
         self._stop_requested = True
         self.__ignore = IgnoreStream.NONE
         self._primary_sample_count = self._secondary_sample_count = 0
-        self._constraints = self.__combine_constraints()
+        self._constraints = self.__combine_constraints(primary_constr, secondary_constr)
 
         self.__create_buffers()
 
@@ -141,10 +157,11 @@ class DataInStreamSync(DataInStreamInterface):
             self._tmp_primary_data_buf = self._tmp_secondary_data_buf = None
             self._tmp_primary_timestamp_buf = self._tmp_secondary_timestamp_buf = None
 
-    def __combine_constraints(self) -> DataInStreamConstraints:
-        constr_1 = self._primary_streamer().constraints
-        constr_2 = self._secondary_streamer().constraints
-        timings = [constr_1.sample_timing, constr_2.sample_timing]
+    @staticmethod
+    def __combine_constraints(primary: DataInStreamConstraints,
+                              secondary: DataInStreamConstraints) -> DataInStreamConstraints:
+        timings = [SampleTiming(primary.sample_timing.value),
+                   SampleTiming(secondary.sample_timing.value)]
         if any(timing == SampleTiming.TIMESTAMP for timing in timings):
             timing = SampleTiming.TIMESTAMP
         elif any(timing == SampleTiming.RANDOM for timing in timings):
@@ -153,12 +170,12 @@ class DataInStreamSync(DataInStreamInterface):
         else:
             timing = SampleTiming.CONSTANT
         return DataInStreamConstraints(
-            channel_units={**constr_1.channel_units, **constr_2.channel_units},
+            channel_units={**primary.channel_units, **secondary.channel_units},
             sample_timing=timing,
             streaming_modes=[StreamingMode.CONTINUOUS],
             data_type=np.float64,
-            channel_buffer_size=constr_1.channel_buffer_size.copy(),
-            sample_rate=constr_1.sample_rate.copy()
+            channel_buffer_size=netobtain(primary.channel_buffer_size.copy()),
+            sample_rate=netobtain(primary.sample_rate.copy())
         )
 
     def __create_buffers(self) -> None:
@@ -166,6 +183,7 @@ class DataInStreamSync(DataInStreamInterface):
         secondary: DataInStreamInterface = self._secondary_streamer()
         primary_buffer_size = primary.channel_buffer_size
         secondary_buffer_size = secondary.channel_buffer_size
+        combined_buffer_size = max(primary_buffer_size, secondary_buffer_size)
         primary_channels = len(primary.active_channels)
         secondary_channels = len(secondary.active_channels)
         sample_rate = primary.sample_rate
@@ -178,28 +196,38 @@ class DataInStreamSync(DataInStreamInterface):
         primary_dtype = primary.constraints.data_type
         secondary_dtype = secondary.constraints.data_type
         # Create ringbuffers
-        self._data_buffer = InterleavedRingBuffer(interleave_factor=total_channels,
-                                                  size=primary_buffer_size,
-                                                  dtype=np.float64,
-                                                  allow_overwrite=self._allow_overwrite,
-                                                  expected_sample_rate=sample_rate)
+        self._data_buffer = InterleavedRingBuffer(
+            interleave_factor=total_channels,
+            size=combined_buffer_size,
+            dtype=np.float64,
+            allow_overwrite=self._allow_overwrite,
+            expected_sample_rate=sample_rate
+        )
         if self.constraints.sample_timing == SampleTiming.TIMESTAMP:
-            self._timestamp_buffer = RingBuffer(size=primary_buffer_size,
-                                                dtype=np.float64,
-                                                allow_overwrite=self._allow_overwrite,
-                                                expected_sample_rate=sample_rate)
+            self._timestamp_buffer = RingBuffer(
+                size=combined_buffer_size,
+                dtype=np.float64,
+                allow_overwrite=self._allow_overwrite,
+                expected_sample_rate=sample_rate
+            )
         else:
             self._timestamp_buffer = None
         # Create intermediate buffer arrays to minimize memory allocation on each read at the
-        # expense or more memory consumption
-        self._tmp_combined_data_buf = np.empty([primary_buffer_size, total_channels],
+        # expense or more memory consumption. Only works if connected streamer is local.
+        self._tmp_combined_data_buf = np.empty([combined_buffer_size, total_channels],
                                                dtype=np.float64)
-        self._tmp_primary_data_buf = np.empty([primary_buffer_size, primary_channels],
-                                              dtype=primary_dtype)
-        self._tmp_secondary_data_buf = np.empty([secondary_buffer_size, secondary_channels],
-                                                dtype=secondary_dtype)
-        self._tmp_primary_timestamp_buf = np.empty(primary_buffer_size, dtype=np.float64)
-        self._tmp_secondary_timestamp_buf = np.empty(secondary_buffer_size, dtype=np.float64)
+        if self.__primary_is_remote:
+            self._tmp_primary_data_buf = self._tmp_primary_timestamp_buf = None
+        else:
+            self._tmp_primary_data_buf = np.empty([primary_buffer_size, primary_channels],
+                                                  dtype=primary_dtype)
+            self._tmp_primary_timestamp_buf = np.empty(primary_buffer_size, dtype=np.float64)
+        if self.__secondary_is_remote:
+            self._tmp_secondary_data_buf = self._tmp_secondary_timestamp_buf = None
+        else:
+            self._tmp_secondary_data_buf = np.empty([secondary_buffer_size, secondary_channels],
+                                                    dtype=secondary_dtype)
+            self._tmp_secondary_timestamp_buf = np.empty(secondary_buffer_size, dtype=np.float64)
 
     #############################################
     # DataInStreamInterface implementation below
@@ -236,9 +264,9 @@ class DataInStreamSync(DataInStreamInterface):
             return [*self._primary_streamer().active_channels,
                     *self._secondary_streamer().active_channels]
         elif self.__ignore == IgnoreStream.PRIMARY:
-            return self._secondary_streamer().active_channels
+            return [*self._secondary_streamer().active_channels]
         else:
-            return self._primary_streamer().active_channels
+            return [*self._primary_streamer().active_channels]
 
     def configure(self,
                   active_channels: Sequence[str],
@@ -302,7 +330,8 @@ class DataInStreamSync(DataInStreamInterface):
                     raise
 
     def stop_stream(self) -> None:
-        self._stop_requested = True
+        with self._lock:
+            self._stop_requested = True
         # Wait until the threaded loop has actually stopped
         while self.module_state() == 'locked':
             time.sleep(0.1)
@@ -414,32 +443,46 @@ class DataInStreamSync(DataInStreamInterface):
 
     def __pull_primary_data(self, samples: int) -> Tuple[np.ndarray, np.ndarray]:
         streamer: DataInStreamInterface = self._primary_streamer()
-        tmp_data = self._tmp_primary_data_buf[:samples, :]
-        tmp_times = self._tmp_primary_timestamp_buf[:samples]
-        streamer.read_data_into_buffer(data_buffer=tmp_data.reshape(-1),
-                                       samples_per_channel=samples,
-                                       timestamp_buffer=tmp_times)
-        if streamer.constraints.sample_timing != SampleTiming.TIMESTAMP:
+        timestamp = SampleTiming(streamer.constraints.sample_timing.value) == SampleTiming.TIMESTAMP
+        if self.__primary_is_remote:
+            tmp_data, tmp_times = streamer.read_data(samples)
+            tmp_data = netobtain(tmp_data)
+            if timestamp:
+                tmp_times = netobtain(tmp_times)
+        else:
+            tmp_data = self._tmp_primary_data_buf[:samples, :]
+            tmp_times = self._tmp_primary_timestamp_buf[:samples]
+            streamer.read_data_into_buffer(data_buffer=tmp_data.reshape(-1),
+                                           samples_per_channel=samples,
+                                           timestamp_buffer=tmp_times)
+        if not timestamp:
             tmp_times = np.arange(self._primary_sample_count,
                                   self._primary_sample_count + samples,
                                   dtype=np.float64)
             tmp_times /= streamer.sample_rate
-            self._primary_sample_count += samples
+        self._primary_sample_count += samples
         return tmp_times, tmp_data
 
     def __pull_secondary_data(self, samples: int) -> Tuple[np.ndarray, np.ndarray]:
         streamer: DataInStreamInterface = self._secondary_streamer()
-        tmp_data = self._tmp_secondary_data_buf[:samples, :]
-        tmp_times = self._tmp_secondary_timestamp_buf[:samples]
-        streamer.read_data_into_buffer(data_buffer=tmp_data.reshape(-1),
-                                       samples_per_channel=samples,
-                                       timestamp_buffer=tmp_times)
-        if streamer.constraints.sample_timing != SampleTiming.TIMESTAMP:
+        timestamp = SampleTiming(streamer.constraints.sample_timing.value) == SampleTiming.TIMESTAMP
+        if self.__secondary_is_remote:
+            tmp_data, tmp_times = streamer.read_data(samples)
+            tmp_data = netobtain(tmp_data)
+            if timestamp:
+                tmp_times = netobtain(tmp_times)
+        else:
+            tmp_data = self._tmp_secondary_data_buf[:samples, :]
+            tmp_times = self._tmp_secondary_timestamp_buf[:samples]
+            streamer.read_data_into_buffer(data_buffer=tmp_data.reshape(-1),
+                                           samples_per_channel=samples,
+                                           timestamp_buffer=tmp_times)
+        if not timestamp:
             tmp_times = np.arange(self._secondary_sample_count,
                                   self._secondary_sample_count + samples,
                                   dtype=np.float64)
             tmp_times /= streamer.sample_rate
-            self._secondary_sample_count += samples
+        self._secondary_sample_count += samples
         return tmp_times, tmp_data
 
     def _pull_data(self) -> None:

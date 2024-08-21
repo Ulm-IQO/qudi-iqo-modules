@@ -26,12 +26,14 @@ __all__ = ['DataInStreamBuffer', 'DataInStreamDistributionWorker',
 
 import time
 import numpy as np
+from matplotlib.style.core import available
 from PySide2 import QtCore
 from uuid import UUID
 from weakref import WeakKeyDictionary
 from typing import Union, Optional, Dict, List, Tuple, Sequence, Mapping, Any, MutableMapping
 
 from qudi.util.mutex import Mutex
+from qudi.util.network import netobtain
 from qudi.util.ringbuffer import RingBuffer, InterleavedRingBuffer, RingBufferReader, SyncRingBufferReader
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -57,6 +59,10 @@ class DataInStreamDistributionWorker(QtCore.QObject):
         self._buffers = buffers
         self._tmp_buffer = self._tmp_timestamp_buffer = None
         self._stop_requested = False
+        if type(self._streamer.constraints) == type(netobtain(self._streamer.constraints)):
+            self.__is_remote_streamer = False
+        else:
+            self.__is_remote_streamer = True
 
     def run(self) -> None:
         """ The worker task. Runs until an external thread calls self.stop() """
@@ -64,10 +70,12 @@ class DataInStreamDistributionWorker(QtCore.QObject):
         channel_count = len(self._streamer.active_channels)
         channel_buffer_size = self._streamer.channel_buffer_size
         dtype = self._streamer.constraints.data_type
+        print(dtype, type(dtype))
         # Setup buffers
-        self._tmp_buffer = np.empty(channel_count * channel_buffer_size, dtype=dtype)
-        if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
-            self._tmp_timestamp_buffer = np.empty(channel_buffer_size, dtype=dtype)
+        if not self.__is_remote_streamer:
+            self._tmp_buffer = np.empty(channel_count * channel_buffer_size, dtype=dtype)
+            if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+                self._tmp_timestamp_buffer = np.empty(channel_buffer_size, dtype=dtype)
         # Loop until stopped
         while not self._stop_requested:
             time.sleep(interval)
@@ -79,16 +87,25 @@ class DataInStreamDistributionWorker(QtCore.QObject):
         self._stop_requested = True
 
     def _pull_data(self, channel_count: int) -> None:
-        samples_per_channel = self._streamer.read_available_data_into_buffer(
-            self._tmp_buffer,
-            self._tmp_timestamp_buffer
-        )
+        samples_per_channel = self._streamer.available_samples
         if samples_per_channel > 0:
-            tmp_data = self._tmp_buffer[:samples_per_channel * channel_count]
-            if self._tmp_timestamp_buffer is None:
-                tmp_timestamps = None
+            # Use a shared temp buffer if the streamer is a local module
+            if self.__is_remote_streamer:
+                tmp_data, tmp_timestamps = self._streamer.read_data(samples_per_channel)
+                tmp_data = netobtain(tmp_data)
+                if tmp_timestamps is not None:
+                    tmp_timestamps = netobtain(tmp_timestamps)
             else:
-                tmp_timestamps = self._tmp_timestamp_buffer[:samples_per_channel]
+                self._streamer.read_data_into_buffer(
+                    data_buffer=self._tmp_buffer,
+                    samples_per_channel=samples_per_channel,
+                    timestamp_buffer=self._tmp_timestamp_buffer
+                )
+                tmp_data = self._tmp_buffer[:samples_per_channel * channel_count]
+                if self._tmp_timestamp_buffer is None:
+                    tmp_timestamps = None
+                else:
+                    tmp_timestamps = self._tmp_timestamp_buffer[:samples_per_channel]
             for buffers in self._buffers.values():
                 if buffers is not None:
                     data, timestamps = buffers
@@ -158,7 +175,7 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
                       channel_buffer_size: int,
                       sample_rate: float) -> bool:
         return (active_channels == self._streamer.active_channels) and \
-            (StreamingMode(streaming_mode) == self._streamer.streaming_mode) and \
+            (StreamingMode(streaming_mode).value == self._streamer.streaming_mode.value) and \
             (channel_buffer_size == self._streamer.channel_buffer_size) and \
             (sample_rate == self._streamer.sample_rate)
 

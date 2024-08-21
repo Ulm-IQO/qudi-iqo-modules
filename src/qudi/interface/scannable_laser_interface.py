@@ -143,8 +143,8 @@ class ScannableLaserInterface(Base):
         raise NotImplementedError
 
     @abstractmethod
-    def move_to(self, value: float, blocking: Optional[bool] = False) -> None:
-        """ Moves the laser wavelength/frequency to a certain value. Only works if the laser is not
+    def scan_to(self, value: float, blocking: Optional[bool] = False) -> None:
+        """ Scans the laser wavelength/frequency to a certain value. Only works if the laser is not
         actively scanning, i.e. the module state must be idle.
         :raises ValueError: If value is out of bounds (see constraints)
         :raises RuntimeError: If called while a laser scan is running, i.e. module_state == 'locked'
