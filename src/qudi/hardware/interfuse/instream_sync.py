@@ -31,7 +31,6 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
-from qudi.util.constraints import ScalarConstraint
 from qudi.util.ringbuffer import RingBuffer, InterleavedRingBuffer
 from qudi.util.ringbuffer import RingBufferReader, SyncRingBufferReader
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
@@ -92,6 +91,8 @@ class DataInStreamSync(DataInStreamInterface):
         self._lock = Mutex()
         self.__primary_is_remote: bool = False
         self.__secondary_is_remote: bool = False
+        self.__primary_has_timestamps: bool = False
+        self.__secondary_has_timestamps: bool = False
         self._stop_requested: bool = True
         self._timer = QtCore.QTimer(self)
         self._timer.setSingleShot(True)
@@ -128,6 +129,8 @@ class DataInStreamSync(DataInStreamInterface):
             self.__secondary_is_remote = False
         else:
             self.__secondary_is_remote = True
+        self.__primary_has_timestamps = netobtain(primary_constr.sample_timing) == SampleTiming.TIMESTAMP
+        self.__secondary_has_timestamps = netobtain(secondary_constr.sample_timing) == SampleTiming.TIMESTAMP
         self._stop_requested = True
         self.__ignore = IgnoreStream.NONE
         self._primary_sample_count = self._secondary_sample_count = 0
@@ -160,8 +163,7 @@ class DataInStreamSync(DataInStreamInterface):
     @staticmethod
     def __combine_constraints(primary: DataInStreamConstraints,
                               secondary: DataInStreamConstraints) -> DataInStreamConstraints:
-        timings = [SampleTiming(primary.sample_timing.value),
-                   SampleTiming(secondary.sample_timing.value)]
+        timings = [netobtain(primary.sample_timing), netobtain(secondary.sample_timing)]
         if any(timing == SampleTiming.TIMESTAMP for timing in timings):
             timing = SampleTiming.TIMESTAMP
         elif any(timing == SampleTiming.RANDOM for timing in timings):
@@ -443,11 +445,10 @@ class DataInStreamSync(DataInStreamInterface):
 
     def __pull_primary_data(self, samples: int) -> Tuple[np.ndarray, np.ndarray]:
         streamer: DataInStreamInterface = self._primary_streamer()
-        timestamp = SampleTiming(streamer.constraints.sample_timing.value) == SampleTiming.TIMESTAMP
         if self.__primary_is_remote:
             tmp_data, tmp_times = streamer.read_data(samples)
-            tmp_data = netobtain(tmp_data)
-            if timestamp:
+            tmp_data = netobtain(tmp_data).reshape([samples, -1])
+            if self.__primary_has_timestamps:
                 tmp_times = netobtain(tmp_times)
         else:
             tmp_data = self._tmp_primary_data_buf[:samples, :]
@@ -455,7 +456,7 @@ class DataInStreamSync(DataInStreamInterface):
             streamer.read_data_into_buffer(data_buffer=tmp_data.reshape(-1),
                                            samples_per_channel=samples,
                                            timestamp_buffer=tmp_times)
-        if not timestamp:
+        if not self.__primary_has_timestamps:
             tmp_times = np.arange(self._primary_sample_count,
                                   self._primary_sample_count + samples,
                                   dtype=np.float64)
@@ -465,11 +466,10 @@ class DataInStreamSync(DataInStreamInterface):
 
     def __pull_secondary_data(self, samples: int) -> Tuple[np.ndarray, np.ndarray]:
         streamer: DataInStreamInterface = self._secondary_streamer()
-        timestamp = SampleTiming(streamer.constraints.sample_timing.value) == SampleTiming.TIMESTAMP
         if self.__secondary_is_remote:
             tmp_data, tmp_times = streamer.read_data(samples)
-            tmp_data = netobtain(tmp_data)
-            if timestamp:
+            tmp_data = netobtain(tmp_data).reshape([samples, -1])
+            if self.__secondary_has_timestamps:
                 tmp_times = netobtain(tmp_times)
         else:
             tmp_data = self._tmp_secondary_data_buf[:samples, :]
@@ -477,7 +477,7 @@ class DataInStreamSync(DataInStreamInterface):
             streamer.read_data_into_buffer(data_buffer=tmp_data.reshape(-1),
                                            samples_per_channel=samples,
                                            timestamp_buffer=tmp_times)
-        if not timestamp:
+        if not self.__secondary_has_timestamps:
             tmp_times = np.arange(self._secondary_sample_count,
                                   self._secondary_sample_count + samples,
                                   dtype=np.float64)

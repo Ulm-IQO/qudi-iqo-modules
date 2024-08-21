@@ -26,14 +26,15 @@ __all__ = ['DataInStreamBuffer', 'DataInStreamDistributionWorker',
 
 import time
 import numpy as np
-from matplotlib.style.core import available
 from PySide2 import QtCore
 from uuid import UUID
+from logging import getLogger
 from weakref import WeakKeyDictionary
 from typing import Union, Optional, Dict, List, Tuple, Sequence, Mapping, Any, MutableMapping
 
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
+from qudi.util.thread_exception_watchdog import threaded_exception_watchdog
 from qudi.util.ringbuffer import RingBuffer, InterleavedRingBuffer, RingBufferReader, SyncRingBufferReader
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
@@ -51,7 +52,7 @@ class DataInStreamDistributionWorker(QtCore.QObject):
             streamer: DataInStreamInterface,
             buffers: Mapping[Any, Union[None, Tuple[InterleavedRingBuffer, Union[None, RingBuffer]]]]
     ):
-        if streamer.constraints.sample_timing == SampleTiming.RANDOM:
+        if netobtain(streamer.constraints.sample_timing) == SampleTiming.RANDOM:
             raise ValueError(f'{DataInStreamInterface.__name__} hardware with '
                              f'{SampleTiming.RANDOM} is not supported')
         super().__init__()
@@ -63,25 +64,27 @@ class DataInStreamDistributionWorker(QtCore.QObject):
             self.__is_remote_streamer = False
         else:
             self.__is_remote_streamer = True
+        self.__has_timestamps = netobtain(self._streamer.constraints.sample_timing) == SampleTiming.TIMESTAMP
+        self._logger = getLogger(self.__class__.__name__)
 
     def run(self) -> None:
         """ The worker task. Runs until an external thread calls self.stop() """
-        interval = max(0.01, 1. / self._streamer.sample_rate)
-        channel_count = len(self._streamer.active_channels)
-        channel_buffer_size = self._streamer.channel_buffer_size
-        dtype = self._streamer.constraints.data_type
-        print(dtype, type(dtype))
-        # Setup buffers
-        if not self.__is_remote_streamer:
-            self._tmp_buffer = np.empty(channel_count * channel_buffer_size, dtype=dtype)
-            if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
-                self._tmp_timestamp_buffer = np.empty(channel_buffer_size, dtype=dtype)
-        # Loop until stopped
-        while not self._stop_requested:
-            time.sleep(interval)
-            self._pull_data(channel_count)
-        # delete tmp buffers
-        self._tmp_buffer = self._tmp_timestamp_buffer = None
+        with threaded_exception_watchdog(self._logger):
+            interval = max(0.01, 1. / self._streamer.sample_rate)
+            channel_count = len(self._streamer.active_channels)
+            channel_buffer_size = self._streamer.channel_buffer_size
+            dtype = self._streamer.constraints.data_type.__name__
+            # Setup buffers
+            if not self.__is_remote_streamer:
+                self._tmp_buffer = np.empty(channel_count * channel_buffer_size, dtype=dtype)
+                if self.__has_timestamps:
+                    self._tmp_timestamp_buffer = np.empty(channel_buffer_size, dtype=dtype)
+            # Loop until stopped
+            while not self._stop_requested:
+                time.sleep(interval)
+                self._pull_data(channel_count)
+            # delete tmp buffers
+            self._tmp_buffer = self._tmp_timestamp_buffer = None
 
     def stop(self) -> None:
         self._stop_requested = True
@@ -138,6 +141,7 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
 
         self._streamer = streamer
         self._allow_overwrite = allow_overwrite
+        self.__has_timestamps = netobtain(self._streamer.constraints.sample_timing) == SampleTiming.TIMESTAMP
         self._max_poll_rate = max_poll_rate
         self._buffers = WeakKeyDictionary()
 
@@ -175,7 +179,7 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
                       channel_buffer_size: int,
                       sample_rate: float) -> bool:
         return (active_channels == self._streamer.active_channels) and \
-            (StreamingMode(streaming_mode).value == self._streamer.streaming_mode.value) and \
+            (streaming_mode == netobtain(self._streamer.streaming_mode)) and \
             (channel_buffer_size == self._streamer.channel_buffer_size) and \
             (sample_rate == self._streamer.sample_rate)
 
@@ -185,11 +189,12 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
                 raise RuntimeError(f'Can not create buffers for {uuid}. Delete old buffers first.')
             channel_count = len(self._streamer.active_channels)
             channel_buffer_size = self._streamer.channel_buffer_size
+            data_dtype = np.dtype(self._streamer.constraints.data_type.__name__).type
             data_buffer = InterleavedRingBuffer(interleave_factor=channel_count,
                                                 size=channel_buffer_size,
-                                                dtype=self._streamer.constraints.data_type,
+                                                dtype=data_dtype,
                                                 allow_overwrite=self._allow_overwrite)
-            if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+            if self.__has_timestamps:
                 timestamp_buffer = RingBuffer(size=channel_buffer_size,
                                               dtype=np.float64,
                                               allow_overwrite=self._allow_overwrite)
@@ -303,11 +308,11 @@ class DataInStreamMultiConsumerDelegate(QtCore.QObject):
                   samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
         channel_count = len(self._streamer.active_channels)
-        dtype = self._streamer.constraints.data_type
+        dtype = self._streamer.constraints.data_type.__name__
         if samples_per_channel is None:
             samples_per_channel = self.available_samples(uuid)
         data = np.empty(samples_per_channel * channel_count, dtype=dtype)
-        if self._streamer.constraints.sample_timing == SampleTiming.TIMESTAMP:
+        if self.__has_timestamps:
             timestamps = np.empty(samples_per_channel, dtype=np.float64)
         else:
             timestamps = None
@@ -347,9 +352,14 @@ class DataInStreamBuffer(DataInStreamInterface):
 
     _buffer_delegates: Dict[UUID, DataInStreamMultiConsumerDelegate] = WeakKeyDictionary()
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._streamer_uid: UUID = None
+
     def on_activate(self) -> None:
         # If there is already a buffer delegate for the connected hardware present, just register
         # this interfuse as additional consumer. Otherwise, also create the delegate first.
+        self._streamer_uid = netobtain(self._streamer().module_uuid)
         try:
             delegate = self._buffer_delegates[self._streamer_uid]
         except KeyError:
@@ -369,10 +379,7 @@ class DataInStreamBuffer(DataInStreamInterface):
             pass
         else:
             delegate.unregister_consumer(self.module_uuid)
-
-    @property
-    def _streamer_uid(self) -> UUID:
-        return self._streamer().module_uuid
+        self._streamer_uid = None
 
     @property
     def _buffer_delegate(self) -> DataInStreamMultiConsumerDelegate:
@@ -401,12 +408,10 @@ class DataInStreamBuffer(DataInStreamInterface):
 
     @property
     def streaming_mode(self) -> StreamingMode:
-        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.streaming_mode """
         return self._streamer().streaming_mode
 
     @property
     def active_channels(self) -> List[str]:
-        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.active_channels """
         return self._streamer().active_channels
 
     def configure(self,
@@ -414,20 +419,17 @@ class DataInStreamBuffer(DataInStreamInterface):
                   streaming_mode: Union[StreamingMode, int],
                   channel_buffer_size: int,
                   sample_rate: float) -> None:
-        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.configure """
         self._buffer_delegate.configure(active_channels,
                                         streaming_mode,
                                         channel_buffer_size,
                                         sample_rate)
 
     def start_stream(self) -> None:
-        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.start_stream """
         if self.module_state() == 'idle':
             self._buffer_delegate.start_stream(self.module_uuid)
             self.module_state.lock()
 
     def stop_stream(self) -> None:
-        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.stop_stream """
         try:
             self._buffer_delegate.stop_stream(self.module_uuid)
         finally:
@@ -438,8 +440,6 @@ class DataInStreamBuffer(DataInStreamInterface):
                               data_buffer: np.ndarray,
                               samples_per_channel: int,
                               timestamp_buffer: Optional[np.ndarray] = None) -> None:
-        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_data_into_buffer
-        """
         self._buffer_delegate.read_data_into_buffer(self.module_uuid,
                                                     data_buffer,
                                                     samples_per_channel,
@@ -448,9 +448,6 @@ class DataInStreamBuffer(DataInStreamInterface):
     def read_available_data_into_buffer(self,
                                         data_buffer: np.ndarray,
                                         timestamp_buffer: Optional[np.ndarray] = None) -> int:
-        """ See:
-        qudi.interface.data_instream_interface.DataInStreamInterface.read_available_data_into_buffer
-        """
         return self._buffer_delegate.read_available_data_into_buffer(self.module_uuid,
                                                                      data_buffer,
                                                                      timestamp_buffer)
@@ -458,9 +455,7 @@ class DataInStreamBuffer(DataInStreamInterface):
     def read_data(self,
                   samples_per_channel: Optional[int] = None
                   ) -> Tuple[np.ndarray, Union[np.ndarray, None]]:
-        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_data """
         return self._buffer_delegate.read_data(self.module_uuid, samples_per_channel)
 
     def read_single_point(self) -> Tuple[np.ndarray, Union[None, np.float64]]:
-        """ See: qudi.interface.data_instream_interface.DataInStreamInterface.read_single_point """
         return self._buffer_delegate.read_single_point(self.module_uuid)
