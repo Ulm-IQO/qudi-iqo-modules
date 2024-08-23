@@ -222,6 +222,8 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             label.setFont(font)
             label.setAlignment(QtCore.Qt.AlignCenter)
             layout.addWidget(label, 0, i + 1)
+            if ('=' in label_text or 'Back' in label_text) and BackScanCapability.AVAILABLE not in self._back_scan_capability:
+                label.hide()
 
         for index, axis in enumerate(scanner_axes, 1):
             ax_name = axis.name
@@ -268,13 +270,7 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
 
             if BackScanCapability.AVAILABLE not in self._back_scan_capability:
                 for widget in ['res_eq', 'freq_eq', 'backward_res', 'backward_freq']:
-                    self.axes_widgets[ax_name][widget].setEnabled(False)
-                    self.axes_widgets[ax_name][widget].setToolTip("Back scan is not available.")
-                for widget in ['res_eq', 'freq_eq']:
-                    self.axes_widgets[ax_name][widget].setChecked(False)
-                for widget in ['backward_res', 'backward_freq']:
-                    self.axes_widgets[ax_name][widget].setRange(0, 0)
-                    self.axes_widgets[ax_name][widget].setValue(0)
+                    self.axes_widgets[ax_name][widget].hide()
             else:
                 if BackScanCapability.RESOLUTION_CONFIGURABLE not in self._back_scan_capability:
                     self.axes_widgets[ax_name]['res_eq'].setChecked(True)
@@ -286,6 +282,10 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
                     self.axes_widgets[ax_name]['freq_eq'].setEnabled(False)
                     for widget in ['freq_eq', 'backward_freq']:
                         self.axes_widgets[ax_name][widget].setToolTip("Back frequency is not configurable.")
+
+            for widget in ['res_eq', 'freq_eq']:
+                if self.axes_widgets[ax_name][widget].isVisible() and self.axes_widgets[ax_name][widget].isEnabled():
+                    self.axes_widgets[ax_name][widget].setChecked(True)
 
             # Add to layout
             layout.addWidget(label, index, 0)

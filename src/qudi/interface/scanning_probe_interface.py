@@ -520,6 +520,7 @@ class ScanningProbeInterface(Base):
     def configure_back_scan(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters of the backwards scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
+        If a back scan is not explicitly configured, hardware-specific default settings will be used.
 
         @param ScanSettings settings: ScanSettings instance holding all parameters for the back scan
         """
@@ -595,14 +596,15 @@ class ScanningProbeInterface(Base):
         pass
 
     @abstractmethod
-    def get_scan_data(self) -> ScanData:
+    def get_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the scan.
         """
         pass
 
     @abstractmethod
-    def get_back_scan_data(self) -> ScanData:
+    def get_back_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the backwards scan.
+        Return None if back scan was not configured or is not available at all.
         """
         pass
 

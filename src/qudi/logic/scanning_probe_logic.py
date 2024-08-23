@@ -66,6 +66,7 @@ class ScanningProbeLogic(LogicBase):
     _back_scan_resolution = StatusVar(name='back_scan_resolution', default=dict())
     _scan_frequency = StatusVar(name='scan_frequency', default=dict())
     _back_scan_frequency = StatusVar(name='back_scan_frequency', default=dict())
+    _use_back_scan_settings: bool = StatusVar(name='use_back_scan_settings', default=False)
     _tilt_corr_settings = StatusVar(name='tilt_corr_settings', default={})
 
     # config options
@@ -178,6 +179,7 @@ class ScanningProbeLogic(LogicBase):
 
     @property
     def back_scan_resolution(self) -> Dict[str, int]:
+        """Resolution for the backwards scan of the fast axis."""
         with self._thread_lock:
             # use value of forward scan if not configured otherwise (merge dictionaries)
             return {**self._scan_resolution, **self._back_scan_resolution}
@@ -192,6 +194,15 @@ class ScanningProbeLogic(LogicBase):
         with self._thread_lock:
             # use value of forward scan if not configured otherwise (merge dictionaries)
             return {**self._scan_frequency, **self._back_scan_frequency}
+
+    @property
+    def use_back_scan_settings(self) -> bool:
+        with self._thread_lock:
+            return self._use_back_scan_settings
+
+    def set_use_back_scan_settings(self, use: bool) -> None:
+        with self._thread_lock:
+            self._use_back_scan_settings = use
 
     @property
     def save_to_history(self) -> bool:
@@ -218,11 +229,16 @@ class ScanningProbeLogic(LogicBase):
     def create_back_scan_settings(self, scan_axes: Sequence[str]) -> ScanSettings:
         """Create a ScanSettings object for the backwards direction of a selected 1D or 2D scan."""
         with self._thread_lock:
+            # only use backwards scan resolution for the fast axis
+            resolution = [self.back_scan_resolution[scan_axes[0]]]
+            if len(scan_axes) > 1:
+                # slow axis resolution always matches the forward scan
+                resolution += [self.scan_resolution[ax] for ax in scan_axes[1:]]
             return ScanSettings(
                 channels=tuple(self.scanner_channels),
                 axes=tuple(scan_axes),
                 range=tuple(tuple(self._scan_ranges[ax]) for ax in scan_axes),
-                resolution=tuple(self.back_scan_resolution[ax] for ax in scan_axes),
+                resolution=tuple(resolution),
                 frequency=self.back_scan_frequency[scan_axes[0]],
             )
 
@@ -506,9 +522,7 @@ class ScanningProbeLogic(LogicBase):
             self.log.debug('Attempting to configure scanner...')
             try:
                 self._scanner().configure_scan(settings)
-                # configure backward scan only if settings are different from forward scan
-                if self.back_scan_frequency != self.scan_frequency \
-                        or self.scan_resolution != self.back_scan_resolution:
+                if self._use_back_scan_settings and BackScanCapability.FULLY_CONFIGURABLE & self.back_scan_capability:
                     self._scanner().configure_back_scan(back_settings)
             except Exception as e:
                 self.module_state.unlock()

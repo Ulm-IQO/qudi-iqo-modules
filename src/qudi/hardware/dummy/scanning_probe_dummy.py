@@ -323,7 +323,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
             self._scan_settings = settings
             # reset back scan configuration
-            self._back_scan_settings = self._scan_settings
+            self._back_scan_settings = None
 
     def configure_back_scan(self, settings: ScanSettings) -> None:
         """ Configure the hardware with all parameters of the backwards scan.
@@ -440,23 +440,24 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 elif axis == 'z':
                     second_axis = 'x'
                 position_vectors[second_axis] = position_vectors_all_axes[second_axis]
-            self.log.debug(f'{position_vectors}')
-            self._scan_image = self._image_generator.generate_2d_image(position_vectors)
-            self._back_scan_image = self._image_generator.generate_2d_image(position_vectors)
 
+            self._scan_image = self._image_generator.generate_2d_image(position_vectors)
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
                 constraints=self.constraints,
                 scanner_target_at_start=self.get_target(),
             )
-            self._back_scan_data = ScanData.from_constraints(
-                settings=self.back_scan_settings,
-                constraints=self.constraints,
-                scanner_target_at_start=self.get_target(),
-            )
-
             self._scan_data.new_scan()
-            self._back_scan_data.new_scan()
+
+            if self._back_scan_settings is not None:
+                self._back_scan_image = self._image_generator.generate_2d_image(position_vectors)
+                self._back_scan_data = ScanData.from_constraints(
+                    settings=self.back_scan_settings,
+                    constraints=self.constraints,
+                    scanner_target_at_start=self.get_target(),
+                )
+                self._back_scan_data.new_scan()
+
             self.__scan_start = time.time()
             self.__last_forward_pixel = 0
             self.__last_backward_pixel = 0
@@ -505,33 +506,39 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
         t_elapsed = time.time() - self.__scan_start
         t_forward = self.scan_settings.resolution[0] / self.scan_settings.frequency
-        t_backward = self.back_scan_settings.resolution[0] / self.back_scan_settings.frequency
+        if self.back_scan_settings is not None:
+            back_resolution = self.back_scan_settings.resolution[0]
+            t_backward = back_resolution / self.back_scan_settings.frequency
+        else:
+            back_resolution = 0
+            t_backward = 0
         t_complete_line = t_forward + t_backward
 
         aq_lines = int(t_elapsed / t_complete_line)
         t_current_line = t_elapsed % t_complete_line
         if t_current_line < t_forward:
             # currently in forwards scan
-            aq_px_backward = self.back_scan_settings.resolution[0] * aq_lines
+            aq_px_backward = back_resolution * aq_lines
             aq_lines_forward = aq_lines + (t_current_line / t_forward)
             aq_px_forward = int(self.scan_settings.resolution[0] * aq_lines_forward)
         else:
             # currently in backwards scan
             aq_px_forward = self.scan_settings.resolution[0] * (aq_lines + 1)
             aq_lines_backward = aq_lines + (t_current_line - t_forward) / t_backward
-            aq_px_backward = int(self.back_scan_settings.resolution[0] * aq_lines_backward)
+            aq_px_backward = int(back_resolution * aq_lines_backward)
 
         # transposing the arrays is necessary to fill along the fast axis first
-        # back scan image is not fully accurate: last line is filled the same direction as the forward axis
         new_forward_data = self._scan_image.T.flat[self.__last_forward_pixel:aq_px_forward]
-        new_backward_data = self._back_scan_image.T.flat[self.__last_backward_pixel:aq_px_backward]
-
         for ch in self.constraints.channels:
             self._scan_data.data[ch].T.flat[self.__last_forward_pixel:aq_px_forward] = new_forward_data
-            self._back_scan_data.data[ch].T.flat[self.__last_backward_pixel:aq_px_backward] = new_backward_data
-
         self.__last_forward_pixel = aq_px_forward
-        self.__last_backward_pixel = aq_px_backward
+
+        # back scan image is not fully accurate: last line is filled the same direction as the forward axis
+        if self._back_scan_settings is not None:
+            new_backward_data = self._back_scan_image.T.flat[self.__last_backward_pixel:aq_px_backward]
+            for ch in self.constraints.channels:
+                self._back_scan_data.data[ch].T.flat[self.__last_backward_pixel:aq_px_backward] = new_backward_data
+            self.__last_backward_pixel = aq_px_backward
 
         if self.scan_settings.scan_dimension == 1:
             is_finished = aq_lines > 1
@@ -543,20 +550,21 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         else:
             self.__start_timer()
 
-    def get_scan_data(self) -> ScanData:
+    def get_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the scan.
         """
         with self._thread_lock:
             if self._scan_data is None:
-                raise RuntimeError('No scan data in hardware.')
-            return self._scan_data.copy()
+                return None
+            else:
+                return self._scan_data.copy()
 
-    def get_back_scan_data(self) -> ScanData:
+    def get_back_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the backwards scan.
         """
         with self._thread_lock:
             if self._back_scan_data is None:
-                raise RuntimeError('No back scan data in hardware.')
+                return None
             return self._back_scan_data.copy()
 
     def __start_timer(self):

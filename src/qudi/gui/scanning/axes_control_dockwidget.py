@@ -36,7 +36,8 @@ class AxesControlDockWidget(QtWidgets.QDockWidget):
                                       'sigTargetChanged', 'sigSliderMoved', 'axes', 'resolution', 'back_resolution',
                                       'range', 'target', 'set_resolution', 'set_back_resolution',
                                       'get_range', 'set_range', 'get_target', 'set_target',
-                                      'set_assumed_unit_prefix', 'emit_current_settings'})
+                                      'set_assumed_unit_prefix', 'emit_current_settings',
+                                      'set_backward_settings_visibility'})
 
     def __init__(self, scanner_axes: Tuple[ScannerAxis], back_scan_capability: BackScanCapability):
         super().__init__('Axes Control')
@@ -72,17 +73,24 @@ class AxesControlWidget(QtWidgets.QWidget):
 
         column = 1
 
-        for label_text in ['Resolution', '=', 'Back\nResolution']:
+        label = QtWidgets.QLabel('Resolution')
+        label.setFont(font)
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(label, 0, column, 1, 3)
+
+        self._forward_backward_labels = []
+        for label_text in ['Forward', '=', 'Backward']:
             label = QtWidgets.QLabel(label_text)
             label.setFont(font)
             label.setAlignment(QtCore.Qt.AlignCenter)
-            layout.addWidget(label, 0, column)
+            layout.addWidget(label, 1, column)
             column += 1
+            self._forward_backward_labels.append(label)
 
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(vline, 0, column, len(scanner_axes) + 1, 1)
+        layout.addWidget(vline, 0, column, len(scanner_axes) + 2, 1)
         column += 1
 
         label = QtWidgets.QLabel('Scan Range')
@@ -94,15 +102,15 @@ class AxesControlWidget(QtWidgets.QWidget):
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.VLine)
         vline.setFrameShadow(QtWidgets.QFrame.Sunken)
-        layout.addWidget(vline, 0, column, len(scanner_axes) + 1, 1)
+        layout.addWidget(vline, 0, column, len(scanner_axes) + 2, 1)
         column += 2
 
         label = QtWidgets.QLabel('Current Target')
         label.setFont(font)
         label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, column)
+        layout.addWidget(label, 0, column, 1, 1)
 
-        for index, axis in enumerate(scanner_axes, 1):
+        for index, axis in enumerate(scanner_axes, 2):
             ax_name = axis.name
             widgets = {}
             label = QtWidgets.QLabel('{0}-Axis:'.format(ax_name.title()))
@@ -141,22 +149,6 @@ class AxesControlWidget(QtWidgets.QWidget):
             check_box = QtWidgets.QCheckBox()
             widgets['eq_checkbox'] = check_box
 
-            # adapt to back scan capability of hardware
-            if BackScanCapability.AVAILABLE not in self._back_scan_capability:
-                for widget in ['backward_res_spinbox', 'eq_checkbox']:
-                    widgets[widget].setEnabled(False)
-                    widgets[widget].setToolTip("Back scan is not available.")
-                widgets['eq_checkbox'].setChecked(False)
-                widgets['backward_res_spinbox'].setRange(0, 0)
-                widgets['backward_res_spinbox'].setValue(0)
-            elif BackScanCapability.RESOLUTION_CONFIGURABLE not in self._back_scan_capability:
-                for widget in ['backward_res_spinbox', 'eq_checkbox']:
-                    widgets[widget].setEnabled(False)
-                widgets['eq_checkbox'].setChecked(True)
-                widgets['backward_res_spinbox'].setToolTip("Back resolution is not configurable.")
-                # keep back resolution spinbox up to date
-                widgets['forward_res_spinbox'].valueChanged.connect(widgets['backward_res_spinbox'].setValue)
-
             # slider for moving the scanner
             slider = DoubleSlider(QtCore.Qt.Horizontal)
             slider.setObjectName('{0}_position_doubleSlider'.format(ax_name))
@@ -184,6 +176,17 @@ class AxesControlWidget(QtWidgets.QWidget):
             # Remember widgets references for later access
             self.axes_widgets[ax_name] = widgets
 
+            # adapt to back scan capability of hardware
+            if BackScanCapability.AVAILABLE not in self._back_scan_capability:
+                self.set_backward_settings_visibility(False)
+            elif BackScanCapability.RESOLUTION_CONFIGURABLE not in self._back_scan_capability:
+                for widget in ['backward_res_spinbox', 'eq_checkbox']:
+                    widgets[widget].setEnabled(False)
+                widgets['eq_checkbox'].setChecked(True)
+                widgets['backward_res_spinbox'].setToolTip("Back resolution is not configurable.")
+                # keep back resolution spinbox up to date
+                widgets['forward_res_spinbox'].valueChanged.connect(widgets['backward_res_spinbox'].setValue)
+
             # Connect signals
             # TODO "editingFinished" also emits when window gets focus again, so also after alt+tab.
             #  "valueChanged" was considered as a replacement but is emitted when scrolled or while typing numbers.
@@ -207,6 +210,8 @@ class AxesControlWidget(QtWidgets.QWidget):
             widgets['pos_spinbox'].editingFinished.connect(
                 self.__get_axis_target_callback(ax_name, widgets['pos_spinbox'])
             )
+            if widgets['eq_checkbox'].isEnabled() and widgets['eq_checkbox'].isVisible():
+                widgets['eq_checkbox'].setChecked(True)  # check equal checkbox by default
 
         layout.setColumnStretch(7, 1)
         self.setLayout(layout)
@@ -307,6 +312,13 @@ class AxesControlWidget(QtWidgets.QWidget):
         for ax, res in self.back_resolution.items():
             self.sigBackResolutionChanged.emit(ax, res)
 
+    def set_backward_settings_visibility(self, visible: bool):
+        for widgets in self.axes_widgets.values():
+            widgets['backward_res_spinbox'].setVisible(visible)
+            widgets['eq_checkbox'].setVisible(visible)
+        for label in self._forward_backward_labels:
+            label.setVisible(visible)
+
     def __get_axis_resolution_callback(self, axis, spinbox):
         def callback():
             self.sigResolutionChanged.emit(axis, spinbox.value())
@@ -326,6 +338,7 @@ class AxesControlWidget(QtWidgets.QWidget):
                 forward_spinbox.valueChanged.connect(backward_spinbox.setValue)
                 # ensure that a sigBackResolutionChanged is emitted
                 forward_spinbox.editingFinished.connect(self.__get_axis_back_resolution_callback(axis, forward_spinbox))
+                forward_spinbox.editingFinished.emit()  # emit manually once
                 backward_spinbox.setValue(forward_spinbox.value())  # set manually once
             else:
                 # disconnect from everything and reconnect only to forward resolution callback
