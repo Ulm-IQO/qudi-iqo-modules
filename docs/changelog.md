@@ -9,6 +9,7 @@
   to `qudi.interface.scanning_probe_interface`.
 
 ### Bugfixes
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Improve handling of errors during start of a scan in the scanning probe toolchain.
 - Now correct microwave phases in predefined method generate_hahnecho_exp()
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
