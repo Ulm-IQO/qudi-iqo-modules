@@ -100,6 +100,8 @@ class ScanningOptimizeLogic(LogicBase):
             if len(self._avail_axes) >= 3:
                 self._scan_sequence = [(self._avail_axes[0].name, self._avail_axes[1].name),
                                        (self._avail_axes[2].name,)]
+                self._scan_sequence = [(self._avail_axes[0].name, self._avail_axes[1].name,
+                                       self._avail_axes[2].name,)]
             elif len(self._avail_axes) == 2:
                 self._scan_sequence = [(self._avail_axes[0].name, self._avail_axes[1].name)]
             elif len(self._avail_axes) == 1:

@@ -123,7 +123,7 @@ class ScannerGui(GuiBase):
     _optimizer_plot_dims: List[int] = ConfigOption(
         name='optimizer_plot_dimensions',
         default=[2, 1],
-        checker=lambda x: set(x) == {1, 2},  # only 1D and 2D optimizations are supported
+   #     checker=lambda x: set(x) == {1, 2},  # only 1D and 2D optimizations are supported
     )
     # minimum crosshair size as fraction of the displayed scan range
     _min_crosshair_size_fraction = ConfigOption(name='min_crosshair_size_fraction', default=1/50, missing='nothing')
