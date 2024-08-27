@@ -1304,8 +1304,14 @@ class PoiManagerLogic(LogicBase):
     @_roi.constructor
     def dict_to_roi(self, roi_dict):
         if isinstance(roi_dict, RegionOfInterest):
-            return roi_dict
-        return RegionOfInterest.from_dict(roi_dict)
+            return
+        try:
+            roi = RegionOfInterest.from_dict(roi_dict)
+        except Exception as e:
+            self.log.warning(f"Couldn't restore roi from dict, defaulting to empty roi: {str(e)}")
+            roi = RegionOfInterest()
+
+        return roi
 
     @_roi.representer
     def roi_to_dict(self, roi):
