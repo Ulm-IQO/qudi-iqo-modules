@@ -31,10 +31,17 @@ class FreqDomainData:
         self.peak_factor = 10
 
     def get_peaks(self):
+        """
+        find the peaks of the data.
+        The height of peak detection is given by its mean and its standard deviation
+        multiplied by self.peak_factor.
+        """
         mean = self.y.mean()
         std = self.y.std()
         height = mean + self.peak_factor * std
         self.peaks = signal.find_peaks(self.y, height=height)[0]
+        if len(self.peaks) == 0:
+            self.peaks = [int(np.argmax(self.y)),]
 
     @property
     def data_around_peak(self):
