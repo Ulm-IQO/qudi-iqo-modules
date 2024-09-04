@@ -141,7 +141,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         # List of all available counters and terminals for this device
         self.__all_counters = tuple()
-        self.__all_digital_terminals = tuple()
+        self.__all_digital_in_terminals = tuple()
         self.__all_analog_in_terminals = tuple()
         self.__all_analog_out_terminals = tuple()
 
@@ -178,7 +178,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         self.__all_counters = tuple(
             self._extract_terminal(ctr) for ctr in self._device_handle.co_physical_chans.channel_names if
             'ctr' in ctr.lower())
-        self.__all_digital_terminals = tuple(
+        self.__all_digital_in_terminals = tuple(
             self._extract_terminal(term) for term in self._device_handle.terminals if 'pfi' in term.lower())
         self.__all_analog_in_terminals = tuple(
             self._extract_terminal(term) for term in self._device_handle.ai_physical_chans.channel_names)
@@ -190,13 +190,13 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         if digital_sources:
             source_set = set(digital_sources)
-            invalid_sources = source_set.difference(set(self.__all_digital_terminals))
+            invalid_sources = source_set.difference(set(self.__all_digital_in_terminals))
             if invalid_sources:
                 self.log.error(
                     'Invalid digital source terminals encountered. Following sources will '
                     'be ignored:\n  {0}\nValid digital input terminals are:\n  {1}'
                     ''.format(', '.join(natural_sort(invalid_sources)),
-                              ', '.join(self.__all_digital_terminals)))
+                              ', '.join(self.__all_digital_in_terminals)))
             digital_sources = natural_sort(source_set.difference(invalid_sources))
 
         analog_sources = tuple(src for src in self._input_channel_units if 'ai' in src)
@@ -228,7 +228,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         # Check if all input channels fit in the device
         if len(digital_sources) > 3:
             raise ValueError(
-                'Too many digital channels specified. Maximum number of digital channels is 3.'
+                'Too many digital input channels specified. Maximum number of digital input channels is 3.'
             )
         if len(analog_sources) > 16:
             raise ValueError(
@@ -250,7 +250,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         # Check Physical clock output if specified
         if self._physical_sample_clock_output is not None:
             self._physical_sample_clock_output = self._extract_terminal(self._physical_sample_clock_output)
-            assert self._physical_sample_clock_output in self.__all_digital_terminals, \
+            assert self._physical_sample_clock_output in self.__all_digital_in_terminals, \
                 f'Physical sample clock terminal specified in config is invalid'
 
         # Get correct sampling frequency limits based on config specified channels
@@ -540,7 +540,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 self.module_state.unlock()
                 raise NiInitError('Sample clock initialization failed; all tasks terminated')
 
-            if self._init_digital_tasks() < 0:
+            if self._init_digital_in_tasks() < 0:
                 self.terminate_all_tasks()
                 self.module_state.unlock()
                 raise NiInitError('Counter task initialization failed; all tasks terminated')
@@ -823,14 +823,14 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                                                  self._device_name, self._physical_sample_clock_output))
         return 0
 
-    def _init_digital_tasks(self):
+    def _init_digital_in_tasks(self):
         """
         Set up tasks for digital event counting.
 
         @return int: error code (0:OK, -1:error)
         """
-        digital_channels = self.__active_channels['di_channels']
-        if not digital_channels:
+        digital_input_channels = self.__active_channels['di_channels']
+        if not digital_input_channels:
             return 0
         if self._di_task_handles:
             self.log.error('Digital counting tasks have already been generated. '
@@ -849,7 +849,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         # sample_freq = float(self._clk_task_handle.co_channels.all.co_pulse_freq)
 
         # Set up digital counting tasks
-        for i, chnl in enumerate(digital_channels):
+        for i, chnl in enumerate(digital_input_channels):
             chnl_name = '/{0}/{1}'.format(self._device_name, chnl)
             task_name = 'PeriodCounter__{0}_{1}'.format(chnl, id(self))
             # Try to find available counter
