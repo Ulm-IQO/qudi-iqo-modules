@@ -58,11 +58,13 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 PFI9: 'c/s'
                 ai0: 'V'
                 ai1: 'V'
-            output_channel_units: # Specify used output channels
+            output_channel_units: # Specify used analog output channels
                 'ao0': 'V'
                 'ao1': 'V'
                 'ao2': 'V'
                 'ao3': 'V'
+            digital_output_lines: # specify used digital output channels
+                'port0': 32
             adc_voltage_ranges:
                 ai0: [-10, 10]  # optional
                 ai1: [-10, 10]  # optional
@@ -90,6 +92,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     _output_channel_units = ConfigOption(name='output_channel_units',
                                          default={'ao{}'.format(channel_index): 'V' for channel_index in range(0, 4)},
                                          missing='error')
+
+    _digital_output_lines = ConfigOption(name='digital_output_lines', default=dict(), missing='nothing')
 
     _default_output_mode = ConfigOption(name='default_output_mode', default='JUMP_LIST',
                                         constructor=lambda x: SamplingOutputMode[x.upper()],
@@ -144,6 +148,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         self.__all_digital_in_terminals = tuple()
         self.__all_analog_in_terminals = tuple()
         self.__all_analog_out_terminals = tuple()
+        self.__all_digital_out_terminals = tuple()
 
         # currently active channels
         self.__active_channels = dict(di_channels=frozenset(), ai_channels=frozenset(), ao_channels=frozenset())
@@ -161,6 +166,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                                      for key, value in self._input_channel_units.items()}
         self._output_channel_units = {self._extract_terminal(key): value
                                       for key, value in self._output_channel_units.items()}
+        self._digital_output_lines = {self._extract_terminal(key): value
+                                      for key, value in self._digital_output_lines.items()}
 
         # Check if device is connected and set device to use
         dev_names = ni.system.System().devices.device_names
@@ -184,6 +191,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             self._extract_terminal(term) for term in self._device_handle.ai_physical_chans.channel_names)
         self.__all_analog_out_terminals = tuple(
             self._extract_terminal(term) for term in self._device_handle.ao_physical_chans.channel_names)
+        self.__all_digital_out_terminals = tuple(
+            self._extract_terminal(term) for term in self._device_handle.do_ports.channel_names)
 
         # Get digital input terminals from _input_channel_units
         digital_sources = tuple(src for src in self._input_channel_units if 'pfi' in src)
@@ -225,6 +234,19 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                                          ', '.join(self.__all_analog_in_terminals)))
             analog_outputs = natural_sort(source_set.difference(invalid_sources))
 
+        # get digital output channels from _digital_output_lines
+        digital_outputs = tuple(src for src in self._digital_output_lines if 'port' in src)
+
+        if digital_outputs:
+            output_set = set(digital_outputs)
+            invalid_outputs = output_set.difference(set(self.__all_digital_out_terminals))
+            if invalid_outputs:
+                self.log.error('Invalid digital output ports encountered. Following ports will '
+                               'be ignored:\n  {0}\nValid digital output ports are:\n  {1}'
+                               ''.format(', '.join(natural_sort(invalid_outputs)),
+                                         ', '.join(self.__all_digital_out_terminals)))
+            digital_outputs = natural_sort(output_set.difference(invalid_outputs))
+
         # Check if all input channels fit in the device
         if len(digital_sources) > 3:
             raise ValueError(
@@ -236,10 +258,15 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             )
 
         # If there are any invalid inputs or outputs specified, raise an error
-        defined_channel_set = set.union(set(self._input_channel_units), set(self._output_channel_units))
+        defined_channel_set = set.union(
+            set(self._input_channel_units),
+            set(self._output_channel_units),
+            set(self._digital_output_lines),
+        )
         detected_channel_set = set.union(set(analog_sources),
                                          set(digital_sources),
-                                         set(analog_outputs))
+                                         set(analog_outputs),
+                                         set(digital_outputs))
         invalid_channels = set.difference(defined_channel_set, detected_channel_set)
 
         if invalid_channels:
@@ -284,6 +311,11 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                                   for key, value in self._adc_voltage_ranges.items()}
 
             input_limits.update(adc_voltage_ranges)
+
+        if digital_outputs:
+            self._output_channel_units.update({ch: "" for ch in digital_outputs})  # digital outputs have no unit
+            # digital output limits are integers depending on the maximum number of lines
+            output_voltage_ranges.update({ch: (0, 2 ** lines) for ch, lines in self._digital_output_lines.items()})
 
         # Create constraints
         self._constraints = FiniteSamplingIOConstraints(
