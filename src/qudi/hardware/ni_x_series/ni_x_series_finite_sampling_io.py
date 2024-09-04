@@ -22,6 +22,8 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import ctypes
+from typing import Iterable
+
 import numpy as np
 import nidaqmx as ni
 from nidaqmx._lib import lib_importer  # Due to NIDAQmx C-API bug needed to bypass property getter
@@ -151,7 +153,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         self.__all_digital_out_terminals = tuple()
 
         # currently active channels
-        self.__active_channels = dict(di_channels=frozenset(), ai_channels=frozenset(), ao_channels=frozenset())
+        self.__active_channels = dict(
+            di_channels=frozenset(),
+            ai_channels=frozenset(),
+            do_channels=frozenset(),
+            ao_channels=frozenset()
+        )
 
         # Stored hardware constraints
         self._constraints = None
@@ -357,9 +364,9 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         @return (frozenset, frozenset): active input channels, active output channels
         """
         return self.__active_channels['di_channels'].union(self.__active_channels['ai_channels']), \
-               self.__active_channels['ao_channels']
+               self.__active_channels['do_channels'].union(self.__active_channels['ao_channels'])
 
-    def set_active_channels(self, input_channels, output_channels):
+    def set_active_channels(self, input_channels: Iterable[str], output_channels: Iterable[str]) -> None:
         """ Will set the currently active input and output channels.
         All other channels will be deactivated.
 
@@ -384,16 +391,19 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             f'{set(input_channels).difference(set(self._constraints.input_channel_names))}" not defined in config '
 
         assert set(output_channels).issubset(set(self._constraints.output_channel_names)), \
-            f'Trying to set invalid input channels "' \
+            f'Trying to set invalid output channels "' \
             f'{set(output_channels).difference(set(self._constraints.output_channel_names))}" not defined in config '
 
         di_channels, ai_channels = self._extract_ai_di_from_input_channels(input_channels)
+        ao_channels = [ch for ch in output_channels if "ao" in ch]
+        do_channels = [ch for ch in output_channels if "port" in ch]
 
         with self._thread_lock:
             self.__active_channels['di_channels'], self.__active_channels['ai_channels'] \
                 = frozenset(di_channels), frozenset(ai_channels)
 
-            self.__active_channels['ao_channels'] = frozenset(output_channels)
+            self.__active_channels['ao_channels'] = frozenset(ao_channels)
+            self.__active_channels['do_channels'] = frozenset(do_channels)
 
     @property
     def sample_rate(self):
