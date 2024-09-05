@@ -9,6 +9,7 @@
   to `qudi.interface.scanning_probe_interface`.
 
 ### Bugfixes
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Improve handling of errors during start of a scan in the scanning probe toolchain.
 - Now correct microwave phases in predefined method generate_hahnecho_exp()
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
@@ -57,7 +58,6 @@ Configuration for time series toolchain needs changes as well. See `default.cfg`
 docstrings.
 
 ### Bugfixes
-- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Basic data saving in `TimeSeriesReaderLogic` works now.
 - Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
 - Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle
