@@ -37,6 +37,13 @@ from qudi.core.configoption import ConfigOption
 import itertools
 
 
+def sequence_dimension_constructor(dimensions: list) -> list:
+    if set(dimensions) <= {1, 2}:
+        print(dimensions)
+        return dimensions
+    raise ValueError(f"Dimensions must be in {set([1,2])}, received {dimensions=}.")
+
+
 class ScanningOptimizeLogic(LogicBase):
     """
     This logic module makes use of the scanning probe logic to perform a sequence of
@@ -62,7 +69,7 @@ class ScanningOptimizeLogic(LogicBase):
     _optimizer_sequence_dimensions: List[int] = ConfigOption(
         name='optimizer_sequence_dimensions',
         default=[2, 1],
-        checker=lambda x: set(x) <= {1, 2},  # only 1D and 2D optimizations are supported
+        constructor=sequence_dimension_constructor
     )
 
     # status variables
@@ -195,7 +202,11 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def optimizer_sequence_dimensions(self) -> list:
-        self._optimizer_sequence_dimensions
+        return self._optimizer_sequence_dimensions
+
+    @optimizer_sequence_dimensions.setter
+    def optimizer_sequence_dimensions(self, dimensions: list) -> None:
+        self._optimizer_sequence_dimensions = sequence_dimension_constructor(dimensions)
 
     @property
     def optimizer_running(self):
@@ -415,3 +426,4 @@ class ScanningOptimizeLogic(LogicBase):
         self._scan_frequency = {ax.name: max(ax.frequency.minimum, ax.frequency.maximum / 100) for ax in axes.values()}
         self._back_scan_resolution = {}
         self._back_scan_frequency = {}
+
