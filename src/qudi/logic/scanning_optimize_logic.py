@@ -108,16 +108,10 @@ class ScanningOptimizeLogic(LogicBase):
             self._set_default_scan_settings()
 
         self._avail_axes = tuple(axes.values())
-        if self._scan_sequence is None:
-            if len(self._avail_axes) >= 3:
-                self._scan_sequence = [(self._avail_axes[0].name, self._avail_axes[1].name),
-                                       (self._avail_axes[2].name,)]
-            elif len(self._avail_axes) == 2:
-                self._scan_sequence = [(self._avail_axes[0].name, self._avail_axes[1].name)]
-            elif len(self._avail_axes) == 1:
-                self._scan_sequence = [(self._avail_axes[0].name,)]
-            else:
-                self._scan_sequence = list()
+        possible_scan_sequences = self.scan_sequences
+        if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
+            self._scan_sequence = possible_scan_sequences[0]
+
         if self._data_channel is None:
             self._data_channel = tuple(channels.values())[0].name
 
