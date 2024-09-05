@@ -103,7 +103,6 @@ class ScannerGui(GuiBase):
         options:
             image_axes_padding: 0.02
             default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
-            optimizer_plot_dimensions: [2, 1]   # optimization sequence dim. order, here for 2D, 1D, e.g. XY, Z
             min_crosshair_size_fraction: 0.02   # minimum crosshair size as fraction of the displayed scan range
         connect:
             scanning_logic: scanning_probe_logic
@@ -119,12 +118,6 @@ class ScannerGui(GuiBase):
 
     # config options for gui
     _default_position_unit_prefix = ConfigOption(name='default_position_unit_prefix', default=None)
-    # for all optimizer sub widgets, (2= xy, 1=z)
-    _optimizer_plot_dims: List[int] = ConfigOption(
-        name='optimizer_plot_dimensions',
-        default=[2, 1],
-        checker=lambda x: set(x) == {1, 2},  # only 1D and 2D optimizations are supported
-    )
     # minimum crosshair size as fraction of the displayed scan range
     _min_crosshair_size_fraction = ConfigOption(name='min_crosshair_size_fraction', default=1/50, missing='nothing')
 
@@ -340,21 +333,10 @@ class ScannerGui(GuiBase):
         """ Configuration and initialisation of the optimizer settings dialog.
         """
         scan_logic: ScanningProbeLogic = self._scanning_logic()
-        axes_obj = tuple(scan_logic.scanner_axes.values())
-        axes_names = [ax.name for ax in axes_obj]
-
-        # figure out sensible optimization sequences for user selection
-        possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in self._optimizer_plot_dims]
-        optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
-        sequences_no_axis_twice = []
-        for sequence in optimization_sequences:
-            occurring_axes = [axis for step in sequence for axis in step]
-            if len(occurring_axes) <= len(set(occurring_axes)):
-                sequences_no_axis_twice.append(sequence)
-
+        optimize_logc : ScanningOptimizeLogic = self._optimize_logic()
         self._osd = OptimizerSettingsDialog(scan_logic.scanner_axes.values(),
                                             scan_logic.scanner_channels.values(),
-                                            sequences_no_axis_twice,
+                                            optimize_logc.scan_sequences,
                                             scan_logic.scanner_constraints.back_scan_capability)
 
         # Connect MainWindow actions
@@ -421,7 +403,7 @@ class ScannerGui(GuiBase):
         )
 
         self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
-                                                        plot_dims=self._optimizer_plot_dims,
+                                                        plot_dims=self._optimize_logic()._optimizer_plot_dims,
                                                         sequence=self._optimize_logic().scan_sequence)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)

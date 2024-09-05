@@ -33,6 +33,8 @@ from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util.fit_models.gaussian import Gaussian2D, Gaussian
+from qudi.core.configoption import ConfigOption
+import itertools
 
 
 class ScanningOptimizeLogic(LogicBase):
@@ -46,11 +48,21 @@ class ScanningOptimizeLogic(LogicBase):
         module.Class: 'scanning_optimize_logic.ScanningOptimizeLogic'
         connect:
             scan_logic: scanning_probe_logic
+        options:
+            optimizer_plot_dimensions: [2, 1] # optimization sequence dim. order, here for 2D, 1D, e.g. XY, Z
 
     """
 
     # declare connectors
     _scan_logic = Connector(name='scan_logic', interface='ScanningProbeLogic')
+
+    # declare ConfigOptions
+    # for all optimizer sub widgets, (2= xy, 1=z)
+    _optimizer_plot_dims: List[int] = ConfigOption(
+        name='optimizer_plot_dimensions',
+        default=[2, 1],
+        checker=lambda x: set(x) == {1, 2},  # only 1D and 2D optimizations are supported
+    )
 
     # status variables
     # not configuring the back scan parameters is represented by empty dictionaries
@@ -118,6 +130,25 @@ class ScanningOptimizeLogic(LogicBase):
         self._scan_logic().sigScanStateChanged.connect(
             self._scan_state_changed, QtCore.Qt.QueuedConnection
         )
+
+    @property
+    def scan_sequences(self):
+        scan_logic: ScanningProbeLogic = self._scan_logic()
+        axes_names = [ax.name for ax in scan_logic.scanner_axes.values()]
+
+        # figure out sensible optimization sequences for user selection
+        possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in self._optimizer_plot_dims]
+        optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
+        sequences_no_axis_twice = []
+        for sequence in optimization_sequences:
+            occurring_axes = [axis for step in sequence for axis in step]
+            if len(occurring_axes) <= len(set(occurring_axes)):
+                sequences_no_axis_twice.append(sequence)
+
+        self.log.warn(sequences_no_axis_twice)
+        return sequences_no_axis_twice
+
+
 
     def on_deactivate(self):
         """ Reverse steps of activation
