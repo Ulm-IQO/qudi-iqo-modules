@@ -333,10 +333,10 @@ class ScannerGui(GuiBase):
         """ Configuration and initialisation of the optimizer settings dialog.
         """
         scan_logic: ScanningProbeLogic = self._scanning_logic()
-        optimize_logc : ScanningOptimizeLogic = self._optimize_logic()
+        optimize_logic : ScanningOptimizeLogic = self._optimize_logic()
         self._osd = OptimizerSettingsDialog(scan_logic.scanner_axes.values(),
                                             scan_logic.scanner_channels.values(),
-                                            optimize_logc.allowed_scan_sequences,
+                                            optimize_logic.allowed_scan_sequences,
                                             scan_logic.scanner_constraints.back_scan_capability)
 
         # Connect MainWindow actions
