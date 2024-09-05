@@ -110,7 +110,6 @@ class ScanningOptimizeLogic(LogicBase):
 
         self._avail_axes = tuple(axes.values())
         possible_scan_sequences = self.allowed_scan_sequences
-        self.log.warn(f"{possible_scan_sequences=}, {self._scan_sequence}, {self._optimizer_sequence_dimensions}")
         if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
             self._scan_sequence = possible_scan_sequences[0]
 
@@ -180,7 +179,7 @@ class ScanningOptimizeLogic(LogicBase):
             self._scan_sequence = sequence
 
     @property
-    def allowed_scan_sequences(self):
+    def allowed_scan_sequences(self) -> list:
         axes_names = [ax.name for ax in self._avail_axes]
 
         # figure out sensible optimization sequences for user selection
@@ -193,6 +192,10 @@ class ScanningOptimizeLogic(LogicBase):
                 sequences_no_axis_twice.append(sequence)
 
         return sequences_no_axis_twice
+
+    @property
+    def optimizer_sequence_dimensions(self) -> list:
+        self._optimizer_sequence_dimensions
 
     @property
     def optimizer_running(self):
