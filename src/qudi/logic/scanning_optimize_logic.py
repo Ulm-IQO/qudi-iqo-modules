@@ -133,8 +133,7 @@ class ScanningOptimizeLogic(LogicBase):
 
     @property
     def scan_sequences(self):
-        scan_logic: ScanningProbeLogic = self._scan_logic()
-        axes_names = [ax.name for ax in scan_logic.scanner_axes.values()]
+        axes_names = [ax.name for ax in self._avail_axes]
 
         # figure out sensible optimization sequences for user selection
         possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in self._optimizer_plot_dims]
