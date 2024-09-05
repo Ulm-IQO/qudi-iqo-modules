@@ -85,6 +85,7 @@ class ScanningOptimizeLogic(LogicBase):
     # signals
     sigOptimizeStateChanged = QtCore.Signal(bool, dict, object)
     sigOptimizeSettingsChanged = QtCore.Signal(dict)
+    sigOptimizeSequenceDimensionsChanged = QtCore.Signal()
 
     _sigNextSequenceStep = QtCore.Signal()
 
@@ -116,9 +117,7 @@ class ScanningOptimizeLogic(LogicBase):
             self._set_default_scan_settings()
 
         self._avail_axes = tuple(axes.values())
-        possible_scan_sequences = self.allowed_scan_sequences
-        if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
-            self._scan_sequence = possible_scan_sequences[0]
+        self._set_scan_sequence()
 
         if self._data_channel is None:
             self._data_channel = tuple(channels.values())[0].name
@@ -132,6 +131,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._scan_logic().sigScanStateChanged.connect(
             self._scan_state_changed, QtCore.Qt.QueuedConnection
         )
+        self.sigOptimizeSequenceDimensionsChanged.connect(self._set_scan_sequence, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """ Reverse steps of activation
@@ -207,6 +207,7 @@ class ScanningOptimizeLogic(LogicBase):
     @optimizer_sequence_dimensions.setter
     def optimizer_sequence_dimensions(self, dimensions: list) -> None:
         self._optimizer_sequence_dimensions = sequence_dimension_constructor(dimensions)
+        self.sigOptimizeSequenceDimensionsChanged.emit()
 
     @property
     def optimizer_running(self):
@@ -426,4 +427,10 @@ class ScanningOptimizeLogic(LogicBase):
         self._scan_frequency = {ax.name: max(ax.frequency.minimum, ax.frequency.maximum / 100) for ax in axes.values()}
         self._back_scan_resolution = {}
         self._back_scan_frequency = {}
+
+    def _set_scan_sequence(self):
+        possible_scan_sequences = self.allowed_scan_sequences
+        if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
+            self.log.info(f"No valid scan sequence existing, setting scan sequence to {possible_scan_sequences[0]}.")
+            self._scan_sequence = possible_scan_sequences[0]
 
