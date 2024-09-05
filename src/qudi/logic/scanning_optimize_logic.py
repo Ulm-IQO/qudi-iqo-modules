@@ -37,11 +37,6 @@ from qudi.core.configoption import ConfigOption
 import itertools
 
 
-def sequence_dimension_constructor(dimensions: list) -> list:
-    if set(dimensions) <= {1, 2}:
-        print(dimensions)
-        return dimensions
-    raise ValueError(f"Dimensions must be in {set([1,2])}, received {dimensions=}.")
 
 
 class ScanningOptimizeLogic(LogicBase):
@@ -69,7 +64,6 @@ class ScanningOptimizeLogic(LogicBase):
     _optimizer_sequence_dimensions: List[int] = ConfigOption(
         name='optimizer_sequence_dimensions',
         default=[2, 1],
-        constructor=sequence_dimension_constructor
     )
 
     # status variables
@@ -436,4 +430,10 @@ class ScanningOptimizeLogic(LogicBase):
         if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
             self.log.info(f"No valid scan sequence existing, setting scan sequence to {possible_scan_sequences[0]}.")
             self._scan_sequence = possible_scan_sequences[0]
+
+    @_optimizer_sequence_dimensions.constructor
+    def sequence_dimension_constructor(self, dimensions: list) -> list:
+        if set(dimensions) <= {1, 2}:
+            return dimensions
+        raise ValueError(f"Dimensions must be in {set([1,2])}, received {dimensions=}.")
 
