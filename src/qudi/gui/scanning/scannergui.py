@@ -336,7 +336,7 @@ class ScannerGui(GuiBase):
         optimize_logc : ScanningOptimizeLogic = self._optimize_logic()
         self._osd = OptimizerSettingsDialog(scan_logic.scanner_axes.values(),
                                             scan_logic.scanner_channels.values(),
-                                            optimize_logc.scan_sequences,
+                                            optimize_logc.allowed_scan_sequences,
                                             scan_logic.scanner_constraints.back_scan_capability)
 
         # Connect MainWindow actions
@@ -403,7 +403,7 @@ class ScannerGui(GuiBase):
         )
 
         self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
-                                                        plot_dims=self._optimize_logic()._optimizer_plot_dims,
+                                                        plot_dims=self._optimize_logic()._optimizer_sequence_dimensions,
                                                         sequence=self._optimize_logic().scan_sequence)
         self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
         self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)

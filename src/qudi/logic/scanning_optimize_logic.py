@@ -49,7 +49,8 @@ class ScanningOptimizeLogic(LogicBase):
         connect:
             scan_logic: scanning_probe_logic
         options:
-            optimizer_plot_dimensions: [2, 1] # optimization sequence dim. order, here for 2D, 1D, e.g. XY, Z
+            optimizer_sequence_dimensions: [2, 1] # optimization sequence dim. order,
+                                                  # here for first 2D optimization and then 1D optimization, e.g. XY, Z
 
     """
 
@@ -58,8 +59,8 @@ class ScanningOptimizeLogic(LogicBase):
 
     # declare ConfigOptions
     # for all optimizer sub widgets, (2= xy, 1=z)
-    _optimizer_plot_dims: List[int] = ConfigOption(
-        name='optimizer_plot_dimensions',
+    _optimizer_sequence_dimensions: List[int] = ConfigOption(
+        name='optimizer_sequence_dimensions',
         default=[2, 1],
         checker=lambda x: set(x) <= {1, 2},  # only 1D and 2D optimizations are supported
     )
@@ -108,7 +109,8 @@ class ScanningOptimizeLogic(LogicBase):
             self._set_default_scan_settings()
 
         self._avail_axes = tuple(axes.values())
-        possible_scan_sequences = self.scan_sequences
+        possible_scan_sequences = self.allowed_scan_sequences
+        self.log.warn(f"{possible_scan_sequences=}, {self._scan_sequence}, {self._optimizer_sequence_dimensions}")
         if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
             self._scan_sequence = possible_scan_sequences[0]
 
@@ -124,24 +126,6 @@ class ScanningOptimizeLogic(LogicBase):
         self._scan_logic().sigScanStateChanged.connect(
             self._scan_state_changed, QtCore.Qt.QueuedConnection
         )
-
-    @property
-    def scan_sequences(self):
-        axes_names = [ax.name for ax in self._avail_axes]
-
-        # figure out sensible optimization sequences for user selection
-        possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in self._optimizer_plot_dims]
-        optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
-        sequences_no_axis_twice = []
-        for sequence in optimization_sequences:
-            occurring_axes = [axis for step in sequence for axis in step]
-            if len(occurring_axes) <= len(set(occurring_axes)):
-                sequences_no_axis_twice.append(sequence)
-
-        self.log.warn(sequences_no_axis_twice)
-        return sequences_no_axis_twice
-
-
 
     def on_deactivate(self):
         """ Reverse steps of activation
@@ -194,6 +178,21 @@ class ScanningOptimizeLogic(LogicBase):
                            f" available axes ({available_axes}).")
         else:
             self._scan_sequence = sequence
+
+    @property
+    def allowed_scan_sequences(self):
+        axes_names = [ax.name for ax in self._avail_axes]
+
+        # figure out sensible optimization sequences for user selection
+        possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in self._optimizer_sequence_dimensions]
+        optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
+        sequences_no_axis_twice = []
+        for sequence in optimization_sequences:
+            occurring_axes = [axis for step in sequence for axis in step]
+            if len(occurring_axes) <= len(set(occurring_axes)):
+                sequences_no_axis_twice.append(sequence)
+
+        return sequences_no_axis_twice
 
     @property
     def optimizer_running(self):
