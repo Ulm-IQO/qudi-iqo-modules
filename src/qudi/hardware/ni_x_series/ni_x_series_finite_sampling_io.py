@@ -28,7 +28,7 @@ import numpy as np
 import nidaqmx as ni
 from nidaqmx._lib import lib_importer  # Due to NIDAQmx C-API bug needed to bypass property getter
 from nidaqmx.stream_readers import AnalogMultiChannelReader, CounterReader
-from nidaqmx.stream_writers import AnalogMultiChannelWriter, DigitalMultiChannelWriter
+from nidaqmx.stream_writers import AnalogMultiChannelWriter, DigitalSingleChannelWriter
 
 from qudi.core.configoption import ConfigOption
 from qudi.util.helpers import natural_sort
@@ -65,8 +65,9 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 'ao1': 'V'
                 'ao2': 'V'
                 'ao3': 'V'
-            digital_output_lines: # specify used digital output channels
-                'port0': 32
+            digital_output_lines: # specify used digital output lines - port0 supported only
+                - 'port0/line0'
+                - 'port0/line4'
             adc_voltage_ranges:
                 ai0: [-10, 10]  # optional
                 ai1: [-10, 10]  # optional
@@ -95,7 +96,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                                          default={'ao{}'.format(channel_index): 'V' for channel_index in range(0, 4)},
                                          missing='error')
 
-    _digital_output_lines = ConfigOption(name='digital_output_lines', default=dict(), missing='nothing')
+    _digital_output_lines = ConfigOption(name='digital_output_lines', default=list(), missing='nothing')
 
     _default_output_mode = ConfigOption(name='default_output_mode', default='JUMP_LIST',
                                         constructor=lambda x: SamplingOutputMode[x.upper()],
@@ -175,8 +176,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                                      for key, value in self._input_channel_units.items()}
         self._output_channel_units = {self._extract_terminal(key): value
                                       for key, value in self._output_channel_units.items()}
-        self._digital_output_lines = {self._extract_terminal(key): value
-                                      for key, value in self._digital_output_lines.items()}
+        self._digital_output_lines = [self._extract_terminal(i) for i in self._digital_output_lines]
 
         # Check if device is connected and set device to use
         dev_names = ni.system.System().devices.device_names
@@ -201,7 +201,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         self.__all_analog_out_terminals = tuple(
             self._extract_terminal(term) for term in self._device_handle.ao_physical_chans.channel_names)
         self.__all_digital_out_terminals = tuple(
-            self._extract_terminal(term) for term in self._device_handle.do_ports.channel_names)
+            self._extract_terminal(term) for term in self._device_handle.do_lines.channel_names)
 
         # Get digital input terminals from _input_channel_units
         digital_sources = tuple(src for src in self._input_channel_units if 'pfi' in src)
@@ -244,14 +244,19 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             analog_outputs = natural_sort(source_set.difference(invalid_sources))
 
         # get digital output channels from _digital_output_lines
-        digital_outputs = tuple(src for src in self._digital_output_lines if 'port' in src)
+        digital_outputs = tuple(src for src in self._digital_output_lines if 'line' in src)
+
+        for digital_output in digital_outputs:
+            if "port0" not in digital_output:
+                raise ValueError(f"Digital output line '{digital_output}' is not supported.\n"
+                                 f"Only digital output lines belonging to port0 support buffered operations.")
 
         if digital_outputs:
             output_set = set(digital_outputs)
             invalid_outputs = output_set.difference(set(self.__all_digital_out_terminals))
             if invalid_outputs:
-                self.log.error('Invalid digital output ports encountered. Following ports will '
-                               'be ignored:\n  {0}\nValid digital output ports are:\n  {1}'
+                self.log.error('Invalid digital output lines encountered. Following lines will '
+                               'be ignored:\n  {0}\nValid digital output lines are:\n  {1}'
                                ''.format(', '.join(natural_sort(invalid_outputs)),
                                          ', '.join(self.__all_digital_out_terminals)))
             digital_outputs = natural_sort(output_set.difference(invalid_outputs))
@@ -323,8 +328,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         if digital_outputs:
             self._output_channel_units.update({ch: "" for ch in digital_outputs})  # digital outputs have no unit
-            # digital output limits are integers depending on the maximum number of lines
-            output_voltage_ranges.update({ch: (0, 2 ** lines) for ch, lines in self._digital_output_lines.items()})
+            output_voltage_ranges.update({ch: (0, 1) for ch in self._digital_output_lines})
 
         # Create constraints
         self._constraints = FiniteSamplingIOConstraints(
@@ -398,7 +402,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         di_channels, ai_channels = self._extract_ai_di_from_input_channels(input_channels)
         ao_channels = [ch for ch in output_channels if "ao" in ch]
-        do_channels = [ch for ch in output_channels if "port" in ch]
+        do_channels = [ch for ch in output_channels if "line" in ch]
 
         with self._thread_lock:
             self.__active_channels['di_channels'], self.__active_channels['ai_channels'] \
@@ -615,10 +619,10 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 self.module_state.unlock()
                 raise
 
-            digital_output_data = np.ndarray((len(self.__active_channels["do_channels"]), self.frame_size),
-                                             dtype="uint32")
-            for num, digital_output_channel in enumerate(self.__active_channels["do_channels"]):
-                digital_output_data[num] = self.__frame_buffer[digital_output_channel]
+            digital_output_data = np.zeros(self.frame_size, dtype="uint32")
+            for digital_output_channel in self.__active_channels["do_channels"]:
+                line_index = int(digital_output_channel.split("line")[-1])
+                digital_output_data += 2 ** line_index * self.__frame_buffer[digital_output_channel].astype("uint32")
 
             try:
                 self._do_writer.write_many_sample_port_uint32(digital_output_data)
@@ -1203,9 +1207,10 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             return -1
 
         try:
-            for do_channel in digital_out_channels:
-                do_ch_str = f'/{self._device_name}/{do_channel}'
-                do_task.do_channels.add_do_chan(do_ch_str)
+            do_ch_str_combination = ''.join([  # combine all lines into single channel, e.g. port0/line0,port0/line4
+                f'/{self._device_name}/{do_channel},' for do_channel in digital_out_channels
+            ])
+            do_task.do_channels.add_do_chan(do_ch_str_combination)
             do_task.timing.cfg_samp_clk_timing(sample_freq,
                                                source=clock_channel,
                                                active_edge=ni.constants.Edge.RISING,
@@ -1238,7 +1243,7 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             return -1
 
         try:
-            self._do_writer = DigitalMultiChannelWriter(do_task.in_stream)
+            self._do_writer = DigitalSingleChannelWriter(do_task.out_stream)
             self._do_writer.verify_array_shape = False
         except ni.DaqError:
             try:
