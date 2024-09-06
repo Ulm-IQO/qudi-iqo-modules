@@ -41,8 +41,11 @@ import warnings
 
 class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     """
-    A module for a National Instrument device that outputs voltages and records input from digital channels and/or
-    analog channels in a hardware timed fashion. Either as an equidistant sweep or with a list of values to write
+    A module for a National Instrument device that
+     - outputs analog voltages
+     - (optionally) outputs digital signals
+     - records input from digital channels and/or analog channels
+    all in a hardware timed fashion. Either as an equidistant sweep or with a list of values to write
     depending on the output mode.
 
     !!!!!!Tested and developed for NI USB 63XX, NI PCIe 63XX and NI PXIe 63XX DEVICES ONLY !!!!!!
