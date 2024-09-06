@@ -30,8 +30,10 @@ from typing import Optional, List
 from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWidget
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
 from qudi.util.widgets.plotting.plot_item import XYPlotItem
+from qudi.util.widgets.plotting.interactive_curve import CursorPositionLabel
 from qudi.util.paths import get_artwork_dir
 from qudi.interface.scanning_probe_interface import ScanData, ScannerAxis, ScannerChannel
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
 class _BaseScanWidget(QtWidgets.QWidget):
@@ -76,14 +78,25 @@ class _BaseScanWidget(QtWidgets.QWidget):
             QtWidgets.QComboBox.AdjustToContentsOnFirstShow
         )
 
+        # Create QLineEdit for save tag
+        self.save_nametag_lineedit = QtWidgets.QLineEdit()
+        self.save_nametag_lineedit.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
+                                                 QtWidgets.QSizePolicy.Fixed)
+        self.save_nametag_lineedit.setMinimumWidth(
+            QtGui.QFontMetrics(ScienDSpinBox().font()).width(75 * ' ')  # roughly 75 chars shown
+        )
+        self.save_nametag_lineedit.setToolTip('Enter a nametag to include in saved file name')
+
         layout.addWidget(self.toggle_scan_button, 0, 0)
         layout.addWidget(self.save_scan_button, 0, 1)
-        layout.addWidget(self.channel_selection_label, 0, 2)
-        layout.addWidget(self.channel_selection_combobox, 0, 3)
+        layout.addWidget(self.save_nametag_lineedit, 0, 2)
+        layout.addWidget(self.channel_selection_label, 0, 3)
+        layout.addWidget(self.channel_selection_combobox, 0, 4)
         layout.setColumnStretch(2, 1)
         layout.setColumnStretch(3, 1)
+        layout.setColumnStretch(4, 1)
 
-        self._scan_data = None
+        self._scan_data: Optional[ScanData] = None
 
 
 class Scan1DWidget(_BaseScanWidget):
@@ -112,7 +125,7 @@ class Scan1DWidget(_BaseScanWidget):
         self.plot_widget.setLabel('bottom', text=axes[0].name.title(), units=axes[0].unit)
         self.plot_widget.setLabel('left', text=channels[0].name, units=channels[0].unit)
 
-        self.layout().addWidget(self.plot_widget, 1, 0, 1, 4)
+        self.layout().addWidget(self.plot_widget, 1, 0, 1, 5)
 
         # disable buggy pyqtgraph 'Export..' context menu
         self.plot_widget.getPlotItem().vb.scene().contextMenu[0].setVisible(False)
@@ -154,8 +167,8 @@ class Scan1DWidget(_BaseScanWidget):
 
     def set_scan_data(self, data: ScanData) -> None:
         # Save reference for channel changes
-        update_range = (self._scan_data is None) or (self._scan_data.scan_range != data.scan_range) \
-                        or (self._scan_data.scan_resolution != data.scan_resolution)
+        update_range = (self._scan_data is None) or (self._scan_data.settings.range != data.settings.range) \
+                        or (self._scan_data.settings.resolution != data.settings.resolution)
         self._scan_data = data
         # Set data
         self._update_scan_data(update_range=update_range)
@@ -182,12 +195,12 @@ class Scan1DWidget(_BaseScanWidget):
     def _update_scan_data(self, update_range: bool) -> None:
         current_channel = self.channel_selection_combobox.currentText()
         if (self._scan_data is None) or (self._scan_data.data is None) \
-                or (current_channel not in self._scan_data.channels):
+                or (current_channel not in self._scan_data.settings.channels):
             self.plot_item.clear()
         else:
             if update_range:
-                x_data = np.linspace(*self._scan_data.scan_range[0],
-                                     self._scan_data.scan_resolution[0])
+                x_data = np.linspace(*self._scan_data.settings.range[0],
+                                     self._scan_data.settings.resolution[0])
                 self.plot_item.setData(y=self._scan_data.data[current_channel], x=x_data)
             else:
                 self.plot_item.setData(y=self._scan_data.data[current_channel],
@@ -206,14 +219,22 @@ class Scan2DWidget(_BaseScanWidget):
                  axes: Tuple[ScannerAxis, ScannerAxis],
                  channels: Sequence[ScannerChannel],
                  parent: Optional[QtWidgets.QWidget] = None,
-                 xy_region_min_size_percentile: Optional[float] = None
+                 xy_region_min_size_percentile: Optional[float] = None,
+                 max_mouse_pos_update_rate: Optional[float] = 20.
                  ) -> None:
         super().__init__(channels, parent=parent)
-
-        self.image_widget = RubberbandZoomSelectionImageWidget(allow_tracking_outside_data=True,
-                                                               xy_region_selection_crosshair=True,
-                                                               xy_region_selection_handles=False,
-                                                               xy_region_min_size_percentile=xy_region_min_size_percentile)
+         
+        self.position_label = CursorPositionLabel()
+        self.position_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        self.position_label.set_units(axes[0].unit, axes[1].unit)
+        self.image_widget = RubberbandZoomSelectionImageWidget(
+            allow_tracking_outside_data=True,
+            max_mouse_pos_update_rate=max_mouse_pos_update_rate,
+            xy_region_selection_crosshair=True,
+            xy_region_selection_handles=False,
+            xy_region_min_size_percentile=xy_region_min_size_percentile
+        )
+        self.image_widget.sigMouseMoved.connect(self.position_label.update_position)
         self.image_widget.set_selection_mutable(True)
         self.image_widget.add_region_selection(span=((-0.5, 0.5), (-0.5, 0.5)),
                                                mode=self.image_widget.SelectionMode.XY)
@@ -225,7 +246,8 @@ class Scan2DWidget(_BaseScanWidget):
         self.image_widget.set_axis_label('left', label=axes[1].name.title(), unit=axes[1].unit)
         self.image_widget.set_data_label(label=channels[0].name, unit=channels[0].unit)
 
-        self.layout().addWidget(self.image_widget, 1, 0, 1, 4)
+        self.layout().addWidget(self.image_widget, 1, 0, 1, 5)
+        self.layout().addWidget(self.position_label, 2, 0, 1, 5)
 
         # disable buggy pyqtgraph 'Export..' context menu
         self.image_widget.plot_widget.getPlotItem().vb.scene().contextMenu[0].setVisible(False)
@@ -311,10 +333,10 @@ class Scan2DWidget(_BaseScanWidget):
     def _update_scan_data(self) -> None:
         current_channel = self.channel_selection_combobox.currentText()
         if (self._scan_data is None) or (self._scan_data.data is None) \
-            or (current_channel not in self._scan_data.channels):
+            or (current_channel not in self._scan_data.settings.channels):
             self.image_widget.set_image(None)
         else:
             self.image_widget.set_image(self._scan_data.data[current_channel])
-            self.image_widget.set_image_extent(self._scan_data.scan_range,
+            self.image_widget.set_image_extent(self._scan_data.settings.range,
                                                adjust_for_px_size=True)
             self.image_widget.autoRange()

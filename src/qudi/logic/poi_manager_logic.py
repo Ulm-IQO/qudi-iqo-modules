@@ -36,8 +36,10 @@ from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
+from qudi.logic.scanning_data_logic import ScanningDataLogic
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
+from qudi.interface.scanning_probe_interface import ScanData
 
 
 class RegionOfInterest:
@@ -863,10 +865,11 @@ class PoiManagerLogic(LogicBase):
     def set_scan_image(self, emit_change=True, scan_axes=None):
         """ Get the current xy scan data and set as scan_image of ROI. """
         with self._thread_lock:
-            scan_data = self._data_logic().get_current_scan_data(scan_axes)
+            data_logic: ScanningDataLogic = self._data_logic()
+            scan_data, back_scan_data = data_logic.get_last_history_entry(scan_axes)
             if scan_data:
                 self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
-                                         scan_data.scan_range)
+                                         scan_data.settings.range)
 
             if emit_change:
                 self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
@@ -1265,7 +1268,7 @@ class PoiManagerLogic(LogicBase):
 
     def _local_max(self, scan):
         scan = np.asarray(scan, order="C")  # scan has to be a 2-D array
-        filter_size = self._spot_filter(scan)
+        filter_size = max(self._spot_filter(scan), 1)
         scan_m = scan.mean()
         mid_f = int(filter_size / 2)
         xc = []
@@ -1275,14 +1278,15 @@ class PoiManagerLogic(LogicBase):
                 local_arr = scan[i:i + filter_size, j:j + filter_size]
                 local_arr = np.asarray(local_arr)
                 arr_threshold = scan_m * self._poi_threshold * 0.5
-                if scan[i + mid_f][j + mid_f] == local_arr.max() and self._is_spot_shape(
-                        local_arr) and local_arr.mean() > arr_threshold:
+                if (scan[i + mid_f][j + mid_f] == local_arr.max()
+                        and self._is_spot_shape(local_arr)
+                        and local_arr.mean() > arr_threshold):
                     xc.append(i + mid_f)
                     yc.append(j + mid_f)
         return xc, yc
 
     def auto_catch_poi(self):
-        scan_image = self.roi_scan_image.T
+        scan_image = self.roi_scan_image
         x_range = self.roi_scan_image_extent[0]
         y_range = self.roi_scan_image_extent[1]
         x_axis = np.arange(x_range[0], x_range[1], (x_range[1] - x_range[0]) / len(scan_image))
