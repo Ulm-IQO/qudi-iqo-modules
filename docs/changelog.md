@@ -7,7 +7,7 @@
   implementing this interface.
 - Add back scan data and back scan settings getter and setter methods
   to `qudi.interface.scanning_probe_interface`.
-- Moved ConfigOption ScannerGui.optimizer_plot_dimensions to qudi.logic.scanning_optimize_logic and optimizer sequence creation is solely handled by logic
+- Moved ConfigOption ScannerGui.optimizer_plot_dimensions to qudi.logic.scanning_optimize_logic.optimizer_sequence_dimensions and optimizer sequence creation is solely handled by logic
 
 ### Bugfixes
 - Fix failure of saving plots in `QDPlotLogic` when fiting is used.
