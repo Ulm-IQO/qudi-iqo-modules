@@ -188,7 +188,10 @@ class ScanningOptimizeLogic(LogicBase):
         optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
         sequences_no_axis_twice = []
         if sum(self._optimizer_sequence_dimensions) > len(axes_names):
-            raise ValueError(f"Requested optimization sequence ({sum(self._optimizer_sequence_dimensions)}) is greater than available scanner axes ({len(axes_names)}). This is currently not supported. Decrease optimizer_sequence_dimensions.")
+            raise NotImplementedError(f"Requested optimization sequence ({sum(self._optimizer_sequence_dimensions)}) "
+                                      f"is greater than available scanner axes ({len(axes_names)}). "
+                                      f"This is currently not supported. Decrease 'optimizer_sequence_dimensions' "
+                                      f"in your config file.")
 
         for sequence in optimization_sequences:
             occurring_axes = [axis for step in sequence for axis in step]
