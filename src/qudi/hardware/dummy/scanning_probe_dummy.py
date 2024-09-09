@@ -431,14 +431,13 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             position_vectors_all_axes = self._init_position_vectors()
             position_vectors = {ax: position_vectors_all_axes[ax] for ax in self.scan_settings.axes}
             if self.scan_settings.scan_dimension == 1:
-                # ImageGenerator only supports 2D scans at this point
+                # ImageGenerator only supports 2D scans at this point,
+                # emulate 1D scans by taking 'next' axis (x->y, z->x) of 2D vectors
                 axis = self.scan_settings.axes[0]
-                if axis == 'x':
-                    second_axis = 'y'
-                elif axis == 'y':
-                    second_axis = 'z'
-                elif axis == 'z':
-                    second_axis = 'x'
+                scan_axes = [str(ax) for ax in self.constraints.axes]
+                idx_axis = scan_axes.index(axis)
+                second_axis = scan_axes[(idx_axis+1)%len(scan_axes)]
+
                 position_vectors[second_axis] = position_vectors_all_axes[second_axis]
 
             self._scan_image = self._image_generator.generate_2d_image(position_vectors)
