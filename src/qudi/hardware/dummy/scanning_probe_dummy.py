@@ -95,7 +95,7 @@ class ImageGenerator:
         self._spots['amp'] = spot_amplitudes
         # spot angle
         self._spots['theta'] = np.random.uniform(0, np.pi, spot_count)
-        self.log.debug(f"Generated {spot_count} spots.")
+        logger.debug(f"Generated {spot_count} spots.")
 
     def generate_image(self,
                           position_vectors: Dict[str, np.ndarray],
