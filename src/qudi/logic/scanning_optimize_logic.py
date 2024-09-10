@@ -68,7 +68,7 @@ class ScanningOptimizeLogic(LogicBase):
 
     # status variables
     # not configuring the back scan parameters is represented by empty dictionaries
-    _scan_sequence: List[Tuple[str, ...]] = StatusVar(name='scan_sequence', default=None)
+    _scan_sequence: Tuple[Tuple[str, ...]] = StatusVar(name='scan_sequence', default=None)
     _data_channel = StatusVar(name='data_channel', default=None)
     _scan_range: Dict[str, float] = StatusVar(name='scan_range', default=dict())
     _scan_resolution: Dict[str, int] = StatusVar(name='scan_resolution', default=dict())
@@ -162,12 +162,12 @@ class ScanningOptimizeLogic(LogicBase):
         return {**self._scan_frequency, **self._back_scan_frequency}
 
     @property
-    def scan_sequence(self) -> List[Tuple[str, ...]]:
+    def scan_sequence(self) -> Tuple[Tuple[str, ...]]:
         # serialization into status variable changes step type <tuple> -> <list>
-        return [tuple(i) for i in self._scan_sequence]
+        return tuple(tuple(i) for i in self._scan_sequence)
 
     @scan_sequence.setter
-    def scan_sequence(self, sequence: List[Tuple[str, ...]]):
+    def scan_sequence(self, sequence: Tuple[Tuple[str, ...]]):
         """
         @param sequence: list or tuple of string tuples giving the scan order, e.g. [('x','y'), ('z')]
         """
@@ -206,14 +206,14 @@ class ScanningOptimizeLogic(LogicBase):
 
     @optimizer_sequence_dimensions.setter
     def optimizer_sequence_dimensions(self, dimensions: list) -> None:
-        self._optimizer_sequence_dimensions = sequence_dimension_constructor(dimensions)
+        self._optimizer_sequence_dimensions = self.sequence_dimension_constructor(dimensions)
         self.sigOptimizeSequenceDimensionsChanged.emit()
 
     @property
     def optimizer_running(self):
         return self.module_state() != 'idle'
 
-    def set_optimize_settings(self, data_channel: str, scan_sequence: List[Tuple[str, ...]],
+    def set_optimize_settings(self, data_channel: str, scan_sequence: Tuple[Tuple[str, ...]],
                               range: Dict[str, float], resolution: Dict[str, int], frequency: Dict[str, float],
                               back_resolution: Dict[str, int] = None, back_frequency: Dict[str, float] = None):
         """Set all optimizer settings."""
