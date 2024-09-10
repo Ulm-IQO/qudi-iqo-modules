@@ -66,12 +66,12 @@ class ImageGenerator:
             for value in axis_lengths:
                 volume *= value
 
-        spot_count = int(round(volume * self.spot_density))
+        spot_count = int(round(volume * self.spot_density ** number_of_axes))
         spot_positions = np.empty((spot_count, number_of_axes))
         spot_sigmas = np.empty((spot_count, number_of_axes))
         spot_amplitudes = np.random.normal(
-            self.spot_size_dist[0],
-            self.spot_size_dist[1],
+            self.spot_amplitude_dist[0],
+            self.spot_amplitude_dist[1],
             spot_count
         )
         for ii, (axis_name, axis_range) in enumerate(self.position_ranges.items()):
@@ -124,8 +124,9 @@ class ImageGenerator:
                                          sigma=np.array([sigmas[ii][kk] for kk in position_vectors_indices.keys()]),
                                          amplitude=amplitudes[ii]
                                          )
+            logger.debug(f"{gauss=}")
             scan_image += gauss
-        logger.debug(f"{scan_image.shape=}")
+        logger.debug(f"{scan_image.shape=},\n {scan_image=}")
         return scan_image
 
     def convert_position_dict_to_array(self, position_dict: Dict[str, float]) -> np.ndarray:
@@ -149,7 +150,7 @@ class ImageGenerator:
                     return False
                 if point[index] > scan_vectors[index].max() + include_dist:
                     return False
-            if abs(point[index] - current_position[index]) > include_dist * 300:
+            if abs(point[index] - current_position[index]) > include_dist * 200:
                 return False
         return True
 
