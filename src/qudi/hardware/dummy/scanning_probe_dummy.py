@@ -95,6 +95,7 @@ class ImageGenerator:
         self._spots['amp'] = spot_amplitudes
         # spot angle
         self._spots['theta'] = np.random.uniform(0, np.pi, spot_count)
+        self.log.debug(f"Generated {spot_count} spots.")
 
     def generate_image(self,
                           position_vectors: Dict[str, np.ndarray],
@@ -234,7 +235,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     _frequency_ranges: Dict[str, List[float]] = ConfigOption(name='frequency_ranges', missing='error')
     _resolution_ranges: Dict[str, List[float]] = ConfigOption(name='resolution_ranges', missing='error')
     _position_accuracy: Dict[str, float] = ConfigOption(name='position_accuracy', missing='error')
-    _spot_density: float = ConfigOption(name='spot_density', default=1e3)  # in 1/m²
+    _spot_density: float = ConfigOption(name='spot_density', default=5e4)  # in 1/m
     _out_of_plane_spot_view_distance: List[float] = ConfigOption(
         name='out_of_plane_spot_view_distance',
         default=1e-6
