@@ -42,12 +42,13 @@ class ImageGenerator:
                  spot_density: float,
                  spot_size_dist: List[float],
                  spot_amplitude_dist: List[float],
-                 spot_depth_range: List[float],  # currently unused
+                 out_of_plane_spot_view_distance: float,  # currently unused
                  ) -> None:
         self.position_ranges = position_ranges
         self.spot_density = spot_density
         self.spot_size_dist = tuple(spot_size_dist)
         self.spot_amplitude_dist = tuple(spot_amplitude_dist)
+        self.out_of_plane_spot_view_distance = out_of_plane_spot_view_distance
 
         # random spots for each 2D axes pair
         self._spots: Dict[Tuple[str, str], Any] = {}
@@ -57,8 +58,6 @@ class ImageGenerator:
         """Create a random set of Gaussian 2D peaks."""
         self._spots = dict()
         number_of_axes = len(list(self.position_ranges.keys()))
-        for value in self.position_ranges.values():
-            logger.debug(f"{abs(value[1]-value[0])=}")
         axis_lengths = [abs(value[1]-value[0]) for value in self.position_ranges.values()]
         volume = 0
         if len(axis_lengths) > 0:
@@ -94,8 +93,6 @@ class ImageGenerator:
         # spot angle
         self._spots['theta'] = np.random.uniform(0, np.pi, spot_count)
 
-        logger.debug(f"{self._spots}")
-
     def generate_image(self,
                           position_vectors: Dict[str, np.ndarray],
                           current_position: Dict[str, float]
@@ -111,7 +108,7 @@ class ImageGenerator:
         current_position_vector = self.convert_position_dict_to_array(current_position)
         position_vectors_indices = self.convert_axis_string_dict_to_axis_index_dict(position_vectors)
         # get only spot positions in detection volume
-        include_dist = self.spot_size_dist[0] + 5 * self.spot_size_dist[1]
+        include_dist = self.spot_size_dist[0] + self.spot_size_dist[1]
         points_in_detection_volume = positions[np.array([self.is_point_in_scan_volume(point, current_position_vector, position_vectors_indices, include_dist) for point in positions])]
         logger.debug(f"{points_in_detection_volume.shape=},\n {points_in_detection_volume=}")
 
@@ -124,9 +121,7 @@ class ImageGenerator:
                                          sigma=np.array([sigmas[ii][kk] for kk in position_vectors_indices.keys()]),
                                          amplitude=amplitudes[ii]
                                          )
-            logger.debug(f"{gauss=}")
             scan_image += gauss
-        logger.debug(f"{scan_image.shape=},\n {scan_image=}")
         return scan_image
 
     def convert_position_dict_to_array(self, position_dict: Dict[str, float]) -> np.ndarray:
@@ -150,7 +145,7 @@ class ImageGenerator:
                     return False
                 if point[index] > scan_vectors[index].max() + include_dist:
                     return False
-            if abs(point[index] - current_position[index]) > include_dist * 200:
+            if abs(point[index] - current_position[index]) > self.out_of_plane_spot_view_distance:
                 return False
         return True
 
@@ -235,9 +230,12 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     _frequency_ranges: Dict[str, List[float]] = ConfigOption(name='frequency_ranges', missing='error')
     _resolution_ranges: Dict[str, List[float]] = ConfigOption(name='resolution_ranges', missing='error')
     _position_accuracy: Dict[str, float] = ConfigOption(name='position_accuracy', missing='error')
-    _spot_density: float = ConfigOption(name='spot_density', default=1e12/8)  # in 1/m²
-    _spot_depth_range: List[float] = ConfigOption(name='spot_depth_range', default=(-500e-9, 500e-9))
-    _spot_size_dist: List[float] = ConfigOption(name='spot_size_dist', default=(100e-9, 15e-9))
+    _spot_density: float = ConfigOption(name='spot_density', default=1e5)  # in 1/m²
+    _out_of_plane_spot_view_distance: List[float] = ConfigOption(
+        name='out_of_plane_spot_view_distance',
+        default=10e-6
+    )
+    _spot_size_dist: List[float] = ConfigOption(name='spot_size_dist', default=(200e-9, 30e-9))
     _spot_amplitude_dist: List[float] = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
     _require_square_pixels: bool = ConfigOption(name='require_square_pixels', default=False)
     _back_scan_available: bool = ConfigOption(name='back_scan_available', default=True)
@@ -322,7 +320,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._spot_density,
             self._spot_size_dist,
             self._spot_amplitude_dist,
-            self._spot_depth_range,
+            self._out_of_plane_spot_view_distance,
         )
 
         self.__scan_start = 0
@@ -496,17 +494,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 raise RuntimeError('No scan settings configured. Cannot start scan.')
             self.module_state.lock()
 
-            position_vectors_all_axes = self._init_position_vectors()
-            position_vectors = {ax: position_vectors_all_axes[ax] for ax in self.scan_settings.axes}
-            #if self.scan_settings.scan_dimension == 1:
-            #    # ImageGenerator only supports 2D scans at this point,
-            #    # emulate 1D scans by taking 'next' axis (x->y, z->x) of 2D vectors
-            #    axis = self.scan_settings.axes[0]
-            #    scan_axes = [str(ax) for ax in self.constraints.axes]
-            #    idx_axis = scan_axes.index(axis)
-            #    second_axis = scan_axes[(idx_axis+1)%len(scan_axes)]
-
-            #    position_vectors[second_axis] = position_vectors_all_axes[second_axis]
+            position_vectors = self._init_position_vectors_from_scan_settings()
 
             self._scan_image = self._image_generator.generate_image(position_vectors, self.get_target())
             self._scan_data = ScanData.from_constraints(
@@ -655,19 +643,15 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         else:
             self.__update_timer.stop()
 
+    def _init_position_vectors_from_scan_settings(self) -> Dict[str, np.ndarray]:
+        position_vectors = {axis: np.linspace(
+            self.scan_settings.range[ii][0],
+            self.scan_settings.range[ii][1],
+            self.scan_settings.resolution[ii]) for ii, axis in enumerate(self.scan_settings.axes)}
+        return position_vectors
+
     def _init_position_vectors(self) -> Dict[str, np.ndarray]:
-        position_vectors = {}
-        x_axis = self.scan_settings.axes[0]
-        x_values = np.linspace(self.scan_settings.range[0][0],
-                               self.scan_settings.range[0][1],
-                               self.scan_settings.resolution[0])
-        position_vectors[x_axis] = x_values
-        if self.scan_settings.scan_dimension == 2:
-            y_axis = self.scan_settings.axes[1]
-            y_values = np.linspace(self.scan_settings.range[1][0],
-                                   self.scan_settings.range[1][1],
-                                   self.scan_settings.resolution[1])
-            position_vectors[y_axis] = y_values
+        position_vectors = self._init_position_vectors_from_scan_settings()
         return self._expand_coordinate(position_vectors)
 
 
