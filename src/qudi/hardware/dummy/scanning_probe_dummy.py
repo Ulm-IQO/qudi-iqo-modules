@@ -145,6 +145,7 @@ class ImageGenerator:
                     return False
                 if point[index] > scan_vectors[index].max() + include_dist:
                     return False
+                continue
             if abs(point[index] - current_position[index]) > self.out_of_plane_spot_view_distance:
                 return False
         return True
