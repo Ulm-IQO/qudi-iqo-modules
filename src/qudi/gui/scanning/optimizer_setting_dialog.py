@@ -35,7 +35,7 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
             self,
             scanner_axes: Iterable[ScannerAxis],
             scanner_channels: Iterable[ScannerChannel],
-            sequences: List[List[Tuple[str, ...]]],
+            sequences: List[Tuple[Tuple[str, ...]]],
             back_scan_capability: BackScanCapability
     ):
         super().__init__()
@@ -119,7 +119,7 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
             self,
             scanner_axes: Iterable[ScannerAxis],
             scanner_channels: Iterable[ScannerChannel],
-            sequences: List[List[Tuple[str, ...]]],
+            sequences: List[Tuple[Tuple[str, ...]]],
             back_scan_capability: BackScanCapability
     ):
         super().__init__()
@@ -182,11 +182,11 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         self.data_channel_combobox.blockSignals(False)
 
     @property
-    def sequence(self) -> List[Tuple[str, ...]]:
         return self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()]
+    def sequence(self) -> Tuple[Tuple[str, ...]]:
 
     @sequence.setter
-    def sequence(self, seq: List[Tuple[str, ...]]) -> None:
+    def sequence(self, seq: Tuple[Tuple[str, ...]]) -> None:
         self.optimize_sequence_combobox.blockSignals(True)
         try:
             idx_combo = self.available_opt_sequences.index(seq)
