@@ -206,7 +206,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     scanning_probe_dummy:
         module.Class: 'dummy.scanning_probe_dummy.ScanningProbeDummy'
         options:
-            spot_density: 4e6           # in 1/m², optional
             position_ranges:
                 x: [0, 200e-6]
                 y: [0, 200e-6]
@@ -223,10 +222,14 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 x: 10e-9
                 y: 10e-9
                 z: 50e-9
-            # back scan capability
-            back_scan_available: True
-            back_scan_frequency_configurable: True
-            back_scan_resolution_configurable: True
+            # spot_density: 5e4 # optional
+            # out_of_plane_spot_view_distance: 1e-6 # optional
+            # spot_size_dist: (200e-9, 30e-9) # optional
+            # spot_amplitude_dist: (2e5, 4e4) # optional
+            # require_square_pixels: False # optional
+            # back_scan_available: True # optional
+            # back_scan_frequency_configurable: True # optional
+            # back_scan_resolution_configurable: True # optional
     """
     _threaded = True
 
