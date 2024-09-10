@@ -19,6 +19,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from logging import getLogger
 import time
 from typing import Optional, Dict, Tuple, Any, List
 import numpy as np
@@ -32,6 +33,7 @@ from qudi.interface.scanning_probe_interface import (
     ScanSettings, BackScanCapability, CoordinateTransformMixin
 )
 
+logger = getLogger(__name__)
 
 class ImageGenerator:
     """Generate 1D and 2D images with random Gaussian spots."""
@@ -54,66 +56,132 @@ class ImageGenerator:
     def randomize_new_spots(self):
         """Create a random set of Gaussian 2D peaks."""
         self._spots = dict()
-        for x_axis, x_range in self.position_ranges.items():
-            for y_axis, y_range in self.position_ranges.items():
-                if x_axis == y_axis:
-                    continue
-                x_min, x_max = min(x_range), max(x_range)
-                y_min, y_max = min(y_range), max(y_range)
-                spot_count = int(round((x_max - x_min) * (y_max - y_min) * self.spot_density))
+        number_of_axes = len(list(self.position_ranges.keys()))
+        for value in self.position_ranges.values():
+            logger.debug(f"{abs(value[1]-value[0])=}")
+        axis_lengths = [abs(value[1]-value[0]) for value in self.position_ranges.values()]
+        volume = 0
+        if len(axis_lengths) > 0:
+            volume = 1
+            for value in axis_lengths:
+                volume *= value
 
-                # Fill in random spot information
-                spot_dict = dict()
-                # total number of spots
-                spot_dict['count'] = spot_count
-                # spot positions as (x, y) tuples
-                spot_dict['pos'] = np.empty((spot_count, 2))
-                spot_dict['pos'][:, 0] = np.random.uniform(x_min, x_max, spot_count)
-                spot_dict['pos'][:, 1] = np.random.uniform(y_min, y_max, spot_count)
-                # spot sizes as (sigma_x, sigma_y) tuples
-                spot_dict['sigma'] = np.random.normal(
-                    self.spot_size_dist[0], self.spot_size_dist[1], (spot_count, 2))
-                # spot amplitudes
-                spot_dict['amp'] = np.random.normal(
-                    self.spot_amplitude_dist[0], self.spot_amplitude_dist[1], spot_count)
-                # spot angle
-                spot_dict['theta'] = np.random.uniform(0, np.pi, spot_count)
+        spot_count = int(round(volume * self.spot_density))
+        spot_positions = np.empty((spot_count, number_of_axes))
+        spot_sigmas = np.empty((spot_count, number_of_axes))
+        spot_amplitudes = np.random.normal(
+            self.spot_size_dist[0],
+            self.spot_size_dist[1],
+            spot_count
+        )
+        for ii, (axis_name, axis_range) in enumerate(self.position_ranges.items()):
+            spot_positions[:, ii] = np.random.uniform(min(axis_range), max(axis_range), spot_count)
+            spot_sigmas[:, ii] = np.random.normal(
+                self.spot_size_dist[0],
+                self.spot_size_dist[1],
+                spot_count
+            )
 
-                # Add information to _spots dict
-                self._spots[(x_axis, y_axis)] = spot_dict
 
-    def generate_2d_image(self, position_vectors: Dict[str, np.ndarray]) -> np.ndarray:
-        scan_axes = tuple(position_vectors.keys())
-        sim_data = self._spots[scan_axes]
+        # total number of spots
+        self._spots['count'] = spot_count
+        # spot positions as array with rows being the number of spot and columns being the position along axis
+        self._spots['pos'] = spot_positions
+        # spot sizes as array with rows being the number of spot and columns being the position along axis
+        self._spots['sigma'] = spot_sigmas
+        # spot amplitudes
+        self._spots['amp'] = spot_amplitudes
+        # spot angle
+        self._spots['theta'] = np.random.uniform(0, np.pi, spot_count)
+
+        logger.debug(f"{self._spots}")
+
+    def generate_2d_image(self,
+                          position_vectors: Dict[str, np.ndarray],
+                          current_position: Dict[str, float]
+                          ) -> np.ndarray:
+        scan_values = tuple(position_vectors.values())
+        sim_data = self._spots
         number_of_spots = sim_data['count']
         positions = sim_data['pos']
         amplitudes = sim_data['amp']
         sigmas = sim_data['sigma']
         thetas = sim_data['theta']
-
-        x_values = position_vectors[scan_axes[0]]
-        y_values = position_vectors[scan_axes[1]]
-        xy_grid = np.meshgrid(x_values, y_values, indexing='ij')
-
+        # convert axis string dicts to axis index dicts
+        current_position_vector = self.convert_position_dict_to_array(current_position)
+        position_vectors_indices = self.convert_axis_string_dict_to_axis_index_dict(position_vectors)
+        # get only spot positions in detection volume
         include_dist = self.spot_size_dist[0] + 5 * self.spot_size_dist[1]
-        scan_image = np.random.uniform(0, 2e4, (x_values.size, y_values.size))
-        for i in range(number_of_spots):
-            if positions[i][0] < x_values.min() - include_dist:
-                continue
-            if positions[i][0] > x_values.max() + include_dist:
-                continue
-            if positions[i][1] < y_values.min() - include_dist:
-                continue
-            if positions[i][1] > y_values.max() + include_dist:
-                continue
-            gauss = self._gaussian_2d(xy_grid,
-                                      amp=amplitudes[i],
-                                      pos=positions[i],
-                                      sigma=sigmas[i],
-                                      theta=thetas[i])
+        points_in_detection_volume = positions[np.array([self.is_point_in_scan_volume(point, current_position_vector, position_vectors_indices, include_dist) for point in positions])]
+        logger.debug(f"{points_in_detection_volume=}")
 
+        grids = np.meshgrid(*scan_values, indexing='ij')
+        scan_image = np.random.uniform(0, 2e4, tuple(value.size for value in scan_values))
+
+        for ii, point in enumerate(points_in_detection_volume):
+            gauss = self._gaussian_n_dim(grids,
+                                         mu=point,
+                                         sigma=sigmas[ii],
+                                         amplitude=amplitudes[ii]
+                                         )
             scan_image += gauss
         return scan_image
+
+    def convert_position_dict_to_array(self, position_dict: Dict[str, float]) -> np.ndarray:
+        position_vector = np.zeros(len(tuple(self.position_ranges.keys())))
+        for ii, axis in enumerate(self.position_ranges.keys()):
+            position_vector[ii] = position_dict[axis]
+        return position_vector
+
+    def convert_axis_string_dict_to_axis_index_dict(self, position_vectors: Dict[str, np.ndarray]) -> Dict[int, np.ndarray]:
+        index_dict = {}
+        for axis in position_vectors.keys():
+            for index, check_axis in enumerate(self.position_ranges.keys()):
+                if axis == check_axis:
+                    index_dict[index] = position_vectors[axis]
+        return index_dict
+
+    def is_point_in_scan_volume(self, point: np.ndarray, current_position: np.ndarray, scan_vectors: Dict[int, np.ndarray], include_dist: float) -> bool:
+        for index in range(point.size):
+            if index in scan_vectors.keys():
+                if point[index] < scan_vectors[index].min() - include_dist:
+                    return False
+                if point[index] < scan_vectors[index].max() + include_dist:
+                    return False
+            if abs(point[index] - current_position[index]) > include_dist:
+                return False
+        return True
+
+    @staticmethod
+    def gaussian_n_dim(grids, mu, sigma, amplitude=1.0):
+        """
+        Calculate the Gaussian values for each point in an n-dimensional grid with a customizable amplitude.
+
+        :param grids: A list of meshgrid arrays (one for each dimension).
+                      These arrays should be generated by np.meshgrid.
+        :param mu: A 1D numpy array representing the mean vector (shape: (n,)).
+        :param sigma: A 2D numpy array representing the covariance matrix (shape: (n, n)).
+        :param amplitude: A scalar value representing the height of the Gaussian (default is 1.0).
+
+        :return: A numpy array of Gaussian values evaluated at each point in the grid.
+        """
+        # Number of dimensions (n)
+        n = len(grids)
+
+        # Flatten the grid arrays and stack them as rows in a 2D array (num_points, n)
+        grid_points = np.vstack([grid.ravel() for grid in grids]).T
+
+        # Compute the normalization factor and the inverse covariance matrix
+        sigma_det = np.linalg.det(sigma)
+        sigma_inv = np.linalg.inv(sigma)
+        norm_factor = 1.0 / (np.sqrt((2 * np.pi) ** n * sigma_det))
+
+        # For each point in the grid, compute the Gaussian value
+        diff = grid_points - mu
+        exponent = -0.5 * np.sum(diff @ sigma_inv * diff, axis=1)  # Matrix multiplication for each point
+
+        # Apply the amplitude to the Gaussian function and reshape it
+        return amplitude * norm_factor * np.exp(exponent).reshape(grids[0].shape)
 
     @staticmethod
     def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
@@ -440,7 +508,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
                 position_vectors[second_axis] = position_vectors_all_axes[second_axis]
 
-            self._scan_image = self._image_generator.generate_2d_image(position_vectors)
+            self._scan_image = self._image_generator.generate_2d_image(position_vectors, self.get_target())
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
                 constraints=self.constraints,
@@ -449,7 +517,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._scan_data.new_scan()
 
             if self._back_scan_settings is not None:
-                self._back_scan_image = self._image_generator.generate_2d_image(position_vectors)
+                self._back_scan_image = self._image_generator.generate_2d_image(position_vectors, self.get_target())
                 self._back_scan_data = ScanData.from_constraints(
                     settings=self.back_scan_settings,
                     constraints=self.constraints,
