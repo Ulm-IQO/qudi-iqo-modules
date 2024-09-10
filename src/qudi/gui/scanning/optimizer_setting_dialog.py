@@ -78,6 +78,14 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
         self.settings_widget.sequence = seq
 
     @property
+    def allowed_sequences(self) -> Tuple[Tuple[str, ...]]:
+        return self.settings_widget.allowed_sequences
+
+    @allowed_sequences.setter
+    def allowed_sequences(self, sequences: Tuple[Tuple[str, ...]]) -> None:
+        self.settings_widget.allowed_sequences = sequences
+
+    @property
     def range(self) -> Dict[str, float]:
         return self.settings_widget.axes_widget.range
 
@@ -126,7 +134,7 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         self.setObjectName('optimizer_settings_widget')
 
         self._avail_axes = sorted([ax.name for ax in scanner_axes])
-        self.available_opt_sequences = sequences
+        self._allowed_sequences = sequences
 
         font = QtGui.QFont()
         font.setBold(True)
@@ -135,7 +143,7 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         self.data_channel_combobox.addItems(tuple(ch.name for ch in scanner_channels))
 
         self.optimize_sequence_combobox = QtWidgets.QComboBox()
-        self.optimize_sequence_combobox.addItems([str(seq) for seq in self.available_opt_sequences])
+        self.optimize_sequence_combobox.addItems([str(seq) for seq in self._allowed_sequences])
 
         # general settings
         label = QtWidgets.QLabel('Data channel:')
@@ -182,19 +190,30 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         self.data_channel_combobox.blockSignals(False)
 
     @property
-        return self.available_opt_sequences[self.optimize_sequence_combobox.currentIndex()]
     def sequence(self) -> Tuple[Tuple[str, ...]]:
+        return self._allowed_sequences[self.optimize_sequence_combobox.currentIndex()]
 
     @sequence.setter
     def sequence(self, seq: Tuple[Tuple[str, ...]]) -> None:
         self.optimize_sequence_combobox.blockSignals(True)
         try:
-            idx_combo = self.available_opt_sequences.index(seq)
-        except ValueError:
+            idx_combo = self._allowed_sequences.index(seq)
+        except ValueError as e:
             idx_combo = 0
+            logger.exception(e)
+            logger.debug(f'{seq=}, {self._allowed_sequences=}, {type(self._allowed_sequences)=}')
         self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
         self.optimize_sequence_combobox.blockSignals(False)
 
+    @property
+    def allowed_sequences(self) -> List[Tuple[str, ...]]:
+        return self._allowed_sequences
+
+    @allowed_sequences.setter
+    def allowed_sequences(self, sequences: List[Tuple[str, ...]]) -> None:
+        self._allowed_sequences = sequences
+        self.optimize_sequence_combobox.clear()
+        self.optimize_sequence_combobox.addItems([str(seq) for seq in self._allowed_sequences])
 
 class OptimizerAxesWidget(QtWidgets.QWidget):
     """ Widget to set optimizer parameters for each scanner axes.

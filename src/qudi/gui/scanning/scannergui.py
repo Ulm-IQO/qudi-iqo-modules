@@ -213,6 +213,8 @@ class ScannerGui(GuiBase):
             self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection
         )
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize, QtCore.Qt.QueuedConnection)
+        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.connect(self._set_optimizer_dockwidget, QtCore.Qt.QueuedConnection)
+        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.connect(self.update_optimizer_settings_from_logic, QtCore.Qt.QueuedConnection)
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
         self._mw.action_save_all_scans.triggered.connect(lambda x: self.save_scan_data(scan_axes=None))
         self.sigSaveScan.connect(self._data_logic().save_scan_by_axis, QtCore.Qt.QueuedConnection)
@@ -401,14 +403,7 @@ class ScannerGui(GuiBase):
             #lambda ax, pos: self._update_scan_markers(pos_dict={ax: pos}, exclude_scan=None)
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
-
-        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
-                                                        plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
-                                                        sequence=self._optimize_logic().scan_sequence)
-        self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
-        self.optimizer_dockwidget.visibilityChanged.connect(self._mw.action_view_optimizer.setChecked)
-        self._mw.action_view_optimizer.triggered[bool].connect(self.optimizer_dockwidget.setVisible)
+        self._set_optimizer_dockwidget()
 
         self._mw.util_toolBar.visibilityChanged.connect(self._mw.action_view_toolbar.setChecked)
         self._mw.action_view_toolbar.triggered[bool].connect(self._mw.util_toolBar.setVisible)
@@ -421,6 +416,17 @@ class ScannerGui(GuiBase):
         self.tilt_correction_dockwidget.visibilityChanged.connect(self._mw.action_view_tilt_correction.setChecked)
         self._mw.action_view_tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
 
+    def _set_optimizer_dockwidget(self):
+        self.log.warn("setting dockwidget")
+        if self.optimizer_dockwidget:
+            self._mw.removeDockWidget(self.optimizer_dockwidget)
+        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
+                                                        plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
+                                                        sequence=self._optimize_logic().scan_sequence)
+        self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
+        self.optimizer_dockwidget.visibilityChanged.connect(self._mw.action_view_optimizer.setChecked)
+        self._mw.action_view_optimizer.triggered[bool].connect(self.optimizer_dockwidget.setVisible)
 
     @QtCore.Slot()
     def restore_default_view(self):
@@ -1020,6 +1026,7 @@ class ScannerGui(GuiBase):
 
         # Update optimizer settings QDialog
         self._osd.data_channel = optimize_logic.data_channel
+        self._osd.allowed_sequences = optimize_logic.allowed_scan_sequences
         self._osd.sequence = optimize_logic.scan_sequence
         self._osd.set_range(optimize_logic.scan_range)
         self._osd.set_resolution(optimize_logic.scan_resolution)
