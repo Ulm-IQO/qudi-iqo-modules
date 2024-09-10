@@ -520,7 +520,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             timer_interval_ms = int(0.5 * line_time * 1000)  # update twice every line
             self.__update_timer.setInterval(timer_interval_ms)
             self.__start_timer()
-            self.log.debug("started timer")
 
     def stop_scan(self):
         """Stop the currently running scan.
@@ -557,58 +556,54 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
     def __update_scan_data(self) -> None:
         """Update scan data."""
-        try:
-            if self.module_state() == 'idle':
-                raise RuntimeError("Scan is not running.")
+        if self.module_state() == 'idle':
+            raise RuntimeError("Scan is not running.")
 
-            t_elapsed = time.time() - self.__scan_start
-            t_forward = self.scan_settings.resolution[0] / self.scan_settings.frequency
-            if self.back_scan_settings is not None:
-                back_resolution = self.back_scan_settings.resolution[0]
-                t_backward = back_resolution / self.back_scan_settings.frequency
-            else:
-                back_resolution = 0
-                t_backward = 0
-            t_complete_line = t_forward + t_backward
+        t_elapsed = time.time() - self.__scan_start
+        t_forward = self.scan_settings.resolution[0] / self.scan_settings.frequency
+        if self.back_scan_settings is not None:
+            back_resolution = self.back_scan_settings.resolution[0]
+            t_backward = back_resolution / self.back_scan_settings.frequency
+        else:
+            back_resolution = 0
+            t_backward = 0
+        t_complete_line = t_forward + t_backward
 
-            aq_lines = int(t_elapsed / t_complete_line)
-            t_current_line = t_elapsed % t_complete_line
-            if t_current_line < t_forward:
-                # currently in forwards scan
-                aq_px_backward = back_resolution * aq_lines
-                aq_lines_forward = aq_lines + (t_current_line / t_forward)
-                aq_px_forward = int(self.scan_settings.resolution[0] * aq_lines_forward)
-            else:
-                # currently in backwards scan
-                aq_px_forward = self.scan_settings.resolution[0] * (aq_lines + 1)
-                aq_lines_backward = aq_lines + (t_current_line - t_forward) / t_backward
-                aq_px_backward = int(back_resolution * aq_lines_backward)
+        aq_lines = int(t_elapsed / t_complete_line)
+        t_current_line = t_elapsed % t_complete_line
+        if t_current_line < t_forward:
+            # currently in forwards scan
+            aq_px_backward = back_resolution * aq_lines
+            aq_lines_forward = aq_lines + (t_current_line / t_forward)
+            aq_px_forward = int(self.scan_settings.resolution[0] * aq_lines_forward)
+        else:
+            # currently in backwards scan
+            aq_px_forward = self.scan_settings.resolution[0] * (aq_lines + 1)
+            aq_lines_backward = aq_lines + (t_current_line - t_forward) / t_backward
+            aq_px_backward = int(back_resolution * aq_lines_backward)
 
-            # transposing the arrays is necessary to fill along the fast axis first
-            new_forward_data = self._scan_image.T.flat[self.__last_forward_pixel:aq_px_forward]
+        # transposing the arrays is necessary to fill along the fast axis first
+        new_forward_data = self._scan_image.T.flat[self.__last_forward_pixel:aq_px_forward]
+        for ch in self.constraints.channels:
+            self._scan_data.data[ch].T.flat[self.__last_forward_pixel:aq_px_forward] = new_forward_data
+        self.__last_forward_pixel = aq_px_forward
+
+        # back scan image is not fully accurate: last line is filled the same direction as the forward axis
+        if self._back_scan_settings is not None:
+            new_backward_data = self._back_scan_image.T.flat[self.__last_backward_pixel:aq_px_backward]
             for ch in self.constraints.channels:
-                self._scan_data.data[ch].T.flat[self.__last_forward_pixel:aq_px_forward] = new_forward_data
-            self.__last_forward_pixel = aq_px_forward
+                self._back_scan_data.data[ch].T.flat[self.__last_backward_pixel:aq_px_backward] = new_backward_data
+            self.__last_backward_pixel = aq_px_backward
 
-            # back scan image is not fully accurate: last line is filled the same direction as the forward axis
-            if self._back_scan_settings is not None:
-                new_backward_data = self._back_scan_image.T.flat[self.__last_backward_pixel:aq_px_backward]
-                for ch in self.constraints.channels:
-                    self._back_scan_data.data[ch].T.flat[self.__last_backward_pixel:aq_px_backward] = new_backward_data
-                self.__last_backward_pixel = aq_px_backward
-
-            if self.scan_settings.scan_dimension == 1:
-                is_finished = aq_lines > 1
-            else:
-                is_finished = aq_lines > self.scan_settings.resolution[1]
-            if is_finished:
-                self.module_state.unlock()
-                self.log.debug("Scan finished.")
-            else:
-                self.__start_timer()
-        except Exception as e:
-            self.log.exception(e)
-            raise e
+        if self.scan_settings.scan_dimension == 1:
+            is_finished = aq_lines > 1
+        else:
+            is_finished = aq_lines > self.scan_settings.resolution[1]
+        if is_finished:
+            self.module_state.unlock()
+            self.log.debug("Scan finished.")
+        else:
+            self.__start_timer()
 
     def get_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the scan.
