@@ -66,6 +66,9 @@ class ImageGenerator:
                 volume *= value
 
         spot_count = int(round(volume * self.spot_density ** number_of_axes))
+        # Have at least 1 spot
+        if not spot_count:
+            spot_count = 1
         spot_positions = np.empty((spot_count, number_of_axes))
         spot_sigmas = np.empty((spot_count, number_of_axes))
         spot_amplitudes = np.random.normal(
