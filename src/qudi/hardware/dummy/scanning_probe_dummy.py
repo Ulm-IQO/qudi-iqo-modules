@@ -167,21 +167,16 @@ class ImageGenerator:
 
         :return: A numpy array of Gaussian values evaluated at each point in the grid.
         """
-        # Number of dimensions (n)
-        n = len(grids)
 
         # Flatten the grid arrays and stack them as rows in a 2D array (num_points, n)
         grid_points = np.vstack([grid.ravel() for grid in grids]).T
-
-        # Compute the normalization factor
-        norm_factor = 1.0 / (np.sqrt((2 * np.pi) ** n * np.prod(sigma ** 2)))
 
         # For each point in the grid, compute the Gaussian value
         diff = grid_points - mu
         exponent = -0.5 * np.sum((diff / sigma) ** 2, axis=1)  # Matrix multiplication for each point
 
         # Apply the amplitude to the Gaussian function and reshape it
-        return amplitude * norm_factor * np.exp(exponent).reshape(grids[0].shape)
+        return amplitude * np.exp(exponent).reshape(grids[0].shape)
 
     @staticmethod
     def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
