@@ -210,7 +210,7 @@ class ScanningOptimizeLogic(LogicBase):
         self.sigOptimizeSequenceDimensionsChanged.emit()
 
     @property
-    def allowed_optimizer_sequence_dimensions(self) -> list:
+    def allowed_optimizer_sequence_dimensions(self) -> list[list]:
         allowed_values = {1, 2}
         valid_combinations = []
         # TODO: Fix this constraint
@@ -218,7 +218,7 @@ class ScanningOptimizeLogic(LogicBase):
         # Iterate over all possible lengths from 1 to the max number of axes
         for length in range(1, max_value // min(allowed_values) + 1):
             all_combinations = itertools.product(allowed_values, repeat=length)
-            valid_combinations += [comb for comb in all_combinations if sum(comb) <= max_value]
+            valid_combinations += [list(comb) for comb in all_combinations if sum(comb) <= max_value]
 
         return valid_combinations
 
@@ -226,7 +226,7 @@ class ScanningOptimizeLogic(LogicBase):
     def optimizer_running(self):
         return self.module_state() != 'idle'
 
-    def set_optimize_settings(self, data_channel: str, scan_sequence: Tuple[Tuple[str, ...]],
+    def set_optimize_settings(self, data_channel: str, scan_sequence: Tuple[Tuple[str, ...]], scan_dimension: list[int],
                               range: Dict[str, float], resolution: Dict[str, int], frequency: Dict[str, float],
                               back_resolution: Dict[str, int] = None, back_frequency: Dict[str, float] = None):
         """Set all optimizer settings."""
@@ -239,6 +239,7 @@ class ScanningOptimizeLogic(LogicBase):
                 self.log.error('Cannot change optimize settings when module is locked.')
             else:
                 self._data_channel = data_channel
+                self.optimizer_sequence_dimensions = scan_dimension
                 self.scan_sequence = scan_sequence
                 self._scan_range.update(range)
                 self._scan_resolution.update(resolution)
