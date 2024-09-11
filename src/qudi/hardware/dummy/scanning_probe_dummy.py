@@ -476,7 +476,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         @return dict: current target position per axis.
         """
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "get_target" called.')
             return self._current_position.copy()
 
     def get_position(self):
