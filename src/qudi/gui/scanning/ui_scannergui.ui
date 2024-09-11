@@ -50,7 +50,6 @@
     </property>
     <addaction name="action_scanner_settings"/>
     <addaction name="action_optimizer_settings"/>
-    <addaction name="action_display_settings"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -293,15 +292,6 @@ Shortcut: Shift+R</string>
    </property>
    <property name="shortcut">
     <string>Shift+R</string>
-   </property>
-  </action>
-  <action name="action_display_settings">
-   <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</iconset>
-   </property>
-   <property name="text">
-    <string>Display Settings</string>
    </property>
   </action>
   <action name="action_view_toolbar">

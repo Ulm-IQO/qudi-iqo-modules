@@ -44,7 +44,7 @@ class AWG70K(PulserInterface):
     Example config for copy-paste:
 
     pulser_awg70000:
-        module.Class: 'awg.tektronix_awg70k.AWG70k'
+        module.Class: 'awg.tektronix_awg70k.AWG70K'
         options:
             awg_visa_address: 'TCPIP::10.42.0.211::INSTR'
             awg_ip_address: '10.42.0.211'
