@@ -19,10 +19,9 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-import itertools
 import os
 from uuid import UUID
-from typing import Union, Tuple, Optional, List
+from typing import Union, Tuple, Optional
 
 import numpy as np
 from PySide2 import QtCore, QtGui, QtWidgets
