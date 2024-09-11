@@ -486,6 +486,18 @@ class ScannerGui(GuiBase):
         self.optimizer_dockwidget.setFloating(False)
 
         # split scan dock widget with optimizer dock widget if needed. Resize all groups.
+        self._resize_scan_optimize_dockwidgets()
+        # tabify dockwidgets if needed, needs to be done after .splitDockWidget()
+        self._tabify_dockwidgets()
+
+        return
+
+    def _resize_scan_optimize_dockwidgets(self):
+        dockwidgets_2d = tuple(self.scan_2d_dockwidgets.values())
+        dockwidgets_1d = tuple(self.scan_1d_dockwidgets.values())
+        multiple_2d_scans = len(dockwidgets_2d) > 1
+        has_1d_scans = bool(dockwidgets_1d)
+        has_2d_scans = bool(dockwidgets_2d)
         if has_1d_scans and has_2d_scans:
             self._mw.splitDockWidget(dockwidgets_1d[0], self.optimizer_dockwidget,
                                      QtCore.Qt.Vertical)
@@ -514,7 +526,12 @@ class ScannerGui(GuiBase):
                                  (1, 1),
                                  QtCore.Qt.Horizontal)
 
-        # tabify dockwidgets if needed, needs to be done after .splitDockWidget()
+    def _tabify_dockwidgets(self):
+        dockwidgets_2d = tuple(self.scan_2d_dockwidgets.values())
+        dockwidgets_1d = tuple(self.scan_1d_dockwidgets.values())
+        multiple_2d_scans = len(dockwidgets_2d) > 1
+        multiple_1d_scans = len(dockwidgets_1d) > 1
+        has_1d_scans = bool(dockwidgets_1d)
         if multiple_2d_scans:
             if has_1d_scans:
                 for ii, dockwidget in enumerate(dockwidgets_2d[1:]):
@@ -531,8 +548,6 @@ class ScannerGui(GuiBase):
             for ii, dockwidget in enumerate(dockwidgets_1d[1:]):
                 self._mw.tabifyDockWidget(dockwidgets_1d[ii], dockwidget)
             dockwidgets_1d[0].raise_()
-
-        return
 
     def _restore_tilt_correction(self):
 
