@@ -202,19 +202,6 @@ class ImageGenerator:
         # create all coordinates by flattening the grid
         return np.vstack([grid.ravel() for grid in mesh_grid]).T
 
-    @staticmethod
-    def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
-        x, y = xy
-        sigx, sigy = sigma
-        x0, y0 = pos
-        a = np.cos(-theta) ** 2 / (2 * sigx ** 2) + np.sin(-theta) ** 2 / (2 * sigy ** 2)
-        b = np.sin(2 * -theta) / (4 * sigy ** 2) - np.sin(2 * -theta) / (4 * sigx ** 2)
-        c = np.sin(-theta) ** 2 / (2 * sigx ** 2) + np.cos(-theta) ** 2 / (2 * sigy ** 2)
-        x_prime = x - x0
-        y_prime = y - y0
-        return offset + amp * np.exp(
-            -(a * x_prime ** 2 + 2 * b * x_prime * y_prime + c * y_prime ** 2))
-
 
 class ScanningProbeDummyBare(ScanningProbeInterface):
     """
