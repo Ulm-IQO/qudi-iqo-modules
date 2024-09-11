@@ -130,7 +130,7 @@ class ScannerGui(GuiBase):
     sigBackFrequencyChanged = QtCore.Signal(str, float)
     sigUseBackScanSettings = QtCore.Signal(bool)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
-    sigOptimizerSettingsChanged = QtCore.Signal(str, list, list, dict, dict, dict, dict, dict)
+    sigOptimizerSettingsChanged = QtCore.Signal(str, tuple, tuple, dict, dict, dict, dict, dict)
     sigToggleOptimize = QtCore.Signal(bool)
     sigSaveScan = QtCore.Signal(object, object, str)
     sigSaveFinished = QtCore.Signal()
