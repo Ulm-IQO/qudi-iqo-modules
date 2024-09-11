@@ -200,8 +200,6 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
             idx_combo = self._allowed_sequences.index(seq)
         except ValueError as e:
             idx_combo = 0
-            logger.exception(e)
-            logger.debug(f'{seq=}, {self._allowed_sequences=}, {type(self._allowed_sequences)=}')
         self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
         self.optimize_sequence_combobox.blockSignals(False)
 
