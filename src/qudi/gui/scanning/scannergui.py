@@ -99,10 +99,9 @@ class ScannerGui(GuiBase):
 
     scanner_gui:
         module.Class: 'scanning.scannergui.ScannerGui'
-        options:
-            image_axes_padding: 0.02
-            default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
-            min_crosshair_size_fraction: 0.02   # minimum crosshair size as fraction of the displayed scan range
+        # options:
+        #     default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
+        #     min_crosshair_size_fraction: 0.02   # minimum crosshair size as fraction of the displayed scan range
         connect:
             scanning_logic: scanning_probe_logic
             data_logic: scanning_data_logic
