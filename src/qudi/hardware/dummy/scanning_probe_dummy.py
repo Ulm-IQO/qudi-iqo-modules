@@ -114,7 +114,7 @@ class ImageGenerator:
         points_in_detection_volume = positions[np.array([self.is_point_in_scan_volume(point, current_position_vector, position_vectors_indices, include_dist) for point in positions])]
         logger.debug(f"{points_in_detection_volume.shape[0]=},\n {points_in_detection_volume=}")
 
-        scan_image = np.random.uniform(0, 2e4, tuple(value.size for value in scan_values))
+        scan_image = np.random.uniform(0, min(self.spot_amplitude_dist) * 0.2, tuple(value.size for value in scan_values))
 
 
         for point in points_in_detection_volume:
@@ -230,7 +230,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 z: 50e-9
             # spot_density: 5e4 # optional
             # out_of_plane_spot_view_distance: 1e-6 # optional
-            # spot_size_dist: [200e-9, 30e-9] # optional
+            # spot_size_dist: [400e-9, 100e-9] # optional
             # spot_amplitude_dist: [2e5, 4e4] # optional
             # require_square_pixels: False # optional
             # back_scan_available: True # optional
@@ -249,7 +249,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         name='out_of_plane_spot_view_distance',
         default=1e-6
     )
-    _spot_size_dist: List[float] = ConfigOption(name='spot_size_dist', default=(200e-9, 30e-9))
+    _spot_size_dist: List[float] = ConfigOption(name='spot_size_dist', default=(400e-9, 100e-9))
     _spot_amplitude_dist: List[float] = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
     _require_square_pixels: bool = ConfigOption(name='require_square_pixels', default=False)
     _back_scan_available: bool = ConfigOption(name='back_scan_available', default=True)
