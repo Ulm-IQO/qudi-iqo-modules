@@ -428,6 +428,9 @@ class ScannerGui(GuiBase):
                 self._mw.removeDockWidget(self.optimizer_dockwidget)
             except RuntimeError:
                 pass
+        else:
+            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, optimizer_dockwidget)
+
         self.optimizer_dockwidget = optimizer_dockwidget
         self.optimizer_dockwidget.visibilityChanged.connect(self._mw.action_view_optimizer.setChecked)
         self._mw.action_view_optimizer.triggered[bool].connect(self.optimizer_dockwidget.setVisible)
