@@ -210,6 +210,19 @@ class ScanningOptimizeLogic(LogicBase):
         self.sigOptimizeSequenceDimensionsChanged.emit()
 
     @property
+    def allowed_optimizer_sequence_dimensions(self) -> list:
+        allowed_values = {1, 2}
+        valid_combinations = []
+        # TODO: Fix this constraint
+        max_value = len(self._avail_axes) # current toolchain constraint
+        # Iterate over all possible lengths from 1 to the max number of axes
+        for length in range(1, max_value // min(allowed_values) + 1):
+            all_combinations = itertools.product(allowed_values, repeat=length)
+            valid_combinations += [comb for comb in all_combinations if sum(comb) <= max_value]
+
+        return valid_combinations
+
+    @property
     def optimizer_running(self):
         return self.module_state() != 'idle'
 
