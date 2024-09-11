@@ -306,6 +306,8 @@ class ScannerGui(GuiBase):
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
+        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self._set_optimizer_dockwidget)
+        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self.update_optimizer_settings_from_logic)
         self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
