@@ -118,12 +118,13 @@ class ImageGenerator:
 
 
         for point in points_in_detection_volume:
-            gauss = self._gaussian_n_dim(position_vectors_indices,
-                                         current_position_vector,
+            grid_points = self._create_coordinates_for_calculation(position_vectors_indices, current_position_vector)
+            gauss = self._gaussian_n_dim(grid_points,
                                          mu=point,
                                          sigma=sigmas[np.where(positions == point)[0][0]],
                                          amplitude=amplitudes[np.where(positions == point)[0][0]],
-                                         )
+                                         ).reshape([len(position_vectors_indices[i]) for i in sorted(position_vectors_indices.keys())])
+
             scan_image += gauss
 
         return scan_image
@@ -155,20 +156,36 @@ class ImageGenerator:
         return True
 
     @staticmethod
-    def _gaussian_n_dim(axes_dict, currentpos, mu, sigma, amplitude=1.0):
+    def _gaussian_n_dim(grid_points, mu, sigma, amplitude=1.0):
         """
         Calculate the Gaussian values for each point in an n-dimensional grid with a customizable amplitude.
 
-        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated. keys: axis index, values: values for this axis.
-        :param currentpos: A 1D numpy array representing the current position of the scanner (shape: (n,)).
+        :param grid_points: A 1D numpy array representing the coordinates at which the gaussian should be evaluated (shape: (m, n).
         :param mu: A 1D numpy array representing the mean vector (shape: (n,)).
         :param sigma: A 1D numpy array representing the variance for each axis (shape: (n,)).
         :param amplitude: A scalar value representing the height of the Gaussian (default is 1.0).
 
-        :return: A numpy array of Gaussian values evaluated at each point in the grid.
+        :return: A numpy array of Gaussian values evaluated at each point in grid_points.
+        """
+        # For each point in the grid, compute the Gaussian value
+        diff = grid_points - mu
+        exponent = -0.5 * np.sum((diff / sigma) ** 2, axis=1)
+
+        # Apply the amplitude to the Gaussian function and reshape it
+        return amplitude * np.exp(exponent)
+
+    @staticmethod
+    def _create_coordinates_for_calculation(axes_dict, currentpos) -> np.ndarray:
+        """
+        Calculate the coordinates for which the gaussian should be calculated, when scanning along axes in axes_dict and having a current position as currentpos.
+
+        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated. keys: axis index, values: values for this axis.
+        :param currentpos: A 1D numpy array representing the current position of the scanner (shape: (n,)).
+
+        :return: A numpy array of coordinates to evaluate the Gaussian at.
         """
         # number of dimensions in space
-        m = len(mu)
+        m = len(currentpos)
 
         axes_vectors = []
         # populate the grid with values from the axes.
@@ -183,16 +200,7 @@ class ImageGenerator:
         mesh_grid = np.meshgrid(*axes_vectors, indexing='ij')
 
         # create all coordinates by flattening the grid
-        grid_points = np.vstack([grid.ravel() for grid in mesh_grid]).T
-
-
-        # For each point in the grid, compute the Gaussian value
-        diff = grid_points - mu
-        exponent = -0.5 * np.sum((diff / sigma) ** 2, axis=1)
-
-        # Apply the amplitude to the Gaussian function and reshape it
-        return amplitude *1e6* np.exp(exponent).reshape([len(axes_dict[i]) for i in sorted(axes_dict.keys())])
-
+        return np.vstack([grid.ravel() for grid in mesh_grid]).T
 
     @staticmethod
     def _gaussian_2d(xy, amp, pos, sigma, theta=0, offset=0):
