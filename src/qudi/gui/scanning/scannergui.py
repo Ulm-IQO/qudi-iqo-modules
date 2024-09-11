@@ -418,7 +418,10 @@ class ScannerGui(GuiBase):
 
     def _set_optimizer_dockwidget(self):
         if self.optimizer_dockwidget:
-            self._mw.removeDockWidget(self.optimizer_dockwidget)
+            try:
+                self._mw.removeDockWidget(self.optimizer_dockwidget)
+            except RuntimeError:
+                pass
         self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
                                                         plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
                                                         sequence=self._optimize_logic().scan_sequence)
