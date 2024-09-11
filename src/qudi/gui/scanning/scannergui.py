@@ -140,7 +140,7 @@ class ScannerGui(GuiBase):
         super().__init__(*args, **kwargs)
 
         # QMainWindow and QDialog child instances
-        self._mw = None
+        self._mw: ConfocalMainWindow = None
         self._ssd: Optional[ScannerSettingDialog] = None
         self._osd: Optional[OptimizerSettingsDialog] = None
 
@@ -287,6 +287,7 @@ class ScannerGui(GuiBase):
         # Remember window position and geometry and close window
         self._save_window_geometry(self._mw)
         self._mw.close()
+        self.optimizer_dockwidget = None
 
         # Disconnect signals
         self.sigScannerTargetChanged.disconnect()
@@ -416,16 +417,16 @@ class ScannerGui(GuiBase):
         self._mw.action_view_tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
 
     def _set_optimizer_dockwidget(self):
+        optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
+                                                   plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
+                                                   sequence=self._optimize_logic().scan_sequence)
         if self.optimizer_dockwidget:
             try:
+                self._mw.tabifyDockWidget(self.optimizer_dockwidget, optimizer_dockwidget)
                 self._mw.removeDockWidget(self.optimizer_dockwidget)
             except RuntimeError:
                 pass
-        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
-                                                        plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
-                                                        sequence=self._optimize_logic().scan_sequence)
-        self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
+        self.optimizer_dockwidget = optimizer_dockwidget
         self.optimizer_dockwidget.visibilityChanged.connect(self._mw.action_view_optimizer.setChecked)
         self._mw.action_view_optimizer.triggered[bool].connect(self.optimizer_dockwidget.setVisible)
 
