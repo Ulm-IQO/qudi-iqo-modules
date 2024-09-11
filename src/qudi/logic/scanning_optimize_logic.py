@@ -50,9 +50,6 @@ class ScanningOptimizeLogic(LogicBase):
         module.Class: 'scanning_optimize_logic.ScanningOptimizeLogic'
         connect:
             scan_logic: scanning_probe_logic
-        options:
-            optimizer_sequence_dimensions: [2, 1] # optimization sequence dim. order,
-                                                  # here for first 2D optimization and then 1D optimization, e.g. XY, Z
 
     """
 
