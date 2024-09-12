@@ -69,21 +69,22 @@ class ImageGenerator:
         # Have at least 1 spot
         if not spot_count:
             spot_count = 1
-        spot_positions = np.empty((spot_count, number_of_axes))
-        spot_sigmas = np.empty((spot_count, number_of_axes))
+
         spot_amplitudes = np.random.normal(
             self.spot_amplitude_dist[0],
             self.spot_amplitude_dist[1],
             spot_count
         )
-        for ii, (axis_name, axis_range) in enumerate(self.position_ranges.items()):
-            spot_positions[:, ii] = np.random.uniform(min(axis_range), max(axis_range), spot_count)
-            spot_sigmas[:, ii] = np.random.normal(
-                self.spot_size_dist[0],
-                self.spot_size_dist[1],
-                spot_count
-            )
 
+        # scan bounds per axis.
+        position_ranges = np.array(list(self.position_ranges.values()))
+        ax_mins = position_ranges[:, 0]
+        ax_maxs = position_ranges[:, 1]
+
+        # vectorized generation of random spot positions and sigmas. Each row is a spot.
+        spot_positions = np.random.uniform(ax_mins, ax_maxs, (spot_count, len(self.position_ranges)))
+        spot_sigmas = np.random.normal(self.spot_size_dist[0], self.spot_size_dist[1],
+                                       (spot_count, len(self.position_ranges)))
 
         # total number of spots
         self._spots['count'] = spot_count
