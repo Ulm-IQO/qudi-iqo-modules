@@ -528,7 +528,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 raise RuntimeError('No scan settings configured. Cannot start scan.')
             self.module_state.lock()
 
-            position_vectors = self._init_position_vectors_from_scan_settings()
+            position_vectors = self._init_position_vectors()
 
             self._scan_image = self._image_generator.generate_image(position_vectors, self.get_target())
             self._scan_data = ScanData.from_constraints(
@@ -681,11 +681,15 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
     def _init_position_vectors(self) -> Dict[str, np.ndarray]:
         position_vectors = self._init_position_vectors_from_scan_settings()
-        return self._expand_coordinate(position_vectors)
+        return position_vectors
 
 
 class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
     def _init_position_vectors(self) -> Dict[str, np.ndarray]:
         position_vectors = super()._init_position_vectors()
-        position_vectors_tilted = self.coordinate_transform(position_vectors)
-        return position_vectors_tilted
+
+        if self.coordinate_transform_enabled:
+            position_vectors = self._expand_coordinate(position_vectors)
+            return self.coordinate_transform(position_vectors)
+
+        return position_vectors
