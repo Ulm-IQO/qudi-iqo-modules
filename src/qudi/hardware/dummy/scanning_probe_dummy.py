@@ -662,6 +662,17 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         position_vectors = self._init_position_vectors_from_scan_settings()
         return self._expand_coordinate(position_vectors)
 
+    @_spot_density.constructor
+    def spot_density_constructor(self, spot_density: float) -> float:
+        volume_edges = [abs(pos_range[1] - pos_range[0]) for pos_range in self._position_ranges.values()]
+        volume = 1
+        for edge in volume_edges:
+            volume *= edge
+        if volume * spot_density ** len(self._position_ranges.keys()) > 80e3:
+            spot_density = (80e3 / volume) ** (1 / len(self._position_ranges.keys()))
+            self.log.warning(f'Specified spot density results in more than 80k spots. To keep performance, reducing spot density to {spot_density} 1/m^{len(self._position_ranges.keys())}')
+        return spot_density
+
 
 class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
     def _init_position_vectors(self) -> Dict[str, np.ndarray]:
