@@ -107,26 +107,36 @@ class ImageGenerator:
         positions = sim_data['pos']
         amplitudes = sim_data['amp']
         sigmas = sim_data['sigma']
+
+        t_start = time.perf_counter()
+
         # convert axis string dicts to axis index dicts
         current_position_vector = self.convert_position_dict_to_array(current_position)
         position_vectors_indices = self.convert_axis_string_dict_to_axis_index_dict(position_vectors)
         # get only spot positions in detection volume
         include_dist = self.spot_size_dist[0] + self.spot_size_dist[1]
         points_in_detection_volume = positions[np.array([self.is_point_in_scan_volume(point, current_position_vector, position_vectors_indices, include_dist) for point in positions])]
-        logger.debug(f"{points_in_detection_volume.shape[0]=},\n {points_in_detection_volume=}")
 
         scan_image = np.random.uniform(0, min(self.spot_amplitude_dist) * 0.2, tuple(value.size for value in scan_values))
 
+        grid_points = self._create_coordinates_for_calculation(position_vectors_indices, current_position_vector)
 
-        for point in points_in_detection_volume:
-            grid_points = self._create_coordinates_for_calculation(position_vectors_indices, current_position_vector)
-            gauss = self._gaussian_n_dim(grid_points,
-                                         mu=point,
-                                         sigma=sigmas[np.where(positions == point)[0][0]],
-                                         amplitude=amplitudes[np.where(positions == point)[0][0]],
-                                         ).reshape([len(position_vectors_indices[i]) for i in sorted(position_vectors_indices.keys())])
+        indices = np.array([np.where(positions == point)[0][0] for point in points_in_detection_volume])
 
-            scan_image += gauss
+        mus_visible = points_in_detection_volume
+        sigmas_visible = sigmas[indices]
+        amplitudes_visible = amplitudes[indices]
+
+        gauss_1d_all = self._gaussian_n_dim(grid_points, mus=mus_visible, sigmas=sigmas_visible,
+                                            amplitudes=amplitudes_visible)
+
+        new_dim = [len(position_vectors_indices[i]) for i in sorted(position_vectors_indices.keys())]
+        gauss_2d_all = np.sum(gauss_1d_all.reshape((-1, *new_dim)), axis=0)
+
+        scan_image += gauss_2d_all
+
+        logger.debug(f"Image took {time.perf_counter()-t_start:.3f} s for {points_in_detection_volume.shape[0]=},\n"
+                     f" {points_in_detection_volume=}")
 
         return scan_image
 
@@ -157,7 +167,7 @@ class ImageGenerator:
         return True
 
     @staticmethod
-    def _gaussian_n_dim(grid_points, mu, sigma, amplitude=1.0):
+    def _gaussian_n_dim(grid_points, mus, sigmas, amplitudes=None):
         """
         Calculate the Gaussian values for each point in an n-dimensional grid with a customizable amplitude.
 
@@ -168,12 +178,22 @@ class ImageGenerator:
 
         :return: A numpy array of Gaussian values evaluated at each point in grid_points.
         """
-        # For each point in the grid, compute the Gaussian value
-        diff = grid_points - mu
-        exponent = -0.5 * np.sum((diff / sigma) ** 2, axis=1)
+        if amplitudes is None:
+            amplitudes = np.ones(mus.shape[0])
 
-        # Apply the amplitude to the Gaussian function and reshape it
-        return amplitude * np.exp(exponent)
+        # Reshape grid_points for broadcasting
+        grid_points = grid_points[:, np.newaxis, :]  # shape: (m, 1, n)
+        mus = mus[np.newaxis, :, :]  # shape: (1, k, n)
+        sigmas = sigmas[np.newaxis, :, :]  # shape: (1, k, n)
+
+        # Calculate the exponent for each Gaussian
+        diff = grid_points - mus  # shape: (m, k, n)
+        exponent = -0.5 * np.sum((diff / sigmas) ** 2, axis=2)  # shape: (m, k)
+
+        # Calculate Gaussian values with amplitude
+        gaussians = amplitudes[:, np.newaxis] * np.exp(exponent.T)  # shape: (k, m)
+
+        return gaussians
 
     @staticmethod
     def _create_coordinates_for_calculation(axes_dict, currentpos) -> np.ndarray:
