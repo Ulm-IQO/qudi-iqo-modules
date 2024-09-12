@@ -631,9 +631,9 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self.__last_backward_pixel = aq_px_backward
 
         if self.scan_settings.scan_dimension == 1:
-            is_finished = aq_lines > 1
+            is_finished = aq_lines >= 1
         else:
-            is_finished = aq_lines > self.scan_settings.resolution[1]
+            is_finished = aq_lines >= self.scan_settings.resolution[1]
         if is_finished:
             self.module_state.unlock()
             self.log.debug("Scan finished.")
