@@ -24,7 +24,7 @@ from uuid import UUID
 import numpy as np
 from PySide2 import QtCore
 import copy as cp
-from typing import Dict, Tuple, List, Optional
+from typing import Dict, Tuple, List, Optional, Union
 
 from qudi.core.module import LogicBase
 from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability
@@ -50,25 +50,21 @@ class ScanningOptimizeLogic(LogicBase):
         module.Class: 'scanning_optimize_logic.ScanningOptimizeLogic'
         connect:
             scan_logic: scanning_probe_logic
-        options:
-            optimizer_sequence_dimensions: [2, 1] # optimization sequence dim. order,
-                                                  # here for first 2D optimization and then 1D optimization, e.g. XY, Z
 
     """
 
     # declare connectors
     _scan_logic = Connector(name='scan_logic', interface='ScanningProbeLogic')
 
-    # declare ConfigOptions
+    # status variables
+    # not configuring the back scan parameters is represented by empty dictionaries
+
     # for all optimizer sub widgets, (2= xy, 1=z)
-    _optimizer_sequence_dimensions: List[int] = ConfigOption(
+    _optimizer_sequence_dimensions: tuple[int] = StatusVar(
         name='optimizer_sequence_dimensions',
         default=[2, 1],
     )
-
-    # status variables
-    # not configuring the back scan parameters is represented by empty dictionaries
-    _scan_sequence: Tuple[Tuple[str, ...]] = StatusVar(name='scan_sequence', default=None)
+    _scan_sequence: Tuple[Tuple[str, ...]] = StatusVar(name='scan_sequence', default=tuple())
     _data_channel = StatusVar(name='data_channel', default=None)
     _scan_range: Dict[str, float] = StatusVar(name='scan_range', default=dict())
     _scan_resolution: Dict[str, int] = StatusVar(name='scan_resolution', default=dict())
@@ -180,15 +176,24 @@ class ScanningOptimizeLogic(LogicBase):
             self._scan_sequence = sequence
 
     @property
-    def allowed_scan_sequences(self) -> list:
-        axes_names = [ax.name for ax in self._avail_axes]
+    def allowed_scan_sequences(self) -> dict[list, list[tuple]]:
+        allowed_sequences = {}
+        for dimension in self.allowed_optimizer_sequence_dimensions:
+            try:
+                allowed_sequences[dimension] = self._allowed_sequences(dimension)
+            except NotImplementedError:
+                continue
 
+        return allowed_sequences
+
+    def _allowed_sequences(self, sequence_dimension: list[int]) -> list[tuple[tuple]]:
+        axes_names = [ax.name for ax in self._avail_axes]
         # figure out sensible optimization sequences for user selection
-        possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in self._optimizer_sequence_dimensions]
+        possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in sequence_dimension]
         optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
         sequences_no_axis_twice = []
-        if sum(self._optimizer_sequence_dimensions) > len(axes_names):
-            raise NotImplementedError(f"Requested optimization sequence ({sum(self._optimizer_sequence_dimensions)}) "
+        if sum(sequence_dimension) > len(axes_names):
+            raise NotImplementedError(f"Requested optimization sequence ({sum(sequence_dimension)}) "
                                       f"is greater than available scanner axes ({len(axes_names)}). "
                                       f"This is currently not supported. Decrease 'optimizer_sequence_dimensions' "
                                       f"in your config file.")
@@ -205,15 +210,28 @@ class ScanningOptimizeLogic(LogicBase):
         return self._optimizer_sequence_dimensions
 
     @optimizer_sequence_dimensions.setter
-    def optimizer_sequence_dimensions(self, dimensions: list) -> None:
+    def optimizer_sequence_dimensions(self, dimensions: tuple) -> None:
         self._optimizer_sequence_dimensions = self.sequence_dimension_constructor(dimensions)
         self.sigOptimizeSequenceDimensionsChanged.emit()
+
+    @property
+    def allowed_optimizer_sequence_dimensions(self) -> list[tuple]:
+        allowed_values = {1, 2}
+        valid_combinations = []
+        # TODO: Fix this constraint
+        max_value = len(self._avail_axes) # current toolchain constraint
+        # Iterate over all possible lengths from 1 to the max number of axes
+        for length in range(1, max_value // min(allowed_values) + 1):
+            all_combinations = itertools.product(allowed_values, repeat=length)
+            valid_combinations += [comb for comb in all_combinations if sum(comb) <= max_value]
+
+        return valid_combinations
 
     @property
     def optimizer_running(self):
         return self.module_state() != 'idle'
 
-    def set_optimize_settings(self, data_channel: str, scan_sequence: Tuple[Tuple[str, ...]],
+    def set_optimize_settings(self, data_channel: str, scan_sequence: Tuple[Tuple[str, ...]], scan_dimension: list[int],
                               range: Dict[str, float], resolution: Dict[str, int], frequency: Dict[str, float],
                               back_resolution: Dict[str, int] = None, back_frequency: Dict[str, float] = None):
         """Set all optimizer settings."""
@@ -226,6 +244,7 @@ class ScanningOptimizeLogic(LogicBase):
                 self.log.error('Cannot change optimize settings when module is locked.')
             else:
                 self._data_channel = data_channel
+                self.optimizer_sequence_dimensions = scan_dimension
                 self.scan_sequence = scan_sequence
                 self._scan_range.update(range)
                 self._scan_resolution.update(resolution)
@@ -429,14 +448,17 @@ class ScanningOptimizeLogic(LogicBase):
         self._back_scan_frequency = {}
 
     def _set_scan_sequence(self):
-        possible_scan_sequences = self.allowed_scan_sequences
+        possible_scan_sequences = self._allowed_sequences(self._optimizer_sequence_dimensions)
         if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
-            self.log.info(f"No valid scan sequence existing, setting scan sequence to {possible_scan_sequences[0]}.")
+            self.log.info(f"No valid scan sequence existing ({self._scan_sequence=}), setting scan sequence to {possible_scan_sequences[0]}.")
             self._scan_sequence = possible_scan_sequences[0]
 
     @_optimizer_sequence_dimensions.constructor
-    def sequence_dimension_constructor(self, dimensions: list) -> list:
+    def sequence_dimension_constructor(self, dimensions: Union[list, tuple]) -> tuple:
         if set(dimensions) <= {1, 2}:
-            return dimensions
+            return tuple(dimensions)
         raise ValueError(f"Dimensions must be in {set([1,2])}, received {dimensions=}.")
 
+    @_scan_sequence.constructor
+    def sequence_constructor(self, sequence: Union[list, tuple]) -> tuple:
+        return tuple(tuple(value) for value in sequence)

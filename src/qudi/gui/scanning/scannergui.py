@@ -19,10 +19,9 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-import itertools
 import os
 from uuid import UUID
-from typing import Union, Tuple, Optional, List
+from typing import Union, Tuple, Optional
 
 import numpy as np
 from PySide2 import QtCore, QtGui, QtWidgets
@@ -100,10 +99,9 @@ class ScannerGui(GuiBase):
 
     scanner_gui:
         module.Class: 'scanning.scannergui.ScannerGui'
-        options:
-            image_axes_padding: 0.02
-            default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
-            min_crosshair_size_fraction: 0.02   # minimum crosshair size as fraction of the displayed scan range
+        # options:
+        #     default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
+        #     min_crosshair_size_fraction: 0.02   # minimum crosshair size as fraction of the displayed scan range
         connect:
             scanning_logic: scanning_probe_logic
             data_logic: scanning_data_logic
@@ -131,7 +129,7 @@ class ScannerGui(GuiBase):
     sigBackFrequencyChanged = QtCore.Signal(str, float)
     sigUseBackScanSettings = QtCore.Signal(bool)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
-    sigOptimizerSettingsChanged = QtCore.Signal(str, list, dict, dict, dict, dict, dict)
+    sigOptimizerSettingsChanged = QtCore.Signal(str, tuple, tuple, dict, dict, dict, dict, dict)
     sigToggleOptimize = QtCore.Signal(bool)
     sigSaveScan = QtCore.Signal(object, object, str)
     sigSaveFinished = QtCore.Signal()
@@ -141,7 +139,7 @@ class ScannerGui(GuiBase):
         super().__init__(*args, **kwargs)
 
         # QMainWindow and QDialog child instances
-        self._mw = None
+        self._mw: ConfocalMainWindow = None
         self._ssd: Optional[ScannerSettingDialog] = None
         self._osd: Optional[OptimizerSettingsDialog] = None
 
@@ -288,6 +286,7 @@ class ScannerGui(GuiBase):
         # Remember window position and geometry and close window
         self._save_window_geometry(self._mw)
         self._mw.close()
+        self.optimizer_dockwidget = None
 
         # Disconnect signals
         self.sigScannerTargetChanged.disconnect()
@@ -306,6 +305,8 @@ class ScannerGui(GuiBase):
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
+        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self._set_optimizer_dockwidget)
+        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self.update_optimizer_settings_from_logic)
         self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
         self.scanner_control_dockwidget.sigSliderMoved.disconnect()
@@ -339,6 +340,7 @@ class ScannerGui(GuiBase):
         self._osd = OptimizerSettingsDialog(scan_logic.scanner_axes.values(),
                                             scan_logic.scanner_channels.values(),
                                             optimize_logic.allowed_scan_sequences,
+                                            optimize_logic.allowed_optimizer_sequence_dimensions,
                                             scan_logic.scanner_constraints.back_scan_capability)
 
         # Connect MainWindow actions
@@ -417,13 +419,19 @@ class ScannerGui(GuiBase):
         self._mw.action_view_tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
 
     def _set_optimizer_dockwidget(self):
+        optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
+                                                   plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
+                                                   sequence=self._optimize_logic().scan_sequence)
         if self.optimizer_dockwidget:
-            self._mw.removeDockWidget(self.optimizer_dockwidget)
-        self.optimizer_dockwidget = OptimizerDockWidget(axes=self._scanning_logic().scanner_axes,
-                                                        plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
-                                                        sequence=self._optimize_logic().scan_sequence)
-        self.optimizer_dockwidget.setAllowedAreas(QtCore.Qt.TopDockWidgetArea)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self.optimizer_dockwidget)
+            try:
+                self._mw.tabifyDockWidget(self.optimizer_dockwidget, optimizer_dockwidget)
+                self._mw.removeDockWidget(self.optimizer_dockwidget)
+            except RuntimeError:
+                pass
+        else:
+            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, optimizer_dockwidget)
+
+        self.optimizer_dockwidget = optimizer_dockwidget
         self.optimizer_dockwidget.visibilityChanged.connect(self._mw.action_view_optimizer.setChecked)
         self._mw.action_view_optimizer.triggered[bool].connect(self.optimizer_dockwidget.setVisible)
 
@@ -478,6 +486,18 @@ class ScannerGui(GuiBase):
         self.optimizer_dockwidget.setFloating(False)
 
         # split scan dock widget with optimizer dock widget if needed. Resize all groups.
+        self._resize_scan_optimize_dockwidgets()
+        # tabify dockwidgets if needed, needs to be done after .splitDockWidget()
+        self._tabify_dockwidgets()
+
+        return
+
+    def _resize_scan_optimize_dockwidgets(self):
+        dockwidgets_2d = tuple(self.scan_2d_dockwidgets.values())
+        dockwidgets_1d = tuple(self.scan_1d_dockwidgets.values())
+        multiple_2d_scans = len(dockwidgets_2d) > 1
+        has_1d_scans = bool(dockwidgets_1d)
+        has_2d_scans = bool(dockwidgets_2d)
         if has_1d_scans and has_2d_scans:
             self._mw.splitDockWidget(dockwidgets_1d[0], self.optimizer_dockwidget,
                                      QtCore.Qt.Vertical)
@@ -506,7 +526,12 @@ class ScannerGui(GuiBase):
                                  (1, 1),
                                  QtCore.Qt.Horizontal)
 
-        # tabify dockwidgets if needed, needs to be done after .splitDockWidget()
+    def _tabify_dockwidgets(self):
+        dockwidgets_2d = tuple(self.scan_2d_dockwidgets.values())
+        dockwidgets_1d = tuple(self.scan_1d_dockwidgets.values())
+        multiple_2d_scans = len(dockwidgets_2d) > 1
+        multiple_1d_scans = len(dockwidgets_1d) > 1
+        has_1d_scans = bool(dockwidgets_1d)
         if multiple_2d_scans:
             if has_1d_scans:
                 for ii, dockwidget in enumerate(dockwidgets_2d[1:]):
@@ -523,8 +548,6 @@ class ScannerGui(GuiBase):
             for ii, dockwidget in enumerate(dockwidgets_1d[1:]):
                 self._mw.tabifyDockWidget(dockwidgets_1d[ii], dockwidget)
             dockwidgets_1d[0].raise_()
-
-        return
 
     def _restore_tilt_correction(self):
 
@@ -990,6 +1013,7 @@ class ScannerGui(GuiBase):
         self.sigOptimizerSettingsChanged.emit(
             self._osd.data_channel,
             self._osd.sequence,
+            self._osd.sequence_dimension,
             self._osd.range,
             self._osd.resolution,
             self._osd.frequency,
@@ -1025,7 +1049,9 @@ class ScannerGui(GuiBase):
 
         # Update optimizer settings QDialog
         self._osd.data_channel = optimize_logic.data_channel
+        self._osd.allowed_sequence_dimensions = optimize_logic.allowed_optimizer_sequence_dimensions
         self._osd.allowed_sequences = optimize_logic.allowed_scan_sequences
+        self._osd.sequence_dimension = optimize_logic.optimizer_sequence_dimensions
         self._osd.sequence = optimize_logic.scan_sequence
         self._osd.set_range(optimize_logic.scan_range)
         self._osd.set_resolution(optimize_logic.scan_resolution)

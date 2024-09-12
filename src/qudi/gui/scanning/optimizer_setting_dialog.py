@@ -35,7 +35,8 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
             self,
             scanner_axes: Iterable[ScannerAxis],
             scanner_channels: Iterable[ScannerChannel],
-            sequences: List[Tuple[Tuple[str, ...]]],
+            sequences: dict[list, list[Tuple[Tuple[str, ...]]]],
+            sequence_dimensions: list[list],
             back_scan_capability: BackScanCapability
     ):
         super().__init__()
@@ -45,6 +46,7 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
         self.settings_widget = OptimizerSettingsWidget(scanner_axes=scanner_axes,
                                                        scanner_channels=scanner_channels,
                                                        sequences=sequences,
+                                                       sequence_dimensions=sequence_dimensions,
                                                        back_scan_capability=back_scan_capability)
 
         self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
@@ -84,6 +86,22 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
     @allowed_sequences.setter
     def allowed_sequences(self, sequences: Tuple[Tuple[str, ...]]) -> None:
         self.settings_widget.allowed_sequences = sequences
+
+    @property
+    def sequence_dimension(self) -> list[int]:
+        return self.settings_widget.sequence_dimension
+
+    @sequence_dimension.setter
+    def sequence_dimension(self, dim: list[int]) -> None:
+        self.settings_widget.sequence_dimension = dim
+
+    @property
+    def allowed_sequence_dimensions(self) -> list[int]:
+        return self.settings_widget.allowed_sequence_dimensions
+
+    @allowed_sequence_dimensions.setter
+    def allowed_sequence_dimensions(self, sequence_dimensions: list[int]) -> None:
+        self.settings_widget.allowed_sequence_dimensions = sequence_dimensions
 
     @property
     def range(self) -> Dict[str, float]:
@@ -127,7 +145,8 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
             self,
             scanner_axes: Iterable[ScannerAxis],
             scanner_channels: Iterable[ScannerChannel],
-            sequences: List[Tuple[Tuple[str, ...]]],
+            sequences: dict[list, tuple[tuple[str, ...]]],
+            sequence_dimensions: list[list],
             back_scan_capability: BackScanCapability
     ):
         super().__init__()
@@ -135,6 +154,7 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
 
         self._avail_axes = sorted([ax.name for ax in scanner_axes])
         self._allowed_sequences = sequences
+        self._allowed_sequence_dimensions = sequence_dimensions
 
         font = QtGui.QFont()
         font.setBold(True)
@@ -142,8 +162,11 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         self.data_channel_combobox = QtWidgets.QComboBox()
         self.data_channel_combobox.addItems(tuple(ch.name for ch in scanner_channels))
 
+        self.optimize_sequence_dimensions_combobox = QtWidgets.QComboBox()
+        self.optimize_sequence_dimensions_combobox.addItems([str(dim) for dim in self._allowed_sequence_dimensions])
+
         self.optimize_sequence_combobox = QtWidgets.QComboBox()
-        self.optimize_sequence_combobox.addItems([str(seq) for seq in self._allowed_sequences])
+        self.optimize_sequence_combobox.addItems([str(seq) for seq in self._allowed_sequences[self._allowed_sequence_dimensions[0]]])
 
         # general settings
         label = QtWidgets.QLabel('Data channel:')
@@ -162,6 +185,11 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         label_opt_seq = QtWidgets.QLabel('Sequence:')
         label_opt_seq.setAlignment(QtCore.Qt.AlignLeft)
         label_opt_seq.setFont(font)
+
+        label_opt_seq_dim = QtWidgets.QLabel('Sequence Dimension:')
+        label_opt_seq_dim.setAlignment(QtCore.Qt.AlignLeft)
+        label_opt_seq_dim.setFont(font)
+
         self.axes_widget = OptimizerAxesWidget(scanner_axes=scanner_axes, back_scan_capability=back_scan_capability)
         self.axes_widget.setObjectName('optimizer_axes_widget')
 
@@ -170,14 +198,18 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
 
         layout = QtWidgets.QGridLayout()
         layout.addWidget(self.axes_widget, 0, 0, 1, -1)
-        layout.addWidget(label_opt_seq, 1, 0, 1, 1)
-        layout.addWidget(self.optimize_sequence_combobox, 1, 1, 1, 1)
+        layout.addWidget(label_opt_seq_dim, 1, 0, 1, 1)
+        layout.addWidget(self.optimize_sequence_dimensions_combobox, 1, 1, 1, 1)
+        layout.addWidget(label_opt_seq, 2, 0, 1, 1)
+        layout.addWidget(self.optimize_sequence_combobox, 2, 1, 1, 1)
         scan_settings_groupbox.setLayout(layout)
 
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(misc_settings_groupbox)
         layout.addWidget(scan_settings_groupbox)
         self.setLayout(layout)
+
+        self.optimize_sequence_dimensions_combobox.currentIndexChanged.connect(self._update_sequence_combobox)
 
     @property
     def data_channel(self) -> str:
@@ -191,29 +223,66 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
 
     @property
     def sequence(self) -> Tuple[Tuple[str, ...]]:
-        return self._allowed_sequences[self.optimize_sequence_combobox.currentIndex()]
+        return self._allowed_sequences[self.sequence_dimension][self.optimize_sequence_combobox.currentIndex()]
 
     @sequence.setter
     def sequence(self, seq: Tuple[Tuple[str, ...]]) -> None:
         self.optimize_sequence_combobox.blockSignals(True)
         try:
-            idx_combo = self._allowed_sequences.index(seq)
-        except ValueError as e:
+            idx_combo = self._allowed_sequences[self.sequence_dimension].index(seq)
+        except ValueError:
             idx_combo = 0
-            logger.exception(e)
-            logger.debug(f'{seq=}, {self._allowed_sequences=}, {type(self._allowed_sequences)=}')
         self.optimize_sequence_combobox.setCurrentIndex(idx_combo)
         self.optimize_sequence_combobox.blockSignals(False)
 
     @property
     def allowed_sequences(self) -> List[Tuple[str, ...]]:
-        return self._allowed_sequences
+        return self._allowed_sequences[self.sequence_dimension]
 
     @allowed_sequences.setter
-    def allowed_sequences(self, sequences: List[Tuple[str, ...]]) -> None:
+    def allowed_sequences(self, sequences: dict[list, list[Tuple[str, ...]]]) -> None:
         self._allowed_sequences = sequences
+        self._populate_sequence_combobox()
+
+    def _populate_sequence_combobox(self):
+        self.optimize_sequence_combobox.blockSignals(True)
         self.optimize_sequence_combobox.clear()
-        self.optimize_sequence_combobox.addItems([str(seq) for seq in self._allowed_sequences])
+        self.optimize_sequence_combobox.addItems([str(seq) for seq in self._allowed_sequences[self.sequence_dimension]])
+        self.optimize_sequence_combobox.blockSignals(False)
+
+    @property
+    def sequence_dimension(self) -> list[int]:
+        return self._allowed_sequence_dimensions[self.optimize_sequence_dimensions_combobox.currentIndex()]
+
+    @sequence_dimension.setter
+    def sequence_dimension(self, seq_dim: list[int]) -> None:
+        self.optimize_sequence_dimensions_combobox.blockSignals(True)
+        try:
+            idx_combo = self._allowed_sequence_dimensions.index(seq_dim)
+        except ValueError:
+            idx_combo = 0
+        self.optimize_sequence_dimensions_combobox.setCurrentIndex(idx_combo)
+        self.optimize_sequence_dimensions_combobox.blockSignals(False)
+        self._populate_sequence_combobox()
+
+    @property
+    def allowed_sequence_dimensions(self) -> list[int]:
+        return self._allowed_sequence_dimensions
+
+    @allowed_sequence_dimensions.setter
+    def allowed_sequence_dimensions(self, sequence_dimensions: list[int]) -> None:
+        self.optimize_sequence_dimensions_combobox.blockSignals(True)
+        self._allowed_sequence_dimensions = sequence_dimensions
+        self.optimize_sequence_dimensions_combobox.clear()
+        self.optimize_sequence_dimensions_combobox.addItems([str(dim) for dim in self._allowed_sequence_dimensions])
+        self.optimize_sequence_dimensions_combobox.blockSignals(False)
+        self._populate_sequence_combobox()
+
+    def _update_sequence_combobox(self, index: int) -> None:
+        self.sequence_dimension = self.allowed_sequence_dimensions[index]
+        self._populate_sequence_combobox()
+        self.sequence = self.allowed_sequences[0]
+
 
 class OptimizerAxesWidget(QtWidgets.QWidget):
     """ Widget to set optimizer parameters for each scanner axes.
