@@ -123,17 +123,18 @@ class ImageGenerator:
 
         indices = np.array([np.where(positions == point)[0][0] for point in points_in_detection_volume])
 
-        mus_visible = points_in_detection_volume
-        sigmas_visible = sigmas[indices]
-        amplitudes_visible = amplitudes[indices]
+        if len(indices) > 0:
+            mus_visible = points_in_detection_volume
+            sigmas_visible = sigmas[indices]
+            amplitudes_visible = amplitudes[indices]
 
-        gauss_1d_all = self._gaussian_n_dim(grid_points, mus=mus_visible, sigmas=sigmas_visible,
-                                            amplitudes=amplitudes_visible)
+            gauss_1d_all = self._gaussian_n_dim(grid_points, mus=mus_visible, sigmas=sigmas_visible,
+                                                amplitudes=amplitudes_visible)
 
-        new_dim = [len(position_vectors_indices[i]) for i in sorted(position_vectors_indices.keys())]
-        gauss_2d_all = np.sum(gauss_1d_all.reshape((-1, *new_dim)), axis=0)
+            new_dim = [len(position_vectors_indices[i]) for i in sorted(position_vectors_indices.keys())]
+            gauss_2d_all = np.sum(gauss_1d_all.reshape((-1, *new_dim)), axis=0)
 
-        scan_image += gauss_2d_all
+            scan_image += gauss_2d_all
 
         logger.debug(f"Image took {time.perf_counter()-t_start:.3f} s for {points_in_detection_volume.shape[0]=},\n"
                      f" {points_in_detection_volume=}")
