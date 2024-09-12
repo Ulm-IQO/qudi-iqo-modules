@@ -340,6 +340,16 @@ class DataInStreamBuffer(DataInStreamInterface):
                 |                      |                      |
                 |                      v                      |
                 ------------> DataInStreamHardware <-----------
+
+    Example config for copy-paste:
+
+    data_instream_buffer:
+        module.Class: 'interfuse.instream_buffer.DataInStreamBuffer'
+        options:
+            allow_overwrite: False  # optional, allow ringbuffer overflows
+            max_poll_rate: 100.0  # optional, maximum data poll rate (1/s) for connected hardware
+        connect:
+            streamer: <data_instream_hardware>
     """
 
     _streamer = Connector(name='streamer', interface='DataInStreamInterface')

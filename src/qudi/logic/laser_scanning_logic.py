@@ -227,6 +227,10 @@ class LaserScanningLogic(LogicBase):
         connect:
             streamer: <data_instream_hardware>
             laser: <laser_control_hardware>  # optional
+        options:
+            laser_channel: 'wavelength'
+            max_update_rate: 30.0  # optional, maximum poll rate for new data (1/s)
+            max_samples: -1  # optional, maximum number of samples to record (-1 for unlimited)
     """
 
     @staticmethod

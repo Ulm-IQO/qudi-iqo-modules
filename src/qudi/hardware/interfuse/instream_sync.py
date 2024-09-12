@@ -53,10 +53,10 @@ class DataInStreamSync(DataInStreamInterface):
     data_instream_sync:
         module.Class: 'interfuse.instream_sync.DataInStreamSync'
         options:
-            allow_overwrite: False  # optional, ignore buffer overflows
-            max_poll_rate: 100.0  # optional, maximum data poll rate from connected hardware
-            min_interpolation_samples: 2  # optional, minimum samples per frame (must be >= 2)
-            # delay_time: 0.0  # optional, time offset for secondary stream interpolation
+            allow_overwrite: False  # optional, allow ringbuffer overflows
+            max_poll_rate: 100.0  # optional, maximum data poll rate (1/s) for connected hardware
+            min_interpolation_samples: 2  # optional, minimum samples per frame to interpolate (must be >= 2)
+            delay_time: 0  # optional, time offset for secondary stream interpolation
         connect:
             primary_streamer: <data_instream_hardware_1>
             secondary_streamer: <data_instream_hardware_2>

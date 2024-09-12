@@ -40,6 +40,8 @@ class LaserScanningGui(GuiBase):
         module.Class: 'laserscanning.laser_scanning_gui.LaserScanningGui'
         connect:
             laser_scanning_logic: <laser_scanning_logic>
+        options:
+            max_display_points: 1000  # optional, Maximum number of simultaneously displayed data points
     """
 
     sigStartScan = QtCore.Signal(bool, bool)  # laser_only, data_only
