@@ -201,19 +201,19 @@ class NameValidator(QtGui.QValidator):
         # Return intermediate status when empty string is passed
         if not string:
             if self._empty_allowed:
-                return self.Acceptable, '', position
+                return self.State.Acceptable, '', position
             else:
-                return self.Intermediate, string, position
+                return self.State.Intermediate, string, position
 
         match = self.name_re.match(string)
         if not match:
-            return self.Invalid, '', position
+            return self.State.Invalid, '', position
 
         matched = match.group()
         if matched == string:
-            return self.Acceptable, string, position
+            return self.State.Acceptable, string, position
 
-        return self.Invalid, matched, position
+        return self.State.Invalid, matched, position
 
     def fixup(self, text):
         match = self.name_re.search(text)
@@ -472,7 +472,7 @@ class PoiManagerGui(GuiBase):
             self._poi_manager_logic().set_poi_anchor_from_position, QtCore.Qt.QueuedConnection)
         self._mw.delete_poi_PushButton.clicked.connect(
             lambda: self._poi_manager_logic().delete_poi(None), QtCore.Qt.QueuedConnection)
-        self._mw.active_poi_ComboBox.activated[str].connect(
+        self._mw.active_poi_ComboBox.activated[int].connect(
             self._poi_manager_logic().set_active_poi, QtCore.Qt.QueuedConnection)
         self._mw.goto_poi_after_update_checkBox.stateChanged.connect(
             self._poi_manager_logic().set_move_scanner_after_optimise, QtCore.Qt.QueuedConnection)
@@ -504,7 +504,7 @@ class PoiManagerGui(GuiBase):
         self._mw.manual_update_poi_PushButton.clicked.disconnect()
         self._mw.move_poi_PushButton.clicked.disconnect()
         self._mw.delete_poi_PushButton.clicked.disconnect()
-        self._mw.active_poi_ComboBox.activated[str].disconnect()
+        self._mw.active_poi_ComboBox.activated[int].disconnect()
         self._mw.goto_poi_after_update_checkBox.stateChanged.disconnect()
         self._mw.track_poi_Action.triggered.disconnect()
         self.sigTrackPeriodChanged.disconnect()
