@@ -52,7 +52,7 @@ class LaserMainWindow(QtWidgets.QMainWindow):
         layout.addWidget(self.extra_info_label)
         layout.addWidget(extra_info_button_box)
         self.extra_info_dialog.setLayout(layout)
-        layout.setSizeConstraint(layout.SetFixedSize)
+        layout.setSizeConstraint(layout.SizeConstraint.SetFixedSize)
 
         # create menu bar and actions
         menu_bar = QtWidgets.QMenuBar(self)
@@ -182,10 +182,10 @@ class LaserGui(GuiBase):
         # set up dock widgets
         self.control_dock_widget = LaserControlDockWidget()
         self.control_dock_widget.setFeatures(
-            QtWidgets.QDockWidget.DockWidgetClosable | QtWidgets.QDockWidget.DockWidgetMovable
+            QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetClosable | QtWidgets.QDockWidget.DockWidgetFeature.DockWidgetMovable
         )
-        self.control_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
-        self._mw.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.control_dock_widget)
+        self.control_dock_widget.setAllowedAreas(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, self.control_dock_widget)
         self.control_dock_widget.visibilityChanged.connect(self._mw.action_view_controls.setChecked)
         self._mw.action_view_controls.triggered[bool].connect(self.control_dock_widget.setVisible)
         self.control_dock_widget.power_slider.setRange(*logic.power_range)
@@ -196,9 +196,8 @@ class LaserGui(GuiBase):
         self.control_dock_widget.current_spinbox.setSuffix(logic.current_unit)
 
         self.output_graph_dock_widget = LaserOutputDockWidget()
-        self.output_graph_dock_widget.setFeatures(QtWidgets.QDockWidget.AllDockWidgetFeatures)
-        self.output_graph_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
-        self._mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.output_graph_dock_widget)
+        self.output_graph_dock_widget.setAllowedAreas(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.output_graph_dock_widget)
         self.output_graph_dock_widget.visibilityChanged.connect(
             self._mw.action_view_output_graph.setChecked
         )
@@ -213,9 +212,8 @@ class LaserGui(GuiBase):
         self.temperature_graph_dock_widget = LaserTemperatureDockWidget(
             curve_names=tuple(logic.temperatures)
         )
-        self.temperature_graph_dock_widget.setFeatures(QtWidgets.QDockWidget.AllDockWidgetFeatures)
-        self.temperature_graph_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
-        self._mw.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.temperature_graph_dock_widget)
+        self.temperature_graph_dock_widget.setAllowedAreas(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, self.temperature_graph_dock_widget)
         self.temperature_graph_dock_widget.visibilityChanged.connect(
             self._mw.action_view_temperature_graph.setChecked
         )
