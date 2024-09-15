@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import time
 from typing import Optional, Dict, Tuple, Any, List
 import numpy as np
-from PySide2 import QtCore
+from PySide6 import QtCore
 from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex

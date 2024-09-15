@@ -25,8 +25,8 @@ from uuid import UUID
 from typing import Union, Tuple, Optional, List
 
 import numpy as np
-from PySide2 import QtCore, QtGui, QtWidgets
-from PySide2.QtWidgets import QAction
+from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtGui import QAction
 
 import qudi.util.uic as uic
 from qudi.core.connector import Connector

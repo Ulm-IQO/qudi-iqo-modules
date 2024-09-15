@@ -29,7 +29,7 @@ import traceback
 import datetime
 import re
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 from qudi.core.statusvariable import StatusVar
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption

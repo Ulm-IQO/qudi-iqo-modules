@@ -14,7 +14,7 @@ unix_dep = [
     'nidaqmx>=0.5.7',
     'numpy>=1.23.3,<2.0',
     'pyqtgraph>=0.13.1',
-    'PySide2',  # get fixed version from core
+    'PySide6',  # get fixed version from core
     'PyVisa>=1.12.0',
     'scipy>=1.9.1',
     'zaber_motion>=2.14.6'
@@ -30,7 +30,7 @@ windows_dep = [
     'nidaqmx>=0.5.7',
     'numpy>=1.23.3,<2.0',
     'pyqtgraph>=0.13.1',
-    'PySide2',  # get fixed version from core
+    'PySide6',  # get fixed version from core
     'PyVisa>=1.12.0',
     'scipy>=1.9.1',
     'zaber_motion>=2.14.6'
@@ -98,6 +98,6 @@ setup(
                  ],
     license='LGPLv3',
     install_requires=windows_dep if sys.platform == 'win32' else unix_dep,
-    python_requires='>=3.8, <3.11',
+    python_requires='>=3.8',
     zip_safe=False
 )

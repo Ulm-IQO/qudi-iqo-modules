@@ -24,8 +24,8 @@ __all__ = ('TiltCorrectionDockWidget')
 import numpy as np
 from collections import OrderedDict
 
-from PySide2 import QtCore, QtGui, QtWidgets
-from PySide2.QtWidgets import QDockWidget, QWidget,QGridLayout, QLabel, QPushButton,QTableWidget
+from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtWidgets import QDockWidget, QWidget,QGridLayout, QLabel, QPushButton,QTableWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, ToggleSwitchWidget
 

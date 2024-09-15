@@ -32,7 +32,7 @@ from qudi.util.helpers import natural_sort
 from qudi.core.module import GuiBase
 
 from qudi.util.colordefs import QudiPalettePale as palette
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.util import uic
 from qudi.util.widgets.plotting.image_widget import MouseTrackingImageWidget
 

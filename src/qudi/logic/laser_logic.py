@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 import numpy as np
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector

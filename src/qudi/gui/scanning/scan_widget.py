@@ -25,7 +25,7 @@ __all__ = ['Scan1DWidget', 'Scan2DWidget']
 import os
 import numpy as np
 from typing import Tuple, Union, Sequence
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 from typing import Optional, List
 from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWidget
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget

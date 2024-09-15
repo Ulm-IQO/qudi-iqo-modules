@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('OptimizerSettingsDialog', 'OptimizerSettingsWidget', 'OptimizerAxesWidget')
 
 from typing import List, Tuple, Dict, Iterable
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.interface.scanning_probe_interface import ScannerAxis, ScannerChannel, BackScanCapability

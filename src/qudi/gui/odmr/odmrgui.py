@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import datetime
 import numpy as np
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar

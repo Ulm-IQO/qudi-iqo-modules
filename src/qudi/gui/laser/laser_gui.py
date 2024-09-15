@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 
 from qudi.core.connector import Connector
 from qudi.util.colordefs import QudiPalettePale as palette
@@ -59,27 +59,27 @@ class LaserMainWindow(QtWidgets.QMainWindow):
         self.setMenuBar(menu_bar)
 
         menu = menu_bar.addMenu('File')
-        self.action_close = QtWidgets.QAction('Close')
+        self.action_close = QtGui.QAction('Close')
         path = os.path.join(get_artwork_dir(), 'icons', 'application-exit')
         self.action_close.setIcon(QtGui.QIcon(path))
         self.action_close.triggered.connect(self.close)
         menu.addAction(self.action_close)
 
         menu = menu_bar.addMenu('View')
-        self.action_view_controls = QtWidgets.QAction('Show Controls')
+        self.action_view_controls = QtGui.QAction('Show Controls')
         self.action_view_controls.setCheckable(True)
         self.action_view_controls.setChecked(True)
         menu.addAction(self.action_view_controls)
-        self.action_view_output_graph = QtWidgets.QAction('Show Output Graph')
+        self.action_view_output_graph = QtGui.QAction('Show Output Graph')
         self.action_view_output_graph.setCheckable(True)
         self.action_view_output_graph.setChecked(True)
         menu.addAction(self.action_view_output_graph)
-        self.action_view_temperature_graph = QtWidgets.QAction('Show Temperature Graph')
+        self.action_view_temperature_graph = QtGui.QAction('Show Temperature Graph')
         self.action_view_temperature_graph.setCheckable(True)
         self.action_view_temperature_graph.setChecked(True)
         menu.addAction(self.action_view_temperature_graph)
         menu.addSeparator()
-        self.action_view_default = QtWidgets.QAction('Restore Default')
+        self.action_view_default = QtGui.QAction('Restore Default')
         menu.addAction(self.action_view_default)
 
         # Create status bar

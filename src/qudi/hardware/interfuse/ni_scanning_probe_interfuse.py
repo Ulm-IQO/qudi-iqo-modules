@@ -26,8 +26,8 @@ import time
 from typing import Optional, Dict, List
 from dataclasses import asdict
 
-from PySide2 import QtCore
-from PySide2.QtGui import QGuiApplication
+from PySide6 import QtCore
+from PySide6.QtGui import QGuiApplication
 
 from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanConstraints, \
     ScannerAxis, ScannerChannel, ScanData, ScanSettings, CoordinateTransformMixin, BackScanCapability

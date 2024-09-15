@@ -25,7 +25,7 @@ __all__ = ('ScannerSettingDialog', 'ScannerSettingsWidget')
 
 from typing import List, Dict, Tuple
 
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.interface.scanning_probe_interface import BackScanCapability, ScanConstraints, ScannerAxis

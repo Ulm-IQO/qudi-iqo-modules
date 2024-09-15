@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import numpy as np
 import datetime as dt
 import matplotlib.pyplot as plt
-from PySide2 import QtCore
+from PySide6 import QtCore
 from scipy.signal import decimate
 from typing import Union, Optional, Sequence, Iterable, List, Dict, Mapping, Tuple
 

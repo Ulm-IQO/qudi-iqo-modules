@@ -22,7 +22,7 @@ import numpy as np
 import copy
 
 from qudi.util.helpers import natural_sort
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.gui.pulsed.pulsed_item_delegates import ScienDSpinBoxItemDelegate, ComboBoxItemDelegate
 from qudi.gui.pulsed.pulsed_item_delegates import MultipleCheckboxItemDelegate, CheckBoxItemDelegate
 from qudi.gui.pulsed.pulsed_item_delegates import SpinBoxItemDelegate, AnalogParametersItemDelegate
