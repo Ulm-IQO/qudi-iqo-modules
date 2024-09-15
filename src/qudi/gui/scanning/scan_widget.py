@@ -57,11 +57,11 @@ class _BaseScanWidget(QtWidgets.QWidget):
         scan_icon.addFile(os.path.join(get_artwork_dir(), 'icons', 'start-counter.svg'),
                           QtCore.QSize(),
                           QtGui.QIcon.Normal,
-                          QtGui.QIcon.Off)
+                          QtGui.QIcon.State.Off)
         scan_icon.addFile(os.path.join(get_artwork_dir(), 'icons', 'stop-counter.svg'),
                           QtCore.QSize(),
                           QtGui.QIcon.Normal,
-                          QtGui.QIcon.On)
+                          QtGui.QIcon.State.On)
         self.toggle_scan_button = QtWidgets.QPushButton(scan_icon, 'Toggle Scan')
         self.toggle_scan_button.setCheckable(True)
 

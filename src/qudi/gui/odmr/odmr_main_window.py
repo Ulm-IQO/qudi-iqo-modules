@@ -49,7 +49,7 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
         icon.addFile(os.path.join(icon_path, 'stop-counter'),
-                     state=QtGui.QIcon.On)
+                     state=QtGui.QIcon.State.On)
         self.action_toggle_measurement = QtGui.QAction('Toggle Measurement')
         self.action_toggle_measurement.setCheckable(True)
         self.action_toggle_measurement.setIcon(icon)

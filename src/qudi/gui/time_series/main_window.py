@@ -102,12 +102,12 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
         # Create QActions
         icons_dir = os.path.join(get_artwork_dir(), 'icons')
         icon = QtGui.QIcon(os.path.join(icons_dir, 'start-counter'))
-        icon.addFile(os.path.join(icons_dir, 'stop-counter'), state=QtGui.QIcon.On)
+        icon.addFile(os.path.join(icons_dir, 'stop-counter'), state=QtGui.QIcon.State.On)
         self.toggle_trace_action = QtGui.QAction(icon, 'Start trace', self)
         self.toggle_trace_action.setCheckable(True)
         self.toggle_trace_action.setToolTip('Start/Stop continuous reading of the data trace.')
         icon = QtGui.QIcon(os.path.join(icons_dir, 'record-counter'))
-        icon.addFile(os.path.join(icons_dir, 'stop-record-counter'), state=QtGui.QIcon.On)
+        icon.addFile(os.path.join(icons_dir, 'stop-record-counter'), state=QtGui.QIcon.State.On)
         self.record_trace_action = QtGui.QAction(icon, 'Start recording', self)
         self.record_trace_action.setCheckable(True)
         self.record_trace_action.setToolTip(
