@@ -120,7 +120,7 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         tool_button.setDefaultAction(self.action_toggle_cw)
         tool_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
         toolbar.addWidget(tool_button)
-        self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
+        self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, toolbar)
 
         # Create menu bar and add actions
         menu_bar = QtWidgets.QMenuBar()

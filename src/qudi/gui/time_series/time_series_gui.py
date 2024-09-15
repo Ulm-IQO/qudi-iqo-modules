@@ -465,7 +465,7 @@ class TimeSeriesGui(GuiBase):
         self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.settings_dockwidget)
         # Set the toolbar to its initial top area
         self._mw.toolbar.show()
-        self._mw.addToolBar(QtCore.Qt.TopToolBarArea, self._mw.toolbar)
+        self._mw.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, self._mw.toolbar)
         # Restore status if something went wrong
         self.update_status(running=self._time_series_logic_con().module_state() == 'locked',
                            recording=self._time_series_logic_con().data_recording_active)

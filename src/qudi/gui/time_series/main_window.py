@@ -145,12 +145,12 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
         self.close_action = QtGui.QAction(icon, 'Close', self)
         self.close_action.setCheckable(False)
         self.close_action.setToolTip('Close')
-        self.close_action.setShortcut(QtGui.QKeySequence(QtGui.Qt.CTRL | QtGui.Qt.Key_Q))
+        self.close_action.setShortcut(QtGui.QKeySequence(QtGui.Qt.CTRL | QtGui.Qt.Key.Key_Q))
 
         # Create toolbar
         self.toolbar = QtWidgets.QToolBar('Trace controls')
-        self.addToolBar(QtCore.Qt.TopToolBarArea, self.toolbar)
-        self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, self.toolbar)
+        self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         self.toolbar.addAction(self.toggle_trace_action)
         self.toolbar.addAction(self.record_trace_action)
         self.toolbar.addAction(self.snapshot_trace_action)

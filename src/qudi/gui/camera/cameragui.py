@@ -66,7 +66,7 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         self.action_capture_frame = QtGui.QAction('Capture Frame')
         self.action_capture_frame.setCheckable(True)
         toolbar.addAction(self.action_capture_frame)
-        self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
+        self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, toolbar)
 
         # Create central widget
         self.image_widget = ImageWidget()
