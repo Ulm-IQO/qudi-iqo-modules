@@ -114,9 +114,9 @@ class ScanningOptimizeLogic(LogicBase):
         self._last_scans = list()
         self._last_fits = list()
 
-        self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
+        self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.ConnectionType.QueuedConnection)
         self._scan_logic().sigScanStateChanged.connect(
-            self._scan_state_changed, QtCore.Qt.QueuedConnection
+            self._scan_state_changed, QtCore.Qt.ConnectionType.QueuedConnection
         )
 
     def on_deactivate(self):

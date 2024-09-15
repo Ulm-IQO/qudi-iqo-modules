@@ -71,7 +71,7 @@ class SwitchLogic(LogicBase):
 
         if self._autostart_watchdog:
             self._watchdog_active = True
-            QtCore.QMetaObject.invokeMethod(self, '_watchdog_body', QtCore.Qt.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self, '_watchdog_body', QtCore.Qt.ConnectionType.QueuedConnection)
         else:
             self._watchdog_active = False
 
@@ -182,7 +182,7 @@ class SwitchLogic(LogicBase):
                 if enable:
                     QtCore.QMetaObject.invokeMethod(self,
                                                     '_watchdog_body',
-                                                    QtCore.Qt.QueuedConnection)
+                                                    QtCore.Qt.ConnectionType.QueuedConnection)
 
     @QtCore.Slot()
     def _watchdog_body(self):

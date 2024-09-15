@@ -48,7 +48,7 @@ class SwitchRadioButtonWidget(QtWidgets.QWidget):
             button_group.addButton(button, ii)
             label = self._labels[state]
             label.setTextFormat(QtCore.Qt.RichText)
-            label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+            label.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             layout.addWidget(button)
             layout.addWidget(label)
         layout.addStretch()
@@ -137,9 +137,9 @@ class ToggleSwitchWidget(QtWidgets.QWidget):
             layout.addWidget(self.toggle_switch)
         else:
             self.labels = (QtWidgets.QLabel(switch_states[0]), QtWidgets.QLabel(switch_states[1]))
-            self.labels[0].setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            self.labels[0].setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self.labels[0].setTextFormat(QtCore.Qt.RichText)
-            self.labels[1].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+            self.labels[1].setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self.labels[1].setTextFormat(QtCore.Qt.RichText)
             layout.addWidget(self.labels[0])
             layout.addWidget(self.toggle_switch)

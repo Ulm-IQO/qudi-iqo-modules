@@ -70,7 +70,7 @@ class _BaseScanWidget(QtWidgets.QWidget):
         self.save_scan_button.setCheckable(False)
 
         self.channel_selection_label = QtWidgets.QLabel('Channel:')
-        self.channel_selection_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.channel_selection_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.channel_selection_combobox = QtWidgets.QComboBox()
         self.channel_selection_combobox.addItems([ch.name for ch in channels])
         self.channel_selection_combobox.setMinimumContentsLength(15)
@@ -225,7 +225,7 @@ class Scan2DWidget(_BaseScanWidget):
         super().__init__(channels, parent=parent)
          
         self.position_label = CursorPositionLabel()
-        self.position_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        self.position_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         self.position_label.set_units(axes[0].unit, axes[1].unit)
         self.image_widget = RubberbandZoomSelectionImageWidget(
             allow_tracking_outside_data=True,

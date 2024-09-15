@@ -260,7 +260,7 @@ class PulsedMeasurementLogic(LogicBase):
         self.__analysis_timer.setSingleShot(False)
         self.__analysis_timer.setInterval(round(1000. * self.__timer_interval))
         self.__analysis_timer.timeout.connect(self._pulsed_analysis_loop,
-                                              QtCore.Qt.QueuedConnection)
+                                              QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Fitting
         self.fit_config_model = FitConfigurationsModel(parent=self)
@@ -297,8 +297,8 @@ class PulsedMeasurementLogic(LogicBase):
         self._recalled_raw_data_tag = None
 
         # Connect internal signals
-        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.QueuedConnection)
-        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.QueuedConnection)
+        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.ConnectionType.QueuedConnection)
         return
 
     def on_deactivate(self):

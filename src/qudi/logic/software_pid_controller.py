@@ -104,7 +104,7 @@ class SoftPIDController(PIDControllerInterface):
         self.timer.setSingleShot(True)
         self.timer.setInterval(self.timestep)
 
-        self.timer.timeout.connect(self._calc_next_step, QtCore.Qt.QueuedConnection)
+        self.timer.timeout.connect(self._calc_next_step, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigNewValue.connect(self._control.set_setpoint)
 
         self.history = np.zeros([3, 5])

@@ -163,7 +163,7 @@ class OdmrLogic(LogicBase):
         self._initialize_odmr_data()
 
         # Connect signals
-        self._sigNextLine.connect(self._scan_odmr_line, QtCore.Qt.QueuedConnection)
+        self._sigNextLine.connect(self._scan_odmr_line, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.

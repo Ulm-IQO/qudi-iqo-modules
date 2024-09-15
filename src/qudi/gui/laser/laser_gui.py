@@ -45,7 +45,7 @@ class LaserMainWindow(QtWidgets.QMainWindow):
         self.extra_info_dialog.setWindowTitle('Laser Info')
         self.extra_info_label = QtWidgets.QLabel()
         self.extra_info_label.setAlignment(QtCore.Qt.AlignTop | QtCore.Qt.AlignLeft)
-        extra_info_button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok)
+        extra_info_button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok)
         extra_info_button_box.setCenterButtons(True)
         extra_info_button_box.accepted.connect(self.extra_info_dialog.accept)
         layout = QtWidgets.QVBoxLayout()
@@ -96,11 +96,11 @@ class LaserMainWindow(QtWidgets.QMainWindow):
         font.setPointSize(12)
         label = QtWidgets.QLabel('Laser:')
         label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label, 0, 0)
         self.shutter_label = QtWidgets.QLabel('Shutter:')
         self.shutter_label.setFont(font)
-        self.shutter_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.shutter_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(self.shutter_label, 1, 0)
         self.laser_status_label = QtWidgets.QLabel('???')
         self.laser_status_label.setFont(font)
@@ -261,17 +261,17 @@ class LaserGui(GuiBase):
 
         # connect update signals from logic
         logic.sigPowerSetpointChanged.connect(
-            self._power_setpoint_updated, QtCore.Qt.QueuedConnection
+            self._power_setpoint_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
         logic.sigCurrentSetpointChanged.connect(
-            self._current_setpoint_updated, QtCore.Qt.QueuedConnection
+            self._current_setpoint_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
-        logic.sigControlModeChanged.connect(self._control_mode_updated, QtCore.Qt.QueuedConnection)
-        logic.sigLaserStateChanged.connect(self._laser_state_updated, QtCore.Qt.QueuedConnection)
+        logic.sigControlModeChanged.connect(self._control_mode_updated, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigLaserStateChanged.connect(self._laser_state_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         logic.sigShutterStateChanged.connect(
-            self._shutter_state_updated, QtCore.Qt.QueuedConnection
+            self._shutter_state_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
-        logic.sigDataChanged.connect(self._data_updated, QtCore.Qt.QueuedConnection)
+        logic.sigDataChanged.connect(self._data_updated, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self.show()
 

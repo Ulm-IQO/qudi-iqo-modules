@@ -37,7 +37,7 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         layout.setAlignment(QtCore.Qt.AlignCenter)
 
         label = QtWidgets.QLabel('Exposure Time:')
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label, 0, 0)
         self.exposure_spinbox = ScienDSpinBox()
         self.exposure_spinbox.setSuffix('s')
@@ -47,7 +47,7 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         layout.addWidget(self.exposure_spinbox, 0, 1)
 
         label = QtWidgets.QLabel('Gain:')
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label, 1, 0)
         self.gain_spinbox = ScienDSpinBox()
         # ToDo: set proper unit for gain with self.gain_spinbox.setSuffix('s')
@@ -56,10 +56,10 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         self.gain_spinbox.setMinimumWidth(100)
         layout.addWidget(self.gain_spinbox, 1, 1)
 
-        self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
-                                                     QtWidgets.QDialogButtonBox.Cancel |
-                                                     QtWidgets.QDialogButtonBox.Apply,
-                                                     QtCore.Qt.Horizontal,
+        self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                                     QtWidgets.QDialogButtonBox.StandardButton.Cancel |
+                                                     QtWidgets.QDialogButtonBox.StandardButton.Apply,
+                                                     QtCore.Qt.Orientation.Horizontal,
                                                      self)
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)

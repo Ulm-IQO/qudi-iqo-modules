@@ -143,111 +143,111 @@ class PulsedMasterLogic(LogicBase):
 
         # Connect signals controlling PulsedMeasurementLogic
         self.sigDoFit.connect(
-            self.pulsedmeasurementlogic().do_fit, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().do_fit, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigToggleMeasurement.connect(
-            self.pulsedmeasurementlogic().toggle_pulsed_measurement, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().toggle_pulsed_measurement, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigToggleMeasurementPause.connect(
-            self.pulsedmeasurementlogic().toggle_measurement_pause, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().toggle_measurement_pause, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigTogglePulser.connect(
-            self.pulsedmeasurementlogic().toggle_pulse_generator, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().toggle_pulse_generator, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigToggleExtMicrowave.connect(
-            self.pulsedmeasurementlogic().toggle_microwave, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().toggle_microwave, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigFastCounterSettingsChanged.connect(
-            self.pulsedmeasurementlogic().set_fast_counter_settings, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().set_fast_counter_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigMeasurementSettingsChanged.connect(
-            self.pulsedmeasurementlogic().set_measurement_settings, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().set_measurement_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigExtMicrowaveSettingsChanged.connect(
-            self.pulsedmeasurementlogic().set_microwave_settings, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().set_microwave_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigAnalysisSettingsChanged.connect(
-            self.pulsedmeasurementlogic().set_analysis_settings, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().set_analysis_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigExtractionSettingsChanged.connect(
-            self.pulsedmeasurementlogic().set_extraction_settings, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().set_extraction_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigTimerIntervalChanged.connect(
-            self.pulsedmeasurementlogic().set_timer_interval, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().set_timer_interval, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigAlternativeDataTypeChanged.connect(
-            self.pulsedmeasurementlogic().set_alternative_data_type, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().set_alternative_data_type, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigManuallyPullData.connect(
-            self.pulsedmeasurementlogic().manually_pull_data, QtCore.Qt.QueuedConnection)
+            self.pulsedmeasurementlogic().manually_pull_data, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Connect signals coming from PulsedMeasurementLogic
         self.pulsedmeasurementlogic().sigMeasurementDataUpdated.connect(
-            self.sigMeasurementDataUpdated, QtCore.Qt.QueuedConnection)
+            self.sigMeasurementDataUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigTimerUpdated.connect(
-            self.sigTimerUpdated, QtCore.Qt.QueuedConnection)
+            self.sigTimerUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigFitUpdated.connect(
-            self.fit_updated, QtCore.Qt.QueuedConnection)
+            self.fit_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigMeasurementStatusUpdated.connect(
-            self.measurement_status_updated, QtCore.Qt.QueuedConnection)
+            self.measurement_status_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigPulserRunningUpdated.connect(
-            self.pulser_running_updated, QtCore.Qt.QueuedConnection)
+            self.pulser_running_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigExtMicrowaveRunningUpdated.connect(
-            self.ext_microwave_running_updated, QtCore.Qt.QueuedConnection)
+            self.ext_microwave_running_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigExtMicrowaveSettingsUpdated.connect(
-            self.sigExtMicrowaveSettingsUpdated, QtCore.Qt.QueuedConnection)
+            self.sigExtMicrowaveSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigFastCounterSettingsUpdated.connect(
-            self.sigFastCounterSettingsUpdated, QtCore.Qt.QueuedConnection)
+            self.sigFastCounterSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigMeasurementSettingsUpdated.connect(
-            self.sigMeasurementSettingsUpdated, QtCore.Qt.QueuedConnection)
+            self.sigMeasurementSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigAnalysisSettingsUpdated.connect(
-            self.sigAnalysisSettingsUpdated, QtCore.Qt.QueuedConnection)
+            self.sigAnalysisSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmeasurementlogic().sigExtractionSettingsUpdated.connect(
-            self.sigExtractionSettingsUpdated, QtCore.Qt.QueuedConnection)
+            self.sigExtractionSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Connect signals controlling SequenceGeneratorLogic
         self.sigSavePulseBlock.connect(
-            self.sequencegeneratorlogic().save_block, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().save_block, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigSaveBlockEnsemble.connect(
-            self.sequencegeneratorlogic().save_ensemble, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().save_ensemble, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigSaveSequence.connect(
-            self.sequencegeneratorlogic().save_sequence, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().save_sequence, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigDeletePulseBlock.connect(
-            self.sequencegeneratorlogic().delete_block, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().delete_block, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigDeleteBlockEnsemble.connect(
-            self.sequencegeneratorlogic().delete_ensemble, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().delete_ensemble, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigDeleteSequence.connect(
-            self.sequencegeneratorlogic().delete_sequence, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().delete_sequence, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigLoadBlockEnsemble.connect(
-            self.sequencegeneratorlogic().load_ensemble, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().load_ensemble, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigLoadSequence.connect(
-            self.sequencegeneratorlogic().load_sequence, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().load_sequence, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigSampleBlockEnsemble.connect(
-            self.sequencegeneratorlogic().sample_pulse_block_ensemble, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().sample_pulse_block_ensemble, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigSampleSequence.connect(
-            self.sequencegeneratorlogic().sample_pulse_sequence, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().sample_pulse_sequence, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigClearPulseGenerator.connect(
-            self.sequencegeneratorlogic().clear_pulser, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().clear_pulser, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigGeneratorSettingsChanged.connect(
-            self.sequencegeneratorlogic().set_pulse_generator_settings, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().set_pulse_generator_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigSamplingSettingsChanged.connect(
-            self.sequencegeneratorlogic().set_generation_parameters, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().set_generation_parameters, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigGeneratePredefinedSequence.connect(
-            self.sequencegeneratorlogic().generate_predefined_sequence, QtCore.Qt.QueuedConnection)
+            self.sequencegeneratorlogic().generate_predefined_sequence, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Connect signals coming from SequenceGeneratorLogic
         self.sequencegeneratorlogic().sigBlockDictUpdated.connect(
-            self.sigBlockDictUpdated, QtCore.Qt.QueuedConnection)
+            self.sigBlockDictUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigEnsembleDictUpdated.connect(
-            self.sigEnsembleDictUpdated, QtCore.Qt.QueuedConnection)
+            self.sigEnsembleDictUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSequenceDictUpdated.connect(
-            self.sigSequenceDictUpdated, QtCore.Qt.QueuedConnection)
+            self.sigSequenceDictUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigAvailableWaveformsUpdated.connect(
-            self.sigAvailableWaveformsUpdated, QtCore.Qt.QueuedConnection)
+            self.sigAvailableWaveformsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigAvailableSequencesUpdated.connect(
-            self.sigAvailableSequencesUpdated, QtCore.Qt.QueuedConnection)
+            self.sigAvailableSequencesUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigGeneratorSettingsUpdated.connect(
-            self.sigGeneratorSettingsUpdated, QtCore.Qt.QueuedConnection)
+            self.sigGeneratorSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSamplingSettingsUpdated.connect(
-            self.sigSamplingSettingsUpdated, QtCore.Qt.QueuedConnection)
+            self.sigSamplingSettingsUpdated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigPredefinedSequenceGenerated.connect(
-            self.predefined_sequence_generated, QtCore.Qt.QueuedConnection)
+            self.predefined_sequence_generated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSampleEnsembleComplete.connect(
-            self.sample_ensemble_finished, QtCore.Qt.QueuedConnection)
+            self.sample_ensemble_finished, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigSampleSequenceComplete.connect(
-            self.sample_sequence_finished, QtCore.Qt.QueuedConnection)
+            self.sample_sequence_finished, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigLoadedAssetUpdated.connect(
-            self.loaded_asset_updated, QtCore.Qt.QueuedConnection)
+            self.loaded_asset_updated, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sequencegeneratorlogic().sigBenchmarkComplete.connect(
-            self.benchmark_completed, QtCore.Qt.QueuedConnection)
+            self.benchmark_completed, QtCore.Qt.ConnectionType.QueuedConnection)
 
         return
 

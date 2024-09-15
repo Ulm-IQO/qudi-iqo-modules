@@ -79,25 +79,25 @@ class NVCalculatorGui(GuiBase):
         self._mw.manual_field_DoubleSpinBox.editingFinished.connect(self.change_manual_field)
 
         # Internal trigger signals
-        self._mw.a_field_PushButton.clicked.connect(self.calculator.auto_dips, QtCore.Qt.QueuedConnection)
-        self._mw.m_field_PushButton.clicked.connect(self.calculator.manual_dips, QtCore.Qt.QueuedConnection)
+        self._mw.a_field_PushButton.clicked.connect(self.calculator.auto_dips, QtCore.Qt.ConnectionType.QueuedConnection)
+        self._mw.m_field_PushButton.clicked.connect(self.calculator.manual_dips, QtCore.Qt.ConnectionType.QueuedConnection)
 
-        self._mw.nmr_auto_PushButton.clicked.connect(self.auto_calculate_nmr, QtCore.Qt.QueuedConnection)
-        self._mw.nmr_manual_PushButton.clicked.connect(self.manual_calculate_nmr, QtCore.Qt.QueuedConnection)
-        self._mw.odmr1nmr_manual_PushButton.clicked.connect(self.use_single_freq, QtCore.Qt.QueuedConnection)
+        self._mw.nmr_auto_PushButton.clicked.connect(self.auto_calculate_nmr, QtCore.Qt.ConnectionType.QueuedConnection)
+        self._mw.nmr_manual_PushButton.clicked.connect(self.manual_calculate_nmr, QtCore.Qt.ConnectionType.QueuedConnection)
+        self._mw.odmr1nmr_manual_PushButton.clicked.connect(self.use_single_freq, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # send signals to logic
-        self.sigCalParamsChanged.connect(self.calculator.set_field_params, QtCore.Qt.QueuedConnection)
-        self.sigManualDipsChanged.connect(self.calculator.set_manual_dip_values, QtCore.Qt.QueuedConnection)
-        self.sigManualFieldChanged.connect(self.calculator.set_manual_field, QtCore.Qt.QueuedConnection)
+        self.sigCalParamsChanged.connect(self.calculator.set_field_params, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigManualDipsChanged.connect(self.calculator.set_manual_dip_values, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigManualFieldChanged.connect(self.calculator.set_manual_field, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Update signals coming from logic
-        self.calculator.sigFieldaCalUpdated.connect(self.a_update_field, QtCore.Qt.QueuedConnection)
-        self.calculator.sigFieldmCalUpdated.connect(self.m_update_field, QtCore.Qt.QueuedConnection)
-        self.calculator.sigFieldParamsUpdated.connect(self.update_field_params, QtCore.Qt.QueuedConnection)
-        self.calculator.sigDataSourceUpdated.connect(self.update_source, QtCore.Qt.QueuedConnection)
-        self.calculator.sigManualFieldUpdated.connect(self.update_manual_field, QtCore.Qt.QueuedConnection)
-        self.calculator.sigNMRUpdated.connect(self.update_nmr, QtCore.Qt.QueuedConnection)
+        self.calculator.sigFieldaCalUpdated.connect(self.a_update_field, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.calculator.sigFieldmCalUpdated.connect(self.m_update_field, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.calculator.sigFieldParamsUpdated.connect(self.update_field_params, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.calculator.sigDataSourceUpdated.connect(self.update_source, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.calculator.sigManualFieldUpdated.connect(self.update_manual_field, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.calculator.sigNMRUpdated.connect(self.update_nmr, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self._restore_window_geometry(self._mw)
         self.show()

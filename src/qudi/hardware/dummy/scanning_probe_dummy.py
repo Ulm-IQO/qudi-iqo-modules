@@ -262,7 +262,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         self.__last_backward_pixel = 0
         self.__update_timer = QtCore.QTimer()
         self.__update_timer.setSingleShot(True)
-        self.__update_timer.timeout.connect(self._handle_timer, QtCore.Qt.QueuedConnection)
+        self.__update_timer.timeout.connect(self._handle_timer, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self):
         """ Deactivate properly the confocal scanner dummy.

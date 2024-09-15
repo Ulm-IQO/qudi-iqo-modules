@@ -167,7 +167,7 @@ class TimeSeriesReaderLogic(LogicBase):
         self.set_channel_settings(self._active_channels, self._averaged_channels)
         self.set_trace_settings(data_rate=self._data_rate)
         # set up internal frame loop connection
-        self._sigNextDataFrame.connect(self._acquire_data_block, QtCore.Qt.QueuedConnection)
+        self._sigNextDataFrame.connect(self._acquire_data_block, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self) -> None:
         """ De-initialisation performed during deactivation of the module.

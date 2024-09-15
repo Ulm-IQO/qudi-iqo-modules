@@ -143,18 +143,18 @@ class SwitchGui(GuiBase):
 
         self._populate_switches()
 
-        self.sigSwitchChanged.connect(self.switchlogic().set_state, QtCore.Qt.QueuedConnection)
+        self.sigSwitchChanged.connect(self.switchlogic().set_state, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.action_periodic_state_check.toggled.connect(
-            self.switchlogic().toggle_watchdog, QtCore.Qt.QueuedConnection
+            self.switchlogic().toggle_watchdog, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self._mw.switch_view_action_group.triggered.connect(self._update_switch_appearance)
         self._mw.action_view_highlight_state.triggered.connect(self._update_state_colorscheme)
         self._mw.action_view_alt_toggle_style.triggered.connect(self._update_toggle_switch_style)
         self.switchlogic().sigWatchdogToggled.connect(
-            self._watchdog_updated, QtCore.Qt.QueuedConnection
+            self._watchdog_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self.switchlogic().sigSwitchesChanged.connect(
-            self._switches_updated, QtCore.Qt.QueuedConnection
+            self._switches_updated, QtCore.Qt.ConnectionType.QueuedConnection
         )
 
         self._restore_window_geometry(self._mw)
@@ -234,7 +234,7 @@ class SwitchGui(GuiBase):
         font.setBold(True)
         font.setPointSize(11)
         label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         label.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
         return label
 

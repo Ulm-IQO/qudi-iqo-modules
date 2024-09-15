@@ -47,10 +47,10 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
                                                        sequences=sequences,
                                                        back_scan_capability=back_scan_capability)
 
-        self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
-                                                     QtWidgets.QDialogButtonBox.Cancel |
-                                                     QtWidgets.QDialogButtonBox.Apply,
-                                                     QtCore.Qt.Horizontal,
+        self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                                     QtWidgets.QDialogButtonBox.StandardButton.Cancel |
+                                                     QtWidgets.QDialogButtonBox.StandardButton.Apply,
+                                                     QtCore.Qt.Orientation.Horizontal,
                                                      self)
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
@@ -139,7 +139,7 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
 
         # general settings
         label = QtWidgets.QLabel('Data channel:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         label.setFont(font)
         misc_settings_groupbox = QtWidgets.QGroupBox('General settings')
         misc_settings_groupbox.setFont(font)
@@ -231,7 +231,7 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             label = QtWidgets.QLabel('{0}-Axis:'.format(ax_name.title()))
             label.setObjectName('{0}_axis_label'.format(ax_name))
             label.setFont(font)
-            label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
             max_range = abs(axis.position.maximum - axis.position.minimum)
             range_spinbox = ScienDSpinBox()

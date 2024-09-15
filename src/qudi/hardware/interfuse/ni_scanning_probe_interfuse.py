@@ -184,7 +184,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self.__init_ao_timer()
         self.__t_last_follow = None
 
-        self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.QueuedConnection)
+        self.sigNextDataChunk.connect(self._fetch_data_chunk, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def _toggle_ao_setpoint_channels(self, enable: bool) -> None:
         ni_ao = self._ni_ao()
@@ -895,7 +895,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self.__ni_ao_write_timer = QtCore.QTimer(parent=self)
 
         self.__ni_ao_write_timer.setSingleShot(True)
-        self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.QueuedConnection)
+        self.__ni_ao_write_timer.timeout.connect(self.__ao_cursor_write_loop, QtCore.Qt.ConnectionType.QueuedConnection)
         self.__ni_ao_write_timer.setInterval(1e3*self._min_step_interval)  # (ms), dynamically calculated during write loop
 
     def __start_ao_write_timer(self):

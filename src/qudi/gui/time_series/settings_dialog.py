@@ -32,8 +32,8 @@ class ChannelSettingsDialog(QtWidgets.QDialog):
         self.setWindowTitle('Data Channel Settings')
         # Create main layout with buttonbox and scroll area
         self.buttonbox = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
-            QtCore.Qt.Horizontal,
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel,
+            QtCore.Qt.Orientation.Horizontal,
             parent=self
         )
         self.buttonbox.accepted.connect(self.accept)
@@ -57,14 +57,14 @@ class ChannelSettingsDialog(QtWidgets.QDialog):
         layout.addWidget(QtWidgets.QLabel('Is Active?'), 0, 1)
         layout.addWidget(QtWidgets.QLabel('Moving Average?'), 0, 2)
         line = QtWidgets.QFrame()
-        line.setFrameShape(QtWidgets.QFrame.HLine)
-        line.setFrameShadow(QtWidgets.QFrame.Sunken)
+        line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         layout.addWidget(line, 1, 0, 1, 3)
 
         self.channel_widgets = dict()
         for row, ch in enumerate(channels, 2):
             label = QtWidgets.QLabel(f'{ch}:')
-            label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
             checkbox_1 = QtWidgets.QCheckBox()
             checkbox_2 = QtWidgets.QCheckBox()
             checkbox_1.stateChanged.connect(checkbox_2.setEnabled)
@@ -95,8 +95,8 @@ class TraceViewDialog(QtWidgets.QDialog):
         self.setWindowTitle('View Trace Selection')
         # Create main layout with buttonbox and scroll area
         self.buttonbox = QtWidgets.QDialogButtonBox(
-            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel,
-            QtCore.Qt.Horizontal,
+            QtWidgets.QDialogButtonBox.StandardButton.Ok | QtWidgets.QDialogButtonBox.StandardButton.Cancel,
+            QtCore.Qt.Orientation.Horizontal,
             parent=self
         )
         self.buttonbox.accepted.connect(self.accept)
@@ -123,14 +123,14 @@ class TraceViewDialog(QtWidgets.QDialog):
         layout.addWidget(QtWidgets.QLabel('Digits'), 1, 3)
         layout.addWidget(QtWidgets.QLabel('Auto?'), 1, 4)
         line = QtWidgets.QFrame()
-        line.setFrameShape(QtWidgets.QFrame.HLine)
-        line.setFrameShadow(QtWidgets.QFrame.Sunken)
+        line.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        line.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         layout.addWidget(line, 2, 0, 1, 5)
 
         self.channel_widgets = dict()
         for row, ch in enumerate(channels, 3):
             label = QtWidgets.QLabel(f'{ch}:')
-            label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
             checkbox_1 = QtWidgets.QCheckBox()
             checkbox_2 = QtWidgets.QCheckBox()
             checkbox_3 = QtWidgets.QCheckBox()

@@ -104,8 +104,8 @@ class SpectrometerLogic(LogicBase):
         self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
         self.fit_region = self._fit_region
 
-        self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.QueuedConnection)
-        self._sig_get_background.connect(self.get_background, QtCore.Qt.QueuedConnection)
+        self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.ConnectionType.QueuedConnection)
+        self._sig_get_background.connect(self.get_background, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.

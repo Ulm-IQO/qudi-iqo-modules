@@ -78,7 +78,7 @@ class LaserLogic(LogicBase):
         self.__timer = QtCore.QTimer()
         self.__timer.setInterval(1000 * self._query_interval)
         self.__timer.setSingleShot(True)
-        self.__timer.timeout.connect(self._query_loop_body, QtCore.Qt.QueuedConnection)
+        self.__timer.timeout.connect(self._query_loop_body, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # initialize data buffer
         laser = self._laser()

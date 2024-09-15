@@ -31,7 +31,7 @@ class CheckBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     editingFinished = QtCore.Signal()
 
-    def __init__(self, parent, data_access_role=QtCore.Qt.DisplayRole):
+    def __init__(self, parent, data_access_role=QtCore.Qt.ItemDataRole.DisplayRole):
         """
         @param QWidget parent: the parent QWidget which hosts this child widget
         """
@@ -129,7 +129,7 @@ class SpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     editingFinished = QtCore.Signal()
 
-    def __init__(self, parent, item_dict=None, data_access_role=QtCore.Qt.DisplayRole):
+    def __init__(self, parent, item_dict=None, data_access_role=QtCore.Qt.ItemDataRole.DisplayRole):
         """
         @param QWidget parent: the parent QWidget which hosts this child widget
         @param dict item_dict:  dict with the following keys which give informations about the
@@ -245,7 +245,7 @@ class ScienDSpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     editingFinished = QtCore.Signal()
 
-    def __init__(self, parent, item_dict, data_access_role=QtCore.Qt.DisplayRole):
+    def __init__(self, parent, item_dict, data_access_role=QtCore.Qt.ItemDataRole.DisplayRole):
         """
         @param QWidget parent: the parent QWidget which hosts this child widget
         @param dict item_dict:  dict with the following keys which give informations about the
@@ -360,7 +360,7 @@ class ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     editingFinished = QtCore.Signal()
 
-    def __init__(self, parent, item_list, data_access_role=QtCore.Qt.DisplayRole,
+    def __init__(self, parent, item_list, data_access_role=QtCore.Qt.ItemDataRole.DisplayRole,
                  size=QtCore.QSize(80, 50)):
         super().__init__(parent)
         self._item_list = item_list
@@ -453,7 +453,7 @@ class MultipleCheckboxItemDelegate(QtWidgets.QStyledItemDelegate):
     """
     editingFinished = QtCore.Signal()
 
-    def __init__(self, parent, label_list, data_access_role=QtCore.Qt.DisplayRole):
+    def __init__(self, parent, label_list, data_access_role=QtCore.Qt.ItemDataRole.DisplayRole):
 
         super().__init__(parent)
         self._label_list = list() if label_list is None else list(label_list)
@@ -548,7 +548,7 @@ class AnalogParametersItemDelegate(QtWidgets.QStyledItemDelegate):
     def __init__(self, parent, data_access_roles=None):
         super().__init__(parent)
         if data_access_roles is None:
-            self._access_role = [QtCore.Qt.DisplayRole, QtCore.Qt.DisplayRole]
+            self._access_role = [QtCore.Qt.ItemDataRole.DisplayRole, QtCore.Qt.ItemDataRole.DisplayRole]
         else:
             self._access_role = data_access_roles
 

@@ -109,7 +109,7 @@ class CameraGui(GuiBase):
         # Connect the action of the settings dialog with this module
         self._settings_dialog.accepted.connect(self._update_settings)
         self._settings_dialog.rejected.connect(self._keep_former_settings)
-        self._settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
+        self._settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.connect(
             self._update_settings
         )
 

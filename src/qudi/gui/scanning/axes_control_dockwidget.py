@@ -89,7 +89,7 @@ class AxesControlWidget(QtWidgets.QWidget):
 
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.VLine)
-        vline.setFrameShadow(QtWidgets.QFrame.Sunken)
+        vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         layout.addWidget(vline, 0, column, len(scanner_axes) + 2, 1)
         column += 1
 
@@ -101,7 +101,7 @@ class AxesControlWidget(QtWidgets.QWidget):
 
         vline = QtWidgets.QFrame()
         vline.setFrameShape(QtWidgets.QFrame.VLine)
-        vline.setFrameShadow(QtWidgets.QFrame.Sunken)
+        vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         layout.addWidget(vline, 0, column, len(scanner_axes) + 2, 1)
         column += 2
 
@@ -116,7 +116,7 @@ class AxesControlWidget(QtWidgets.QWidget):
             label = QtWidgets.QLabel('{0}-Axis:'.format(ax_name.title()))
             label.setObjectName('{0}_axis_label'.format(ax_name))
             label.setFont(font)
-            label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
             for direction in ['forward', 'backward']:
                 res_spinbox = QtWidgets.QSpinBox()
@@ -150,7 +150,7 @@ class AxesControlWidget(QtWidgets.QWidget):
             widgets['eq_checkbox'] = check_box
 
             # slider for moving the scanner
-            slider = DoubleSlider(QtCore.Qt.Horizontal)
+            slider = DoubleSlider(QtCore.Qt.Orientation.Horizontal)
             slider.setObjectName('{0}_position_doubleSlider'.format(ax_name))
             slider.setRange(*axis.position.bounds)
             granularity = 2 ** 31 - 1

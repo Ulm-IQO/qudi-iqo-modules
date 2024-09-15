@@ -212,8 +212,8 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
     def columnCount(self, parent=QtCore.QModelIndex()):
         return 3 + int(len(self.digital_channels) > 0) + 2 * len(self.analog_channels)
 
-    def data(self, index, role=QtCore.Qt.DisplayRole):
-        if role == QtCore.Qt.DisplayRole:
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return None
 
         if role == self.pulseBlockRole:
@@ -268,7 +268,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
         return None
 
-    def setData(self, index, data, role=QtCore.Qt.DisplayRole):
+    def setData(self, index, data, role=QtCore.Qt.ItemDataRole.DisplayRole):
         """
         """
         if isinstance(data, PulseBlockElement):
@@ -347,14 +347,14 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def headerData(self, section, orientation, role):
         # Horizontal header
-        if orientation == QtCore.Qt.Horizontal:
+        if orientation == QtCore.Qt.Orientation.Horizontal:
             # if role == QtCore.Qt.BackgroundRole:
             #     return QVariant(QBrush(QColor(Qt::green), Qt::SolidPattern))
             if role == QtCore.Qt.SizeHintRole:
                 if section < len(self._col_widths):
                     return QtCore.QSize(self._col_widths[section], 40)
 
-            if role == QtCore.Qt.DisplayRole:
+            if role == QtCore.Qt.ItemDataRole.DisplayRole:
                 if section < len(self._h_header_data):
                     return self._h_header_data[section]
 
@@ -366,7 +366,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
         return super().headerData(section, orientation, role)
 
     def flags(self, index):
-        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled
+        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
 
     def insertRows(self, row, count, parent=None):
         """
@@ -540,7 +540,7 @@ class BlockEditor(QtWidgets.QTableView):
         """
         super().setModel(model)
         for column in range(model.columnCount()):
-            width = model.headerData(column, QtCore.Qt.Horizontal, QtCore.Qt.SizeHintRole).width()
+            width = model.headerData(column, QtCore.Qt.Orientation.Horizontal, QtCore.Qt.SizeHintRole).width()
             self.setColumnWidth(column, width)
         return
 
@@ -704,8 +704,8 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
     def columnCount(self, parent=QtCore.QModelIndex()):
         return 2
 
-    def data(self, index, role=QtCore.Qt.DisplayRole):
-        if role == QtCore.Qt.DisplayRole:
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return None
 
         if role == self.blockEnsembleRole:
@@ -722,7 +722,7 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
             return self._block_ensemble[index.row()]
         return None
 
-    def setData(self, index, data, role=QtCore.Qt.DisplayRole):
+    def setData(self, index, data, role=QtCore.Qt.ItemDataRole.DisplayRole):
         """
         """
         if role == self.repetitionsRole and isinstance(data, int):
@@ -740,8 +740,8 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
 
     def headerData(self, section, orientation, role):
         # Horizontal header
-        if orientation == QtCore.Qt.Horizontal:
-            if role == QtCore.Qt.DisplayRole:
+        if orientation == QtCore.Qt.Orientation.Horizontal:
+            if role == QtCore.Qt.ItemDataRole.DisplayRole:
                 if section == 0:
                     return 'PulseBlock'
                 if section == 1:
@@ -754,7 +754,7 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
         return super().headerData(section, orientation, role)
 
     def flags(self, index):
-        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled
+        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
 
     def insertRows(self, row, count, parent=None):
         """
@@ -1089,8 +1089,8 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
     def columnCount(self, parent=QtCore.QModelIndex()):
         return len(self.__horizontal_headers)
 
-    def data(self, index, role=QtCore.Qt.DisplayRole):
-        if role == QtCore.Qt.DisplayRole:
+    def data(self, index, role=QtCore.Qt.ItemDataRole.DisplayRole):
+        if role == QtCore.Qt.ItemDataRole.DisplayRole:
             return None
 
         if role == self.sequenceRole:
@@ -1124,7 +1124,7 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
         else:
             return None
 
-    def setData(self, index, data, role=QtCore.Qt.DisplayRole):
+    def setData(self, index, data, role=QtCore.Qt.ItemDataRole.DisplayRole):
         """
         """
         if role == self.ensembleNameRole and isinstance(data, str):
@@ -1152,13 +1152,13 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
 
     def headerData(self, section, orientation, role):
         # Horizontal header
-        if orientation == QtCore.Qt.Horizontal:
-            if role == QtCore.Qt.DisplayRole and (0 <= section < len(self.__horizontal_headers)):
+        if orientation == QtCore.Qt.Orientation.Horizontal:
+            if role == QtCore.Qt.ItemDataRole.DisplayRole and (0 <= section < len(self.__horizontal_headers)):
                 return self.__horizontal_headers[section]
         return super().headerData(section, orientation, role)
 
     def flags(self, index):
-        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemIsSelectable | QtCore.Qt.ItemIsEnabled
+        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
 
     def insertRows(self, row, count, parent=None):
         """

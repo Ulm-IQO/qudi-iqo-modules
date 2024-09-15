@@ -151,7 +151,7 @@ class TimeSeriesGui(GuiBase):
         self._mw.toggle_trace_action.triggered[bool].connect(self._trace_toggled)
         self._mw.record_trace_action.triggered[bool].connect(self._record_toggled)
         self._mw.snapshot_trace_action.triggered.connect(logic.save_trace_snapshot,
-                                                         QtCore.Qt.QueuedConnection)
+                                                         QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.settings_dockwidget.trace_length_spinbox.editingFinished.connect(
             self._trace_settings_changed
         )
@@ -174,20 +174,20 @@ class TimeSeriesGui(GuiBase):
         self._mw.channel_settings_action.triggered.connect(self._exec_channel_settings_dialog)
 
         # Connect signals to/from logic
-        self.sigStartCounter.connect(logic.start_reading, QtCore.Qt.QueuedConnection)
-        self.sigStopCounter.connect(logic.stop_reading, QtCore.Qt.QueuedConnection)
-        self.sigStartRecording.connect(logic.start_recording, QtCore.Qt.QueuedConnection)
-        self.sigStopRecording.connect(logic.stop_recording, QtCore.Qt.QueuedConnection)
-        self.sigTraceSettingsChanged.connect(logic.set_trace_settings, QtCore.Qt.QueuedConnection)
+        self.sigStartCounter.connect(logic.start_reading, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStopCounter.connect(logic.stop_reading, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStartRecording.connect(logic.start_recording, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStopRecording.connect(logic.stop_recording, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigTraceSettingsChanged.connect(logic.set_trace_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigChannelSettingsChanged.connect(logic.set_channel_settings,
-                                               QtCore.Qt.QueuedConnection)
+                                               QtCore.Qt.ConnectionType.QueuedConnection)
 
-        logic.sigDataChanged.connect(self.update_data, QtCore.Qt.QueuedConnection)
+        logic.sigDataChanged.connect(self.update_data, QtCore.Qt.ConnectionType.QueuedConnection)
         logic.sigTraceSettingsChanged.connect(self.update_trace_settings,
-                                              QtCore.Qt.QueuedConnection)
+                                              QtCore.Qt.ConnectionType.QueuedConnection)
         logic.sigChannelSettingsChanged.connect(self.update_channel_settings,
-                                                QtCore.Qt.QueuedConnection)
-        logic.sigStatusChanged.connect(self.update_status, QtCore.Qt.QueuedConnection)
+                                                QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigStatusChanged.connect(self.update_status, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self.update_status(running=logic.module_state() == 'locked',
                            recording=logic.data_recording_active)
