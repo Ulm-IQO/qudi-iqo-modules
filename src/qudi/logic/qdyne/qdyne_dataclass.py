@@ -59,13 +59,13 @@ class FreqDomainData:
 
 @dataclass
 class MainDataClass:
-    raw_data: np.ndarray = np.array([], dtype=int)
-    extracted_data: np.ndarray = np.array([], dtype=int)
-    pulse_data: np.ndarray = np.array([], dtype=int)
-    time_trace: np.ndarray = np.array([], dtype=float)
-    signal: np.ndarray = np.array([], dtype=float)
-    freq_domain: np.ndarray = np.array([], dtype=float)
-    time_domain: np.ndarray = np.array([], dtype=float)
+    raw_data: np.ndarray = np.array([])
+    extracted_data: np.ndarray = np.array([])
+    pulse_data: np.ndarray = np.array([])
+    time_trace: np.ndarray = np.array([])
+    signal: np.ndarray = np.array([])
+    freq_domain: np.ndarray = np.array([])
+    time_domain: np.ndarray = np.array([])
 
     def __init__(self):
         self.freq_data = FreqDomainData()

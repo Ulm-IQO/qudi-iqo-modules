@@ -54,6 +54,7 @@ class QdyneMeasurement(QtCore.QObject):
         super().__init__()
         self.qdyne_logic = qdyne_logic
         self.data = self.qdyne_logic.data
+        self.new_data = self.qdyne_logic.new_data
         self.estimator = self.qdyne_logic.estimator
         self.settings = self.qdyne_logic.settings
         self.analyzer = self.qdyne_logic.analyzer
@@ -108,7 +109,7 @@ class QdyneMeasurement(QtCore.QObject):
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
         fname = timestamp + fname if fname else timestamp
         # self.qdyne_logic._data_streamer().change_filename(fname)
-        self.data.raw_data = list()
+        self.data.raw_data = []
         self.qdyne_logic.measurement_generator.set_counter_settings(None)
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
@@ -137,8 +138,8 @@ class QdyneMeasurement(QtCore.QObject):
 
     def get_raw_data(self):
         try:
-            new_data, _ = self.qdyne_logic._data_streamer().get_data()
-            self.data.raw_data = np.append(self.data.raw_data, new_data)
+            self.new_data.raw_data, _ = self.qdyne_logic._data_streamer().get_data()
+            self.data.raw_data = np.append(self.data.raw_data, self.new_data.raw_data)
         except Exception as e:
             logger.exception(e)
             raise e
@@ -151,14 +152,16 @@ class QdyneMeasurement(QtCore.QObject):
         self.sigPulseDataUpdated.emit()
 
     def extract_data(self):
-        self.data.extracted_data = self.estimator.extract(
-            self.data.raw_data, self.settings.estimator_stg.current_setting
+        self.new_data.extracted_data = self.estimator.extract(
+            self.new_data.raw_data, self.settings.estimator_stg.current_setting
         )
+        self.data.extracted_data = np.append(self.data.extracted_data, self.new_data.extracted_data)
 
     def estimate_state(self):
-        self.data.time_trace = self.estimator.estimate(
-            self.data.extracted_data, self.settings.estimator_stg.current_setting
+        self.new_data.time_trace = self.estimator.estimate(
+            self.new_data.extracted_data, self.settings.estimator_stg.current_setting
         )
+        self.data.time_trace = np.append(self.data.time_trace, self.new_data.time_trace)
         self.sigTimeTraceDataUpdated.emit()
 
     def analyze_time_trace(self):
