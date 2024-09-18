@@ -49,7 +49,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
     """
 
     # Declare config options
-    _measurements_per_data_poll: int = ConfigOption("measurements_per_data_poll", default=10)
+    _measurements_per_data_poll: int = ConfigOption("measurements_per_data_poll", default=100)
     _max_number_bins: int = ConfigOption("max_number_bins", default=1e3)
 
     def __init__(self, *args, **kwargs):
@@ -187,10 +187,12 @@ class QdyneCounterDummy(QdyneCounterInterface):
             - 'elapsed_time' : the elapsed time in seconds
         If the hardware does not support these features, the values should be None
         """
-        _freq = self._sine_frequency
+        self._time_tagger_data = []
+        _contrast = 0.69
+        _mean = 500
 
         def poisson_process(t, number_samples):
-            mean = (np.sin(2 * np.pi * _freq * t) + 1) * 1
+            mean = (np.sin(2 * np.pi * t) * _contrast * _mean + _mean)
             num_photons = np.random.poisson(mean)
             time_tags = sorted(
                 np.random.choice(
@@ -200,12 +202,12 @@ class QdyneCounterDummy(QdyneCounterInterface):
             )
             return [0] + time_tags
 
-        num_samples = round(self.record_length / self.binwidth)
-        sample_times = np.linspace(self.binwidth, self.record_length, num_samples)
+        num_samples = min(self._max_number_bins, round(self.record_length / self.binwidth))
+        sample_times = np.linspace(0, 1, self._measurements_per_data_poll)
 
         for t in sample_times:
             self._time_tagger_data += poisson_process(t, num_samples)
-        self._elapsed_sweeps += 1
+        self._elapsed_sweeps += self._measurements_per_data_poll
         info_dict = {
             "elapsed_sweeps": self._elapsed_sweeps,
             "elapsed_time": self.record_length,
