@@ -118,7 +118,7 @@ class TimeTagStateEstimator(StateEstimator):
         self.stg = None
 
     def extract(self, raw_data, settings=None):
-        return raw_data.tolist()
+        return raw_data
 
     def estimate(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
         if settings.count_mode == "Average":

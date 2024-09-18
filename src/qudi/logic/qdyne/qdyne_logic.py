@@ -302,6 +302,7 @@ class QdyneLogic(LogicBase):
     def on_activate(self):
         def activate_classes():
             self.data = MainDataClass()
+            self.new_data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
             self.settings = QdyneSettings(self._settings_storage_dir)
