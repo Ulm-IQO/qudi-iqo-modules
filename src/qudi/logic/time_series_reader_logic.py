@@ -32,6 +32,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.helpers import is_integer_type
+from qudi.util.network import netobtain
 from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
 from qudi.interface.data_instream_interface import DataInStreamConstraints
 from qudi.util.datastorage import TextDataStorage
@@ -113,10 +114,19 @@ class TimeSeriesReaderLogic(LogicBase):
         self._data_recording_active = False
         self._record_start_time = None
 
+        # important to know for method of reading the buffer
+        self._streamer_is_remote = False
+
     def on_activate(self) -> None:
         """ Initialisation performed during activation of the module. """
         # Temp reference to connected hardware module
         streamer = self._streamer()
+
+        # check if streamer is a remote module
+        constraints = streamer.constraints
+        if type(constraints) != type(netobtain(constraints)):
+            self._streamer_is_remote = True
+            self.log.debug('Streamer is a remote module. Do not use a shared buffer.')
 
         # Flag to stop the loop and process variables
         self._recorded_raw_data = None
@@ -127,7 +137,7 @@ class TimeSeriesReaderLogic(LogicBase):
 
         # Check valid StatusVar
         # active channels
-        avail_channels = list(streamer.constraints.channel_units)
+        avail_channels = list(constraints.channel_units)
         if self._active_channels is None:
             if streamer.active_channels:
                 self._active_channels = streamer.active_channels.copy()
@@ -205,7 +215,8 @@ class TimeSeriesReaderLogic(LogicBase):
     @property
     def streamer_constraints(self) -> DataInStreamConstraints:
         """ Retrieve the hardware constrains from the counter device """
-        return self._streamer().constraints
+        # netobtain is required if streamer is a remote module
+        return netobtain(self._streamer().constraints)
 
     @property
     def data_rate(self) -> float:
@@ -267,7 +278,7 @@ class TimeSeriesReaderLogic(LogicBase):
     @property
     def active_channel_names(self) -> List[str]:
         """ Read-only property returning the currently active channel names """
-        return self._streamer().active_channels.copy()
+        return netobtain(self._streamer().active_channels.copy())
 
     @property
     def averaged_channel_names(self) -> List[str]:
@@ -463,8 +474,11 @@ class TimeSeriesReaderLogic(LogicBase):
                 self.log.exception('Error while trying to stop stream reader:')
                 raise
             finally:
-                self.module_state.unlock()
-                self._stop_recording()
+                self._stop_cleanup()
+
+    def _stop_cleanup(self) -> None:
+        self.module_state.unlock()
+        self._stop_recording()
 
     @QtCore.Slot()
     def _acquire_data_block(self) -> None:
@@ -484,11 +498,21 @@ class TimeSeriesReaderLogic(LogicBase):
                         (self._channel_buffer_size // self._oversampling_factor) * self._oversampling_factor
                     )
                     # read the current counter values
-                    channel_count = len(self.active_channel_names)
-                    streamer.read_data_into_buffer(data_buffer=self._data_buffer,
-                                                   samples_per_channel=samples_to_read,
-                                                   timestamp_buffer=self._times_buffer)
+                    if not self._streamer_is_remote:
+                        # we can use the more efficient method of using a shared buffer
+                        streamer.read_data_into_buffer(data_buffer=self._data_buffer,
+                                                       samples_per_channel=samples_to_read,
+                                                       timestamp_buffer=self._times_buffer)
+                    else:
+                        # streamer is remote, we need to have a new buffer created and passed to us
+                        self._data_buffer, self._times_buffer = streamer.read_data(
+                            samples_per_channel=samples_to_read
+                        )
+                        self._data_buffer = netobtain(self._data_buffer)
+                        self._times_buffer = netobtain(self._times_buffer)
+
                     # Process data
+                    channel_count = len(self.active_channel_names)
                     data_view = self._data_buffer[:channel_count * samples_to_read]
                     self._process_trace_data(data_view)
                     if self._times_buffer is None:
@@ -502,10 +526,10 @@ class TimeSeriesReaderLogic(LogicBase):
                     self.sigNewRawData.emit(data_view, times_view)
                     # Emit update signal
                     self.sigDataChanged.emit(*self.trace_data, *self.averaged_trace_data)
-                except:
-                    self.log.exception('Reading data from streamer went wrong:')
-                    self._stop()
-                    raise
+                except Exception as e:
+                    self.log.warning(f'Reading data from streamer went wrong: {e}')
+                    self._stop_cleanup()
+                    return
                 self._sigNextDataFrame.emit()
 
     def _process_trace_times(self, times_buffer: np.ndarray) -> None:

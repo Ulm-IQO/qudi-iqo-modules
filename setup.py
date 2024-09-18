@@ -5,32 +5,32 @@ from setuptools import setup, find_namespace_packages
 
 
 unix_dep = [
-    'qudi-core>=1.4.1',
+    'qudi-core>=1.5.1',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
     'lxml>=4.9.1',
     'matplotlib>=3.6.0',
     'nidaqmx>=0.5.7',
-    'numpy>=1.23.3',
+    'numpy>=1.23.3,<2.0',
     'pyqtgraph>=0.13.1',
-    'PySide2>=5.15.2',
+    'PySide2',  # get fixed version from core
     'PyVisa>=1.12.0',
     'scipy>=1.9.1',
     'zaber_motion>=2.14.6'
 ]
 
 windows_dep = [
-    'qudi-core>=1.4.1',
+    'qudi-core>=1.5.1',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
     'lxml>=4.9.1',
     'matplotlib>=3.6.0',
     'nidaqmx>=0.5.7',
-    'numpy>=1.23.3',
+    'numpy>=1.23.3,<2.0',
     'pyqtgraph>=0.13.1',
-    'PySide2>=5.15.2',
+    'PySide2',  # get fixed version from core
     'PyVisa>=1.12.0',
     'scipy>=1.9.1',
     'zaber_motion>=2.14.6'
@@ -47,8 +47,7 @@ setup(
     version=version,
     packages=find_namespace_packages(where='src'),
     package_dir={'': 'src'},
-    package_data={''        : ['LICENSE', 'LICENSE.LESSER', 'AUTHORS.md', 'README.md', 'VERSION'],
-                  'qudi'    : ['default.cfg'],
+    package_data={'qudi'    : ['default.cfg'],
                   'qudi.gui': ['*.ui', '*/*.ui'],
                   },
     description='IQO measurement modules collection for qudi',
@@ -71,7 +70,7 @@ setup(
               'modular',
               'measurement',
               ],
-    classifiers=['Development Status :: 4 - Beta',
+    classifiers=['Development Status :: 5 - Production/Stable',
 
                  'Environment :: Win32 (MS Windows)',
                  'Environment :: X11 Applications',
