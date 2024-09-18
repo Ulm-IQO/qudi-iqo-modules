@@ -143,7 +143,7 @@ class TimeTagStateEstimator(StateEstimator):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
-        for i in range(len(time_tag)):  # count and filter the photons here
+        for i in range(1, len(time_tag)):  # count and filter the photons here
             if time_tag[i] != 0:
                 if time_tag[i] > max_bins:
                     self.log.debug(

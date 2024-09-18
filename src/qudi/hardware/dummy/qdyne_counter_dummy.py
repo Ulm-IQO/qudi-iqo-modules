@@ -49,7 +49,8 @@ class QdyneCounterDummy(QdyneCounterInterface):
     """
 
     # Declare config options
-    _sine_frequency = ConfigOption("sine_frequency_Hz", default=200e6, missing="warn")
+    _measurements_per_data_poll: int = ConfigOption("measurements_per_data_poll", default=10)
+    _max_number_bins: int = ConfigOption("max_number_bins", default=1e3)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -69,12 +70,12 @@ class QdyneCounterDummy(QdyneCounterInterface):
             gate_mode=GateMode.UNGATED,
             data_type=float,
             binwidth=DiscreteScalarConstraint(
-                default=1e-6,
-                value_set=set(np.arange(1e-6, 1e-3, 1e-6)),
-                increment=1e-6,
-                checker=lambda x: (x / 1e-6).is_integer(),
+                default=100e-9,
+                value_set=set(np.arange(10e-9, 1e-6, 10e-9)),
+                increment=10e-9,
+                #checker=lambda x: (x / 1e-9).is_integer(),
             ),
-            record_length=ScalarConstraint(default=1e-3, bounds=(10e-6, 1)),
+            record_length=ScalarConstraint(default=1e-6, bounds=(100e-9, 100e-6)),
         )
         self._elapsed_sweeps = 0
         return
