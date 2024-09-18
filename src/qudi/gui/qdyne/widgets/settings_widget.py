@@ -59,7 +59,7 @@ class SettingsWidget(QtWidgets.QWidget):
         self.setting_comboBox.setCurrentText(self.settings.current_stg_name)
         self.setting_comboBox.setEditable(True)
         self.setting_add_pushButton.setToolTip('Enter new name in combo box')
-        
+
         self.settings_widget = DataclassWidget(self.settings.current_setting)
         self.setting_gridLayout.addWidget(self.settings_widget)
 
@@ -76,7 +76,7 @@ class SettingsWidget(QtWidgets.QWidget):
 
     def disconnect_signals(self):
         self.method_comboBox.currentTextChanged.disconnect()
-        self.setting_comboBox.currentTextChanged.disconnect()
+        self.setting_comboBox.currentIndexChanged.disconnect()
         self.setting_add_pushButton.clicked.disconnect()
         self.setting_delete_pushButton.clicked.disconnect()
 
@@ -110,7 +110,7 @@ class SettingsWidget(QtWidgets.QWidget):
 
     def delete_setting(self):
         stg_name_to_remove = self.setting_comboBox.currentText()
-    
+
         if stg_name_to_remove == "default":
             self._log.error("Cannot delete default setting")
         else:
