@@ -21,6 +21,8 @@ from PySide2 import QtCore
 from logging import getLogger
 import numpy as np
 
+from qudi.util.mutex import RecursiveMutex
+
 logger = getLogger(__name__)
 
 
@@ -52,6 +54,9 @@ class QdyneMeasurement(QtCore.QObject):
 
     def __init__(self, qdyne_logic):
         super().__init__()
+
+        self.__lock = RecursiveMutex()
+
         self.qdyne_logic = qdyne_logic
         self.data = self.qdyne_logic.data
         self.new_data = self.qdyne_logic.new_data
@@ -67,7 +72,7 @@ class QdyneMeasurement(QtCore.QObject):
 
         # set up the analysis timer
         self.__analysis_timer = QtCore.QTimer()
-        self.__analysis_timer.setSingleShot(False)
+        self.__analysis_timer.setSingleShot(True)
         self.__analysis_timer.setInterval(round(1000.0 * self.__timer_interval))
         self.__analysis_timer.timeout.connect(
             self.qdyne_analysis_loop, QtCore.Qt.QueuedConnection
@@ -123,18 +128,21 @@ class QdyneMeasurement(QtCore.QObject):
         return
 
     def qdyne_analysis_loop(self):
-        logger.debug("Entering Analysis loop")
-        self.get_raw_data()
-        self.get_pulse()
-        self.sigPulseDataUpdated.emit()
+        with self.__lock:
+            logger.debug("Entering Analysis loop")
+            self.get_raw_data()
+            self.get_pulse()
+            self.sigPulseDataUpdated.emit()
 
-        self.extract_data()
-        self.estimate_state()
-        self.sigTimeTraceDataUpdated.emit()
+            self.extract_data()
+            self.estimate_state()
+            self.sigTimeTraceDataUpdated.emit()
 
-        self.analyze_time_trace()
-        self.get_spectrum()
-        self.sigQdyneDataUpdated.emit()
+            self.analyze_time_trace()
+            self.get_spectrum()
+            self.sigQdyneDataUpdated.emit()
+            logger.debug("Exiting Analysis loop")
+            self.sigStartTimer.emit()
 
     def get_raw_data(self):
         try:

@@ -352,7 +352,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         """
         setting = AcqSettings()
         self.dll.GetSettingData(ctypes.byref(setting), 0)
-        new_data = self.read_data_from_file(
+        new_data, self._read_lines = self.read_data_from_file(
             filename=self._filename + '.lst',
             read_lines=self._read_lines,
             chunk_size=self._chunk_size,
@@ -629,11 +629,9 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         if filename is None:
             filename = self._filename + '.lst'
         if read_lines is None:
-            read_lines = self._read_lines
+            read_lines = self._read_lines if self._read_lines else 0
         if chunk_size is None:
             chunk_size = self._chunk_size
-        if read_lines is None:
-            read_lines = 0
         if number_of_samples is None:
             number_of_chunks = int(self.buffer_size / chunk_size)  # float('inf')
             remaining_samples = self.buffer_size % chunk_size
@@ -689,8 +687,9 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                     for s in next_lines
                 ]
                 extend_data(new_lines)
+                read_lines += len(new_lines)
                 ii = ii + 1
-        return data
+        return data, read_lines
 
     def _find_header_length(self, filename):
         with open(filename) as f:
