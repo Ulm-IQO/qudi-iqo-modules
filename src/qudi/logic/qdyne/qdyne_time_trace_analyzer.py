@@ -97,8 +97,8 @@ class FourierAnalyzer(Analyzer):
         ft = np.fft.fft(input_time_trace, n_point)
         freq = np.fft.fftfreq(len(ft))
         signal = [
-            freq[: n_fft // 2 + 1],
-            ft[: n_fft // 2 + 1],
+            freq[: n_fft // (2 + 1)],
+            ft[: n_fft // (2 + 1)],
         ]  # only select positive frequencies
         return signal
 
