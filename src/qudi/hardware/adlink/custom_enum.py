@@ -21,20 +21,12 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from enum import Enum
-from qudi.hardware.adlink.config_options import AdlinkCardType, AdlinkReadCount
 
 
 class EnumSearchName(Enum):
-    def __init__(self) -> None:
-        super().__init__()
-
-    @staticmethod
-    def get_value_from_name(enum_member: AdlinkCardType):
-        for member in AdlinkReadCount:
+    @classmethod
+    def get_value_from_name(cls, enum_member):
+        for member in cls:
             if member.name == enum_member.name:
                 return member.value
-        member = AdlinkReadCount.DEFAULT
-        print(
-            f"Error {enum_member} not found in AdlinkReadCount. Returning value of {member}."
-        )
-        return member.value
+        raise ValueError(f"{enum_member} not found in {cls}")
