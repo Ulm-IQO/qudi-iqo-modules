@@ -3,15 +3,44 @@
 ## Pre-Release
 
 ### Breaking Changes
+- Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Will break custom modules
+  implementing this interface.
+- Add back scan data and back scan settings getter and setter methods
+  to `qudi.interface.scanning_probe_interface`.
 
 ### Bugfixes
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
+- Improve handling of errors during start of a scan in the scanning probe toolchain.
+- Now correct microwave phases in predefined method generate_hahnecho_exp()
 - "NFiniteSamplingInput supporting both trigger polarities via ConfigOption
+- Old ODMR fits are now removed when starting a new measurement
+- Remove hardcoded limits of the setpoint in the PID gui.
+- Fixed missing `plot_index` when calling `QDPlotLogic._remove_plot` in `QDPlotLogic._set_plot_count`
+- Fixed `QDPlotterGui` example config
+- Fixed psu-dependent bugs for laser_quantum_laser
+- Laser logic does not automatically start query loop, gui will still start it on startup
 
 ### New Features
+- New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
+- Checkers and clipping methods added to `qudi.interface.scanning_probe_interface.Constraints`
+- Data classes of the scanning probe interface now have an improved hierarchy
+  (e.g. `ScanData` contains `ScanSettings`).
+- Improved scanning probe dummy: new image generator class, more realistic forward and backward scan simulation.
+- Major refactoring of scanning probe toolchain, including scanning probe logic, optimizer logic and gui modules.
+  Implementation of configurable backward scans.
+- Add widgets to configure back scan resolution and frequency from scanning GUI.
+- Add config option to save backward scan data to scanning data logic.
+- Get current sweeps and runtime of fastcomtec fastcounter MCS6 when pulling the data trace. 
 - Re-introduced tilt correction (from old core) to the scanning probe toolchain.
 - Improved support for Stanford Research Systems signal generators
+- Expanded documentation of the microwave interface
+- Add new hardware module for the PID laser control functionality of HighFinesse wavemeters.
+- Added option to specify custom save file name in scanning GUI (PR #148)
+
+
 
 ### Other
+- Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
 
 ## Version 0.5.1
 
