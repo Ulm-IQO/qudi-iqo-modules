@@ -599,7 +599,7 @@ class Adlink9834(FastCounterInterface):
         return int(self._max_number_sequence_retriggers() * self._number_of_gates)
 
     @property
-    def _number_of_averages(self) -> int:
+    def number_of_averages(self) -> int:
         """
         determines how many measurements should be summed up
         if set to 0 all acquired samples are summed up
@@ -609,8 +609,8 @@ class Adlink9834(FastCounterInterface):
         """
         return self._number_of_averages
 
-    @_number_of_averages.setter
-    def _number_of_averages(self, number: int) -> None:
+    @number_of_averages.setter
+    def number_of_averages(self, number: int) -> None:
         """
         determines how many measurements should be summed up
         if set to 0 all acquired samples are summed up
