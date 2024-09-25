@@ -260,14 +260,15 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
             self.freq_data.current_peak = self.model.item(
                 self.current_peak_comboBox.currentIndex()
             ).data()
-            self.freq_data.range_index = self.range_spinBox.value()
+            self.freq_data.range_index = self.range_spinBox.value() if \
+                self.range_spinBox.value() < self.freq_data.x.size else self.freq_data.x.size
             spectrum = self.freq_data.data_around_peak
             self.signal_image.setData(x=spectrum[0], y=spectrum[1])
             self.plot1_PlotWidget.clear()
             self.plot1_PlotWidget.addItem(self.signal_image)
 
     def data_updated(self):
-        self.range_spinBox.setMaximum(self.freq_data.x.size)
+        self.range_spinBox.setMaximum(int(1e9))  #self.freq_data.x.size
         self.range_spinBox.setMinimum(0)
         self.get_peaks()
         self.update_spectrum()

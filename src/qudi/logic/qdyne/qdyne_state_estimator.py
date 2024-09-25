@@ -146,10 +146,12 @@ class TimeTagStateEstimator(StateEstimator):
         for i in range(1, len(time_tag)):  # count and filter the photons here
             if time_tag[i] != 0:
                 if time_tag[i] > max_bins:
-                    self.log.debug(
-                        f"Encountered time bin {time_tag[i]} larger than counter "
-                        f"record length ({max_bins} bins). Handle this as 0."
-                    )
+                    # Todo: is this needed?
+                    pass
+                    #self.log.debug(
+                    #    f"Encountered time bin {time_tag[i]} larger than counter "
+                    #    f"record length ({max_bins} bins). Handle this as 0."
+                    #)
                 else:
                     if start_count <= time_tag[i] < stop_count:
                         photon_counts = photon_counts + 1
@@ -167,10 +169,12 @@ class TimeTagStateEstimator(StateEstimator):
         for i in range(len(time_tag)):  # count and filter the photons here
             if time_tag[i] != 0:
                 if time_tag[i] > max_bins:
-                    self.log.debug(
-                        f"Encountered time bin {time_tag[i]} larger than counter "
-                        f"record length ({max_bins} bins). Handle this as 0."
-                    )
+                    # Todo: is this needed?
+                    pass
+                    #self.log.debug(
+                    #    f"Encountered time bin {time_tag[i]} larger than counter "
+                    #    f"record length ({max_bins} bins). Handle this as 0."
+                    #)
                 else:
                     if start_count < time_tag[i] < stop_count:
                         photon_counts = photon_counts + weight[i]
