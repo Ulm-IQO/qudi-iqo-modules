@@ -311,6 +311,10 @@ class SequenceGeneratorLogic(LogicBase):
     def pulse_generator_constraints(self):
         return self.pulsegenerator().get_constraints()
 
+    def write_waveform(self, **kwargs):
+        a, b = self.pulsegenerator().write_waveform(**kwargs)
+        return netobtain(a), netobtain(b)
+
     @property
     def sampled_waveforms(self):
         return netobtain(self.pulsegenerator().get_waveform_names())
@@ -1882,7 +1886,7 @@ class SequenceGeneratorLogic(LogicBase):
                             # Set first/last chunk flags
                             is_first_chunk = array_write_index == processed_samples
                             is_last_chunk = processed_samples == ensemble_info['number_of_samples']
-                            written_samples, wfm_list = self.pulsegenerator().write_waveform(
+                            written_samples, wfm_list = self.write_waveform(
                                 name=waveform_name,
                                 analog_samples=analog_samples,
                                 digital_samples=digital_samples,
@@ -2293,7 +2297,7 @@ class SequenceGeneratorLogic(LogicBase):
         start_time = time.perf_counter()
 
         self._delete_waveform_by_nametag(waveform_name)
-        written_samples, wfm_list = self.pulsegenerator().write_waveform(
+        written_samples, wfm_list = self.write_waveform(
             name=waveform_name,
             analog_samples=analog_samples,
             digital_samples=digital_samples,
