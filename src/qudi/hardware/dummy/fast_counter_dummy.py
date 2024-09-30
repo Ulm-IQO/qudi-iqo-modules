@@ -25,7 +25,7 @@ import os
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
-from qudi.interface.fast_counter_interface import FastCounterInterface
+from qudi.interface.fast_counter_interface import FastCounterInterface, FastCounterConstraint
 
 
 class FastCounterDummy(FastCounterInterface):
@@ -103,10 +103,11 @@ class FastCounterDummy(FastCounterInterface):
         """
 
         constraints = dict()
+        constraints = FastCounterConstraint(binwidth_list=[1/950e6, 2/950e6, 4/950e6, 8/950e6])
 
         # the unit of those entries are seconds per bin. In order to get the
         # current binwidth in seonds use the get_binwidth method.
-        constraints['hardware_binwidth_list'] = [1/950e6, 2/950e6, 4/950e6, 8/950e6]
+        #constraints['hardware_binwidth_list'] = [1/950e6, 2/950e6, 4/950e6, 8/950e6]
 
         return constraints
 

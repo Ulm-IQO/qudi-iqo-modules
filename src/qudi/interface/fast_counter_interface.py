@@ -21,7 +21,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from abc import abstractmethod
+from typing import Union, Type, Iterable, Mapping, Optional, Dict, List, Tuple, Sequence
+
 from qudi.core.module import Base
+from qudi.util.constraints import ScalarConstraint
 
 
 class FastCounterInterface(Base):
@@ -175,3 +178,31 @@ class FastCounterInterface(Base):
         If the hardware does not support these features, the values should be None
         """
         pass
+
+
+class FastCounterConstraint:
+
+    def __init__(self,
+                 binwidth_list: Iterable[float],
+                 t_trace: Optional[ScalarConstraint] = None,
+                 n_bins: Optional[ScalarConstraint] = None):
+
+        self._binwidth_list = binwidth_list
+
+        if t_trace is None:
+            self._t_trace = ScalarConstraint(default=2 ** 64 - 1, bounds=(0, 2 ** 64 - 1))
+        if n_bins is None:
+            self._n_bins = ScalarConstraint(default=2 ** 64 - 1, bounds=(0, 2**64 - 1), enforce_int=True)
+
+    @property
+    def binwidth_list(self):
+        return self._binwidth_list
+
+    @property
+    def t_trace(self):
+        return self._t_trace
+
+    @property
+    def n_bins(self):
+        return self._n_bins
+

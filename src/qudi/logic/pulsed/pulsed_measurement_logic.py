@@ -272,7 +272,7 @@ class PulsedMeasurementLogic(LogicBase):
         self.pulse_generator_off()
 
         # Check and configure fast counter
-        binning_constraints = self._fastcounter().get_constraints()['hardware_binwidth_list']
+        binning_constraints = self._fastcounter().get_constraints().binwidth_list
         if self.__fast_counter_binwidth not in binning_constraints:
             self.__fast_counter_binwidth = binning_constraints[0]
         if self.__fast_counter_record_length <= 0:

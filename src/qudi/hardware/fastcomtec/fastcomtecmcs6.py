@@ -28,8 +28,8 @@ import ctypes
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
-from qudi.interface.fast_counter_interface import FastCounterInterface
-
+from qudi.interface.fast_counter_interface import FastCounterInterface, FastCounterConstraint
+from qudi.util.constraints import ScalarConstraint
 
 """
 Remark to the usage of ctypes:
@@ -237,14 +237,22 @@ class FastComtec(FastCounterInterface):
         ALL THE PRESENT KEYS OF THE CONSTRAINTS DICT MUST BE ASSIGNED!
         """
 
-        constraints = dict()
+        #constraints = dict()
+        binwidths = self.minimal_binwidth * (2 ** np.array(np.linspace(0,24,25)))
+        constraints = FastCounterConstraint(binwidth_list=list(binwidths))
+
+        constraints.t_trace.max = 6.8
+
+        constraints.n_bins.min = 1
+        constraints.n_bins.max = 6.8/0.2e-9
 
         # the unit of those entries are seconds per bin. In order to get the
         # current binwidth in seonds use the get_binwidth method.
-        constraints['hardware_binwidth_list'] = list(self.minimal_binwidth * (2 ** np.array(
-                                                     np.linspace(0,24,25))))
-        constraints['max_sweep_len'] = 6.8
-        constraints['max_bins'] = 6.8 /0.2e-9
+        #constraints['hardware_binwidth_list'] = list(self.minimal_binwidth * (2 ** np.array(
+        #                                             np.linspace(0,24,25))))
+        #constraints['max_sweep_len'] = 6.8
+        #constraints['max_bins'] = 6.8 /0.2e-9
+
         return constraints
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=1):
@@ -466,67 +474,6 @@ class FastComtec(FastCounterInterface):
 
         return self.minimal_binwidth*(2**new_bitshift)
 
-
-    # def set_length(self, length_bins, preset=None, cycles=None, sequences=None):
-    #     """ Sets the length of the length of the actual measurement.
-    #
-    #     @param int length_bins: Length of the measurement in bins
-    #
-    #     @return float: Red out length of measurement
-    #     """
-    #     constraints = self.get_constraints()
-    #     if length_bins * self.get_binwidth() < constraints['max_sweep_len']:
-    #         # Smallest increment is 64 bins. Since it is better if the range is too short than too long, round down
-    #         if self.gated:
-    #             length_bins = int(64 * int(length_bins / 64))
-    #             cmd = 'RANGE={0}'.format(int(length_bins))
-    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             cmd = 'roimax={0}'.format(int(length_bins))
-    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             if preset != None:
-    #                 cmd = 'swpreset={0}'.format(preset)
-    #                 self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             if cycles != None and cycles != 0:
-    #                 cmd = 'cycles={0}'.format(cycles)
-    #                 self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #                 # Fastcomtec crashes for big number of cycles without waiting time
-    #                 if cycles > 1000:
-    #                     time.sleep(10)
-    #             if sequences != None and sequences != 0:
-    #                 cmd = 'sequences={0}'.format(sequences)
-    #                 self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             return self.get_length()
-    #         else:
-    #             if preset != None:
-    #                 cmd = 'swpreset={0}'.format(preset)
-    #             else:
-    #                 cmd = 'swpreset={0}'.format(1)
-    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             if cycles != None and cycles != 0:
-    #                 cmd = 'cycles={0}'.format(cycles)
-    #             else:
-    #                 cmd = 'cycles={0}'.format(1)
-    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             # Fastcomtec crashes for big number of cycles without waiting time
-    #             if cycles > 1000:
-    #                 time.sleep(10)
-    #             if sequences != None and sequences != 0:
-    #                 cmd = 'sequences={0}'.format(sequences)
-    #             else:
-    #                 cmd = 'sequences={0}'.format(1)
-    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             length_bins = int(64 * int(length_bins / 64))
-    #             cmd = 'RANGE={0}'.format(int(length_bins))
-    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             cmd = 'roimax={0}'.format(int(length_bins))
-    #             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-    #             return self.get_length()
-    #
-    #     else:
-    #         self.log.error(
-    #             'Length of sequence is too high: %s' % (str(length_bins * self.get_binwidth())))
-    #         return -1
-
     def set_length(self, length_bins):
         """ Sets the length of the length of the actual measurement.
 
@@ -540,7 +487,7 @@ class FastComtec(FastCounterInterface):
             cycles = self.get_cycles()
         else:
             cycles = 1
-        if length_bins *  cycles < constraints['max_bins']:
+        if length_bins * cycles < constraints.n_bins.max:
             # Smallest increment is 64 bins. Since it is better if the range is too short than too long, round down
             length_bins = int(64 * int(length_bins / 64))
             cmd = 'RANGE={0}'.format(int(length_bins))
@@ -552,9 +499,8 @@ class FastComtec(FastCounterInterface):
             time.sleep(0.5)
             return length_bins
         else:
-            self.log.error('Dimensions {0} are too large for fast counter1!'.format(length_bins *  cycles))
+            self.log.error('Dimensions {0} are too large for fast counter!'.format(length_bins *  cycles))
             return -1
-
 
     def get_length(self):
         """ Get the length of the current measurement.
@@ -572,7 +518,6 @@ class FastComtec(FastCounterInterface):
         self.dll.GetSettingData(ctypes.byref(setting), 0)
         length = int(setting.range / cycles)
         return length
-
 
     def set_delay_start(self, delay_s):
         """ Sets the record delay length
@@ -738,7 +683,7 @@ class FastComtec(FastCounterInterface):
         constraints = self.get_constraints()
         if cycles == 0:
             cycles = 1
-        if self.get_length() * cycles  < constraints['max_bins']:
+        if self.get_length() * cycles < constraints.n_bins.max:
             cmd = 'cycles={0}'.format(cycles)
             self.dll.RunCmd(0, bytes(cmd, 'ascii'))
             time.sleep(0.5)
