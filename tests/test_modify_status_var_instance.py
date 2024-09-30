@@ -20,51 +20,9 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import time
 import random
 import string
-import pytest
-import rpyc
 import numpy as np
-import multiprocessing
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-from qudi.core import application
-
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
-
-
-def run_qudi():
-    app_cls = QtWidgets.QApplication
-    app = app_cls.instance()
-    if app is None:
-        app = app_cls()
-    qudi_instance = application.Qudi.instance()
-    if qudi_instance is None:
-        qudi_instance = application.Qudi(config_file=CONFIG)
-    QTimer.singleShot(100000, qudi_instance.quit)
-    qudi_instance.run()
-
-
-@pytest.fixture(scope='module', autouse=True)
-def start_qudi_process():
-    """This fixture starts the Qudi process and ensures it's running before tests."""
-    qudi_process = multiprocessing.Process(target=run_qudi)
-    qudi_process.start()
-    time.sleep(10)
-    yield
-    qudi_process.join(timeout=10)
-    if qudi_process.is_alive():
-        qudi_process.terminate()
-
-@pytest.fixture(scope='module')
-def remote_instance():
-    time.sleep(10)
-    conn = rpyc.connect("localhost", 18861, config={'sync_request_timeout': 60})
-    root = conn.root
-    qudi_instance = root._qudi
-    return qudi_instance
 
 
 def generate_random_value(var):
@@ -101,6 +59,12 @@ def test_status_vars(remote_instance, logic_modules, gui_modules, hardware_modul
     ----------
     remote_instance : fixture
         Running remote qudi instance
+    logic_modules : fixture
+        List of loaded logic modules
+    gui_modules : fixture
+        List of loaded gui modules
+    hardware_modules : fixture
+        List of loaded hardware modules
     """    
     module_manager = remote_instance.module_manager
     for gui_module in gui_modules:

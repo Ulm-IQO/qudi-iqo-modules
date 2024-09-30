@@ -20,19 +20,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import time
-import multiprocessing
 import pytest
-import rpyc
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-from qudi.core import application
 from qudi.util.yaml import yaml_load, yaml_dump
 from qudi.util.paths import get_module_app_data_path
 
 
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 LOGIC_MODULE = 'odmr_logic'
 GUI_MODULE = 'odmr_gui'
 STATUS_VAR = 'run_time'
@@ -62,45 +54,11 @@ def dump_status_variables(vars, file_path):
     except Exception as e:
         print("Failed to save status variables:", e)
 
-def run_qudi():
-    """
-    This function runs a qudi instance with a timer
-    """    
-    app_cls = QtWidgets.QApplication
-    app = app_cls.instance()
-    if app is None:
-        app = app_cls()
-    qudi_instance = application.Qudi.instance()
-    if qudi_instance is None:
-        qudi_instance = application.Qudi(config_file=CONFIG)
-    QTimer.singleShot(50000, qudi_instance.quit)
-    qudi_instance.run()
 
-
-@pytest.fixture(scope='module')
-def start_qudi_process():
-    """This fixture starts the Qudi process and ensures it's running before tests."""
-    qudi_process = multiprocessing.Process(target=run_qudi)
-    qudi_process.start()
-    time.sleep(10)
-    yield
-    qudi_process.join(timeout=10)
-
-    if qudi_process.is_alive():
-        qudi_process.terminate()
-
-@pytest.fixture(scope='module')
-def remote_instance(start_qudi_process):
-    """This fixture connects the running qudi server through rpyc client and returns client instance"""
-    time.sleep(10)
-    conn = rpyc.connect("localhost", 18861, config={'sync_request_timeout': 60})
-    root = conn.root
-    qudi_instance = root._qudi
-    return qudi_instance
 
 @pytest.fixture(scope='module')
 def logic_instance(remote_instance):
-    """This fixture return Odmr logic instance"""
+    """This fixture returns Odmr logic instance"""
     module_manager = remote_instance.module_manager
     module_manager.activate_module(GUI_MODULE)
     logic_instance = module_manager._modules[LOGIC_MODULE].instance
@@ -141,4 +99,3 @@ def test_status_vars_changed(logic_instance, qudi_instance):
     """    
     status_variable = '_' + STATUS_VAR
     assert getattr(logic_instance, status_variable) == VALUE
-

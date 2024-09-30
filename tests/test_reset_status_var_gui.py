@@ -19,50 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-
-import pytest
-import rpyc
-import multiprocessing
-from qudi.core import application
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-import os
 import time
-
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
-
-def run_qudi():
-    app_cls = QtWidgets.QApplication
-    app = app_cls.instance()
-    if app is None:
-        app = app_cls()
-    qudi_instance = application.Qudi.instance()
-    if qudi_instance is None:
-        qudi_instance = application.Qudi(config_file=CONFIG)
-    QTimer.singleShot(150000, qudi_instance.quit)
-    qudi_instance.run()
-
-
-@pytest.fixture(scope='module', autouse=True)
-def start_qudi_process():
-    """This fixture starts the Qudi process and ensures it's running before tests."""
-    qudi_process = multiprocessing.Process(target=run_qudi)
-    qudi_process.start()
-    time.sleep(10)
-    yield
-    qudi_process.join(timeout=10)
-    if qudi_process.is_alive():
-        qudi_process.terminate()
-
-@pytest.fixture(scope='module')
-def remote_instance():
-    time.sleep(10)
-    conn = rpyc.connect("localhost", 18861, config={'sync_request_timeout': 60})
-    root = conn.root
-
-    qudi_instance = root._qudi
-    return qudi_instance
-
 
 '''
 #This test fails for some modules such as ODMR  PulsedGUI
