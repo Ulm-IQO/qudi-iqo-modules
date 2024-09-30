@@ -300,7 +300,7 @@ class RegionOfInterest:
                 'pos_history': self.pos_history,
                 'scan_image': self.scan_image,
                 'scan_image_extent': self.scan_image_extent,
-                'scan_image_meta': self.scan_image_meta.to_dict(),
+                'scan_image_meta': self.scan_image_meta.to_dict() if self.scan_image_meta else None,
                 'pois': [poi.to_dict() for poi in self._pois.values()]}
 
     @classmethod
@@ -1304,7 +1304,7 @@ class PoiManagerLogic(LogicBase):
     @_roi.constructor
     def dict_to_roi(self, roi_dict):
         if isinstance(roi_dict, RegionOfInterest):
-            return
+            return roi_dict
         try:
             roi = RegionOfInterest.from_dict(roi_dict)
         except Exception as e:
