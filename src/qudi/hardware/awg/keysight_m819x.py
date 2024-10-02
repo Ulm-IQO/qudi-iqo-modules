@@ -92,7 +92,7 @@ class AWGM819X(PulserInterface):
 
     @property
     @abstractmethod
-    def interleaved_wavefile(self):
+    def get_interleaved_wavefile(self):
         pass
 
     def on_activate(self):
