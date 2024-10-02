@@ -66,7 +66,7 @@ class FourierAnalyzerSettings(AnalyzerSettings):
     padding_parameter: int = 1
     cut_time_trace: bool = False
     spectrum_type: str = "amp"
-    sequence_length_s: float = 0
+    sequence_length_s: float = 1
 
 
 class FourierAnalyzer(Analyzer):
