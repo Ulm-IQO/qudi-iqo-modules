@@ -614,7 +614,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_blocks.append(hahn_block)
 
         # Create block ensemble
-        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
         block_ensemble.append((hahn_block.name, 0))
 
         # Create and append sync trigger block if needed

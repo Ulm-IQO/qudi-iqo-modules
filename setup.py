@@ -5,14 +5,14 @@ from setuptools import setup, find_namespace_packages
 
 
 unix_dep = [
-    'qudi-core>=1.5.0',
+    'qudi-core>=1.5.1',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
     'lxml>=4.9.1',
     'matplotlib>=3.6.0',
     'nidaqmx>=0.5.7',
-    'numpy>=1.23.3',
+    'numpy>=1.23.3,<2.0',
     'pyqtgraph>=0.13.1',
     'PySide2',  # get fixed version from core
     'PyVisa>=1.12.0',
@@ -21,14 +21,14 @@ unix_dep = [
 ]
 
 windows_dep = [
-    'qudi-core>=1.5.0',
+    'qudi-core>=1.5.1',
     'entrypoints>=0.4',
     'fysom>=2.1.6',
     'lmfit>=1.0.3',
     'lxml>=4.9.1',
     'matplotlib>=3.6.0',
     'nidaqmx>=0.5.7',
-    'numpy>=1.23.3',
+    'numpy>=1.23.3,<2.0',
     'pyqtgraph>=0.13.1',
     'PySide2',  # get fixed version from core
     'PyVisa>=1.12.0',

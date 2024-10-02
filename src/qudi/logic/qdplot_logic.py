@@ -258,11 +258,11 @@ class QDPlotFitContainer(FitContainer):
 
 class QDPlotLogic(LogicBase):
     """ This logic module helps display user data in plots, and makes it easy to save.
-    
-    There are phythonic setters and getters for each of the parameter and data. 
+
+    There are phythonic setters and getters for each of the parameter and data.
     They can be called by "plot_<plot_number>_parameter". plot_number ranges from 1 to 3.
     Parameters are: x_limits, y_limits, x_label, y_label, x_unit, y_unit, x_data, y_data, clear_old_data
-    
+
     All parameters and data can also be interacted with by calling get_ and set_ functions.
 
     Example config for copy-paste:
@@ -372,7 +372,7 @@ class QDPlotLogic(LogicBase):
         while self.plot_count < plot_count:
             self._add_plot()
         while self.plot_count > plot_count:
-            self._remove_plot()
+            self._remove_plot(-1)
 
     def get_data(self, plot_index: int) -> QDPlotDataSet:
         with self._thread_lock:
@@ -650,7 +650,7 @@ class QDPlotLogic(LogicBase):
                      ) -> plt.Figure:
         fit_config, fit_results = fit_container.last_fits
         # High-resolution fit data and formatted result string
-        fit_data = [None if result is None else result.high_res_best_fit for result in fit_results]
+        fit_data = [None if result is None else result.high_res_best_fit for result in fit_results.values()]
         fit_result_str = fit_container.formatted_result(fit_results)
         if not fit_data:
             fit_data = [None] * len(data_set)
