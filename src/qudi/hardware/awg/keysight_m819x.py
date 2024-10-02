@@ -917,8 +917,8 @@ class AWGM819X(PulserInterface):
             raise ValueError("Unknown memory mode: {}".format(self._wave_mem_mode))
 
         """
-        8190a manual: When using dynamic sequencing, the arm mode must be set to self-armed 
-        and all advancement modes must be set to Auto. 
+        8190a manual: When using dynamic sequencing, the arm mode must be set to self-armed
+        and all advancement modes must be set to Auto.
         Additionally, the trigger mode Gated is not allowed.
         """
         self.write_all_ch(':FUNC{}:MODE STS', all_by_one={'m8195a': True})  # activate the sequence mode
@@ -960,7 +960,7 @@ class AWGM819X(PulserInterface):
             ctr_steps_written += 1
             self.log.debug("Writing seqtable entry {}: {}".format(index, step))
 
-        if goto_in_sequence and self.get_constraints().sequence_order == "LINONLY":  # SequenceOrderOption.LINONLY:
+        if goto_in_sequence:  # SequenceOrderOption.LINONLY:
             self.log.warning("Found go_to in step of sequence {}. Not supported and ignored.".format(name))
 
         while int(self.query('*OPC?')) != 1:
@@ -2709,9 +2709,6 @@ class AWGM8190A(AWGM819X):
         constraints.sequence_num.max = 524288 - 1   # manual p. 251
         constraints.sequence_num.step = 1
         constraints.sequence_num.default = 1
-
-        constraints.sequence_option = SequenceOption.OPTIONAL
-        constraints.sequence_order = "LINONLY"  # SequenceOrderOption.LINONLY
 
         # If sequencer mode is available then these should be specified
         constraints.repetitions.min = 0
