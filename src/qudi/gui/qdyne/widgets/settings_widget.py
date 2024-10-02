@@ -64,7 +64,7 @@ class SettingsWidget(QtWidgets.QWidget):
         self.setting_gridLayout.addWidget(self.settings_widget)
 
     def deactivate(self):
-        pass
+        self.close()
 
     def connect_signals(self):
         self.method_comboBox.currentTextChanged.connect(self.update_current_method)

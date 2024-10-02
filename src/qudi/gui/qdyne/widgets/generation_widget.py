@@ -74,7 +74,7 @@ class GenerationWidget(QtWidgets.QWidget):
         return
 
     def deactivate(self):
-        pass
+        self.close()
 
     def connect_signals(self):
         self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.connect(

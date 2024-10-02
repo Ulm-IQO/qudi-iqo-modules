@@ -321,7 +321,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.toggle_lines()
 
     def deactivate(self):
-        pass
+        self.close()
 
     def connect_signals(self):
         self.sig_start_line.sigPositionChangeFinished.connect(self.sig_lines_dragged)
@@ -417,7 +417,7 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self.time_trace_PlotWidget.setLabel(axis="left", text="signal", units="")
 
     def deactivate(self):
-        pass
+        self.close()
 
     def connect_signals(self):
         self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)

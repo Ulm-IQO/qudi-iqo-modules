@@ -44,7 +44,7 @@ class QdyneMainWindow(QtWidgets.QMainWindow):
         pass
 
     def deactivate(self):
-        pass
+        self.close()
 
     def _setup_toolbar(self):
         self.data_type_ComboBox = QtWidgets.QComboBox()

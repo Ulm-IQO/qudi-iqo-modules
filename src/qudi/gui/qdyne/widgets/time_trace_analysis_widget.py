@@ -74,7 +74,7 @@ class TimeTraceAnalysisTab(QtWidgets.QWidget):
         self._dw.activate()
 
     def deactivate(self):
-        pass
+        self.close()
 
 
 
