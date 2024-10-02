@@ -116,17 +116,43 @@ class GenerationWidget(QtWidgets.QWidget):
         )
 
     def disconnect_signals(self):
-        self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect()
-        self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.disconnect()
+        # self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect(
+        #     self.predefined_generated
+        # )
+        self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.disconnect(
+            self.predefined_generated
+        )
+        self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.disconnect(
+            self.loaded_asset_updated
+        )
 
-        self._gui.logic().pulsedmasterlogic().sigSampleBlockEnsemble.disconnect()
-        self._gui.logic().pulsedmasterlogic().sigLoadBlockEnsemble.disconnect()
-        self._gui.logic().pulsedmasterlogic().sigLoadSequence.disconnect()
-        self._gui.logic().pulsedmasterlogic().sigSampleSequence.disconnect()
+        self._gui.logic().pulsedmasterlogic().sigSampleBlockEnsemble.disconnect(
+            self.sampling_or_loading_busy
+        )
+        self._gui.logic().pulsedmasterlogic().sigLoadBlockEnsemble.disconnect(
+            self.sampling_or_loading_busy
+        )
+        self._gui.logic().pulsedmasterlogic().sigLoadSequence.disconnect(
+            self.sampling_or_loading_busy
+        )
+        self._gui.logic().pulsedmasterlogic().sigSampleSequence.disconnect(
+            self.sampling_or_loading_busy
+        )
 
-        self.ana_param_invoke_settings_CheckBox.stateChanged.disconnect()
-        self.ana_param_record_length_DoubleSpinBox.editingFinished.disconnect()
-        self.binwidth_spinbox.editingFinished.disconnect()
+        self.ana_param_invoke_settings_CheckBox.stateChanged.disconnect(
+            self.measurement_settings_changed
+        )
+        self.ana_param_record_length_DoubleSpinBox.editingFinished.disconnect(
+            self.counter_settings_changed
+        )
+        self.binwidth_spinbox.editingFinished.disconnect(self.counter_settings_changed)
+
+        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect(
+            self.counter_settings_updated
+        )
+        self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect(
+            self.measurement_settings_updated
+        )
 
     def sampling_or_loading_busy(self):
         if self._gui.logic().measurement_generator.status_dict["sampload_busy"]:
