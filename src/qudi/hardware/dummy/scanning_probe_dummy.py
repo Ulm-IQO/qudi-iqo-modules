@@ -42,13 +42,13 @@ class ImageGenerator:
                  spot_density: float,
                  spot_size_dist: List[float],
                  spot_amplitude_dist: List[float],
-                 out_of_plane_spot_view_distance: float,  # currently unused
+                 spot_view_distance_factor: float,  # currently unused
                  ) -> None:
         self.position_ranges = position_ranges
         self.spot_density = spot_density
         self.spot_size_dist = tuple(spot_size_dist)
         self.spot_amplitude_dist = tuple(spot_amplitude_dist)
-        self.out_of_plane_spot_view_distance = out_of_plane_spot_view_distance
+        self.spot_view_distance_factor = spot_view_distance_factor
 
         # random spots for each 2D axes pair
         self._spots: Dict[Tuple[str, str], Any] = {}
@@ -117,21 +117,7 @@ class ImageGenerator:
             position_vectors
         )
         # get only spot positions in detection volume
-        logger.debug(f"{position_vectors_indices=}")
-        include_dist = self.spot_size_dist[0] + self.spot_size_dist[1]
-        points_in_detection_volume = positions[
-            np.array(
-                [
-                    self.is_point_in_scan_volume(
-                        point,
-                        current_position_vector,
-                        position_vectors_indices,
-                        include_dist,
-                    )
-                    for point in positions
-                ]
-            )
-        ]
+        include_dist = max(self.spot_size_dist) * self.spot_view_distance_factor
 
         scan_image = np.random.uniform(
             0,
@@ -142,6 +128,17 @@ class ImageGenerator:
         grid_points = self._create_coordinates_for_calculation(
             position_vectors_indices, current_position_vector
         )
+
+        points_in_detection_volume = positions[
+            np.array(
+                [
+                    self.is_point_in_scan_volume(point, grid_points, include_dist)
+                    for point in positions
+                ]
+            )
+        ]
+
+        logger.debug(f"{grid_points.shape=}")
 
         indices = np.array(
             [np.where(positions == point)[0][0] for point in points_in_detection_volume]
@@ -192,31 +189,9 @@ class ImageGenerator:
                     index_dict[index] = position_vectors[axis]
         return index_dict
 
-    def is_point_in_scan_volume(
-        self,
-        point: np.ndarray,
-        current_position: np.ndarray,
-        scan_vectors: Dict[int, np.ndarray],
-        include_dist: float,
-    ) -> bool:
-        for index in range(point.size):
-            if index in scan_vectors.keys():
-                if point[index] < scan_vectors[index].min() - include_dist:
-                    return False
-                if point[index] > scan_vectors[index].max() + include_dist:
-                    return False
-                continue
-            if (
-                abs(point[index] - current_position[index])
-                > self.out_of_plane_spot_view_distance
-            ):
-                return False
-        return True
-
-    @staticmethod
-    def _project_point_onto_subspace(point, current_position, scan_vectors):
-        # construct basis vectors of scan_subspace
-        basis_vectors = None
+    def is_point_in_scan_volume(self, point: np.ndarray, scan_points:np.ndarray, include_dist: float):
+        distances = np.linalg.norm(scan_points - point, axis=1)
+        return np.any(distances <= include_dist)
 
     @staticmethod
     def _gaussian_n_dim(grid_points, mus, sigmas, amplitudes=None):
@@ -308,7 +283,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 y: 10e-9
                 z: 50e-9
             # spot_density: 5e4 # optional
-            # out_of_plane_spot_view_distance: 1e-6 # optional
+            # spot_view_distance_factor: 2 # optional
             # spot_size_dist: [400e-9, 100e-9] # optional
             # spot_amplitude_dist: [2e5, 4e4] # optional
             # require_square_pixels: False # optional
@@ -324,10 +299,10 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     _resolution_ranges: Dict[str, List[float]] = ConfigOption(name='resolution_ranges', missing='error')
     _position_accuracy: Dict[str, float] = ConfigOption(name='position_accuracy', missing='error')
     _spot_density: float = ConfigOption(name='spot_density', default=1e5)  # in 1/m
-    _out_of_plane_spot_view_distance: List[float] = ConfigOption(
-        name='out_of_plane_spot_view_distance',
-        default=1e-6
-    )
+    _spot_view_distance_factor: List[float] = ConfigOption(
+        name='spot_view_distance_factor',
+        default=2
+    ) # spots are visible by this factor times the maximum spot size from each scan point away
     _spot_size_dist: List[float] = ConfigOption(name='spot_size_dist', default=(400e-9, 100e-9))
     _spot_amplitude_dist: List[float] = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
     _require_square_pixels: bool = ConfigOption(name='require_square_pixels', default=False)
@@ -413,7 +388,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._spot_density,
             self._spot_size_dist,
             self._spot_amplitude_dist,
-            self._out_of_plane_spot_view_distance,
+            self._spot_view_distance_factor,
         )
 
         self.__scan_start = 0
