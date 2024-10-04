@@ -98,56 +98,93 @@ class ImageGenerator:
         self._spots['theta'] = np.random.uniform(0, np.pi, spot_count)
         logger.debug(f"Generated {spot_count} spots.")
 
-    def generate_image(self,
-                          position_vectors: Dict[str, np.ndarray],
-                          current_position: Dict[str, float]
-                          ) -> np.ndarray:
+    def generate_image(
+        self,
+        position_vectors: Dict[str, np.ndarray],
+        current_position: Dict[str, float],
+    ) -> np.ndarray:
         scan_values = tuple(position_vectors.values())
         sim_data = self._spots
-        positions = sim_data['pos']
-        amplitudes = sim_data['amp']
-        sigmas = sim_data['sigma']
+        positions = sim_data["pos"]
+        amplitudes = sim_data["amp"]
+        sigmas = sim_data["sigma"]
 
         t_start = time.perf_counter()
 
         # convert axis string dicts to axis index dicts
         current_position_vector = self.convert_position_dict_to_array(current_position)
-        position_vectors_indices = self.convert_axis_string_dict_to_axis_index_dict(position_vectors)
+        position_vectors_indices = self.convert_axis_string_dict_to_axis_index_dict(
+            position_vectors
+        )
         # get only spot positions in detection volume
+        logger.debug(f"{position_vectors_indices=}")
         include_dist = self.spot_size_dist[0] + self.spot_size_dist[1]
-        points_in_detection_volume = positions[np.array([self.is_point_in_scan_volume(point, current_position_vector, position_vectors_indices, include_dist) for point in positions])]
+        points_in_detection_volume = positions[
+            np.array(
+                [
+                    self.is_point_in_scan_volume(
+                        point,
+                        current_position_vector,
+                        position_vectors_indices,
+                        include_dist,
+                    )
+                    for point in positions
+                ]
+            )
+        ]
 
-        scan_image = np.random.uniform(0, min(self.spot_amplitude_dist) * 0.2, tuple(value.size for value in scan_values))
+        scan_image = np.random.uniform(
+            0,
+            min(self.spot_amplitude_dist) * 0.2,
+            tuple(value.size for value in scan_values),
+        )
 
-        grid_points = self._create_coordinates_for_calculation(position_vectors_indices, current_position_vector)
+        grid_points = self._create_coordinates_for_calculation(
+            position_vectors_indices, current_position_vector
+        )
 
-        indices = np.array([np.where(positions == point)[0][0] for point in points_in_detection_volume])
+        indices = np.array(
+            [np.where(positions == point)[0][0] for point in points_in_detection_volume]
+        )
 
         if len(indices) > 0:
             mus_visible = points_in_detection_volume
             sigmas_visible = sigmas[indices]
             amplitudes_visible = amplitudes[indices]
 
-            gauss_1d_all = self._gaussian_n_dim(grid_points, mus=mus_visible, sigmas=sigmas_visible,
-                                                amplitudes=amplitudes_visible)
+            gauss_1d_all = self._gaussian_n_dim(
+                grid_points,
+                mus=mus_visible,
+                sigmas=sigmas_visible,
+                amplitudes=amplitudes_visible,
+            )
 
-            new_dim = [len(position_vectors_indices[i]) for i in sorted(position_vectors_indices.keys())]
+            new_dim = [
+                len(position_vectors_indices[i])
+                for i in sorted(position_vectors_indices.keys())
+            ]
             gauss_2d_all = np.sum(gauss_1d_all.reshape((-1, *new_dim)), axis=0)
 
             scan_image += gauss_2d_all
 
-        logger.debug(f"Image took {time.perf_counter()-t_start:.3f} s for {points_in_detection_volume.shape[0]=},\n"
-                     f" {points_in_detection_volume=}")
+        logger.debug(
+            f"Image took {time.perf_counter()-t_start:.3f} s for {points_in_detection_volume.shape[0]=},\n"
+            f" {points_in_detection_volume=}"
+        )
 
         return scan_image
 
-    def convert_position_dict_to_array(self, position_dict: Dict[str, float]) -> np.ndarray:
+    def convert_position_dict_to_array(
+        self, position_dict: Dict[str, float]
+    ) -> np.ndarray:
         position_vector = np.zeros(len(tuple(self.position_ranges.keys())))
         for ii, axis in enumerate(self.position_ranges.keys()):
             position_vector[ii] = position_dict[axis]
         return position_vector
 
-    def convert_axis_string_dict_to_axis_index_dict(self, position_vectors: Dict[str, np.ndarray]) -> Dict[int, np.ndarray]:
+    def convert_axis_string_dict_to_axis_index_dict(
+        self, position_vectors: Dict[str, np.ndarray]
+    ) -> Dict[int, np.ndarray]:
         index_dict = {}
         for axis in position_vectors.keys():
             for index, check_axis in enumerate(self.position_ranges.keys()):
@@ -155,7 +192,13 @@ class ImageGenerator:
                     index_dict[index] = position_vectors[axis]
         return index_dict
 
-    def is_point_in_scan_volume(self, point: np.ndarray, current_position: np.ndarray, scan_vectors: Dict[int, np.ndarray], include_dist: float) -> bool:
+    def is_point_in_scan_volume(
+        self,
+        point: np.ndarray,
+        current_position: np.ndarray,
+        scan_vectors: Dict[int, np.ndarray],
+        include_dist: float,
+    ) -> bool:
         for index in range(point.size):
             if index in scan_vectors.keys():
                 if point[index] < scan_vectors[index].min() - include_dist:
@@ -163,9 +206,17 @@ class ImageGenerator:
                 if point[index] > scan_vectors[index].max() + include_dist:
                     return False
                 continue
-            if abs(point[index] - current_position[index]) > self.out_of_plane_spot_view_distance:
+            if (
+                abs(point[index] - current_position[index])
+                > self.out_of_plane_spot_view_distance
+            ):
                 return False
         return True
+
+    @staticmethod
+    def _project_point_onto_subspace(point, current_position, scan_vectors):
+        # construct basis vectors of scan_subspace
+        basis_vectors = None
 
     @staticmethod
     def _gaussian_n_dim(grid_points, mus, sigmas, amplitudes=None):
@@ -214,12 +265,18 @@ class ImageGenerator:
         # All axes indices that are not in axes should be populated with the value of the current position
         for axis_index in range(m):
             if axis_index in axes_dict.keys():
-               axes_vectors.append(axes_dict[axis_index])
-               continue
-            axes_vectors.append(np.array([currentpos[axis_index],]))
+                axes_vectors.append(axes_dict[axis_index])
+                continue
+            axes_vectors.append(
+                np.array(
+                    [
+                        currentpos[axis_index],
+                    ]
+                )
+            )
 
         # create meshgrid for all coordinates that should be probed
-        mesh_grid = np.meshgrid(*axes_vectors, indexing='ij')
+        mesh_grid = np.meshgrid(*axes_vectors, indexing="ij")
 
         # create all coordinates by flattening the grid
         return np.vstack([grid.ravel() for grid in mesh_grid]).T
