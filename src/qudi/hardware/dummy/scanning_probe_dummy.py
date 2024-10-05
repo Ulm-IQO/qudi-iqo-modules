@@ -25,6 +25,7 @@ from typing import Optional, Dict, Tuple, Any, List
 import numpy as np
 from PySide2 import QtCore
 from fysom import FysomError
+import inspect
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.constraints import ScalarConstraint
@@ -37,13 +38,15 @@ logger = getLogger(__name__)
 
 class ImageGenerator:
     """Generate 1D and 2D images with random Gaussian spots."""
-    def __init__(self,
-                 position_ranges: Dict[str, List[float]],
-                 spot_density: float,
-                 spot_size_dist: List[float],
-                 spot_amplitude_dist: List[float],
-                 spot_view_distance_factor: float,  # currently unused
-                 ) -> None:
+
+    def __init__(
+        self,
+        position_ranges: Dict[str, List[float]],
+        spot_density: float,
+        spot_size_dist: List[float],
+        spot_amplitude_dist: List[float],
+        spot_view_distance_factor: float,  # currently unused
+    ) -> None:
         self.position_ranges = position_ranges
         self.spot_density = spot_density
         self.spot_size_dist = tuple(spot_size_dist)
@@ -58,22 +61,22 @@ class ImageGenerator:
         """Create a random set of Gaussian 2D peaks."""
         self._spots = dict()
         number_of_axes = len(list(self.position_ranges.keys()))
-        axis_lengths = [abs(value[1]-value[0]) for value in self.position_ranges.values()]
+        axis_lengths = [
+            abs(value[1] - value[0]) for value in self.position_ranges.values()
+        ]
         volume = 0
         if len(axis_lengths) > 0:
             volume = 1
             for value in axis_lengths:
                 volume *= value
 
-        spot_count = int(round(volume * self.spot_density ** number_of_axes))
+        spot_count = int(round(volume * self.spot_density**number_of_axes))
         # Have at least 1 spot
         if not spot_count:
             spot_count = 1
 
         spot_amplitudes = np.random.normal(
-            self.spot_amplitude_dist[0],
-            self.spot_amplitude_dist[1],
-            spot_count
+            self.spot_amplitude_dist[0], self.spot_amplitude_dist[1], spot_count
         )
 
         # scan bounds per axis.
@@ -82,20 +85,23 @@ class ImageGenerator:
         ax_maxs = position_ranges[:, 1]
 
         # vectorized generation of random spot positions and sigmas. Each row is a spot.
-        spot_positions = np.random.uniform(ax_mins, ax_maxs, (spot_count, len(self.position_ranges)))
-        spot_sigmas = np.random.normal(self.spot_size_dist[0], self.spot_size_dist[1],
-                                       (spot_count, len(self.position_ranges)))
+        spot_positions = np.random.uniform(
+            ax_mins, ax_maxs, (spot_count, len(self.position_ranges))
+        )
+        spot_sigmas = np.random.normal(
+            self.spot_size_dist[0],
+            self.spot_size_dist[1],
+            (spot_count, len(self.position_ranges)),
+        )
 
         # total number of spots
-        self._spots['count'] = spot_count
+        self._spots["count"] = spot_count
         # spot positions as array with rows being the number of spot and columns being the position along axis
-        self._spots['pos'] = spot_positions
+        self._spots["pos"] = spot_positions
         # spot sizes as array with rows being the number of spot and columns being the position along axis
-        self._spots['sigma'] = spot_sigmas
+        self._spots["sigma"] = spot_sigmas
         # spot amplitudes
-        self._spots['amp'] = spot_amplitudes
-        # spot angle
-        self._spots['theta'] = np.random.uniform(0, np.pi, spot_count)
+        self._spots["amp"] = spot_amplitudes
         logger.debug(f"Generated {spot_count} spots.")
 
     def generate_image(
@@ -112,8 +118,8 @@ class ImageGenerator:
         t_start = time.perf_counter()
 
         # convert axis string dicts to axis index dicts
-        current_position_vector = self.convert_position_dict_to_array(current_position)
-        position_vectors_indices = self.convert_axis_string_dict_to_axis_index_dict(
+        current_position_vector = self._convert_position_dict_to_array(current_position)
+        position_vectors_indices = self._convert_axis_string_dict_to_axis_index_dict(
             position_vectors
         )
         # get only spot positions in detection volume
@@ -129,49 +135,45 @@ class ImageGenerator:
             position_vectors_indices, current_position_vector
         )
 
-        points_in_detection_volume = positions[
-            np.array(
-                [
-                    self.is_point_in_scan_volume(point, grid_points, include_dist)
-                    for point in positions
-                ]
-            )
-        ]
+        positions_in_detection_volume, indices = self._process_in_grid_chunks(
+            method=self._points_in_detection_volume,
+            return_method=self._points_in_detection_volume_return_method,
+            positions=positions,
+            grid_points=grid_points,
+            include_dist=include_dist,
+        )
 
-        logger.debug(f"{grid_points.shape=}")
-
-        indices = np.array(
-            [np.where(positions == point)[0][0] for point in points_in_detection_volume]
+        logger.debug(
+            f"Time took {time.perf_counter()-t_start:.3f} s for points_in_detection_volume and indices"
         )
 
         if len(indices) > 0:
-            mus_visible = points_in_detection_volume
-            sigmas_visible = sigmas[indices]
-            amplitudes_visible = amplitudes[indices]
-
-            gauss_1d_all = self._gaussian_n_dim(
-                grid_points,
-                mus=mus_visible,
-                sigmas=sigmas_visible,
-                amplitudes=amplitudes_visible,
-            )
-
-            new_dim = [
+            new_dim = tuple(
                 len(position_vectors_indices[i])
                 for i in sorted(position_vectors_indices.keys())
-            ]
-            gauss_2d_all = np.sum(gauss_1d_all.reshape((-1, *new_dim)), axis=0)
+            )
+            gauss_image = self._process_in_grid_chunks(
+                method=self._sum_m_gaussian_n_dim,
+                return_method=self._sum_m_gaussian_n_dim_return_method,
+                positions=positions_in_detection_volume,
+                grid_points=grid_points,
+                include_dist=include_dist,
+                mus=positions_in_detection_volume,
+                sigmas=sigmas[indices],
+                amplitudes=amplitudes[indices],
+                image_dimension=new_dim,
+            )
 
-            scan_image += gauss_2d_all
+            scan_image += gauss_image
 
         logger.debug(
-            f"Image took {time.perf_counter()-t_start:.3f} s for {points_in_detection_volume.shape[0]=},\n"
-            f" {points_in_detection_volume=}"
+            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]=},\n"
+            f" {positions_in_detection_volume=}"
         )
 
         return scan_image
 
-    def convert_position_dict_to_array(
+    def _convert_position_dict_to_array(
         self, position_dict: Dict[str, float]
     ) -> np.ndarray:
         position_vector = np.zeros(len(tuple(self.position_ranges.keys())))
@@ -179,7 +181,7 @@ class ImageGenerator:
             position_vector[ii] = position_dict[axis]
         return position_vector
 
-    def convert_axis_string_dict_to_axis_index_dict(
+    def _convert_axis_string_dict_to_axis_index_dict(
         self, position_vectors: Dict[str, np.ndarray]
     ) -> Dict[int, np.ndarray]:
         index_dict = {}
@@ -189,12 +191,81 @@ class ImageGenerator:
                     index_dict[index] = position_vectors[axis]
         return index_dict
 
-    def is_point_in_scan_volume(self, point: np.ndarray, scan_points:np.ndarray, include_dist: float):
-        distances = np.linalg.norm(scan_points - point, axis=1)
-        return np.any(distances <= include_dist)
+    def _process_in_grid_chunks(
+        self,
+        method,
+        return_method,
+        positions,
+        grid_points,
+        include_dist,
+        chunk_size=1000,
+        **kwargs,
+    ):
+        # maybe the method needs positions, grid_points, include_dist as parameters
+        kwargs.update(
+            {
+                "positions": positions,
+                "grid_points": grid_points,
+                "include_dist": include_dist,
+            }
+        )
+        # filter base args so only parameters that are required by method are passed
+        method_params = inspect.signature(method).parameters
+        return_method_params = inspect.signature(return_method).parameters
+        filtered_args = {
+            key: value for key, value in kwargs.items() if key in method_params
+        }
+        filtered_return_args = {
+            key: value for key, value in kwargs.items() if key in return_method_params
+        }
+        break_point = int(100e6)
+
+        if len(positions) * len(grid_points) <= break_point:
+            return return_method([method(**filtered_args)], **filtered_return_args)
+
+        logger.warning(
+            f"Calculation of more than {break_point} values for scanner image. "
+            f"Processing in grid point chunks, this may take a while. "
+            f"Consider reducing the number of scan points, the view distance of spots or the spot density to regain performance.\n "
+            f"number of spots: {len(positions)}\n "
+            f"number of grid points: {len(grid_points)}\n "
+            f"view distance: {include_dist} m"
+        )
+        # Empty list to accumulate results
+        all_results = []
+
+        # Process grid points in chunks
+        num_grid_points = grid_points.shape[0]
+        for i in range(0, num_grid_points, chunk_size):
+            grid_chunk = grid_points[i : i + chunk_size]
+            filtered_args.update({"grid_points": grid_chunk})
+            all_results.append(method(**filtered_args))
+
+        return return_method(all_results, **filtered_return_args)
 
     @staticmethod
-    def _gaussian_n_dim(grid_points, mus, sigmas, amplitudes=None):
+    def _points_in_detection_volume(
+        positions: np.ndarray, grid_points: np.ndarray, include_dist: float
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        points_in_detection_volume = np.any(
+            np.linalg.norm(positions[:, np.newaxis] - grid_points, axis=2)
+            <= include_dist,
+            axis=1,
+        )
+        positions = positions[points_in_detection_volume]
+        indices = np.where(points_in_detection_volume)[0]
+        return positions, indices
+
+    @staticmethod
+    def _points_in_detection_volume_return_method(
+        points: List[Tuple[np.ndarray, np.ndarray]], **kwargs
+    ) -> Tuple[np.ndarray, np.ndarray]:
+        return np.vstack([point[0] for point in points[:]]), np.concatenate(
+            [point[1] for point in points[:]]
+        )
+
+    @staticmethod
+    def _sum_m_gaussian_n_dim(grid_points, mus, sigmas, amplitudes=None) -> np.ndarray:
         """
         Calculate the Gaussian values for each point in an n-dimensional grid with a customizable amplitude.
 
@@ -220,7 +291,14 @@ class ImageGenerator:
         # Calculate Gaussian values with amplitude
         gaussians = amplitudes[:, np.newaxis] * np.exp(exponent.T)  # shape: (k, m)
 
-        return gaussians
+        # return the sum of all gaussians
+        return np.sum(gaussians, axis=0)
+
+    @staticmethod
+    def _sum_m_gaussian_n_dim_return_method(
+        gauss_data: List[np.ndarray], image_dimension: Tuple[int, ...], **kwargs
+    ) -> np.ndarray:
+        return np.vstack(gauss_data).reshape(image_dimension)
 
     @staticmethod
     def _create_coordinates_for_calculation(axes_dict, currentpos) -> np.ndarray:
