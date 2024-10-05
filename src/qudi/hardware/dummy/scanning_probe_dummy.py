@@ -46,12 +46,14 @@ class ImageGenerator:
         spot_size_dist: List[float],
         spot_amplitude_dist: List[float],
         spot_view_distance_factor: float,  # currently unused
+        chunk_size: int,
     ) -> None:
         self.position_ranges = position_ranges
         self.spot_density = spot_density
         self.spot_size_dist = tuple(spot_size_dist)
         self.spot_amplitude_dist = tuple(spot_amplitude_dist)
         self.spot_view_distance_factor = spot_view_distance_factor
+        self._chunk_size = chunk_size
 
         # random spots for each 2D axes pair
         self._spots: Dict[Tuple[str, str], Any] = {}
@@ -198,7 +200,6 @@ class ImageGenerator:
         positions,
         grid_points,
         include_dist,
-        chunk_size=1000,
         **kwargs,
     ):
         # maybe the method needs positions, grid_points, include_dist as parameters
@@ -236,8 +237,8 @@ class ImageGenerator:
 
         # Process grid points in chunks
         num_grid_points = grid_points.shape[0]
-        for i in range(0, num_grid_points, chunk_size):
-            grid_chunk = grid_points[i : i + chunk_size]
+        for i in range(0, num_grid_points, self._chunk_size):
+            grid_chunk = grid_points[i : i + self._chunk_size]
             filtered_args.update({"grid_points": grid_chunk})
             all_results.append(method(**filtered_args))
 
@@ -368,6 +369,8 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             # back_scan_available: True # optional
             # back_scan_frequency_configurable: True # optional
             # back_scan_resolution_configurable: True # optional
+            # image_generation_max_calculations: 100e6 # optional
+            # image_generation_chunk_size: 1000 # optional
     """
     _threaded = True
 
@@ -376,17 +379,24 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     _frequency_ranges: Dict[str, List[float]] = ConfigOption(name='frequency_ranges', missing='error')
     _resolution_ranges: Dict[str, List[float]] = ConfigOption(name='resolution_ranges', missing='error')
     _position_accuracy: Dict[str, float] = ConfigOption(name='position_accuracy', missing='error')
-    _spot_density: float = ConfigOption(name='spot_density', default=1e5)  # in 1/m
-    _spot_view_distance_factor: List[float] = ConfigOption(
-        name='spot_view_distance_factor',
-        default=2
-    ) # spots are visible by this factor times the maximum spot size from each scan point away
+    _spot_density: float = ConfigOption(name="spot_density", default=1e5)  # in 1/m
+    _spot_view_distance_factor: float = ConfigOption(
+        name="spot_view_distance_factor", default=2, constructor=lambda x: float(x)
+    )  # spots are visible by this factor times the maximum spot size from each scan point away
     _spot_size_dist: List[float] = ConfigOption(name='spot_size_dist', default=(400e-9, 100e-9))
     _spot_amplitude_dist: List[float] = ConfigOption(name='spot_amplitude_dist', default=(2e5, 4e4))
     _require_square_pixels: bool = ConfigOption(name='require_square_pixels', default=False)
     _back_scan_available: bool = ConfigOption(name='back_scan_available', default=True)
     _back_scan_frequency_configurable: bool = ConfigOption(name='back_scan_frequency_configurable', default=True)
     _back_scan_resolution_configurable: bool = ConfigOption(name='back_scan_resolution_configurable', default=True)
+    _image_generation_max_calculations: int = ConfigOption(
+        name="image_generation_max_calculations",
+        default=int(100e6),
+        constructor=lambda x: int(x),
+    )  # number of points that can be calculated at once during image generation
+    _image_generation_chunk_size: int = ConfigOption(
+        name="image_generation_chunk_size", default=1000, constructor=lambda x: int(x)
+    )  # if too many points are being calculated at once during image generation, this gives the size of the chunks it should be broken up into
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -467,6 +477,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._spot_size_dist,
             self._spot_amplitude_dist,
             self._spot_view_distance_factor,
+            self._image_generation_chunk_size,
         )
 
         self.__scan_start = 0
