@@ -163,14 +163,6 @@ class ImageGenerator:
 
         return scan_image
 
-    def _convert_position_dict_to_array(
-        self, position_dict: Dict[str, float]
-    ) -> np.ndarray:
-        position_vector = np.zeros(len(tuple(self.position_ranges.keys())))
-        for ii, axis in enumerate(self.position_ranges.keys()):
-            position_vector[ii] = position_dict[axis]
-        return position_vector
-
     def _convert_axis_string_dict_to_axis_index_dict(
         self, position_vectors: Dict[str, np.ndarray]
     ) -> Dict[int, np.ndarray]:
