@@ -141,10 +141,6 @@ class ImageGenerator:
             include_dist=include_dist,
         )
 
-        logger.debug(
-            f"Time took {time.perf_counter()-t_start:.3f} s for points_in_detection_volume and indices"
-        )
-
         if len(indices) > 0:
             gauss_image = self._process_in_grid_chunks(
                 method=self._sum_m_gaussian_n_dim,
@@ -161,7 +157,7 @@ class ImageGenerator:
             scan_image += gauss_image
 
         logger.debug(
-            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]=},\n"
+            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]} points,\n"
             f" {positions_in_detection_volume=}"
         )
 
@@ -303,8 +299,6 @@ class ImageGenerator:
         :return: A numpy array of coordinates to evaluate the Gaussian at, each row holding the coordinates of one scan point.
         """
         axes_coords = [axes_dict[coords] for coords in sorted(axes_dict.keys())]
-        logger.debug(f"{axes_coords=}")
-        logger.debug(f"{np.column_stack(axes_coords).shape=}")
         return np.column_stack(axes_coords)
 
 
@@ -767,7 +761,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self.__update_timer.stop()
 
     def _init_position_vectors_from_scan_settings(self) -> Dict[str, np.ndarray]:
-        self.log.debug(f"{self.scan_settings=}")
         axes_scan_values = [
             np.linspace(
                 self.scan_settings.range[ii][0],
