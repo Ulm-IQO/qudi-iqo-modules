@@ -109,9 +109,8 @@ class ImageGenerator:
     def generate_image(
         self,
         position_vectors: Dict[str, np.ndarray],
-        current_position: Dict[str, float],
+        scan_resolution: Tuple[int, ...],
     ) -> np.ndarray:
-        scan_values = tuple(position_vectors.values())
         sim_data = self._spots
         positions = sim_data["pos"]
         amplitudes = sim_data["amp"]
@@ -120,7 +119,6 @@ class ImageGenerator:
         t_start = time.perf_counter()
 
         # convert axis string dicts to axis index dicts
-        current_position_vector = self._convert_position_dict_to_array(current_position)
         position_vectors_indices = self._convert_axis_string_dict_to_axis_index_dict(
             position_vectors
         )
@@ -130,12 +128,10 @@ class ImageGenerator:
         scan_image = np.random.uniform(
             0,
             min(self.spot_amplitude_dist) * 0.2,
-            tuple(value.size for value in scan_values),
+            scan_resolution,
         )
 
-        grid_points = self._create_coordinates_for_calculation(
-            position_vectors_indices, current_position_vector
-        )
+        grid_points = self._create_coordinates(position_vectors_indices)
 
         positions_in_detection_volume, indices = self._process_in_grid_chunks(
             method=self._points_in_detection_volume,
@@ -150,10 +146,6 @@ class ImageGenerator:
         )
 
         if len(indices) > 0:
-            new_dim = tuple(
-                len(position_vectors_indices[i])
-                for i in sorted(position_vectors_indices.keys())
-            )
             gauss_image = self._process_in_grid_chunks(
                 method=self._sum_m_gaussian_n_dim,
                 return_method=self._sum_m_gaussian_n_dim_return_method,
@@ -163,7 +155,7 @@ class ImageGenerator:
                 mus=positions_in_detection_volume,
                 sigmas=sigmas[indices],
                 amplitudes=amplitudes[indices],
-                image_dimension=new_dim,
+                image_dimension=scan_resolution,
             )
 
             scan_image += gauss_image
@@ -302,38 +294,18 @@ class ImageGenerator:
         return np.vstack(gauss_data).reshape(image_dimension)
 
     @staticmethod
-    def _create_coordinates_for_calculation(axes_dict, currentpos) -> np.ndarray:
+    def _create_coordinates(axes_dict: Dict[int, np.ndarray]) -> np.ndarray:
         """
-        Calculate the coordinates for which the gaussian should be calculated, when scanning along axes in axes_dict and having a current position as currentpos.
+        Create the coordinates for which the gaussian should be calculated from the axes_dict.
 
         :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated. keys: axis index, values: values for this axis.
-        :param currentpos: A 1D numpy array representing the current position of the scanner (shape: (n,)).
 
-        :return: A numpy array of coordinates to evaluate the Gaussian at.
+        :return: A numpy array of coordinates to evaluate the Gaussian at, each row holding the coordinates of one scan point.
         """
-        # number of dimensions in space
-        m = len(currentpos)
-
-        axes_vectors = []
-        # populate the grid with values from the axes.
-        # All axes indices that are not in axes should be populated with the value of the current position
-        for axis_index in range(m):
-            if axis_index in axes_dict.keys():
-                axes_vectors.append(axes_dict[axis_index])
-                continue
-            axes_vectors.append(
-                np.array(
-                    [
-                        currentpos[axis_index],
-                    ]
-                )
-            )
-
-        # create meshgrid for all coordinates that should be probed
-        mesh_grid = np.meshgrid(*axes_vectors, indexing="ij")
-
-        # create all coordinates by flattening the grid
-        return np.vstack([grid.ravel() for grid in mesh_grid]).T
+        axes_coords = [axes_dict[coords] for coords in sorted(axes_dict.keys())]
+        logger.debug(f"{axes_coords=}")
+        logger.debug(f"{np.column_stack(axes_coords).shape=}")
+        return np.column_stack(axes_coords)
 
 
 class ScanningProbeDummyBare(ScanningProbeInterface):
@@ -652,7 +624,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
             position_vectors = self._init_position_vectors()
 
-            self._scan_image = self._image_generator.generate_image(position_vectors, self.get_target())
+            self._scan_image = self._image_generator.generate_image(position_vectors, self.scan_settings.resolution)
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
                 constraints=self.constraints,
@@ -661,7 +633,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._scan_data.new_scan()
 
             if self._back_scan_settings is not None:
-                self._back_scan_image = self._image_generator.generate_image(position_vectors, self.get_target())
+                self._back_scan_image = self._image_generator.generate_image(position_vectors, self.scan_settings.resolution)
                 self._back_scan_data = ScanData.from_constraints(
                     settings=self.back_scan_settings,
                     constraints=self.constraints,
@@ -795,14 +767,26 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self.__update_timer.stop()
 
     def _init_position_vectors_from_scan_settings(self) -> Dict[str, np.ndarray]:
-        position_vectors = {axis: np.linspace(
-            self.scan_settings.range[ii][0],
-            self.scan_settings.range[ii][1],
-            self.scan_settings.resolution[ii]) for ii, axis in enumerate(self.scan_settings.axes)}
+        self.log.debug(f"{self.scan_settings=}")
+        axes_scan_values = [
+            np.linspace(
+                self.scan_settings.range[ii][0],
+                self.scan_settings.range[ii][1],
+                self.scan_settings.resolution[ii],
+            )
+            for ii, _ in enumerate(self.scan_settings.axes)
+        ]
+        # generate all combinations of points
+        meshgrids = np.meshgrid(*axes_scan_values, indexing="ij")
+        # create position vector dictionary by raveling the grids
+        position_vectors = {
+            axis: grid.ravel() for axis, grid in zip(self.scan_settings.axes, meshgrids)
+        }
         return position_vectors
 
     def _init_position_vectors(self) -> Dict[str, np.ndarray]:
         position_vectors = self._init_position_vectors_from_scan_settings()
+        position_vectors = self._expand_coordinate(position_vectors)
         return position_vectors
 
     @_spot_density.constructor
@@ -822,7 +806,6 @@ class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
         position_vectors = super()._init_position_vectors()
 
         if self.coordinate_transform_enabled:
-            position_vectors = self._expand_coordinate(position_vectors)
             return self.coordinate_transform(position_vectors)
 
         return position_vectors
