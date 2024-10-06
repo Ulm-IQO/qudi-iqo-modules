@@ -108,7 +108,7 @@ class ImageGenerator:
 
     def generate_image(
         self,
-        position_vectors: Dict[str, np.ndarray],
+        scan_vectors: Dict[str, np.ndarray],
         scan_resolution: Tuple[int, ...],
     ) -> np.ndarray:
         sim_data = self._spots
@@ -119,8 +119,8 @@ class ImageGenerator:
         t_start = time.perf_counter()
 
         # convert axis string dicts to axis index dicts
-        position_vectors_indices = self._convert_axis_string_dict_to_axis_index_dict(
-            position_vectors
+        scan_vectors_indices = self._convert_axis_string_dict_to_axis_index_dict(
+            scan_vectors
         )
         # get only spot positions in detection volume
         include_dist = max(self.spot_size_dist) * self.spot_view_distance_factor
@@ -131,7 +131,7 @@ class ImageGenerator:
             scan_resolution,
         )
 
-        grid_points = self._create_coordinates(position_vectors_indices)
+        grid_points = self._create_coordinates(scan_vectors_indices)
 
         positions_in_detection_volume, indices = self._process_in_grid_chunks(
             method=self._points_in_detection_volume,
@@ -616,9 +616,9 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 raise RuntimeError('No scan settings configured. Cannot start scan.')
             self.module_state.lock()
 
-            position_vectors = self._init_position_vectors()
+            scan_vectors = self._init_scan_vectors()
 
-            self._scan_image = self._image_generator.generate_image(position_vectors, self.scan_settings.resolution)
+            self._scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
             self._scan_data = ScanData.from_constraints(
                 settings=self.scan_settings,
                 constraints=self.constraints,
@@ -627,7 +627,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._scan_data.new_scan()
 
             if self._back_scan_settings is not None:
-                self._back_scan_image = self._image_generator.generate_image(position_vectors, self.scan_settings.resolution)
+                self._back_scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
                 self._back_scan_data = ScanData.from_constraints(
                     settings=self.back_scan_settings,
                     constraints=self.constraints,
@@ -760,7 +760,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         else:
             self.__update_timer.stop()
 
-    def _init_position_vectors_from_scan_settings(self) -> Dict[str, np.ndarray]:
+    def _init_scan_vectors_from_scan_settings(self) -> Dict[str, np.ndarray]:
         axes_scan_values = [
             np.linspace(
                 self.scan_settings.range[ii][0],
@@ -772,15 +772,15 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         # generate all combinations of points
         meshgrids = np.meshgrid(*axes_scan_values, indexing="ij")
         # create position vector dictionary by raveling the grids
-        position_vectors = {
+        scan_vectors = {
             axis: grid.ravel() for axis, grid in zip(self.scan_settings.axes, meshgrids)
         }
-        return position_vectors
+        return scan_vectors
 
-    def _init_position_vectors(self) -> Dict[str, np.ndarray]:
-        position_vectors = self._init_position_vectors_from_scan_settings()
-        position_vectors = self._expand_coordinate(position_vectors)
-        return position_vectors
+    def _init_scan_vectors(self) -> Dict[str, np.ndarray]:
+        scan_vectors = self._init_scan_vectors_from_scan_settings()
+        scan_vectors = self._expand_coordinate(scan_vectors)
+        return scan_vectors
 
     @_spot_density.constructor
     def spot_density_constructor(self, spot_density: float) -> float:
@@ -795,10 +795,10 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
 
 class ScanningProbeDummy(CoordinateTransformMixin, ScanningProbeDummyBare):
-    def _init_position_vectors(self) -> Dict[str, np.ndarray]:
-        position_vectors = super()._init_position_vectors()
+    def _init_scan_vectors(self) -> Dict[str, np.ndarray]:
+        scan_vectors = super()._init_scan_vectors()
 
         if self.coordinate_transform_enabled:
-            return self.coordinate_transform(position_vectors)
+            return self.coordinate_transform(scan_vectors)
 
-        return position_vectors
+        return scan_vectors
