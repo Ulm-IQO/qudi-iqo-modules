@@ -45,8 +45,9 @@ class ImageGenerator:
         spot_density: float,
         spot_size_dist: List[float],
         spot_amplitude_dist: List[float],
-        spot_view_distance_factor: float,  # currently unused
+        spot_view_distance_factor: float,
         chunk_size: int,
+        image_generation_max_calculations: int,
     ) -> None:
         self.position_ranges = position_ranges
         self.spot_density = spot_density
@@ -54,6 +55,7 @@ class ImageGenerator:
         self.spot_amplitude_dist = tuple(spot_amplitude_dist)
         self.spot_view_distance_factor = spot_view_distance_factor
         self._chunk_size = chunk_size
+        self._image_generation_max_calculations = image_generation_max_calculations
 
         # random spots for each 2D axes pair
         self._spots: Dict[Tuple[str, str], Any] = {}
@@ -96,13 +98,9 @@ class ImageGenerator:
             (spot_count, len(self.position_ranges)),
         )
 
-        # total number of spots
         self._spots["count"] = spot_count
-        # spot positions as array with rows being the number of spot and columns being the position along axis
         self._spots["pos"] = spot_positions
-        # spot sizes as array with rows being the number of spot and columns being the position along axis
         self._spots["sigma"] = spot_sigmas
-        # spot amplitudes
         self._spots["amp"] = spot_amplitudes
         logger.debug(f"Generated {spot_count} spots.")
 
@@ -118,11 +116,10 @@ class ImageGenerator:
 
         t_start = time.perf_counter()
 
-        # convert axis string dicts to axis index dicts
         scan_vectors_indices = self._convert_axis_string_dict_to_axis_index_dict(
             scan_vectors
         )
-        # get only spot positions in detection volume
+
         include_dist = max(self.spot_size_dist) * self.spot_view_distance_factor
 
         scan_image = np.random.uniform(
@@ -133,25 +130,39 @@ class ImageGenerator:
 
         grid_points = self._create_coordinates(scan_vectors_indices)
 
-        positions_in_detection_volume, indices = self._process_in_grid_chunks(
-            method=self._points_in_detection_volume,
-            return_method=self._points_in_detection_volume_return_method,
-            positions=positions,
-            grid_points=grid_points,
-            include_dist=include_dist,
+        positions_in_detection_volume, indices = (
+            self._resolve_grid_processed_points_in_detection_volume(
+                self._process_in_grid_chunks(
+                    method=self._points_in_detection_volume,
+                    positions=positions,
+                    grid_points=grid_points,
+                    include_dist=include_dist,
+                    method_params={
+                        "positions": positions,
+                        "grid_points": grid_points,
+                        "include_dist": include_dist,
+                    },
+                )
+            )
         )
 
         if len(indices) > 0:
-            gauss_image = self._process_in_grid_chunks(
-                method=self._sum_m_gaussian_n_dim,
-                return_method=self._sum_m_gaussian_n_dim_return_method,
-                positions=positions_in_detection_volume,
-                grid_points=grid_points,
-                include_dist=include_dist,
-                mus=positions_in_detection_volume,
-                sigmas=sigmas[indices],
-                amplitudes=amplitudes[indices],
-                image_dimension=scan_resolution,
+            gauss_image = (
+                self._resolve_grid_processed_sum_m_gaussian_n_dim_return_method(
+                    self._process_in_grid_chunks(
+                        method=self._sum_m_gaussian_n_dim,
+                        positions=positions_in_detection_volume,
+                        grid_points=grid_points,
+                        include_dist=include_dist,
+                        method_params={
+                            "grid_points": grid_points,
+                            "mus": positions_in_detection_volume,
+                            "sigmas": sigmas[indices],
+                            "amplitudes": amplitudes[indices],
+                        },
+                    ),
+                    image_dimension=scan_resolution,
+                )
             )
 
             scan_image += gauss_image
@@ -176,54 +187,33 @@ class ImageGenerator:
     def _process_in_grid_chunks(
         self,
         method,
-        return_method,
-        positions,
-        grid_points,
-        include_dist,
-        **kwargs,
-    ):
-        # maybe the method needs positions, grid_points, include_dist as parameters
-        kwargs.update(
-            {
-                "positions": positions,
-                "grid_points": grid_points,
-                "include_dist": include_dist,
-            }
-        )
-        # filter base args so only parameters that are required by method are passed
-        method_params = inspect.signature(method).parameters
-        return_method_params = inspect.signature(return_method).parameters
-        filtered_args = {
-            key: value for key, value in kwargs.items() if key in method_params
-        }
-        filtered_return_args = {
-            key: value for key, value in kwargs.items() if key in return_method_params
-        }
-        break_point = int(100e6)
+        positions: np.ndarray,
+        grid_points: np.ndarray,
+        include_dist: float,
+        method_params: dict,
+    ) -> list:
 
-        if len(positions) * len(grid_points) <= break_point:
-            return return_method([method(**filtered_args)], **filtered_return_args)
+        if len(positions) * len(grid_points) <= self._image_generation_max_calculations:
+            return [method(**method_params)]
 
         logger.warning(
-            f"Calculation of more than {break_point} values for scanner image. "
+            f"number of grid_points * number of spot positions exceeds {self._image_generation_max_calculations} values. "
             f"Processing in grid point chunks, this may take a while. "
             f"Consider reducing the number of scan points, the view distance of spots or the spot density to regain performance.\n "
             f"number of spots: {len(positions)}\n "
             f"number of grid points: {len(grid_points)}\n "
             f"view distance: {include_dist} m"
         )
-        # Empty list to accumulate results
+
         all_results = []
 
         # Process grid points in chunks
-        num_grid_points = grid_points.shape[0]
-        for i in range(0, num_grid_points, self._chunk_size):
-            print(f"Chunk (/{len(range(0, num_grid_points, self._chunk_size))}) {i}-{i + self._chunk_size}")
+        for i in range(0, grid_points.shape[0], self._chunk_size):
             grid_chunk = grid_points[i : i + self._chunk_size]
-            filtered_args.update({"grid_points": grid_chunk})
-            all_results.append(method(**filtered_args))
+            method_params.update({"grid_points": grid_chunk})
+            all_results.append(method(**method_params))
 
-        return return_method(all_results, **filtered_return_args)
+        return all_results
 
     @staticmethod
     def _points_in_detection_volume(
@@ -317,8 +307,8 @@ class ImageGenerator:
 
 
     @staticmethod
-    def _points_in_detection_volume_return_method(
-        points: List[Tuple[np.ndarray, np.ndarray]], **kwargs
+    def _resolve_grid_processed_points_in_detection_volume(
+        points: List[Tuple[np.ndarray, np.ndarray]],
     ) -> Tuple[np.ndarray, np.ndarray]:
         return np.vstack([point[0] for point in points[:]]), np.concatenate(
             [point[1] for point in points[:]]
@@ -329,34 +319,30 @@ class ImageGenerator:
         """
         Calculate the Gaussian values for each point in an n-dimensional grid with a customizable amplitude.
 
-        :param grid_points: A 1D numpy array representing the coordinates at which the gaussian should be evaluated (shape: (m, n).
-        :param mu: A 1D numpy array representing the mean vector (shape: (n,)).
-        :param sigma: A 1D numpy array representing the variance for each axis (shape: (n,)).
-        :param amplitude: A scalar value representing the height of the Gaussian (default is 1.0).
+        :param grid_points: 1D numpy array representing the coordinates at which the gaussian should be evaluated.
+        :param mus: 1D numpy array representing the mean vectors of the gaussians.
+        :param sigmas: 1D numpy array representing the variances for each gaussian and axis.
+        :param amplitudes: Scalar value representing the amplitude of the Gaussian (default is 1.0).
 
         :return: A numpy array of Gaussian values evaluated at each point in grid_points.
         """
         if amplitudes is None:
             amplitudes = np.ones(mus.shape[0])
 
-        # Reshape grid_points for broadcasting
-        grid_points = grid_points[:, np.newaxis, :]  # shape: (m, 1, n)
-        mus = mus[np.newaxis, :, :]  # shape: (1, k, n)
-        sigmas = sigmas[np.newaxis, :, :]  # shape: (1, k, n)
+        grid_points = grid_points[:, np.newaxis, :]
+        mus = mus[np.newaxis, :, :]
+        sigmas = sigmas[np.newaxis, :, :]
 
-        # Calculate the exponent for each Gaussian
-        diff = grid_points - mus  # shape: (m, k, n)
-        exponent = -0.5 * np.sum((diff / sigmas) ** 2, axis=2)  # shape: (m, k)
+        diff = grid_points - mus
+        exponent = -0.5 * np.sum((diff / sigmas) ** 2, axis=2)
 
-        # Calculate Gaussian values with amplitude
-        gaussians = amplitudes[:, np.newaxis] * np.exp(exponent.T)  # shape: (k, m)
+        gaussians = amplitudes[:, np.newaxis] * np.exp(exponent.T)
 
-        # return the sum of all gaussians
         return np.sum(gaussians, axis=0)
 
     @staticmethod
-    def _sum_m_gaussian_n_dim_return_method(
-        gauss_data: List[np.ndarray], image_dimension: Tuple[int, ...], **kwargs
+    def _resolve_grid_processed_sum_m_gaussian_n_dim_return_method(
+        gauss_data: List[np.ndarray], image_dimension: Tuple[int, ...]
     ) -> np.ndarray:
         return np.vstack(gauss_data).reshape(image_dimension)
 
@@ -433,7 +419,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         constructor=lambda x: int(x),
     )  # number of points that can be calculated at once during image generation
     _image_generation_chunk_size: int = ConfigOption(
-        name="image_generation_chunk_size", default=1000000, constructor=lambda x: int(x)
+        name="image_generation_chunk_size", default=1000, constructor=lambda x: int(x)
     )  # if too many points are being calculated at once during image generation, this gives the size of the chunks it should be broken up into
 
     def __init__(self, *args, **kwargs):
@@ -516,6 +502,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._spot_amplitude_dist,
             self._spot_view_distance_factor,
             self._image_generation_chunk_size,
+            self._image_generation_max_calculations,
         )
 
         self.__scan_start = 0
@@ -689,8 +676,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self.module_state.lock()
 
             scan_vectors = self._init_scan_vectors()
-            self.log.debug(f"Grid points {scan_vectors}")
-
 
             self._scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
             self._scan_data = ScanData.from_constraints(
