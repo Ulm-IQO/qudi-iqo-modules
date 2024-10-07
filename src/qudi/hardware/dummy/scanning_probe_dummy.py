@@ -45,7 +45,7 @@ class ImageGenerator:
         spot_density: float,
         spot_size_dist: List[float],
         spot_amplitude_dist: List[float],
-        spot_view_distance_factor: float,  # currently unused
+        spot_view_distance_factor: float,
         chunk_size: int,
     ) -> None:
         self.position_ranges = position_ranges
