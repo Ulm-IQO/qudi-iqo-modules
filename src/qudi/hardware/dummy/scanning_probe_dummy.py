@@ -135,25 +135,39 @@ class ImageGenerator:
 
         grid_points = self._create_coordinates(scan_vectors_indices)
 
-        positions_in_detection_volume, indices = self._process_in_grid_chunks(
-            method=self._points_in_detection_volume,
-            return_method=self._points_in_detection_volume_return_method,
-            positions=positions,
-            grid_points=grid_points,
-            include_dist=include_dist,
+        positions_in_detection_volume, indices = (
+            self._resolve_grid_processed_points_in_detection_volume(
+                self._process_in_grid_chunks(
+                    method=self._points_in_detection_volume,
+                    positions=positions,
+                    grid_points=grid_points,
+                    include_dist=include_dist,
+                    method_params={
+                        "positions": positions,
+                        "grid_points": grid_points,
+                        "include_dist": include_dist,
+                    },
+                )
+            )
         )
 
         if len(indices) > 0:
-            gauss_image = self._process_in_grid_chunks(
-                method=self._sum_m_gaussian_n_dim,
-                return_method=self._sum_m_gaussian_n_dim_return_method,
-                positions=positions_in_detection_volume,
-                grid_points=grid_points,
-                include_dist=include_dist,
-                mus=positions_in_detection_volume,
-                sigmas=sigmas[indices],
-                amplitudes=amplitudes[indices],
-                image_dimension=scan_resolution,
+            gauss_image = (
+                self._resolve_grid_processed_sum_m_gaussian_n_dim_return_method(
+                    self._process_in_grid_chunks(
+                        method=self._sum_m_gaussian_n_dim,
+                        positions=positions_in_detection_volume,
+                        grid_points=grid_points,
+                        include_dist=include_dist,
+                        method_params={
+                            "grid_points": grid_points,
+                            "mus": positions_in_detection_volume,
+                            "sigmas": sigmas[indices],
+                            "amplitudes": amplitudes[indices],
+                        },
+                    ),
+                    image_dimension=scan_resolution,
+                )
             )
 
             scan_image += gauss_image
@@ -178,33 +192,13 @@ class ImageGenerator:
     def _process_in_grid_chunks(
         self,
         method,
-        return_method,
-        positions,
-        grid_points,
-        include_dist,
-        **kwargs,
-    ):
-        # maybe the method needs positions, grid_points, include_dist as parameters
-        kwargs.update(
-            {
-                "positions": positions,
-                "grid_points": grid_points,
-                "include_dist": include_dist,
-            }
-        )
-        # filter base args so only parameters that are required by method are passed
-        method_params = inspect.signature(method).parameters
-        return_method_params = inspect.signature(return_method).parameters
-        filtered_args = {
-            key: value for key, value in kwargs.items() if key in method_params
-        }
-        filtered_return_args = {
-            key: value for key, value in kwargs.items() if key in return_method_params
-        }
-        break_point = int(self._image_generation_max_calculations)
-
-        if len(positions) * len(grid_points) <= break_point:
-            return return_method([method(**filtered_args)], **filtered_return_args)
+        positions: np.ndarray,
+        grid_points: np.ndarray,
+        include_dist: float,
+        method_params: dict,
+    ) -> list:
+        if len(positions) * len(grid_points) <= self._image_generation_max_calculations:
+            return [method(**method_params)]
 
         logger.warning(
             f"number of grid_points * number of spot positions exceeds {break_point} values. "
@@ -214,17 +208,16 @@ class ImageGenerator:
             f"number of grid points: {len(grid_points)}\n "
             f"view distance: {include_dist} m"
         )
-        # Empty list to accumulate results
+
         all_results = []
 
         # Process grid points in chunks
-        num_grid_points = grid_points.shape[0]
-        for i in range(0, num_grid_points, self._chunk_size):
+        for i in range(0, grid_points.shape[0], self._chunk_size):
             grid_chunk = grid_points[i : i + self._chunk_size]
-            filtered_args.update({"grid_points": grid_chunk})
-            all_results.append(method(**filtered_args))
+            method_params.update({"grid_points": grid_chunk})
+            all_results.append(method(**method_params))
 
-        return return_method(all_results, **filtered_return_args)
+        return all_results
 
     @staticmethod
     def _points_in_detection_volume(
@@ -240,8 +233,8 @@ class ImageGenerator:
         return positions, indices
 
     @staticmethod
-    def _points_in_detection_volume_return_method(
-        points: List[Tuple[np.ndarray, np.ndarray]], **kwargs
+    def _resolve_grid_processed_points_in_detection_volume(
+        points: List[Tuple[np.ndarray, np.ndarray]],
     ) -> Tuple[np.ndarray, np.ndarray]:
         return np.vstack([point[0] for point in points[:]]), np.concatenate(
             [point[1] for point in points[:]]
@@ -278,7 +271,7 @@ class ImageGenerator:
         return np.sum(gaussians, axis=0)
 
     @staticmethod
-    def _sum_m_gaussian_n_dim_return_method(
+    def _resolve_grid_processed_sum_m_gaussian_n_dim_return_method(
         gauss_data: List[np.ndarray], image_dimension: Tuple[int, ...], **kwargs
     ) -> np.ndarray:
         return np.vstack(gauss_data).reshape(image_dimension)
