@@ -245,29 +245,25 @@ class ImageGenerator:
         """
         Calculate the Gaussian values for each point in an n-dimensional grid with a customizable amplitude.
 
-        :param grid_points: A 1D numpy array representing the coordinates at which the gaussian should be evaluated (shape: (m, n).
-        :param mu: A 1D numpy array representing the mean vector (shape: (n,)).
-        :param sigma: A 1D numpy array representing the variance for each axis (shape: (n,)).
-        :param amplitude: A scalar value representing the height of the Gaussian (default is 1.0).
+        :param grid_points: 1D numpy array representing the coordinates at which the gaussian should be evaluated.
+        :param mus: 1D numpy array representing the mean vectors of the gaussians.
+        :param sigmas: 1D numpy array representing the variances for each gaussian and axis.
+        :param amplitudes: Scalar value representing the amplitude of the Gaussian (default is 1.0).
 
         :return: A numpy array of Gaussian values evaluated at each point in grid_points.
         """
         if amplitudes is None:
             amplitudes = np.ones(mus.shape[0])
 
-        # Reshape grid_points for broadcasting
-        grid_points = grid_points[:, np.newaxis, :]  # shape: (m, 1, n)
-        mus = mus[np.newaxis, :, :]  # shape: (1, k, n)
-        sigmas = sigmas[np.newaxis, :, :]  # shape: (1, k, n)
+        grid_points = grid_points[:, np.newaxis, :]
+        mus = mus[np.newaxis, :, :]
+        sigmas = sigmas[np.newaxis, :, :]
 
-        # Calculate the exponent for each Gaussian
-        diff = grid_points - mus  # shape: (m, k, n)
-        exponent = -0.5 * np.sum((diff / sigmas) ** 2, axis=2)  # shape: (m, k)
+        diff = grid_points - mus
+        exponent = -0.5 * np.sum((diff / sigmas) ** 2, axis=2)
 
-        # Calculate Gaussian values with amplitude
         gaussians = amplitudes[:, np.newaxis] * np.exp(exponent.T)  # shape: (k, m)
 
-        # return the sum of all gaussians
         return np.sum(gaussians, axis=0)
 
     @staticmethod
