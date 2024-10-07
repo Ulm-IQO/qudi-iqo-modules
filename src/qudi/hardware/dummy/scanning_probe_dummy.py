@@ -130,6 +130,10 @@ class ImageGenerator:
 
         grid_points = self._create_coordinates(scan_vectors_indices)
 
+        positions_in_detection_volume, indices = self._points_in_detection_volume(positions, grid_points, include_dist,
+                                                                                  fast_calc=True)
+
+        # todo: chunk processing not needed for calc_fast=True. only here for testing
         positions_in_detection_volume, indices = (
             self._resolve_grid_processed_points_in_detection_volume(
                 self._process_in_grid_chunks(
@@ -216,75 +220,67 @@ class ImageGenerator:
         return all_results
 
     @staticmethod
-    def _points_in_detection_volume(
-        positions: np.ndarray, grid_points: np.ndarray, include_dist: float, fast_calc=True,
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    def _calc_plane_normal_vector(vectors):
+        """
+        Calculate the normal vector in n-dimensional space of a plane defined by a list of m vectors.
 
-        def calc_norm_vecor(vectors):
-            """
-            Calculate the distance from a point in n-dimensional space to a plane defined by n-1 vectors.
+        Parameters:
+        vectors: rows: m vectors, colums: n dimensions
 
-            Parameters:
-            point (np.ndarray): A numpy array of shape (n,) representing the n-dimensional point.
-            vectors (list of np.ndarray): A list of n-1 numpy arrays, each of shape (n,) representing the vectors defining the plane.
+        Returns:
+        float: Norm vector of plane
+        """
+        # todo: move to qudi-core.math
+        vectors = vectors - np.mean(vectors, axis=0)
 
-            Returns:
-            float: The distance from the point to the plane.
-            """
-            # Stack the vectors column-wise to form a matrix A
-            A = np.column_stack(vectors)
+        # Find the orthogonal complement of the space spanned by the vectors
+        _, _, v = np.linalg.svd(vectors)
+        normal = v[-1]
 
-            # Ensure A is of size (n, n-1)
-            # if A.shape[1] != A.shape[0] - 1:
-            #    raise ValueError("You must provide exactly n-1 vectors for an n-dimensional plane.")
+        normal /= np.linalg.norm(normal)
 
-            # Find the orthogonal complement of the space spanned by the vectors
-            # We need to find a vector `normal` that is orthogonal to all vectors in `A`.
-            _, _, Vt = np.linalg.svd(A)  # Singular value decomposition
-            normal = Vt[-1]  # Last row of V^T gives the normal vector to the plane
+        return normal
 
-            # Normalize the normal vector
-            normal /= np.linalg.norm(normal)
+    @staticmethod
+    def _distance_to_plane(point, point_in_plane, normal_vector):
 
-            return normal
+        # projection of the connection (point-point_in_plane) onto the normal
+        distance = np.abs(np.dot(point - point_in_plane, normal_vector))
 
-        def distance_to_plane(point, normal_vector):
+        return distance
 
-            # Calculate the projection of the point onto the normal
-            # Assuming the plane passes through the origin
-            distance = np.abs(np.dot(point, normal_vector))
-
-            return distance
-
+    @staticmethod
+    def _points_in_detection_volume(positions: np.ndarray, grid_points: np.ndarray, include_dist: float,
+                                    fast_calc: bool = True) -> Tuple[np.ndarray, np.ndarray]:
 
         n_scan_vecs = grid_points.T.shape[1]
         n_emitters = positions.shape[0]
         n_dim = grid_points.T.shape[0]
 
         #print(f"Scandgrid: {grid_points}, \nemitters ({n_emitters}): {positions}")
+        t_start = time.perf_counter()
 
-        idxs = []
-        for i in range(2*n_dim): # need dim(plane). Some reserve if unlucky
-            idxs.append(np.random.randint(0, n_scan_vecs))
+        # need dim(plane) vectors in plane. Some reserve if unlucky.
+        idxs_rand = []
+        for i in range(2*n_dim):
+            idxs_rand.append(np.random.randint(0, n_scan_vecs))
         # todo: check whether vectors really span 2d plane in n dim
 
-        t_start = time.perf_counter()
-        plane_vecs_rand = grid_points[idxs,:]
+        plane_vecs_rand = grid_points[idxs_rand,:]
         #print(f"rand plane vecs {plane_vecs_rand}")
-        plane_normal_vec = calc_norm_vecor(plane_vecs_rand.T)
-        distances_full = np.asarray([distance_to_plane(positions[i, :].T, plane_normal_vec) for i in range(0, n_emitters)])
-        distances_svd = distances_full[:3]
+        plane_normal_vec = ImageGenerator._calc_plane_normal_vector(plane_vecs_rand)
+        distances_svd = np.asarray([ImageGenerator._distance_to_plane(positions[i, :], plane_vecs_rand[0,:], plane_normal_vec)
+                                    for i in range(0, n_emitters)])
+        idxs = np.where(distances_svd <= include_dist)[0]
+
         t_svd = time.perf_counter() - t_start
+        print(f"normal vec {plane_normal_vec}")
+        print(f"distances_svd in {t_svd:.3f} s: {distances_svd[0:5]}")
 
-        print(f"distances_svd in {t_svd:.3f} s: {distances_svd}")
+        positions_svd = positions[idxs,:]
+        indices_svd = idxs
 
-        idxs_svd = np.where(distances_full <= include_dist)[0]
-
-
-        positions_svd = positions[idxs_svd,:]
-        indices_svd = idxs_svd
-
-        if not fast_calc: # old calc
+        if not fast_calc:   # old calc
             t_start = time.perf_counter()
             points_in_detection_volume = np.any(
                 np.linalg.norm(positions[:, np.newaxis] - grid_points, axis=2)
@@ -296,15 +292,11 @@ class ImageGenerator:
 
             t_norm = time.perf_counter() - t_start
             print(f"norm distances in {t_norm:.3f} s.")
-            print(f"norm idxs: {indices}, positions: {positions}")
+            print(f"norm idxs: {indices}, positions: {positions[:10]}")
             #return positions, indices
 
-        print(f"svd idxs: {indices_svd}, positions: {positions_svd}")
+        print(f"svd idxs: {indices_svd}, positions: {positions_svd[:5]}")
         return positions_svd, indices_svd
-
-
-
-
 
     @staticmethod
     def _resolve_grid_processed_points_in_detection_volume(
