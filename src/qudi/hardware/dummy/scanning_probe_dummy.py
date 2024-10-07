@@ -47,6 +47,7 @@ class ImageGenerator:
         spot_amplitude_dist: List[float],
         spot_view_distance_factor: float,
         chunk_size: int,
+        image_generation_max_calculations: int,
     ) -> None:
         self.position_ranges = position_ranges
         self.spot_density = spot_density
@@ -54,6 +55,7 @@ class ImageGenerator:
         self.spot_amplitude_dist = tuple(spot_amplitude_dist)
         self.spot_view_distance_factor = spot_view_distance_factor
         self._chunk_size = chunk_size
+        self._image_generation_max_calculations = image_generation_max_calculations
 
         # random spots for each 2D axes pair
         self._spots: Dict[Tuple[str, str], Any] = {}
@@ -199,13 +201,13 @@ class ImageGenerator:
         filtered_return_args = {
             key: value for key, value in kwargs.items() if key in return_method_params
         }
-        break_point = int(100e6)
+        break_point = int(self._image_generation_max_calculations)
 
         if len(positions) * len(grid_points) <= break_point:
             return return_method([method(**filtered_args)], **filtered_return_args)
 
         logger.warning(
-            f"Calculation of more than {break_point} values for scanner image. "
+            f"number of grid_points * number of spot positions exceeds {break_point} values. "
             f"Processing in grid point chunks, this may take a while. "
             f"Consider reducing the number of scan points, the view distance of spots or the spot density to regain performance.\n "
             f"number of spots: {len(positions)}\n "
@@ -436,6 +438,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._spot_amplitude_dist,
             self._spot_view_distance_factor,
             self._image_generation_chunk_size,
+            self._image_generation_max_calculations,
         )
 
         self.__scan_start = 0
