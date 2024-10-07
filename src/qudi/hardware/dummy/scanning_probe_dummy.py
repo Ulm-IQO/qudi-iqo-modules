@@ -218,6 +218,7 @@ class ImageGenerator:
         # Process grid points in chunks
         num_grid_points = grid_points.shape[0]
         for i in range(0, num_grid_points, self._chunk_size):
+            print(f"Chunk (/{len(range(0, num_grid_points, self._chunk_size))}) {i}-{i + self._chunk_size}")
             grid_chunk = grid_points[i : i + self._chunk_size]
             filtered_args.update({"grid_points": grid_chunk})
             all_results.append(method(**filtered_args))
@@ -226,16 +227,94 @@ class ImageGenerator:
 
     @staticmethod
     def _points_in_detection_volume(
-        positions: np.ndarray, grid_points: np.ndarray, include_dist: float
+        positions: np.ndarray, grid_points: np.ndarray, include_dist: float, fast_calc=True,
     ) -> Tuple[np.ndarray, np.ndarray]:
-        points_in_detection_volume = np.any(
-            np.linalg.norm(positions[:, np.newaxis] - grid_points, axis=2)
-            <= include_dist,
-            axis=1,
-        )
-        positions = positions[points_in_detection_volume]
-        indices = np.where(points_in_detection_volume)[0]
-        return positions, indices
+
+        def calc_norm_vecor(vectors):
+            """
+            Calculate the distance from a point in n-dimensional space to a plane defined by n-1 vectors.
+
+            Parameters:
+            point (np.ndarray): A numpy array of shape (n,) representing the n-dimensional point.
+            vectors (list of np.ndarray): A list of n-1 numpy arrays, each of shape (n,) representing the vectors defining the plane.
+
+            Returns:
+            float: The distance from the point to the plane.
+            """
+            # Stack the vectors column-wise to form a matrix A
+            A = np.column_stack(vectors)
+
+            # Ensure A is of size (n, n-1)
+            # if A.shape[1] != A.shape[0] - 1:
+            #    raise ValueError("You must provide exactly n-1 vectors for an n-dimensional plane.")
+
+            # Find the orthogonal complement of the space spanned by the vectors
+            # We need to find a vector `normal` that is orthogonal to all vectors in `A`.
+            _, _, Vt = np.linalg.svd(A)  # Singular value decomposition
+            normal = Vt[-1]  # Last row of V^T gives the normal vector to the plane
+
+            # Normalize the normal vector
+            normal /= np.linalg.norm(normal)
+
+            return normal
+
+        def distance_to_plane(point, normal_vector):
+
+            # Calculate the projection of the point onto the normal
+            # Assuming the plane passes through the origin
+            distance = np.abs(np.dot(point, normal_vector))
+
+            return distance
+
+
+        n_scan_vecs = grid_points.T.shape[1]
+        n_emitters = positions.shape[0]
+        n_dim = grid_points.T.shape[0]
+
+        #print(f"Scandgrid: {grid_points}, \nemitters ({n_emitters}): {positions}")
+
+        idxs = []
+        for i in range(2*n_dim): # need dim(plane). Some reserve if unlucky
+            idxs.append(np.random.randint(0, n_scan_vecs))
+        # todo: check whether vectors really span 2d plane in n dim
+
+        t_start = time.perf_counter()
+        plane_vecs_rand = grid_points[idxs,:]
+        #print(f"rand plane vecs {plane_vecs_rand}")
+        plane_normal_vec = calc_norm_vecor(plane_vecs_rand.T)
+        distances_full = np.asarray([distance_to_plane(positions[i, :].T, plane_normal_vec) for i in range(0, n_emitters)])
+        distances_svd = distances_full[:3]
+        t_svd = time.perf_counter() - t_start
+
+        print(f"distances_svd in {t_svd:.3f} s: {distances_svd}")
+
+        idxs_svd = np.where(distances_full <= include_dist)[0]
+
+
+        positions_svd = positions[idxs_svd,:]
+        indices_svd = idxs_svd
+
+        if not fast_calc: # old calc
+            t_start = time.perf_counter()
+            points_in_detection_volume = np.any(
+                np.linalg.norm(positions[:, np.newaxis] - grid_points, axis=2)
+                <= include_dist,
+                axis=1,
+            )
+            positions = positions[points_in_detection_volume]
+            indices = np.where(points_in_detection_volume)[0]
+
+            t_norm = time.perf_counter() - t_start
+            print(f"norm distances in {t_norm:.3f} s.")
+            print(f"norm idxs: {indices}, positions: {positions}")
+            #return positions, indices
+
+        print(f"svd idxs: {indices_svd}, positions: {positions_svd}")
+        return positions_svd, indices_svd
+
+
+
+
 
     @staticmethod
     def _points_in_detection_volume_return_method(
@@ -286,7 +365,8 @@ class ImageGenerator:
         """
         Create the coordinates for which the gaussian should be calculated from the axes_dict.
 
-        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated. keys: axis index, values: values for this axis.
+        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated.
+        keys: axis index, values: values for this axis.
 
         :return: A numpy array of coordinates to evaluate the Gaussian at, each row holding the coordinates of one scan point.
         """
@@ -353,7 +433,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         constructor=lambda x: int(x),
     )  # number of points that can be calculated at once during image generation
     _image_generation_chunk_size: int = ConfigOption(
-        name="image_generation_chunk_size", default=1000, constructor=lambda x: int(x)
+        name="image_generation_chunk_size", default=1000000, constructor=lambda x: int(x)
     )  # if too many points are being calculated at once during image generation, this gives the size of the chunks it should be broken up into
 
     def __init__(self, *args, **kwargs):
@@ -609,6 +689,8 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self.module_state.lock()
 
             scan_vectors = self._init_scan_vectors()
+            self.log.debug(f"Grid points {scan_vectors}")
+
 
             self._scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
             self._scan_data = ScanData.from_constraints(
@@ -771,7 +853,8 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
     def _init_scan_vectors(self) -> Dict[str, np.ndarray]:
         scan_vectors = self._init_scan_vectors_from_scan_settings()
-        scan_vectors = self._expand_coordinate(scan_vectors)
+        scan_vectors = self._expand_coordinate(scan_vectors)  # always expand to all scan dims
+
         return scan_vectors
 
     @_spot_density.constructor
