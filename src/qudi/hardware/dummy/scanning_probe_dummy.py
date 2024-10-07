@@ -268,7 +268,7 @@ class ImageGenerator:
 
     @staticmethod
     def _resolve_grid_processed_sum_m_gaussian_n_dim_return_method(
-        gauss_data: List[np.ndarray], image_dimension: Tuple[int, ...], **kwargs
+        gauss_data: List[np.ndarray], image_dimension: Tuple[int, ...]
     ) -> np.ndarray:
         return np.vstack(gauss_data).reshape(image_dimension)
 
