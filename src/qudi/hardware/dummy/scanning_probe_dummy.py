@@ -98,13 +98,9 @@ class ImageGenerator:
             (spot_count, len(self.position_ranges)),
         )
 
-        # total number of spots
         self._spots["count"] = spot_count
-        # spot positions as array with rows being the number of spot and columns being the position along axis
         self._spots["pos"] = spot_positions
-        # spot sizes as array with rows being the number of spot and columns being the position along axis
         self._spots["sigma"] = spot_sigmas
-        # spot amplitudes
         self._spots["amp"] = spot_amplitudes
         logger.debug(f"Generated {spot_count} spots.")
 
@@ -120,11 +116,10 @@ class ImageGenerator:
 
         t_start = time.perf_counter()
 
-        # convert axis string dicts to axis index dicts
         scan_vectors_indices = self._convert_axis_string_dict_to_axis_index_dict(
             scan_vectors
         )
-        # get only spot positions in detection volume
+
         include_dist = max(self.spot_size_dist) * self.spot_view_distance_factor
 
         scan_image = np.random.uniform(
@@ -197,6 +192,7 @@ class ImageGenerator:
         include_dist: float,
         method_params: dict,
     ) -> list:
+
         if len(positions) * len(grid_points) <= self._image_generation_max_calculations:
             return [method(**method_params)]
 
@@ -262,7 +258,7 @@ class ImageGenerator:
         diff = grid_points - mus
         exponent = -0.5 * np.sum((diff / sigmas) ** 2, axis=2)
 
-        gaussians = amplitudes[:, np.newaxis] * np.exp(exponent.T)  # shape: (k, m)
+        gaussians = amplitudes[:, np.newaxis] * np.exp(exponent.T)
 
         return np.sum(gaussians, axis=0)
 
