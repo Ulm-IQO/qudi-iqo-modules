@@ -257,14 +257,6 @@ class ImageGenerator:
         return positions_svd, indices_svd
 
     @staticmethod
-    def _resolve_grid_processed_points_in_detection_volume(
-        points: List[Tuple[np.ndarray, np.ndarray]],
-    ) -> Tuple[np.ndarray, np.ndarray]:
-        return np.vstack([point[0] for point in points[:]]), np.concatenate(
-            [point[1] for point in points[:]]
-        )
-
-    @staticmethod
     def _sum_m_gaussian_n_dim(grid_points, mus, sigmas, amplitudes=None) -> np.ndarray:
         """
         Calculate the Gaussian values for each point in an n-dimensional grid with a customizable amplitude.
