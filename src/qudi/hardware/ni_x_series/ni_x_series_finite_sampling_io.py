@@ -627,12 +627,13 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 line_index = int(digital_output_channel.split("line")[-1])
                 digital_output_data += 2 ** line_index * self.__frame_buffer[digital_output_channel].astype("uint32")
 
-            try:
-                self._do_writer.write_many_sample_port_uint32(digital_output_data)
-            except ni.DaqError:
-                self.terminate_all_tasks()
-                self.module_state.unlock()
-                raise
+            if self._do_task_handle is not None:
+                try:
+                    self._do_writer.write_many_sample_port_uint32(digital_output_data)
+                except ni.DaqError:
+                    self.terminate_all_tasks()
+                    self.module_state.unlock()
+                    raise
 
             if self._ao_task_handle is not None:
                 try:
