@@ -130,25 +130,7 @@ class ImageGenerator:
 
         grid_points = self._create_coordinates(scan_vectors_indices)
 
-        positions_in_detection_volume, indices = self._points_in_detection_volume(positions, grid_points, include_dist,
-                                                                                  fast_calc=True)
-
-        # todo: chunk processing not needed for calc_fast=True. only here for testing
-        positions_in_detection_volume, indices = (
-            self._resolve_grid_processed_points_in_detection_volume(
-                self._process_in_grid_chunks(
-                    method=self._points_in_detection_volume,
-                    positions=positions,
-                    grid_points=grid_points,
-                    include_dist=include_dist,
-                    method_params={
-                        "positions": positions,
-                        "grid_points": grid_points,
-                        "include_dist": include_dist,
-                    },
-                )
-            )
-        )
+        positions_in_detection_volume, indices = self._points_in_detection_volume(positions, grid_points, include_dist)
 
         if len(indices) > 0:
             gauss_image = (
@@ -250,52 +232,28 @@ class ImageGenerator:
         return distance
 
     @staticmethod
-    def _points_in_detection_volume(positions: np.ndarray, grid_points: np.ndarray, include_dist: float,
-                                    fast_calc: bool = True) -> Tuple[np.ndarray, np.ndarray]:
+    def _points_in_detection_volume(positions: np.ndarray, grid_points: np.ndarray, include_dist: float) \
+            -> Tuple[np.ndarray, np.ndarray]:
 
         n_scan_vecs = grid_points.T.shape[1]
         n_emitters = positions.shape[0]
         n_dim = grid_points.T.shape[0]
 
-        #print(f"Scandgrid: {grid_points}, \nemitters ({n_emitters}): {positions}")
-        t_start = time.perf_counter()
-
-        # need dim(plane) vectors in plane. Some reserve if unlucky.
+        # need dim(plane) vectors to define plane. Some reserve if unlucky.
         idxs_rand = []
         for i in range(2*n_dim):
             idxs_rand.append(np.random.randint(0, n_scan_vecs))
-        # todo: check whether vectors really span 2d plane in n dim
+        plane_vecs_rand = grid_points[idxs_rand,:]        # todo: check whether vectors really span 2d plane in n dim
 
-        plane_vecs_rand = grid_points[idxs_rand,:]
-        #print(f"rand plane vecs {plane_vecs_rand}")
         plane_normal_vec = ImageGenerator._calc_plane_normal_vector(plane_vecs_rand)
-        distances_svd = np.asarray([ImageGenerator._distance_to_plane(positions[i, :], plane_vecs_rand[0,:], plane_normal_vec)
+        distances_svd = np.asarray([ImageGenerator._distance_to_plane(positions[i, :], plane_vecs_rand[0,:],
+                                                                      plane_normal_vec)
                                     for i in range(0, n_emitters)])
+
         idxs = np.where(distances_svd <= include_dist)[0]
-
-        t_svd = time.perf_counter() - t_start
-        print(f"normal vec {plane_normal_vec}")
-        print(f"distances_svd in {t_svd:.3f} s: {distances_svd[0:5]}")
-
         positions_svd = positions[idxs,:]
         indices_svd = idxs
 
-        if not fast_calc:   # old calc
-            t_start = time.perf_counter()
-            points_in_detection_volume = np.any(
-                np.linalg.norm(positions[:, np.newaxis] - grid_points, axis=2)
-                <= include_dist,
-                axis=1,
-            )
-            positions = positions[points_in_detection_volume]
-            indices = np.where(points_in_detection_volume)[0]
-
-            t_norm = time.perf_counter() - t_start
-            print(f"norm distances in {t_norm:.3f} s.")
-            print(f"norm idxs: {indices}, positions: {positions[:10]}")
-            #return positions, indices
-
-        print(f"svd idxs: {indices_svd}, positions: {positions_svd[:5]}")
         return positions_svd, indices_svd
 
     @staticmethod
