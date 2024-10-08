@@ -36,8 +36,10 @@
 - Expanded documentation of the microwave interface
 - Add new hardware module for the PID laser control functionality of HighFinesse wavemeters.
 - Added option to specify custom save file name in scanning GUI (PR #148)
+- Add support for digital output to NI X-series finite sampling io
 
 
+>>>>>>> main
 
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
