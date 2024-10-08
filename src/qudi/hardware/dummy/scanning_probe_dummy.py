@@ -154,8 +154,7 @@ class ImageGenerator:
             scan_image += gauss_image
 
         logger.debug(
-            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]} points,\n"
-            f" {positions_in_detection_volume=}"
+            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]} spots on {len(grid_points)} grid points,\n"
         )
 
         return scan_image
@@ -251,6 +250,7 @@ class ImageGenerator:
                                     for i in range(0, n_emitters)])
 
         idxs = np.where(distances_svd <= include_dist)[0]
+        # TODO: Remove in scan plane out of bounds spots
         positions_svd = positions[idxs,:]
         indices_svd = idxs
 
