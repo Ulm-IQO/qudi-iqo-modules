@@ -25,7 +25,6 @@ from typing import Optional, Dict, Tuple, Any, List
 import numpy as np
 from PySide2 import QtCore
 from fysom import FysomError
-import inspect
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.constraints import ScalarConstraint
