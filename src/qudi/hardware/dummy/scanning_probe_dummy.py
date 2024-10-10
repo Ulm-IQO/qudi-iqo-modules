@@ -32,8 +32,13 @@ from qudi.interface.scanning_probe_interface import (
     ScanningProbeInterface, ScanData, ScanConstraints, ScannerAxis, ScannerChannel,
     ScanSettings, BackScanCapability, CoordinateTransformMixin
 )
+from dataclasses import dataclass
 
 logger = getLogger(__name__)
+
+@dataclass(frozen=True)
+class DummyScanConstraints(ScanConstraints):
+    max_spot_number: int
 
 class ImageGenerator:
     """Generate 1D and 2D images with random Gaussian spots."""
@@ -153,7 +158,7 @@ class ImageGenerator:
             scan_image += gauss_image
 
         logger.debug(
-            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]} spots on {len(grid_points)} grid points,\n"
+            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]} spots on {len(grid_points)} grid points."
         )
 
         return scan_image
@@ -326,6 +331,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 x: 10e-9
                 y: 10e-9
                 z: 50e-9
+            # max_spot_number: 80e3 # optional
             # spot_density: 5e4 # optional
             # spot_view_distance_factor: 2 # optional
             # spot_size_dist: [400e-9, 100e-9] # optional
@@ -344,6 +350,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     _frequency_ranges: Dict[str, List[float]] = ConfigOption(name='frequency_ranges', missing='error')
     _resolution_ranges: Dict[str, List[float]] = ConfigOption(name='resolution_ranges', missing='error')
     _position_accuracy: Dict[str, float] = ConfigOption(name='position_accuracy', missing='error')
+    _max_spot_number: int = ConfigOption(name="max_spot_number", default=int(80e3), constructor=lambda x: int(x))
     _spot_density: float = ConfigOption(name="spot_density", default=1e5)  # in 1/m
     _spot_view_distance_factor: float = ConfigOption(
         name="spot_view_distance_factor", default=2, constructor=lambda x: float(x)
@@ -377,7 +384,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
         self._image_generator: Optional[ImageGenerator] = None
         # "Hardware" constraints
-        self._constraints: Optional[ScanConstraints] = None
+        self._constraints: Optional[DummyScanConstraints] = None
         # Mutex for access serialization
         self._thread_lock = RecursiveMutex()
 
@@ -420,13 +427,15 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             if self._back_scan_frequency_configurable:
                 back_scan_capability = back_scan_capability | BackScanCapability.FREQUENCY_CONFIGURABLE
 
-        self._constraints = ScanConstraints(
+        self._constraints = DummyScanConstraints(
             axis_objects=tuple(axes),
             channel_objects=tuple(channels),
             back_scan_capability=back_scan_capability,
             has_position_feedback=False,
-            square_px_only=False
+            square_px_only=False,
+            max_spot_number=self._max_spot_number
         )
+        self._spot_density = self._spot_density_constructor(self._spot_density)
 
         # Set default process values
         self._current_position = {ax.name: np.mean(ax.position.bounds) for ax in self.constraints.axes.values()}
@@ -783,15 +792,14 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
         return scan_vectors
 
-    @_spot_density.constructor
-    def spot_density_constructor(self, spot_density: float) -> float:
+    def _spot_density_constructor(self, spot_density: float) -> float:
         volume_edges = [abs(pos_range[1] - pos_range[0]) for pos_range in self._position_ranges.values()]
         volume = 1
         for edge in volume_edges:
             volume *= edge
-        if volume * spot_density ** len(self._position_ranges.keys()) > 80e3:
-            spot_density = (80e3 / volume) ** (1 / len(self._position_ranges.keys()))
-            self.log.warning(f'Specified spot density results in more than 80k spots. To keep performance, reducing spot density to {spot_density} 1/m^{len(self._position_ranges.keys())}')
+        if volume * spot_density ** len(self._position_ranges.keys()) > self._constraints.max_spot_number:
+            spot_density = (self._constraints.max_spot_number / volume) ** (1 / len(self._position_ranges.keys()))
+            self.log.warning(f'Specified spot density results in more than the max number of spots constraint ({self._constraints.max_spot_number}). To keep performance, reducing spot density to {spot_density} 1/m')
         return spot_density
 
 
