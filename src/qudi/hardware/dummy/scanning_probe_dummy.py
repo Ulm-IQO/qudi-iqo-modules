@@ -52,6 +52,7 @@ class ImageGenerator:
         spot_view_distance_factor: float,
         chunk_size: int,
         image_generation_max_calculations: int,
+        indices_to_axis_mapper: dict,
     ) -> None:
         self.position_ranges = position_ranges
         self.spot_density = spot_density
@@ -60,6 +61,7 @@ class ImageGenerator:
         self.spot_view_distance_factor = spot_view_distance_factor
         self._chunk_size = chunk_size
         self._image_generation_max_calculations = image_generation_max_calculations
+        self._indices_to_axes_mapper = indices_to_axis_mapper
 
         # random spots for each 2D axes pair
         self._spots: Dict[Tuple[str, str], Any] = {}
@@ -147,15 +149,22 @@ class ImageGenerator:
 
         return scan_image
 
-    def _convert_axis_string_dict_to_axis_index_dict(
-        self, position_vectors: Dict[str, np.ndarray]
-    ) -> Dict[int, np.ndarray]:
-        index_dict = {}
-        for axis in position_vectors.keys():
-            for index, check_axis in enumerate(self.position_ranges.keys()):
-                if axis == check_axis:
-                    index_dict[index] = position_vectors[axis]
-        return index_dict
+    def _scan_vectors_2_array(self, axes_dict: Dict[str, np.ndarray]) -> np.ndarray:
+        """
+        Create the coordinates for which the gaussian should be calculated from the axes_dict.
+
+        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated.
+                          keys: axis name, values: values for this axis.
+
+        :return: A numpy array of coordinates to evaluate the Gaussian at,
+                 each row holding the coordinates of one scan point.
+                 Columns are in alphabetic order of the axis keys.
+        """
+
+        sorted_axes = [
+            axes_dict[self._indices_to_axes_mapper[key]] for key in sorted(self._indices_to_axes_mapper.keys())
+        ]
+        return np.asarray(sorted_axes).T
 
     def _process_in_grid_chunks(
         self,
@@ -290,22 +299,6 @@ class ImageGenerator:
         axes_coords = [axes_dict[coords] for coords in sorted(axes_dict.keys())]
         return np.column_stack(axes_coords)
 
-    @staticmethod
-    def _scan_vectors_2_array(axes_dict: Dict[str, np.ndarray]) -> np.ndarray:
-        """
-        Create the coordinates for which the gaussian should be calculated from the axes_dict.
-
-        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated.
-                          keys: axis name, values: values for this axis.
-
-        :return: A numpy array of coordinates to evaluate the Gaussian at,
-                 each row holding the coordinates of one scan point.
-                 Columns are in alphabetic order of the axis keys.
-        """
-
-        axes_dict_alphabetic = dict(sorted(axes_dict.items()))
-        return np.asarray(list(axes_dict_alphabetic.values())).T
-
 
 class ScanningProbeDummyBare(ScanningProbeInterface):
     """
@@ -399,7 +392,9 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         """
         # Generate static constraints
         axes = list()
-        for axis, ax_range in self._position_ranges.items():
+        indices_to_axis_mapper = {}
+        for ii, (axis, ax_range) in enumerate(self._position_ranges.items()):
+            indices_to_axis_mapper[ii] = axis
             dist = max(ax_range) - min(ax_range)
             resolution_range = tuple(self._resolution_ranges[axis])
             res_default = min(resolution_range[1], 100)
@@ -428,7 +423,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 back_scan_capability = back_scan_capability | BackScanCapability.RESOLUTION_CONFIGURABLE
             if self._back_scan_frequency_configurable:
                 back_scan_capability = back_scan_capability | BackScanCapability.FREQUENCY_CONFIGURABLE
-
         self._constraints = DummyScanConstraints(
             axis_objects=tuple(axes),
             channel_objects=tuple(channels),
@@ -455,6 +449,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._spot_view_distance_factor,
             self._image_generation_chunk_size,
             self._image_generation_max_calculations,
+            indices_to_axis_mapper,
         )
 
         self.__scan_start = 0
