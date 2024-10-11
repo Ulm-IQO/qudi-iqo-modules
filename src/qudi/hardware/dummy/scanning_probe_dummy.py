@@ -149,7 +149,8 @@ class ImageGenerator:
             scan_image += gauss_image
 
         logger.debug(
-            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]} spots on {len(grid_points)} grid points."
+            f"Image took {time.perf_counter()-t_start:.3f} s for {positions_in_detection_volume.shape[0]} spots on"
+            f" {len(grid_array)} grid points."
         )
 
         return scan_image
@@ -297,12 +298,12 @@ class ImageGenerator:
         return np.column_stack(axes_coords)
 
     @staticmethod
-    def _scan_vectors_2_array(axes_dict: Dict[int, np.ndarray]) -> np.ndarray:
+    def _scan_vectors_2_array(axes_dict: Dict[str, np.ndarray]) -> np.ndarray:
         """
         Create the coordinates for which the gaussian should be calculated from the axes_dict.
 
         :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated.
-        keys: axis index, values: values for this axis.
+                          keys: axis name, values: values for this axis.
 
         :return: A numpy array of coordinates to evaluate the Gaussian at,
                  each row holding the coordinates of one scan point.
