@@ -38,7 +38,7 @@ logger = getLogger(__name__)
 
 @dataclass(frozen=True)
 class DummyScanConstraints(ScanConstraints):
-    max_spot_number: int
+    spot_number: ScalarConstraint
 
 class ImageGenerator:
     """Generate 1D and 2D images with random Gaussian spots."""
@@ -400,6 +400,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             resolution = ScalarConstraint(default=res_default, bounds=resolution_range, enforce_int=True)
             frequency = ScalarConstraint(default=f_default, bounds=frequency_range)
             step = ScalarConstraint(default=0, bounds=(0, dist))
+            spot_number = ScalarConstraint(default=self._max_spot_number, bounds=(0, self._max_spot_number))
             axes.append(ScannerAxis(name=axis,
                                     unit='m',
                                     position=position,
@@ -424,7 +425,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             back_scan_capability=back_scan_capability,
             has_position_feedback=False,
             square_px_only=False,
-            max_spot_number=self._max_spot_number,
+            spot_number=spot_number,
         )
         self._spot_density = self._spot_density_constructor(self._spot_density)
 
@@ -786,10 +787,12 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         volume = 1
         for edge in volume_edges:
             volume *= edge
-        if volume * spot_density ** len(self._position_ranges.keys()) > self._constraints.max_spot_number:
-            spot_density = (self._constraints.max_spot_number / volume) ** (1 / len(self._position_ranges.keys()))
+        spot_number = volume * spot_density ** len(self._position_ranges.keys())
+        if not self._constraints.spot_number.is_valid(spot_number):
+            spot_density = (self._constraints.spot_number.default / volume) ** (1 / len(self._position_ranges.keys()))
             self.log.warning(
-                f"Specified spot density results in more than the max number of spots constraint ({self._constraints.max_spot_number})."
+                f"Specified spot density results in an out of bounds number of spots "
+                f"({spot_number} allowed: {self._constraints.spot_number.bounds}). "
                 f"To keep performance, reducing spot density to {spot_density} 1/m"
             )
         return spot_density
