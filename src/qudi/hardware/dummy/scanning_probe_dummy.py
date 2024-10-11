@@ -120,32 +120,23 @@ class ImageGenerator:
 
         t_start = time.perf_counter()
 
-        scan_vectors_indices = self._convert_axis_string_dict_to_axis_index_dict(
-            scan_vectors
-        )
-
         include_dist = max(self.spot_size_dist) * self.spot_view_distance_factor
+        grid_array = self._scan_vectors_2_array(scan_vectors)
 
-        scan_image = np.random.uniform(
-            0,
-            min(self.spot_amplitude_dist) * 0.2,
-            scan_resolution,
-        )
+        positions_in_detection_volume, indices = self._points_in_detection_volume(positions, grid_array, include_dist)
 
-        grid_points = self._create_coordinates(scan_vectors_indices)
-
-        positions_in_detection_volume, indices = self._points_in_detection_volume(positions, grid_points, include_dist)
-
+        scan_image = np.random.uniform(0, min(self.spot_amplitude_dist) * 0.2, scan_resolution)
+        
         if len(indices) > 0:
             gauss_image = (
                 self._resolve_grid_processed_sum_m_gaussian_n_dim_return_method(
                     self._process_in_grid_chunks(
                         method=self._sum_m_gaussian_n_dim,
                         positions=positions_in_detection_volume,
-                        grid_points=grid_points,
+                        grid_points=grid_array,
                         include_dist=include_dist,
                         method_params={
-                            "grid_points": grid_points,
+                            "grid_points": grid_array,
                             "mus": positions_in_detection_volume,
                             "sigmas": sigmas[indices],
                             "amplitudes": amplitudes[indices],
@@ -304,6 +295,22 @@ class ImageGenerator:
         """
         axes_coords = [axes_dict[coords] for coords in sorted(axes_dict.keys())]
         return np.column_stack(axes_coords)
+
+    @staticmethod
+    def _scan_vectors_2_array(axes_dict: Dict[int, np.ndarray]) -> np.ndarray:
+        """
+        Create the coordinates for which the gaussian should be calculated from the axes_dict.
+
+        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated.
+        keys: axis index, values: values for this axis.
+
+        :return: A numpy array of coordinates to evaluate the Gaussian at,
+                 each row holding the coordinates of one scan point.
+                 Columns are in alphabetic order of the axis keys.
+        """
+
+        axes_dict_alphabetic = dict(sorted(axes_dict.items()))
+        return np.asarray(list(axes_dict_alphabetic.values())).T
 
 
 class ScanningProbeDummyBare(ScanningProbeInterface):
