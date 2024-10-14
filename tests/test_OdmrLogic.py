@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains unit tests for all qudi fit routines for exponential decay models.
+This file contains unit tests for all Odmr logic module.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -36,14 +36,39 @@ TOLERANCE = 10 # tolerance for signal data range
 
 
 def get_scanner(module):
+    """Getter for scanner module instance for logic module
+
+    Parameters
+    ----------
+    module : Object
+        logic module instance
+
+    Returns
+    -------
+    Object
+        Scanner module instance
+    """    
     return module._data_scanner()
 
 def get_microwave(module):
+    """Getter for microwave module instance for logic module
+
+    Parameters
+    ----------
+    module : Object
+        logic module instance
+
+    Returns
+    -------
+    Object
+        microwave module instance
+    """    
     return module._microwave()
 
 def get_odmr_range(length, scanner):
     """
     Simulate odmr scan data and return signal data
+
     Parameters
     ----------
     length : int
@@ -62,6 +87,20 @@ def get_odmr_range(length, scanner):
     return signal_data_range
 
 def get_tolerance(value, bound):
+    """Upper and lower boundaries for range check
+
+    Parameters
+    ----------
+    value : float
+        Input value
+    bound : str
+        lower or upper bound category
+
+    Returns
+    -------
+    int
+        the limit
+    """    
     return int(value + value * TOLERANCE/100) if bound == 'upper' else int(value - value * TOLERANCE/100)
 
 
@@ -85,6 +124,12 @@ def module(remote_instance):
 #@pytest.fixture(autouse=True)
 #Uncomment the above line to enable the coverage fixture
 def coverage_for_each_test(request):
+    """save coverage report
+
+    Parameters
+    ----------
+    request : request
+    """    
     cov = coverage.Coverage()
     cov.start()
     yield

@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains unit tests for all qudi fit routines for exponential decay models.
+This test shows how a single status variable can be updated via file and tested through a remote connection
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -31,12 +31,36 @@ STATUS_VAR = 'run_time'
 VALUE = 10
 
 def get_status_var_file(instance):
+    """This function returns the path for status variable file 
+
+    Parameters
+    ----------
+    instance : Object
+        Instance of the logic module
+
+    Returns
+    -------
+    str
+        File path
+    """    
     file_path = get_module_app_data_path(
             instance.__class__.__name__, instance.module_base, instance.module_name
         )
     return file_path
 
 def load_status_var(file_path):    
+    """This function returns the loaded status variable from the file
+
+    Parameters
+    ----------
+    file_path : str
+        file path of status variable
+
+    Returns
+    -------
+    dict
+        dictionary of status variables
+    """    
     try:
         variables = yaml_load(file_path, ignore_missing=True)
     except Exception as e:
@@ -45,10 +69,35 @@ def load_status_var(file_path):
     return variables
 
 def modify_status_var(status_vars, var, value):
+    """Setting status variable
+
+    Parameters
+    ----------
+    status_vars : dict
+        status variable dict
+    var : str
+        the variable to be set from the status variable dict
+    value : Any
+        value to be set
+
+    Returns
+    -------
+    dict
+        status var
+    """    
     status_vars[var] = value
     return status_vars
 
 def dump_status_variables(vars, file_path):
+    """Dump updated status variable to yaml
+
+    Parameters
+    ----------
+    vars : dict
+        status variable dict
+    file_path : str
+        file path for status variable
+    """    
     try:
         yaml_dump(file_path, vars)
     except Exception as e:
@@ -67,6 +116,7 @@ def logic_instance(remote_instance):
 
 def test_status_vars(qudi_instance, qt_app):
     """ Modifying a specific saved status variable for a specific module
+
     Parameters
     ----------
     qudi_instance : fixture
@@ -90,6 +140,7 @@ def test_status_vars(qudi_instance, qt_app):
 
 def test_status_vars_changed(logic_instance, qudi_instance):
     """Test whether the status variable has changed
+    
     Parameters
     ----------
     logic_instance : fixture

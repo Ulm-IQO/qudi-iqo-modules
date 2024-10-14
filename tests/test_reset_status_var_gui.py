@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains unit tests for all qudi fit routines for exponential decay models.
+This test activates all GUI modules and then resets all status variables of logic modules. GUI modules are tested by activating them after resetting the variables.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>

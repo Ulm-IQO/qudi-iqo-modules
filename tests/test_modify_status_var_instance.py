@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains unit tests for all qudi fit routines for exponential decay models.
+This test modifies all status variables as instance variables and then runs all the modules through a remote connection
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -26,6 +26,23 @@ import numpy as np
 
 
 def generate_random_value(var):
+    """Generate random values for a given data type
+
+    Parameters
+    ----------
+    var : Any
+        Initial value
+
+    Returns
+    -------
+    Any
+        Random value
+
+    Raises
+    ------
+    ValueError
+        when data type is not valid
+    """    
     if isinstance(var, int):
         return random.randint(-100, 100)
 

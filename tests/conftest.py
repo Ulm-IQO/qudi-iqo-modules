@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains unit tests for all qudi fit routines for exponential decay models.
+This file contains the fixtures and functions that are commonly used across tests.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -35,6 +35,7 @@ CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 @pytest.fixture(scope="module")
 def qt_app():
+    """ Fixture of QApplication instance to enable GUI """
     app_cls = QtWidgets.QApplication
     app = app_cls.instance()
     if app is None:
@@ -43,6 +44,7 @@ def qt_app():
 
 @pytest.fixture(scope="module")
 def qudi_instance():
+    """ Fixture for Qudi instace """
     instance = application.Qudi.instance()
     if instance is None:
         instance = application.Qudi(config_file=CONFIG)
@@ -50,35 +52,44 @@ def qudi_instance():
 
 @pytest.fixture(scope="module")
 def module_manager(qudi_instance):
+    """ Fixture for module manager """
     return qudi_instance.module_manager
 
 @pytest.fixture(scope='module')
 def config():
+    """ Fixture for loaded config """
     configuration = (yaml_load(CONFIG))
     return configuration
 
 @pytest.fixture(scope='module')
 def gui_modules(config):
+    """ Fixture for list of Gui modules from the config """
     base = 'gui'
     modules  = list(config[base].keys())
     return modules
 
 @pytest.fixture(scope='module')
 def logic_modules(config):
+    """ Fixture for list of logic modules from the config """
     base = 'logic'
     modules  = list(config[base].keys())
     return modules
 
 @pytest.fixture(scope='module')
 def hardware_modules(config):
+    """ Fixture for list of hardware modules from the config """
     base = 'hardware'
     modules  = list(config[base].keys())
     return modules
 
 def run_qudi(timeout=150000):
-    """
-    This function runs a qudi instance with a timer
-    """    
+    """    This function runs a qudi instance with a timer
+
+    Parameters
+    ----------
+    timeout : int, optional
+        timeout for the qudi session, by default 150000
+    """  
     app_cls = QtWidgets.QApplication
     app = app_cls.instance()
     if app is None:

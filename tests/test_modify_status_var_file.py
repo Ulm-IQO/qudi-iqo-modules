@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains unit tests for all qudi fit routines for exponential decay models.
+This test modifies all status variables via file and then runs all the modules through a remote connection
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -30,9 +30,27 @@ from qudi.util.paths import get_module_app_data_path
 
 @pytest.fixture
 def module_manager(remote_instance):
+    """ Fixture for module manager of qudi remote instance """
     return remote_instance.module_manager
 
 def generate_random_value(var):
+    """Generate random values for a given data type
+
+    Parameters
+    ----------
+    var : Any
+        Initial value
+
+    Returns
+    -------
+    Any
+        Random value
+
+    Raises
+    ------
+    ValueError
+        when data type is not valid
+    """    
     if isinstance(var, int):
         return random.randint(-100, 100)
 
@@ -58,12 +76,36 @@ def generate_random_value(var):
         raise ValueError(f"Unsupported data type: {type(var)}")
 
 def get_status_var_file(instance):
+    """This function returns the path for status variable file 
+
+    Parameters
+    ----------
+    instance : Object
+        Instance of the logic module
+
+    Returns
+    -------
+    str
+        File path
+    """  
     file_path = get_module_app_data_path(
             instance.__class__.__name__, instance.module_base, instance.module_name
         )
     return file_path
 
-def load_status_var(file_path):    
+def load_status_var(file_path):   
+    """This function returns the loaded status variable from the file
+
+    Parameters
+    ----------
+    file_path : str
+        file path of status variable
+
+    Returns
+    -------
+    dict
+        dictionary of status variables
+    """   
     try:
         variables = yaml_load(file_path, ignore_missing=True)
     except Exception as e:
@@ -72,6 +114,18 @@ def load_status_var(file_path):
     return variables
 
 def modify_status_var(status_vars):
+    """This function updates the status variables with random values of the same data type
+
+    Parameters
+    ----------
+    status_vars : dict
+        All status vars of a module
+
+    Returns
+    -------
+    dict
+        updated status vars
+    """    
     for status_var in status_vars:
         status_var_value = status_vars[status_var]
         if not ( isinstance(status_var_value, float) or isinstance(status_var_value, int)):
@@ -82,6 +136,15 @@ def modify_status_var(status_vars):
     return status_vars
 
 def dump_status_variables(vars, file_path):
+    """Dump updated status variable to yaml
+
+    Parameters
+    ----------
+    vars : dict
+        status variable dict
+    file_path : str
+        file path for status variable
+    """    
     try:
         yaml_dump(file_path, vars)
     except Exception as e:
