@@ -35,7 +35,9 @@ CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 @pytest.fixture(scope="module")
 def qt_app():
-    """ Fixture of QApplication instance to enable GUI """
+    """
+    Fixture for QApplication instance to enable GUI.
+    """
     app_cls = QtWidgets.QApplication
     app = app_cls.instance()
     if app is None:
@@ -44,7 +46,9 @@ def qt_app():
 
 @pytest.fixture(scope="module")
 def qudi_instance():
-    """ Fixture for Qudi instace """
+    """
+    Fixture for Qudi instance.
+    """
     instance = application.Qudi.instance()
     if instance is None:
         instance = application.Qudi(config_file=CONFIG)
@@ -52,44 +56,55 @@ def qudi_instance():
 
 @pytest.fixture(scope="module")
 def module_manager(qudi_instance):
-    """ Fixture for module manager """
+    """
+    Fixture for module manager.
+    """
     return qudi_instance.module_manager
 
 @pytest.fixture(scope='module')
 def config():
-    """ Fixture for loaded config """
+    """
+    Fixture for loaded config.
+    """
     configuration = (yaml_load(CONFIG))
     return configuration
 
 @pytest.fixture(scope='module')
 def gui_modules(config):
-    """ Fixture for list of Gui modules from the config """
+    """
+    Fixture for list of GUI modules from the config.
+    """
     base = 'gui'
-    modules  = list(config[base].keys())
+    modules = list(config[base].keys())
     return modules
 
 @pytest.fixture(scope='module')
 def logic_modules(config):
-    """ Fixture for list of logic modules from the config """
+    """
+    Fixture for list of logic modules from the config.
+    """
     base = 'logic'
-    modules  = list(config[base].keys())
+    modules = list(config[base].keys())
     return modules
 
 @pytest.fixture(scope='module')
 def hardware_modules(config):
-    """ Fixture for list of hardware modules from the config """
+    """
+    Fixture for list of hardware modules from the config.
+    """
     base = 'hardware'
-    modules  = list(config[base].keys())
+    modules = list(config[base].keys())
     return modules
 
 def run_qudi(timeout=150000):
-    """    This function runs a qudi instance with a timer
+    """
+    Runs a Qudi instance with a timer.
 
     Parameters
     ----------
     timeout : int, optional
-        timeout for the qudi session, by default 150000
-    """  
+        timeout for the Qudi session in milliseconds, by default 150000.
+    """
     app_cls = QtWidgets.QApplication
     app = app_cls.instance()
     if app is None:
@@ -103,7 +118,9 @@ def run_qudi(timeout=150000):
 
 @pytest.fixture(scope='module')
 def start_qudi_process():
-    """This fixture starts the Qudi process and ensures it's running before tests."""
+    """
+    Fixture that starts the Qudi process and ensures it's running before returning.
+    """
     qudi_process = multiprocessing.Process(target=run_qudi)
     qudi_process.start()
     time.sleep(5)
@@ -114,7 +131,9 @@ def start_qudi_process():
 
 @pytest.fixture(scope='module')
 def remote_instance(start_qudi_process):
-    """This fixture connects the running qudi server through rpyc client and returns client instance"""
+    """
+    Fixture that connects to the running Qudi ipython kernel through rpyc client and returns the client instance.
+    """
     time.sleep(5)
     conn = rpyc.connect("localhost", 18861, config={'sync_request_timeout': 60})
     root = conn.root
