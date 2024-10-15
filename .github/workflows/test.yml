@@ -37,19 +37,20 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone https://github.com/prithviulm/qudi-core.git
+        git clone https://github.com/Ulm-IQO/qudi-core.git
         cd qudi-core
         python -m pip install --upgrade pip
-        pip install -e ".[dev-test]"
-        git checkout application_test
+        pip install -e .
+        # pip install -e ".[dev-test]"
+        # git checkout application_test
         qudi-install-kernel
         cd ../qudi-iqo-modules
 
     - name: Install dependencies for iqo modules
       run: |
         pip install -e ".[dev-test]"
-    - name: Install different versions of numpy 
-      run: pip install numpy==${{ matrix.numpy-version }} 
+    - name: Install different versions of numpy
+      run: pip install numpy==${{ matrix.numpy-version }}
     - name: Test with pytest
       run: |
         pytest -s
