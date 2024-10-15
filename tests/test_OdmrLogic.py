@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This file contains unit tests for all Odmr logic module.
+This file contains unit tests for the ODMR logic module.
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -36,7 +36,8 @@ TOLERANCE = 10 # tolerance for signal data range
 
 
 def get_scanner(module):
-    """Getter for scanner module instance for logic module
+    """
+    Getter for scanner module instance for logic module.
 
     Parameters
     ----------
@@ -47,11 +48,12 @@ def get_scanner(module):
     -------
     Object
         Scanner module instance
-    """    
+    """
     return module._data_scanner()
 
 def get_microwave(module):
-    """Getter for microwave module instance for logic module
+    """
+    Getter for microwave module instance for logic module.
 
     Parameters
     ----------
@@ -62,12 +64,12 @@ def get_microwave(module):
     -------
     Object
         microwave module instance
-    """    
+    """
     return module._microwave()
 
 def get_odmr_range(length, scanner):
     """
-    Simulate odmr scan data and return signal data
+    Simulate odmr scan data and return signal data.
 
     Parameters
     ----------
@@ -80,14 +82,15 @@ def get_odmr_range(length, scanner):
     -------
     dict
         Dict of simulated data for all the channels
-    """    
+    """
     scanner.__simulate_odmr(length)
     data = scanner._FiniteSamplingInputDummy__simulated_samples
     signal_data_range = {channel: ( get_tolerance(min(data[channel]), bound = 'lower'), get_tolerance( max(data[channel]), bound='upper')  ) for channel in data}
     return signal_data_range
 
 def get_tolerance(value, bound):
-    """Upper and lower boundaries for range check
+    """
+    Upper and lower boundaries for range check.
 
     Parameters
     ----------
@@ -100,14 +103,14 @@ def get_tolerance(value, bound):
     -------
     int
         the limit
-    """    
+    """
     return int(value + value * TOLERANCE/100) if bound == 'upper' else int(value - value * TOLERANCE/100)
 
 
 @pytest.fixture(scope='module')
 def module(remote_instance):
-    """ ""
-    This fixture return Odmr logic instance
+    """
+    Fixture that returns ODMR logic instance.
 
     Parameters
     ----------
@@ -124,12 +127,13 @@ def module(remote_instance):
 #@pytest.fixture(autouse=True)
 #Uncomment the above line to enable the coverage fixture
 def coverage_for_each_test(request):
-    """save coverage report
+    """
+    Generate and save coverage report.
 
     Parameters
     ----------
     request : request
-    """    
+    """
     cov = coverage.Coverage()
     cov.start()
     yield
@@ -142,18 +146,19 @@ def coverage_for_each_test(request):
 
 
 def test_start_odmr_scan(module, qtbot):
-    """This tests if the scan parameters such as frequency and signal data are correctly generated,
-      and if the signal data is generated for the given runtime with appropriate values
+    """
+    Tests if the scan parameters are correctly generated and if the signal data is generated for the given runtime
+    with appropriate values.
 
     Parameters
     ----------
     module : fixture
-        Fixture for instance of Odmr logic module
+        Fixture for instance of ODMR logic module
     scanner : fixture
         Fixture for connected instance of Finite sampling input dummy for data scanning
     qtbot : fixture
         Fixture for qt support
-    """    
+    """
     scanner = get_scanner(module)
     module.runtime = 5
     freq_low, freq_high, freq_counts = list(map(int, module.frequency_ranges[0]))
@@ -183,14 +188,14 @@ def test_start_odmr_scan(module, qtbot):
     #print(f'elspased sweeps {module._elapsed_sweeps}') 
 
 def test_do_fit(module):
-    """This tests if the fitting of the generated signal data works
-    by checking the values of the fit parameters
+    """
+    Tests if the fitting of the generated signal data works by checking the values of the fit parameters are not nan.
 
     Parameters
     ----------
     module : fixture
-        Fixture for instance of Odmr logic module
-    """    
+        Fixture for instance of ODMR logic module
+    """
     module.do_fit(FIT_MODEL, CHANNELS[0], 0)
     fit_results  = module.fit_results[CHANNELS[0]][0][1]
     dict_fit_result = module.fit_container.dict_result(fit_results)
@@ -199,14 +204,15 @@ def test_do_fit(module):
             assert not math.isnan(values['value'])
 
 def test_save_odmr_data(module):
-    """This tests whether new files were saved in the save dir 
-    after executing the svae function and compares the data
+    """
+    Tests whether new files were saved in the save dir after executing the save function. If a new file exists, the
+    contents are checked against the actual signal data to ensure that the data is saved correctly.
 
     Parameters
     ----------
     module : fixture
-        Fixture for instance of Odmr logic module
-    """  
+        Fixture for instance of ODMR logic module
+    """
     save_dir = module.module_default_data_dir
     if os.path.exists(save_dir):
         saved_files = os.listdir(save_dir)
@@ -231,9 +237,3 @@ def test_save_odmr_data(module):
         saved_channel_data = [saved_signal_row[i+1]  for saved_signal_row in saved_signal_data]
         actual_channel_data = netobtain(module.signal_data[channel][0])
         assert np.allclose(saved_channel_data, actual_channel_data)
-
-
-
-
-
-
