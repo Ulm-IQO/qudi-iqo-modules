@@ -197,7 +197,7 @@ def test_update_status_vars(qudi_instance, gui_modules, hardware_modules, qt_app
             vars = load_status_var(status_var_file_path)
             modified_vars = modify_status_var(vars)
             dump_status_variables(modified_vars, status_var_file_path)
-'''
+
 
 def test_status_vars(module_manager, gui_modules, qudi_instance, qt_app):
     """Test if GUI modules are activated correctly after updating the saved files.
@@ -222,3 +222,4 @@ def test_status_vars(module_manager, gui_modules, qudi_instance, qt_app):
         time.sleep(1)
     qudi_instance.quit()
 
+'''

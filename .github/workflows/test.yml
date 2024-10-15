@@ -53,5 +53,5 @@ jobs:
       run: pip install numpy==${{ matrix.numpy-version }}
     - name: Test with pytest
       run: |
-        pytest -s
+        pytest 
  
