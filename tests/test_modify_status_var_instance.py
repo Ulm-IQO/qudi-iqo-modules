@@ -20,13 +20,68 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+import os
+import time
+import multiprocessing
 import random
 import string
 import numpy as np
+import rpyc
+import pytest
+from PySide2 import QtWidgets
+from PySide2.QtCore import QTimer
+from qudi.core import application
+
+CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
+
+
+def run_qudi(timeout=150000):
+    """
+    Runs a Qudi instance with a timer.
+
+    Parameters
+    ----------
+    timeout : int, optional
+        timeout for the Qudi session in milliseconds, by default 150000.
+    """
+    app_cls = QtWidgets.QApplication
+    app = app_cls.instance()
+    if app is None:
+        app = app_cls()
+    qudi_instance = application.Qudi.instance()
+    if qudi_instance is None:
+        qudi_instance = application.Qudi(config_file=CONFIG)
+    QTimer.singleShot(timeout, qudi_instance.quit)
+    qudi_instance.run()
+
+
+@pytest.fixture(scope='module')
+def start_qudi_process():
+    """
+    Fixture that starts the Qudi process and ensures it's running before returning.
+    """
+    qudi_process = multiprocessing.Process(target=run_qudi)
+    qudi_process.start()
+    yield
+    qudi_process.join(timeout=10)
+    if qudi_process.is_alive():
+        qudi_process.terminate()
+
+@pytest.fixture(scope='module')
+def remote_instance(start_qudi_process):
+    """
+    Fixture that connects to the running Qudi ipython kernel through rpyc client and returns the client instance.
+    """
+    time.sleep(5)
+    conn = rpyc.connect("localhost", 18861, config={'sync_request_timeout': 60})
+    root = conn.root
+    qudi_instance = root._qudi
+    return qudi_instance
 
 
 def generate_random_value(var):
-    """Generate random values for a given data type
+    """
+    Generate random values for a given data type
 
     Parameters
     ----------
@@ -70,7 +125,8 @@ def generate_random_value(var):
 '''
 #This test also fails for some modules 
 def test_status_vars(remote_instance, logic_modules, gui_modules, hardware_modules):
-    """Test to check if qudi modules launch correctly after modifying status variable as instance variables
+    """
+    Test to check if qudi modules launch correctly after modifying status variable as instance variables
 
     Parameters
     ----------
