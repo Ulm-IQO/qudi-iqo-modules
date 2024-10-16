@@ -33,6 +33,7 @@ from PySide2.QtCore import QTimer
 from qudi.core import application
 from qudi.util.network import netobtain
 
+
 MODULE = 'odmr_logic'
 BASE = 'logic'
 CHANNELS = ('APD counts', 'Photodiode')
@@ -41,14 +42,14 @@ TOLERANCE = 10 # tolerance for signal data range
 CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 
-def run_qudi(timeout=100000):
+def run_qudi(timeout=150000):
     """
     Runs a Qudi instance with a timer.
 
     Parameters
     ----------
     timeout : int, optional
-        timeout for the Qudi session in milliseconds, by default 100000.
+        timeout for the Qudi session in milliseconds, by default 150000.
     """
     app_cls = QtWidgets.QApplication
     app = app_cls.instance()
@@ -68,6 +69,7 @@ def start_qudi_process():
     """
     qudi_process = multiprocessing.Process(target=run_qudi)
     qudi_process.start()
+    time.sleep(10)
     yield
     qudi_process.join(timeout=10)
     if qudi_process.is_alive():

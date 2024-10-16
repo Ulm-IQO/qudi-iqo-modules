@@ -38,14 +38,14 @@ VALUE = 10
 CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 
-def run_qudi(timeout=50000):
+def run_qudi(timeout=150000):
     """
     Runs a Qudi instance with a timer.
 
     Parameters
     ----------
     timeout : int, optional
-        timeout for the Qudi session in milliseconds, by default 50000.
+        timeout for the Qudi session in milliseconds, by default 150000.
     """
     app_cls = QtWidgets.QApplication
     app = app_cls.instance()
@@ -65,6 +65,7 @@ def start_qudi_process():
     """
     qudi_process = multiprocessing.Process(target=run_qudi)
     qudi_process.start()
+    time.sleep(10)
     yield
     qudi_process.join(timeout=10)
     if qudi_process.is_alive():
