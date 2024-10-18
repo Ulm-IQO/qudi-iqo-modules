@@ -54,8 +54,8 @@ class MeasurementGenerator:
     """
 
     def __init__(self, pulsedmasterlogic, qdyne_logic, data_streamer):
-        self.pulsedmasterlogic = pulsedmasterlogic
-        self.qdyne_logic = qdyne_logic
+        self._pulsedmasterlogic = pulsedmasterlogic
+        self._qdyne_logic = qdyne_logic
         self._data_streamer = data_streamer
 
         self.__active_channels = self._data_streamer().active_channels
@@ -65,12 +65,12 @@ class MeasurementGenerator:
         self.__data_type = self._data_streamer().data_type
 
     def generate_predefined_sequence(self, method_name, param_dict, sample_and_load):
-        self.pulsedmasterlogic().generate_predefined_sequence(
+        self._pulsedmasterlogic().generate_predefined_sequence(
             method_name, param_dict, sample_and_load
         )
 
     def set_generation_parameters(self, settings_dict):
-        self.pulsedmasterlogic().set_generation_parameters(settings_dict)
+        self._pulsedmasterlogic().set_generation_parameters(settings_dict)
 
     def set_counter_settings(self, settings_dict=None, **kwargs):
         """
@@ -132,7 +132,7 @@ class MeasurementGenerator:
         return
 
     def set_measurement_settings(self, settings_dict):
-        self.pulsedmasterlogic().set_measurement_settings(settings_dict)
+        self._pulsedmasterlogic().set_measurement_settings(settings_dict)
 
     def check_counter_record_length_constraint(self, record_length: float):
         record_length_constraint = self._data_streamer().constraints.record_length
@@ -142,30 +142,30 @@ class MeasurementGenerator:
                 record_length_constraint.check_value_range(record_length)
             except TypeError:
                 record_length = self.__record_length
-                self.qdyne_logic.log.error(
+                self._qdyne_logic.log.error(
                     f"Record length is not of correct type. Keep record length {self.__record_length}s."
                 )
             except ValueError:
                 record_length = record_length_constraint.clip(record_length)
-                self.qdyne_logic.log.error(
+                self._qdyne_logic.log.error(
                     f"Record length out of bounds. Clipping to bound {record_length}s."
                 )
         return record_length
 
     def check_counter_binwidth_constraint(self, binwidth: float):
-        binwidth_constraint = self.qdyne_logic.counter_constraints.binwidth
+        binwidth_constraint = self._data_streamer().binwidth
         if not binwidth_constraint.is_valid(binwidth):
             try:
                 binwidth_constraint.check_value_type(binwidth)
                 binwidth_constraint.check_value_range(binwidth)
             except TypeError:
                 binwidth = self.__binwidth
-                self.qdyne_logic.log.error(
+                self._qdyne_logic.log.error(
                     f"Binwidth is not of correct type. Keep binwidth {self.__binwidth}s."
                 )
             except ValueError:
                 binwidth = binwidth_constraint.clip(binwidth)
-                self.qdyne_logic.log.error(
+                self._qdyne_logic.log.error(
                     f"Binwidth out of bounds. Clipping to bound {binwidth}s."
                 )
             try:
@@ -174,7 +174,7 @@ class MeasurementGenerator:
                 binwidth = min(
                     binwidth_constraint.value_set, key=lambda x: abs(x - binwidth)
                 )
-                self.qdyne_logic.log.warning(
+                self._qdyne_logic.log.warning(
                     f"Binwidth does not match allowed binwidth condition of hardware."
                     f"Set closest allowed binwidth {binwidth}s."
                 )
@@ -182,15 +182,15 @@ class MeasurementGenerator:
 
     @property
     def status_dict(self):
-        return self.pulsedmasterlogic().status_dict
+        return self._pulsedmasterlogic().status_dict
 
     @property
     def generation_parameters(self):
-        return self.pulsedmasterlogic().generation_parameters
+        return self._pulsedmasterlogic().generation_parameters
 
     @property
     def measurement_settings(self):
-        return self.pulsedmasterlogic().measurement_settings
+        return self._pulsedmasterlogic().measurement_settings
 
     @property
     def counter_settings(self):
@@ -202,28 +202,28 @@ class MeasurementGenerator:
         settings_dict["is_gated"] = bool(
             self._data_streamer().gate_mode.value
         )
-        self.qdyne_logic.log.warn(f"{settings_dict=}")
+        self._qdyne_logic.log.warn(f"{settings_dict=}")
         return settings_dict
 
     @property
     def loaded_asset(self):
-        return self.pulsedmasterlogic().loaded_asset
+        return self._pulsedmasterlogic().loaded_asset
 
     @property
     def digital_channels(self):
-        return self.pulsedmasterlogic().digital_channels
+        return self._pulsedmasterlogic().digital_channels
 
     @property
     def analog_channels(self):
-        return self.pulsedmasterlogic().analog_channels
+        return self._pulsedmasterlogic().analog_channels
 
     @property
     def generate_method_params(self):
-        return self.pulsedmasterlogic().generate_method_params
+        return self._pulsedmasterlogic().generate_method_params
 
     @property
     def generate_methods(self):
-        return self.pulsedmasterlogic().generate_methods
+        return self._pulsedmasterlogic().generate_methods
 
 
 class QdyneLogic(LogicBase):
