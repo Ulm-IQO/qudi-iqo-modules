@@ -40,7 +40,7 @@ from qudi.logic.qdyne.qdyne_fit import QdyneFit
 from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
-from qudi.interface.qdyne_counter_interface import GateMode
+from qudi.interface.qdyne_counter_interface import GateMode, QdyneCounterConstraints
 
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
 from logging import getLogger
@@ -53,15 +53,16 @@ class MeasurementGenerator:
     Class that gives access to the settings for the generation of sequences from the pulsedmasterlogic.
     """
 
-    def __init__(self, pulsedmasterlogic, qdyne_logic):
+    def __init__(self, pulsedmasterlogic, qdyne_logic, data_streamer):
         self.pulsedmasterlogic = pulsedmasterlogic
         self.qdyne_logic = qdyne_logic
+        self._data_streamer = data_streamer
 
-        self.__active_channels = self.qdyne_logic._data_streamer().active_channels
-        self.__binwidth = self.qdyne_logic._data_streamer().binwidth
-        self.__record_length = self.qdyne_logic._data_streamer().record_length
-        self.__gate_mode = self.qdyne_logic._data_streamer().gate_mode
-        self.__data_type = self.qdyne_logic._data_streamer().data_type
+        self.__active_channels = self._data_streamer().active_channels
+        self.__binwidth = self._data_streamer().binwidth
+        self.__record_length = self._data_streamer().record_length
+        self.__gate_mode = self._data_streamer().gate_mode
+        self.__data_type = self._data_streamer().data_type
 
     def generate_predefined_sequence(self, method_name, param_dict, sample_and_load):
         self.pulsedmasterlogic().generate_predefined_sequence(
@@ -84,7 +85,7 @@ class MeasurementGenerator:
         """
 
         # Check if fast counter is running and do nothing if that is the case
-        counter_status = self.qdyne_logic._data_streamer().get_status()
+        counter_status = self._data_streamer().get_status()
         if not counter_status >= 2 and not counter_status < 0:
             # Determine complete settings dictionary
             if not isinstance(settings_dict, dict):
@@ -116,7 +117,7 @@ class MeasurementGenerator:
             self.__binwidth,
             self.__record_length,
             self.__gate_mode,
-            self.__data_type) = self.qdyne_logic._data_streamer().configure(
+            self.__data_type) = self._data_streamer().configure(
                 self.__active_channels,
                 self.__binwidth,
                 self.__record_length,
@@ -134,7 +135,7 @@ class MeasurementGenerator:
         self.pulsedmasterlogic().set_measurement_settings(settings_dict)
 
     def check_counter_record_length_constraint(self, record_length: float):
-        record_length_constraint = self.counter_constraints.record_length
+        record_length_constraint = self._data_streamer().constraints.record_length
         if not record_length_constraint.is_valid(record_length):
             try:
                 record_length_constraint.check_value_type(record_length)
@@ -152,7 +153,7 @@ class MeasurementGenerator:
         return record_length
 
     def check_counter_binwidth_constraint(self, binwidth: float):
-        binwidth_constraint = self.counter_constraints.binwidth
+        binwidth_constraint = self.qdyne_logic.counter_constraints.binwidth
         if not binwidth_constraint.is_valid(binwidth):
             try:
                 binwidth_constraint.check_value_type(binwidth)
@@ -194,15 +195,12 @@ class MeasurementGenerator:
     @property
     def counter_settings(self):
         settings_dict = dict()
-        settings_dict["bin_width"] = float(self.qdyne_logic._data_streamer().binwidth)
+        settings_dict["bin_width"] = float(self._data_streamer().binwidth)
         settings_dict["record_length"] = float(
-            self.qdyne_logic._data_streamer().record_length
+            self._data_streamer().record_length
         )
-        #settings_dict["number_of_gates"] = int(
-        #    self.qdyne_logic._data_streamer().number_of_gates
-        #)
         settings_dict["is_gated"] = bool(
-            self.qdyne_logic._data_streamer().gate_mode.value
+            self._data_streamer().gate_mode.value
         )
         self.qdyne_logic.log.warn(f"{settings_dict=}")
         return settings_dict
@@ -226,10 +224,6 @@ class MeasurementGenerator:
     @property
     def generate_methods(self):
         return self.pulsedmasterlogic().generate_methods
-
-    @property
-    def counter_constraints(self) -> DiscreteScalarConstraint:
-        return self.qdyne_logic._data_streamer().constraints
 
 
 class QdyneLogic(LogicBase):
@@ -310,7 +304,7 @@ class QdyneLogic(LogicBase):
                 self.module_default_data_dir
             )
             self.measurement_generator = MeasurementGenerator(
-                self.pulsedmasterlogic, self
+                self.pulsedmasterlogic, self, self._data_streamer
             )
             self.fit = QdyneFit(self, self._fit_configs)
             self.data_manager = QdyneDataManager(
