@@ -115,6 +115,7 @@ class QdyneMeasurement(QtCore.QObject):
         fname = timestamp + fname if fname else timestamp
         self.data.reset()
         self.qdyne_logic.measurement_generator.set_counter_settings(None)
+        self.estimator.configure_method(self.settings.estimator_stg.current_method)
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         self.sigStartTimer.emit()
@@ -152,7 +153,6 @@ class QdyneMeasurement(QtCore.QObject):
             raise e
 
     def get_pulse(self):
-        self.estimator.configure_method(self.settings.estimator_stg.current_method)
         self.data.pulse_data = self.estimator.get_pulse(
             self.data.raw_data, self.settings.estimator_stg.current_setting
         )
