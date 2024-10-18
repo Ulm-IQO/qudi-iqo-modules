@@ -89,7 +89,6 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     count_threshold: int = (
         10  # Todo: this has to be either estimated or set somewhere from the logic
     )
-    max_bins: int = 90000  # Todo: this should be the maximum number of bins of the counter record length
     weight: list = field(default_factory=list)
 
     def get_histogram(self, time_tag_data):
@@ -126,7 +125,6 @@ class TimeTagStateEstimator(StateEstimator):
                 time_tag_data,
                 settings.sig_start_int,
                 settings.sig_end_int,
-                settings.max_bins,
             )
 
         elif settings.count_mode == "WeightedAverage":
@@ -135,57 +133,42 @@ class TimeTagStateEstimator(StateEstimator):
                 settings.weight,
                 settings.sig_start_int,
                 settings.sig_end_int,
-                settings.max_bins,
             )
         return counts_time_trace
 
-    def _photon_count(self, time_tag, start_count, stop_count, max_bins):
+    def _photon_count(self, time_tag, start_count, stop_count):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
         for i in range(1, len(time_tag)):  # count and filter the photons here
             if time_tag[i] != 0:
-                if time_tag[i] > max_bins:
-                    # Todo: is this needed?
-                    pass
-                    #self.log.debug(
-                    #    f"Encountered time bin {time_tag[i]} larger than counter "
-                    #    f"record length ({max_bins} bins). Handle this as 0."
-                    #)
-                else:
-                    if start_count <= time_tag[i] < stop_count:
-                        photon_counts = photon_counts + 1
+                if start_count <= time_tag[i] < stop_count:
+                    photon_counts = photon_counts + 1
             else:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
         return np.array(counts_time_trace)
 
     def _weighted_photon_count(
-        self, time_tag, weight, start_count, stop_count, max_bins=90000
+        self, time_tag, weight, start_count, stop_count
     ):
         counts_time_trace = []
         counts_time_trace_append = counts_time_trace.append
         photon_counts = 0
         for i in range(len(time_tag)):  # count and filter the photons here
             if time_tag[i] != 0:
-                if time_tag[i] > max_bins:
-                    # Todo: is this needed?
-                    pass
-                    #self.log.debug(
-                    #    f"Encountered time bin {time_tag[i]} larger than counter "
-                    #    f"record length ({max_bins} bins). Handle this as 0."
-                    #)
-                else:
-                    if start_count < time_tag[i] < stop_count:
-                        photon_counts = photon_counts + weight[i]
+                if start_count < time_tag[i] < stop_count:
+                    photon_counts = photon_counts + weight[i]
             else:
                 counts_time_trace_append(photon_counts)
                 photon_counts = 0
         return np.array(counts_time_trace)
 
     def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
+        max_bins = int(max(time_tag_data))
+        print(max_bins)
         count_hist, bin_edges = np.histogram(
-            time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins)
+            time_tag_data, bins=max_bins, range=(1, max_bins)
         )
         time_array = settings.time_bin * np.arange(len(count_hist))
         pulse_array = [time_array, count_hist]
