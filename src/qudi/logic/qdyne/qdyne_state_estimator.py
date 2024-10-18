@@ -141,8 +141,8 @@ class TimeTagStateEstimator(StateEstimator):
                 settings.max_bins,
             )
         else:
-            logger.error(f"Count_mode {settings.count_mode} not supported, choose [Average, WeightedAverage]")
-            counts_time_trace = np.array([])
+            logger.error(f"Count_mode '{settings.count_mode}' not supported, choose [Average, WeightedAverage]")
+            raise ValueError(f"Encountered unsupported count_mode '{settings.count_mode}'.")
         return counts_time_trace
 
     def _photon_count(self, time_tag, start_count, stop_count, max_bins):
