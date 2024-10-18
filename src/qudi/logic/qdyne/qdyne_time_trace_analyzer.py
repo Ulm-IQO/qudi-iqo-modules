@@ -95,7 +95,7 @@ class FourierAnalyzer(Analyzer):
         )
         n_point = self._get_fft_n_point(padding_param, n_fft)
         ft = np.fft.fft(input_time_trace, n_point)
-        freq = np.fft.fftfreq(len(ft), sequence_length)
+        freq = np.fft.fftfreq(n_point, sequence_length)
         signal = [
             freq[: n_fft // 2],
             ft[: n_fft // 2],
