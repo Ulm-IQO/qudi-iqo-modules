@@ -129,17 +129,20 @@ class QdyneMeasurement(QtCore.QObject):
     def qdyne_analysis_loop(self):
         with self.__lock:
             logger.debug("Entering Analysis loop")
-            self.get_raw_data()
-            self.get_pulse()
-            self.sigPulseDataUpdated.emit()
+            try:
+                self.get_raw_data()
+                self.get_pulse()
+                self.sigPulseDataUpdated.emit()
 
-            self.extract_data()
-            self.estimate_state()
-            self.sigTimeTraceDataUpdated.emit()
+                self.extract_data()
+                self.estimate_state()
+                self.sigTimeTraceDataUpdated.emit()
 
-            self.analyze_time_trace()
-            self.get_spectrum()
-            self.sigQdyneDataUpdated.emit()
+                self.analyze_time_trace()
+                self.get_spectrum()
+                self.sigQdyneDataUpdated.emit()
+            except Exception as e:
+                logger.exception(e)
             logger.debug("Exiting Analysis loop")
             self.sigStartTimer.emit()
 
