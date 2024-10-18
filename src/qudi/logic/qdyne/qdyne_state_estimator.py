@@ -23,6 +23,9 @@ import numpy as np
 from qudi.util.network import netobtain
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
+from logging import getLogger
+
+logger = getLogger(__name__)
 
 
 class StateEstimator(ABC):
@@ -137,6 +140,9 @@ class TimeTagStateEstimator(StateEstimator):
                 settings.sig_end_int,
                 settings.max_bins,
             )
+        else:
+            logger.error(f"Count_mode {settings.count_mode} not supported, choose [Average, WeightedAverage]")
+            counts_time_trace = np.array([])
         return counts_time_trace
 
     def _photon_count(self, time_tag, start_count, stop_count, max_bins):
