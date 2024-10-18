@@ -381,7 +381,12 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
             self.ref_end_line.setValue(self.settings.current_setting.ref_end)
 
     def update_pulse(self):
+        self.logic.measure.get_raw_data()
         self.logic.measure.get_pulse()
+        self.logic.measure.sigPulseDataUpdated.emit()
+        self.logic.measure.extract_data()
+        self.logic.measure.estimate_state()
+        self.logic.measure.sigTimeTraceDataUpdated.emit()
 
     def pulse_updated(self):
         pulse = self.logic.data.pulse_data
@@ -429,9 +434,12 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self.logic.measure.sigTimeTraceDataUpdated.disconnect()
 
     def update_time_trace(self):
+        self.logic.measure.get_raw_data()
+        self.logic.measure.get_pulse()
+        self.logic.measure.sigPulseDataUpdated.emit()
         self.logic.measure.extract_data()
         self.logic.measure.estimate_state()
-        self.time_trace_updated()
+        self.logic.measure.sigTimeTraceDataUpdated.emit()
 
     def time_trace_updated(self):
         y = self.logic.data.time_trace
