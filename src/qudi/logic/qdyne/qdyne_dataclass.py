@@ -61,9 +61,7 @@ class MainDataClass:
     signal: np.ndarray = np.array([])
     freq_domain: np.ndarray = np.array([])
     time_domain: np.ndarray = np.array([])
-
-    def __init__(self):
-        self.freq_data = FreqDomainData()
+    freq_data: FreqDomainData = FreqDomainData()
 
     @property
     def data_list(self):
@@ -72,3 +70,6 @@ class MainDataClass:
             for attr in dir(self.__class__)
             if not attr.startswith("__") and not callable(getattr(self, attr))
         ]
+
+    def reset(self):
+        self.__init__()

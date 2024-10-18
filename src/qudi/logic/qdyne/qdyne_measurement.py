@@ -113,8 +113,7 @@ class QdyneMeasurement(QtCore.QObject):
         logger.debug("Starting QDyne measurement")
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
         fname = timestamp + fname if fname else timestamp
-        # self.qdyne_logic._data_streamer().change_filename(fname)
-        self.data.raw_data = []
+        self.data.reset()
         self.qdyne_logic.measurement_generator.set_counter_settings(None)
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
@@ -188,7 +187,6 @@ class QdyneMeasurement(QtCore.QObject):
             )
             self.data.freq_data.x = self.data.freq_domain[0]
             self.data.freq_data.y = self.data.freq_domain[1]
-            self.sigQdyneDataUpdated.emit()
 
         except Exception as e:
             logger.exception(e)
