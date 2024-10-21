@@ -169,13 +169,11 @@ class MeasurementGenerator:
                     f"Binwidth out of bounds. Clipping to bound {binwidth}s."
                 )
             try:
-                binwidth_constraint.check_value_set(binwidth)
+                binwidth_constraint.check_allowed_values(binwidth)
             except ValueError:
-                binwidth = min(
-                    binwidth_constraint.value_set, key=lambda x: abs(x - binwidth)
-                )
+                binwidth = binwidth_constraint.clip(binwidth)
                 self._qdyne_logic.log.warning(
-                    f"Binwidth does not match allowed binwidth condition of hardware."
+                    f"Binwidth does not match allowed binwidth condition of hardware. "
                     f"Set closest allowed binwidth {binwidth}s."
                 )
         return binwidth
