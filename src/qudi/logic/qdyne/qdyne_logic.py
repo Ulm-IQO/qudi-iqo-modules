@@ -153,7 +153,7 @@ class MeasurementGenerator:
         return record_length
 
     def check_counter_binwidth_constraint(self, binwidth: float):
-        binwidth_constraint = self._data_streamer().binwidth
+        binwidth_constraint = self._data_streamer().constraints.binwidth
         if not binwidth_constraint.is_valid(binwidth):
             try:
                 binwidth_constraint.check_value_type(binwidth)
