@@ -66,18 +66,19 @@ class DataclassWidget(QtWidgets.QWidget):
         self.widgets = dict()
         param_index = 0
         for field in fields(data):
-            label = self.create_label(field.name)
-            widget = self.create_widget(field)
-            if widget is None:
-                continue
-            widget.setMinimumSize(QtCore.QSize(80, 0))
+            if not field.name.startswith("_"):
+                label = self.create_label(field.name)
+                widget = self.create_widget(field)
+                if widget is None:
+                    continue
+                widget.setMinimumSize(QtCore.QSize(80, 0))
 
-            self.layout.addWidget(label, 0, param_index + 1, 1, 1)
-            self.layout.addWidget(widget, 1, param_index + 1, 1, 1)
+                self.layout.addWidget(label, 0, param_index + 1, 1, 1)
+                self.layout.addWidget(widget, 1, param_index + 1, 1, 1)
 
-            self.labels[field.name] = label
-            self.widgets[field.name] = widget
-            param_index += 1
+                self.labels[field.name] = label
+                self.widgets[field.name] = widget
+                param_index += 1
 
     def create_widget(self, field):
         widget = None
