@@ -13,7 +13,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-
+import copy
 import numpy as np
 from dataclasses import dataclass
 import datetime
@@ -116,6 +116,9 @@ class QdyneMeasurement(QtCore.QObject):
         # self.qdyne_logic._data_streamer().change_filename(fname)
         self.data.raw_data = []
         self.qdyne_logic.measurement_generator.set_counter_settings(None)
+        self.settings.estimator_stg.current_setting.time_bin \
+            = copy.deepcopy(self.qdyne_logic.measurement_generator.counter_settings["bin_width"])
+
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         self.sigStartTimer.emit()

@@ -58,22 +58,26 @@ def get_method_name(subclass_obj, class_obj):
 
 
 class QdyneSettings:
-    def __init__(self, settings_dir):
+    def __init__(self, settings_dir, estimator_stg_updated_sig, analyzer_stg_updated_sig):
         self.estimator_stg = SettingsManager(StateEstimatorSettings,
-                                             os.path.join(settings_dir, 'estimator_stg.pickle'))
+                                             os.path.join(settings_dir, 'estimator_stg.pickle'),
+                                             estimator_stg_updated_sig)
         self.analyzer_stg = SettingsManager(AnalyzerSettings,
-                                            os.path.join(settings_dir, 'analyzer_stg.pickle'))
+                                            os.path.join(settings_dir, 'analyzer_stg.pickle'),
+                                            analyzer_stg_updated_sig)
         self.data_manager_stg = DataManagerSettings()
 
 
 class SettingsManager:
-    def __init__(self, abstract_class_obj=None, save_path=None):
+
+    def __init__(self, abstract_class_obj=None, save_path=None, settings_updated_sig=None):
         self.abstract_class_obj = abstract_class_obj
         self.settings_dict = dict()  # [setting_class][setting_name]
         self.current_method = ""
         self.current_stg_name = ""
         self.save_path = save_path
         self.log = get_logger(__name__)
+        self.settings_updated_sig = settings_updated_sig
 
     def create_default_settings_dict(self):
         default_settings_dict = dict()
@@ -81,7 +85,8 @@ class SettingsManager:
         for setting in setting_classes:
             method_name = get_method_name(setting, self.abstract_class_obj)
             setting.name = "default"
-            default_settings_dict[method_name] = {setting.name: setting()}
+            default_settings_dict[method_name] \
+                = {setting.name: setting(_settings_updated_sig=self.settings_updated_sig)}
         return default_settings_dict
 
     def initialize_settings(self):
@@ -91,12 +96,30 @@ class SettingsManager:
             self.settings_dict = self.create_default_settings_dict()
 
     def save_settings(self):
-        with open(self.save_path, 'wb') as f:
-            pickle.dump(self.settings_dict, f)
+        try:
+            for setting_class in self.settings_dict.keys():
+                settings = self.settings_dict[setting_class]
+                for setting_name in settings.keys():
+                    del settings[setting_name]._settings_updated_sig
+
+            with open(self.save_path, 'wb') as f:
+                pickle.dump(self.settings_dict, f)
+
+        except EOFError:
+            self.log.error(f"cannot save settings to {self.save_path}")
 
     def load_settings(self):
-        with open(self.save_path, 'rb') as f:
-            self.settings_dict = pickle.load(f)
+        try:
+            with open(self.save_path, 'rb') as f:
+                self.settings_dict = pickle.load(f)
+            for setting_class in self.settings_dict.keys():
+                settings = self.settings_dict[setting_class]
+                for setting_name in settings.keys():
+                    settings[setting_name]._settings_updated_sig \
+                        = self.settings_updated_sig
+
+        except EOFError:
+            self.log.error(f"cannot load settings from {self.save_path}")
 
     @QtCore.Slot(str)
     def add_setting(self, new_name):

@@ -288,6 +288,8 @@ class QdyneLogic(LogicBase):
     # signals for connecting modules
     sigFitUpdated = QtCore.Signal(str, object)
     sigToggleQdyneMeasurement = QtCore.Signal(bool)
+    estimator_stg_updated_sig = QtCore.Signal()
+    analyzer_stg_updated_sig = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -305,7 +307,9 @@ class QdyneLogic(LogicBase):
             self.new_data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
-            self.settings = QdyneSettings(self._settings_storage_dir)
+            self.settings = QdyneSettings(self._settings_storage_dir,
+                                          self.estimator_stg_updated_sig,
+                                          self.analyzer_stg_updated_sig)
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )

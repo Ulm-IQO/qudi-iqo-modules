@@ -74,11 +74,15 @@ class SettingsWidget(QtWidgets.QWidget):
         self.add_button_pushed_sig.connect(self.settings.add_setting)
         self.remove_setting_sig.connect(self.settings.remove_setting)
 
+        self.settings.settings_updated_sig.connect(self.update_widget)
+
     def disconnect_signals(self):
         self.method_comboBox.currentTextChanged.disconnect()
         self.setting_comboBox.currentIndexChanged.disconnect()
         self.setting_add_pushButton.clicked.disconnect()
         self.setting_delete_pushButton.clicked.disconnect()
+
+        self.settings.settings_updated_sig.disconnect()
 
     def update_current_method(self):
         self.settings.current_method = self.method_comboBox.currentText()

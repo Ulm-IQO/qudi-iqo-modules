@@ -41,7 +41,22 @@ class StateEstimator(ABC):
 
 @dataclass
 class StateEstimatorSettings(ABC):
+    _settings_updated_sig: object
     name: str = ""
+
+    def __setattr__(self, key, value):
+        if hasattr(self, key) and hasattr(self, "_settings_updated_sig") and key != "_settings_updated_sig":
+            old_value = getattr(self, key)
+            if old_value != value:
+                self._settings_updated_sig.emit()
+
+        super().__setattr__(key, value)
+
+    def pass_signal(self, settings_updated_sig):
+        self._settings_updated_sig = settings_updated_sig
+
+    def delete_signal(self):
+        del self._settings_updated_sig
 
 
 @dataclass
@@ -85,7 +100,7 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     count_mode: str = 'Average'
     sig_start: float = 0
     sig_end: float = 0
-    time_bin: float = 1e-9  # Todo: assign this from logic
+    time_bin: float = 1e-9
     count_threshold: int = (
         10  # Todo: this has to be either estimated or set somewhere from the logic
     )
@@ -166,7 +181,6 @@ class TimeTagStateEstimator(StateEstimator):
 
     def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
         max_bins = int(max(time_tag_data))
-        print(max_bins)
         count_hist, bin_edges = np.histogram(
             time_tag_data, bins=max_bins, range=(1, max_bins)
         )
