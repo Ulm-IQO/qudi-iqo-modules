@@ -125,7 +125,7 @@ class MeasurementGenerator:
                 self.__data_type,
             )
         else:
-            _logger.warn(
+            _logger.warning(
                 "Qdyne counter is not idle (status: {0}).\n"
                 "Unable to apply new settings.".format(counter_status)
             )
@@ -200,7 +200,7 @@ class MeasurementGenerator:
         settings_dict["is_gated"] = bool(
             self._data_streamer().gate_mode.value
         )
-        self._qdyne_logic.log.warn(f"{settings_dict=}")
+        self._qdyne_logic.log.warning(f"{settings_dict=}")
         return settings_dict
 
     @property
