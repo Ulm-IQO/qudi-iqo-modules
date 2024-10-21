@@ -118,6 +118,8 @@ class QdyneMeasurement(QtCore.QObject):
         self.qdyne_logic.measurement_generator.set_counter_settings(None)
         self.settings.estimator_stg.current_setting.time_bin \
             = copy.deepcopy(self.qdyne_logic.measurement_generator.counter_settings["bin_width"])
+        self.settings.analyzer_stg.current_setting.sequence_length_s \
+            = copy.deepcopy(self.qdyne_logic.measurement_generator.counter_settings["record_length"])
 
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
