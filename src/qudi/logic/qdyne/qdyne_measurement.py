@@ -113,14 +113,8 @@ class QdyneMeasurement(QtCore.QObject):
         logger.debug("Starting QDyne measurement")
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
         fname = timestamp + fname if fname else timestamp
-        # self.qdyne_logic._data_streamer().change_filename(fname)
-        self.data.raw_data = []
+        self.data.reset()
         self.qdyne_logic.measurement_generator.set_counter_settings(None)
-        self.settings.estimator_stg.current_setting.time_bin \
-            = copy.deepcopy(self.qdyne_logic.measurement_generator.counter_settings["bin_width"])
-        self.settings.analyzer_stg.current_setting.sequence_length_s \
-            = copy.deepcopy(self.qdyne_logic.measurement_generator.counter_settings["record_length"])
-
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         self.sigStartTimer.emit()
@@ -135,17 +129,20 @@ class QdyneMeasurement(QtCore.QObject):
     def qdyne_analysis_loop(self):
         with self.__lock:
             logger.debug("Entering Analysis loop")
-            self.get_raw_data()
-            self.get_pulse()
-            self.sigPulseDataUpdated.emit()
+            try:
+                self.get_raw_data()
+                self.get_pulse()
+                self.sigPulseDataUpdated.emit()
 
-            self.extract_data()
-            self.estimate_state()
-            self.sigTimeTraceDataUpdated.emit()
+                self.extract_data()
+                self.estimate_state()
+                self.sigTimeTraceDataUpdated.emit()
 
-            self.analyze_time_trace()
-            self.get_spectrum()
-            self.sigQdyneDataUpdated.emit()
+                self.analyze_time_trace()
+                self.get_spectrum()
+                self.sigQdyneDataUpdated.emit()
+            except Exception as e:
+                logger.exception(e)
             logger.debug("Exiting Analysis loop")
             self.sigStartTimer.emit()
 
@@ -193,7 +190,6 @@ class QdyneMeasurement(QtCore.QObject):
             )
             self.data.freq_data.x = self.data.freq_domain[0]
             self.data.freq_data.y = self.data.freq_domain[1]
-            self.sigQdyneDataUpdated.emit()
 
         except Exception as e:
             logger.exception(e)
