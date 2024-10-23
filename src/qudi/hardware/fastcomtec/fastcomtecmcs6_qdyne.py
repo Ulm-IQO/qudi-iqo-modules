@@ -144,7 +144,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             data_type=self._data_type,
             binwidth=DiscreteScalarConstraint(
                 default=self._minimal_binwidth,
-                value_set={self._minimal_binwidth * 2 ** ii for ii in range(0,25)},
+                allowed_values={self._minimal_binwidth * 2 ** ii for ii in range(0,25)},
                 enforce_int=False,
             ),
             record_length=ScalarConstraint(  #Todo: find bounds

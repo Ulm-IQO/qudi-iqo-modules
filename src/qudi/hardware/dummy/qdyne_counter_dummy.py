@@ -71,7 +71,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
             data_type=float,
             binwidth=DiscreteScalarConstraint(
                 default=100e-9,
-                value_set=set(np.arange(10e-9, 1e-6, 10e-9)),
+                allowed_values=set(np.arange(10e-9, 1e-6, 10e-9)),
                 #checker=lambda x: (x / 1e-9).is_integer(),
             ),
             record_length=ScalarConstraint(default=1e-6, bounds=(100e-9, 100e-6)),

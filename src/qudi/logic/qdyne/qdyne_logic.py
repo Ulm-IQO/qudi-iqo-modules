@@ -125,7 +125,7 @@ class MeasurementGenerator:
                 self.__data_type,
             )
         else:
-            _logger.warn(
+            _logger.warning(
                 "Qdyne counter is not idle (status: {0}).\n"
                 "Unable to apply new settings.".format(counter_status)
             )
@@ -153,7 +153,7 @@ class MeasurementGenerator:
         return record_length
 
     def check_counter_binwidth_constraint(self, binwidth: float):
-        binwidth_constraint = self._data_streamer().binwidth
+        binwidth_constraint = self._data_streamer().constraints.binwidth
         if not binwidth_constraint.is_valid(binwidth):
             try:
                 binwidth_constraint.check_value_type(binwidth)
@@ -169,13 +169,11 @@ class MeasurementGenerator:
                     f"Binwidth out of bounds. Clipping to bound {binwidth}s."
                 )
             try:
-                binwidth_constraint.check_value_set(binwidth)
+                binwidth_constraint.check_allowed_values(binwidth)
             except ValueError:
-                binwidth = min(
-                    binwidth_constraint.value_set, key=lambda x: abs(x - binwidth)
-                )
+                binwidth = binwidth_constraint.clip(binwidth)
                 self._qdyne_logic.log.warning(
-                    f"Binwidth does not match allowed binwidth condition of hardware."
+                    f"Binwidth does not match allowed binwidth condition of hardware. "
                     f"Set closest allowed binwidth {binwidth}s."
                 )
         return binwidth
@@ -202,7 +200,7 @@ class MeasurementGenerator:
         settings_dict["is_gated"] = bool(
             self._data_streamer().gate_mode.value
         )
-        self._qdyne_logic.log.warn(f"{settings_dict=}")
+        self._qdyne_logic.log.warning(f"{settings_dict=}")
         return settings_dict
 
     @property
