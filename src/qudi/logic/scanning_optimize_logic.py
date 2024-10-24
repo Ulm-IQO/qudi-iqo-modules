@@ -222,6 +222,14 @@ class ScanningOptimizeLogic(LogicBase):
                 return
 
             scan_logic: ScanningProbeLogic = self._scan_logic()
+            # stash current scan settings
+            self._stashed_scan_range = scan_logic.scan_ranges
+            self._stashed_scan_resolution = scan_logic.scan_resolution
+            self._stashed_scan_frequency = scan_logic.scan_frequency
+
+            self._stashed_back_scan_resolution = scan_logic.back_scan_resolution
+            self._stashed_back_scan_frequency = scan_logic.back_scan_frequency
+
             curr_pos = scan_logic.scanner_target
             constraints = scan_logic.scanner_constraints
             for ax, rel_rng in self.scan_range.items():
@@ -332,6 +340,21 @@ class ScanningOptimizeLogic(LogicBase):
                     # optimizer scans are never saved in scanning history
                     self._scan_logic().stop_scan()
             finally:
+
+                for ax in ['x', 'y', 'z']:
+                    self._scan_logic().set_scan_range(ax, self._stashed_scan_range[ax])
+                    self._scan_logic().set_scan_resolution(ax, self._stashed_scan_resolution[ax])
+                    self._scan_logic().set_scan_frequency(ax, self._stashed_scan_frequency[ax])
+
+                    self._scan_logic().set_back_scan_resolution(ax, self._stashed_back_scan_resolution[ax])
+                    self._scan_logic().set_back_scan_frequency(ax, self._stashed_back_scan_frequency[ax])
+
+                self._stashed_scan_range = dict()
+                self._stashed_scan_resolution = dict()
+                self._stashed_scan_frequency = dict()
+                self._stashed_back_scan_resolution = dict()
+                self._stashed_back_scan_frequency = dict()
+
                 self._scan_logic().save_to_history = True
                 self.module_state.unlock()
                 self.sigOptimizeStateChanged.emit(False, dict(), None)

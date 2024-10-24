@@ -76,6 +76,7 @@ class ScanningProbeLogic(LogicBase):
     sigScanStateChanged = QtCore.Signal(bool, ScanData, ScanData, UUID)
     sigNewScanDataForHistory = QtCore.Signal(ScanData, ScanData)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
+    sigScanSettingsChanged = QtCore.Signal()
     sigTiltCorrSettingsChanged = QtCore.Signal(dict)
 
     def __init__(self, *args, **kwargs):
@@ -266,6 +267,8 @@ class ScanningProbeLogic(LogicBase):
                     self.log.error("Invalid scan range or axis name.", exc_info=e)
                     self._scan_ranges = old_scan_ranges
 
+                self.sigScanSettingsChanged.emit()
+
     def set_scan_resolution(self, axis: str, resolution: int) -> None:
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -280,6 +283,8 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid scan resolution or axis name.", exc_info=e)
                     self._scan_resolution = old_scan_resolution
+
+                self.sigScanSettingsChanged.emit()
 
     def set_back_scan_resolution(self, axis: str, resolution: int) -> None:
         with self._thread_lock:
@@ -301,6 +306,8 @@ class ScanningProbeLogic(LogicBase):
                     self.log.error("Invalid back scan resolution setting.", exc_info=e)
                     self._back_scan_resolution = old_back_scan_resolution
 
+                self.sigScanSettingsChanged.emit()
+
     def set_scan_frequency(self, axis: str, frequency: float) -> None:
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -315,6 +322,8 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid scan frequency or axis name.", exc_info=e)
                     self._scan_frequency = old_scan_frequency
+
+                self.sigScanSettingsChanged.emit()
 
     def set_back_scan_frequency(self, axis: str, frequency: float) -> None:
         with self._thread_lock:
@@ -335,6 +344,8 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid back scan frequency setting.", exc_info=e)
                     self._back_scan_frequency = old_back_scan_frequency
+
+                self.sigScanSettingsChanged.emit()
 
     def set_target_position(self, pos_dict, caller_id=None, move_blocking=False):
         with self._thread_lock:
