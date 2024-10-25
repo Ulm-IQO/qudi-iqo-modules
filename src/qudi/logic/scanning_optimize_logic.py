@@ -229,6 +229,7 @@ class ScanningOptimizeLogic(LogicBase):
 
             self._stashed_back_scan_resolution = scan_logic.back_scan_resolution
             self._stashed_back_scan_frequency = scan_logic.back_scan_frequency
+            self._stashed_settings = scan_logic.get_scan_settings_per_ax()
 
             curr_pos = scan_logic.scanner_target
             constraints = scan_logic.scanner_constraints
@@ -341,6 +342,13 @@ class ScanningOptimizeLogic(LogicBase):
                     self._scan_logic().stop_scan()
             finally:
 
+                """
+                # proposoal
+                for setting, back_setting in self._stashed_settings:
+                    self.log.debug(f"Recovering settings: {setting}")
+                    self._scan_logic().set_scan_settings(setting)
+                """
+
                 for ax in ['x', 'y', 'z']:
                     self._scan_logic().set_scan_range(ax, self._stashed_scan_range[ax])
                     self._scan_logic().set_scan_resolution(ax, self._stashed_scan_resolution[ax])
@@ -349,6 +357,7 @@ class ScanningOptimizeLogic(LogicBase):
                     self._scan_logic().set_back_scan_resolution(ax, self._stashed_back_scan_resolution[ax])
                     self._scan_logic().set_back_scan_frequency(ax, self._stashed_back_scan_frequency[ax])
 
+                self._stashed_settings = None
                 self._stashed_scan_range = dict()
                 self._stashed_scan_resolution = dict()
                 self._stashed_scan_frequency = dict()
