@@ -31,29 +31,32 @@ from qudi.interface.scanning_probe_interface import ScannerAxis, ScannerChannel,
 
 class OptimizerSettingsDialog(QtWidgets.QDialog):
     """Dialog for user configurable settings for the scanning optimize logic."""
+
     def __init__(
-            self,
-            scanner_axes: Iterable[ScannerAxis],
-            scanner_channels: Iterable[ScannerChannel],
-            sequences: Dict[list, List[Tuple[Tuple[str, ...]]]],
-            sequence_dimensions: List[list],
-            back_scan_capability: BackScanCapability
+        self,
+        scanner_axes: Iterable[ScannerAxis],
+        scanner_channels: Iterable[ScannerChannel],
+        sequences: Dict[list, List[Tuple[Tuple[str, ...]]]],
+        sequence_dimensions: List[list],
+        back_scan_capability: BackScanCapability,
     ):
         super().__init__()
         self.setObjectName('optimizer_settings_dialog')
         self.setWindowTitle('Optimizer Settings')
 
-        self.settings_widget = OptimizerSettingsWidget(scanner_axes=scanner_axes,
-                                                       scanner_channels=scanner_channels,
-                                                       sequences=sequences,
-                                                       sequence_dimensions=sequence_dimensions,
-                                                       back_scan_capability=back_scan_capability)
+        self.settings_widget = OptimizerSettingsWidget(
+            scanner_axes=scanner_axes,
+            scanner_channels=scanner_channels,
+            sequences=sequences,
+            sequence_dimensions=sequence_dimensions,
+            back_scan_capability=back_scan_capability,
+        )
 
-        self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
-                                                     QtWidgets.QDialogButtonBox.Cancel |
-                                                     QtWidgets.QDialogButtonBox.Apply,
-                                                     QtCore.Qt.Horizontal,
-                                                     self)
+        self.button_box = QtWidgets.QDialogButtonBox(
+            QtWidgets.QDialogButtonBox.Ok | QtWidgets.QDialogButtonBox.Cancel | QtWidgets.QDialogButtonBox.Apply,
+            QtCore.Qt.Horizontal,
+            self,
+        )
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
 
@@ -141,13 +144,14 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
 
 class OptimizerSettingsWidget(QtWidgets.QWidget):
     """User configurable settings for the scanner optimizer logic."""
+
     def __init__(
-            self,
-            scanner_axes: Iterable[ScannerAxis],
-            scanner_channels: Iterable[ScannerChannel],
-            sequences: Dict[list, Tuple[Tuple[str, ...]]],
-            sequence_dimensions: List[list],
-            back_scan_capability: BackScanCapability
+        self,
+        scanner_axes: Iterable[ScannerAxis],
+        scanner_channels: Iterable[ScannerChannel],
+        sequences: Dict[list, Tuple[Tuple[str, ...]]],
+        sequence_dimensions: List[list],
+        back_scan_capability: BackScanCapability,
     ):
         super().__init__()
         self.setObjectName('optimizer_settings_widget')
@@ -166,7 +170,9 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         self.optimize_sequence_dimensions_combobox.addItems([str(dim) for dim in self._allowed_sequence_dimensions])
 
         self.optimize_sequence_combobox = QtWidgets.QComboBox()
-        self.optimize_sequence_combobox.addItems([str(seq) for seq in self._allowed_sequences[self._allowed_sequence_dimensions[0]]])
+        self.optimize_sequence_combobox.addItems(
+            [str(seq) for seq in self._allowed_sequences[self._allowed_sequence_dimensions[0]]]
+        )
 
         # general settings
         label = QtWidgets.QLabel('Data channel:')
@@ -285,13 +291,14 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
 
 
 class OptimizerAxesWidget(QtWidgets.QWidget):
-    """ Widget to set optimizer parameters for each scanner axes.
+    """Widget to set optimizer parameters for each scanner axes.
 
     There are spin boxes for range, resolution, backward resolution, frequency and backward frequency.
     A checkbox between the forward and backward resolution/frequency can be used to automatically
     have an equal setting for both directions. Depending on the back scan capability of the hardware, this checkbox
     is checked and disabled (if available but not configurable) or unchecked and disabled (not available).
     """
+
     def __init__(self, *args, scanner_axes: Iterable[ScannerAxis], back_scan_capability: BackScanCapability, **kwargs):
         super().__init__(*args, **kwargs)
 
@@ -305,12 +312,15 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
         layout = QtWidgets.QGridLayout()
 
         for i, label_text in enumerate(
-                ['Range', 'Resolution', '=', 'Back\nResolution', 'Frequency', '=', 'Back\nFrequency']):
+            ['Range', 'Resolution', '=', 'Back\nResolution', 'Frequency', '=', 'Back\nFrequency']
+        ):
             label = QtWidgets.QLabel(label_text)
             label.setFont(font)
             label.setAlignment(QtCore.Qt.AlignCenter)
             layout.addWidget(label, 0, i + 1)
-            if ('=' in label_text or 'Back' in label_text) and BackScanCapability.AVAILABLE not in self._back_scan_capability:
+            if (
+                '=' in label_text or 'Back' in label_text
+            ) and BackScanCapability.AVAILABLE not in self._back_scan_capability:
                 label.hide()
 
         for index, axis in enumerate(scanner_axes, 1):
@@ -332,7 +342,7 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             for direction in ['forward', 'backward']:
                 res_spinbox = QtWidgets.QSpinBox()
                 res_spinbox.setObjectName(f'{ax_name}_{direction}_resolution_spinBox')
-                res_spinbox.setRange(axis.resolution.minimum, min(2 ** 31 - 1, axis.resolution.maximum))
+                res_spinbox.setRange(axis.resolution.minimum, min(2**31 - 1, axis.resolution.maximum))
                 res_spinbox.setSuffix(' px')
                 res_spinbox.setMinimumSize(50, 0)
                 self.axes_widgets[ax_name][f'{direction}_res'] = res_spinbox
@@ -347,8 +357,7 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             # same for every spinbox
             for spinbox in self.axes_widgets[ax_name].values():
                 spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-                spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                      QtWidgets.QSizePolicy.Preferred)
+                spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
 
             # checkbox for having back settings equal to forward settings
             for setting in ['res', 'freq']:
@@ -447,4 +456,5 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
             else:
                 forward_spinbox.valueChanged.disconnect()
             backward_spinbox.setDisabled(checked)
+
         return callback
