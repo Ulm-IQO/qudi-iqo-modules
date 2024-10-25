@@ -29,16 +29,24 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.scanning_probe_interface import (
-    ScanningProbeInterface, ScanData, ScanConstraints, ScannerAxis, ScannerChannel,
-    ScanSettings, BackScanCapability, CoordinateTransformMixin
+    ScanningProbeInterface,
+    ScanData,
+    ScanConstraints,
+    ScannerAxis,
+    ScannerChannel,
+    ScanSettings,
+    BackScanCapability,
+    CoordinateTransformMixin,
 )
 from dataclasses import dataclass
 
 logger = getLogger(__name__)
 
+
 @dataclass(frozen=True)
 class DummyScanConstraints(ScanConstraints):
     spot_number: ScalarConstraint
+
 
 class ImageGenerator:
     """Generate 1D and 2D images with random Gaussian spots."""
@@ -93,9 +101,7 @@ class ImageGenerator:
         # vectorized generation of random spot positions and sigmas. Each row is a spot.
         spot_positions = np.random.uniform(ax_mins, ax_maxs, (spot_count, len(self.position_ranges)))
         spot_sigmas = np.random.normal(
-            self.spot_size_dist[0],
-            self.spot_size_dist[1],
-            (spot_count, len(self.position_ranges)),
+            self.spot_size_dist[0], self.spot_size_dist[1], (spot_count, len(self.position_ranges))
         )
 
         self._spots["count"] = spot_count
@@ -104,11 +110,7 @@ class ImageGenerator:
         self._spots["amp"] = spot_amplitudes
         logger.debug(f"Generated {spot_count} spots.")
 
-    def generate_image(
-        self,
-        scan_vectors: Dict[str, np.ndarray],
-        scan_resolution: Tuple[int, ...],
-    ) -> np.ndarray:
+    def generate_image(self, scan_vectors: Dict[str, np.ndarray], scan_resolution: Tuple[int, ...]) -> np.ndarray:
         sim_data = self._spots
         positions = sim_data["pos"]
         amplitudes = sim_data["amp"]
@@ -167,12 +169,7 @@ class ImageGenerator:
         return np.asarray(sorted_axes).T
 
     def _process_in_grid_chunks(
-        self,
-        method,
-        positions: np.ndarray,
-        grid_points: np.ndarray,
-        include_dist: float,
-        method_params: dict,
+        self, method, positions: np.ndarray, grid_points: np.ndarray, include_dist: float, method_params: dict
     ) -> list:
         if len(positions) * len(grid_points) <= self._image_generation_max_calculations:
             return [method(**method_params)]
@@ -337,6 +334,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             # image_generation_max_calculations: 100e6 # optional
             # image_generation_chunk_size: 1000 # optional
     """
+
     _threaded = True
 
     # config options
@@ -356,9 +354,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
     _back_scan_frequency_configurable: bool = ConfigOption(name='back_scan_frequency_configurable', default=True)
     _back_scan_resolution_configurable: bool = ConfigOption(name='back_scan_resolution_configurable', default=True)
     _image_generation_max_calculations: int = ConfigOption(
-        name="image_generation_max_calculations",
-        default=int(100e6),
-        constructor=lambda x: int(x),
+        name="image_generation_max_calculations", default=int(100e6), constructor=lambda x: int(x)
     )  # number of points that can be calculated at once during image generation
     _image_generation_chunk_size: int = ConfigOption(
         name="image_generation_chunk_size", default=1000, constructor=lambda x: int(x)
@@ -388,8 +384,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         self.__update_timer = None
 
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
-        """
+        """Initialisation performed during activation of the module."""
         # Generate static constraints
         axes = list()
         indices_to_axis_mapper = {}
@@ -406,14 +401,15 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             frequency = ScalarConstraint(default=f_default, bounds=frequency_range)
             step = ScalarConstraint(default=0, bounds=(0, dist))
             spot_number = ScalarConstraint(default=self._max_spot_number, bounds=(0, self._max_spot_number))
-            axes.append(ScannerAxis(name=axis,
-                                    unit='m',
-                                    position=position,
-                                    step=step,
-                                    resolution=resolution,
-                                    frequency=frequency, ))
-        channels = [ScannerChannel(name='fluorescence', unit='c/s', dtype='float64'),
-                    ScannerChannel(name='APD events', unit='count', dtype='float64')]
+            axes.append(
+                ScannerAxis(
+                    name=axis, unit='m', position=position, step=step, resolution=resolution, frequency=frequency
+                )
+            )
+        channels = [
+            ScannerChannel(name='fluorescence', unit='c/s', dtype='float64'),
+            ScannerChannel(name='APD events', unit='count', dtype='float64'),
+        ]
 
         if not self._back_scan_available:
             back_scan_capability = BackScanCapability(0)
@@ -460,8 +456,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         self.__update_timer.timeout.connect(self._handle_timer, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
-        """ Deactivate properly the confocal scanner dummy.
-        """
+        """Deactivate properly the confocal scanner dummy."""
         self.reset()
         # free memory
         del self._image_generator
@@ -475,8 +470,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
     @property
     def scan_settings(self) -> Optional[ScanSettings]:
-        """ Property returning all parameters needed for a 1D or 2D scan. Returns None if not configured.
-        """
+        """Property returning all parameters needed for a 1D or 2D scan. Returns None if not configured."""
         with self._thread_lock:
             return self._scan_settings
 
@@ -486,8 +480,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             return self._back_scan_settings
 
     def reset(self):
-        """ Hard reset of the hardware.
-        """
+        """Hard reset of the hardware."""
         with self._thread_lock:
             if self.module_state() == 'locked':
                 self.module_state.unlock()
@@ -495,13 +488,12 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
     @property
     def constraints(self) -> ScanConstraints:
-        """ Read-only property returning the constraints of this scanning probe hardware.
-        """
+        """Read-only property returning the constraints of this scanning probe hardware."""
         # self.log.debug('Scanning probe dummy "get_constraints" called.')
         return self._constraints
 
     def configure_scan(self, settings: ScanSettings) -> None:
-        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
+        """Configure the hardware with all parameters needed for a 1D or 2D scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
 
         @param ScanSettings settings: ScanSettings instance holding all parameters
@@ -510,8 +502,9 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self.log.debug('Scanning probe dummy "configure_scan" called.')
             # Sanity checking
             if self.module_state() != 'idle':
-                raise RuntimeError('Unable to configure scan parameters while scan is running. '
-                                   'Stop scanning and try again.')
+                raise RuntimeError(
+                    'Unable to configure scan parameters while scan is running. ' 'Stop scanning and try again.'
+                )
 
             # check settings - will raise appropriate exceptions if something is not right
             self.constraints.check_settings(settings)
@@ -521,27 +514,25 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._back_scan_settings = None
 
     def configure_back_scan(self, settings: ScanSettings) -> None:
-        """ Configure the hardware with all parameters of the backwards scan.
+        """Configure the hardware with all parameters of the backwards scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
 
         @param ScanSettings settings: ScanSettings instance holding all parameters for the back scan
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
-                raise RuntimeError('Unable to configure scan parameters while scan is running. '
-                                   'Stop scanning and try again.')
+                raise RuntimeError(
+                    'Unable to configure scan parameters while scan is running. ' 'Stop scanning and try again.'
+                )
             if self._scan_settings is None:
                 raise RuntimeError('Configure forward scan settings first.')
 
             # check settings - will raise appropriate exceptions if something is not right
-            self.constraints.check_back_scan_settings(
-                backward_settings=settings,
-                forward_settings=self._scan_settings
-            )
+            self.constraints.check_back_scan_settings(backward_settings=settings, forward_settings=self._scan_settings)
             self._back_scan_settings = settings
 
     def move_absolute(self, position, velocity=None, blocking=False):
-        """ Move the scanning probe to an absolute position as fast as possible or with a defined
+        """Move the scanning probe to an absolute position as fast as possible or with a defined
         velocity.
 
         Log error and return current target position if something fails or a 1D/2D scan is in
@@ -552,22 +543,21 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             if self.module_state() != 'idle':
                 raise RuntimeError('Scanning in progress. Unable to move to position.')
             elif not set(position).issubset(self._position_ranges):
-                raise ValueError(f'Invalid axes encountered in position dict. '
-                                 f'Valid axes are: {set(self._position_ranges)}')
+                raise ValueError(
+                    f'Invalid axes encountered in position dict. ' f'Valid axes are: {set(self._position_ranges)}'
+                )
             else:
-                move_distance = {ax: np.abs(pos - self._current_position[ax]) for ax, pos in
-                                 position.items()}
+                move_distance = {ax: np.abs(pos - self._current_position[ax]) for ax, pos in position.items()}
                 if velocity is None:
                     move_time = 0.01
                 else:
-                    move_time = max(0.01, np.sqrt(
-                        np.sum(dist ** 2 for dist in move_distance.values())) / velocity)
+                    move_time = max(0.01, np.sqrt(np.sum(dist**2 for dist in move_distance.values())) / velocity)
                 time.sleep(move_time)
                 self._current_position.update(position)
             return self._current_position
 
     def move_relative(self, distance, velocity=None, blocking=False):
-        """ Move the scanning probe by a relative distance from the current target position as fast
+        """Move the scanning probe by a relative distance from the current target position as fast
         as possible or with a defined velocity.
 
         Log error and return current target position if something fails or a 1D/2D scan is in
@@ -578,21 +568,21 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             if self.module_state() != 'idle':
                 raise RuntimeError('Scanning in progress. Unable to move relative.')
             elif not set(distance).issubset(self._position_ranges):
-                raise ValueError('Invalid axes encountered in distance dict. '
-                                 f'Valid axes are: {set(self._position_ranges)}')
+                raise ValueError(
+                    'Invalid axes encountered in distance dict. ' f'Valid axes are: {set(self._position_ranges)}'
+                )
             else:
                 new_pos = {ax: self._current_position[ax] + dist for ax, dist in distance.items()}
                 if velocity is None:
                     move_time = 0.01
                 else:
-                    move_time = max(0.01, np.sqrt(
-                        np.sum(dist ** 2 for dist in distance.values())) / velocity)
+                    move_time = max(0.01, np.sqrt(np.sum(dist**2 for dist in distance.values())) / velocity)
                 time.sleep(move_time)
                 self._current_position.update(new_pos)
             return self._current_position
 
     def get_target(self):
-        """ Get the current target position of the scanner hardware.
+        """Get the current target position of the scanner hardware.
 
         @return dict: current target position per axis.
         """
@@ -600,14 +590,15 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             return self._current_position.copy()
 
     def get_position(self):
-        """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
+        """Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
 
         @return dict: current target position per axis.
         """
         with self._thread_lock:
             self.log.debug('Scanning probe dummy "get_position" called.')
-            position = {ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in
-                        self._current_position.items()}
+            position = {
+                ax: pos + np.random.normal(0, self._position_accuracy[ax]) for ax, pos in self._current_position.items()
+            }
             return position
 
     def start_scan(self):
@@ -626,14 +617,14 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
             self._scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
             self._scan_data = ScanData.from_constraints(
-                settings=self.scan_settings,
-                constraints=self.constraints,
-                scanner_target_at_start=self.get_target(),
+                settings=self.scan_settings, constraints=self.constraints, scanner_target_at_start=self.get_target()
             )
             self._scan_data.new_scan()
 
             if self._back_scan_settings is not None:
-                self._back_scan_image = self._image_generator.generate_image(scan_vectors, self.scan_settings.resolution)
+                self._back_scan_image = self._image_generator.generate_image(
+                    scan_vectors, self.scan_settings.resolution
+                )
                 self._back_scan_data = ScanData.from_constraints(
                     settings=self.back_scan_settings,
                     constraints=self.constraints,
@@ -664,8 +655,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 raise RuntimeError('No scan in progress. Cannot stop scan.')
 
     def emergency_stop(self):
-        """
-        """
+        """ """
         try:
             self.module_state.unlock()
         except FysomError:
@@ -711,16 +701,16 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             aq_px_backward = int(back_resolution * aq_lines_backward)
 
         # transposing the arrays is necessary to fill along the fast axis first
-        new_forward_data = self._scan_image.T.flat[self.__last_forward_pixel:aq_px_forward]
+        new_forward_data = self._scan_image.T.flat[self.__last_forward_pixel : aq_px_forward]
         for ch in self.constraints.channels:
-            self._scan_data.data[ch].T.flat[self.__last_forward_pixel:aq_px_forward] = new_forward_data
+            self._scan_data.data[ch].T.flat[self.__last_forward_pixel : aq_px_forward] = new_forward_data
         self.__last_forward_pixel = aq_px_forward
 
         # back scan image is not fully accurate: last line is filled the same direction as the forward axis
         if self._back_scan_settings is not None:
-            new_backward_data = self._back_scan_image.T.flat[self.__last_backward_pixel:aq_px_backward]
+            new_backward_data = self._back_scan_image.T.flat[self.__last_backward_pixel : aq_px_backward]
             for ch in self.constraints.channels:
-                self._back_scan_data.data[ch].T.flat[self.__last_backward_pixel:aq_px_backward] = new_backward_data
+                self._back_scan_data.data[ch].T.flat[self.__last_backward_pixel : aq_px_backward] = new_backward_data
             self.__last_backward_pixel = aq_px_backward
 
         if self.scan_settings.scan_dimension == 1:
@@ -734,8 +724,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self.__start_timer()
 
     def get_scan_data(self) -> Optional[ScanData]:
-        """ Retrieve the ScanData instance used in the scan.
-        """
+        """Retrieve the ScanData instance used in the scan."""
         with self._thread_lock:
             if self._scan_data is None:
                 return None
@@ -743,8 +732,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                 return self._scan_data.copy()
 
     def get_back_scan_data(self) -> Optional[ScanData]:
-        """ Retrieve the ScanData instance used in the backwards scan.
-        """
+        """Retrieve the ScanData instance used in the backwards scan."""
         with self._thread_lock:
             if self._back_scan_data is None:
                 return None
@@ -752,26 +740,20 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.start()
 
     def __stop_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer,
-                                            'stop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
 
     def _init_scan_vectors_from_scan_settings(self) -> Dict[str, np.ndarray]:
         axes_scan_values = [
             np.linspace(
-                self.scan_settings.range[ii][0],
-                self.scan_settings.range[ii][1],
-                self.scan_settings.resolution[ii],
+                self.scan_settings.range[ii][0], self.scan_settings.range[ii][1], self.scan_settings.resolution[ii]
             )
             for ii, _ in enumerate(self.scan_settings.axes)
         ]
