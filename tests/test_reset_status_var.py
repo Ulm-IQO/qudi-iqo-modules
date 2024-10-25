@@ -20,21 +20,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import time
-import os
-import time
-import multiprocessing
-import rpyc
-import pytest
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-from qudi.core import application
-
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 
 def test_reset_module(gui_modules, hardware_modules, remote_instance):
     """
-    This tests clearing all the logic module status variables and reloads the GUI modules
+    This tests clearing all the logic, hardware module status variables and reloads the GUI modules
 
     Parameters
     ----------
@@ -65,19 +55,28 @@ def test_reset_module(gui_modules, hardware_modules, remote_instance):
 
         required_logic_modules = required_modules
         required_logic_modules.extend([linked_required_module for linked_required_module in linked_required_modules if linked_required_module not in hardware_modules ])
-        #module_manager.activate_module(gui_module)
+        required_hardware_managed_modules = [ module_manager.modules[logic_module].required_modules for logic_module in required_logic_modules ]
+        required_hardware_modules = []
+        for linked_required_managed_module in required_hardware_managed_modules:
+            required_hardware_modules.extend([required_managed_module().name for required_managed_module in linked_required_managed_module])
 
+        for required_hardware_module in required_hardware_modules:
+            module_manager.deactivate_module(required_hardware_module)
+            module_manager.clear_module_app_data(required_hardware_module)
+        
         for required_logic_module in required_logic_modules:
             module_manager.deactivate_module(required_logic_module)
             module_manager.clear_module_app_data(required_logic_module)
-            #module_manager.reload_module(required_logic_module)
-            #module_manager.activate_module(required_logic_module)
-        
+     
         module_manager.activate_module(gui_module)
         gui_managed_module = module_manager.modules[gui_module]
         assert gui_managed_module.is_active
 
         time.sleep(10)
         module_manager.deactivate_module(gui_module)
+        for required_logic_module in required_logic_modules:
+            module_manager.deactivate_module(required_logic_module)
 
+        for required_hardware_module in required_hardware_modules:
+            module_manager.deactivate_module(required_hardware_module)
 

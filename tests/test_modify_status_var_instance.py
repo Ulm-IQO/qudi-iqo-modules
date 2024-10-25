@@ -22,17 +22,9 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import time
-import multiprocessing
 import random
 import string
 import numpy as np
-import rpyc
-import pytest
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-from qudi.core import application
-
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 
 def generate_random_value(var):

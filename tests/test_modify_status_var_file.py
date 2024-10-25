@@ -25,15 +25,8 @@ import random
 import string
 import pytest
 import numpy as np
-import multiprocessing
-import rpyc
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-from qudi.core import application
 from qudi.util.yaml import yaml_load, yaml_dump
 from qudi.util.paths import get_module_app_data_path
-
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 
 @pytest.fixture

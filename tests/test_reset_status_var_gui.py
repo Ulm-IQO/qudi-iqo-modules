@@ -19,17 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-import os
 import time
-import multiprocessing
-import rpyc
-import pytest
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-from qudi.core import application
-
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
-
 
 '''
 #This test fails for some modules such as ODMR  PulsedGUI

@@ -26,20 +26,13 @@ import math
 import numpy as np
 import coverage
 import pytest
-import multiprocessing
-import rpyc
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-from qudi.core import application
 from qudi.util.network import netobtain
-
 
 MODULE = 'odmr_logic'
 BASE = 'logic'
 CHANNELS = ('APD counts', 'Photodiode')
 FIT_MODEL = 'Gaussian Dip'
 TOLERANCE = 10 # tolerance for signal data range
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 
 def get_scanner(module):

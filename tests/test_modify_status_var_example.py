@@ -20,14 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-import time
-import multiprocessing
-import rpyc
 import pytest
-from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
-from qudi.core import application
 from qudi.util.yaml import yaml_load, yaml_dump
 from qudi.util.paths import get_module_app_data_path
 
@@ -35,7 +28,6 @@ LOGIC_MODULE = 'odmr_logic'
 GUI_MODULE = 'odmr_gui'
 STATUS_VAR = 'run_time'
 VALUE = 10
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
 
 @pytest.fixture(scope='module')
