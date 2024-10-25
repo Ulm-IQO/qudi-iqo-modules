@@ -19,6 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 from uuid import UUID
 
 import numpy as np
@@ -35,8 +36,6 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.fit_models.gaussian import Gaussian2D, Gaussian
 from qudi.core.configoption import ConfigOption
 import itertools
-
-
 
 
 class ScanningOptimizeLogic(LogicBase):
@@ -60,10 +59,7 @@ class ScanningOptimizeLogic(LogicBase):
     # not configuring the back scan parameters is represented by empty dictionaries
 
     # for all optimizer sub widgets, (2= xy, 1=z)
-    _optimizer_sequence_dimensions: Tuple[int] = StatusVar(
-        name='optimizer_sequence_dimensions',
-        default=[2, 1],
-    )
+    _optimizer_sequence_dimensions: Tuple[int] = StatusVar(name='optimizer_sequence_dimensions', default=[2, 1])
     _scan_sequence: Tuple[Tuple[str, ...]] = StatusVar(name='scan_sequence', default=tuple())
     _data_channel = StatusVar(name='data_channel', default=None)
     _scan_range: Dict[str, float] = StatusVar(name='scan_range', default=dict())
@@ -92,8 +88,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._avail_axes = tuple()
 
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
-        """
+        """Initialisation performed during activation of the module."""
         scan_logic: ScanningProbeLogic = self._scan_logic()
         axes = scan_logic.scanner_axes
         channels = scan_logic.scanner_channels
@@ -118,14 +113,11 @@ class ScanningOptimizeLogic(LogicBase):
         self._last_fits = list()
 
         self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
-        self._scan_logic().sigScanStateChanged.connect(
-            self._scan_state_changed, QtCore.Qt.QueuedConnection
-        )
+        self._scan_logic().sigScanStateChanged.connect(self._scan_state_changed, QtCore.Qt.QueuedConnection)
         self.sigOptimizeSequenceDimensionsChanged.connect(self._set_scan_sequence, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
-        """ Reverse steps of activation
-        """
+        """Reverse steps of activation"""
         self._scan_logic().sigScanStateChanged.disconnect(self._scan_state_changed)
         self._sigNextSequenceStep.disconnect()
         self.stop_optimize()
@@ -170,8 +162,7 @@ class ScanningOptimizeLogic(LogicBase):
         occurring_axes = set([axis for step in sequence for axis in step])
         available_axes = [ax.name for ax in self._avail_axes]
         if not occurring_axes.issubset(available_axes):
-            self.log.error(f"Optimizer sequence {sequence} must contain only"
-                           f" available axes ({available_axes}).")
+            self.log.error(f"Optimizer sequence {sequence} must contain only" f" available axes ({available_axes}).")
         else:
             self._scan_sequence = sequence
 
@@ -193,10 +184,12 @@ class ScanningOptimizeLogic(LogicBase):
         optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
         sequences_no_axis_twice = []
         if sum(sequence_dimension) > len(axes_names):
-            raise NotImplementedError(f"Requested optimization sequence ({sum(sequence_dimension)}) "
-                                      f"is greater than available scanner axes ({len(axes_names)}). "
-                                      f"This is currently not supported. Decrease 'optimizer_sequence_dimensions' "
-                                      f"in your config file.")
+            raise NotImplementedError(
+                f"Requested optimization sequence ({sum(sequence_dimension)}) "
+                f"is greater than available scanner axes ({len(axes_names)}). "
+                f"This is currently not supported. Decrease 'optimizer_sequence_dimensions' "
+                f"in your config file."
+            )
 
         for sequence in optimization_sequences:
             occurring_axes = [axis for step in sequence for axis in step]
@@ -219,7 +212,7 @@ class ScanningOptimizeLogic(LogicBase):
         allowed_values = {1, 2}
         valid_combinations = []
         # TODO: Fix this constraint
-        max_value = len(self._avail_axes) # current toolchain constraint
+        max_value = len(self._avail_axes)  # current toolchain constraint
         # Iterate over all possible lengths from 1 to the max number of axes
         for length in range(1, max_value // min(allowed_values) + 1):
             all_combinations = itertools.product(allowed_values, repeat=length)
@@ -231,9 +224,17 @@ class ScanningOptimizeLogic(LogicBase):
     def optimizer_running(self):
         return self.module_state() != 'idle'
 
-    def set_optimize_settings(self, data_channel: str, scan_sequence: Tuple[Tuple[str, ...]], scan_dimension: List[int],
-                              range: Dict[str, float], resolution: Dict[str, int], frequency: Dict[str, float],
-                              back_resolution: Dict[str, int] = None, back_frequency: Dict[str, float] = None):
+    def set_optimize_settings(
+        self,
+        data_channel: str,
+        scan_sequence: Tuple[Tuple[str, ...]],
+        scan_dimension: List[int],
+        range: Dict[str, float],
+        resolution: Dict[str, int],
+        frequency: Dict[str, float],
+        back_resolution: Dict[str, int] = None,
+        back_frequency: Dict[str, float] = None,
+    ):
         """Set all optimizer settings."""
         if back_resolution is None:
             back_resolution = dict()
@@ -317,9 +318,9 @@ class ScanningOptimizeLogic(LogicBase):
                 return
             self._scan_logic().toggle_scan(True, self._scan_sequence[self._sequence_index], self.module_uuid)
 
-    def _scan_state_changed(self, is_running: bool,
-                            data: Optional[ScanData], back_scan_data: Optional[ScanData],
-                            caller_id: UUID):
+    def _scan_state_changed(
+        self, is_running: bool, data: Optional[ScanData], back_scan_data: Optional[ScanData], caller_id: UUID
+    ):
         with self._thread_lock:
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
@@ -327,26 +328,22 @@ class ScanningOptimizeLogic(LogicBase):
                 # scan could not be started due to some error
                 self.stop_optimize()
             elif data is not None:
-                #self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
+                # self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
 
                 try:
                     if data.settings.scan_dimension == 1:
                         x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
-                        opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(
-                            x,
-                            data.data[self._data_channel]
-                        )
+                        opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(x, data.data[self._data_channel])
                     else:
                         x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
                         y = np.linspace(*data.settings.range[1], data.settings.resolution[1])
                         xy = np.meshgrid(x, y, indexing='ij')
                         opt_pos, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
-                            xy,
-                            data.data[self._data_channel].ravel()
+                            xy, data.data[self._data_channel].ravel()
                         )
 
                     position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.settings.axes)}
-                    #self.log.debug(f"Optimizer issuing position update: {position_update}")
+                    # self.log.debug(f"Optimizer issuing position update: {position_update}")
                     if fit_data is not None:
                         new_pos = self._scan_logic().set_target_position(position_update, move_blocking=True)
                         for ax in tuple(position_update):
@@ -406,8 +403,11 @@ class ScanningOptimizeLogic(LogicBase):
             self.log.exception('2D Gaussian fit unsuccessful.')
             return (x_middle, y_middle), None, None
 
-        return (fit_result.best_values['center_x'],
-                fit_result.best_values['center_y']), fit_result.best_fit.reshape(xy[0].shape), fit_result
+        return (
+            (fit_result.best_values['center_x'], fit_result.best_values['center_y']),
+            fit_result.best_fit.reshape(xy[0].shape),
+            fit_result,
+        )
 
     def _get_pos_from_1d_gauss_fit(self, x, data):
         model = Gaussian()
@@ -450,7 +450,9 @@ class ScanningOptimizeLogic(LogicBase):
     def _set_scan_sequence(self):
         possible_scan_sequences = self._allowed_sequences(self._optimizer_sequence_dimensions)
         if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
-            self.log.info(f"No valid scan sequence existing ({self._scan_sequence=}), setting scan sequence to {possible_scan_sequences[0]}.")
+            self.log.info(
+                f"No valid scan sequence existing ({self._scan_sequence=}), setting scan sequence to {possible_scan_sequences[0]}."
+            )
             self._scan_sequence = possible_scan_sequences[0]
 
     @_optimizer_sequence_dimensions.constructor
