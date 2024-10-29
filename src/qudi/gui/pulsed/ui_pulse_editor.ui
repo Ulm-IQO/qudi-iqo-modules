@@ -647,6 +647,13 @@ sel.</string>
           </property>
          </widget>
         </item>
+        <item row="4" column="1">
+         <widget class="QPushButton" name="update_blocks_from_file_PushButton">
+          <property name="text">
+           <string>Update from file</string>
+          </property>
+         </widget>
+        </item>
        </layout>
       </item>
      </layout>

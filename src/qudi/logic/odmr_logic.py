@@ -585,6 +585,7 @@ class OdmrLogic(LogicBase):
             if self.module_state() == 'locked':
                 self._microwave().off()
                 self.module_state.unlock()
+                
             self.sigScanStateUpdated.emit(False)
 
     @QtCore.Slot()

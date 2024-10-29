@@ -20,6 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
+import traceback
 
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzerBase
 
@@ -134,6 +135,8 @@ class BasicPulseAnalyzer(PulseAnalyzerBase):
         @param signal_end:
         @return:
         """
+        # s = traceback.extract_stack()
+        # print(s)
         # Get number of lasers
         num_of_lasers = laser_data.shape[0]
         # Get counter bin width

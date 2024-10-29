@@ -32,7 +32,7 @@ from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.paths import get_artwork_dir
 
-from .odmr_control_dockwidget import OdmrScanControlDockWidget, OdmrCwControlDockWidget, OdmrPulsedControlDockWidget
+from .odmr_control_dockwidget import OdmrScanControlDockWidget, OdmrCwControlDockWidget
 from .odmr_fit_dockwidget import OdmrFitDockWidget
 from .odmr_main_window import OdmrMainWindow
 from .odmr_settings_dialog import OdmrSettingsDialog
@@ -68,7 +68,6 @@ class OdmrGui(GuiBase):
         self._plot_widget = None
         self._scan_control_dockwidget = None
         self._cw_control_dockwidget = None
-        self._pulsed_control_dockwidget = None
         self._fit_dockwidget = None
         self._fit_config_dialog = None
         self._odmr_settings_dialog = None
@@ -99,17 +98,6 @@ class OdmrGui(GuiBase):
             )
         else:
             self._cw_control_dockwidget = OdmrCwControlDockWidget(parent=self._mw)
-        
-        self._pulsed_control_dockwidget = OdmrPulsedControlDockWidget(
-            mode = logic._data_scanner().mode,
-            runs_per_period = logic._data_scanner()._runs_per_period,
-            t_pre = logic._data_scanner()._t_pre,
-            t_pi = logic._data_scanner()._t_pi,
-            t_delay = logic._data_scanner()._t_delay,
-            t_readout = logic._data_scanner()._t_readout,
-            parent=self._mw,
-        )
-        
         self._fit_dockwidget = OdmrFitDockWidget(parent=self._mw, fit_container=logic.fit_container)
         self._fit_config_dialog = FitConfigurationDialog(parent=self._mw,
                                                          fit_config_model=logic.fit_config_model)
@@ -127,7 +115,6 @@ class OdmrGui(GuiBase):
         self.__connect_main_window_actions()
         self.__connect_fit_control_signals()
         self.__connect_cw_control_signals()
-        self.__connect_pulsed_control_signals()
         self.__connect_scan_control_signals()
         self.__connect_logic_signals()
         self.__connect_gui_signals()
@@ -145,7 +132,6 @@ class OdmrGui(GuiBase):
         self.__disconnect_main_window_actions()
         self.__disconnect_fit_control_signals()
         self.__disconnect_cw_control_signals()
-        self.__disconnect_pulsed_control_signals()
         self.__disconnect_scan_control_signals()
         self.__disconnect_logic_signals()
         self.__disconnect_gui_signals()
@@ -168,9 +154,6 @@ class OdmrGui(GuiBase):
         self._mw.action_show_cw_controls.triggered[bool].connect(
             self._cw_control_dockwidget.setVisible
         )
-        self._mw.action_show_pulsed_controls.triggered[bool].connect(
-            self._pulsed_control_dockwidget.setVisible
-        )
         self._mw.action_restore_default_view.triggered.connect(self.restore_default_view)
         self._mw.action_show_odmr_settings.triggered.connect(self._odmr_settings_dialog.exec_)
         # Let fit config be opened non-modal. So the user can switch back and forth between fit
@@ -182,29 +165,6 @@ class OdmrGui(GuiBase):
             self._odmr_logic().set_cw_parameters
         )
         self._cw_control_dockwidget.sigClosed.connect(
-            lambda: self._mw.action_show_cw_controls.setChecked(False)
-        )
-
-    def __connect_pulsed_control_signals(self):
-        self._pulsed_control_dockwidget.sigModeChanged.connect(
-            self._odmr_logic()._data_scanner().set_mode
-        )
-        self._pulsed_control_dockwidget.sigRunsPerPeriodChanged.connect(
-            self._odmr_logic()._data_scanner().set_runs_per_period
-        )
-        self._pulsed_control_dockwidget.sigTPreChanged.connect(
-            self._odmr_logic()._data_scanner().set_t_pre
-        )
-        self._pulsed_control_dockwidget.sigTPiChanged.connect(
-            self._odmr_logic()._data_scanner().set_t_pi
-        )
-        self._pulsed_control_dockwidget.sigTDelayChanged.connect(
-            self._odmr_logic()._data_scanner().set_t_delay
-        )
-        self._pulsed_control_dockwidget.sigTReadoutChanged.connect(
-            self._odmr_logic()._data_scanner().set_t_readout
-        )
-        self._pulsed_control_dockwidget.sigClosed.connect(
             lambda: self._mw.action_show_cw_controls.setChecked(False)
         )
 
@@ -273,15 +233,6 @@ class OdmrGui(GuiBase):
         self._cw_control_dockwidget.sigCwParametersChanged.disconnect()
         self._cw_control_dockwidget.sigClosed.disconnect()
 
-    def __disconnect_pulsed_control_signals(self):
-        self._pulsed_control_dockwidget.sigModeChanged.disconnect()
-        self._pulsed_control_dockwidget.sigRunsPerPeriodChanged.disconnect()
-        self._pulsed_control_dockwidget.sigTPreChanged.disconnect()
-        self._pulsed_control_dockwidget.sigTPiChanged.disconnect()
-        self._pulsed_control_dockwidget.sigTDelayChanged.disconnect()
-        self._pulsed_control_dockwidget.sigTReadoutChanged.disconnect()
-        self._pulsed_control_dockwidget.sigClosed.disconnect()
-
     def __disconnect_fit_control_signals(self):
         self._fit_dockwidget.fit_widget.sigDoFit.disconnect()
 
@@ -314,24 +265,13 @@ class OdmrGui(GuiBase):
         self._fit_dockwidget.setFloating(False)
         self._mw.action_show_cw_controls.setChecked(True)
         self._cw_control_dockwidget.setFloating(False)
-        self._pulsed_control_dockwidget.setFloating(False)
         self._cw_control_dockwidget.setVisible(self.__cw_control_available)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._scan_control_dockwidget)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._fit_dockwidget)
-        self._mw.splitDockWidget(
-            self._scan_control_dockwidget,
-            self._fit_dockwidget,
-            QtCore.Qt.Vertical
-        )
         self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._cw_control_dockwidget)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._pulsed_control_dockwidget)
-        self._mw.splitDockWidget(
-            self._cw_control_dockwidget,
-            self._pulsed_control_dockwidget,
-            QtCore.Qt.Vertical
-        )
-
-
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._scan_control_dockwidget)
+        self._mw.splitDockWidget(self._cw_control_dockwidget,
+                                 self._scan_control_dockwidget,
+                                 QtCore.Qt.Vertical)
+        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._fit_dockwidget)
 
     @QtCore.Slot(bool)
     def run_stop_odmr(self, is_checked):

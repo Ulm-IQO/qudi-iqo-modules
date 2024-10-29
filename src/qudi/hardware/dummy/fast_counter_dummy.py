@@ -57,6 +57,7 @@ class FastCounterDummy(FastCounterInterface):
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
+        print('FastCounterDummy activated')
         self.statusvar = 0
         self._binwidth = 1
         self._gate_length_bins = 8192
@@ -65,6 +66,7 @@ class FastCounterDummy(FastCounterInterface):
     def on_deactivate(self):
         """ Deinitialisation performed during deactivation of the module.
         """
+        print('FastCounterDummy deactivated')
         self.statusvar = -1
         return
 
@@ -101,12 +103,12 @@ class FastCounterDummy(FastCounterInterface):
 
         ALL THE PRESENT KEYS OF THE CONSTRAINTS DICT MUST BE ASSIGNED!
         """
-
+        print('FastCounterDummy get_constraints')
         constraints = dict()
 
         # the unit of those entries are seconds per bin. In order to get the
         # current binwidth in seonds use the get_binwidth method.
-        constraints['hardware_binwidth_list'] = [1/950e6, 2/950e6, 4/950e6, 8/950e6]
+        constraints['hardware_binwidth_list'] = [1/950e6, 2/950e6, 4/950e6]
 
         return constraints
 
@@ -125,11 +127,16 @@ class FastCounterDummy(FastCounterInterface):
                     gate_length_s: the actual set gate length in seconds
                     number_of_gates: the number of gated, which are accepted
         """
+        print('FastCounterDummy configure')
         self._binwidth = int(np.rint(bin_width_s * 1e9 * 950 / 1000))
         self._gate_length_bins = int(np.rint(record_length_s / bin_width_s))
         actual_binwidth = self._binwidth * 1000 / 950e9
         actual_length = self._gate_length_bins * actual_binwidth
         self.statusvar = 1
+        print('input_binwidth: ', bin_width_s)
+        print('input_recordlength_s: ', record_length_s)
+        print('actual_binwidth: ', actual_binwidth)
+        print('actual_recordlength_s: ', actual_length , actual_length/actual_binwidth)
         return actual_binwidth, actual_length, number_of_gates
 
 
@@ -146,6 +153,7 @@ class FastCounterDummy(FastCounterInterface):
         return self.statusvar
 
     def start_measure(self):
+        print('FastCounterDummy start_measure')
         time.sleep(1)
         self.statusvar = 2
         try:
@@ -162,13 +170,14 @@ class FastCounterDummy(FastCounterInterface):
 
         Fast counter must be initially in the run state to make it pause.
         """
+        print('FastCounterDummy pause_measure')
         time.sleep(1)
         self.statusvar = 3
         return 0
 
     def stop_measure(self):
         """ Stop the fast counter. """
-
+        print('FastCounterDummy stop_measure')
         time.sleep(1)
         self.statusvar = 1
         return 0
@@ -178,7 +187,7 @@ class FastCounterDummy(FastCounterInterface):
 
         If fast counter is in pause state, then fast counter will be continued.
         """
-
+        print('FastCounterDummy continue_measure')
         self.statusvar = 2
         return 0
 
@@ -217,10 +226,17 @@ class FastCounterDummy(FastCounterInterface):
 
         If the hardware does not support these features, the values should be None
         """
+        print('FastCounterDummy get_data_trace')
 
         # include an artificial waiting time
         time.sleep(0.5)
         info_dict = {'elapsed_sweeps': None, 'elapsed_time': None}
+        
+        # temp = np.array(self._count_data)
+        # np.set_printoptions(threshold=np.inf)
+        # # print(temp, len(self._count_data))
+       
+
         return self._count_data, info_dict
 
     def get_frequency(self):

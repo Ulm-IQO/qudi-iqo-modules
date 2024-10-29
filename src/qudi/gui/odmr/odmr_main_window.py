@@ -84,6 +84,11 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         self.action_show_cw_controls.setChecked(True)
         self.action_show_cw_controls.setToolTip('Show/Hide CW controls')
 
+        self.action_show_pulsed_controls = QtWidgets.QAction('Show Pulsed Controls')
+        self.action_show_pulsed_controls.setCheckable(True)
+        self.action_show_pulsed_controls.setChecked(True)
+        self.action_show_pulsed_controls.setToolTip('Show/Hide Pulsed controls')
+
         self.action_restore_default_view = QtWidgets.QAction('Restore Default')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
@@ -130,6 +135,7 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         menu.addAction(self.action_close)
         menu = menu_bar.addMenu('View')
         menu.addAction(self.action_show_cw_controls)
+        menu.addAction(self.action_show_pulsed_controls)
         menu.addSeparator()
         menu.addAction(self.action_restore_default_view)
         menu = menu_bar.addMenu('Settings')

@@ -578,6 +578,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
 
                 # Try to configure the task
                 try:
+                    print(f'/{self._device_name}/{src}')
                     task.co_channels.add_co_pulse_chan_freq(f'/{self._device_name}/{src}',
                                                             freq=self.__sample_rate,
                                                             idle_state=ni.constants.Level.LOW)
@@ -631,9 +632,11 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                 )
 
             if self._external_sample_clock_source:
+                print('External_sample_clock_source')
                 clock_channel = f'/{self._device_name}/{self._external_sample_clock_source}'
                 sample_freq = float(self._external_sample_clock_frequency)
             else:
+                print('InternalOutput')
                 clock_channel = f'/{self._clk_task_handle.channel_names[0]}InternalOutput'
                 sample_freq = float(self._clk_task_handle.co_channels.all.co_pulse_freq)
 
@@ -644,6 +647,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                 # Try to find available counter
                 for ctr in self.__all_counters:
                     ctr_name = f'/{self._device_name}/{ctr}'
+                    print(ctr_name, chnl_name)
                     try:
                         task = ni.Task(task_name)
                     except ni.DaqError as err:
@@ -652,6 +656,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                         ) from err
 
                     try:
+                        print('add_ci_period_chan')
                         task.ci_channels.add_ci_period_chan(
                             ctr_name,
                             min_val=0,
@@ -665,6 +670,7 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                         # This behaviour has been confirmed using pure C code.
                         # nidaqmx will call these getters and so the C function is called directly.
                         try:
+                            print('lib_importer.windll')
                             lib_importer.windll.DAQmxSetCIPeriodTerm(
                                 task._handle,
                                 ctypes.c_char_p(ctr_name.encode('ascii')),
@@ -682,7 +688,8 @@ class NIXSeriesInStreamer(DataInStreamInterface):
                                 task._handle,
                                 ctypes.c_char_p(ctr_name.encode('ascii')),
                                 ctypes.c_char_p(chnl_name.encode('ascii')))
-
+                        
+                        print('cfg_implicit_timing')
                         task.timing.cfg_implicit_timing(
                             sample_mode=ni.constants.AcquisitionType.CONTINUOUS,
                             samps_per_chan=self.__buffer_size

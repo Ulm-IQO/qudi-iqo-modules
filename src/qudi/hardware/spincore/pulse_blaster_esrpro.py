@@ -31,6 +31,8 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 
+import time
+
 
 class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     """ Hardware class to control the PulseBlasterESR-PRO card from SpinCore.
@@ -102,8 +104,8 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
     _library_path = ConfigOption('library_path', default='', missing='info')
 
     # The clock freqency which is necessary for the board.
-    _clock_freq = ConfigOption('clock_frequency', default=500e6, missing='warn')
-    # in clock cycles:
+    _clock_freq = ConfigOption('clock_frequency', default=500e6, missing='warn') 
+    # in clock cycles: 500e6
     _min_instr_len = ConfigOption('min_instr_len', default=6, missing='warn')
 
     _debug_mode = ConfigOption('debug_mode', default=False)
@@ -262,7 +264,8 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         # For waveform creation:
         self._currently_loaded_waveform = ''  # loaded and armed waveform name
 
-        self._current_activation_config = list(self.get_constraints().activation_config['4_ch'])
+        # self._current_activation_config = list(self.get_constraints().activation_config['4_ch'])
+        self._current_activation_config = list(self.get_constraints().activation_config['8_ch'])
         self._current_activation_config.sort()
 
     def on_deactivate(self):
@@ -541,6 +544,7 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         return self._lib.pb_core_clock(clock)
 
     def _write_pulse(self, flags, inst, inst_data, length):
+        
         """Instruction programming function for boards without a DDS.
 
         @param unsigned int flags: It is essentialy an integer number
@@ -704,20 +708,25 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                                           length=sequence_list[0]['length'],
                                           immediate_start=False)
 
+        t_start = time.time()
         self.start_programming()
+        pulse0 = sequence_list[0]
         start_pulse = self._convert_pulse_to_inst(
-                            sequence_list[0]['active_channels'],
-                            sequence_list[0]['length'])
+            pulse0['active_channels'], pulse0['length']
+        )
 
         # go through each pulse in the sequence and write it to the
         # PulseBlaster.
         for pulse in sequence_list[1:-1]:
-            num = self._convert_pulse_to_inst(pulse['active_channels'],
-                                              pulse['length'])
+            num = self._convert_pulse_to_inst(
+                pulse['active_channels'], pulse['length']
+            )
+            # print(num, pulse)
             if num > 4094:# =(2**12 -2)
                 self.log.error('Error in PulseCreation: Command {0} exceeds '
                                'the maximal number of commands'.format(num))
-
+                return -1
+        
         active_channels = sequence_list[-1]['active_channels']
         length = sequence_list[-1]['length']
 
@@ -746,14 +755,103 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                                     length=length)
 
         if num > 4094:  # =(2**12 -2)
+            # print(pulse)
             self.log.error('Error in PulseCreation: Command {0} exceeds '
                            'the maximal number of commands'.format(num))
 
         self.stop_programming()
 
+        t_end = time.time()
+        print('Time spent for compiling waveform:', t_end - t_start, flush=True)
+        
         return num
 
-    def _convert_pulse_to_inst(self, active_channels, length):
+
+    def write_pulse_loop(self, sequence_list, loop=True):
+        """ The higher level function, which creates the actual sequences.
+
+        @param list sequence_list: a list with dictionaries. The dictionaries
+                                   have the elements 'active_channels' and
+                                   'length. The 'active_channels' is
+                                   a numpy list, which contains the channel
+                                   number, which should be switched on. The
+                                   channel numbers start with 0. E.g.
+
+                                   [{'active_channels':[0], 'length': 10e-6},
+                                    {'active_channels':[], 'length': 20e-6}]
+                                    which will switch on
+
+        @param bool loop: optional, set if sequence should be looped (so that it
+                          runs continuously) or not, default it True.
+
+        @return int: The number of created pulses with the given sequence.
+
+        This method should called with the general sequence_list to program
+        the PulseBlaster.
+        """
+
+        # Catch the case where only one entry in the sequence is present:
+        if len(sequence_list) == 1:
+            return self.activate_channels(ch_list=sequence_list[0]['active_channels'],
+                                          length=sequence_list[0]['length'],
+                                          immediate_start=False)
+
+        t_start = time.time()
+        self.start_programming()
+        pulse0 = sequence_list[0]
+        start_pulse = self._convert_pulse_to_inst(
+            pulse0['active_channels'], pulse0['length'], inst=pulse0['inst'], inst_data=pulse0['inst_data']
+        )
+        print(start_pulse, pulse0)
+
+        # go through each pulse in the sequence and write it to the
+        # PulseBlaster.
+        for pulse in sequence_list[1:-1]:
+            num = self._convert_pulse_to_inst(
+                pulse['active_channels'], pulse['length'], inst=pulse['inst'], inst_data=pulse['inst_data']
+            )
+            print(num, pulse)
+            if num > 4094:# =(2**12 -2)
+                self.log.error('Error in PulseCreation: Command {0} exceeds '
+                               'the maximal number of commands'.format(num))
+                return -1
+        
+        active_channels = sequence_list[-1]['active_channels']
+        length = sequence_list[-1]['length']
+
+        # Take the last pulse and tell either the device to stop after this
+        # round and do no infinite looping or branching from out to
+        # connect the end with the beginning of the pulse.
+
+        bitmask = self._convert_to_bitmask(active_channels)
+
+        length = np.round(np.round(length / self.GRAN_MIN + 0.01) * self.GRAN_MIN, 12)
+        # with the branch or the stop command
+        if loop:
+            num = self._write_pulse(flags=self.ON | bitmask,
+                                    inst=self.BRANCH,
+                                    inst_data=start_pulse,
+                                    length=length)
+        else:
+            num = self._write_pulse(flags=self.ON | bitmask,
+                                    inst=self.STOP,
+                                    inst_data=None,
+                                    length=length)
+
+        if num > 4094:  # =(2**12 -2)
+            print(pulse)
+            self.log.error('Error in PulseCreation: Command {0} exceeds '
+                           'the maximal number of commands'.format(num))
+
+        self.stop_programming()
+
+        t_end = time.time()
+        print('Time spent for compiling waveform:', t_end - t_start, flush=True)
+        
+        return num
+
+
+    def _convert_pulse_to_inst(self, active_channels, length, inst=None, inst_data=None):
         """ Convert a pulse of one row to a instructions for the PulseBlaster.
 
         @param np.array active_channels: the list of active channels like
@@ -858,9 +956,10 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
                     i = i+1
                     length = remaining_time - i*self.GRAN_MIN
         else:
+            if not inst: inst = self.CONTINUE
             num = self._write_pulse(flags=self.ON | channel_bitmask,
-                                    inst=self.CONTINUE,
-                                    inst_data=None,
+                                    inst=inst,
+                                    inst_data=inst_data,
                                     length=length)
         return num
 
@@ -1312,12 +1411,14 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         # Minimum instruction time in clock cycles specified in the config,
         # translates for 6 clock cycles to 12ns at 500MHz.
         constraints.waveform_length.min = self._min_instr_len
-        constraints.waveform_length.max = 2**20-1
+        constraints.waveform_length.max = 2**30-1
         constraints.waveform_length.step = 1
         constraints.waveform_length.default = 128
 
         activation_config = dict()
         activation_config['4_ch'] = frozenset({'d_ch1', 'd_ch2', 'd_ch3', 'd_ch4'})
+        activation_config['8_ch'] = frozenset({'d_ch1', 'd_ch2', 'd_ch3', 'd_ch4',
+                                               'd_ch5', 'd_ch6', 'd_ch7', 'd_ch8',})
         activation_config['all'] = frozenset({'d_ch1', 'd_ch2', 'd_ch3', 'd_ch4',
                                               'd_ch5', 'd_ch6', 'd_ch7', 'd_ch8',
                                               'd_ch9', 'd_ch10', 'd_ch11', 'd_ch12',
@@ -1819,6 +1920,26 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
         return chunk_length, [self._current_pb_waveform_name]
 
+    def init_waveform(self, name):
+        self._current_pb_waveform = []
+        self._current_pb_waveform_name = name
+    
+    def write_block(self, block, reps):
+        chunk_length = 0
+        waveform = []
+        for rep in range(reps + 1):
+            for element in block.element_list:
+                active_channels = []
+                for ch, tf in element.digital_high.items():
+                    if tf: active_channels.append(int(ch.strip('d_ch')) - 1)
+                length = element.init_length_s + rep*element.increment_s
+                waveform.append(
+                    dict(active_channels=active_channels, length=length)
+                )
+                chunk_length += int(length//self.GRAN_MIN)
+        self._current_pb_waveform += waveform.copy()
+        return chunk_length
+
     def _convert_sample_to_pb_sequence(self, digital_samples):
         """ Helper method to create a pulse blaster sequence.
 
@@ -1852,6 +1973,8 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
         last_sequence_dict = None
         pb_sequence_list = list()
 
+        t_start = time.time()
+        print(num_entries, flush=True)
         for index in range(num_entries):
 
             # create at first a temporary array, with the minimal granularity
@@ -1896,10 +2019,9 @@ class PulseBlasterESRPRO(SwitchInterface, PulserInterface):
 
                     # and temporary array becomes last array for the next round
                     last_sequence_dict = temp_sequence_dict
-
+        
         # do not forget to add the last sequence
         pb_sequence_list.append(last_sequence_dict)
-
         return pb_sequence_list
 
     def write_sequence(self, name, sequence_parameters):

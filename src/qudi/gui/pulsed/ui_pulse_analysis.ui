@@ -13,6 +13,9 @@
   <property name="windowTitle">
    <string>Form</string>
   </property>
+  <property name="import_vars_array" stdset="0">
+   <bool>false</bool>
+  </property>
   <layout class="QVBoxLayout" name="verticalLayout_3" stretch="0,1,1,0">
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout_3">
@@ -171,16 +174,12 @@
        </property>
        <layout class="QGridLayout" name="gridLayout_28">
         <item row="0" column="0">
-         <layout class="QGridLayout" name="gridLayout_25">
-          <item row="0" column="2" rowspan="7">
-           <widget class="Line" name="line">
-            <property name="orientation">
-             <enum>Qt::Vertical</enum>
-            </property>
-           </widget>
-          </item>
+         <layout class="QGridLayout" name="gridLayout_25" rowstretch="0,0,0,0,0,0,0,0" columnstretch="0,0,0,0,0">
+          <property name="spacing">
+           <number>6</number>
+          </property>
           <item row="6" column="4">
-           <widget class="QCheckBox" name="ana_param_ignore_last_CheckBox">
+           <widget class="QCheckBox" name="ana_param_ignore_first_CheckBox">
             <property name="sizePolicy">
              <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
               <horstretch>0</horstretch>
@@ -195,13 +194,35 @@
             </property>
            </widget>
           </item>
-          <item row="0" column="3">
-           <widget class="QLabel" name="ana_param_record_length_Label">
+          <item row="3" column="3">
+           <widget class="QLabel" name="ana_param_x_axis_start_Label">
             <property name="text">
-             <string>Counter record length:</string>
+             <string>controlled variable start:</string>
             </property>
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="1">
+           <widget class="QCheckBox" name="ana_param_invoke_settings_CheckBox">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="layoutDirection">
+             <enum>Qt::LeftToRight</enum>
+            </property>
+            <property name="text">
+             <string/>
+            </property>
+            <property name="checked">
+             <bool>false</bool>
             </property>
            </widget>
           </item>
@@ -227,26 +248,23 @@
             </property>
            </widget>
           </item>
-          <item row="2" column="4">
-           <widget class="ScienDSpinBox" name="ana_param_x_axis_start_ScienDSpinBox">
-            <property name="enabled">
-             <bool>true</bool>
-            </property>
+          <item row="7" column="1">
+           <widget class="QCheckBox" name="ana_param_alternating_CheckBox">
             <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
               <horstretch>0</horstretch>
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
-            <property name="maximum">
-             <double>999999999.000000000000000</double>
+            <property name="layoutDirection">
+             <enum>Qt::LeftToRight</enum>
             </property>
-            <property name="value">
-             <double>1.000000000000000</double>
+            <property name="text">
+             <string/>
             </property>
            </widget>
           </item>
-          <item row="3" column="4">
+          <item row="4" column="4">
            <widget class="ScienDSpinBox" name="ana_param_x_axis_inc_ScienDSpinBox">
             <property name="enabled">
              <bool>true</bool>
@@ -265,80 +283,18 @@
             </property>
            </widget>
           </item>
-          <item row="4" column="4">
-           <widget class="QSpinBox" name="ana_param_num_laser_pulse_SpinBox">
-            <property name="sizePolicy">
-             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
-              <horstretch>0</horstretch>
-              <verstretch>0</verstretch>
-             </sizepolicy>
-            </property>
-            <property name="minimum">
-             <number>0</number>
-            </property>
-            <property name="maximum">
-             <number>10000000</number>
-            </property>
-            <property name="value">
-             <number>50</number>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="3">
-           <widget class="QLabel" name="ana_param_x_axis_start_Label">
+          <item row="0" column="3">
+           <widget class="QLabel" name="ana_param_record_length_Label">
             <property name="text">
-             <string>controlled variable start:</string>
+             <string>Counter record length:</string>
             </property>
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
            </widget>
           </item>
-          <item row="3" column="3">
-           <widget class="QLabel" name="ana_param_x_axis_inc_Label">
-            <property name="text">
-             <string>controlled variable incr:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="3">
-           <widget class="QLabel" name="ana_param_num_laserpulses_Label">
-            <property name="text">
-             <string>Num Laserpulses:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="0">
-           <widget class="QLabel" name="label_22">
-            <property name="text">
-             <string>Counter Binwidth (s):</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QComboBox" name="ana_param_fc_bins_ComboBox"/>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="label_2">
-            <property name="text">
-             <string>Invoke settings:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QCheckBox" name="ana_param_invoke_settings_CheckBox">
+          <item row="4" column="1">
+           <widget class="QCheckBox" name="ana_param_import_vars_CheckBox">
             <property name="enabled">
              <bool>true</bool>
             </property>
@@ -360,38 +316,87 @@
            </widget>
           </item>
           <item row="5" column="4">
-           <widget class="QCheckBox" name="ana_param_ignore_first_CheckBox">
+           <widget class="QSpinBox" name="ana_param_num_laser_pulse_SpinBox">
             <property name="sizePolicy">
-             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
               <horstretch>0</horstretch>
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
-            <property name="layoutDirection">
-             <enum>Qt::LeftToRight</enum>
+            <property name="minimum">
+             <number>0</number>
             </property>
-            <property name="text">
-             <string/>
+            <property name="maximum">
+             <number>10000000</number>
+            </property>
+            <property name="value">
+             <number>50</number>
             </property>
            </widget>
           </item>
-          <item row="1" column="4">
-           <widget class="QCheckBox" name="ana_param_alternating_CheckBox">
+          <item row="5" column="0">
+           <widget class="QLabel" name="show_errorbars_Label">
+            <property name="text">
+             <string>Error bars:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="0">
+           <widget class="QLabel" name="label_2">
+            <property name="text">
+             <string>Invoke settings:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="0">
+           <widget class="QLabel" name="ana_param_import_vars_Label">
+            <property name="text">
+             <string>Import variables</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+            <property name="import_vars_array" stdset="0">
+             <bool>false</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="3" column="4">
+           <widget class="ScienDSpinBox" name="ana_param_x_axis_start_ScienDSpinBox">
+            <property name="enabled">
+             <bool>true</bool>
+            </property>
             <property name="sizePolicy">
-             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+             <sizepolicy hsizetype="Expanding" vsizetype="Fixed">
               <horstretch>0</horstretch>
               <verstretch>0</verstretch>
              </sizepolicy>
             </property>
-            <property name="layoutDirection">
-             <enum>Qt::LeftToRight</enum>
+            <property name="maximum">
+             <double>999999999.000000000000000</double>
             </property>
-            <property name="text">
-             <string/>
+            <property name="value">
+             <double>1.000000000000000</double>
             </property>
            </widget>
           </item>
-          <item row="1" column="3">
+          <item row="6" column="0">
+           <widget class="QLabel" name="second_plot_Label">
+            <property name="text">
+             <string>Alternative plot:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="0">
            <widget class="QLabel" name="label_3">
             <property name="text">
              <string>Alternating:</string>
@@ -401,20 +406,33 @@
             </property>
            </widget>
           </item>
-          <item row="5" column="3">
-           <widget class="QLabel" name="label_4">
-            <property name="layoutDirection">
-             <enum>Qt::LeftToRight</enum>
-            </property>
+          <item row="0" column="0">
+           <widget class="QLabel" name="label_22">
             <property name="text">
-             <string>Ignore first:</string>
+             <string>Counter Binwidth (s):</string>
             </property>
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
            </widget>
           </item>
-          <item row="6" column="3">
+          <item row="7" column="4">
+           <widget class="QCheckBox" name="ana_param_ignore_last_CheckBox">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+              <horstretch>0</horstretch>
+              <verstretch>0</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="layoutDirection">
+             <enum>Qt::LeftToRight</enum>
+            </property>
+            <property name="text">
+             <string/>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="3">
            <widget class="QLabel" name="label_5">
             <property name="text">
              <string>Ignore last:</string>
@@ -423,6 +441,9 @@
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
             </property>
            </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QComboBox" name="ana_param_fc_bins_ComboBox"/>
           </item>
           <item row="6" column="1">
            <widget class="QComboBox" name="second_plot_ComboBox">
@@ -443,26 +464,6 @@
             </item>
            </widget>
           </item>
-          <item row="6" column="0">
-           <widget class="QLabel" name="second_plot_Label">
-            <property name="text">
-             <string>Alternative plot:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="show_errorbars_Label">
-            <property name="text">
-             <string>Error bars:</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-            </property>
-           </widget>
-          </item>
           <item row="5" column="1">
            <widget class="QCheckBox" name="ana_param_errorbars_CheckBox">
             <property name="sizePolicy">
@@ -473,6 +474,46 @@
             </property>
             <property name="text">
              <string/>
+            </property>
+           </widget>
+          </item>
+          <item row="4" column="3">
+           <widget class="QLabel" name="ana_param_x_axis_inc_Label">
+            <property name="text">
+             <string>controlled variable incr:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="5" column="3">
+           <widget class="QLabel" name="ana_param_num_laserpulses_Label">
+            <property name="text">
+             <string>Num Laserpulses:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="6" column="3">
+           <widget class="QLabel" name="label_4">
+            <property name="layoutDirection">
+             <enum>Qt::LeftToRight</enum>
+            </property>
+            <property name="text">
+             <string>Ignore first:</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="2" rowspan="8">
+           <widget class="Line" name="line">
+            <property name="orientation">
+             <enum>Qt::Vertical</enum>
             </property>
            </widget>
           </item>
@@ -694,11 +735,9 @@
   <tabstop>ext_control_mw_freq_DoubleSpinBox</tabstop>
   <tabstop>ext_control_mw_power_DoubleSpinBox</tabstop>
   <tabstop>ana_param_fc_bins_ComboBox</tabstop>
+  <tabstop>ana_param_import_vars_CheckBox</tabstop>
   <tabstop>ana_param_invoke_settings_CheckBox</tabstop>
-  <tabstop>ana_param_errorbars_CheckBox</tabstop>
-  <tabstop>second_plot_ComboBox</tabstop>
   <tabstop>ana_param_record_length_DoubleSpinBox</tabstop>
-  <tabstop>ana_param_alternating_CheckBox</tabstop>
   <tabstop>ana_param_x_axis_start_ScienDSpinBox</tabstop>
   <tabstop>ana_param_x_axis_inc_ScienDSpinBox</tabstop>
   <tabstop>ana_param_num_laser_pulse_SpinBox</tabstop>

@@ -296,6 +296,7 @@ class PulsedMeasurementGui(GuiBase):
         # Connect main window actions and toolbar
         self._mw.action_Predefined_Methods_Config.triggered.connect(
             self.show_predefined_methods_config)
+        self._mw.reset_sweep_counter_PushButton.clicked.connect(self.reset_counter_clicked)
         self._mw.pulser_on_off_PushButton.clicked.connect(self.pulser_on_off_clicked)
         self._mw.clear_device_PushButton.clicked.connect(self.clear_pulser_clicked)
         self._mw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
@@ -348,6 +349,7 @@ class PulsedMeasurementGui(GuiBase):
         self._pg.organizer_clear_PushButton.clicked.connect(self.organizer_clear_clicked)
         self._pg.curr_block_generate_PushButton.clicked.connect(self.editor_generate_block_clicked)
         self._pg.curr_block_del_PushButton.clicked.connect(self.editor_delete_block_clicked)
+        self._pg.update_blocks_from_file_PushButton.clicked.connect(self.update_blocks_from_file)
         self._pg.curr_block_del_all_PushButton.clicked.connect(self.editor_delete_all_blocks_clicked)
         self._pg.curr_block_load_PushButton.clicked.connect(self.editor_load_block_clicked)
         self._pg.curr_ensemble_generate_PushButton.clicked.connect(self.editor_generate_ensemble_clicked)
@@ -379,6 +381,8 @@ class PulsedMeasurementGui(GuiBase):
         self._pa.ext_control_mw_freq_DoubleSpinBox.editingFinished.connect(self.microwave_settings_changed)
         self._pa.ext_control_mw_power_DoubleSpinBox.editingFinished.connect(self.microwave_settings_changed)
 
+        self._pa.ana_param_import_vars_CheckBox.stateChanged.connect(self.measurement_settings_changed)
+        print('Connected')
         self._pa.ana_param_invoke_settings_CheckBox.stateChanged.connect(self.measurement_settings_changed)
         self._pa.ana_param_alternating_CheckBox.stateChanged.connect(self.measurement_settings_changed)
         self._pa.ana_param_ignore_first_CheckBox.stateChanged.connect(self.measurement_settings_changed)
@@ -436,7 +440,7 @@ class PulsedMeasurementGui(GuiBase):
         self.pulsedmasterlogic().sigPulserRunningUpdated.connect(self.pulser_running_updated)
         self.pulsedmasterlogic().sigExtMicrowaveRunningUpdated.connect(self.microwave_running_updated)
         self.pulsedmasterlogic().sigExtMicrowaveSettingsUpdated.connect(self.microwave_settings_updated)
-        self.pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(self.fast_counter_settings_updated)
+        self.pulsedmasterlogic().sigExtMicrowaveSettingsUpdated.connect(self.fast_counter_settings_updated)
         self.pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(self.measurement_settings_updated)
         self.pulsedmasterlogic().sigAnalysisSettingsUpdated.connect(self.analysis_settings_updated)
         self.pulsedmasterlogic().sigExtractionSettingsUpdated.connect(self.extraction_settings_updated)
@@ -543,6 +547,9 @@ class PulsedMeasurementGui(GuiBase):
         self._pa.ext_control_mw_freq_DoubleSpinBox.editingFinished.disconnect()
         self._pa.ext_control_mw_power_DoubleSpinBox.editingFinished.disconnect()
 
+        self._pa.ana_param_import_vars_CheckBox.stateChanged.disconnect()
+        print('Disconnected')
+
         self._pa.ana_param_invoke_settings_CheckBox.stateChanged.disconnect()
         self._pa.ana_param_alternating_CheckBox.stateChanged.disconnect()
         self._pa.ana_param_ignore_first_CheckBox.stateChanged.disconnect()
@@ -628,6 +635,11 @@ class PulsedMeasurementGui(GuiBase):
 
     def _setup_toolbar(self):
         # create all the needed control widgets on the fly
+        self._mw.reset_sweep_counter_PushButton = QtWidgets.QPushButton(self._mw)
+        self._mw.reset_sweep_counter_PushButton.setText('Reset counter')
+        self._mw.reset_sweep_counter_PushButton.setToolTip('Dump the current accumulated data and restart the data averaging process.\n')
+        self._mw.control_ToolBar.addWidget(self._mw.reset_sweep_counter_PushButton)
+
         self._mw.pulser_on_off_PushButton = QtWidgets.QPushButton()
         self._mw.pulser_on_off_PushButton.setText('Pulser ON')
         self._mw.pulser_on_off_PushButton.setToolTip('Switch the device on and off.')
@@ -706,6 +718,12 @@ class PulsedMeasurementGui(GuiBase):
         """ Delete all loaded files in the device's current memory. """
         self.pulsedmasterlogic().clear_pulse_generator()
         return
+    
+    @QtCore.Slot()
+    def reset_counter_clicked(self):
+        """ Delete all loaded files in the device's current memory. """
+        self.pulsedmasterlogic().pulsedmeasurementlogic()._fastcounter().reset_sweep_count()
+        return
 
     @QtCore.Slot(str, str)
     def loaded_asset_updated(self, asset_name, asset_type):
@@ -747,8 +765,8 @@ class PulsedMeasurementGui(GuiBase):
 
     @QtCore.Slot(bool, bool)
     def measurement_status_updated(self, is_running, is_paused):
+        print('measurement_status_updated')
         """
-
         @param is_running:
         @param is_paused:
         @return:
@@ -779,6 +797,7 @@ class PulsedMeasurementGui(GuiBase):
             self._pa.ana_param_fc_bins_ComboBox.setEnabled(False)
             self._pa.ana_param_ignore_first_CheckBox.setEnabled(False)
             self._pa.ana_param_ignore_last_CheckBox.setEnabled(False)
+            self._pa.ana_param_import_vars_CheckBox.setEnabled(False)
             self._pa.ana_param_alternating_CheckBox.setEnabled(False)
             self._pa.ana_param_invoke_settings_CheckBox.setEnabled(False)
             self._pg.load_ensemble_PushButton.setEnabled(False)
@@ -815,14 +834,25 @@ class PulsedMeasurementGui(GuiBase):
             self._mw.action_pull_data.setEnabled(False)
             self._mw.clear_device_PushButton.setEnabled(True)
             self._pa.ana_param_invoke_settings_CheckBox.setEnabled(True)
-            if not self._pa.ana_param_invoke_settings_CheckBox.isChecked():
+            self._pa.ana_param_import_vars_CheckBox.setEnabled(True)
+            #if not self._pa.ana_param_invoke_settings_CheckBox.isChecked():
+            if self._pa.ana_param_import_vars_CheckBox.isChecked():
+                self._pa.ana_param_alternating_CheckBox.setEnabled(False)
+                self._pa.ana_param_ignore_first_CheckBox.setEnabled(False)
+                self._pa.ana_param_ignore_last_CheckBox.setEnabled(False)
+                self._pa.ana_param_x_axis_start_ScienDSpinBox.setEnabled(False)
+                self._pa.ana_param_x_axis_inc_ScienDSpinBox.setEnabled(False)
+                self._pa.ana_param_num_laser_pulse_SpinBox.setEnabled(False)
+                self._pa.ana_param_record_length_DoubleSpinBox.setEnabled(False)
+            else:
+                self._pa.ana_param_alternating_CheckBox.setEnabled(True)
                 self._pa.ana_param_ignore_first_CheckBox.setEnabled(True)
                 self._pa.ana_param_ignore_last_CheckBox.setEnabled(True)
-                self._pa.ana_param_alternating_CheckBox.setEnabled(True)
                 self._pa.ana_param_x_axis_start_ScienDSpinBox.setEnabled(True)
                 self._pa.ana_param_x_axis_inc_ScienDSpinBox.setEnabled(True)
                 self._pa.ana_param_num_laser_pulse_SpinBox.setEnabled(True)
                 self._pa.ana_param_record_length_DoubleSpinBox.setEnabled(True)
+            
             if self._mw.action_run_stop.isChecked():
                 self._mw.action_run_stop.toggle()
         if is_paused:
@@ -1787,6 +1817,11 @@ class PulsedMeasurementGui(GuiBase):
         name = self._pg.saved_blocks_ComboBox.currentText()
         self.pulsedmasterlogic().delete_pulse_block(name)
         return
+    
+    @QtCore.Slot()
+    def update_blocks_from_file(self):
+        self.pulsedmasterlogic().sequencegeneratorlogic()._update_blocks_from_file()
+        pass
 
     @QtCore.Slot()
     def editor_delete_all_blocks_clicked(self):
@@ -2654,6 +2689,7 @@ class PulsedMeasurementGui(GuiBase):
 
     @QtCore.Slot()
     def measurement_settings_changed(self):
+        print('measurement_settings_changed')
         """
 
         @return:
@@ -2678,7 +2714,13 @@ class PulsedMeasurementGui(GuiBase):
         if settings_dict['alternating'] and num_of_ticks > 1:
             num_of_ticks //= 2
         controlled_variable = np.arange(num_of_ticks, dtype=float)
-        settings_dict['controlled_variable'] = controlled_variable * vals_incr + vals_start
+
+        if self._pa.ana_param_import_vars_CheckBox.isChecked():
+            print('True')
+            with open('C:\\Users\\yy3\\saved_pulsed_assets\\vars_array.npy', 'rb') as f:
+                settings_dict['controlled_variable'] = np.load(f)
+        else:
+            settings_dict['controlled_variable'] = controlled_variable * vals_incr + vals_start
 
         self.pulsedmasterlogic().set_measurement_settings(settings_dict)
         return
@@ -2692,6 +2734,7 @@ class PulsedMeasurementGui(GuiBase):
         # block signals
         self._pa.ana_param_ignore_first_CheckBox.blockSignals(True)
         self._pa.ana_param_ignore_last_CheckBox.blockSignals(True)
+        #self._pa.ana_param_import_vars_CheckBox.blockSignals(True)
         self._pa.ana_param_alternating_CheckBox.blockSignals(True)
         self._pa.ana_param_num_laser_pulse_SpinBox.blockSignals(True)
         self._pa.ana_param_x_axis_start_ScienDSpinBox.blockSignals(True)
@@ -2737,7 +2780,9 @@ class PulsedMeasurementGui(GuiBase):
                         0])
         if 'invoke_settings' in settings_dict:
             self._pa.ana_param_invoke_settings_CheckBox.setChecked(settings_dict['invoke_settings'])
-            self.toggle_measurement_settings_editor(settings_dict['invoke_settings'])
+            flag = settings_dict['invoke_settings'] or self._pa.ana_param_import_vars_CheckBox.isChecked()
+            self.toggle_measurement_settings_editor(flag)
+        
         if 'units' in settings_dict and 'labels' in settings_dict:
             self._as.ana_param_x_axis_name_LineEdit.setText(settings_dict['labels'][0])
             self._as.ana_param_x_axis_unit_LineEdit.setText(settings_dict['units'][0])
@@ -2763,6 +2808,7 @@ class PulsedMeasurementGui(GuiBase):
         self._as.ana_param_y_axis_unit_LineEdit.blockSignals(False)
         self._pa.ana_param_ignore_first_CheckBox.blockSignals(False)
         self._pa.ana_param_ignore_last_CheckBox.blockSignals(False)
+        #self._pa.ana_param_import_vars_CheckBox.blockSignals(True)
         self._pa.ana_param_alternating_CheckBox.blockSignals(False)
         self._pa.ana_param_num_laser_pulse_SpinBox.blockSignals(False)
         self._pa.ana_param_x_axis_start_ScienDSpinBox.blockSignals(False)
