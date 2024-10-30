@@ -75,13 +75,13 @@ class FourierAnalyzerSettings(AnalyzerSettings):
     padding_parameter: int = 1
     cut_time_trace: bool = False
     spectrum_type: str = "amp"
-    sequence_length_s: float = 1
+    _sequence_length: float = 1
 
 
 class FourierAnalyzer(Analyzer):
     def analyze(self, data, stg: FourierAnalyzerSettings):
         time_trace = data.time_trace - np.mean(data.time_trace)
-        ft_signal = self.do_fft(time_trace, stg.cut_time_trace, stg.padding_parameter, stg.sequence_length_s)
+        ft_signal = self.do_fft(time_trace, stg.cut_time_trace, stg.padding_parameter, stg._sequence_length)
         return ft_signal
 
     def get_freq_domain_signal(self, data, stg: FourierAnalyzerSettings):
@@ -94,7 +94,7 @@ class FourierAnalyzer(Analyzer):
             print("{}_is not defined".format(stg.spectrum_type))
         return spectrum
 
-    def do_fft(self, time_trace, cut_time_trace=False, padding_param=0, sequence_length=1):
+    def do_fft(self, time_trace, cut_time_trace=False, padding_param=0, sequence_length_bins=1):
         """
         @return ft: complex ndarray
         """
@@ -104,7 +104,7 @@ class FourierAnalyzer(Analyzer):
         )
         n_point = self._get_fft_n_point(padding_param, n_fft)
         ft = np.fft.fft(input_time_trace, n_point)
-        freq = np.fft.fftfreq(n_point, sequence_length)
+        freq = np.fft.fftfreq(n_point, sequence_length_bins)
         signal = [
             freq[: n_fft // 2],
             ft[: n_fft // 2],
@@ -149,8 +149,8 @@ class FourierAnalyzer(Analyzer):
         norm_psd = psd / (len(psd)) ** 2
         return [freq, norm_psd]
 
-    def get_half_frequency_array(self, sequence_length_s, ft):
-        return 1 / (sequence_length_s * len(ft)) * np.arange(len(ft) / 2)
+    def get_half_frequency_array(self, _sequence_length, ft):
+        return 1 / (_sequence_length * len(ft)) * np.arange(len(ft) / 2)
 
 
 def get_subclasses(class_obj):

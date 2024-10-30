@@ -111,6 +111,9 @@ class GenerationWidget(QtWidgets.QWidget):
         self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
             self.counter_settings_updated
         )
+        self.ana_param_sequence_length_DoubleSpinBox.editingFinished.connect(
+            self.measurement_settings_changed
+        )
         self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
             self.measurement_settings_updated
         )
@@ -149,6 +152,9 @@ class GenerationWidget(QtWidgets.QWidget):
 
         self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect(
             self.counter_settings_updated
+        )
+        self.ana_param_sequence_length_DoubleSpinBox.editingFinished.disconnect(
+            self.measurement_settings_changed
         )
         self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect(
             self.measurement_settings_updated
@@ -564,7 +570,6 @@ class GenerationWidget(QtWidgets.QWidget):
         @param dict settings_dict:
         """
 
-        print(settings_dict)
         # block signals
         self.ana_param_record_length_DoubleSpinBox.blockSignals(True)
         self.binwidth_spinbox.blockSignals(True)
@@ -608,6 +613,7 @@ class GenerationWidget(QtWidgets.QWidget):
         settings_dict["invoke_settings"] = (
             self.ana_param_invoke_settings_CheckBox.isChecked()
         )
+        settings_dict['_sequence_length'] = self.ana_param_sequence_length_DoubleSpinBox.value()
 
         self._gui.logic().measurement_generator.set_measurement_settings(settings_dict)
         return
@@ -619,9 +625,14 @@ class GenerationWidget(QtWidgets.QWidget):
         @param dict settings_dict:
         """
         # block signals
+        self.ana_param_sequence_length_DoubleSpinBox.blockSignals(True)
         self.ana_param_invoke_settings_CheckBox.blockSignals(True)
 
         # set widgets
+        if "_sequence_length" in settings_dict:
+            self.ana_param_sequence_length_DoubleSpinBox.setValue(
+                settings_dict["_sequence_length"]
+            )
         if "invoke_settings" in settings_dict:
             self.ana_param_invoke_settings_CheckBox.setChecked(
                 settings_dict["invoke_settings"]
@@ -629,6 +640,7 @@ class GenerationWidget(QtWidgets.QWidget):
             self.toggle_measurement_settings_editor(settings_dict["invoke_settings"])
 
         # unblock signals
+        self.ana_param_sequence_length_DoubleSpinBox.blockSignals(False)
         self.ana_param_invoke_settings_CheckBox.blockSignals(False)
 
     def toggle_measurement_settings_editor(self, hide_editor):
@@ -637,6 +649,8 @@ class GenerationWidget(QtWidgets.QWidget):
         """
         if hide_editor:
             self.ana_param_record_length_DoubleSpinBox.setEnabled(False)
+            self.ana_param_sequence_length_DoubleSpinBox.setEnabled(False)
         else:
             self.ana_param_record_length_DoubleSpinBox.setEnabled(True)
+            self.ana_param_sequence_length_DoubleSpinBox.setEnabled(True)
         return

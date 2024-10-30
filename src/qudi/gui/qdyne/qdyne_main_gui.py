@@ -116,6 +116,7 @@ class QdyneMainGui(GuiBase):
         self._gw.ana_param_invoke_settings_CheckBox.setEnabled(not isChecked)
         if not self._gw.ana_param_invoke_settings_CheckBox.isChecked():
             self._gw.ana_param_record_length_DoubleSpinBox.setEnabled(not isChecked)
+            self._gw.ana_param_sequence_length_DoubleSpinBox.setEnabled(not isChecked)
 
         self.logic().toggle_qdyne_measurement(isChecked)
         return

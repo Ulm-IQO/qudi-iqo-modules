@@ -64,6 +64,8 @@ class MeasurementGenerator:
         self.__gate_mode = self._data_streamer().gate_mode
         self.__data_type = self._data_streamer().data_type
 
+        self.__sequence_length = 0.0
+
     def generate_predefined_sequence(self, method_name, param_dict, sample_and_load):
         self._pulsedmasterlogic().generate_predefined_sequence(
             method_name, param_dict, sample_and_load
@@ -133,6 +135,11 @@ class MeasurementGenerator:
 
     def set_measurement_settings(self, settings_dict):
         self._pulsedmasterlogic().set_measurement_settings(settings_dict)
+        self._qdyne_logic.log.debug(settings_dict)
+        self._qdyne_logic.settings.estimator_stg.configure_settings(settings_dict)
+        self._qdyne_logic.settings.analyzer_stg.configure_settings(settings_dict)
+        if "_sequence_length" in settings_dict:
+            self.__sequence_length = float(settings_dict["_sequence_length"])
 
     def check_counter_record_length_constraint(self, record_length: float):
         record_length_constraint = self._data_streamer().constraints.record_length
@@ -188,7 +195,9 @@ class MeasurementGenerator:
 
     @property
     def measurement_settings(self):
-        return self._pulsedmasterlogic().measurement_settings
+        settings_dict = self._pulsedmasterlogic().measurement_settings
+        settings_dict['_sequence_length'] = self.__sequence_length
+        return settings_dict
 
     @property
     def counter_settings(self):

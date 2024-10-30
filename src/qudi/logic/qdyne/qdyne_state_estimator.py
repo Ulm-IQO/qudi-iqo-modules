@@ -103,11 +103,11 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     count_mode: str = 'Average'
     sig_start: float = 0
     sig_end: float = 0
-    time_bin: float = 1e-9
     count_threshold: int = (
         10  # Todo: this has to be either estimated or set somewhere from the logic
     )
     weight: list = field(default_factory=list)
+    _sequence_length: float = 1e-9
 
     def get_histogram(self, time_tag_data):
         count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
@@ -121,11 +121,11 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
 
     @property
     def sig_start_int(self):
-        return int(self.sig_start / self.time_bin)
+        return int(self.sig_start / self._sequence_length)
 
     @property
     def sig_end_int(self):
-        return int(self.sig_end / self.time_bin)
+        return int(self.sig_end / self._sequence_length)
 
 
 class TimeTagStateEstimator(StateEstimator):
@@ -190,7 +190,7 @@ class TimeTagStateEstimator(StateEstimator):
         count_hist, bin_edges = np.histogram(
             time_tag_data, bins=max_bins, range=(1, max_bins)
         )
-        time_array = settings.time_bin * np.arange(len(count_hist))
+        time_array = settings._sequence_length * np.arange(len(count_hist))
         pulse_array = [time_array, count_hist]
         return pulse_array
 

@@ -95,6 +95,24 @@ class SettingsManager:
         else:
             self.settings_dict = self.create_default_settings_dict()
 
+    def configure_settings(self, config_dict, method=None, setting_name=None):
+        if method is None:
+            method = self.current_method
+        elif method not in self.settings_dict:
+            # Todo: give error message and return
+            give_an_error
+            return
+        if setting_name is None:
+            setting_name = self.current_stg_name
+        elif setting_name not in self.settings_dict[method]:
+            # Todo: give error message and return
+            give_an_error
+            return
+
+        for key, value in config_dict.items():
+            if hasattr(self.settings_dict[method][setting_name], key):
+                setattr(self.settings_dict[method][setting_name], key, value)
+
     def save_settings(self):
         try:
             for setting_class in self.settings_dict.keys():
