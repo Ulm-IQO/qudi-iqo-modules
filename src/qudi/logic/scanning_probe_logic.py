@@ -266,6 +266,18 @@ class ScanningProbeLogic(LogicBase):
         self.set_scan_resolution(axis, setting.resolution[0])
         self.set_scan_frequency(axis, setting.frequency)
 
+    def set_back_scan_settings(self, setting: ScanSettings) -> None:
+        """
+        Set back scan settings for an axis all at once through object.
+        """
+
+        if len(setting.axes) != 1:
+            raise ValueError(f"Can only configure single axes, not {setting.axes}")
+
+        axis = setting.axes[0]
+
+        self.set_back_scan_resolution(axis, setting.resolution[0])
+        self.set_back_scan_frequency(axis, setting.frequency)
 
     def check_scan_settings(self):
         """Validate current scan settings for all possible 1D and 2D scans."""
