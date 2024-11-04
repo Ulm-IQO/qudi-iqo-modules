@@ -79,6 +79,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._last_scans = list()
         self._last_fits = list()
         self._avail_axes = tuple()
+        self._stashed_settings = None
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -337,7 +338,7 @@ class ScanningOptimizeLogic(LogicBase):
             finally:
 
                 for setting, back_setting in self._stashed_settings:
-                    self.log.debug(f"Recovering settings: {setting}")
+                    # self.log.debug(f"Recovering scan settings: {setting}")
                     self._scan_logic().set_scan_settings(setting)
                     self._scan_logic().set_back_scan_settings(back_setting)
 
