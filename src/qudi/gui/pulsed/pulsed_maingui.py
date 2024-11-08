@@ -621,10 +621,11 @@ class PulsedMeasurementGui(GuiBase):
     def _activate_main_window_ui(self):
         self._setup_toolbar()
         self.loaded_asset_updated(*self.pulsedmasterlogic().loaded_asset)
+        self._restore_window_geometry(self._mw)
         return
 
     def _deactivate_main_window_ui(self):
-        pass
+        self._save_window_geometry(self._mw)
 
     def _setup_toolbar(self):
         # create all the needed control widgets on the fly
