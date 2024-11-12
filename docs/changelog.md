@@ -36,6 +36,7 @@ Configuration for time series toolchain needs changes as well. See `default.cfg`
 docstrings.
 
 ### Bugfixes
+- Fix thread errors on reactivation of laser `LaserGui`
 - Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Basic data saving in `TimeSeriesReaderLogic` works now.
 - Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
