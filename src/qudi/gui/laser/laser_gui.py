@@ -313,7 +313,6 @@ class LaserGui(GuiBase):
         self.sigControlModeChanged.disconnect()
 
 
-
     def show(self):
         """Make window visible and put it above all other windows.
         """
