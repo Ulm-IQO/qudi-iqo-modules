@@ -46,7 +46,8 @@ class QdyneMeasurement(QtCore.QObject):
     # analysis timer signals
     sigStartTimer = QtCore.Signal()
     sigStopTimer = QtCore.Signal()
-
+    sigMeasurementStarted = QtCore.Signal()
+    sigMeasurementStopped = QtCore.Signal()
     # notification signals for master module (i.e. GUI)
     sigPulseDataUpdated = QtCore.Signal()
     sigTimeTraceDataUpdated = QtCore.Signal()
@@ -117,12 +118,14 @@ class QdyneMeasurement(QtCore.QObject):
         self.qdyne_logic.measurement_generator.set_counter_settings(None)
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
+        self.sigMeasurementStarted.emit()
         self.sigStartTimer.emit()
 
     def stop_qdyne_measurement(self):
         logger.debug("Stopping QDyne measurement")
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_off()
         self.qdyne_logic._data_streamer().stop_measure()
+        self.sigMeasurementStopped.emit()
         self.sigStopTimer.emit()
         return
 

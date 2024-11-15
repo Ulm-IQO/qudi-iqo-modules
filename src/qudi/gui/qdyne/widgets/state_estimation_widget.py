@@ -331,6 +331,9 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.update_pushButton.clicked.connect(self.update_pulse)
         # Connect update signals from qdyne_measurement_logic
         self.logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
+        # Connect to measurement state changes
+        self.logic.measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
+        self.logic.measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
 
     #        self.settings.current_stg_changed_sig.connect(self.update_lines)
     def disconnect_signals(self):
@@ -392,7 +395,16 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         pulse = self.logic.data.pulse_data
         self.pulse_image.setData(x=pulse[0], y=pulse[1])
 
+    def set_lines_movable(self, movable):
+        """
+        Enable or disable the ability to move the lines.
 
+        :param bool movable: If True, lines can be moved. If False, they are locked in place.
+        """
+        self.sig_start_line.setMovable(movable)
+        self.sig_end_line.setMovable(movable)
+        self.ref_start_line.setMovable(movable)
+        self.ref_end_line.setMovable(movable)
 class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
     _log = get_logger(__name__)
 
