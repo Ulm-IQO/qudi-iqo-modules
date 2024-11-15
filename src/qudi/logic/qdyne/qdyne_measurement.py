@@ -21,6 +21,7 @@ from PySide2 import QtCore
 from logging import getLogger
 import numpy as np
 
+from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 
 logger = getLogger(__name__)
@@ -43,6 +44,7 @@ class QdyneMeasurement(QtCore.QObject):
 
     # analysis timer interval
     __timer_interval = 5
+    sigTimerIntervalUpdated = QtCore.Signal(float)
     # analysis timer signals
     sigStartTimer = QtCore.Signal()
     sigStopTimer = QtCore.Signal()
@@ -205,19 +207,19 @@ class QdyneMeasurement(QtCore.QObject):
         """
         return self.__timer_interval
 
-    @QtCore.Slot(float)
     @analysis_timer_interval.setter
     def analysis_timer_interval(self, interval: float):
         """
         Property to return the currently set analysis timer interval in seconds.
         """
-        self.__timer_interval = interval
+        logger.debug(f"{interval=}")
+        self.__timer_interval = float(interval)
         if self.__timer_interval > 0:
+            self.__analysis_timer.blockSignals(False)
             self.__analysis_timer.setInterval(int(1000.0 * self.__timer_interval))
-            self.sigStartTimer.emit()
         else:
+            logger.info(f"Analysis interval <= 0. Analysis timer disabled.")
             self.sigStopTimer.emit()
+            self.__analysis_timer.blockSignals(True)
 
-        self.sigTimerUpdated.emit(
-            self.__elapsed_time, self.__elapsed_sweeps, self.__timer_interval
-        )
+        self.sigTimerIntervalUpdated.emit(self.__timer_interval)

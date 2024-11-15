@@ -32,10 +32,13 @@ from qudi.util.colordefs import QudiPalettePale as palette
 
 from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
 from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 class StateEstimationTab(QtWidgets.QWidget):
     def __init__(self, logic):
         super().__init__()
+        self._log = get_logger(__name__)
+        self._logic = logic
         self._instantiate_widgets(logic)
         self._form_layout()
 
@@ -45,9 +48,16 @@ class StateEstimationTab(QtWidgets.QWidget):
                                                  logic().estimator.method_list)
         self._pw = StateEstimationPulseWidget(logic)
         self._ttw = StateEstimationTimeTraceWidget(logic)
+        self._analysis_interval_spinbox = ScienDSpinBox()
+        self._analysis_interval_spinbox.setSuffix("s")
+        self._analysis_interval_spinbox.setMinimum(0)
+        self._analysis_interval_spinbox.setValue(self._logic().measure.analysis_timer_interval)
+        self._analysis_interval_label = QtWidgets.QLabel("Analysis interval")
         self._sew_layout.addWidget(self._sw)
         self._sew_layout.addWidget(self._pw)
         self._sew_layout.addWidget(self._ttw)
+        self._sew_layout.addWidget(self._analysis_interval_label)
+        self._sew_layout.addWidget(self._analysis_interval_spinbox)
 
     def _form_layout(self):
         self._sw.setSizePolicy(
@@ -68,6 +78,8 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sw.connect_signals()
         self._pw.connect_signals()
         self._ttw.connect_signals()
+        self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
+        self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
         self.connect_mutual_signals()
         self._pw.update_lines()
 
@@ -119,6 +131,8 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sw.disconnect_signals()
         self._pw.disconnect_signals()
         self._ttw.disconnect_signals()
+        self._analysis_interval_spinbox.editingFinished.disconnect(self.analysis_timer_interval)
+        self._logic().measure.sigTimerIntervalUpdated.disconnect(self._analysis_interval_spinbox.setValue)
 
     def activate_ui(self):
         self._sw.activate()
@@ -129,6 +143,10 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sw.deactivate()
         self._pw.deactivate()
         self._ttw.deactivate()
+
+    def analysis_timer_interval(self):
+        self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
+
 
 class StateEstimationSettingsWidget(SettingsWidget):
     def __init__(self, settings, method_list):
