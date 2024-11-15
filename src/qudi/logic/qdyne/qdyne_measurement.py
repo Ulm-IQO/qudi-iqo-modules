@@ -73,6 +73,8 @@ class QdyneMeasurement(QtCore.QObject):
         self.__elapsed_time = 0
         self.__elapsed_sweeps = 0
 
+        self._measurement_running = False
+
         # set up the analysis timer
         self.__analysis_timer = QtCore.QTimer()
         self.__analysis_timer.setSingleShot(True)
@@ -121,6 +123,7 @@ class QdyneMeasurement(QtCore.QObject):
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         self.sigMeasurementStarted.emit()
+        self._measurement_running = True
         self.sigStartTimer.emit()
 
     def stop_qdyne_measurement(self):
@@ -128,6 +131,7 @@ class QdyneMeasurement(QtCore.QObject):
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_off()
         self.qdyne_logic._data_streamer().stop_measure()
         self.sigMeasurementStopped.emit()
+        self._measurement_running = False
         self.sigStopTimer.emit()
         return
 
@@ -149,7 +153,8 @@ class QdyneMeasurement(QtCore.QObject):
             except Exception as e:
                 logger.exception(e)
             logger.debug("Exiting Analysis loop")
-            self.sigStartTimer.emit()
+            if self._measurement_running:
+                self.sigStartTimer.emit()
 
     def get_raw_data(self):
         try:
@@ -216,7 +221,10 @@ class QdyneMeasurement(QtCore.QObject):
         self.__timer_interval = float(interval)
         if self.__timer_interval > 0:
             self.__analysis_timer.blockSignals(False)
+
             self.__analysis_timer.setInterval(int(1000.0 * self.__timer_interval))
+            if self._measurement_running:
+                self.sigStartTimer.emit()
         else:
             logger.info(f"Analysis interval <= 0. Analysis timer disabled.")
             self.sigStopTimer.emit()
