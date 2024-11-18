@@ -153,14 +153,19 @@ class ImageGenerator:
 
     def _scan_vectors_2_array(self, axes_dict: Dict[str, np.ndarray]) -> np.ndarray:
         """
-        Create the coordinates for which the gaussian should be calculated from the axes_dict.
+        Generate coordinates for calculating a Gaussian distribution over specified axes.
 
-        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated.
-                          keys: axis name, values: values for this axis.
+        Parameters
+        ----------
+        axes_dict : dict of {str: ndarray}
+            A dictionary where each key represents an axis name, and the corresponding value is a 1D array
+            of values along that axis for which the Gaussian should be evaluated.
 
-        :return: A numpy array of coordinates to evaluate the Gaussian at,
-                 each row holding the coordinates of one scan point.
-                 Columns are in alphabetic order of the axis keys.
+        Returns
+        -------
+        ndarray
+            A 2D NumPy array of coordinates to evaluate the Gaussian at. Each row contains the coordinates
+            for a single scan point, with columns arranged in alphabetical order based on the axis names.
         """
 
         sorted_axes = [
@@ -196,15 +201,20 @@ class ImageGenerator:
     @staticmethod
     def _calc_plane_normal_vector(vectors):
         """
-        Calculate the normal vector in n-dimensional space of a plane defined by a list of m vectors.
+        Calculate the normal vector in n-dimensional space of a plane defined by a set of vectors.
 
-        Parameters:
-        vectors: rows: m vectors, colums: n dimensions
+        Parameters
+        ----------
+        vectors : ndarray
+            A 2D array where each row represents one of the m vectors that define the plane,
+            and each column corresponds to one of the n dimensions of the space.
 
-        Returns:
-        float: Norm vector of plane
+        Returns
+        -------
+        ndarray
+            The normal vector of the plane, represented as a 1D array of length n.
         """
-        # todo: move to qudi-core.math
+        # TODO: move to qudi-core.math
         vectors = vectors - np.mean(vectors, axis=0)
 
         # Find the orthogonal complement of the space spanned by the vectors
@@ -254,14 +264,23 @@ class ImageGenerator:
     @staticmethod
     def _sum_m_gaussian_n_dim(grid_points, mus, sigmas, amplitudes=None) -> np.ndarray:
         """
-        Calculate the Gaussian values for each point in an n-dimensional grid with a customizable amplitude.
+        Calculate the Gaussian values for each point in an n-dimensional grid with customizable amplitudes.
 
-        :param grid_points: 1D numpy array representing the coordinates at which the gaussian should be evaluated.
-        :param mus: 1D numpy array representing the mean vectors of the gaussians.
-        :param sigmas: 1D numpy array representing the variances for each gaussian and axis.
-        :param amplitudes: Scalar value representing the amplitude of the Gaussian (default is 1.0).
+        Parameters
+        ----------
+        grid_points : ndarray
+            A 1D NumPy array representing the coordinates at which the Gaussian should be evaluated.
+        mus : ndarray
+            A 1D NumPy array representing the mean values of the Gaussians for each dimension.
+        sigmas : ndarray
+            A 1D NumPy array representing the variances of each Gaussian along each axis.
+        amplitudes : float, optional
+            A scalar value representing the amplitude of the Gaussian, default is 1.0.
 
-        :return: A numpy array of Gaussian values evaluated at each point in grid_points.
+        Returns
+        -------
+        ndarray
+            A NumPy array of Gaussian values evaluated at each point in `grid_points`.
         """
         if amplitudes is None:
             amplitudes = np.ones(mus.shape[0])
@@ -286,12 +305,19 @@ class ImageGenerator:
     @staticmethod
     def _create_coordinates(axes_dict: Dict[int, np.ndarray]) -> np.ndarray:
         """
-        Create the coordinates for which the gaussian should be calculated from the axes_dict.
+        Generate coordinates for calculating a Gaussian distribution from the specified axes.
 
-        :param axes_dict: A dict of 1D arrays for which the gaussian should be calculated.
-        keys: axis index, values: values for this axis.
+        Parameters
+        ----------
+        axes_dict : dict of {int: ndarray}
+            A dictionary where each key is an axis index, and each value is a 1D array of values along that axis
+            for which the Gaussian should be evaluated.
 
-        :return: A numpy array of coordinates to evaluate the Gaussian at, each row holding the coordinates of one scan point.
+        Returns
+        -------
+        ndarray
+            A 2D NumPy array of coordinates to evaluate the Gaussian at. Each row contains the coordinates
+            of a single scan point.
         """
         axes_coords = [axes_dict[coords] for coords in sorted(axes_dict.keys())]
         return np.column_stack(axes_coords)
@@ -493,10 +519,20 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         return self._constraints
 
     def configure_scan(self, settings: ScanSettings) -> None:
-        """Configure the hardware with all parameters needed for a 1D or 2D scan.
-        Raise an exception if the settings are invalid and do not comply with the hardware constraints.
+        """
+        Configure the hardware with all parameters required for a 1D or 2D scan.
 
-        @param ScanSettings settings: ScanSettings instance holding all parameters
+        Raises an exception if the provided settings are invalid or do not comply with hardware constraints.
+
+        Parameters
+        ----------
+        settings : ScanSettings
+            An instance of `ScanSettings` containing all necessary scan parameters.
+
+        Raises
+        ------
+        ValueError
+            If the settings are invalid or incompatible with hardware constraints.
         """
         with self._thread_lock:
             self.log.debug('Scanning probe dummy "configure_scan" called.')
@@ -582,17 +618,25 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             return self._current_position
 
     def get_target(self):
-        """Get the current target position of the scanner hardware.
+        """
+        Retrieve the current target position of the scanner hardware.
 
-        @return dict: current target position per axis.
+        Returns
+        -------
+        dict
+            A dictionary representing the current target position for each axis.
         """
         with self._thread_lock:
             return self._current_position.copy()
 
     def get_position(self):
-        """Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
+        """
+        Retrieve a snapshot of the actual scanner position from position feedback sensors.
 
-        @return dict: current target position per axis.
+        Returns
+        -------
+        dict
+            A dictionary representing the current actual position for each axis.
         """
         with self._thread_lock:
             self.log.debug('Scanning probe dummy "get_position" called.')
