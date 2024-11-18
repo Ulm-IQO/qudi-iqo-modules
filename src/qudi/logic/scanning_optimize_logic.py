@@ -318,9 +318,6 @@ class ScanningOptimizeLogic(LogicBase):
                 return
             self._scan_logic().toggle_scan(True, self._scan_sequence[self._sequence_index], self.module_uuid)
 
-    def _scan_state_changed(
-        self, is_running: bool, data: Optional[ScanData], back_scan_data: Optional[ScanData], caller_id: UUID
-    ):
     def _scan_state_changed(self, is_running: bool,
                             data: Optional[ScanData], back_scan_data: Optional[ScanData],
                             caller_id: UUID):
