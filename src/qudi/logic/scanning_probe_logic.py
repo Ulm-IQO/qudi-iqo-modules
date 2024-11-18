@@ -551,23 +551,28 @@ class ScanningProbeLogic(LogicBase):
             return
 
     def stop_scan(self):
+        self.log.debug("Stop scan")
         with self._thread_lock:
             if self.module_state() == 'idle':
                 self.sigScanStateChanged.emit(False, self.scan_data, self.back_scan_data, self._curr_caller_id)
                 return
 
             self.__stop_timer()
+            self.log.debug("Timer stopped")
 
             try:
                 if self._scanner().module_state() != 'idle':
+                    self.log.debug("Stopping scanner, not yet idle")
                     self._scanner().stop_scan()
             finally:
                 self.module_state.unlock()
+                self.log.debug("Scanning probe unlock")
                 self.sigScanStateChanged.emit(False, self.scan_data, self.back_scan_data, self._curr_caller_id)
                 if self.save_to_history:
                     self.sigNewScanDataForHistory.emit(self.scan_data, self.back_scan_data)
 
     def __scan_poll_loop(self):
+        self.log.debug("Polling logic")
         with self._thread_lock:
             try:
                 if self.module_state() == 'idle':
@@ -576,11 +581,13 @@ class ScanningProbeLogic(LogicBase):
                 if self._scanner().module_state() == 'idle':
                     self.stop_scan()
                     return
+
                 # TODO Added the following line as a quick test; Maybe look at it with more caution if correct
                 self.sigScanStateChanged.emit(True, self.scan_data, self.back_scan_data, self._curr_caller_id)
 
                 # Queue next call to this slot
                 self.__scan_poll_timer.start()
+                self.log.debug("Start scan poll timer")
             except TimeoutError:
                 self.log.exception('Timed out while waiting for scan data:')
             except:
@@ -601,14 +608,20 @@ class ScanningProbeLogic(LogicBase):
         return self.scan_ranges
 
     def __start_timer(self):
+
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
+                                            'start',
+                                            QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.start()
 
     def __stop_timer(self):
+        self.log.debug("Stopping poll timer")
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
+                                            'stop',
+                                            QtCore.Qt.QueuedConnection)
         else:
             self.__scan_poll_timer.stop()
 
