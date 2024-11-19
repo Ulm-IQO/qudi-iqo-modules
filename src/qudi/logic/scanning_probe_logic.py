@@ -38,6 +38,37 @@ from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraint
 from qudi.util.linear_transform import find_changing_axes, LinearTransformation3D
 from qudi.util.linear_transform import compute_rotation_matrix_to_plane, compute_reduced_vectors
 
+import inspect
+
+import logging
+import os
+import threading
+logger = logging.getLogger(__name__)
+
+
+class TrackedRecursiveMutex(RecursiveMutex):
+    def __init__(self):
+        super().__init__()
+        self._lock_info = None
+        self._n_locks = 0
+
+    def lock(self):
+        # Capture the caller function's information
+        self._n_locks += 1
+        stack = inspect.stack()
+        caller_info = stack[2]
+        fname = os.path.basename(caller_info.filename)
+
+        thread_name = QtCore.QThread.currentThread().objectName()
+        self._lock_info = f"{caller_info.function} in {fname}:{caller_info.lineno}." \
+                          f" Thread: {thread_name}"
+        logger.debug(f"Lock acq by (->{self._n_locks}): {self._lock_info}")
+        super().lock()
+
+    def unlock(self):
+        self._n_locks -= 1
+        logger.debug(f"Lock released (->{self._n_locks}) by: {self._lock_info}")
+        super().unlock()
 
 class ScanningProbeLogic(LogicBase):
     """
@@ -82,7 +113,7 @@ class ScanningProbeLogic(LogicBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._thread_lock = RecursiveMutex()
+        self._thread_lock = TrackedRecursiveMutex() # RecursiveMutex()
 
         # others
         self.__scan_poll_timer = None
