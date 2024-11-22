@@ -119,7 +119,14 @@ class QdyneMeasurement(QtCore.QObject):
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
         fname = timestamp + fname if fname else timestamp
         self.data.reset()
-        self.qdyne_logic.measurement_generator.set_counter_settings(None)
+        # Todo: is this needed?
+        #  set settings to make sure that hardware has actual settings (and not of pulsed)
+        self.qdyne_logic.measurement_generator.set_counter_settings(
+            self.qdyne_logic.measurement_generator.counter_settings
+        )
+        self.qdyne_logic.measurement_generator.set_measurement_settings(
+            self.qdyne_logic.measurement_generator.measurement_settings
+        )
         self.qdyne_logic._data_streamer().start_measure()
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         self.sigMeasurementStarted.emit()

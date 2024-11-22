@@ -58,13 +58,15 @@ class MeasurementGenerator:
         self._qdyne_logic = qdyne_logic
         self._data_streamer = data_streamer
 
+        self._invoke_settings = False
+
         self.__active_channels = self._data_streamer().active_channels
         self.__binwidth = self._data_streamer().binwidth
         self.__record_length = self._data_streamer().record_length
         self.__gate_mode = self._data_streamer().gate_mode
         self.__data_type = self._data_streamer().data_type
-
-        self.__sequence_length = 0.0
+        # Todo: get something clever for the sequence length
+        self.__sequence_length = self._data_streamer().record_length
 
     def generate_predefined_sequence(self, method_name, param_dict, sample_and_load):
         self._pulsedmasterlogic().generate_predefined_sequence(
@@ -88,58 +90,98 @@ class MeasurementGenerator:
 
         # Check if fast counter is running and do nothing if that is the case
         counter_status = self._data_streamer().get_status()
-        if not counter_status >= 2 and not counter_status < 0:
-            # Determine complete settings dictionary
-            if not isinstance(settings_dict, dict):
-                settings_dict = kwargs
-            else:
-                settings_dict.update(kwargs)
-
-            # Set parameters if present
-            if "bin_width" in settings_dict:
-                self.__binwidth = float(settings_dict["bin_width"])
-            if "record_length" in settings_dict:
-                self.__record_length = float(settings_dict["record_length"])
-            if "active_channels" in settings_dict:
-                self.__active_channels = settings_dict["active_channels"]
-            if "gate_mode" in settings_dict:
-                self.__gate_mode = GateMode(int(settings_dict["gate_mode"]))
-            if "data_type" in settings_dict:
-                self.__data_type = settings_dict["data_type"]
-
-            # Set settings in pulsed to update to qdyne settings
-            settings = {
-                "bin_width": self.__binwidth,
-                "record_length": self.__record_length,
-                "number_of_gates": 0,
-            }
-            #self.pulsedmasterlogic().set_fast_counter_settings(settings)
-
-            (self.__active_channels,
-            self.__binwidth,
-            self.__record_length,
-            self.__gate_mode,
-            self.__data_type) = self._data_streamer().configure(
-                self.__active_channels,
-                self.__binwidth,
-                self.__record_length,
-                self.__gate_mode,
-                self.__data_type,
-            )
-        else:
+        if counter_status >= 2 or counter_status < 0:
             _logger.warning(
                 "Qdyne counter is not idle (status: {0}).\n"
                 "Unable to apply new settings.".format(counter_status)
             )
+            return
+        # Determine complete settings dictionary
+        if not isinstance(settings_dict, dict):
+            settings_dict = kwargs
+        else:
+            settings_dict.update(kwargs)
+
+        if 'invoke_settings' in settings_dict:
+            self._invoke_settings = bool(settings_dict.get('invoke_settings'))
+
+        if self._invoke_settings:
+            loaded_asset, asset_type = self._pulsedmasterlogic().loaded_asset
+            if asset_type == 'PulseBlockEnsemble':
+                ens_length, ens_bins, ens_lasers = \
+                    self._pulsedmasterlogic().get_ensemble_info(loaded_asset)
+            elif asset_type == 'PulseSequence':
+                ens_length, ens_bins, ens_lasers = \
+                    self._pulsedmasterlogic().get_sequence_info(loaded_asset)
+            else:
+                self._qdyne_logic.log.error('No valid waveform loaded. Cannot invoke record length.')
+            if ens_lasers != 1:
+                raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
+            settings_dict['record_length'] = ens_length
+
+        # Set parameters if present
+        if "bin_width" in settings_dict:
+            self.__binwidth = float(settings_dict["bin_width"])
+        if "record_length" in settings_dict:
+            self.__record_length = float(settings_dict["record_length"])
+            self._qdyne_logic.log.debug(['set count sett: rec len', self.__record_length])
+        if "active_channels" in settings_dict:
+            self.__active_channels = settings_dict["active_channels"]
+        if "gate_mode" in settings_dict:
+            self.__gate_mode = GateMode(int(settings_dict["gate_mode"]))
+        if "data_type" in settings_dict:
+            self.__data_type = settings_dict["data_type"]
+
+        # Set settings in pulsed to update to qdyne settings
+        settings = {
+            "bin_width": self.__binwidth,
+            "record_length": self.__record_length,
+            "number_of_gates": 0,
+        }
+        # Todo: check interference with pulsed
+        #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
+        #self.pulsedmasterlogic().set_fast_counter_settings(settings)
+
+        (self.__active_channels,
+        self.__binwidth,
+        self.__record_length,
+        self.__gate_mode,
+        self.__data_type) = self._data_streamer().configure(
+            self.__active_channels,
+            self.__binwidth,
+            self.__record_length,
+            self.__gate_mode,
+            self.__data_type,
+        )
+        self._qdyne_logic.sigCounterSettingsUpdated.emit(settings_dict)
         return
 
     def set_measurement_settings(self, settings_dict):
-        self._pulsedmasterlogic().set_measurement_settings(settings_dict)
-        self._qdyne_logic.log.debug(settings_dict)
-        self._qdyne_logic.settings.estimator_stg.configure_settings(settings_dict)
-        self._qdyne_logic.settings.analyzer_stg.configure_settings(settings_dict)
+        if 'invoke_settings' in settings_dict:
+            self._invoke_settings = bool(settings_dict.get('invoke_settings'))
+
+        if self._invoke_settings:
+            loaded_asset, asset_type = self._pulsedmasterlogic().loaded_asset
+            if asset_type == 'PulseBlockEnsemble':
+                ens_length, ens_bins, ens_lasers = \
+                    self._pulsedmasterlogic().get_ensemble_info(loaded_asset)
+            elif asset_type == 'PulseSequence':
+                ens_length, ens_bins, ens_lasers = \
+                    self._pulsedmasterlogic().get_sequence_info(loaded_asset)
+            else:
+                self._qdyne_logic.log.error('No valid waveform loaded. Cannot invoke sequence length.')
+            if ens_lasers != 1:
+                raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
+            settings_dict['_sequence_length'] = ens_length
         if "_sequence_length" in settings_dict:
             self.__sequence_length = float(settings_dict["_sequence_length"])
+
+        # Todo: check interference with pulsed
+        #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
+        #self._pulsedmasterlogic().set_measurement_settings(settings_dict)
+        self._qdyne_logic.settings.estimator_stg.configure_settings(settings_dict)
+        self._qdyne_logic.settings.analyzer_stg.configure_settings(settings_dict)
+        self._qdyne_logic.sigMeasurementSettingsUpdated.emit(settings_dict)
 
     def check_counter_record_length_constraint(self, record_length: float):
         record_length_constraint = self._data_streamer().constraints.record_length
@@ -209,7 +251,6 @@ class MeasurementGenerator:
         settings_dict["is_gated"] = bool(
             self._data_streamer().gate_mode.value
         )
-        self._qdyne_logic.log.warning(f"{settings_dict=}")
         return settings_dict
 
     @property
@@ -291,6 +332,8 @@ class QdyneLogic(LogicBase):
     sigToggleQdyneMeasurement = QtCore.Signal(bool)
     estimator_stg_updated_sig = QtCore.Signal()
     analyzer_stg_updated_sig = QtCore.Signal()
+    sigCounterSettingsUpdated = QtCore.Signal(dict)
+    sigMeasurementSettingsUpdated = QtCore.Signal(dict)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

@@ -103,18 +103,30 @@ class GenerationWidget(QtWidgets.QWidget):
         self.ana_param_invoke_settings_CheckBox.stateChanged.connect(
             self.measurement_settings_changed
         )
+        self.ana_param_invoke_settings_CheckBox.stateChanged.connect(
+            self.counter_settings_changed
+        )
         self.ana_param_record_length_DoubleSpinBox.editingFinished.connect(
             self.counter_settings_changed
         )
         self.binwidth_spinbox.editingFinished.connect(self.counter_settings_changed)
 
-        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
+        # Todo: is this needed?
+        #  It will change values in GUI from pulsed feedback;
+        #  Qdyne settings are set every time upon start of measurement
+        #self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
+        #    self.counter_settings_updated
+        #)
+        # self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
+        #    self.measurement_settings_updated
+        # )
+        self._gui.logic().sigCounterSettingsUpdated.connect(
             self.counter_settings_updated
         )
         self.ana_param_sequence_length_DoubleSpinBox.editingFinished.connect(
             self.measurement_settings_changed
         )
-        self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
+        self._gui.logic().sigMeasurementSettingsUpdated.connect(
             self.measurement_settings_updated
         )
 
@@ -145,18 +157,27 @@ class GenerationWidget(QtWidgets.QWidget):
         self.ana_param_invoke_settings_CheckBox.stateChanged.disconnect(
             self.measurement_settings_changed
         )
+        self.ana_param_invoke_settings_CheckBox.stateChanged.disconnect(
+            self.counter_settings_changed
+        )
         self.ana_param_record_length_DoubleSpinBox.editingFinished.disconnect(
             self.counter_settings_changed
         )
         self.binwidth_spinbox.editingFinished.disconnect(self.counter_settings_changed)
 
-        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect(
+        #self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect(
+        #    self.counter_settings_updated
+        #)
+        self._gui.logic().sigCounterSettingsUpdated.disconnect(
             self.counter_settings_updated
         )
         self.ana_param_sequence_length_DoubleSpinBox.editingFinished.disconnect(
             self.measurement_settings_changed
         )
-        self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect(
+        #self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect(
+        #    self.measurement_settings_updated
+        #)
+        self._gui.logic().sigMeasurementSettingsUpdated.disconnect(
             self.measurement_settings_updated
         )
 
@@ -557,10 +578,12 @@ class GenerationWidget(QtWidgets.QWidget):
             self.binwidth_spinbox.blockSignals(False)
 
         settings_dict = dict()
+        settings_dict["invoke_settings"] = (
+            self.ana_param_invoke_settings_CheckBox.isChecked()
+        )
         settings_dict["record_length"] = correct_length
         settings_dict["bin_width"] = correct_binwidth
         self._gui.logic().measurement_generator.set_counter_settings(settings_dict)
-        _logger.debug(f"{settings_dict=}")
         return
 
     @QtCore.Slot(dict)
