@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import numpy as np
-from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
+from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble
 from qudi.logic.pulsed.pulse_objects import PredefinedGeneratorBase
 
 
@@ -36,16 +36,28 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
     def generate_xy8_tau(self, name='xy8_tau', tau_start=0.5e-6, tau_step=0.01e-6, num_of_points=50,
                          xy8_order=4, alternating=True):
         """
-        Generates a XY8 dynamical decoupling sequence, with varying pulse separations.
+        Generates a XY8 sequence, where the pulse spacing tau is the controlled variable.
 
-        @parameter string name: Name of the PulseBlockEnsemble
-        @parameter float tau_start: Start value of the tau array
-        @parameter float tau_step: Step size of the tau array
-        @parameter int num_of_points: Number of points in the tau array
-        @parameter int xy8_order: Number of XY8 blocks
-        @parameter bool alternating: If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble
+        tau_start : float
+            Start value of the tau array
+        tau_step : float
+            Step size of the tau array
+        num_of_points : int
+            Number of points in the tau array
+        xy8_order : int
+            Number of XY8 blocks
+        alternating : bool
+            If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
 
-        @return list created_blocks: Generated PulseBlockEnsemble object.
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list          
         """
         created_blocks = list()
         created_ensembles = list()
@@ -173,14 +185,26 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generates a XY8 sequence, same as in generate_xy8, but with frequency as controlled variable.
 
-        @parameter string name: Name of the PulseBlockEnsemble
-        @parameter float freq_start: Start value of the frequency array
-        @parameter float freq_step: Step size of the frequency array
-        @parameter int num_of_points: Number of points in the tau array
-        @parameter int xy8_order: Number of XY8 blocks
-        @parameter bool alternating: If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
-
-        @return list created_blocks: Generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble
+        freq_start : float
+            Start value of the frequency array
+        freq_step : float
+            Step size of the frequency array
+        num_of_points : int
+            Number of points in the frequency array
+        xy8_order : int
+            Number of XY8 blocks
+        alternating : bool
+            If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
+        
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list 
         """
         created_blocks = list()
         created_ensembles = list()
@@ -314,14 +338,26 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         Generates the RXY8 dynamical decoupling sequence,
         where a random phase is added in each block in order to supress spurious harmonics.
 
-        @parameter string name: Name of the PulseBlockEnsemble
-        @parameter float tau_start: Start value of the tau array
-        @parameter float tau_step: Step size of the tau array
-        @parameter int num_of_points: Number of points in the tau array
-        @parameter int xy8_order: Number of XY8 blocks
-        @parameter bool alternating: If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
-
-        @return list created_blocks: Generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble
+        tau_start : float
+            Start value of the tau array
+        tau_step : float
+            Step size of the tau array
+        num_of_points : int
+            Number of points in the tau array
+        xy8_order : int
+            Number of XY8 blocks
+        alternating : bool
+            If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
+        
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -467,14 +503,26 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generates the RXY8 dynamical decoupling sequence, but with tau=1/(2*tau) as controlled variable.
 
-        @parameter string name: Name of the PulseBlockEnsemble
-        @parameter float tau_start: Start value of the tau array
-        @parameter float tau_step: Step size of the tau array
-        @parameter int num_of_points: Number of points in the tau array
-        @parameter int xy8_order: Number of XY8 blocks
-        @parameter bool alternating: If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
-
-        @return list created_blocks: Generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble
+        freq_start : float
+            Start value of the frequency array
+        freq_step : float
+            Step size of the frequency array
+        num_of_points : int
+            Number of points in the frequency array
+        xy8_order : int
+            Number of XY8 blocks
+        alternating : bool
+            If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
+        
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -631,14 +679,26 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         where the random phase are correlated every 2 blocks with the second opposite to the first,
         thus improving suppresion of pulse errors.
 
-        @parameter string name: Name of the PulseBlockEnsemble
-        @parameter float tau_start: Start value of the tau array
-        @parameter float tau_step: Step size of the tau array
-        @parameter int num_of_points: Number of points in the tau array
-        @parameter int xy8_order_x2: Number of XY8 blocks times 2
-        @parameter bool alternating: If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
-
-        @return list created_blocks: Generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble
+        tau_start : float
+            Start value of the tau array
+        tau_step : float
+            Step size of the tau array
+        num_of_points : int
+            Number of points in the tau array
+        xy8_order_x2 : int
+            Number of XY8 blocks times 2
+        alternating : bool
+            If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
+        
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list
         """
 
         created_blocks = list()
@@ -846,14 +906,26 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generates a RXY8 dynamical decoupling sequence with correlation g=2,with tau=1/(2*tau) as controlled variable.
 
-        @parameter string name: Name of the PulseBlockEnsemble
-        @parameter float tau_start: Start value of the tau array
-        @parameter float tau_step: Step size of the tau array
-        @parameter int num_of_points: Number of points in the tau array
-        @parameter int xy8_order_x2: Number of XY8 blocks times 2
-        @parameter bool alternating: If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
-
-        @return list created_blocks: Generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble
+        freq_start : float
+            Start value of the frequency array
+        freq_step : float
+            Step size of the frequency array
+        num_of_points : int
+            Number of points in the frequency array
+        xy8_order_x2 : int
+            Number of XY8 blocks times 2
+        alternating : bool
+            If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
+        
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list
         """
 
         created_blocks = list()
@@ -1067,14 +1139,26 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generates a RXY8 dynamical decoupling sequence with correlation g=3, where the random phase are correlated every 3 blocks adding up to 0.
 
-        @parameter string name: Name of the PulseBlockEnsemble
-        @parameter float tau_start: Start value of the tau array
-        @parameter float tau_step: Step size of the tau array
-        @parameter int num_of_points: Number of points in the tau array
-        @parameter int xy8_order_x3: Number of XY8 blocks times 3
-        @parameter bool alternating: If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
-
-        @return list created_blocks: Generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble
+        tau_start : float
+            Start value of the tau array
+        tau_step : float
+            Step size of the tau array
+        num_of_points : int
+            Number of points in the tau array
+        xy8_order_x3 : int
+            Number of XY8 blocks times 3
+        alternating : bool
+            If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
+    
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list  
         """
         created_blocks = list()
         created_ensembles = list()
@@ -1344,14 +1428,26 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generates a RXY8 dynamical decoupling sequence with correlation g=3, where the random phase are correlated every 3 blocks adding up to 0.
 
-        @parameter string name: Name of the PulseBlockEnsemble
-        @parameter float tau_start: Start value of the tau array
-        @parameter float tau_step: Step size of the tau array
-        @parameter int num_of_points: Number of points in the tau array
-        @parameter int xy8_order_x3: Number of XY8 blocks times 3
-        @parameter bool alternating: If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
-
-        @return list created_blocks: Generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble
+        freq_start : float
+            Start value of the frequency array
+        freq_step : float
+            Step size of the frequency array
+        num_of_points : int
+            Number of points in the frequency array
+        xy8_order_x3 : int
+            Number of XY8 blocks times 3
+        alternating : bool
+            If the sequence should be alternating with 3pi/2 and pi/2 pulses at the end
+        
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list
         """
         created_blocks = list()
         created_ensembles = list()
