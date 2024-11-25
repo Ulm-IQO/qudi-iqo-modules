@@ -302,7 +302,7 @@ class QDPlotterGui(GuiBase):
             if ii > 0:
                 self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
         try:
-            self._plot_dockwidgets[0].raise_()
+            self._plot_dockwidgets[-1].raise_()
         except IndexError:
             pass
 
