@@ -190,12 +190,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
     def generate_rabi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9, num_of_points=50):
         """
-        Generate a Rabi sequence, where a resonant pulse is applied with varying pulse length.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start pulse length in seconds
-        @param float tau_step: Pulse length step in seconds
-        @param int num_of_points: Number of pulse lengths
         """
         created_blocks = list()
         created_ensembles = list()
@@ -248,12 +243,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_pulsedodmr(self, name='pulsedODMR', freq_start=2870.0e6, freq_step=0.2e6,
                             num_of_points=50):
         """
-        Generate a pulsed ODMR sequence, where a pulse with fixed lenght is applied with varying frequency.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float freq_start: Start frequency in Hz
-        @param float freq_step: Frequency step in Hz
-        @param int num_of_points: Number of frequency points
         """
         created_blocks = list()
         created_ensembles = list()
@@ -307,13 +297,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_ramsey(self, name='ramsey', tau_start=1.0e-6, tau_step=1.0e-6, num_of_points=50,
                         alternating=True):
         """
-        Generate a Ramsey sequence, where first a pi/2 pulse is applied, then a waiting time tau and another pi/2 pulse, for varying tau.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_step: Tau step in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, the final pi/2 pulse is alternated with a 3pi/4 pulse
         """
         created_blocks = list()
         created_ensembles = list()
@@ -390,11 +374,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
     def generate_ramsey_from_list(self, name='ramsey', tau_list='[1e-6, 2e-6]', alternating=True):
         """
-        Generate a Ramsey sequence, based on a list of tau values.
-
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param str tau_list: List of tau values in seconds
-        @param bool alternating: If True, the final pi/2 pulse is alternated with a 3pi/4 pulse
         """
         created_blocks = list()
         created_ensembles = list()
@@ -479,13 +458,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_hahnecho(self, name='hahn_echo', tau_start=0.0e-6, tau_step=1.0e-6,
                           num_of_points=50, alternating=True):
         """
-        Generate a Hahn Echo sequence, composed of two free evolutions with varying tau and a pi pulse in between.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_step: Tau step in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, the final pi/2 pulse is alternated with a 3pi/4 pulse
         """
         created_blocks = list()
         created_ensembles = list()
@@ -572,13 +545,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_hahnecho_exp(self, name='hahn_echo', tau_start=1.0e-6, tau_end=1.0e-6,
                               num_of_points=50, alternating=True):
         """
-        Generate a Hahn echo, but instead of linearly spaced tau values, use exponentially spaced tau values.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_end: End tau in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, the final pi/2 pulse is alternated with a 3pi/4 pulse
         """
         created_blocks = list()
         created_ensembles = list()
@@ -670,13 +637,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_t1(self, name='T1', tau_start=1.0e-6, tau_step=1.0e-6,
                     num_of_points=50, alternating=False):
         """
-        Generate a T1 sequence, where a laser pulsed is applied, followed by a waiting time tau, for varying tau.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_step: Tau step in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, adds a pi pulse before the waiting time
         """
         created_blocks = list()
         created_ensembles = list()
@@ -736,13 +697,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_t1_exponential(self, name='T1_exp', tau_start=1.0e-6, tau_end=1.0e-6,
                                 num_of_points=50, alternating=False):
         """
-        Generate a T1 sequence, but with exponentially spaced tau values.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_end: End tau in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, adds a pi pulse before the waiting time
         """
         created_blocks = list()
         created_ensembles = list()
