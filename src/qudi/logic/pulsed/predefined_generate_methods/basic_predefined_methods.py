@@ -1081,9 +1081,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # Trigger the calculation of parameters in the PulseSequence instance
         t1_sequence.refresh_parameters()
 
-        if self.gate_channel:
-            count_length = self._get_ensemble_count_length(ensemble=readout_ensemble,
-                                                           created_blocks=created_blocks)
         # add metadata to invoke settings later on
         t1_sequence.measurement_information['alternating'] = False
         t1_sequence.measurement_information['laser_ignore_list'] = list()
