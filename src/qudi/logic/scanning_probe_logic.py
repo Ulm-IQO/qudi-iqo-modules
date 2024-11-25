@@ -51,7 +51,6 @@ class TrackedRecursiveMutex(RecursiveMutex):
         super().__init__()
         self._lock_info = None
         self._n_locks = 0
-        self._lock_threads = []
 
     def lock(self):
         # Capture the caller function's information
@@ -61,16 +60,14 @@ class TrackedRecursiveMutex(RecursiveMutex):
         fname = os.path.basename(caller_info.filename)
 
         thread_name = QtCore.QThread.currentThread().objectName()
-        self._lock_threads.append(thread_name)
         self._lock_info = f"{caller_info.function} in {fname}:{caller_info.lineno}." \
-            f" Thread: {thread_name}"
-        logger.debug(f"Lock acq by (->{self._n_locks}): {self._lock_info} \nthread stack on lock: {self._lock_threads}")
+                          f" Thread: {thread_name}"
+        logger.debug(f"Lock acq by (->{self._n_locks}): {self._lock_info}")
         super().lock()
 
     def unlock(self):
         self._n_locks -= 1
-        self._lock_threads.pop()
-        logger.debug(f"Lock released (->{self._n_locks}) by: {self._lock_info} \nthread stack on unlock: {self._lock_threads}")
+        logger.debug(f"Lock released (->{self._n_locks}) by: {self._lock_info}")
         super().unlock()
 
 class ScanningProbeLogic(LogicBase):
