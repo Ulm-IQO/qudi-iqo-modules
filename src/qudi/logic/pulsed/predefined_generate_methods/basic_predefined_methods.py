@@ -52,12 +52,21 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     #                             Generation methods for waveforms                                 #
     ################################################################################################
     def generate_laser_on(self, name='laser_on', length=3.0e-6):
-        """ Generates Laser on.
+        """
+        Generates Laser on.
 
-        @param str name: Name of the PulseBlockEnsemble
-        @param float length: laser duration in seconds
-
-        @return object: the generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble
+        length: float
+            laser duration in seconds
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -76,12 +85,21 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_laser_mw_on(self, name='laser_mw_on', length=3.0e-6):
-        """ General generation method for laser on and microwave on generation.
+        """
+        General generation method for laser on and microwave on generation.
 
-        @param string name: Name of the PulseBlockEnsemble to be generated
-        @param float length: Length of the PulseBlockEnsemble in seconds
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble
+        length: float
+            laser duration in seconds
 
-        @return object: the generated PulseBlockEnsemble object.
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -105,12 +123,25 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
     def generate_two_digital_high(self, name='digital_high', length=3.0e-6,
                                   digital_channel1='d_ch1', digital_channel2='d_ch1'):
-        """ General generation method for laser on and microwave on generation.
+        """
+        General generation method for laser on and microwave on generation.
 
-        @param string name: Name of the PulseBlockEnsemble to be generated
-        @param float length: Length of the PulseBlockEnsemble in seconds
-
-        @return object: the generated PulseBlockEnsemble object.
+        Paramaters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble
+        length: float
+            Length of the PulseBlockEnsemble in seconds
+        digital_channel1: str
+            Name of the first digital channel
+        digital_channel2: str
+            Name of the second digital channel
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -134,13 +165,23 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
     def generate_n_digital_high(self, name='digital_high', length=3.0e-6,
                                   digital_channels="1,2,3,4"):
-        """ General generation method for laser on and microwave on generation.
+        """
+        General generation method for laser on and microwave on generation.
 
-        @param string name: Name of the PulseBlockEnsemble to be generated
-        @param float length: Length of the PulseBlockEnsemble in seconds
-        @params string digital_channels: Comma separated channel numbers.
-
-        @return object: the generated PulseBlockEnsemble object.
+        Paramaters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble
+        length: float
+            Length of the PulseBlockEnsemble in seconds
+        digital_channels: str
+            Comma separated channel numbers
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -165,12 +206,21 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
 
     def generate_idle(self, name='idle', length=3.0e-6):
-        """ Generate just a simple idle ensemble.
+        """
+        Generate just a simple idle ensemble.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float length: Length of the PulseBlockEnsemble in seconds
-
-        @return object: the generated PulseBlockEnsemble object.
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble
+        length: float
+            Length of the PulseBlockEnsemble in seconds
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -192,10 +242,22 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generate a Rabi sequence, where a resonant pulse is applied with varying pulse length.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start pulse length in seconds
-        @param float tau_step: Pulse length step in seconds
-        @param int num_of_points: Number of pulse lengths
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        tau_start: float
+            Start pulse length in seconds
+        tau_step: float
+            Pulse length step in seconds
+        num_of_points: int
+            Number of pulse lengths
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -250,10 +312,22 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generate a pulsed ODMR sequence, where a pulse with fixed lenght is applied with varying frequency.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float freq_start: Start frequency in Hz
-        @param float freq_step: Frequency step in Hz
-        @param int num_of_points: Number of frequency points
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        freq_start: float
+            Start frequency in Hz
+        freq_step: float
+            Frequency step in Hz
+        num_of_points: int
+            Number of frequency points
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -309,11 +383,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generate a Ramsey sequence, where first a pi/2 pulse is applied, then a waiting time tau and another pi/2 pulse, for varying tau.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_step: Tau step in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, the final pi/2 pulse is alternated with a 3pi/4 pulse
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        tau_start: float
+            Start tau in seconds
+        tau_step: float
+            Tau step in seconds
+        num_of_points: int
+            Number of tau points
+        alternating: bool
+            If True, the final pi/2 pulse is alternated with a 3pi/2 pulse
+
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -392,9 +479,20 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generate a Ramsey sequence, based on a list of tau values.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param str tau_list: List of tau values in seconds
-        @param bool alternating: If True, the final pi/2 pulse is alternated with a 3pi/4 pulse
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        tau_list: str
+            List of tau values in seconds
+        alternating: bool
+            If True, the final pi/2 pulse is alternated with a 3pi/2 pulse
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -481,11 +579,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generate a Hahn Echo sequence, composed of two free evolutions with varying tau and a pi pulse in between.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_step: Tau step in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, the final pi/2 pulse is alternated with a 3pi/4 pulse
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        tau_start: float
+            Start tau in seconds
+        tau_step: float
+            Tau step in seconds
+        num_of_points: int
+            Number of tau points
+        alternating: bool
+            If True, the final pi/2 pulse is alternated with a 3pi/2 pulse
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -574,11 +685,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generate a Hahn echo, but instead of linearly spaced tau values, use exponentially spaced tau values.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_end: End tau in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, the final pi/2 pulse is alternated with a 3pi/4 pulse
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        tau_start: float
+            Start tau in seconds
+        tau_end: float
+            End tau in seconds
+        num_of_points: int
+            Number of tau points
+        alternating: bool
+            If True, the final pi/2 pulse is alternated with a 3pi/2 pulse
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -672,11 +796,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generate a T1 sequence, where a laser pulsed is applied, followed by a waiting time tau, for varying tau.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_step: Tau step in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, adds a pi pulse before the waiting time
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        tau_start: float
+            Start tau in seconds
+        tau_step: float
+            Tau step in seconds
+        num_of_points: int
+            Number of tau points
+        alternating: bool
+            If True, the final pi/2 pulse is alternated with a 3pi/2 pulse
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -738,11 +875,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         """
         Generate a T1 sequence, but with exponentially spaced tau values.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float tau_start: Start tau in seconds
-        @param float tau_end: End tau in seconds
-        @param int num_of_points: Number of tau points
-        @param bool alternating: If True, adds a pi pulse before the waiting time
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        tau_start: float
+            Start tau in seconds
+        tau_end: float
+            End tau in seconds
+        num_of_points: int
+            Number of tau points
+        alternating: bool
+            If True, the final pi/2 pulse is alternated with a 3pi/2 pulse
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -1048,7 +1198,24 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     def generate_t1_sequencing(self, name='t1_seq', tau_start=1.0e-6, tau_max=1.0e-3,
                                num_of_points=10):
         """
+        Generate a T1 sequence
 
+        Parameters
+        ----------
+        name: str
+            Name of the PulseBlockEnsemble to be generated
+        tau_start: float
+            Start tau in seconds
+        tau_max: float
+            Maximum tau in seconds
+        num_of_points: int
+            Number of tau points
+        
+        Returns
+        -------
+        created_blocks: list
+        created_ensembles: list
+        created_sequences: list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -1146,21 +1313,33 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                              freq_range=500.0e6, freq_overlap=20.0e6, num_of_points=50,
                              pulse_length=500e-9, expected_rabi_frequency=30e6, expected_t2=5e-6):
         """
-        @param str name: name of Pulse Block Ensemble
-        @param float mw_freq_center: central frequency of the chirped ODMR in Hz
-        @param float freq_range: target frequency range of the whole ODMR scan in Hz
-        @param float freq_overlap: additional 'overlap' frequency range for each chirped pulse,
-        i.e. the frequency range of each single chirped pulse is
-        (freq_range / num_points) + freq_overlap
-        @param float num_of_points: number of chirped pulses, used in the scan
-        @param float pulse_length: length of the mw pulse
-        @param float expected_rabi_frequency: expected value of the Rabi frequency - used to
-        calculate adiabaticity
-        @param float expected_t2: expected T2 time - used to check if the chirped pulse is shorter
-        than T2
 
-        @return: created_blocks, created_ensembles, created_sequences for the generated pulse
-            sequences
+        Parameters
+        ----------
+        name : str
+            Name of Pulse Block Ensemble
+        mw_freq_center : float
+            Central frequency of the chirped ODMR in Hz
+        freq_range : float
+            Target frequency range of the whole ODMR scan in Hz
+        freq_overlap : float
+            Additional 'overlap' frequency range for each chirped pulse,
+            i.e. the frequency range of each single chirped pulse is
+            (freq_range / num_points) + freq_overlap
+        num_of_points : float
+            Number of chirped pulses, used in the scan
+        pulse_length : float
+            Length of the mw pulse
+        expected_rabi_frequency : float
+            Expected value of the Rabi frequency - used to calculate adiabaticity
+        expected_t2 : float
+            Expected T2 time - used to check if the chirped pulse is shorter than T2
+
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list
         """
         created_blocks = list()
         created_ensembles = list()
@@ -1258,28 +1437,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
                                expected_rabi_frequency=30e6, expected_t2=5e-6,
                                peak_mw_amplitude=0.25):
         """
-        @param str name: name of Pulse Block Ensemble
-        @param float mw_freq_center: central frequency of the chirped ODMR in Hz
-        @param float freq_range: target frequency range of the whole ODMR scan in Hz
-        @param float freq_overlap: additional 'overlap' frequency range for each chirped pulse,
-            i.e. the frequency range of each single chirped pulse is (freq_range / num_points) +
-            freq_overlap. Truncation is usually negligible for values <0.2.
-        @param float num_of_points: number of chirped pulses, used in the scan
-        @param float pulse_length: length of the mw pulse
-        @param float truncation_ratio: ratio that characterizes the truncation of the chirped pulse
-            Specifically, the pulse shape is given by sech(t/ truncation ratio /pulse length)
-            truncation_ratio = 0.1 is excellent; the scheme will work for 0.2. Higher values
-            truncate the sech pulse and reduce the frequency range of ODMR as the transfer
-            efficiency in the wings of the pulse range drops.
-        @param float expected_rabi_frequency: expected value of the Rabi frequency - used to
-            calculate adiabaticity
-        @param float expected_t2: expected T2 time - used to check if the chirped pulse is shorter
-            than T2
-        @param float peak_mw_amplitude: Peak amplitude of the Allen-Eberly Chirp pulse
-
-        @return: created_blocks, created_ensembles, created_sequences for the generated pulse
-            sequences
-
         Additional information about the Allen-Eberly chirped ODMR
         Chirped ODMR with a pulse, following the Allen-Eberly model: a sech amplitude shape and a
         tanh shaped detuning. The AE pulse has very good properties in terms of adiabaticity and is
@@ -1288,6 +1445,41 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         model can be found in:
         L. Allen and J. H. Eberly, Optical Resonance and Two-Level Atoms Dover, New York, 1987,
         Analytical solution is given in: F. T. Hioe, Phys. Rev. A 30, 2100 (1984).
+
+        Parameters
+        ----------
+        name : str
+            Name of Pulse Block Ensemble
+        mw_freq_center : float
+            Central frequency of the chirped ODMR in Hz
+        freq_range : float
+            Target frequency range of the whole ODMR scan in Hz
+        freq_overlap : float
+            Additional 'overlap' frequency range for each chirped pulse,
+            i.e. the frequency range of each single chirped pulse is
+            (freq_range / num_points) + freq_overlap. Truncation is usually negligible for values <0.2.
+        num_of_points : float
+            Number of chirped pulses, used in the scan
+        pulse_length : float
+            Length of the mw pulse
+        truncation_ratio : float
+            Ratio that characterizes the truncation of the chirped pulse
+            Specifically, the pulse shape is given by sech(t/ truncation ratio /pulse length)
+            truncation_ratio = 0.1 is excellent; the scheme will work for 0.2. Higher values
+            truncate the sech pulse and reduce the frequency range of ODMR as the transfer
+            efficiency in the wings of the pulse range drops.
+        expected_rabi_frequency : float
+            Expected value of the Rabi frequency - used to calculate adiabaticity
+        expected_t2 : float
+            Expected T2 time - used to check if the chirped pulse is shorter than T2
+        peak_mw_amplitude : float
+            Peak amplitude of the Allen-Eberly Chirp pulse
+
+        Returns
+        -------
+        created_blocks : list
+        created_ensembles : list
+        created_sequences : list
         """
         created_blocks = list()
         created_ensembles = list()
