@@ -602,7 +602,7 @@ class ScanningProbeLogic(LogicBase):
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.start()
 
