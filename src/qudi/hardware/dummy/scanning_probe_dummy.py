@@ -761,12 +761,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             is_finished = aq_lines >= 1
         else:
             is_finished = aq_lines >= self.scan_settings.resolution[1]
-            is_finished = aq_lines >= self.scan_settings.resolution[1]
-
-        if self.scan_settings.scan_dimension != 1:
-            if abs(aq_lines - self.scan_settings.resolution[1]) < 2:
-                self.log.debug(f"[{t_elapsed}] Nearly finished in scan line {aq_lines}")
-
         if is_finished:
             self.module_state.unlock()
             self.log.debug("Scan finished.")
@@ -796,9 +790,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
     def __stop_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer,
-                                            'stop',
-                                            QtCore.Qt.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
 
