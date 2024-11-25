@@ -337,7 +337,6 @@ class ScanningProbeLogic(LogicBase):
 
     def set_target_position(self, pos_dict, caller_id=None, move_blocking=False):
         with self._thread_lock:
-            self.log.debug("In set_target_position")
             if self.module_state() != 'idle':
                 self.log.error('Unable to change scanner target position while a scan is running.')
                 new_pos = self._scanner().get_target()
@@ -345,13 +344,10 @@ class ScanningProbeLogic(LogicBase):
                 return new_pos
 
             # self.log.debug(f"Requested Set pos to= {pos_dict}")
-            self.log.debug("Get scanner constraints")
             ax_constr = self.scanner_constraints.axes
-            self.log.debug("expanding coordinates")
             pos_dict = self._scanner()._expand_coordinate(cp.copy(pos_dict))
             # self.log.debug(f"Expand to= {pos_dict}")
 
-            self.log.debug("transforming coordinates")
             pos_dict = self._scanner().coordinate_transform(pos_dict)
 
             for ax, pos in pos_dict.items():
@@ -369,14 +365,13 @@ class ScanningProbeLogic(LogicBase):
                     )
 
             # move_absolute expects untransformed coordinatess, so invert clipped pos
-            self.log.debug("inverse coordinate transform")
             pos_dict = self._scanner().coordinate_transform(pos_dict, inverse=True)
-            self.log.debug(f"In front of hw.move_abs {pos_dict}")
+            # self.log.debug(f"In front of hw.move_abs {pos_dict}")
             new_pos = self._scanner().move_absolute(pos_dict, blocking=move_blocking)
-            self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}")
+            # self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
-            self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
+            # self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
             self.sigScannerTargetChanged.emit(new_pos, self.module_uuid if caller_id is None else caller_id)
             return new_pos
 
