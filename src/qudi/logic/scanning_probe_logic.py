@@ -583,7 +583,7 @@ class ScanningProbeLogic(LogicBase):
             # Calculate poll time to check for scan completion. Use line scan time estimate.
             line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
             self.__scan_poll_interval = max(self._min_poll_interval, line_points / self._scan_frequency[scan_axes[0]])
-            t_poll_ms = min(1, int(round(self.__scan_poll_interval * 1000)))
+            t_poll_ms = max(1, int(round(self.__scan_poll_interval * 1000)))
 
             self.log.debug(f'Successfully configured scanner. Poll timer: {t_poll_ms} ms')
             self.__scan_poll_timer.setInterval(t_poll_ms)
