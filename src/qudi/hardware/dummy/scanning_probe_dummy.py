@@ -404,7 +404,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         # "Hardware" constraints
         self._constraints: Optional[DummyScanConstraints] = None
         # Mutex for access serialization
-        self._thread_lock = TrackedRecursiveMutex()
+        self._thread_lock = RecursiveMutex() #TrackedRecursiveMutex()
 
         self.__scan_start = 0
         self.__last_forward_pixel = 0
@@ -688,6 +688,8 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             timer_interval_ms = int(0.5 * line_time * 1000)  # update twice every line
             self.__update_timer.setInterval(timer_interval_ms)
             self.__start_timer()
+
+        self.log.debug("Dummy start finished")
 
     def stop_scan(self):
         """Stop the currently running scan.
