@@ -20,6 +20,7 @@
 - Fixed psu-dependent bugs for laser_quantum_laser
 - Laser logic does not automatically start query loop, gui will still start it on startup
 - Fixed `t1_sequencing` predefined method's `counting_length` for gated mode
+- `QDPlotterGui` will continue to show fit results if new plot was added
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
