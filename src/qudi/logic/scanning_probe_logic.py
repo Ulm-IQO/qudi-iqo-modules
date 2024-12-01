@@ -76,6 +76,7 @@ class ScanningProbeLogic(LogicBase):
     sigScanStateChanged = QtCore.Signal(bool, ScanData, ScanData, UUID)
     sigNewScanDataForHistory = QtCore.Signal(ScanData, ScanData)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
+    sigScanSettingsChanged = QtCore.Signal()
     sigTiltCorrSettingsChanged = QtCore.Signal(dict)
 
     def __init__(self, *args, **kwargs):
@@ -242,6 +243,42 @@ class ScanningProbeLogic(LogicBase):
                 frequency=self.back_scan_frequency[scan_axes[0]],
             )
 
+    def get_scan_settings_per_ax(self) -> Sequence[Tuple[ScanSettings, ScanSettings]]:
+        all_settings = []
+        for axes in self.scanner_axes:
+            settings = self.create_scan_settings(axes)
+            back_settings = self.create_back_scan_settings(axes)
+            all_settings.append((settings, back_settings))
+
+        return all_settings
+
+    def set_scan_settings(self, setting: ScanSettings) -> None:
+        """
+        Set scan settings for an axis all at once through object.
+        """
+
+        if len(setting.axes) != 1:
+            raise ValueError(f"Can only configure single axes, not {setting.axes}")
+
+        axis = setting.axes[0]
+
+        self.set_scan_range(axis, setting.range[0])
+        self.set_scan_resolution(axis, setting.resolution[0])
+        self.set_scan_frequency(axis, setting.frequency)
+
+    def set_back_scan_settings(self, setting: ScanSettings) -> None:
+        """
+        Set back scan settings for an axis all at once through object.
+        """
+
+        if len(setting.axes) != 1:
+            raise ValueError(f"Can only configure single axes, not {setting.axes}")
+
+        axis = setting.axes[0]
+
+        self.set_back_scan_resolution(axis, setting.resolution[0])
+        self.set_back_scan_frequency(axis, setting.frequency)
+
     def check_scan_settings(self):
         """Validate current scan settings for all possible 1D and 2D scans."""
         for dim in [1, 2]:
@@ -266,6 +303,8 @@ class ScanningProbeLogic(LogicBase):
                     self.log.error("Invalid scan range or axis name.", exc_info=e)
                     self._scan_ranges = old_scan_ranges
 
+                self.sigScanSettingsChanged.emit()
+
     def set_scan_resolution(self, axis: str, resolution: int) -> None:
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -280,6 +319,8 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid scan resolution or axis name.", exc_info=e)
                     self._scan_resolution = old_scan_resolution
+
+                self.sigScanSettingsChanged.emit()
 
     def set_back_scan_resolution(self, axis: str, resolution: int) -> None:
         with self._thread_lock:
@@ -301,6 +342,8 @@ class ScanningProbeLogic(LogicBase):
                     self.log.error("Invalid back scan resolution setting.", exc_info=e)
                     self._back_scan_resolution = old_back_scan_resolution
 
+                self.sigScanSettingsChanged.emit()
+
     def set_scan_frequency(self, axis: str, frequency: float) -> None:
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -315,6 +358,8 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid scan frequency or axis name.", exc_info=e)
                     self._scan_frequency = old_scan_frequency
+
+                self.sigScanSettingsChanged.emit()
 
     def set_back_scan_frequency(self, axis: str, frequency: float) -> None:
         with self._thread_lock:
@@ -335,6 +380,8 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid back scan frequency setting.", exc_info=e)
                     self._back_scan_frequency = old_back_scan_frequency
+
+                self.sigScanSettingsChanged.emit()
 
     def set_target_position(self, pos_dict, caller_id=None, move_blocking=False):
         with self._thread_lock:

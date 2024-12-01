@@ -240,6 +240,9 @@ class ScannerGui(GuiBase):
         self._scanning_logic().sigScannerTargetChanged.connect(
             self.scanner_target_updated, QtCore.Qt.QueuedConnection
         )
+        self._scanning_logic().sigScanSettingsChanged.connect(
+            self.update_scanner_settings_from_logic, QtCore.Qt.QueuedConnection
+        )
         self._scanning_logic().sigScanStateChanged.connect(
             self.scan_state_updated, QtCore.Qt.QueuedConnection
         )
@@ -310,6 +313,7 @@ class ScannerGui(GuiBase):
         self._mw.action_utility_zoom.toggled.disconnect()
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
+        self._scanning_logic().sigScanSettingsChanged.disconnect(self.update_scanner_settings_from_logic)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
         self._data_logic().sigHistoryScanDataRestored.disconnect(self._update_from_history)
         self.scanner_control_dockwidget.sigTargetChanged.disconnect()
