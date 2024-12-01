@@ -53,12 +53,13 @@ class AWG70K(PulserInterface):
             # ftp_root_dir: 'C:\\inetpub\\ftproot' # optional, root directory on AWG device
             # ftp_login: 'anonymous' # optional, the username for ftp login
             # ftp_passwd: 'anonymous@' # optional, the password for ftp login
+            # local_waveform_gen: False # optional, generate waveforms locally or send via ftp
 
     """
 
     # config options
     _visa_address = ConfigOption(name='awg_visa_address', missing='error')
-    _ip_address = ConfigOption(name='awg_ip_address', missing='error')
+    _ip_address = ConfigOption(name='awg_ip_address', default='local', missing='warn')
     _visa_timeout = ConfigOption(name='timeout', default=30, missing='nothing')
     _tmp_work_dir = ConfigOption(name='tmp_work_dir',
                                  default=os.path.join(get_appdata_dir(True), 'pulsed_files'),
@@ -66,7 +67,10 @@ class AWG70K(PulserInterface):
     _ftp_dir = ConfigOption(name='ftp_root_dir', default='C:\\inetpub\\ftproot', missing='warn')
     _username = ConfigOption(name='ftp_login', default='anonymous', missing='warn')
     _password = ConfigOption(name='ftp_passwd', default='anonymous@', missing='warn')
-
+    # switch to decide if waveforms are generated on device or sent to it via ftp
+    # True for on device generation, False for ftp transfer.
+    _local_waveform_gen = ConfigOption(name='local_waveform_gen',
+                                       default=False, missing='warn')
     # translation dict from qudi trigger descriptor to device command
     __event_triggers = {'OFF': 'OFF', 'A': 'ATR', 'B': 'BTR', 'INT': 'INT'}
 
@@ -96,20 +100,23 @@ class AWG70K(PulserInterface):
             os.makedirs(os.path.abspath(self._tmp_work_dir))
 
         # connect to awg using PyVISA
-        if self._visa_address not in self._rm.list_resources():
+        try:
+            self.awg = self._rm.open_resource(self._visa_address)
+            # set timeout by default to 30 sec
+            self.awg.timeout = self._visa_timeout * 1000
+        except visa.VisaIOError:
             self.awg = None
             self.log.error('VISA address "{0}" not found by the pyVISA resource manager.\nCheck '
                            'the connection by using for example "Agilent Connection Expert".'
                            ''.format(self._visa_address))
-        else:
-            self.awg = self._rm.open_resource(self._visa_address)
-            # set timeout by default to 30 sec
-            self.awg.timeout = self._visa_timeout * 1000
 
         # try connecting to AWG using FTP protocol
-        with FTP(self._ip_address) as ftp:
-            ftp.login(user=self._username, passwd=self._password)
-            ftp.cwd(self.ftp_working_dir)
+        if not self._local_waveform_gen:
+            with FTP(self._ip_address) as ftp:
+                ftp.login(user=self._username, passwd=self._password)
+                ftp.cwd(self.ftp_working_dir)
+        else:
+            os.chdir(os.path.join(self._ftp_dir, self.ftp_working_dir))
 
         if self.awg is not None:
             self.awg_model = self.query('*IDN?').split(',')[1]
@@ -176,6 +183,13 @@ class AWG70K(PulserInterface):
             constraints.sample_rate.max = 50.0e9
             constraints.sample_rate.step = 10
             constraints.sample_rate.default = 50.0e9
+        # TODO Check AWG70001B constraints
+        elif self.awg_model == 'AWG70001B':
+            constraints.sample_rate.min = 1.49e3
+            constraints.sample_rate.max = 50.0e9
+            constraints.sample_rate.step = 10
+            constraints.sample_rate.default = 50.0e9
+        # TODO amplitude constraints should fall into the model specifics
 
         constraints.a_ch_amplitude.min = 0.25
         constraints.a_ch_amplitude.max = 0.5
@@ -198,10 +212,14 @@ class AWG70K(PulserInterface):
         constraints.waveform_length.max = self.__max_waveform_length
         if self.awg_model == 'AWG70002A':
             constraints.waveform_length.step = 1
-            constraints.waveform_length.default = self.__min_waveform_length
+            constraints.waveform_length.default = 1
         elif self.awg_model == 'AWG70001A':
             constraints.waveform_length.step = 2
-            constraints.waveform_length.default = self.__min_waveform_length
+            constraints.waveform_length.default = 2
+        # TODO Check AWG70001B constraints
+        elif self.awg_model == 'AWG70001B':
+            constraints.waveform_length.step = 2
+            constraints.waveform_length.default = 2
 
         # FIXME: Check the proper number for your device
         constraints.waveform_num.min = 1
@@ -265,6 +283,13 @@ class AWG70K(PulserInterface):
             # Usage of only channel 2 with no marker:
             activation_config['ch2_0mrk'] = frozenset({'a_ch2'})
         elif self.awg_model == 'AWG70001A':
+            activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
+            # Usage of only channel 1 with one marker:
+            activation_config['ch1_1mrk'] = frozenset({'a_ch1', 'd_ch1'})
+            # Usage of only channel 1 with no marker:
+            activation_config['ch1_0mrk'] = frozenset({'a_ch1'})
+        # TODO Check AWG70001B constraints
+        elif self.awg_model == 'AWG70001B':
             activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
             # Usage of only channel 1 with one marker:
             activation_config['ch1_1mrk'] = frozenset({'a_ch1', 'd_ch1'})
@@ -403,10 +428,11 @@ class AWG70K(PulserInterface):
                              total_number_of_samples=total_number_of_samples)
             self.log.debug('Write WFMX file: {0}'.format(time.time() - start))
 
-            # transfer waveform to AWG and load into workspace
-            start = time.time()
-            self._send_file(filename=wfm_name + '.wfmx')
-            self.log.debug('Send WFMX file: {0}'.format(time.time() - start))
+            if not self._local_waveform_gen:
+                # transfer waveform to AWG and load into workspace
+                start = time.time()
+                self._send_file(filename=wfm_name + '.wfmx')
+                self.log.debug('Send WFMX file: {0}'.format(time.time() - start))
 
             start = time.time()
             self.write('MMEM:OPEN "{0}"'.format(os.path.join(
@@ -1514,37 +1540,43 @@ class AWG70K(PulserInterface):
 
         @return list: filenames found in <ftproot>\\waves
         """
-        filename_list = list()
-        with FTP(self._ip_address) as ftp:
-            ftp.login(user=self._username, passwd=self._password)
-            ftp.cwd(self.ftp_working_dir)
-            # get only the files from the dir and skip possible directories
-            log = list()
-            ftp.retrlines('LIST', callback=log.append)
-            for line in log:
-                if '<DIR>' not in line:
-                    # that is how a potential line is looking like:
-                    #   '05-10-16  05:22PM                  292 SSR aom adjusted.seq'
-                    # The first part consists of the date information. Remove this information and
-                    # separate the first number, which indicates the size of the file. This is
-                    # necessary if the filename contains whitespaces.
-                    size_filename = line[18:].lstrip()
-                    # split after the first appearing whitespace and take the rest as filename.
-                    # Remove for safety all trailing and leading whitespaces:
-                    filename = size_filename.split(' ', 1)[1].strip()
-                    filename_list.append(filename)
-        return filename_list
+        if not self._local_waveform_gen:
+            filename_list = list()
+            with FTP(self._ip_address) as ftp:
+                ftp.login(user=self._username, passwd=self._password)
+                ftp.cwd(self.ftp_working_dir)
+                # get only the files from the dir and skip possible directories
+                log = list()
+                ftp.retrlines('LIST', callback=log.append)
+                for line in log:
+                    if '<DIR>' not in line:
+                        # that is how a potential line is looking like:
+                        #   '05-10-16  05:22PM                  292 SSR aom adjusted.seq'
+                        # The first part consists of the date information. Remove this information and
+                        # separate the first number, which indicates the size of the file. This is
+                        # necessary if the filename contains whitespaces.
+                        size_filename = line[18:].lstrip()
+                        # split after the first appearing whitespace and take the rest as filename.
+                        # Remove for safety all trailing and leading whitespaces:
+                        filename = size_filename.split(' ', 1)[1].strip()
+                        filename_list.append(filename)
+            return filename_list
+        return os.listdir(os.path.join(self._working_dir, self.ftp_working_dir))
 
     def _delete_file(self, filename):
         """
 
         @param str filename:
         """
+        if not self._local_waveform_gen:
+            if filename in self._get_filenames_on_device():
+                with FTP(self._ip_address) as ftp:
+                    ftp.login(user=self._username, passwd=self._password)
+                    ftp.cwd(self.ftp_working_dir)
+                    ftp.delete(filename)
+            return
         if filename in self._get_filenames_on_device():
-            with FTP(self._ip_address) as ftp:
-                ftp.login(user=self._username, passwd=self._password)
-                ftp.cwd(self.ftp_working_dir)
-                ftp.delete(filename)
+            os.remove(os.path.join(self._work_dir, self.ftp_working_dir, filename))
         return
 
     def _send_file(self, filename):
@@ -1606,9 +1638,13 @@ class AWG70K(PulserInterface):
 
         if not filename.endswith('.wfmx'):
             filename += '.wfmx'
-        wfmx_path = os.path.join(self._tmp_work_dir, filename)
-        tmp_path = os.path.join(self._tmp_work_dir, 'digital_tmp.bin')
 
+        if not self._local_waveform_gen:
+            wfmx_path = os.path.join(self._tmp_work_dir, filename)
+            tmp_path = os.path.join(self._tmp_work_dir, 'digital_tmp.bin')
+        else:
+            wfmx_path = os.path.join(self._ftp_dir, self.ftp_working_dir, filename)
+            tmp_path = os.path.join(self._ftp_dir, self.ftp_working_dir, 'digital_tmp.bin')
         # if it is the first chunk, create the .WFMX file with header.
         if is_first_chunk:
             # create header
