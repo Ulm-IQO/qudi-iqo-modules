@@ -659,6 +659,7 @@ class PulsedMeasurementLogic(LogicBase):
     @measurement_information.setter
     def measurement_information(self, info_dict):
         # Check if mandatory params to invoke settings are missing and set empty dict in that case.
+        self.log.warning(f"measurement_information, {info_dict=}")
         mand_params = ('number_of_lasers',
                        'controlled_variable',
                        'laser_ignore_list',
@@ -677,6 +678,7 @@ class PulsedMeasurementLogic(LogicBase):
         if self._invoke_settings_from_sequence and self._measurement_information:
             self._apply_invoked_settings()
             self.sigMeasurementSettingsUpdated.emit(self.measurement_settings)
+        self.log.warning("reaching end of measurement_information")
         return
 
     @property
@@ -697,6 +699,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     @generation_method_parameters.setter
     def generation_method_parameters(self, info_dict):
+        self.log.warning(f"setting generation_method_parameters, {info_dict=}")
         if isinstance(info_dict, dict):
             self._generation_method_parameters = info_dict
         else:
