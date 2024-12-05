@@ -17,12 +17,13 @@ If not, see <https://www.gnu.org/licenses/>.
 import sys
 import inspect
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 import numpy as np
 
 from qudi.util.network import netobtain
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
+from qudi.logic.qdyne.qdyne_tools import SettingsBase
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -43,23 +44,8 @@ class StateEstimator(ABC):
 
 
 @dataclass
-class StateEstimatorSettings(ABC):
-    _settings_updated_sig: object
-    name: str = ""
-
-    def __setattr__(self, key, value):
-        if hasattr(self, key) and hasattr(self, "_settings_updated_sig") and key != "_settings_updated_sig":
-            old_value = getattr(self, key)
-            if old_value != value:
-                self._settings_updated_sig.emit()
-
-        super().__setattr__(key, value)
-
-    def pass_signal(self, settings_updated_sig):
-        self._settings_updated_sig = settings_updated_sig
-
-    def delete_signal(self):
-        del self._settings_updated_sig
+class StateEstimatorSettings(SettingsBase):
+    pass
 
 
 @dataclass

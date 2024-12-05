@@ -20,6 +20,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
 
+from qudi.logic.qdyne.qdyne_tools import SettingsBase
 from qudi.util.network import netobtain
 
 
@@ -55,18 +56,8 @@ class Analyzer(ABC):
 
 
 @dataclass
-class AnalyzerSettings(ABC):
-    _settings_updated_sig: object
-    name: str = ""
-
-    def __setattr__(self, key, value):
-        if hasattr(self, "_settings_updated_sig") and key != "_settings_updated_sig":
-            old_value = getattr(self, key)
-            if old_value != value:
-                self._settings_updated_sig.emit()
-
-        super().__setattr__(key, value)
-
+class AnalyzerSettings(SettingsBase):
+    pass
 
 @dataclass
 class FourierAnalyzerSettings(AnalyzerSettings):
