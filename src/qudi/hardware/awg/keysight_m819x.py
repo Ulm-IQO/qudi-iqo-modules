@@ -716,7 +716,16 @@ class AWGM819X(PulserInterface):
             self.write(self._get_digital_ch_cmd(chnl) + ':AMPL {}'.format(ampl))
             self.write(self._get_digital_ch_cmd(chnl) + ':OFFS {}'.format(offs))
 
-        return self.get_digital_level()
+        # check set values
+        set_values = self.get_digital_level()
+        for chnl in low and high:
+            if set_values[0][chnl] != low[chnl] or set_values[1][chnl] != high[chnl]:
+                self.log.warning(
+                    f"Requested digital (low, high) values {(low[chnl], high[chnl])} for channel {chnl} have not been set in hardware."
+                    f"Check whether they are within hardware limits."
+                    f"Currently set settings for channel {chnl} {(set_values[0][chnl], set_values[1][chnl])}."
+                )
+        return set_values
 
     @abstractmethod
     def get_active_channels(self, ch=None):
