@@ -761,6 +761,7 @@ class PulseSequence(object):
         # This container needs to be populated by the script creating the PulseSequence
         # before saving it.
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def refresh_parameters(self):
@@ -796,6 +797,8 @@ class PulseSequence(object):
         if self.ensemble_list != other.ensemble_list:
             return False
         if self.measurement_information != other.measurement_information:
+            return False
+        if self.generation_method_parameters != other.generation_method_parameters:
             return False
         return True
 
@@ -858,6 +861,7 @@ class PulseSequence(object):
         self.ensemble_list[key] = value
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         if stage_refresh:
             self.refresh_parameters()
         return
@@ -900,6 +904,7 @@ class PulseSequence(object):
 
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         if self.ensemble_list[position].repetitions < 0:
             stage_refresh = True
         popped_element = self.ensemble_list.pop(position)
@@ -943,6 +948,7 @@ class PulseSequence(object):
             self.is_finite = False
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def append(self, element):
@@ -960,6 +966,7 @@ class PulseSequence(object):
         del self.ensemble_list[:]
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         self.is_finite = True
         return
 
@@ -967,6 +974,7 @@ class PulseSequence(object):
         self.ensemble_list.reverse()
         self.sampling_information = dict()
         self.measurement_information = dict()
+        self.generation_method_parameters = dict()
         return
 
     def get_dict_representation(self):
@@ -976,6 +984,7 @@ class PulseSequence(object):
         dict_repr['ensemble_list'] = self.ensemble_list
         dict_repr['sampling_information'] = self.sampling_information
         dict_repr['measurement_information'] = self.measurement_information
+        dict_repr['generation_method_parameters'] = self.generation_method_parameters
         return dict_repr
 
     @staticmethod
@@ -985,6 +994,7 @@ class PulseSequence(object):
                                 rotating_frame=sequence_dict['rotating_frame'])
         new_seq.sampling_information = sequence_dict['sampling_information']
         new_seq.measurement_information = sequence_dict['measurement_information']
+        new_seq.generation_method_parameters = sequence_dict['generation_method_parameters']
         return new_seq
 
 

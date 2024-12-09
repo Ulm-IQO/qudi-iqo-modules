@@ -21,6 +21,7 @@
 - Laser logic does not automatically start query loop, gui will still start it on startup
 - Fixed `t1_sequencing` predefined method's `counting_length` for gated mode
 - `QDPlotterGui` will continue to show fit results if new plot was added
+- Added `PulseSequence.generation_method_parameters` variable to correctly save `generation_method_parameters` of a `PulseSequence` and save these parameters in the output file
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
