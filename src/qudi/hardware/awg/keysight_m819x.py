@@ -714,6 +714,7 @@ class AWGM819X(PulserInterface):
             ampl = high[chnl] - low[chnl]
             self.write(self._get_digital_ch_cmd(chnl) + ':AMPL {}'.format(ampl))
             self.write(self._get_digital_ch_cmd(chnl) + ':OFFS {}'.format(offs))
+            self.log.debug(f"Writing digital levels to device:\noffset={offs},\namplitude={ampl}")
 
         # check set values
         set_values = self.get_digital_level()
