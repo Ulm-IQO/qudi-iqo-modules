@@ -747,7 +747,6 @@ class PulsedMasterLogic(LogicBase):
 
     @QtCore.Slot(object)
     def sample_sequence_finished(self, sequence):
-        self.log.debug(f"sample_sequence_finished: {sequence=}")
         self.status_dict['sampling_sequence_busy'] = False
         self.sigSampleSequenceComplete.emit(sequence)
         if self.status_dict['sampload_busy']:
@@ -804,7 +803,6 @@ class PulsedMasterLogic(LogicBase):
         @param asset_type:
         @return:
         """
-        self.log.warning(f"loaded asset updated {asset_name=}, {asset_type=}")
         self.status_dict['sampload_busy'] = False
         self.status_dict['loading_busy'] = False
         self.sigLoadedAssetUpdated.emit(asset_name, asset_type)
@@ -826,13 +824,9 @@ class PulsedMasterLogic(LogicBase):
             self.pulsedmeasurementlogic().measurement_information = dict()
             self.pulsedmeasurementlogic().generation_method_parameters =  dict()
         else:
-            self.log.warning(f"{type(object_instance)}")
             self.pulsedmeasurementlogic().sampling_information = object_instance.sampling_information
-            self.log.warning(f"setting measurement_information, {object_instance.measurement_information=}")
             self.pulsedmeasurementlogic().measurement_information = object_instance.measurement_information
-            self.log.warning("after measurement_information")
             self.pulsedmeasurementlogic().generation_method_parameters = object_instance.generation_method_parameters
-            self.log.warning(f"setting generation_parameters, {object_instance.generation_method_parameters=}")
         return
 
     @QtCore.Slot(object)

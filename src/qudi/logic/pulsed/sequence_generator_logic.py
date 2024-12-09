@@ -330,24 +330,17 @@ class SequenceGeneratorLogic(LogicBase):
     @property
     def loaded_asset(self):
         asset_names, asset_type = self.pulsegenerator().get_loaded_assets()
-        self.log.warning(f"{asset_names=}, {asset_type=}")
         name_list = list(asset_names.values())
-        self.log.debug(f"{name_list=}")
         if asset_type == 'waveform' and len(name_list) > 0:
-            self.log.debug("getting waveform")
             return_type = 'PulseBlockEnsemble'
             return_name = self._strip_ch_extension(name_list[0])
             for name in name_list:
-                self.log.debug(f"checking {name=}, {return_name=}")
                 if self._strip_ch_extension(name) != return_name:
                     return '', ''
         elif asset_type == 'sequence' and len(name_list) > 0:
-            self.log.debug(f"getting loaded sequence")
             return_type = 'PulseSequence'
             return_name = self._strip_ch_extension(name_list[0])
-            self.log.debug(f"{return_name=}")
             for name in name_list:
-                self.log.debug(f"checking {name=}, {return_name=}")
                 if self._strip_ch_extension(name) != return_name:
                     return '', ''
         else:
@@ -549,12 +542,9 @@ class SequenceGeneratorLogic(LogicBase):
         @param str|PulseSequence sequence:
         """
         # If str has been passed, get the sequence object from saved sequences
-        self.log.warning(f"{sequence=}")
         if isinstance(sequence, str):
             sequence = self.saved_pulse_sequences.get(sequence)
-            self.log.warn(f"{sequence=}")
             if sequence is None:
-                self.log.debug(f"tried to get sequence but only got None {sequence=}")
                 self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
                 return
         if not isinstance(sequence, PulseSequence):
@@ -583,7 +573,6 @@ class SequenceGeneratorLogic(LogicBase):
         else:
             self.log.error('Loading of PulseSequence "{0}" failed.\n'
                            'It has not been generated yet.'.format(sequence.name))
-        self.log.debug(f"updating loaded asset {self.loaded_asset=}")
         self.sigLoadedAssetUpdated.emit(*self.loaded_asset)
         return 0
 
@@ -1711,7 +1700,6 @@ class SequenceGeneratorLogic(LogicBase):
         It is a dictionary containing:
         TODO: Add parameters that are stored
         """
-        self.log.debug(f"sampling pulseblock {ensemble=}")
         # Get PulseBlockEnsemble from saved ensembles if string has been passed as argument
         if isinstance(ensemble, str):
             ensemble = self.get_ensemble(ensemble)
@@ -1986,7 +1974,6 @@ class SequenceGeneratorLogic(LogicBase):
 
         More sophisticated sequence sampling method can be implemented here.
         """
-        self.log.debug(f"sampling pulse {sequence=}")
         # Get PulseSequence from saved sequences if string has been passed as argument
         if isinstance(sequence, str):
             sequence = self.get_sequence(sequence)
@@ -1995,7 +1982,6 @@ class SequenceGeneratorLogic(LogicBase):
                 self.sigSampleSequenceComplete.emit(None)
                 return
 
-        self.log.debug(f"potential change to {sequence=}")
         # Perform sanity checks on sequence and corresponding ensembles
         if self._sampling_sequence_sanity_check(sequence) < 0:
             self.sigSampleSequenceComplete.emit(None)
@@ -2012,7 +1998,6 @@ class SequenceGeneratorLogic(LogicBase):
             return
 
         self._saved_pulse_sequences[sequence.name] = sequence
-        self.log.debug(f"{self._saved_pulse_sequences=}")
 
         # delete already written sequences on the device memory.
         if sequence.name in self.sampled_sequences:
@@ -2149,16 +2134,14 @@ class SequenceGeneratorLogic(LogicBase):
                 self.pulsegenerator().delete_sequence(seq)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         return
-
+    
     @staticmethod
     def _strip_ch_extension(wave_name):
         """
         :param wave_name: with (rabi_ch1) or without (rabi) channel extension.
         :return: stripped name (rabi)
         """
-        print(wave_name)
         if re.match(r'.*_ch[0-9]+?$', wave_name, re.IGNORECASE) is not None:
-            print(f"{wave_name=}, {wave_name.rsplit('_', 1)[0]=}")
             return wave_name.rsplit('_', 1)[0]
         return wave_name
 
