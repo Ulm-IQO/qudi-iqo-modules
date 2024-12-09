@@ -711,8 +711,7 @@ class AWGM819X(PulserInterface):
                 continue
 
             offs = (high[chnl] + low[chnl]) / 2
-            ampl = (high[chnl] - low[chnl]) / 2
-            self.log.debug(f" {chnl=}, {offs=}, {ampl=}")
+            ampl = high[chnl] - low[chnl]
             self.write(self._get_digital_ch_cmd(chnl) + ':AMPL {}'.format(ampl))
             self.write(self._get_digital_ch_cmd(chnl) + ':OFFS {}'.format(offs))
 
