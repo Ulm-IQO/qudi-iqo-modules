@@ -40,8 +40,6 @@ from qudi.interface.scanning_probe_interface import (
 )
 from dataclasses import dataclass
 
-from qudi.logic.scanning_probe_logic import TrackedRecursiveMutex
-
 logger = getLogger(__name__)
 
 
@@ -404,7 +402,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         # "Hardware" constraints
         self._constraints: Optional[DummyScanConstraints] = None
         # Mutex for access serialization
-        self._thread_lock = RecursiveMutex() #TrackedRecursiveMutex()
+        self._thread_lock = RecursiveMutex()
 
         self.__scan_start = 0
         self.__last_forward_pixel = 0
@@ -576,9 +574,8 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         Log error and return current target position if something fails or a 1D/2D scan is in
         progress.
         """
-        self.log.warning(f"move_absolute from {QtCore.QThread.currentThread()}")
         with self._thread_lock:
-            self.log.debug('Scanning probe dummy "move_absolute" called.')
+            # self.log.debug('Scanning probe dummy "move_absolute" called.')
             if self.module_state() != 'idle':
                 raise RuntimeError('Scanning in progress. Unable to move to position.')
             elif not set(position).issubset(self._position_ranges):
@@ -593,7 +590,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
                     move_time = max(0.01, np.sqrt(np.sum(dist**2 for dist in move_distance.values())) / velocity)
                 time.sleep(move_time)
                 self._current_position.update(position)
-            self.log.warning("move_absolute returning")
             return self._current_position
 
     def move_relative(self, distance, velocity=None, blocking=False):
@@ -630,7 +626,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         dict
             A dictionary representing the current target position for each axis.
         """
-        self.log.warning(f"get_target from {QtCore.QThread.currentThread()}")
         with self._thread_lock:
             return self._current_position.copy()
 
@@ -688,8 +683,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             timer_interval_ms = int(0.5 * line_time * 1000)  # update twice every line
             self.__update_timer.setInterval(timer_interval_ms)
             self.__start_timer()
-
-        self.log.debug("Dummy start finished")
 
     def stop_scan(self):
         """Stop the currently running scan.
@@ -768,12 +761,6 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             is_finished = aq_lines >= 1
         else:
             is_finished = aq_lines >= self.scan_settings.resolution[1]
-            is_finished = aq_lines >= self.scan_settings.resolution[1]
-
-        if self.scan_settings.scan_dimension != 1:
-            if abs(aq_lines - self.scan_settings.resolution[1]) < 2:
-                self.log.debug(f"[{t_elapsed}] Nearly finished in scan line {aq_lines}")
-
         if is_finished:
             self.module_state.unlock()
             self.log.debug("Scan finished.")
@@ -803,9 +790,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
 
     def __stop_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer,
-                                            'stop',
-                                            QtCore.Qt.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
 

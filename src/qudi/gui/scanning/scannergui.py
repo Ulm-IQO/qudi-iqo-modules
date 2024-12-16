@@ -215,7 +215,7 @@ class ScannerGui(GuiBase):
         self.sigToggleOptimize.connect(self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection)
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize, QtCore.Qt.QueuedConnection)
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.connect(
-            self._set_optimizer_dockwidget, QtCore.Qt.QueuedConnection
+            self._init_optimizer_dockwidget, QtCore.Qt.QueuedConnection
         )
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.connect(
             self.update_optimizer_settings_from_logic, QtCore.Qt.QueuedConnection
@@ -310,7 +310,7 @@ class ScannerGui(GuiBase):
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
-        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self._set_optimizer_dockwidget)
+        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self._init_optimizer_dockwidget)
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(
             self.update_optimizer_settings_from_logic
         )
@@ -406,7 +406,7 @@ class ScannerGui(GuiBase):
             # lambda ax, pos: self._update_scan_markers(pos_dict={ax: pos}, exclude_scan=None)
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
-        self._set_optimizer_dockwidget()
+        self._init_optimizer_dockwidget()
 
         self._mw.util_toolBar.visibilityChanged.connect(self._mw.action_view_toolbar.setChecked)
         self._mw.action_view_toolbar.triggered[bool].connect(self._mw.util_toolBar.setVisible)
@@ -419,7 +419,7 @@ class ScannerGui(GuiBase):
         self.tilt_correction_dockwidget.visibilityChanged.connect(self._mw.action_view_tilt_correction.setChecked)
         self._mw.action_view_tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
 
-    def _set_optimizer_dockwidget(self):
+    def _init_optimizer_dockwidget(self):
         optimizer_dockwidget = OptimizerDockWidget(
             axes=self._scanning_logic().scanner_axes,
             plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
