@@ -181,7 +181,7 @@ class ScanningProbeLogic(LogicBase):
         """Resolution for the backwards scan of the fast axis."""
         with self._thread_lock:
             # use value of forward scan if not configured otherwise (merge dictionaries)
-            return {**self._scan_resolution, **self._back_scan_resolution}
+            return {**self._scan_resolution.copy(), **self._back_scan_resolution.copy()}
 
     @property
     def scan_frequency(self) -> Dict[str, float]:
@@ -192,7 +192,7 @@ class ScanningProbeLogic(LogicBase):
     def back_scan_frequency(self) -> Dict[str, float]:
         with self._thread_lock:
             # use value of forward scan if not configured otherwise (merge dictionaries)
-            return {**self._scan_frequency, **self._back_scan_frequency}
+            return {**self._scan_frequency.copy(), **self._back_scan_frequency.copy()}
 
     @property
     def use_back_scan_settings(self) -> bool:
@@ -376,11 +376,10 @@ class ScanningProbeLogic(LogicBase):
             return new_pos
 
     def toggle_scan(self, start, scan_axes, caller_id=None):
-        with self._thread_lock:
-            if start:
-                self.start_scan(scan_axes, caller_id)
-            else:
-                self.stop_scan()
+        if start:
+            self.start_scan(scan_axes, caller_id)
+        else:
+            self.stop_scan()
 
     def toggle_tilt_correction(self, enable=True):
         target_pos = self._scanner().get_target()
@@ -532,12 +531,14 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScanStateChanged.emit(False, None, None, self._curr_caller_id)
                 self.log.error('Could not set scan settings on scanning probe hardware.', exc_info=e)
                 return
-            self.log.debug('Successfully configured scanner.')
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
             line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
             self.__scan_poll_interval = max(self._min_poll_interval, line_points / self._scan_frequency[scan_axes[0]])
-            self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
+            t_poll_ms = max(1, int(round(self.__scan_poll_interval * 1000)))
+
+            self.log.debug(f'Successfully configured scanner and logic scan poll timer: {t_poll_ms} ms')
+            self.__scan_poll_timer.setInterval(t_poll_ms)
 
             try:
                 self._scanner().start_scan()
@@ -547,8 +548,9 @@ class ScanningProbeLogic(LogicBase):
                 self.log.error("Couldn't start scan.", exc_info=e)
 
             self.sigScanStateChanged.emit(True, self.scan_data, self.back_scan_data, self._curr_caller_id)
-            self.__start_timer()
-            return
+
+        self.__start_timer()
+
 
     def stop_scan(self):
         with self._thread_lock:
