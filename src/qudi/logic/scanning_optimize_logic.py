@@ -102,7 +102,7 @@ class ScanningOptimizeLogic(LogicBase):
             self._set_default_scan_settings()
 
         self._avail_axes = tuple(axes.values())
-        self._set_scan_sequence()
+        self._set_default_scan_sequence()
 
         if self._data_channel is None:
             self._data_channel = tuple(channels.values())[0].name
@@ -114,7 +114,7 @@ class ScanningOptimizeLogic(LogicBase):
 
         self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
         self._scan_logic().sigScanStateChanged.connect(self._scan_state_changed, QtCore.Qt.QueuedConnection)
-        self.sigOptimizeSequenceDimensionsChanged.connect(self._set_scan_sequence, QtCore.Qt.QueuedConnection)
+        self.sigOptimizeSequenceDimensionsChanged.connect(self._set_default_scan_sequence, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """Reverse steps of activation"""
@@ -447,7 +447,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._back_scan_resolution = {}
         self._back_scan_frequency = {}
 
-    def _set_scan_sequence(self):
+    def _set_default_scan_sequence(self):
         possible_scan_sequences = self._allowed_sequences(self._optimizer_sequence_dimensions)
         if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
             self.log.info(
