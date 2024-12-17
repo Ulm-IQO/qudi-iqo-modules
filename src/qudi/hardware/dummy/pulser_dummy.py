@@ -541,11 +541,11 @@ class PulserDummy(PulserInterface):
         if pure_digital:
             for track_index, chnl in enumerate(digital_channels):
                 chnl_num = int(chnl.split('ch')[1])
-                new_loaded_assets[chnl_num] = '{0}_{1:d}'.format(sequence_name, track_index)
+                new_loaded_assets[chnl_num] = sequence_name
         else:
             for track_index, chnl in enumerate(analog_channels):
                 chnl_num = int(chnl.split('ch')[1])
-                new_loaded_assets[chnl_num] = '{0}_{1:d}'.format(sequence_name, track_index)
+                new_loaded_assets[chnl_num] = sequence_name
 
         self.current_loaded_assets = new_loaded_assets
         return self.get_loaded_assets()[0]
