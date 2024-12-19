@@ -714,17 +714,18 @@ class AWGM819X(PulserInterface):
             ampl = high[chnl] - low[chnl]
             self.write(self._get_digital_ch_cmd(chnl) + ':AMPL {}'.format(ampl))
             self.write(self._get_digital_ch_cmd(chnl) + ':OFFS {}'.format(offs))
-            self.log.debug(f"Writing digital levels to device:\noffset={offs},\namplitude={ampl}")
+            self.log.debug(f"Writing digital levels to device {chnl}:\noffset={offs},\namplitude={ampl}")
 
         # check set values
         set_values = self.get_digital_level()
         for chnl in low and high:
             if set_values[0][chnl] != low[chnl] or set_values[1][chnl] != high[chnl]:
                 self.log.warning(
-                    f"Requested digital (low, high) values {(low[chnl], high[chnl])} for channel {chnl} have not been set in hardware."
-                    f"Check whether they are within hardware limits."
-                    f"Currently set settings for channel {chnl} {(set_values[0][chnl], set_values[1][chnl])}."
+                    f"Requested digital (low, high) values {(low[chnl], high[chnl])} for channel {chnl} "
+                    f"could not been set to hardware. Check whether they are within hardware limits. "
+                    f"New settings for channel {chnl}: {(set_values[0][chnl], set_values[1][chnl])}."
                 )
+
         return set_values
 
     @abstractmethod
@@ -1343,13 +1344,13 @@ class AWGM819X(PulserInterface):
         :param mode: "cont", "trig" or "gate"
         :return:
         """
-        if mode is "cont":
+        if mode == "cont":
             self.write_all_ch(":INIT:CONT{}:STAT ON",  all_by_one={'m8195a': True})
             self.write_all_ch(":INIT:GATE{}:STAT OFF", all_by_one={'m8195a': True})
-        elif mode is "trig":
+        elif mode == "trig":
             self.write_all_ch(":INIT:CONT{}:STAT OFF", all_by_one={'m8195a': True})
             self.write_all_ch(":INIT:GATE{}:STAT OFF", all_by_one={'m8195a': True})
-        elif mode is "gate":
+        elif mode == "gate":
             self.write_all_ch(":INIT:CONT{}:STAT OFF", all_by_one={'m8195a': True})
             self.write_all_ch(":INIT:GATE{}:STAT ON",  all_by_one={'m8195a': True})
         else:
@@ -2060,11 +2061,11 @@ class AWGM819X(PulserInterface):
         return state, seq_table_id
 
     def set_trig_polarity(self, pol='pos'):
-        if pol is "pos":
+        if pol == "pos":
             self.write(":ARM:TRIG:SLOP POS")
-        elif pol is "neg":
+        elif pol == "neg":
             self.write(":ARM:TRIG:SLOP NEG")
-        elif pol is "both":
+        elif pol == "both":
             self.write(":ARM:TRIG:SLOP EITH")
 
         else:
@@ -2528,7 +2529,7 @@ class AWGM8195A(AWGM819X):
     def _get_loaded_seq_name(self, ch_num, idx):
 
         if idx > 0:
-            self.log.warn("AWG8195A does not support loading of multiple sequences")
+            self.log.warning("AWG8195A does not support loading of multiple sequences")
 
         return self._sequence_names[0]
 
