@@ -261,4 +261,60 @@ class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
         return f"{self.__class__.__name__}({self.value}))"
 
 
+class PulseCompositeType(Enum, metaclass=PulseEnvelopeTypeMeta):
+
+    bare = 'bare'
+    bb1 = 'bb1'
+    bb1_cp2 = 'bb1_cp2'
+    mw_dd = 'mw_dd'
+    mw_ddxdd = 'mw_ddxdd'
+    from_gen_settings = '_from_gen_settings'
+
+    def __init__(self, *args):
+        self._parameters = self.default_parameters
+
+    @property
+    def supported_rotations(self):
+        rots = {'bare': ['any'],
+                'bb1': ['any'],
+                'bb1_cp2': ['any'],
+                'mw_dd': ['any'],
+                'mw_ddxdd': ['any'],
+                '_from_gen_settings': []}
+        return rots[self.value]
+
+    @property
+    def supported_phase(self):
+        phases = {'bare': ['any'],
+                'bb1': ['any'],
+                'bb1_cp2': ['any'],
+                'mw_dd': ['any'],
+                'mw_ddxdd': ['any'],
+                 '_from_gen_settings': []}
+        return phases[self.value]
+
+    @property
+    def default_parameters(self):
+        defaults = {'bare': {},
+                    'bb1': {},
+                    'bb1_cp2': {},
+                    'mw_dd': {'dd_type': DDMethods.SE, 'dd_order': 3,
+                              'rabi_period': None, 'rabi_phase': -90},
+                    'mw_ddxdd': {'dd_type': DDMethods.SE, 'dd_order': 2,
+                              'rabi_period': None, 'rabi_phase': 90,
+                                 'dd_tau': 100e-9, 'dd_ampl_2': None},
+                    '_from_gen_settings': {}}
+
+        return defaults[self.value]
+
+    @property
+    def parameters(self):
+        return self._parameters
+
+    @parameters.setter
+    def parameters(self, param_dict):
+        self._parameters = param_dict
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.value}))"
 
