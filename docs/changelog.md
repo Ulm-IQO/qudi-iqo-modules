@@ -7,6 +7,7 @@
   implementing this interface.
 - Add back scan data and back scan settings getter and setter methods
   to `qudi.interface.scanning_probe_interface`.
+- Moved ConfigOption ScannerGui.optimizer_plot_dimensions to qudi.logic.scanning_optimize_logic.optimizer_sequence_dimensions and optimizer sequence creation is solely handled by logic
 
 ### Bugfixes
 - Fix failure of saving plots in `QDPlotLogic` when fiting is used.
@@ -19,7 +20,10 @@
 - Fixed `QDPlotterGui` example config
 - Fixed psu-dependent bugs for laser_quantum_laser
 - Laser logic does not automatically start query loop, gui will still start it on startup
+- Optimization sequences other than [2D, 1D] are now working
 - Fixed `t1_sequencing` predefined method's `counting_length` for gated mode
+- `QDPlotterGui` will continue to show fit results if new plot was added
+- Added `PulseSequence.generation_method_parameters` variable to correctly save `generation_method_parameters` of a `PulseSequence` and save these parameters in the output file
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
@@ -37,7 +41,8 @@
 - Expanded documentation of the microwave interface
 - Add new hardware module for the PID laser control functionality of HighFinesse wavemeters.
 - Added option to specify custom save file name in scanning GUI (PR #148)
-
+- Add support for digital output to NI X-series finite sampling io
+- Added fastcounter hardware file support for Adlink PCIe 9834
 
 
 ### Other
