@@ -83,7 +83,7 @@ class IDQuantique(FastCounterInterface):
         if self._active_input_nums == []:
             self.log.error('No input channels configured, see config file')
 
-        # TODO: change this so you can select which one you look at at the end
+        # change this so you can select which one you look at at the end
         self._measure_hist_num = 2
         self._binwidth_s = self.get_constraints()['hardware_binwidth_list'][0]
 
@@ -367,3 +367,4 @@ class IDQuantique(FastCounterInterface):
         # Wait while RECord is playing
         while self.execute("REC:STAGe?").upper() == "PLAYING":
             time.sleep(1)
+
