@@ -541,7 +541,11 @@ class ScannerGui(GuiBase):
         tilt_settings = self._scanning_logic().tilt_correction_settings
 
         self.tilt_corr_support_vector_updated(tilt_settings)
-        self.apply_tilt_corr_support_vectors()
+        try:
+            self.apply_tilt_corr_support_vectors()
+        except ValueError:
+            self.log.warning("Couldn't restore tilt correction settings.")
+            pass
 
     @QtCore.Slot(tuple)
     def save_scan_data(self, scan_axes: Union[None, Tuple[str], Tuple[str, str]]):
