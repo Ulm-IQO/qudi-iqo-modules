@@ -1005,6 +1005,8 @@ class AWGM819X(PulserInterface):
     def get_sequence_names(self):
         """ Retrieve the names of all uploaded sequence on the device.
 
+        In mode 'pc_hdd', self._assets_storage_path must equal sequence_generator_logic.__assets_storage_path!
+
         @return list: List of all uploaded sequence name strings in the device workspace.
         """
         sequence_list = list()
@@ -1021,6 +1023,7 @@ class AWGM819X(PulserInterface):
                 if filename.endswith(('.seq', '.seqx', '.sequence')):
                     if filename not in sequence_list:
                         sequence_list.append(self._remove_file_extension(filename))
+
         elif self._wave_mem_mode == 'awg_segments':
             seqs_ch1 = self.get_loaded_assets_name(1, 'sequence')
             seqs_ch2 = self.get_loaded_assets_name(2, 'sequence')
@@ -2165,9 +2168,6 @@ class AWGM8195A(AWGM819X):
         super().__init__(*args, **kwargs)
 
         self._sequence_names = []  # awg8195a can only store a single sequence
-
-        if self._wave_mem_mode == 'pc_hdd':
-            self.log.warning("wave_mem_mode pc_hdd is experimental on m8195a")
 
     @property
     def n_ch(self):
