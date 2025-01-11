@@ -970,7 +970,7 @@ class AWGM819X(PulserInterface):
             ctr_steps_written += 1
             self.log.debug("Writing seqtable entry {}: {}".format(index, step))
 
-        if goto_in_sequence:  # SequenceOrderOption.LINONLY:
+        if goto_in_sequence:
             self.log.warning("Found go_to in step of sequence {}. Not supported and ignored.".format(name))
 
         while int(self.query('*OPC?')) != 1:
@@ -1297,14 +1297,14 @@ class AWGM819X(PulserInterface):
                 segment_id = self._create_segment(chnl_num, name, n_samples,
                                                   to_segment_id=-1,
                                                   no_clear=(idx != 0 and self.internal_mem_mode == 'EXT'))
-                segment_id_plus_ch = f"{segment_id}_ch{chnl_num:d}"
+
                 self.write_bin(':TRAC{0}:DATA {1}, {2},'.format(chnl_num, segment_id, offset), data)
 
                 self._check_uploaded_wave_name(chnl_num, name, segment_id)
 
                 self._flag_segment_table_req_update = True
                 self.log.debug("Loading waveform {} of len {} to AWG ch {}, segment {}.".format(
-                    name, n_samples, chnl_num, segment_id_per_ch))
+                    name, n_samples, chnl_num, segment_id))
 
         elif self._wave_mem_mode == 'awg_segments':
 
@@ -1581,7 +1581,7 @@ class AWGM819X(PulserInterface):
             t_start = time.time()
 
             if self._wave_mem_mode == 'pc_hdd':
-                # todo: check if working for awg8195a
+
                 if to_segment_id != 1:
                     self.log.warning("In pc_hdd memory mode, 'to_segment_id' has no effect."
                                      "Writing to hdd without setting segment.")
@@ -1603,8 +1603,7 @@ class AWGM819X(PulserInterface):
                                                   to_segment_id=to_segment_id,
                                                   no_clear=(idx_ch != 0 and self.internal_mem_mode == 'EXT'))
 
-                segment_id_plus_ch = str(segment_id) + '_ch{:d}'.format(ch_num)
-                self.log.debug("Writing wave {} to ch {} segment_id {}".format(wave_name, ch_str, segment_id_plus_ch))
+                self.log.debug("Writing wave {} to ch {} segment_id {}".format(wave_name, ch_str, segment_id))
                 # upload
                 self.write_bin(':TRAC{0}:DATA {1}, {2},'.format(int(ch_num), segment_id, 0), comb_samples)
 
@@ -2186,7 +2185,7 @@ class AWGM8195A(AWGM819X):
 
     def get_interleaved_wavefile(self, ch_num=None):
         """
-        Whether wavefroms need to be uploaded in a interleaved intermediate format.
+        Whether waveforms need to be uploaded in an interleaved intermediate format.
         Not to confuse with interleave mode from get_interleave().
         :return: True/False: need interleaved wavefile?
         """
