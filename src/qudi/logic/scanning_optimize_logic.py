@@ -26,6 +26,7 @@ import numpy as np
 from PySide2 import QtCore
 import copy as cp
 from typing import Dict, Tuple, List, Optional, Union
+import itertools
 
 from qudi.core.module import LogicBase
 from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability
@@ -35,7 +36,6 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util.fit_models.gaussian import Gaussian2D, Gaussian
 from qudi.core.configoption import ConfigOption
-import itertools
 
 
 class ScanningOptimizeLogic(LogicBase):
@@ -425,6 +425,14 @@ class ScanningOptimizeLogic(LogicBase):
     def _check_scan_settings(self):
         """Basic check of scan settings for all axes."""
         scan_logic: ScanningProbeLogic = self._scan_logic()
+
+        for stg in [self.scan_range, self.scan_resolution, self.scan_frequency]:
+            axs = stg.keys()
+            for ax in axs:
+                if ax not in scan_logic.scanner_axes.keys():
+                    self.log.debug(f"Axis {ax} from optimizer scan settings not available on scanner" )
+                    raise ValueError
+
         capability = scan_logic.back_scan_capability
         if self._back_scan_resolution and (BackScanCapability.RESOLUTION_CONFIGURABLE not in capability):
             raise AssertionError('Back scan resolution cannot be configured for this scanner hardware.')
