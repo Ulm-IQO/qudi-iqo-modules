@@ -448,27 +448,22 @@ class ScanningOptimizeLogic(LogicBase):
         self._back_scan_frequency = {}
 
     def _set_default_scan_sequence(self):
-        if (
-            self._optimizer_sequence_dimensions
-            not in self.allowed_optimizer_sequence_dimensions
-        ):
+
+        if self._optimizer_sequence_dimensions not in self.allowed_optimizer_sequence_dimensions:
             fallback_dimension = self.allowed_optimizer_sequence_dimensions[0]
-            self.log.info(
-                f"Selected optimization dimensions ({self._optimizer_sequence_dimensions}) are not in the allowed optimizer dimensions ({self.allowed_optimizer_sequence_dimensions}), choosing fallback dimension {fallback_dimension}. "
-            )
+            self.log.info(f"Selected optimization dimensions ({self._optimizer_sequence_dimensions}) "
+                          f"are not in the allowed optimizer dimensions ({self.allowed_optimizer_sequence_dimensions}),"
+                          f" choosing fallback dimension {fallback_dimension}. ")
             self._optimizer_sequence_dimensions = fallback_dimension
 
-        possible_scan_sequences = self._allowed_sequences(
-            self._optimizer_sequence_dimensions
-        )
-        if (
-            self._scan_sequence is None
-            or self._scan_sequence not in possible_scan_sequences
-        ):
+        possible_scan_sequences = self._allowed_sequences(self._optimizer_sequence_dimensions)
+
+        if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
+
             fallback_scan_sequence = possible_scan_sequences[0]
-            self.log.info(
-                f"No valid scan sequence existing ({self._scan_sequence=}), setting scan sequence to {fallback_scan_sequence}."
-            )
+            self.log.info(f"No valid scan sequence existing ({self._scan_sequence=}),"
+                          f" setting scan sequence to {fallback_scan_sequence}.")
+
             self._scan_sequence = fallback_scan_sequence
 
     @_optimizer_sequence_dimensions.constructor
