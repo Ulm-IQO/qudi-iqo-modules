@@ -658,7 +658,12 @@ class ScanningProbeLogic(LogicBase):
         return self.scan_ranges
 
     def __start_timer(self):
+        """
+        WARNING: The calling function must not be another module's thread that may hold
+        a lock to the scanning_probe_logic. This may deadlock the BlockingQueuedConnection.
 
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
                                             'start',
