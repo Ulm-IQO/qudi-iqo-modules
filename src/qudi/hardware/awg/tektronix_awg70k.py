@@ -178,7 +178,7 @@ class AWG70K(PulserInterface):
             constraints.sample_rate.default = 50.0e9
 
         constraints.a_ch_amplitude.min = 0.25
-        constraints.a_ch_amplitude.max = 10 if self.awg_model == 'AWG70001B' else 0.5
+        constraints.a_ch_amplitude.max = 0.5
         constraints.a_ch_amplitude.step = 0.0001
         constraints.a_ch_amplitude.default = 0.5
 
@@ -264,13 +264,7 @@ class AWG70K(PulserInterface):
             activation_config['ch1_0mrk'] = frozenset({'a_ch1'})
             # Usage of only channel 2 with no marker:
             activation_config['ch2_0mrk'] = frozenset({'a_ch2'})
-        elif self.awg_model == 'AWG70001A':
-            activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
-            # Usage of only channel 1 with one marker:
-            activation_config['ch1_1mrk'] = frozenset({'a_ch1', 'd_ch1'})
-            # Usage of only channel 1 with no marker:
-            activation_config['ch1_0mrk'] = frozenset({'a_ch1'})
-        elif self.awg_model == 'AWG70001B':  #TODO this elif was missing --> commit
+        elif self.awg_model in ['AWG70001A', 'AWG70001B']:
             activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
             # Usage of only channel 1 with one marker:
             activation_config['ch1_1mrk'] = frozenset({'a_ch1', 'd_ch1'})
