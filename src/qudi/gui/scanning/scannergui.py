@@ -685,7 +685,6 @@ class ScannerGui(GuiBase):
 
         use_back_settings = self._ssd.settings_widget.configure_backward_scan
         self.sigUseBackScanSettings.emit(use_back_settings)
-        self.scanner_control_dockwidget.set_backward_settings_visibility(use_back_settings)
 
     @QtCore.Slot()
     def update_scanner_settings_from_logic(self):
@@ -700,6 +699,9 @@ class ScannerGui(GuiBase):
             self._ssd.settings_widget.set_forward_frequency(ax, forward)
         for ax, backward in scan_logic.back_scan_frequency.items():
             self._ssd.settings_widget.set_backward_frequency(ax, backward)
+
+        self._ssd.settings_widget.configure_backward_scan = scan_logic.use_back_scan_settings
+        self.scanner_control_dockwidget.set_backward_settings_visibility(scan_logic.use_back_scan_settings)
 
     @QtCore.Slot()
     def set_full_range(self) -> None:

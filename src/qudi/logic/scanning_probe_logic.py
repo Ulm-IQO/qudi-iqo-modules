@@ -205,6 +205,8 @@ class ScanningProbeLogic(LogicBase):
         with self._thread_lock:
             self._use_back_scan_settings = use
 
+            self.sigScanSettingsChanged.emit()
+
     @property
     def save_to_history(self) -> bool:
         """Whether to save finished scans to history."""
@@ -275,6 +277,11 @@ class ScanningProbeLogic(LogicBase):
             raise ValueError(f"Can only configure single axes, not {setting.axes}")
 
         axis = setting.axes[0]
+
+        if not self.use_back_scan_settings:
+            self.set_use_back_scan_settings(True)
+            self.log.info(f"Tried to set a back scan setting without back scans turned on."
+                          f" Now use_back_scan_settings= {self.use_back_scan_settings}")
 
         self.set_back_scan_resolution(axis, setting.resolution[0])
         self.set_back_scan_frequency(axis, setting.frequency)
