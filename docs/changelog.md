@@ -43,6 +43,7 @@
 - Added option to specify custom save file name in scanning GUI (PR #148)
 - Add support for digital output to NI X-series finite sampling io
 - Added fastcounter hardware file support for Adlink PCIe 9834
+- Altered tektronix_awg70k hardware file to allow the use of the newer, B-series of Tektronix AWGs
 
 
 ### Other
