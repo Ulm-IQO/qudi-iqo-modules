@@ -1695,11 +1695,8 @@ class AWG70K(PulserInterface):
         xml_header = xml_header.replace('XXXXXXXXX', str(len(xml_header)).zfill(9))
         return xml_header
 
-    #def _has_sequence_mode(self):
-        #return '03' in self.__installed_options
-
     def _has_sequence_mode(self):
-        if 'SEQ' in self.__installed_options:
-            return True
-        else:
-            return False
+        if self.awg_model in ['AWG70001A', 'AWG70002A']:
+            return '03' in self.__installed_options
+        if self.awg_model in ['AWG70001B', 'AWG70002B']:
+            return 'SEQ' in self.__installed_options
