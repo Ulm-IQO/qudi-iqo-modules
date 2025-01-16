@@ -117,17 +117,14 @@ class FourierAnalyzer(Analyzer):
         else:
             return time_trace
 
-    def _get_fft_n_point(self, padding_param, n_fft):
+    def _get_fft_n_point(self, padding_param: int, n_fft):
         """
         choose the length of the transformed axis of the output
         according to the given padding parameter
         """
-        if padding_param == 0:
+        if padding_param <= 0:
             return None
-        elif padding_param == 1 or padding_param == 2:
-            return n_fft * padding_param
-        else:
-            print("error")
+        return n_fft * padding_param
 
     def get_norm_amp_spectrum(self, signal):
         """
