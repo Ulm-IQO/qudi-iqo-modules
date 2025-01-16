@@ -16,11 +16,9 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import sys
 import inspect
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass
 import numpy as np
-
-from qudi.util.network import netobtain
 
 
 class Analyzer(ABC):
