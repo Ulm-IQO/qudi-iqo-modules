@@ -42,8 +42,6 @@ class QdyneMeasurementStatus:
 class QdyneMeasurement(QtCore.QObject):
     data_type_lists = ["TimeSeries", "TimeTag"]
 
-    # analysis timer interval
-    __timer_interval = 5
     sigTimerIntervalUpdated = QtCore.Signal(float)
     # analysis timer signals
     sigStartTimer = QtCore.Signal()
@@ -78,7 +76,7 @@ class QdyneMeasurement(QtCore.QObject):
         # set up the analysis timer
         self.__analysis_timer = QtCore.QTimer()
         self.__analysis_timer.setSingleShot(True)
-        self.__analysis_timer.setInterval(round(1000.0 * self.__timer_interval))
+        self.__analysis_timer.setInterval(round(1000.0 * self.qdyne_logic.analysis_timer_interval))
         self.__analysis_timer.timeout.connect(
             self.qdyne_analysis_loop, QtCore.Qt.QueuedConnection
         )
@@ -217,19 +215,18 @@ class QdyneMeasurement(QtCore.QObject):
         """
         Property to return the currently set analysis timer interval in seconds.
         """
-        return self.__timer_interval
+        return self.qdyne_logic.analysis_timer_interval
 
     @analysis_timer_interval.setter
     def analysis_timer_interval(self, interval: float):
         """
         Property to return the currently set analysis timer interval in seconds.
         """
-        logger.debug(f"{interval=}")
-        self.__timer_interval = float(interval)
-        if self.__timer_interval > 0:
+        self.qdyne_logic.analysis_timer_interval = float(interval)
+        if self.qdyne_logic.analysis_timer_interval > 0:
             self.__analysis_timer.blockSignals(False)
 
-            self.__analysis_timer.setInterval(int(1000.0 * self.__timer_interval))
+            self.__analysis_timer.setInterval(int(1000.0 * self.qdyne_logic.analysis_timer_interval))
             if self._measurement_running:
                 self.sigStartTimer.emit()
         else:
@@ -237,4 +234,4 @@ class QdyneMeasurement(QtCore.QObject):
             self.sigStopTimer.emit()
             self.__analysis_timer.blockSignals(True)
 
-        self.sigTimerIntervalUpdated.emit(self.__timer_interval)
+        self.sigTimerIntervalUpdated.emit(self.qdyne_logic.analysis_timer_interval)

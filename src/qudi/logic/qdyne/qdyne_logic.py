@@ -324,6 +324,7 @@ class QdyneLogic(LogicBase):
     _current_estimator_stg_name = StatusVar(default="default")
     _current_analyzer_method = StatusVar(default="Fourier")
     _current_analyzer_stg_name = StatusVar(default="default")
+    analysis_timer_interval = StatusVar(default=1.0)
 
     _fit_configs = StatusVar(name="fit_configs", default=None)
     _estimator_method = "TimeTag"
