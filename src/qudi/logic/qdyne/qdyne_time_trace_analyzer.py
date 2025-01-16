@@ -98,33 +98,33 @@ class FourierAnalyzer(Analyzer):
         """
         @return ft: complex ndarray
         """
-        n_fft = len(time_trace)
-        input_time_trace = self._get_fft_input_time_trace(
-            time_trace, cut_time_trace, n_fft
-        )
-        n_point = self._get_fft_n_point(padding_param, n_fft)
-        ft = np.fft.fft(input_time_trace, n_point)
-        freq = np.fft.fftfreq(n_point, sequence_length_bins)
+        n_point = self._get_padded_time_trace_length(time_trace, padding_param)
+        ft = np.fft.fft(time_trace, n_point)
+        freq = np.fft.rfftfreq(n_point, sequence_length_bins)
         signal = [
-            freq[: n_fft // 2],
-            ft[: n_fft // 2],
+            freq[: n_point // 2],
+            ft[: n_point // 2],
         ]  # only select positive frequencies
         return signal
 
-    def _get_fft_input_time_trace(self, time_trace, cut_time_trace, n_fft):
-        if cut_time_trace:
-            return time_trace[: int(n_fft / 2)]
-        else:
-            return time_trace
+    def _get_padded_time_trace_length(self, time_trace: np.ndarray, padding_param: int) -> int:
+        """
+        Method that calculates a padded timetrace depending on the padding param.
+        If padding param == 0: time trace is returned as input
+        Else the padding_param next power of 2 to the current length is used as new length
 
-    def _get_fft_n_point(self, padding_param: int, n_fft):
+        The method returns the length of the padded_timetrace
         """
-        choose the length of the transformed axis of the output
-        according to the given padding parameter
-        """
-        if padding_param <= 0:
-            return None
-        return n_fft * padding_param
+        m = len(time_trace)
+        if padding_param == 0:
+            return m
+        # as fft works fastest for a number of datapoints following 2^n pad (if padding_param != 0)  to the next power of 2
+        n = int(np.floor(np.log2(m)))
+        if padding_param > 0:
+            target_length = 2**(n + padding_param)
+        else:
+            target_length = 2**(n + padding_param + 1)
+        return target_length
 
     def get_norm_amp_spectrum(self, signal):
         """
