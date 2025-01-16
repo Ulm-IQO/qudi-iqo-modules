@@ -65,6 +65,9 @@ class GenerationWidget(QtWidgets.QWidget):
         self.counter_settings_updated(
             self._gui.logic().measurement_generator.counter_settings
         )
+        self.bin_width_updated(
+            self._gui.logic().measurement_generator.counter_settings
+        )
 
         # Dynamically create GUI elements for predefined methods
         self.gen_buttons = dict()
@@ -111,17 +114,17 @@ class GenerationWidget(QtWidgets.QWidget):
         )
         self.binwidth_spinbox.editingFinished.connect(self.counter_settings_changed)
 
-        # Todo: is this needed?
-        #  It will change values in GUI from pulsed feedback;
-        #  Qdyne settings are set every time upon start of measurement
-        #self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
-        #    self.counter_settings_updated
-        #)
-        # self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
-        #    self.measurement_settings_updated
-        # )
+        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
+            self.counter_settings_updated
+        )
+        self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
+            self.measurement_settings_updated
+        )
         self._gui.logic().sigCounterSettingsUpdated.connect(
             self.counter_settings_updated
+        )
+        self._gui.logic().sigCounterSettingsUpdated.connect(
+            self.bin_width_updated
         )
         self.ana_param_sequence_length_DoubleSpinBox.editingFinished.connect(
             self.measurement_settings_changed
@@ -165,18 +168,21 @@ class GenerationWidget(QtWidgets.QWidget):
         )
         self.binwidth_spinbox.editingFinished.disconnect(self.counter_settings_changed)
 
-        #self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect(
-        #    self.counter_settings_updated
-        #)
+        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect(
+            self.counter_settings_updated
+        )
         self._gui.logic().sigCounterSettingsUpdated.disconnect(
             self.counter_settings_updated
+        )
+        self._gui.logic().sigCounterSettingsUpdated.disconnect(
+            self.bin_width_updated
         )
         self.ana_param_sequence_length_DoubleSpinBox.editingFinished.disconnect(
             self.measurement_settings_changed
         )
-        #self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect(
-        #    self.measurement_settings_updated
-        #)
+        self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect(
+            self.measurement_settings_updated
+        )
         self._gui.logic().sigMeasurementSettingsUpdated.disconnect(
             self.measurement_settings_updated
         )
@@ -595,14 +601,11 @@ class GenerationWidget(QtWidgets.QWidget):
 
         # block signals
         self.ana_param_record_length_DoubleSpinBox.blockSignals(True)
-        self.binwidth_spinbox.blockSignals(True)
         # set widgets
         if "record_length" in settings_dict:
             self.ana_param_record_length_DoubleSpinBox.setValue(
                 settings_dict["record_length"]
             )
-        if "bin_width" in settings_dict:
-            self.binwidth_spinbox.setValue(float(settings_dict["bin_width"]))
         if "is_gated" in settings_dict:
             if settings_dict.get("is_gated"):
                 self.toggle_global_param_enable("gate_channel", True)
@@ -614,6 +617,22 @@ class GenerationWidget(QtWidgets.QWidget):
 
         # unblock signals
         self.ana_param_record_length_DoubleSpinBox.blockSignals(False)
+        return
+
+    @QtCore.Slot(dict)
+    def bin_width_updated(self, settings_dict):
+        """
+
+        @param dict settings_dict:
+        """
+
+        # block signals
+        self.binwidth_spinbox.blockSignals(True)
+        # set widgets
+        if "bin_width" in settings_dict:
+            self.binwidth_spinbox.setValue(float(settings_dict["bin_width"]))
+
+        # unblock signals
         self.binwidth_spinbox.blockSignals(False)
         return
 
