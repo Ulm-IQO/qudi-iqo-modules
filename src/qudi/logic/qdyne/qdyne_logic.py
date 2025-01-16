@@ -238,6 +238,8 @@ class MeasurementGenerator:
     @property
     def measurement_settings(self):
         settings_dict = self._pulsedmasterlogic().measurement_settings
+        # overwrite invoke_settings option from pulsed
+        settings_dict['invoke_settings'] = self._invoke_settings
         settings_dict['_sequence_length'] = self.__sequence_length
         return settings_dict
 
