@@ -317,6 +317,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             timestamp = datetime.now()
             self._filename = timestamp.strftime('%Y%m%d-%H%M-%S')
             self.change_filename(self._filename)
+            self._read_lines = 0
             status = self.dll.Start(0)
             while self.get_status() != 2:
                 time.sleep(0.05)
