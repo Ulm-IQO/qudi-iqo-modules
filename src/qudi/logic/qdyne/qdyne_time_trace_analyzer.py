@@ -97,12 +97,9 @@ class FourierAnalyzer(Analyzer):
         @return ft: complex ndarray
         """
         n_point = self._get_padded_time_trace_length(time_trace, padding_param)
-        ft = np.fft.fft(time_trace, n_point)
+        ft = np.fft.rfft(time_trace, n_point)
         freq = np.fft.rfftfreq(n_point, sequence_length_bins)
-        signal = [
-            freq[: n_point // 2],
-            ft[: n_point // 2],
-        ]  # only select positive frequencies
+        signal = [freq, ft]
         return signal
 
     def _get_padded_time_trace_length(self, time_trace: np.ndarray, padding_param: int) -> int:
