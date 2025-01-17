@@ -104,28 +104,35 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     sig_start: float = 0
     sig_end: float = 0
     count_threshold: int = (
-        10  # Todo: this has to be either estimated or set somewhere from the logic
+        10  # Todo: we'll probably remove this
     )
     weight: list = field(default_factory=list)
-    _sequence_length: float = 1e-9
+    _bin_width: float = 1e-9
+    _sequence_length: float = 1e-6
 
+    # Todo: Is this function obsolete? Can it be deleted?
     def get_histogram(self, time_tag_data):
         count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
         return count_hist
 
+    # Todo: then this will be removed as well
     def set_start_count(
         self, time_tag_data
-    ):  # Todo: or maybe this can be taken from the pulseextractor?
+    ):
         count_hist = self.get_histogram(time_tag_data)
         self.sig_start = int(np.where(count_hist[1:] > self.count_threshold)[0][0])
 
     @property
     def sig_start_int(self):
-        return int(self.sig_start / self._sequence_length)
+        return int(self.sig_start / self._bin_width)
 
     @property
     def sig_end_int(self):
-        return int(self.sig_end / self._sequence_length)
+        return int(self.sig_end / self._bin_width)
+
+    @property
+    def max_bins(self):
+        return int(self._sequence_length / self._bin_width)
 
 
 class TimeTagStateEstimator(StateEstimator):
@@ -186,11 +193,11 @@ class TimeTagStateEstimator(StateEstimator):
         return np.array(counts_time_trace)
 
     def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
-        max_bins = int(max(time_tag_data))
+        # max_bins = int(max(time_tag_data))
         count_hist, bin_edges = np.histogram(
-            time_tag_data, bins=max_bins, range=(1, max_bins)
+            time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins)
         )
-        time_array = settings._sequence_length * np.arange(len(count_hist))
+        time_array = settings._bin_width * np.arange(len(count_hist))
         pulse_array = [time_array, count_hist]
         return pulse_array
 

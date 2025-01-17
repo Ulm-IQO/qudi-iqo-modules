@@ -173,6 +173,8 @@ class MeasurementGenerator:
             if ens_lasers != 1:
                 raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
             settings_dict['_sequence_length'] = ens_length
+        if "bin_width" in settings_dict:
+            settings_dict["_bin_width"] = float(settings_dict["bin_width"])  # add to configure estimator settings
         if "_sequence_length" in settings_dict:
             self.__sequence_length = float(settings_dict["_sequence_length"])
 

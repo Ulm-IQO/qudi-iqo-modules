@@ -655,6 +655,7 @@ class GenerationWidget(QtWidgets.QWidget):
         settings_dict["invoke_settings"] = (
             self.ana_param_invoke_settings_CheckBox.isChecked()
         )
+        settings_dict['_bin_width'] = self.binwidth_spinbox.value()
         settings_dict['_sequence_length'] = self.ana_param_sequence_length_DoubleSpinBox.value()
 
         self._gui.logic().measurement_generator.set_measurement_settings(settings_dict)
@@ -671,6 +672,7 @@ class GenerationWidget(QtWidgets.QWidget):
         self.ana_param_invoke_settings_CheckBox.blockSignals(True)
 
         # set widgets
+        self.bin_width_updated(settings_dict)
         if "_sequence_length" in settings_dict:
             self.ana_param_sequence_length_DoubleSpinBox.setValue(
                 settings_dict["_sequence_length"]
