@@ -57,7 +57,7 @@ class QDPlotterGui(GuiBase):
     Example config for copy-paste:
 
     qdplotter:
-        module.Class: 'qdplotter.qdplotter_gui.QDPlotterGui'
+        module.Class: 'qdplot.qdplot_gui.QDPlotterGui'
         options:
             pen_color_list: [[100, 100, 100], 'c', 'm', 'g']
         connect:
@@ -249,7 +249,7 @@ class QDPlotterGui(GuiBase):
         self._mw.setDockNestingEnabled(True)
         for ii, dockwidget in enumerate(self._plot_dockwidgets):
             widget = dockwidget.widget()
-            widget.toggle_fit(False)
+            widget.toggle_fit(widget.show_fit)
             widget.toggle_editor(False)
             dockwidget.show()
             dockwidget.setFloating(False)
@@ -264,7 +264,7 @@ class QDPlotterGui(GuiBase):
         self._mw.setDockNestingEnabled(True)
         for ii, dockwidget in enumerate(self._plot_dockwidgets):
             widget = dockwidget.widget()
-            widget.toggle_fit(False)
+            widget.toggle_fit(widget.show_fit)
             widget.toggle_editor(False)
             dockwidget.show()
             dockwidget.setFloating(False)
@@ -294,7 +294,7 @@ class QDPlotterGui(GuiBase):
         self._mw.setDockNestingEnabled(True)
         for ii, dockwidget in enumerate(self._plot_dockwidgets):
             widget = dockwidget.widget()
-            widget.toggle_fit(False)
+            widget.toggle_fit(widget.show_fit)
             widget.toggle_editor(False)
             dockwidget.show()
             dockwidget.setFloating(False)
@@ -382,7 +382,8 @@ class QDPlotterGui(GuiBase):
     def _plot_added(self) -> None:
         index = len(self._plot_dockwidgets)
         dockwidget = QDPlotDockWidget(fit_container=self._qdplot_logic().get_fit_container(index),
-                                      plot_number=index + 1)
+                                      plot_number=index + 1,
+                                      show_fit=False)
         self._plot_dockwidgets.append(dockwidget)
         self._color_cyclers.append(cycle(self._pen_color_list))
 

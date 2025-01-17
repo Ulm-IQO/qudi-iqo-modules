@@ -382,12 +382,6 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
        <property name="decimals">
         <number>3</number>
        </property>
-       <property name="minimum">
-        <double>-999999999.000000000000000</double>
-       </property>
-       <property name="maximum">
-        <double>999999999.000000000000000</double>
-       </property>
        <property name="singleStep">
         <double>0.001000000000000</double>
        </property>

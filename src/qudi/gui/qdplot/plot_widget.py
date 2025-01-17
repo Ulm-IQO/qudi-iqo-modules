@@ -91,7 +91,7 @@ class QDPlotWidget(QtWidgets.QWidget):
 
     SelectionMode = InteractiveCurvesWidget.SelectionMode
 
-    def __init__(self, *args, fit_container=None, **kwargs) -> None:
+    def __init__(self, *args, fit_container=None, show_fit: bool = True, **kwargs) -> None:
         super().__init__(*args, **kwargs)
 
         layout = QtWidgets.QGridLayout()
@@ -111,6 +111,8 @@ class QDPlotWidget(QtWidgets.QWidget):
         layout.addWidget(self.fit_widget, row, 1)
         row += 1
         layout.setColumnStretch(0, 1)
+
+        self._show_fit = show_fit
 
         self.fit_widget.hide()
 
@@ -156,7 +158,7 @@ class QDPlotWidget(QtWidgets.QWidget):
         self.plot_fit = self.curve_widget.plot_fit
 
         self.toggle_selector(True)
-        self.toggle_fit(True)
+        self.toggle_fit(self._show_fit)
         self.toggle_editor(True)
         self.toggle_cursor_tracking(True)
 
@@ -248,8 +250,13 @@ class QDPlotWidget(QtWidgets.QWidget):
     def sigPlotParametersChanged(self) -> QtCore.Signal:
         return self.curve_widget.sigPlotParametersChanged
 
+    @property
+    def show_fit(self) -> bool:
+        return self._show_fit
+
     def toggle_fit(self, show: bool) -> None:
         self.control_widget.show_fit_checkbox.setChecked(show)
+        self._show_fit = show
 
     def toggle_editor(self, show: bool) -> None:
         self.control_widget.show_editor_checkbox.setChecked(show)
@@ -278,10 +285,10 @@ class QDPlotDockWidget(AdvancedDockWidget):
     """
     """
 
-    def __init__(self, *args, plot_number=0, fit_container=None, **kwargs):
+    def __init__(self, *args, plot_number=0, fit_container=None, show_fit: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle(f'Plot {plot_number:d}')
         self.setFeatures(self.DockWidgetFloatable | self.DockWidgetMovable)
-        widget = QDPlotWidget(fit_container=fit_container)
+        widget = QDPlotWidget(fit_container=fit_container, show_fit=show_fit)
         self.setWidget(widget)
 
