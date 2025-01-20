@@ -281,6 +281,8 @@ class ScanningOptimizeLogic(LogicBase):
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
                 return
 
+            self.module_state.lock()
+
             curr_pos = scan_logic.scanner_target
             constraints = scan_logic.scanner_constraints
             for ax, rel_rng in self.scan_range.items():
@@ -303,7 +305,6 @@ class ScanningOptimizeLogic(LogicBase):
             # optimizer scans always explicitly configure the backwards scan settings
             scan_logic.set_use_back_scan_settings(True)
 
-            self.module_state.lock()
             with self._result_lock:
                 self._last_scans = list()
                 self._last_fits = list()
