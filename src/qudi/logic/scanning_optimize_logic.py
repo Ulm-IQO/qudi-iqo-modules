@@ -275,11 +275,12 @@ class ScanningOptimizeLogic(LogicBase):
 
     def start_optimize(self):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            scan_logic: ScanningProbeLogic = self._scan_logic()
+
+            if self.module_state() != 'idle' or scan_logic.module_state() != 'idle':
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
                 return
 
-            scan_logic: ScanningProbeLogic = self._scan_logic()
             curr_pos = scan_logic.scanner_target
             constraints = scan_logic.scanner_constraints
             for ax, rel_rng in self.scan_range.items():
