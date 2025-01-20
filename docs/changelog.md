@@ -44,6 +44,7 @@
 - Added option to specify custom save file name in scanning GUI (PR #148)
 - Add support for digital output to NI X-series finite sampling io
 - Added fastcounter hardware file support for Adlink PCIe 9834
+- Added RXY8 methods
 
 
 ### Other
