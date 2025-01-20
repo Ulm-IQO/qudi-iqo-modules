@@ -65,6 +65,8 @@ Configuration for time series toolchain needs changes as well. See `default.cfg`
 docstrings.
 
 ### Bugfixes
+- Disconnect GUI widgets on deactivation of laser `LaserGui`
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Basic data saving in `TimeSeriesReaderLogic` works now.
 - Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
 - Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle
