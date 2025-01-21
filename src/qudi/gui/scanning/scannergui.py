@@ -858,8 +858,7 @@ class ScannerGui(GuiBase):
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
         data_logic: ScanningDataLogic = self._data_logic()
-        for ax in avail_axs:
-            data_logic.restore_from_history(ax)
+        data_logic.restore_from_history()
 
     def _update_scan_markers(self, pos_dict, exclude_scan=None):
         """ """
