@@ -1159,6 +1159,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         for sequence in sequences:
             sequence.sampling_information = dict()
+            sequence.generation_method_parameters = kwargs_dict
             self.save_sequence(sequence)
 
         created_name = gen_params.get('name') if 'name' not in kwargs_dict else kwargs_dict['name']

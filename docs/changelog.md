@@ -7,8 +7,10 @@
   implementing this interface.
 - Add back scan data and back scan settings getter and setter methods
   to `qudi.interface.scanning_probe_interface`.
+- Moved ConfigOption ScannerGui.optimizer_plot_dimensions to qudi.logic.scanning_optimize_logic.optimizer_sequence_dimensions and optimizer sequence creation is solely handled by logic
 
 ### Bugfixes
+- Fix a crash of pulsed gui on reload of pulsed logic, e.g. sequence_generator_logic
 - Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Improve handling of errors during start of a scan in the scanning probe toolchain.
 - Now correct microwave phases in predefined method generate_hahnecho_exp()
@@ -19,6 +21,11 @@
 - Fixed `QDPlotterGui` example config
 - Fixed psu-dependent bugs for laser_quantum_laser
 - Laser logic does not automatically start query loop, gui will still start it on startup
+- Optimization sequences other than [2D, 1D] are now working
+- Fixed `t1_sequencing` predefined method's `counting_length` for gated mode
+- `QDPlotterGui` will continue to show fit results if new plot was added
+- Added `PulseSequence.generation_method_parameters` variable to correctly save `generation_method_parameters` of a `PulseSequence` and save these parameters in the output file
+- Fixed `ScanningOptimizeLogic` crashing on first start when using scanner with less than the default 3 axes configured
 - Fixed Keysight M8195A AWG sequence mode
 - Fixed setting of digital channel amplitude of Keysight M819X AWG
 
@@ -38,8 +45,10 @@
 - Expanded documentation of the microwave interface
 - Add new hardware module for the PID laser control functionality of HighFinesse wavemeters.
 - Added option to specify custom save file name in scanning GUI (PR #148)
+- Add support for digital output to NI X-series finite sampling io
+- Added fastcounter hardware file support for Adlink PCIe 9834
+- Save and restore window position of various module GUIs
 - Added DMC output mode for Keysight M8195A AWG
-
 
 
 ### Other
@@ -61,6 +70,8 @@ Configuration for time series toolchain needs changes as well. See `default.cfg`
 docstrings.
 
 ### Bugfixes
+- Disconnect GUI widgets on deactivation of laser `LaserGui`
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 - Basic data saving in `TimeSeriesReaderLogic` works now.
 - Fix missing meta info `generation_method_parameters` that occurred for generated sequences with granularity mismatch.
 - Ni Finite Sampling Input module now returns digital input channel values in "clicks/counts" per second and not "clicks/counts" per clock cycle
