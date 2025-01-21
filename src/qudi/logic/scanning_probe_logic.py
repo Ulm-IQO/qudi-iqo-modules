@@ -243,6 +243,13 @@ class ScanningProbeLogic(LogicBase):
 
     def check_scan_settings(self):
         """Validate current scan settings for all possible 1D and 2D scans."""
+        for stg in [self.scan_ranges, self.scan_resolution, self.scan_frequency]:
+            axs = stg.keys()
+            for ax in axs:
+                if ax not in self.scanner_axes.keys():
+                    self.log.debug(f"Axis {ax} from scan settings not available on scanner" )
+                    raise ValueError
+
         for dim in [1, 2]:
             for axes in combinations(self.scanner_axes, dim):
                 settings = self.create_scan_settings(axes)
