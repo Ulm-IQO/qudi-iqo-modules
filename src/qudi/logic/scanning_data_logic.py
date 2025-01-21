@@ -200,7 +200,7 @@ class ScanningDataLogic(LogicBase):
         @return int: index
         """
         with self._thread_lock:
-            if scan_axes is None:
+            if scan_axes is None and self._scan_history:
                 return -1
             for i in range(len(self._scan_history) - 1, -1, -1):
                 data, _ = self._scan_history[i]
