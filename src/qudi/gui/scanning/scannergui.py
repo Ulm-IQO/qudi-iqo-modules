@@ -858,7 +858,12 @@ class ScannerGui(GuiBase):
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
         data_logic: ScanningDataLogic = self._data_logic()
+        # populate all plot widgets with scandata
+        for ax in avail_axs:
+            data_logic.restore_from_history(ax, set_target=False)
+        # restore the latest scan
         data_logic.restore_from_history()
+
 
     def _update_scan_markers(self, pos_dict, exclude_scan=None):
         """ """
@@ -883,9 +888,10 @@ class ScannerGui(GuiBase):
                 continue
         self.scanner_control_dockwidget.set_target(pos_dict)
 
-    @QtCore.Slot(ScanData, ScanData)
-    def _update_from_history(self, scan_data: ScanData, back_scan_data: Optional[ScanData]):
-        self.set_scanner_target_position(scan_data.scanner_target_at_start)
+    @QtCore.Slot(ScanData, ScanData, int)
+    def _update_from_history(self, scan_data: ScanData, back_scan_data: Optional[ScanData], set_target: bool):
+        if set_target:
+            self.set_scanner_target_position(scan_data.scanner_target_at_start)
         self._update_scan_data(scan_data, back_scan_data)
         self.set_active_tab(scan_data.settings.axes)
 
