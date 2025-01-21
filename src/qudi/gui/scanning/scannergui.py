@@ -232,6 +232,9 @@ class ScannerGui(GuiBase):
         self._mw.action_history_back.triggered.connect(self._data_logic().history_previous, QtCore.Qt.QueuedConnection)
 
         self._scanning_logic().sigScannerTargetChanged.connect(self.scanner_target_updated, QtCore.Qt.QueuedConnection)
+        self._scanning_logic().sigScanSettingsChanged.connect(
+            self.update_scanner_settings_from_logic, QtCore.Qt.QueuedConnection
+        )
         self._scanning_logic().sigScanStateChanged.connect(self.scan_state_updated, QtCore.Qt.QueuedConnection)
         self._data_logic().sigHistoryScanDataRestored.connect(self._update_from_history, QtCore.Qt.QueuedConnection)
         self._optimize_logic().sigOptimizeStateChanged.connect(self.optimize_state_updated, QtCore.Qt.QueuedConnection)
@@ -309,6 +312,7 @@ class ScannerGui(GuiBase):
         self._mw.action_utility_zoom.toggled.disconnect()
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
+        self._scanning_logic().sigScanSettingsChanged.disconnect(self.update_scanner_settings_from_logic)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self._init_optimizer_dockwidget)
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(
@@ -682,7 +686,6 @@ class ScannerGui(GuiBase):
 
         use_back_settings = self._ssd.settings_widget.configure_backward_scan
         self.sigUseBackScanSettings.emit(use_back_settings)
-        self.scanner_control_dockwidget.set_backward_settings_visibility(use_back_settings)
 
     @QtCore.Slot()
     def update_scanner_settings_from_logic(self):
@@ -697,6 +700,9 @@ class ScannerGui(GuiBase):
             self._ssd.settings_widget.set_forward_frequency(ax, forward)
         for ax, backward in scan_logic.back_scan_frequency.items():
             self._ssd.settings_widget.set_backward_frequency(ax, backward)
+
+        self._ssd.settings_widget.configure_backward_scan = scan_logic.use_back_scan_settings
+        self.scanner_control_dockwidget.set_backward_settings_visibility(scan_logic.use_back_scan_settings)
 
     @QtCore.Slot()
     def set_full_range(self) -> None:

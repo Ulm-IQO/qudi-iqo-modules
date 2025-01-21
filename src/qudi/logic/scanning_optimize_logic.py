@@ -86,6 +86,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._last_scans = list()
         self._last_fits = list()
         self._avail_axes = tuple()
+        self._stashed_settings = None
 
     def on_activate(self):
         """Initialisation performed during activation of the module."""
@@ -280,6 +281,9 @@ class ScanningOptimizeLogic(LogicBase):
                 return
 
             scan_logic: ScanningProbeLogic = self._scan_logic()
+
+            self._stashed_settings = scan_logic.get_scan_settings_per_ax()
+
             curr_pos = scan_logic.scanner_target
             constraints = scan_logic.scanner_constraints
             for ax, rel_rng in self.scan_range.items():
@@ -386,6 +390,14 @@ class ScanningOptimizeLogic(LogicBase):
                     # optimizer scans are never saved in scanning history
                     self._scan_logic().stop_scan()
             finally:
+
+                for setting, back_setting in self._stashed_settings:
+                    # self.log.debug(f"Recovering scan settings: {setting}")
+                    self._scan_logic().set_scan_settings(setting)
+                    self._scan_logic().set_back_scan_settings(back_setting)
+
+                self._stashed_settings = None
+
                 self._scan_logic().save_to_history = True
                 self.module_state.unlock()
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
