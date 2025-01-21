@@ -99,18 +99,17 @@ class NVCalculatorGui(GuiBase):
         self.calculator.sigManualFieldUpdated.connect(self.update_manual_field, QtCore.Qt.QueuedConnection)
         self.calculator.sigNMRUpdated.connect(self.update_nmr, QtCore.Qt.QueuedConnection)
 
-        self._restore_window_geometry(self._mw)
         self.show()
 
     def show(self):
         """Make sure that the window is visible and at the top.
         """
+        self._restore_window_geometry(self._mw)
         self._mw.show()
 
     def on_deactivate(self):
         """ Hide window and stop ipython console.
         """
-        self.saveWindowPos(self._mw)
         self.sigCalParamsChanged.disconnect()
         self.sigManualDipsChanged.disconnect()
         self._mw.a_field_PushButton.clicked.disconnect()
@@ -119,6 +118,7 @@ class NVCalculatorGui(GuiBase):
         self._mw.e_DoubleSpinBox.editingFinished.disconnect()
         self._mw.freq1_DoubleSpinBox.editingFinished.disconnect()
         self._mw.freq2_DoubleSpinBox.editingFinished.disconnect()
+        self._save_window_geometry(self._mw)
         self._mw.close()
 
     def a_update_field(self, b_field, angle):
