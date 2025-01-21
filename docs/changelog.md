@@ -26,6 +26,8 @@
 - `QDPlotterGui` will continue to show fit results if new plot was added
 - Added `PulseSequence.generation_method_parameters` variable to correctly save `generation_method_parameters` of a `PulseSequence` and save these parameters in the output file
 - Fixed `ScanningOptimizeLogic` crashing on first start when using scanner with less than the default 3 axes configured
+- Fixed Keysight M8195A AWG sequence mode
+- Fixed setting of digital channel amplitude of Keysight M819X AWG
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
@@ -46,6 +48,7 @@
 - Add support for digital output to NI X-series finite sampling io
 - Added fastcounter hardware file support for Adlink PCIe 9834
 - Save and restore window position of various module GUIs
+- Added DMC output mode for Keysight M8195A AWG
 
 
 ### Other
