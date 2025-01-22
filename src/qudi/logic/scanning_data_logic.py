@@ -114,13 +114,27 @@ class ScanningDataLogic(LogicBase):
     def __scan_history_from_dicts(self, history_dicts: List[List[Optional[Dict]]])\
             -> List[Tuple[ScanData, Optional[ScanData]]]:
         history = []
+
+        scan_axes = self._scan_logic().scanner_axes
+        scan_axes_avail = [ax.name for ax in scan_axes.values()]
+
+        data_dropped = False
         try:
             for data_dict, back_data_dict in history_dicts:
                 data = ScanData.from_dict(data_dict)
                 back_data = ScanData.from_dict(back_data_dict) if back_data_dict is not None else None
+                data_axs = data.scanner_target_at_start.keys()
+                if not (set(data_axs) <= set(scan_axes_avail)):
+                    data_dropped = True
+                    continue
+
                 history.append((data, back_data))
         except Exception as e:
             self.log.warning("Unable to load scan history. Deleting scan history.", exc_info=e)
+
+        if data_dropped:
+            self.log.warning("Deleted scan history entries containing an incompatible scan axes configuration.")
+            
         return history
 
     def get_last_history_entry(self, scan_axes: Optional[Tuple[str, ...]] = None)\
