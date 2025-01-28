@@ -116,17 +116,31 @@ class QdyneMeasurement(QtCore.QObject):
         logger.debug("Starting QDyne measurement")
         timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
         fname = timestamp + fname if fname else timestamp
+        logger.debug("resetting data")
         self.data.reset()
         # Todo: is this needed?
         #  set settings to make sure that hardware has actual settings (and not of pulsed)
+        logger.debug("set counter settings")
         self.qdyne_logic.measurement_generator.set_counter_settings(
             self.qdyne_logic.measurement_generator.counter_settings
         )
+        logger.debug("set measurement_settings")
         self.qdyne_logic.measurement_generator.set_measurement_settings(
             self.qdyne_logic.measurement_generator.measurement_settings
         )
+        logger.debug("start measurement")
         self.qdyne_logic._data_streamer().start_measure()
+        logger.debug("start pulser")
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
+        logger.debug("creating metadata")
+        metadata = {}
+        metadata.update({'generation parameters': self.qdyne_logic.measurement_generator.generation_parameters})
+        metadata.update({'measurement settings': self.qdyne_logic.measurement_generator.measurement_settings})
+        metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
+        metadata.update({'generation method parameters': self.qdyne_logic.measurement_generator.generate_method_params[self.qdyne_logic.measurement_generator.loaded_asset[0]]})
+        logger.debug("set metadata")
+        self.qdyne_logic.data_manager.set_metadata(metadata)
+        logger.debug("emitting started signals")
         self.sigMeasurementStarted.emit()
         self._measurement_running = True
         self.sigStartTimer.emit()

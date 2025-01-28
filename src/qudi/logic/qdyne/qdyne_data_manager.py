@@ -16,7 +16,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import numpy as np
 import datetime
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from qudi.util.datastorage import *
 
@@ -50,7 +50,7 @@ class QdyneSaveOptions:
     data_dir: str = None
     use_default: bool = True
     timestamp: datetime.datetime = None
-    metadata: dict = None
+    metadata: dict = field(default_factory=dict)
     notes: str = None
     nametag: str = None
     column_headers: str = None
@@ -154,6 +154,12 @@ class DataManagerSettings:
     def set_nametag_all(self, nametag):
         self.set_all(self.set_nametag, nametag)
 
+    def set_metadata(self, data_type: str, metadata: dict) -> None:
+        self.options[data_type].metadata.update(metadata)
+
+    def set_metadata_all(self, metadata: dict) -> None:
+        self.set_all(self.set_metadata, metadata)
+
 
 class QdyneDataManager:
     data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
@@ -184,3 +190,9 @@ class QdyneDataManager:
         if index is not None and index != "":
             loaded_data = loaded_data[index]
         setattr(self.data, data_type, loaded_data)
+
+    def set_metadata(self, metadata: dict, data_type: str = "") -> None:
+        if not data_type:
+            self.settings.set_metadata_all(metadata)
+            return
+        self.settings.set_metadata(data_type, metadata)

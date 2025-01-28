@@ -29,6 +29,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.constraints import DiscreteScalarConstraint
 from qudi.util.mutex import RecursiveMutex
+from typing import Optional
 
 from qudi.logic.qdyne.qdyne_measurement import (
     QdyneMeasurement,
@@ -349,6 +350,8 @@ class QdyneLogic(LogicBase):
         self.settings = None
         self.data = None
         self.save = None
+        self.measurement_generator: Optional[MeasurementGenerator] = None
+        self.data_manager: Optional[QdyneDataManager] = None
 
     def on_activate(self):
         def activate_classes():
