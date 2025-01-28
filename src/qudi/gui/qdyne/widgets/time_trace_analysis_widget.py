@@ -224,7 +224,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.get_freq_domain_pushButton.clicked.connect(self.get_spectrum)
         self.get_peaks_pushButton.clicked.connect(self.get_peaks)
         self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
-        self.range_spinBox.valueChanged.connect(self.update_spectrum)
+        self.range_spinBox.editingFinished.connect(self.update_spectrum)
         self.plot1_fitwidget.sigDoFit.connect(
             lambda x: self._logic.do_fit(x)
         )  # fit config is input
@@ -256,6 +256,18 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.current_peak_comboBox.setModel(self.model)
 
     def update_spectrum(self):
+        def update_spectrum(self):
+            if not self.current_peak_comboBox.currentText():
+                return
+            range_index = self.range_spinBox.value()
+            if range_index >= self.freq_data.x.size:
+                range_index = self.freq_data.x.size - 1
+
+            self.freq_data.range_index = range_index
+            spectrum = self.freq_data.data_around_peak
+            self.signal_image.setData(x=spectrum[0], y=spectrum[1])
+            self.plot1_PlotWidget.clear()
+            self.plot1_PlotWidget.addItem(self.signal_image)
         if self.current_peak_comboBox.currentText():
             self.freq_data.current_peak = self.model.item(
                 self.current_peak_comboBox.currentIndex()
