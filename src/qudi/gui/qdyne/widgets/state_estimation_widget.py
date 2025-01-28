@@ -35,6 +35,11 @@ from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 class StateEstimationTab(QtWidgets.QWidget):
+    """Tab for the state estimation in a Qdyne measurement.
+    This tab handles the TimeTag or TimeSeries data from the hardware. It shows the
+    histogram data and allows to set the extraction window of the laser pulse. It can
+    show the extracted time trace data."""
+
     def __init__(self, logic):
         super().__init__()
         self._log = get_logger(__name__)
@@ -149,6 +154,8 @@ class StateEstimationTab(QtWidgets.QWidget):
 
 
 class StateEstimationSettingsWidget(SettingsWidget):
+    """Settings widget of the state estimation tab"""
+
     def __init__(self, settings, method_list):
         super(StateEstimationSettingsWidget, self).__init__(settings, method_list)
 
@@ -290,6 +297,8 @@ class StateEstimationSettingsWidget(SettingsWidget):
 
 
 class StateEstimationPulseWidget(QtWidgets.QWidget):
+    """Display the pulse histogram and extraction window of the TimeTag or
+    TimeSeries data."""
     sig_line_changed_sig = QtCore.Signal(float, float)
     ref_line_changed_sig = QtCore.Signal(float, float)
 
@@ -359,6 +368,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.sig_end_line.sigPositionChangeFinished.disconnect()
         self.ref_start_line.sigPositionChangeFinished.disconnect()
         self.ref_end_line.sigPositionChangeFinished.disconnect()
+        self.update_pushButton.clicked.disconnect()
         self.logic.measure.sigPulseDataUpdated.disconnect()
 
     def toggle_lines(self):
@@ -423,7 +433,11 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.sig_end_line.setMovable(movable)
         self.ref_start_line.setMovable(movable)
         self.ref_end_line.setMovable(movable)
+
+
 class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
+    """Display the time trace data."""
+
     _log = get_logger(__name__)
 
     def __init__(self, logic):
@@ -455,12 +469,10 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
         self.close()
 
     def connect_signals(self):
-        self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)
         # Connect update signals from qdyne_measurement_logic
         self.logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
 
     def disconnect_signals(self):
-        self.get_time_trace_pushButton.clicked.disconnect()
         self.logic.measure.sigTimeTraceDataUpdated.disconnect()
 
     def update_time_trace(self):
