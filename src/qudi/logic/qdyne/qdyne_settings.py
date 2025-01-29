@@ -109,14 +109,14 @@ class SettingsManager:
         if method is None:
             method = self.current_method
         elif method not in self.stg_cls_dict:
-            # Todo: give error message and return
+            # TODO: give error message and return
             give_an_error
             return
 
         if setting_name is None:
             setting_name = self.current_stg_name
         elif setting_name not in self.stg_param_dict[method]:
-            # Todo: give error message and return
+            # TODO: give error message and return
             give_an_error
             return
 
