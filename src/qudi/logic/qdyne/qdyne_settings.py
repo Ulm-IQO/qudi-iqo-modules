@@ -77,7 +77,7 @@ class SettingsManager:
         for setting in setting_classes:
             method_name = get_method_name(setting, self.abstract_class_obj)
             default_stg_param_dict[method_name] = dict()
-            default_stg = setting()
+            default_stg = setting(self.settings_updated_sig)
             default_stg.name = "default"
             default_stg_param_dict[method_name]["default"] = default_stg.to_dict()
         return default_stg_param_dict
