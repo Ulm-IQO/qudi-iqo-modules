@@ -20,6 +20,10 @@ from dataclasses import dataclass
 
 from qudi.util.datastorage import *
 
+from logging import getLogger
+
+logger = getLogger(__name__)
+
 class QdyneNpyDataStorage(NpyDataStorage):
     """
     TODO repair get_header_from_file
@@ -37,6 +41,7 @@ class QdyneNpyDataStorage(NpyDataStorage):
             header = get_header_from_file(metadata_path)
         except FileNotFoundError:
             return data, dict(), dict()
+        logger.warning(header)
         return data, dict(), dict()
 
 
@@ -77,6 +82,7 @@ class QdyneSaveOptions:
             file_name_stub, file_extension = file_name.rsplit('.', 1)
             return f'{file_name_stub}{suffix_str}.{file_extension}', None
 
+
 class DataStorage:
     data_storage_options = ['text', 'csv', 'npy']
 
@@ -116,6 +122,7 @@ class DataStorage:
         data, metadata, general = self.storage.load_data(file_path)
         return data
 
+
 class DataManagerSettings:
     data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
 
@@ -146,6 +153,8 @@ class DataManagerSettings:
 
     def set_nametag_all(self, nametag):
         self.set_all(self.set_nametag, nametag)
+
+
 class QdyneDataManager:
     data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
     storage_dict = {'raw_data': 'npy', 'time_trace': 'npy', 'freq_domain': 'npy', 'time_domain': 'npy'}
@@ -172,7 +181,6 @@ class QdyneDataManager:
 
     def load_data(self, data_type, file_path, index=None):
         loaded_data = self.storages[data_type].load_data(file_path)
-        if index is not None and index != "" :
+        if index is not None and index != "":
             loaded_data = loaded_data[index]
         setattr(self.data, data_type, loaded_data)
-

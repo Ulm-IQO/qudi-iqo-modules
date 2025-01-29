@@ -19,6 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 from itertools import combinations
 from typing import Tuple, Sequence, Dict, Optional
 from uuid import UUID
@@ -93,8 +94,7 @@ class ScanningProbeLogic(LogicBase):
         self._tilt_corr_axes = []
 
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
-        """
+        """Initialisation performed during activation of the module."""
         self._save_to_hist = True
 
         # check if scan settings in status variables are valid
@@ -124,8 +124,7 @@ class ScanningProbeLogic(LogicBase):
         self._scan_axes = OrderedDict(sorted(self._scanner().constraints.axes.items()))
 
     def on_deactivate(self):
-        """ Reverse steps of activation
-        """
+        """Reverse steps of activation"""
         self.__scan_poll_timer.stop()
         self.__scan_poll_timer.timeout.disconnect()
         if self.module_state() != 'idle':
@@ -344,10 +343,10 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
-            #self.log.debug(f"Requested Set pos to= {pos_dict}")
+            # self.log.debug(f"Requested Set pos to= {pos_dict}")
             ax_constr = self.scanner_constraints.axes
             pos_dict = self._scanner()._expand_coordinate(cp.copy(pos_dict))
-            #self.log.debug(f"Expand to= {pos_dict}")
+            # self.log.debug(f"Expand to= {pos_dict}")
 
             pos_dict = self._scanner().coordinate_transform(pos_dict)
 
@@ -360,19 +359,20 @@ class ScanningProbeLogic(LogicBase):
 
                 pos_dict[ax] = ax_constr[ax].position.clip(pos)
                 if pos != pos_dict[ax]:
-                    self.log.warning(f'Scanner position target value {pos:.3e} out of bounds for axis "{ax}". '
-                                     f'Clipping value to {pos_dict[ax]:.3e}.')
+                    self.log.warning(
+                        f'Scanner position target value {pos:.3e} out of bounds for axis "{ax}". '
+                        f'Clipping value to {pos_dict[ax]:.3e}.'
+                    )
 
             # move_absolute expects untransformed coordinatess, so invert clipped pos
             pos_dict = self._scanner().coordinate_transform(pos_dict, inverse=True)
-            #self.log.debug(f"In front of hw.move_abs {pos_dict}")
+            # self.log.debug(f"In front of hw.move_abs {pos_dict}")
             new_pos = self._scanner().move_absolute(pos_dict, blocking=move_blocking)
-            #self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
+            # self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
-            #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
-            self.sigScannerTargetChanged.emit(new_pos,
-                self.module_uuid if caller_id is None else caller_id)
+            # self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
+            self.sigScannerTargetChanged.emit(new_pos, self.module_uuid if caller_id is None else caller_id)
             return new_pos
 
     def toggle_scan(self, start, scan_axes, caller_id=None):
@@ -383,7 +383,6 @@ class ScanningProbeLogic(LogicBase):
                 self.stop_scan()
 
     def toggle_tilt_correction(self, enable=True):
-
         target_pos = self._scanner().get_target()
         is_enabled = self._scanner().coordinate_transform_enabled
 
@@ -431,15 +430,17 @@ class ScanningProbeLogic(LogicBase):
         else:
             red_support_vecs = np.vstack([support_vecs_arr, shift_vec_arr])
             red_vecs = compute_reduced_vectors(red_support_vecs)
-            red_support_vecs = red_vecs[:-1,:]
-            shift_vec_arr = red_vecs[-1,:]
+            red_support_vecs = red_vecs[:-1, :]
+            shift_vec_arr = red_vecs[-1, :]
 
         tilt_axes = find_changing_axes(support_vecs_arr)
 
-        if red_support_vecs.shape != (3,3) or shift_vec_arr.shape[0] != 3:
+        if red_support_vecs.shape != (3, 3) or shift_vec_arr.shape[0] != 3:
             n_dim = support_vecs_arr.shape[1]
-            raise ValueError(f"Can't calculate tilt in >3 dimensions. "
-                             f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. ")
+            raise ValueError(
+                f"Can't calculate tilt in >3 dimensions. "
+                f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. "
+            )
 
         rot_mat = compute_rotation_matrix_to_plane(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec_arr
@@ -447,7 +448,7 @@ class ScanningProbeLogic(LogicBase):
         # shift coord system to origin, rotate and shift shift back according to LT(x) = (R+s)*x - R*s
         lin_transform = LinearTransformation3D()
         shift_vec_transform = LinearTransformation3D()
-        
+
         lin_transform.add_rotation(rot_mat)
         lin_transform.translate(shift[0], shift[1], shift[2])
 
@@ -458,15 +459,17 @@ class ScanningProbeLogic(LogicBase):
 
         self._tilt_corr_transform = lin_transform
         self._tilt_corr_axes = [el for idx, el in enumerate(self._scan_axes) if tilt_axes[idx]]
-        self._tilt_corr_settings = {'auto_origin': auto_origin,
-                                    'vec_1': support_vecs[0],
-                                    'vec_2': support_vecs[1],
-                                    'vec_3': support_vecs[2],
-                                    'vec_shift': shift_vec}
+        self._tilt_corr_settings = {
+            'auto_origin': auto_origin,
+            'vec_1': support_vecs[0],
+            'vec_2': support_vecs[1],
+            'vec_3': support_vecs[2],
+            'vec_shift': shift_vec,
+        }
 
-        #self.log.debug(f"Shift vec {shift}, shift back {shift_back}")
-        #self.log.debug(f"Matrix: {lin_transform.matrix}")
-        #self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
+        # self.log.debug(f"Shift vec {shift}, shift back {shift_back}")
+        # self.log.debug(f"Matrix: {lin_transform.matrix}")
+        # self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
 
         self.sigTiltCorrSettingsChanged.emit(self._tilt_corr_settings)
 
@@ -533,8 +536,7 @@ class ScanningProbeLogic(LogicBase):
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
             line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
-            self.__scan_poll_interval = max(self._min_poll_interval,
-                                            line_points / self._scan_frequency[scan_axes[0]])
+            self.__scan_poll_interval = max(self._min_poll_interval, line_points / self._scan_frequency[scan_axes[0]])
             self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
 
             try:
@@ -600,17 +602,13 @@ class ScanningProbeLogic(LogicBase):
 
     def __start_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.start()
 
     def __stop_timer(self):
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
-                                            'stop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.stop()
 
@@ -623,7 +621,7 @@ class ScanningProbeLogic(LogicBase):
         :return:
         """
 
-        coord_reduced = {key:val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}
+        coord_reduced = {key: val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}
         coord_reduced = OrderedDict(sorted(coord_reduced.items()))
 
         # convert from coordinate dict to plain vector

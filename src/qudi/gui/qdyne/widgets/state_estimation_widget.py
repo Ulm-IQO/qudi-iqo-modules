@@ -32,12 +32,15 @@ from qudi.util.colordefs import QudiPalettePale as palette
 
 from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
 from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
+from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
 class StateEstimationTab(QtWidgets.QWidget):
     def __init__(self, logic):
         super().__init__()
         self.logic = logic
+        self._log = get_logger(__name__)
+        self._logic = logic
         self._instantiate_widgets(logic)
         self._form_layout()
 
@@ -48,9 +51,16 @@ class StateEstimationTab(QtWidgets.QWidget):
                                                  self._invoke_func)
         self._pw = StateEstimationPulseWidget(logic)
         self._ttw = StateEstimationTimeTraceWidget(logic)
+        self._analysis_interval_spinbox = ScienDSpinBox()
+        self._analysis_interval_spinbox.setSuffix("s")
+        self._analysis_interval_spinbox.setMinimum(0)
+        self._analysis_interval_spinbox.setValue(self._logic().measure.analysis_timer_interval)
+        self._analysis_interval_label = QtWidgets.QLabel("Analysis interval")
         self._sew_layout.addWidget(self._sw)
         self._sew_layout.addWidget(self._pw)
         self._sew_layout.addWidget(self._ttw)
+        self._sew_layout.addWidget(self._analysis_interval_label)
+        self._sew_layout.addWidget(self._analysis_interval_spinbox)
 
     def _invoke_func(self):
         """
@@ -78,6 +88,8 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sw.connect_signals()
         self._pw.connect_signals()
         self._ttw.connect_signals()
+        self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
+        self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
         self.connect_mutual_signals()
         self._pw.update_lines()
 
@@ -129,6 +141,8 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sw.disconnect_signals()
         self._pw.disconnect_signals()
         self._ttw.disconnect_signals()
+        self._analysis_interval_spinbox.editingFinished.disconnect(self.analysis_timer_interval)
+        self._logic().measure.sigTimerIntervalUpdated.disconnect(self._analysis_interval_spinbox.setValue)
 
     def activate_ui(self):
         self._sw.activate()
@@ -139,6 +153,10 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sw.deactivate()
         self._pw.deactivate()
         self._ttw.deactivate()
+
+
+    def analysis_timer_interval(self):
+        self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
 
 
 class StateEstimationSettingsWidget(SettingsWidget):
@@ -227,6 +245,9 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.update_pushButton.clicked.connect(self.update_pulse)
         # Connect update signals from qdyne_measurement_logic
         self.logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
+        # Connect to measurement state changes
+        self.logic.measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
+        self.logic.measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
 
     #        self.settings.current_stg_changed_sig.connect(self.update_lines)
     def disconnect_signals(self):
@@ -288,7 +309,16 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         pulse = self.logic.data.pulse_data
         self.pulse_image.setData(x=pulse[0], y=pulse[1])
 
+    def set_lines_movable(self, movable):
+        """
+        Enable or disable the ability to move the lines.
 
+        :param bool movable: If True, lines can be moved. If False, they are locked in place.
+        """
+        self.sig_start_line.setMovable(movable)
+        self.sig_end_line.setMovable(movable)
+        self.ref_start_line.setMovable(movable)
+        self.ref_end_line.setMovable(movable)
 class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
     _log = get_logger(__name__)
 

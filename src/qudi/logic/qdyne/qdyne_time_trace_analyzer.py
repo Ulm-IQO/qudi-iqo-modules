@@ -87,27 +87,32 @@ class FourierAnalyzer(Analyzer):
         """
         @return ft: complex ndarray
         """
-        n_fft = len(time_trace)
-        n_point = self._get_fft_n_point(padding_param, n_fft)
-        ft = np.fft.fft(time_trace, n_point)
-        freq = np.fft.fftfreq(n_point, sequence_length_bins)
-        signal = [
-            freq[: n_fft // 2],
-            ft[: n_fft // 2],
-        ]  # only select positive frequencies
+        n_point = self._get_padded_time_trace_length(time_trace, padding_param)
+        ft = np.fft.rfft(time_trace, n_point)
+        freq = np.fft.rfftfreq(n_point, sequence_length_bins)
+        signal = [freq, ft]
         return signal
 
-    def _get_fft_n_point(self, padding_param, n_fft):
+    def _get_padded_time_trace_length(self, time_trace: np.ndarray, padding_param: int) -> int:
         """
-        choose the length of the transformed axis of the output
-        according to the given padding parameter
+        Method that calculates a padded timetrace depending on the padding param.
+        If padding param == 0: time trace is returned as input
+        Else the padding_param next power of 2 to the current length is used as new length
+
+        The method returns the length of the padded_timetrace
         """
+        m = len(time_trace)
         if padding_param == 0:
-            return None
-        elif padding_param == 1 or padding_param == 2:
-            return n_fft * padding_param
+            return m
+        # as fft works fastest for a number of datapoints following 2^n pad (if padding_param != 0)  to the next power of 2
+        n = int(np.floor(np.log2(m)))
+        if padding_param > 0:
+            target_length = 2**(n + padding_param)
+        if padding_param < - n:
+            raise ValueError(f"Padding parameter too small. Minimum padding parameter: {-n}")
         else:
-            print("error")
+            target_length = 2**(n + padding_param + 1)
+        return target_length
 
     def get_norm_amp_spectrum(self, signal):
         """
