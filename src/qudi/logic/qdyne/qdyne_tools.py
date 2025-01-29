@@ -66,6 +66,10 @@ class SettingsBase(ABC):
 
         super().__setattr__(key, value)
 
+    def from_dict(self, settings: dict):
+        for key, value in settings.items():
+            setattr(self, key, value)
+
     def to_dict(self):
         """Convert the dataclass to a dictionary excluding `_settings_updated_sig`."""
         return {
