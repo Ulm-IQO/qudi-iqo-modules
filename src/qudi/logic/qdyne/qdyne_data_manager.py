@@ -62,6 +62,7 @@ class QdyneSaveOptions:
 
     def get_file_path(self, file_path):
         if file_path is None:
+            # TODO: Is this not causing an exception?
             self.data_dir = self.module_default_data_dir
             self.filename = None
         else:
