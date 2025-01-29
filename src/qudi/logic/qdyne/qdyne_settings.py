@@ -25,7 +25,7 @@ from qudi.core.logger import get_logger
 from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorSettings
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import AnalyzerSettings
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
-from qudi.logic.qdyne.qdyne_tools import *
+from qudi.logic.qdyne.qdyne_tools import get_subclasses, get_method_name
 
 
 class QdyneSettings:
@@ -110,15 +110,13 @@ class SettingsManager:
             method = self.current_method
         elif method not in self.stg_cls_dict:
             # TODO: give error message and return
-            give_an_error
-            return
+            raise ValueError(f"Requested method '{method}' not in available methods")
 
         if setting_name is None:
             setting_name = self.current_stg_name
         elif setting_name not in self.stg_param_dict[method]:
             # TODO: give error message and return
-            give_an_error
-            return
+            raise ValueError(f"Requested setting name '{setting_name}' not in available methods")
 
         for key, value in config_dict.items():
             if hasattr(self.stg_param_dict[method][setting_name], key):
