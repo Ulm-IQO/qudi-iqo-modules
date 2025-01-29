@@ -138,8 +138,8 @@ class MeasurementGenerator:
         self._qdyne_logic.log.debug(settings_dict)
         self._qdyne_logic.settings.estimator_stg.configure_settings(settings_dict)
         self._qdyne_logic.settings.analyzer_stg.configure_settings(settings_dict)
-        if "_sequence_length" in settings_dict:
-            self.__sequence_length = float(settings_dict["_sequence_length"])
+        if "sequence_length" in settings_dict:
+            self.__sequence_length = float(settings_dict["sequence_length"])
 
     def check_counter_record_length_constraint(self, record_length: float):
         record_length_constraint = self._data_streamer().constraints.record_length
@@ -196,7 +196,7 @@ class MeasurementGenerator:
     @property
     def measurement_settings(self):
         settings_dict = self._pulsedmasterlogic().measurement_settings
-        settings_dict['_sequence_length'] = self.__sequence_length
+        settings_dict['sequence_length'] = self.__sequence_length
         return settings_dict
 
     @property

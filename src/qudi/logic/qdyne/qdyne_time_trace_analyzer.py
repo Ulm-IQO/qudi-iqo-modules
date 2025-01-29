@@ -140,8 +140,8 @@ class FourierAnalyzer(Analyzer):
         norm_psd = psd / (len(psd)) ** 2
         return [freq, norm_psd]
 
-    def get_half_frequency_array(self, _sequence_length, ft):
-        return 1 / (_sequence_length * len(ft)) * np.arange(len(ft) / 2)
+    def get_half_frequency_array(self, sequence_length, ft):
+        return 1 / (sequence_length * len(ft)) * np.arange(len(ft) / 2)
 
 
 def get_subclasses(class_obj):

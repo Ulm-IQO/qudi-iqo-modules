@@ -96,10 +96,12 @@ class SettingsWidget(QtWidgets.QWidget):
 
     def update_current_setting(self):
         self.settings.current_stg_name = self.setting_comboBox.currentText()
-        self.update_widget()
         self.setting_name_updated_sig.emit()
+        self.update_widget()
 
     def update_widget(self):
+        print('update widget')
+        print(self.settings.current_setting)
         self.settings_widget.update_params_from_data(self.settings.current_setting)
         self.setting_widget_updated_sig.emit()
 

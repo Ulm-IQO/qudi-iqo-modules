@@ -160,7 +160,14 @@ class DataclassWidget(QtWidgets.QWidget):
         return widget
 
     def update_param(self, field, value):
-        setattr(self.data, field.name, value)
+        if field.type == int or field.type == float:
+            self.widgets[field.name].setValue(value)
+        elif field.type == str:
+            self.widgets[field.name].setText(value)
+        elif field.type == bool:
+            self.widgets[field.name].setChecked(value)
+        else:
+            return
 
     def disconnect_widgets(self):
         for field_name, old_widget in self.widgets.items():
