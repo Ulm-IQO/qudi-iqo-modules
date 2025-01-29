@@ -17,6 +17,7 @@ import os
 import numpy as np
 import datetime
 from dataclasses import dataclass, field
+from typing import Optional
 
 from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase, get_header_from_file
 
