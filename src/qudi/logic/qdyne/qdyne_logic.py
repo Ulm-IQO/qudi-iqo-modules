@@ -158,6 +158,7 @@ class MeasurementGenerator:
         return
 
     def set_measurement_settings(self, settings_dict):
+        _logger.debug(f"set_measurement_settings {settings_dict=}")
         if 'invoke_settings' in settings_dict:
             self._invoke_settings = bool(settings_dict.get('invoke_settings'))
 
@@ -182,8 +183,11 @@ class MeasurementGenerator:
         # Todo: check interference with pulsed
         #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
         #self._pulsedmasterlogic().set_measurement_settings(settings_dict)
+        _logger.debug("settings.estimator_stg.configure_settings")
         self._qdyne_logic.settings.estimator_stg.configure_settings(settings_dict)
+        _logger.debug("settings.analyzer.configure_settings")
         self._qdyne_logic.settings.analyzer_stg.configure_settings(settings_dict)
+        _logger.debug("emitting signal")
         self._qdyne_logic.sigMeasurementSettingsUpdated.emit(settings_dict)
 
     def check_counter_record_length_constraint(self, record_length: float):

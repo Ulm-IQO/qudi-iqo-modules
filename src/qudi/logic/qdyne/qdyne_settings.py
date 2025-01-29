@@ -106,12 +106,14 @@ class SettingsManager:
             self.log.debug("Default settings created")
 
     def configure_settings(self, config_dict, method=None, setting_name=None):
+        self.log.debug(f"{config_dict=}, {method=}, {setting_name=}")
         if method is None:
             method = self.current_method
         elif method not in self.stg_cls_dict:
             # TODO: give error message and return
             self.log.error(f"Requested method '{method}' not in available methods")
             raise ValueError(f"Requested method '{method}' not in available methods")
+        self.log.debug(f"{config_dict=}, {method=}, {setting_name=}")
 
         if setting_name is None:
             setting_name = self.current_stg_name
@@ -119,6 +121,7 @@ class SettingsManager:
             # TODO: give error message and return
             self.log.error(f"Requested setting name '{setting_name}' not in available methods")
             raise ValueError(f"Requested setting name '{setting_name}' not in available methods")
+        self.log.debug(f"{config_dict=}, {method=}, {setting_name=}")
 
         for key, value in config_dict.items():
             if hasattr(self.stg_param_dict[method][setting_name], key):
