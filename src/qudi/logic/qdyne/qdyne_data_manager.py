@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase, get_header_from_file
+from qudi.util.conversions import convert_nested_numpy_to_list
 
 from logging import getLogger
 
@@ -114,8 +115,8 @@ class DataStorage:
             data=data,
             nametag=options.nametag,
             timestamp=options.timestamp,
-            metadata=options.metadata,
-            notes=options.notes,
+            metadata=convert_nested_numpy_to_list(options.metadata),
+            notes=convert_nested_numpy_to_list(options.notes),
             column_headers=options.column_headers,
 #            column_dtypes=options.column_dtypes,
             filename=options.filename)
