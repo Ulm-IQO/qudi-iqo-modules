@@ -91,19 +91,19 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     sig_end: float = 0
     weight: list = field(default_factory=list)
     sequence_length: float = 1e-9
-    _bin_width: float = 1e-9
+    bin_width: float = 1e-9
 
     @property
     def sig_start_int(self):
-        return int(self.sig_start / self._bin_width)
+        return int(self.sig_start / self.bin_width)
 
     @property
     def sig_end_int(self):
-        return int(self.sig_end / self._bin_width)
+        return int(self.sig_end / self.bin_width)
 
     @property
     def max_bins(self):
-        return int(self._sequence_length / self._bin_width)
+        return int(self.sequence_length / self.bin_width)
 
 
 class TimeTagStateEstimator(StateEstimator):
@@ -168,7 +168,7 @@ class TimeTagStateEstimator(StateEstimator):
         count_hist, bin_edges = np.histogram(
             time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins)
         )
-        time_array = settings._bin_width * np.arange(len(count_hist))
+        time_array = settings.bin_width * np.arange(len(count_hist))
         pulse_array = [time_array, count_hist]
         return pulse_array
 
@@ -184,7 +184,6 @@ class StateEstimatorMain:
     def generate_method_list(self):
         estimator_subclasses = get_subclasses(__name__, StateEstimator)
         self.method_list = get_method_names(estimator_subclasses, StateEstimator)
-        print(self.method_list)
 
     def configure_method(self, method):
         self.estimator = globals()[method + "StateEstimator"](self.log)

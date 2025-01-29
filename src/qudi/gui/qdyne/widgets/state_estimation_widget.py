@@ -38,7 +38,6 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 class StateEstimationTab(QtWidgets.QWidget):
     def __init__(self, logic):
         super().__init__()
-        self.logic = logic
         self._log = get_logger(__name__)
         self._logic = logic
         self._instantiate_widgets(logic)
@@ -66,7 +65,7 @@ class StateEstimationTab(QtWidgets.QWidget):
         """
         functions invoked after the values of the settings changed.
         """
-        self.logic().settings.estimator_stg.sync_param_dict()
+        self._logic().settings.estimator_stg.sync_param_dict()
         self._pw.update_lines()
 
     def _form_layout(self):
@@ -190,7 +189,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
     ref_line_changed_sig = QtCore.Signal(float, float)
 
     def __init__(self, logic):
-        self.logic = logic()
+        self._logic = logic()
         self.estimator = logic().estimator
         self.settings = logic().settings.estimator_stg
         self.sig_start = 0
@@ -244,10 +243,10 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.ref_end_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
         self.update_pushButton.clicked.connect(self.update_pulse)
         # Connect update signals from qdyne_measurement_logic
-        self.logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
+        self._logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
         # Connect to measurement state changes
-        self.logic.measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
-        self.logic.measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
+        self._logic.measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
+        self._logic.measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
 
     #        self.settings.current_stg_changed_sig.connect(self.update_lines)
     def disconnect_signals(self):
@@ -255,7 +254,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.sig_end_line.sigPositionChangeFinished.disconnect()
         self.ref_start_line.sigPositionChangeFinished.disconnect()
         self.ref_end_line.sigPositionChangeFinished.disconnect()
-        self.logic.measure.sigPulseDataUpdated.disconnect()
+        self._logic.measure.sigPulseDataUpdated.disconnect()
 
     def toggle_lines(self):
         param_names = self.settings.current_setting.__annotations__
@@ -298,15 +297,15 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
             self.ref_end_line.setValue(self.settings.current_setting.ref_end)
 
     def update_pulse(self):
-        self.logic.measure.get_raw_data()
-        self.logic.measure.get_pulse()
-        self.logic.measure.sigPulseDataUpdated.emit()
-        self.logic.measure.extract_data()
-        self.logic.measure.estimate_state()
-        self.logic.measure.sigTimeTraceDataUpdated.emit()
+        self._logic.measure.get_raw_data()
+        self._logic.measure.get_pulse()
+        self._logic.measure.sigPulseDataUpdated.emit()
+        self._logic.measure.extract_data()
+        self._logic.measure.estimate_state()
+        self._logic.measure.sigTimeTraceDataUpdated.emit()
 
     def pulse_updated(self):
-        pulse = self.logic.data.pulse_data
+        pulse = self._logic.data.pulse_data
         self.pulse_image.setData(x=pulse[0], y=pulse[1])
 
     def set_lines_movable(self, movable):
@@ -323,7 +322,7 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
     _log = get_logger(__name__)
 
     def __init__(self, logic):
-        self.logic = logic()
+        self._logic = logic()
         self.estimator = logic().estimator
         self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
@@ -353,27 +352,27 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
     def connect_signals(self):
         self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)
         # Connect update signals from qdyne_measurement_logic
-        self.logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
+        self._logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
 
     def disconnect_signals(self):
         self.get_time_trace_pushButton.clicked.disconnect()
-        self.logic.measure.sigTimeTraceDataUpdated.disconnect()
+        self._logic.measure.sigTimeTraceDataUpdated.disconnect()
 
     def update_time_trace(self):
-        self.logic.measure.get_raw_data()
-        self.logic.measure.get_pulse()
-        self.logic.measure.sigPulseDataUpdated.emit()
-        self.logic.measure.extract_data()
-        self.logic.measure.estimate_state()
-        self.logic.measure.sigTimeTraceDataUpdated.emit()
+        self._logic.measure.get_raw_data()
+        self._logic.measure.get_pulse()
+        self._logic.measure.sigPulseDataUpdated.emit()
+        self._logic.measure.extract_data()
+        self._logic.measure.estimate_state()
+        self._logic.measure.sigTimeTraceDataUpdated.emit()
 
     def time_trace_updated(self):
-        y = self.logic.data.time_trace
+        y = self._logic.data.time_trace
         time_between_readouts = (
-            self.logic.pulsedmasterlogic()
+            self._logic.pulsedmasterlogic()
             .sequencegeneratorlogic()
             .get_ensemble_info(
-                self.logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
+                self._logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
             )[0]
         )
         self.time_trace_PlotWidget.setLabel(axis="bottom", text="time", units="s")
