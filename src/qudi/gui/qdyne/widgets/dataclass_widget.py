@@ -26,9 +26,14 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 
 
 class DataclassWidget(QtWidgets.QWidget):
-    def __init__(self, dataclass_obj: dataclass) -> None:
+    def __init__(self, dataclass_obj: dataclass, invoke_func=None) -> None:
+        """
+        dataclass_obj: dataclass object used for the widgets
+        func: function invoked after values are changed.
+        """
         super().__init__()
         self.data = dataclass_obj
+        self.invoke_func = invoke_func
         self.layout = None
         self.labels = dict()
         self.widgets = dict()
@@ -39,29 +44,40 @@ class DataclassWidget(QtWidgets.QWidget):
         self.set_data(self.data)
 
     def set_data(self, data):
+        """
+        set data to widgets.
+        """
+        self.setUpdatesEnabled(False)
         self.data = data
         self.clear_layout()
         self.set_widgets(self.data)
         self.setLayout(self.layout)
         self.widgets['name'].setReadOnly(True)
+        self.setUpdatesEnabled(True)
 
-    def update_data(self, data):
-        self.disconnect_widgets()
-        self.set_data(data)
+    def update_params_from_data(self, data):
+        """
+        update the parameters of widgets according to the data.
+        """
+        for field in fields(data):
+            self.update_param(field, getattr(data, field.name))
 
     def create_layout(self):
         self.layout = QtWidgets.QGridLayout()
 
     def clear_layout(self):
-        # Remove all items from the layout
         while self.layout.count():
             item = self.layout.takeAt(0)
             widget = item.widget()
             if widget:
-                # Remove the widget from the layout
-                widget.setParent(None)
+                widget.deleteLater()
+            elif item.layout():
+                item.layout().deleteLater()
 
     def set_widgets(self, data):
+        """
+        create widgets based on dataclass and set them in the layout
+        """
         self.labels = dict()
         self.widgets = dict()
         param_index = 0
@@ -81,6 +97,9 @@ class DataclassWidget(QtWidgets.QWidget):
                 param_index += 1
 
     def create_widget(self, field):
+        """
+        create widget based on the field of parameter.
+        """
         widget = None
         value = getattr(self.data, field.name)
 
@@ -109,33 +128,50 @@ class DataclassWidget(QtWidgets.QWidget):
     def int_to_widget(self, field, value):
         widget = ScienSpinBox()
         widget.setValue(value)
-        widget.valueChanged.connect(lambda state, f=field, w=widget: self.update_param(f, w.value()))
+#        widget.valueChanged.connect(lambda state, f=field, w=widget: self.update_param(f, w.value()))
+        widget.editingFinished.connect(lambda f=field, w=widget: self.update_param(f, w.value()))
+        if self.invoke_func is not None:
+            widget.editingFinished.connect(self.invoke_func)
         return widget
 
     def float_to_widget(self, field, value):
         widget = ScienDSpinBox()
         widget.setValue(value)
-        widget.valueChanged.connect(lambda state, f=field, w=widget: self.update_param(f, w.value()))
+#        widget.valueChanged.connect(lambda state, f=field, w=widget: self.update_param(f, w.value()))
+        widget.editingFinished.connect(lambda f=field, w=widget: self.update_param(f, w.value()))
+        if self.invoke_func is not None:
+            widget.editingFinished.connect(self.invoke_func)
         return widget
 
     def str_to_widget(self, field, value):
         widget = QtWidgets.QLineEdit()
         widget.setText(value)
         widget.editingFinished.connect(lambda f=field, w=widget: self.update_param(f, w.text()))
+        if self.invoke_func is not None:
+            widget.editingFinished.connect(self.invoke_func)
         return widget
 
     def bool_to_widget(self, field, value):
         widget = QtWidgets.QCheckBox()
         widget.setChecked(value)
         widget.stateChanged.connect(lambda state, f=field, w=widget: self.update_param(f, w.isChecked()))
+        if self.invoke_func is not None:
+            widget.stateChanged.connect(self.invoke_func)
         return widget
 
     def update_param(self, field, value):
-        setattr(self.data, field.name, value)
+        if field.type == int or field.type == float:
+            self.widgets[field.name].setValue(value)
+        elif field.type == str:
+            self.widgets[field.name].setText(value)
+        elif field.type == bool:
+            self.widgets[field.name].setChecked(value)
+        else:
+            return
 
     def disconnect_widgets(self):
         for field_name, old_widget in self.widgets.items():
-            if isinstance(old_widget, QtWidgets.QLineEdit):
+            if isinstance(old_widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
                 old_widget.editingFinished.disconnect()
             elif isinstance(old_widget, QtWidgets.QCheckBox):
                 old_widget.stateChanged.disconnect()

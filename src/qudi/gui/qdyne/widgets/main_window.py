@@ -36,7 +36,6 @@ class QdyneMainWindow(QtWidgets.QMainWindow):
         ui_file = os.path.join(qdyne_dir, 'ui', 'maingui.ui')
         # Load it
         super(QdyneMainWindow, self).__init__()
-
         uic.loadUi(ui_file, self)
 
     def activate(self):

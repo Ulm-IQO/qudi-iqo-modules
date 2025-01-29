@@ -17,12 +17,13 @@ If not, see <https://www.gnu.org/licenses/>.
 import sys
 import inspect
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 import numpy as np
 
 from qudi.util.network import netobtain
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
+from qudi.logic.qdyne.qdyne_tools import SettingsBase, get_subclasses, get_method_names
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -43,23 +44,8 @@ class StateEstimator(ABC):
 
 
 @dataclass
-class StateEstimatorSettings(ABC):
-    _settings_updated_sig: object
-    name: str = ""
-
-    def __setattr__(self, key, value):
-        if hasattr(self, key) and hasattr(self, "_settings_updated_sig") and key != "_settings_updated_sig":
-            old_value = getattr(self, key)
-            if old_value != value:
-                self._settings_updated_sig.emit()
-
-        super().__setattr__(key, value)
-
-    def pass_signal(self, settings_updated_sig):
-        self._settings_updated_sig = settings_updated_sig
-
-    def delete_signal(self):
-        del self._settings_updated_sig
+class StateEstimatorSettings(SettingsBase):
+    pass
 
 
 @dataclass
@@ -103,36 +89,21 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     count_mode: str = 'Average'
     sig_start: float = 0
     sig_end: float = 0
-    count_threshold: int = (
-        10  # Todo: we'll probably remove this
-    )
     weight: list = field(default_factory=list)
-    _bin_width: float = 1e-9
-    _sequence_length: float = 1e-6
-
-    # Todo: Is this function obsolete? Can it be deleted?
-    def get_histogram(self, time_tag_data):
-        count_hist, bin_edges = np.histogram(time_tag_data, max(time_tag_data))
-        return count_hist
-
-    # Todo: then this will be removed as well
-    def set_start_count(
-        self, time_tag_data
-    ):
-        count_hist = self.get_histogram(time_tag_data)
-        self.sig_start = int(np.where(count_hist[1:] > self.count_threshold)[0][0])
+    sequence_length: float = 1e-9
+    bin_width: float = 1e-9
 
     @property
     def sig_start_int(self):
-        return int(self.sig_start / self._bin_width)
+        return int(self.sig_start / self.bin_width)
 
     @property
     def sig_end_int(self):
-        return int(self.sig_end / self._bin_width)
+        return int(self.sig_end / self.bin_width)
 
     @property
     def max_bins(self):
-        return int(self._sequence_length / self._bin_width)
+        return int(self.sequence_length / self.bin_width)
 
 
 class TimeTagStateEstimator(StateEstimator):
@@ -197,31 +168,9 @@ class TimeTagStateEstimator(StateEstimator):
         count_hist, bin_edges = np.histogram(
             time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins)
         )
-        time_array = settings._bin_width * np.arange(len(count_hist))
+        time_array = settings.bin_width * np.arange(len(count_hist))
         pulse_array = [time_array, count_hist]
         return pulse_array
-
-
-def get_subclasses(class_obj):
-    """
-    Given a class, find its subclasses and get their names.
-    """
-
-    subclasses = []
-    for name, obj in inspect.getmembers(sys.modules[__name__]):
-        if inspect.isclass(obj) and issubclass(obj, class_obj) and obj != class_obj:
-            subclasses.append(obj)
-
-    return subclasses
-
-
-def get_method_names(subclass_obj, class_obj):
-    subclass_names = [cls.__name__ for cls in subclass_obj]
-    method_names = [
-        subclass_name.replace(class_obj.__name__, "")
-        for subclass_name in subclass_names
-    ]
-    return method_names
 
 
 class StateEstimatorMain:
@@ -233,7 +182,7 @@ class StateEstimatorMain:
         self.generate_method_list()
 
     def generate_method_list(self):
-        estimator_subclasses = get_subclasses(StateEstimator)
+        estimator_subclasses = get_subclasses(__name__, StateEstimator)
         self.method_list = get_method_names(estimator_subclasses, StateEstimator)
 
     def configure_method(self, method):

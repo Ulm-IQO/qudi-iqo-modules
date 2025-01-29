@@ -34,6 +34,7 @@ from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
 from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
+
 class StateEstimationTab(QtWidgets.QWidget):
     def __init__(self, logic):
         super().__init__()
@@ -45,7 +46,8 @@ class StateEstimationTab(QtWidgets.QWidget):
     def _instantiate_widgets(self, logic):
         self._sew_layout = QtWidgets.QVBoxLayout(self)
         self._sw = StateEstimationSettingsWidget(logic().settings.estimator_stg,
-                                                 logic().estimator.method_list)
+                                                 logic().estimator.method_list,
+                                                 self._invoke_func)
         self._pw = StateEstimationPulseWidget(logic)
         self._ttw = StateEstimationTimeTraceWidget(logic)
         self._analysis_interval_spinbox = ScienDSpinBox()
@@ -58,6 +60,13 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._sew_layout.addWidget(self._ttw)
         self._sew_layout.addWidget(self._analysis_interval_label)
         self._sew_layout.addWidget(self._analysis_interval_spinbox)
+
+    def _invoke_func(self):
+        """
+        functions invoked after the values of the settings changed.
+        """
+        self._logic().settings.estimator_stg.sync_param_dict()
+        self._pw.update_lines()
 
     def _form_layout(self):
         self._sw.setSizePolicy(
@@ -144,13 +153,14 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._pw.deactivate()
         self._ttw.deactivate()
 
+
     def analysis_timer_interval(self):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
 
 
 class StateEstimationSettingsWidget(SettingsWidget):
-    def __init__(self, settings, method_list):
-        super(StateEstimationSettingsWidget, self).__init__(settings, method_list)
+    def __init__(self, settings, method_list, invoke_func=None):
+        super(StateEstimationSettingsWidget, self).__init__(settings, method_list, invoke_func)
 
     @QtCore.Slot(float, float)
     def update_from_sig_lines(self, sig_start, sig_end):
@@ -174,127 +184,12 @@ class StateEstimationSettingsWidget(SettingsWidget):
             self.settings_widget.widgets["ref_end"].setValue(ref_end)
 
 
-# class StateEstimationSettingWidget(QtWidgets.QWidget):
-#     _log = get_logger(__name__)
-#     method_updated_sig = QtCore.Signal()
-#     setting_name_updated_sig = QtCore.Signal()
-#     setting_widget_updated_sig = QtCore.Signal()
-#     add_button_pushed_sig = QtCore.Signal(str)
-#     remove_setting_sig = QtCore.Signal(str)
-#
-#     def __init__(self, logic):
-#         self.logic = logic()
-#         self.estimator = logic().estimator
-#         self.settings = logic().settings.estimator_stg
-#         # Get the path to the *.ui file
-#         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-#         ui_file = os.path.join(qdyne_dir, "ui", "settings_widget.ui")
-#
-#         # Load it
-#         super(StateEstimationSettingWidget, self).__init__()
-#
-#         uic.loadUi(ui_file, self)
-#
-#     def activate(self):
-#         self._activate_widgets()
-#
-#     def _activate_widgets(self):
-#         self.se_method_comboBox.addItems(self.estimator.method_lists)
-#         self.se_method_comboBox.setCurrentText(self.settings.current_method)
-#         self.se_setting_comboBox.addItems(self.settings.current_setting_list)
-#         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#         self.se_setting_comboBox.setEditable(True)
-#         self.se_setting_add_pushButton.setToolTip('Enter new name in combo box')
-#
-#         self.se_settings_widget = DataclassWidget(self.settings.current_setting)
-#         self.se_settings_gridLayout.addWidget(self.se_settings_widget)
-#
-#     def deactivate(self):
-#         pass
-#
-#     def connect_signals(self):
-#         self.se_method_comboBox.currentTextChanged.connect(self.update_current_method)
-#         self.se_setting_comboBox.currentIndexChanged.connect(self.update_current_setting)
-#         self.se_setting_add_pushButton.clicked.connect(self.add_setting)
-#         self.se_setting_delete_pushButton.clicked.connect(self.delete_setting)
-#         self.add_button_pushed_sig.connect(self.settings.add_setting)
-#         self.remove_setting_sig.connect(self.settings.remove_setting)
-#
-#     def disconnect_signals(self):
-#         self.se_method_comboBox.currentTextChanged.disconnect()
-#         self.se_setting_comboBox.currentTextChanged.disconnect()
-#         self.se_setting_add_pushButton.clicked.disconnect()
-#         self.se_setting_delete_pushButton.clicked.disconnect()
-#
-#     def update_current_method(self):
-#         self.settings.current_method = self.se_method_comboBox.currentText()
-#         self.se_setting_comboBox.blockSignals(True)
-#         self.se_setting_comboBox.clear()
-#         self.se_setting_comboBox.blockSignals(False)
-#         self.se_setting_comboBox.addItems(self.settings.current_setting_list)
-#         self.settings.current_stg_name = "default"
-#         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#
-#     def update_current_setting(self):
-#         self.settings.current_stg_name = self.se_setting_comboBox.currentText()
-#         self.update_widget()
-#         self.setting_name_updated_sig.emit()
-#
-#     def update_widget(self):
-#         self.se_settings_widget.update_data(self.settings.current_setting)
-#         self.setting_widget_updated_sig.emit()
-#
-#     def add_setting(self):
-#         new_name = self.se_setting_comboBox.currentText()
-#         if new_name in self.settings.current_setting_list:
-#             self._log.error("Setting name already exists")
-#         else:
-#             self.add_button_pushed_sig.emit(new_name)
-#             self.se_setting_comboBox.addItem(self.settings.current_stg_name)
-#             self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#             self.update_widget()
-#
-#     def delete_setting(self):
-#         stg_name_to_remove = self.se_setting_comboBox.currentText()
-#
-#         if stg_name_to_remove == "default":
-#             self._log.error("Cannot delete default setting")
-#         else:
-#             index_to_remove = self.se_setting_comboBox.findText(stg_name_to_remove)
-#             next_index = int(index_to_remove - 1)
-#             self.se_setting_comboBox.setCurrentIndex(next_index)
-#             self.settings.current_stg_name = self.se_setting_comboBox.currentText()
-#             self.se_setting_comboBox.removeItem(index_to_remove)
-#             self.remove_setting_sig.emit(stg_name_to_remove)
-#
-#     @QtCore.Slot(float, float)
-#     def update_from_sig_lines(self, sig_start, sig_end):
-#         param_names = self.settings.current_setting.__annotations__
-#         if "sig_start" in param_names:
-#             self.settings.current_setting.sig_start = sig_start
-#             self.se_settings_widget.widgets["sig_start"].setValue(sig_start)
-#         if "sig_end" in param_names:
-#             self.settings.current_setting.sig_end = sig_end
-#             self.se_settings_widget.widgets["sig_end"].setValue(sig_end)
-#
-#     @QtCore.Slot(float, float)
-#     def update_from_ref_lines(self, ref_start, ref_end):
-#         param_names = self.settings.current_setting.__annotations__
-#         if "ref_start" in param_names:
-#             self.settings.current_setting.ref_start = ref_start
-#             self.se_settings_widget.widgets["ref_start"].setValue(ref_start)
-#
-#         if "ref_end" in param_names:
-#             self.settings.current_setting.ref_end = ref_end
-#             self.se_settings_widget.widgets["ref_end"].setValue(ref_end)
-
-
 class StateEstimationPulseWidget(QtWidgets.QWidget):
     sig_line_changed_sig = QtCore.Signal(float, float)
     ref_line_changed_sig = QtCore.Signal(float, float)
 
     def __init__(self, logic):
-        self.logic = logic()
+        self._logic = logic()
         self.estimator = logic().estimator
         self.settings = logic().settings.estimator_stg
         self.sig_start = 0
@@ -348,10 +243,10 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.ref_end_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
         self.update_pushButton.clicked.connect(self.update_pulse)
         # Connect update signals from qdyne_measurement_logic
-        self.logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
+        self._logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
         # Connect to measurement state changes
-        self.logic.measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
-        self.logic.measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
+        self._logic.measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
+        self._logic.measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
 
     #        self.settings.current_stg_changed_sig.connect(self.update_lines)
     def disconnect_signals(self):
@@ -359,7 +254,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.sig_end_line.sigPositionChangeFinished.disconnect()
         self.ref_start_line.sigPositionChangeFinished.disconnect()
         self.ref_end_line.sigPositionChangeFinished.disconnect()
-        self.logic.measure.sigPulseDataUpdated.disconnect()
+        self._logic.measure.sigPulseDataUpdated.disconnect()
 
     def toggle_lines(self):
         param_names = self.settings.current_setting.__annotations__
@@ -402,15 +297,15 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
             self.ref_end_line.setValue(self.settings.current_setting.ref_end)
 
     def update_pulse(self):
-        self.logic.measure.get_raw_data()
-        self.logic.measure.get_pulse()
-        self.logic.measure.sigPulseDataUpdated.emit()
-        self.logic.measure.extract_data()
-        self.logic.measure.estimate_state()
-        self.logic.measure.sigTimeTraceDataUpdated.emit()
+        self._logic.measure.get_raw_data()
+        self._logic.measure.get_pulse()
+        self._logic.measure.sigPulseDataUpdated.emit()
+        self._logic.measure.extract_data()
+        self._logic.measure.estimate_state()
+        self._logic.measure.sigTimeTraceDataUpdated.emit()
 
     def pulse_updated(self):
-        pulse = self.logic.data.pulse_data
+        pulse = self._logic.data.pulse_data
         self.pulse_image.setData(x=pulse[0], y=pulse[1])
 
     def set_lines_movable(self, movable):
@@ -427,7 +322,7 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
     _log = get_logger(__name__)
 
     def __init__(self, logic):
-        self.logic = logic()
+        self._logic = logic()
         self.estimator = logic().estimator
         self.settings = logic().settings.estimator_stg
         # Get the path to the *.ui file
@@ -457,27 +352,27 @@ class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
     def connect_signals(self):
         self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)
         # Connect update signals from qdyne_measurement_logic
-        self.logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
+        self._logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
 
     def disconnect_signals(self):
         self.get_time_trace_pushButton.clicked.disconnect()
-        self.logic.measure.sigTimeTraceDataUpdated.disconnect()
+        self._logic.measure.sigTimeTraceDataUpdated.disconnect()
 
     def update_time_trace(self):
-        self.logic.measure.get_raw_data()
-        self.logic.measure.get_pulse()
-        self.logic.measure.sigPulseDataUpdated.emit()
-        self.logic.measure.extract_data()
-        self.logic.measure.estimate_state()
-        self.logic.measure.sigTimeTraceDataUpdated.emit()
+        self._logic.measure.get_raw_data()
+        self._logic.measure.get_pulse()
+        self._logic.measure.sigPulseDataUpdated.emit()
+        self._logic.measure.extract_data()
+        self._logic.measure.estimate_state()
+        self._logic.measure.sigTimeTraceDataUpdated.emit()
 
     def time_trace_updated(self):
-        y = self.logic.data.time_trace
+        y = self._logic.data.time_trace
         time_between_readouts = (
-            self.logic.pulsedmasterlogic()
+            self._logic.pulsedmasterlogic()
             .sequencegeneratorlogic()
             .get_ensemble_info(
-                self.logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
+                self._logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
             )[0]
         )
         self.time_trace_PlotWidget.setLabel(axis="bottom", text="time", units="s")

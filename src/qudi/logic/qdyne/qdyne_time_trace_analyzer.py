@@ -16,9 +16,12 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import sys
 import inspect
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
+
+from qudi.logic.qdyne.qdyne_tools import SettingsBase, get_subclasses, get_method_names
+from qudi.util.network import netobtain
 
 
 class Analyzer(ABC):
@@ -53,33 +56,21 @@ class Analyzer(ABC):
 
 
 @dataclass
-class AnalyzerSettings(ABC):
-    _settings_updated_sig: object
-    name: str = ""
-
-    def __setattr__(self, key, value):
-        if hasattr(self, "_settings_updated_sig") and key != "_settings_updated_sig":
-            old_value = getattr(self, key)
-            if old_value != value:
-                self._settings_updated_sig.emit()
-
-        super().__setattr__(key, value)
-
+class AnalyzerSettings(SettingsBase):
+    pass
 
 @dataclass
 class FourierAnalyzerSettings(AnalyzerSettings):
     name: str = "default"
-    # range_around_peak: int = 30
     padding_parameter: int = 1
-    cut_time_trace: bool = False
     spectrum_type: str = "amp"
-    _sequence_length: float = 1
+    sequence_length: float = 1
 
 
 class FourierAnalyzer(Analyzer):
     def analyze(self, data, stg: FourierAnalyzerSettings):
         time_trace = data.time_trace - np.mean(data.time_trace)
-        ft_signal = self.do_fft(time_trace, stg.cut_time_trace, stg.padding_parameter, stg._sequence_length)
+        ft_signal = self.do_fft(time_trace, stg.padding_parameter, stg.sequence_length)
         return ft_signal
 
     def get_freq_domain_signal(self, data, stg: FourierAnalyzerSettings):
@@ -92,7 +83,7 @@ class FourierAnalyzer(Analyzer):
             print("{}_is not defined".format(stg.spectrum_type))
         return spectrum
 
-    def do_fft(self, time_trace, cut_time_trace=False, padding_param=0, sequence_length_bins=1):
+    def do_fft(self, time_trace, padding_param=0, sequence_length_bins=1):
         """
         @return ft: complex ndarray
         """
@@ -143,30 +134,8 @@ class FourierAnalyzer(Analyzer):
         norm_psd = psd / (len(psd)) ** 2
         return [freq, norm_psd]
 
-    def get_half_frequency_array(self, _sequence_length, ft):
-        return 1 / (_sequence_length * len(ft)) * np.arange(len(ft) / 2)
-
-
-def get_subclasses(class_obj):
-    """
-    Given a class, find its subclasses and get their names.
-    """
-
-    subclasses = []
-    for name, obj in inspect.getmembers(sys.modules[__name__]):
-        if inspect.isclass(obj) and issubclass(obj, class_obj) and obj != class_obj:
-            subclasses.append(obj)
-
-    return subclasses
-
-
-def get_method_names(subclass_obj, class_obj):
-    subclass_names = [cls.__name__ for cls in subclass_obj]
-    method_names = [
-        subclass_name.replace(class_obj.__name__, "")
-        for subclass_name in subclass_names
-    ]
-    return method_names
+    def get_half_frequency_array(self, sequence_length, ft):
+        return 1 / (sequence_length * len(ft)) * np.arange(len(ft) / 2)
 
 
 class TimeTraceAnalyzerMain:
@@ -177,7 +146,7 @@ class TimeTraceAnalyzerMain:
         self.generate_method_list()
 
     def generate_method_list(self):
-        analyzer_subclasses = get_subclasses(Analyzer)
+        analyzer_subclasses = get_subclasses(__name__, Analyzer)
         self.method_list = get_method_names(analyzer_subclasses, Analyzer)
 
     @property

@@ -388,17 +388,17 @@ class QdyneLogic(LogicBase):
             )
             # self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
             self.settings.estimator_stg.initialize_settings()
+            self.settings.estimator_stg.current_method = self._current_estimator_method
             self.settings.estimator_stg.current_stg_name = (
                 self._current_estimator_stg_name
             )
-            self.settings.estimator_stg.current_method = self._current_estimator_method
 
             # self.settings.analyzer_stg.initialize_settings(self._analyzer_stg_dict)
             self.settings.analyzer_stg.initialize_settings()
+            self.settings.analyzer_stg.current_method = self._current_analyzer_method
             self.settings.analyzer_stg.current_stg_name = (
                 self._current_analyzer_stg_name
             )
-            self.settings.analyzer_stg.current_method = self._current_analyzer_method
 
         def input_initial_settings():
             self.input_estimator_method()
