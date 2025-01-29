@@ -133,13 +133,17 @@ class QdyneMeasurement(QtCore.QObject):
         logger.debug("start pulser")
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
         logger.debug("creating metadata")
-        metadata = {}
-        metadata.update({'generation parameters': self.qdyne_logic.measurement_generator.generation_parameters})
-        metadata.update({'measurement settings': self.qdyne_logic.measurement_generator.measurement_settings})
-        metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
-        metadata.update({'generation method parameters': self.qdyne_logic.measurement_generator.generate_method_params[self.qdyne_logic.measurement_generator.loaded_asset[0]]})
-        logger.debug("set metadata")
-        self.qdyne_logic.data_manager.set_metadata(metadata)
+        try:
+            metadata = {}
+            metadata.update({'generation parameters': self.qdyne_logic.measurement_generator.generation_parameters})
+            metadata.update({'measurement settings': self.qdyne_logic.measurement_generator.measurement_settings})
+            metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
+            metadata.update({'generation method parameters': self.qdyne_logic.measurement_generator.generate_method_params[self.qdyne_logic.measurement_generator.loaded_asset[0]]})
+            logger.debug("set metadata")
+            self.qdyne_logic.data_manager.set_metadata(metadata)
+        except Exception as e:
+            logger.exception(e)
+            pass
         logger.debug("emitting started signals")
         self.sigMeasurementStarted.emit()
         self._measurement_running = True
@@ -160,14 +164,17 @@ class QdyneMeasurement(QtCore.QObject):
             try:
                 self.get_raw_data()
                 self.get_pulse()
+                logger.debug("emitting sigPulseDataUpdated")
                 self.sigPulseDataUpdated.emit()
 
                 self.extract_data()
                 self.estimate_state()
+                logger.debug("emitting sigTimeTraceDataUpdated")
                 self.sigTimeTraceDataUpdated.emit()
 
                 self.analyze_time_trace()
                 self.get_spectrum()
+                logger.debug("emitting sigQdyneDataUpdated")
                 self.sigQdyneDataUpdated.emit()
             except Exception as e:
                 logger.exception(e)
