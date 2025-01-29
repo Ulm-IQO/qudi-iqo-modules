@@ -23,7 +23,7 @@ import numpy as np
 from qudi.util.network import netobtain
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
-from qudi.logic.qdyne.qdyne_tools import SettingsBase
+from qudi.logic.qdyne.qdyne_tools import SettingsBase, get_subclasses, get_method_names
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -172,28 +172,6 @@ class TimeTagStateEstimator(StateEstimator):
         return pulse_array
 
 
-def get_subclasses(class_obj):
-    """
-    Given a class, find its subclasses and get their names.
-    """
-
-    subclasses = []
-    for name, obj in inspect.getmembers(sys.modules[__name__]):
-        if inspect.isclass(obj) and issubclass(obj, class_obj) and obj != class_obj:
-            subclasses.append(obj)
-
-    return subclasses
-
-
-def get_method_names(subclass_obj, class_obj):
-    subclass_names = [cls.__name__ for cls in subclass_obj]
-    method_names = [
-        subclass_name.replace(class_obj.__name__, "")
-        for subclass_name in subclass_names
-    ]
-    return method_names
-
-
 class StateEstimatorMain:
     def __init__(self, log):
         self.log = log
@@ -203,8 +181,9 @@ class StateEstimatorMain:
         self.generate_method_list()
 
     def generate_method_list(self):
-        estimator_subclasses = get_subclasses(StateEstimator)
+        estimator_subclasses = get_subclasses(__name__, StateEstimator)
         self.method_list = get_method_names(estimator_subclasses, StateEstimator)
+        print(self.method_list)
 
     def configure_method(self, method):
         self.estimator = globals()[method + "StateEstimator"](self.log)

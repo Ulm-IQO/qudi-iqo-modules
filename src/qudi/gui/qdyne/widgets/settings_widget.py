@@ -100,8 +100,6 @@ class SettingsWidget(QtWidgets.QWidget):
         self.update_widget()
 
     def update_widget(self):
-        print('update widget')
-        print(self.settings.current_setting)
         self.settings_widget.update_params_from_data(self.settings.current_setting)
         self.setting_widget_updated_sig.emit()
 

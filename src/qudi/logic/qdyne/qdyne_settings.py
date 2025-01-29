@@ -60,7 +60,7 @@ class SettingsManager:
 
     def create_stg_cls_dict(self):
         default_stg_cls_dict = dict()
-        setting_classes = get_subclasses(inspect.getmodule(self.abstract_class_obj),
+        setting_classes = get_subclasses(self.abstract_class_obj.__module__,
                                          self.abstract_class_obj)
         for setting in setting_classes:
             method_name = get_method_name(setting, self.abstract_class_obj)
@@ -71,7 +71,7 @@ class SettingsManager:
 
     def create_default_stg_param_dict(self):
         default_stg_param_dict = dict()
-        setting_classes = get_subclasses(inspect.getmodule(self.abstract_class_obj),
+        setting_classes = get_subclasses(self.abstract_class_obj.__module__,
                                          self.abstract_class_obj)
 
         for setting in setting_classes:
