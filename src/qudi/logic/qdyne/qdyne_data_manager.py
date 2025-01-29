@@ -107,7 +107,7 @@ class DataStorage:
             return QdyneNpyDataStorage
         raise ValueError('Invalid ConfigOption value to specify data storage type.')
 
-    def save_data(self, data, options: QdyneSaveOptions=None) -> None:
+    def save_data(self, data, options: Optional[QdyneSaveOptions] = QdyneSaveOptions()) -> None:
         self.storage.save_data(
             data=data,
             nametag=options.nametag,
