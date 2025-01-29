@@ -171,14 +171,16 @@ class MeasurementGenerator:
                 ens_length, ens_bins, ens_lasers = \
                     self._pulsedmasterlogic().get_sequence_info(loaded_asset)
             else:
-                self._qdyne_logic.log.error('No valid waveform loaded. Cannot invoke sequence length.')
+                raise ValueError('No valid waveform loaded. Cannot invoke sequence length.')
             if ens_lasers != 1:
                 raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
-            settings_dict['_sequence_length'] = ens_length
-        if "bin_width" in settings_dict:
-            settings_dict["_bin_width"] = float(settings_dict["bin_width"])  # add to configure estimator settings
-        if "_sequence_length" in settings_dict:
-            self.__sequence_length = float(settings_dict["_sequence_length"])
+            settings_dict['sequence_length'] = ens_length
+        _logger.debug(f"{settings_dict=}")
+        if "_bin_width" in settings_dict:
+            settings_dict["bin_width"] = float(settings_dict["bin_width"])  # add to configure estimator settings
+        if "sequence_length" in settings_dict:
+            self.__sequence_length = float(settings_dict["sequence_length"])
+        _logger.debug(f"{settings_dict=}")
 
         # Todo: check interference with pulsed
         #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
@@ -247,7 +249,7 @@ class MeasurementGenerator:
         settings_dict = self._pulsedmasterlogic().measurement_settings
         # overwrite invoke_settings option from pulsed
         settings_dict['invoke_settings'] = self._invoke_settings
-        settings_dict['_sequence_length'] = self.__sequence_length
+        settings_dict['sequence_length'] = self.__sequence_length
         return settings_dict
 
     @property
