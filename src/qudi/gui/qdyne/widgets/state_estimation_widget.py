@@ -33,21 +33,31 @@ from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
 from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
 
+
 class StateEstimationTab(QtWidgets.QWidget):
     def __init__(self, logic):
         super().__init__()
+        self.logic = logic
         self._instantiate_widgets(logic)
         self._form_layout()
 
     def _instantiate_widgets(self, logic):
         self._sew_layout = QtWidgets.QVBoxLayout(self)
         self._sw = StateEstimationSettingsWidget(logic().settings.estimator_stg,
-                                                 logic().estimator.method_list)
+                                                 logic().estimator.method_list,
+                                                 self._invoke_func)
         self._pw = StateEstimationPulseWidget(logic)
         self._ttw = StateEstimationTimeTraceWidget(logic)
         self._sew_layout.addWidget(self._sw)
         self._sew_layout.addWidget(self._pw)
         self._sew_layout.addWidget(self._ttw)
+
+    def _invoke_func(self):
+        """
+        functions invoked after the values of the settings changed.
+        """
+        self.logic().settings.estimator_stg.sync_param_dict()
+        self._pw.update_lines()
 
     def _form_layout(self):
         self._sw.setSizePolicy(
@@ -130,9 +140,10 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._pw.deactivate()
         self._ttw.deactivate()
 
+
 class StateEstimationSettingsWidget(SettingsWidget):
-    def __init__(self, settings, method_list):
-        super(StateEstimationSettingsWidget, self).__init__(settings, method_list)
+    def __init__(self, settings, method_list, invoke_func=None):
+        super(StateEstimationSettingsWidget, self).__init__(settings, method_list, invoke_func)
 
     @QtCore.Slot(float, float)
     def update_from_sig_lines(self, sig_start, sig_end):
@@ -154,121 +165,6 @@ class StateEstimationSettingsWidget(SettingsWidget):
         if "ref_end" in param_names:
             self.settings.current_setting.ref_end = ref_end
             self.settings_widget.widgets["ref_end"].setValue(ref_end)
-
-
-# class StateEstimationSettingWidget(QtWidgets.QWidget):
-#     _log = get_logger(__name__)
-#     method_updated_sig = QtCore.Signal()
-#     setting_name_updated_sig = QtCore.Signal()
-#     setting_widget_updated_sig = QtCore.Signal()
-#     add_button_pushed_sig = QtCore.Signal(str)
-#     remove_setting_sig = QtCore.Signal(str)
-#
-#     def __init__(self, logic):
-#         self.logic = logic()
-#         self.estimator = logic().estimator
-#         self.settings = logic().settings.estimator_stg
-#         # Get the path to the *.ui file
-#         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-#         ui_file = os.path.join(qdyne_dir, "ui", "settings_widget.ui")
-#
-#         # Load it
-#         super(StateEstimationSettingWidget, self).__init__()
-#
-#         uic.loadUi(ui_file, self)
-#
-#     def activate(self):
-#         self._activate_widgets()
-#
-#     def _activate_widgets(self):
-#         self.se_method_comboBox.addItems(self.estimator.method_lists)
-#         self.se_method_comboBox.setCurrentText(self.settings.current_method)
-#         self.se_setting_comboBox.addItems(self.settings.current_setting_list)
-#         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#         self.se_setting_comboBox.setEditable(True)
-#         self.se_setting_add_pushButton.setToolTip('Enter new name in combo box')
-#
-#         self.se_settings_widget = DataclassWidget(self.settings.current_setting)
-#         self.se_settings_gridLayout.addWidget(self.se_settings_widget)
-#
-#     def deactivate(self):
-#         pass
-#
-#     def connect_signals(self):
-#         self.se_method_comboBox.currentTextChanged.connect(self.update_current_method)
-#         self.se_setting_comboBox.currentIndexChanged.connect(self.update_current_setting)
-#         self.se_setting_add_pushButton.clicked.connect(self.add_setting)
-#         self.se_setting_delete_pushButton.clicked.connect(self.delete_setting)
-#         self.add_button_pushed_sig.connect(self.settings.add_setting)
-#         self.remove_setting_sig.connect(self.settings.remove_setting)
-#
-#     def disconnect_signals(self):
-#         self.se_method_comboBox.currentTextChanged.disconnect()
-#         self.se_setting_comboBox.currentTextChanged.disconnect()
-#         self.se_setting_add_pushButton.clicked.disconnect()
-#         self.se_setting_delete_pushButton.clicked.disconnect()
-#
-#     def update_current_method(self):
-#         self.settings.current_method = self.se_method_comboBox.currentText()
-#         self.se_setting_comboBox.blockSignals(True)
-#         self.se_setting_comboBox.clear()
-#         self.se_setting_comboBox.blockSignals(False)
-#         self.se_setting_comboBox.addItems(self.settings.current_setting_list)
-#         self.settings.current_stg_name = "default"
-#         self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#
-#     def update_current_setting(self):
-#         self.settings.current_stg_name = self.se_setting_comboBox.currentText()
-#         self.update_widget()
-#         self.setting_name_updated_sig.emit()
-#
-#     def update_widget(self):
-#         self.se_settings_widget.update_data(self.settings.current_setting)
-#         self.setting_widget_updated_sig.emit()
-#
-#     def add_setting(self):
-#         new_name = self.se_setting_comboBox.currentText()
-#         if new_name in self.settings.current_setting_list:
-#             self._log.error("Setting name already exists")
-#         else:
-#             self.add_button_pushed_sig.emit(new_name)
-#             self.se_setting_comboBox.addItem(self.settings.current_stg_name)
-#             self.se_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#             self.update_widget()
-#
-#     def delete_setting(self):
-#         stg_name_to_remove = self.se_setting_comboBox.currentText()
-#
-#         if stg_name_to_remove == "default":
-#             self._log.error("Cannot delete default setting")
-#         else:
-#             index_to_remove = self.se_setting_comboBox.findText(stg_name_to_remove)
-#             next_index = int(index_to_remove - 1)
-#             self.se_setting_comboBox.setCurrentIndex(next_index)
-#             self.settings.current_stg_name = self.se_setting_comboBox.currentText()
-#             self.se_setting_comboBox.removeItem(index_to_remove)
-#             self.remove_setting_sig.emit(stg_name_to_remove)
-#
-#     @QtCore.Slot(float, float)
-#     def update_from_sig_lines(self, sig_start, sig_end):
-#         param_names = self.settings.current_setting.__annotations__
-#         if "sig_start" in param_names:
-#             self.settings.current_setting.sig_start = sig_start
-#             self.se_settings_widget.widgets["sig_start"].setValue(sig_start)
-#         if "sig_end" in param_names:
-#             self.settings.current_setting.sig_end = sig_end
-#             self.se_settings_widget.widgets["sig_end"].setValue(sig_end)
-#
-#     @QtCore.Slot(float, float)
-#     def update_from_ref_lines(self, ref_start, ref_end):
-#         param_names = self.settings.current_setting.__annotations__
-#         if "ref_start" in param_names:
-#             self.settings.current_setting.ref_start = ref_start
-#             self.se_settings_widget.widgets["ref_start"].setValue(ref_start)
-#
-#         if "ref_end" in param_names:
-#             self.settings.current_setting.ref_end = ref_end
-#             self.se_settings_widget.widgets["ref_end"].setValue(ref_end)
 
 
 class StateEstimationPulseWidget(QtWidgets.QWidget):

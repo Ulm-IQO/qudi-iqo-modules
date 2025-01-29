@@ -41,9 +41,10 @@ class SettingsWidget(QtWidgets.QWidget):
     add_button_pushed_sig = QtCore.Signal(str)
     remove_setting_sig = QtCore.Signal(str)
 
-    def __init__(self, settings, method_list):
+    def __init__(self, settings, method_list, invoke_func=None):
         self.settings = settings
         self.method_list = method_list
+        self.invoke_func = invoke_func
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
         ui_file = os.path.join(qdyne_dir, "ui", "settings_widget.ui")
@@ -60,7 +61,7 @@ class SettingsWidget(QtWidgets.QWidget):
         self.setting_comboBox.setEditable(True)
         self.setting_add_pushButton.setToolTip('Enter new name in combo box')
 
-        self.settings_widget = DataclassWidget(self.settings.current_setting)
+        self.settings_widget = DataclassWidget(self.settings.current_setting, self.invoke_func)
         self.setting_gridLayout.addWidget(self.settings_widget)
 
     def deactivate(self):
@@ -99,7 +100,7 @@ class SettingsWidget(QtWidgets.QWidget):
         self.setting_name_updated_sig.emit()
 
     def update_widget(self):
-        self.settings_widget.update_data(self.settings.current_setting)
+        self.settings_widget.update_params_from_data(self.settings.current_setting)
         self.setting_widget_updated_sig.emit()
 
     def add_setting(self):

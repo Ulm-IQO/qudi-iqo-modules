@@ -27,6 +27,7 @@ from qudi.logic.qdyne.qdyne_time_trace_analyzer import AnalyzerSettings
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
 from qudi.logic.qdyne.qdyne_tools import *
 
+
 class QdyneSettings:
     def __init__(self, settings_dir, estimator_stg_updated_sig, analyzer_stg_updated_sig):
         self.estimator_stg = SettingsManager(StateEstimatorSettings,
@@ -42,7 +43,8 @@ class SettingsManager:
 
     def __init__(self, abstract_class_obj=None, save_path=None, settings_updated_sig=None):
         """
-        stg_cls_dict: dictionary containing dataclass for each method
+        stg_cls_dict: dictionary containing dataclass for each method.
+                      Individual settings should be stored in stg_param_dict.
         stg_param_dict: 2D dictionary containing parameters for each method
 
         """
@@ -64,6 +66,7 @@ class SettingsManager:
             method_name = get_method_name(setting, self.abstract_class_obj)
             default_stg_cls_dict[method_name] \
                 = setting(_settings_updated_sig=self.settings_updated_sig)
+
         return default_stg_cls_dict
 
     def create_default_stg_param_dict(self):
@@ -79,32 +82,8 @@ class SettingsManager:
             default_stg_param_dict[method_name]["default"] = default_stg.to_dict()
         return default_stg_param_dict
 
-
-    # def create_default_stg_dict(self):
-    #     """
-    #     create a dictionary containing default settings dataclasses
-    #     """
-    #     default_stg_cls_dict = dict()
-    #     default_stg_param_dict = dict()
-    #     setting_classes = get_subclasses(inspect.getmodule(self.abstract_class_obj),
-    #                                      self.abstract_class_obj)
-    #     print(setting_classes)
-    #     for setting in setting_classes:
-    #         method_name = get_method_name(setting, self.abstract_class_obj)
-    #         default_stg_param_dict[method_name] = dict()
-    #         setting.name = "default"
-    #         default_stg_cls_dict[method_name] \
-    #             = setting(_settings_updated_sig=self.settings_updated_sig)
-    #         default_stg_param_dict[method_name]["default"] = default_stg_cls_dict[method_name].to_dict()
-    #     print('create default')
-    #     print(default_stg_cls_dict)
-    #     print(default_stg_param_dict)
-    #     return default_stg_cls_dict, default_stg_param_dict
-
     @property
     def current_stg_cls(self):
-        print("current_stg_cls")
-        print(self.stg_cls_dict)
         return self.stg_cls_dict[self.current_method]
 
     @property
@@ -147,10 +126,6 @@ class SettingsManager:
 
     def save_settings(self):
         try:
-            # for stg_method in self.stg_param_dict.keys():
-            #     stg_ = self.stg_param_dict[stg_method]
-            #     for setting_name in settings.keys():
-            #         del settings[setting_name]._settings_updated_sig
 
             with open(self.save_path, 'wb') as f:
                 pickle.dump(self.stg_param_dict, f)
@@ -162,21 +137,15 @@ class SettingsManager:
         try:
             with open(self.save_path, 'rb') as f:
                 self.stg_param_dict = pickle.load(f)
-            # for setting_class in self.settings_dict.keys():
-            #     settings = self.settings_dict[setting_class]
-            #     for setting_name in settings.keys():
-            #         settings[setting_name]._settings_updated_sig \
-            #             = self.settings_updated_sig
 
         except EOFError:
             self.log.error(f"cannot load settings from {self.save_path}")
 
     @QtCore.Slot(str)
     def add_setting(self, new_name):
-        default_setting = self.stg_param_dict[self.current_method]['default']
-
-        new_setting = copy.deepcopy(default_setting)
-        if new_name not in self.stg_param_dict.keys():
+        if new_name not in self.stg_param_dict[self.current_method].keys():
+            default_setting = self.stg_param_dict[self.current_method]['default']
+            new_setting = copy.deepcopy(default_setting)
             new_setting["name"] = new_name
             self.stg_param_dict[self.current_method].update({new_name: new_setting})
             self.current_stg_name = new_name
@@ -185,9 +154,6 @@ class SettingsManager:
             self.log.error('Name already taken')
 
     def update_current_settings(self):
-        print(f"current_method {self.current_method}")
-        print(f"current_stg_name {self.current_stg_name}")
-        print(self.stg_param_dict)
         settings = self.stg_param_dict[self.current_method][self.current_stg_name]
         self._update_dataclass(self.current_stg_cls, settings)
 
@@ -197,15 +163,23 @@ class SettingsManager:
             if key in valid_fields:
                 setattr(dataclass, key, value)
 
+    def sync_param_dict(self):
+        """
+        Sync the parameter dictionary of the current setting with the values of the current setting dataclass.
+        """
+        self.stg_param_dict[self.current_method][self.current_stg_name] = self.current_setting.to_dict()
+
     @QtCore.Slot(str)
     def remove_setting(self, stg_name):
         self.stg_param_dict[self.current_method].pop(stg_name)
 
     @property
     def current_setting(self):
+        """
+        Dataclass for the current setting
+        """
         return self.stg_cls_dict[self.current_method]
 
     @property
     def current_setting_list(self):
         return self.stg_param_dict[self.current_method].keys()
-
