@@ -58,7 +58,7 @@ class QdyneSaveOptions:
     filename: Optional[str] = None
 
     def get_default_timestamp(self):
-        self.timestamp = datetime.now()
+        self.timestamp = datetime.datetime.now()
 
     def get_file_path(self, file_path):
         if file_path is None:
