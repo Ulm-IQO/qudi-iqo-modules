@@ -124,8 +124,10 @@ class SettingsManager:
         self.log.debug(f"{config_dict=}, {method=}, {setting_name=}")
 
         for key, value in config_dict.items():
-            if hasattr(self.stg_param_dict[method][setting_name], key):
-                setattr(self.stg_param_dict[method][setting_name], key, value)
+            self.log.debug(f"Trying to set: {key=}, {value=}, {hasattr(self.stg_param_dict[method][setting_name], key)=}")
+            if key in self.stg_param_dict[method][setting_name]:
+                self.log.debug(f"Setting {key}: {value} for {method=}, {setting_name=}")
+                self.stg_param_dict[method][setting_name][key] = value
 
     def save_settings(self):
         try:
