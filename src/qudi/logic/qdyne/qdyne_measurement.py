@@ -191,10 +191,13 @@ class QdyneMeasurement(QtCore.QObject):
             raise e
 
     def get_pulse(self):
+        logger.debug(f"Qdyne Measurement: get_pulse: estimator.configure_method")
         self.estimator.configure_method(self.settings.estimator_stg.current_method)
+        logger.debug(f"Qdyne Measurement: get_pulse: estimator.get_pulse")
         self.data.pulse_data = self.estimator.get_pulse(
             self.data.raw_data, self.settings.estimator_stg.current_setting
         )
+        logger.debug(f"Qdyne Measurement: get_pulse: emitting signal")
         self.sigPulseDataUpdated.emit()
 
     def extract_data(self):

@@ -164,12 +164,14 @@ class TimeTagStateEstimator(StateEstimator):
         return np.array(counts_time_trace)
 
     def get_pulse(self, time_tag_data, settings: TimeTagStateEstimatorSettings):
+        self.log.debug(f"TimeTageStateEstimator get_pulse, {time_tag_data=}, {settings=}")
         # max_bins = int(max(time_tag_data))
         count_hist, bin_edges = np.histogram(
             time_tag_data, bins=settings.max_bins, range=(1, settings.max_bins)
         )
         time_array = settings.bin_width * np.arange(len(count_hist))
         pulse_array = [time_array, count_hist]
+        self.log.debug(f"{pulse_array=}")
         return pulse_array
 
 
@@ -189,6 +191,7 @@ class StateEstimatorMain:
         self.estimator = globals()[method + "StateEstimator"](self.log)
 
     def get_pulse(self, raw_data, settings):
+        self.log.debug("StateEstimatorMain: get_pulse: estimator.get_pulse")
         return self.estimator.get_pulse(raw_data, settings)
 
     def extract(self, raw_data, settings):

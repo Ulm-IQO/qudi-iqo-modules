@@ -110,12 +110,14 @@ class SettingsManager:
             method = self.current_method
         elif method not in self.stg_cls_dict:
             # TODO: give error message and return
+            self.log.error(f"Requested method '{method}' not in available methods")
             raise ValueError(f"Requested method '{method}' not in available methods")
 
         if setting_name is None:
             setting_name = self.current_stg_name
         elif setting_name not in self.stg_param_dict[method]:
             # TODO: give error message and return
+            self.log.error(f"Requested setting name '{setting_name}' not in available methods")
             raise ValueError(f"Requested setting name '{setting_name}' not in available methods")
 
         for key, value in config_dict.items():

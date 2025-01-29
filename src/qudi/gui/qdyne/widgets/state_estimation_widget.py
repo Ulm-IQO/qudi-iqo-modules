@@ -21,6 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import copy
+from logging import getLogger
 import os
 import numpy as np
 import pyqtgraph as pg
@@ -190,6 +191,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
 
     def __init__(self, logic):
         self._logic = logic()
+        self._log = getLogger(__name__)
         self.estimator = logic().estimator
         self.settings = logic().settings.estimator_stg
         self.sig_start = 0
@@ -306,6 +308,7 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
 
     def pulse_updated(self):
         pulse = self._logic.data.pulse_data
+        self._log.warning(f"{pulse=}")
         self.pulse_image.setData(x=pulse[0], y=pulse[1])
 
     def set_lines_movable(self, movable):
