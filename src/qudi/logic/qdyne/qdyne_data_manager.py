@@ -104,7 +104,7 @@ class DataStorage:
         if cfg_str == 'csv':
             return CsvDataStorage
         if cfg_str == 'npy':
-            return QdyneNpyDataStorage #TODO repair NpyDataStorage
+            return QdyneNpyDataStorage
         raise ValueError('Invalid ConfigOption value to specify data storage type.')
 
     def save_data(self, data, options: QdyneSaveOptions=None) -> None:
