@@ -47,15 +47,15 @@ class QdyneNpyDataStorage(NpyDataStorage):
 
 @dataclass
 class QdyneSaveOptions:
-    data_dir: str = None
+    data_dir: Optional[str] = None
     use_default: bool = True
-    timestamp: datetime.datetime = None
+    timestamp: Optional[datetime.datetime] = None
     metadata: dict = field(default_factory=dict)
-    notes: str = None
-    nametag: str = None
-    column_headers: str = None
-    column_dtypes: list = None
-    filename: str = None
+    notes: Optional[str] = None
+    nametag: Optional[str] = None
+    column_headers: Optional[str] = None
+    column_dtypes: Optional[list] = None
+    filename: Optional[str] = None
 
     def get_default_timestamp(self):
         self.timestamp = datetime.now()
@@ -89,7 +89,7 @@ class DataStorage:
     def __init__(self, data_dir, storage_class):
         self.data_dir = data_dir
         self.storage_class = storage_class
-        self.storage = None
+        self.storage: DataStorageBase = None
 
         self.create_storage()
 
