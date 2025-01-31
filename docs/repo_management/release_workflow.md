@@ -6,15 +6,15 @@ If you are not the responsible release manager, it should be of no concern for y
 
 ## Once: Becoming the release manager
 
-Steps 2-5 are only necessary for an initial setup of the publishing workflow.
+Steps 2-5 () are only necessary for an initial setup of the publishing workflow.
 
 1. Create seperate accounts at https://pypi.org/ and https://test.pypi.org/ and get maintain rights to qudi-iqo-modules by the current release manager.
-(2). Login to github and navigate to 'Ulm-IQO/qudi-iqo-modules/Settings/Evnironments'
-(3). Create new environment 'release-test'. It will be registered with PyPi later. In the 'Deployment branches and tags' section, add a new branch 'main' that triggers deployment.
-Only changes of the VERSION file pushed to main will trigger deployment to test.pypi.
-(5). Create new environment 'release'. In the 'Deployment branches and tags' section, add a new tag 'v*.*.*' that triggers deployment. Only tags created on github will trigger deployment to pypi.
-(6). On PyPi & test.Pypi, login to your account and navigate to 'Your Projects/Manage/Publish'. In the 'Manage current publishers', enter the details of the github repo and the previously created environment name.
-7. Trigger an action and validate everything worked. Eg. you can create an commit to `qudi-iqo-modules/VERSIONS`.
+2. (Login to github and navigate to 'Ulm-IQO/qudi-iqo-modules/Settings/Evvironments')
+3. (Create new environment 'release-test'. It will be registered with PyPi later. In the 'Deployment branches and tags' section, add a new branch 'main' that triggers deployment.
+Only changes of the VERSION file pushed to main will trigger deployment to test.pypi.)
+4. (Create new environment 'release'. In the 'Deployment branches and tags' section, add a new tag 'v*.*.*' that triggers deployment. Only tags created on github will trigger deployment to pypi.)
+5. (On PyPi & test.Pypi, login to your account and navigate to 'Your Projects/Manage/Publish'. In the 'Manage current publishers', enter the details of the github repo and the previously created environment name.)
+6. Trigger an action and validate everything worked. Eg. you can create an commit to `qudi-iqo-modules/VERSIONS`.
    The success of the test release can be seen in Ulm-IQO/qudi-iqo-modules/Actions
 
    
