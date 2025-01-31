@@ -53,18 +53,35 @@ def get_method_name(subclass_obj, class_obj):
     method_name = subclass_name.replace(class_obj.__name__, "")
     return method_name
 
+# @dataclass
+# class SettingsBase(ABC):
+#     _settings_updated_sig: object = field(repr=False, metadata={"exclude": True})  # Mark to exclude
+#     name: str = ""
+#
+#     def __setattr__(self, key, value):
+#         if hasattr(self, key) and hasattr(self, "_settings_updated_sig") and key != "_settings_updated_sig":
+#             old_value = getattr(self, key)
+#             if old_value != value:
+#                 self._settings_updated_sig.emit()
+#
+#         super().__setattr__(key, value)
+#
+#     def from_dict(self, settings: dict):
+#         for key, value in settings.items():
+#             setattr(self, key, value)
+#
+#     def to_dict(self):
+#         """Convert the dataclass to a dictionary excluding `_settings_updated_sig`."""
+#         return {
+#             field.name: getattr(self, field.name)
+#             for field in fields(self)
+#             if not field.metadata.get("exclude", False)
+#         }
+
 @dataclass
-class SettingsBase(ABC):
+class SettingsBase:
     _settings_updated_sig: object = field(repr=False, metadata={"exclude": True})  # Mark to exclude
     name: str = ""
-
-    def __setattr__(self, key, value):
-        if hasattr(self, key) and hasattr(self, "_settings_updated_sig") and key != "_settings_updated_sig":
-            old_value = getattr(self, key)
-            if old_value != value:
-                self._settings_updated_sig.emit()
-
-        super().__setattr__(key, value)
 
     def from_dict(self, settings: dict):
         for key, value in settings.items():
@@ -77,3 +94,19 @@ class SettingsBase(ABC):
             for field in fields(self)
             if not field.metadata.get("exclude", False)
         }
+
+    def set_settings_updated_sig(self, settings_updated_sig):
+        """
+        set a signal on settings update. This should be defined elsewhere.
+        """
+        self._settings_updated_sig = settings_updated_sig
+
+    def set_values(self, settings: dict):
+        """
+        For input, use this function.
+        """
+        self.from_dict(settings)
+        self._settings_updated_sig.emit(settings)
+
+    def update_values_from_gui(self, settings: dict):
+        self.from_dict(settings)
