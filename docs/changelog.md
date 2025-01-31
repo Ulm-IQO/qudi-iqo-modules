@@ -23,6 +23,8 @@
 - Optimization sequences other than [2D, 1D] are now working
 - Fixed `t1_sequencing` predefined method's `counting_length` for gated mode
 - `QDPlotterGui` will continue to show fit results if new plot was added
+- Fixed potential `scanning_optimize_logic` deadlock when starting the optimizer
+- Fixed loading of most recent target when starting scanning GUI
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
