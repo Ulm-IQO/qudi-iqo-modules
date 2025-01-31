@@ -49,6 +49,7 @@
 - Added fastcounter hardware file support for Adlink PCIe 9834
 - Save and restore window position of various module GUIs
 - Added DMC output mode for Keysight M8195A AWG
+- Updated workflows to follow new 'pyproject.toml' release workflow
 
 
 ### Other
