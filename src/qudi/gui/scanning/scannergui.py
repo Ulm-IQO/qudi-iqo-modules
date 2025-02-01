@@ -215,7 +215,7 @@ class ScannerGui(GuiBase):
         self.sigToggleOptimize.connect(self._optimize_logic().toggle_optimize, QtCore.Qt.QueuedConnection)
         self._mw.action_optimize_position.triggered[bool].connect(self.toggle_optimize, QtCore.Qt.QueuedConnection)
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.connect(
-            self._set_optimizer_dockwidget, QtCore.Qt.QueuedConnection
+            self._init_optimizer_dockwidget, QtCore.Qt.QueuedConnection
         )
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.connect(
             self.update_optimizer_settings_from_logic, QtCore.Qt.QueuedConnection
@@ -310,7 +310,7 @@ class ScannerGui(GuiBase):
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
-        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self._set_optimizer_dockwidget)
+        self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self._init_optimizer_dockwidget)
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(
             self.update_optimizer_settings_from_logic
         )
@@ -406,7 +406,7 @@ class ScannerGui(GuiBase):
             # lambda ax, pos: self._update_scan_markers(pos_dict={ax: pos}, exclude_scan=None)
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
-        self._set_optimizer_dockwidget()
+        self._init_optimizer_dockwidget()
 
         self._mw.util_toolBar.visibilityChanged.connect(self._mw.action_view_toolbar.setChecked)
         self._mw.action_view_toolbar.triggered[bool].connect(self._mw.util_toolBar.setVisible)
@@ -419,7 +419,7 @@ class ScannerGui(GuiBase):
         self.tilt_correction_dockwidget.visibilityChanged.connect(self._mw.action_view_tilt_correction.setChecked)
         self._mw.action_view_tilt_correction.triggered[bool].connect(self.tilt_correction_dockwidget.setVisible)
 
-    def _set_optimizer_dockwidget(self):
+    def _init_optimizer_dockwidget(self):
         optimizer_dockwidget = OptimizerDockWidget(
             axes=self._scanning_logic().scanner_axes,
             plot_dims=self._optimize_logic().optimizer_sequence_dimensions,
@@ -858,8 +858,12 @@ class ScannerGui(GuiBase):
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
         data_logic: ScanningDataLogic = self._data_logic()
+        # populate all plot widgets with scandata
         for ax in avail_axs:
-            data_logic.restore_from_history(ax)
+            data_logic.restore_from_history(ax, set_target=False)
+        # restore the latest scan
+        data_logic.restore_from_history()
+
 
     def _update_scan_markers(self, pos_dict, exclude_scan=None):
         """ """
@@ -884,9 +888,10 @@ class ScannerGui(GuiBase):
                 continue
         self.scanner_control_dockwidget.set_target(pos_dict)
 
-    @QtCore.Slot(ScanData, ScanData)
-    def _update_from_history(self, scan_data: ScanData, back_scan_data: Optional[ScanData]):
-        self.set_scanner_target_position(scan_data.scanner_target_at_start)
+    @QtCore.Slot(ScanData, ScanData, int)
+    def _update_from_history(self, scan_data: ScanData, back_scan_data: Optional[ScanData], set_target: bool):
+        if set_target:
+            self.set_scanner_target_position(scan_data.scanner_target_at_start)
         self._update_scan_data(scan_data, back_scan_data)
         self.set_active_tab(scan_data.settings.axes)
 

@@ -810,7 +810,7 @@ class PoiManagerLogic(LogicBase):
                     name = self.active_poi
 
             if len(position) != 3:
-                self.log.error('POI position must be iterable of length 3.')
+                self.log.error(f'POI position must be iterable of length 3, got {position}')
                 return
             if not isinstance(name, str):
                 self.log.error('POI name must be of type str.')
@@ -834,7 +834,7 @@ class PoiManagerLogic(LogicBase):
                     name = self.active_poi
 
             if len(position) != 3:
-                self.log.error('POI position must be iterable of length 3.')
+                self.log.error(f'POI position must be iterable of length 3, got {position}')
                 return
             if not isinstance(name, str):
                 self.log.error('POI name must be of type str.')

@@ -38,49 +38,6 @@ from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraint
 from qudi.util.linear_transform import find_changing_axes, LinearTransformation3D
 from qudi.util.linear_transform import compute_rotation_matrix_to_plane, compute_reduced_vectors
 
-import inspect
-
-import logging
-import os
-import threading
-logger = logging.getLogger(__name__)
-
-
-class TrackedRecursiveMutex(RecursiveMutex):
-    def __init__(self):
-        super().__init__()
-        self._lock_info = None
-        self._n_locks = 0
-        self._lock_threads = []
-        self._lock_funcs = []
-
-    def lock(self):
-        super().lock()
-        # Capture the caller function's information
-        self._n_locks += 1
-        stack = inspect.stack()
-        caller_info = stack[2]
-        fname = os.path.basename(caller_info.filename)
-
-        thread_name = QtCore.QThread.currentThread().objectName()
-        self._lock_threads.append(thread_name)
-        self._lock_funcs.append(caller_info.function)
-        self._lock_info = f"{caller_info.function} in {fname}:{caller_info.lineno}." \
-            f" Thread: {thread_name}"
-        logger.warning(f"Lock acq by (->{self._n_locks}): {self._lock_info} \n"
-                       f"thread stack on lock: {self._lock_threads}"
-                       f"func stack: {self._lock_funcs}")
-
-
-    def unlock(self):
-        self._n_locks -= 1
-        self._lock_threads.pop()
-        self._lock_funcs.pop()
-        #if self._n_locks == 0:
-        logger.warning(f"Lock released (->{self._n_locks}) by: {self._lock_info} "
-                       f"\nthread stack on unlock: {self._lock_threads}"
-                       f"func stack: {self._lock_funcs}")
-        super().unlock()
 
 class ScanningProbeLogic(LogicBase):
     """
@@ -125,7 +82,7 @@ class ScanningProbeLogic(LogicBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self._thread_lock = TrackedRecursiveMutex() # RecursiveMutex()
+        self._thread_lock = RecursiveMutex()
 
         # others
         self.__scan_poll_timer = None
@@ -380,7 +337,6 @@ class ScanningProbeLogic(LogicBase):
 
     def set_target_position(self, pos_dict, caller_id=None, move_blocking=False):
         with self._thread_lock:
-            self.log.debug("In set_target_position")
             if self.module_state() != 'idle':
                 self.log.error('Unable to change scanner target position while a scan is running.')
                 new_pos = self._scanner().get_target()
@@ -388,13 +344,10 @@ class ScanningProbeLogic(LogicBase):
                 return new_pos
 
             # self.log.debug(f"Requested Set pos to= {pos_dict}")
-            self.log.debug("Get scanner constraints")
             ax_constr = self.scanner_constraints.axes
-            self.log.debug("expanding coordinates")
             pos_dict = self._scanner()._expand_coordinate(cp.copy(pos_dict))
             # self.log.debug(f"Expand to= {pos_dict}")
 
-            self.log.debug("transforming coordinates")
             pos_dict = self._scanner().coordinate_transform(pos_dict)
 
             for ax, pos in pos_dict.items():
@@ -412,14 +365,13 @@ class ScanningProbeLogic(LogicBase):
                     )
 
             # move_absolute expects untransformed coordinatess, so invert clipped pos
-            self.log.debug("inverse coordinate transform")
             pos_dict = self._scanner().coordinate_transform(pos_dict, inverse=True)
-            self.log.debug(f"In front of hw.move_abs {pos_dict}")
+            # self.log.debug(f"In front of hw.move_abs {pos_dict}")
             new_pos = self._scanner().move_absolute(pos_dict, blocking=move_blocking)
-            self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}")
+            # self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
-            self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
+            # self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
             self.sigScannerTargetChanged.emit(new_pos, self.module_uuid if caller_id is None else caller_id)
             return new_pos
 
@@ -585,7 +537,7 @@ class ScanningProbeLogic(LogicBase):
             self.__scan_poll_interval = max(self._min_poll_interval, line_points / self._scan_frequency[scan_axes[0]])
             t_poll_ms = max(1, int(round(self.__scan_poll_interval * 1000)))
 
-            self.log.debug(f'Successfully configured scanner. Poll timer: {t_poll_ms} ms')
+            self.log.debug(f'Successfully configured scanner and logic scan poll timer: {t_poll_ms} ms')
             self.__scan_poll_timer.setInterval(t_poll_ms)
 
             try:
@@ -601,28 +553,23 @@ class ScanningProbeLogic(LogicBase):
 
 
     def stop_scan(self):
-        self.log.debug("Stop scan")
         with self._thread_lock:
             if self.module_state() == 'idle':
                 self.sigScanStateChanged.emit(False, self.scan_data, self.back_scan_data, self._curr_caller_id)
                 return
 
             self.__stop_timer()
-            self.log.debug("Timer stopped")
 
             try:
                 if self._scanner().module_state() != 'idle':
-                    self.log.debug("Stopping scanner, not yet idle")
                     self._scanner().stop_scan()
             finally:
                 self.module_state.unlock()
-                self.log.debug("Scanning probe unlock")
                 self.sigScanStateChanged.emit(False, self.scan_data, self.back_scan_data, self._curr_caller_id)
                 if self.save_to_history:
                     self.sigNewScanDataForHistory.emit(self.scan_data, self.back_scan_data)
 
     def __scan_poll_loop(self):
-        self.log.debug("Polling logic")
         with self._thread_lock:
             try:
                 if self.module_state() == 'idle':
@@ -631,13 +578,11 @@ class ScanningProbeLogic(LogicBase):
                 if self._scanner().module_state() == 'idle':
                     self.stop_scan()
                     return
-
                 # TODO Added the following line as a quick test; Maybe look at it with more caution if correct
                 self.sigScanStateChanged.emit(True, self.scan_data, self.back_scan_data, self._curr_caller_id)
 
                 # Queue next call to this slot
                 self.__scan_poll_timer.start()
-                self.log.debug("Restart scan poll timer")
             except TimeoutError:
                 self.log.exception('Timed out while waiting for scan data:')
             except:
@@ -659,24 +604,23 @@ class ScanningProbeLogic(LogicBase):
 
     def __start_timer(self):
         """
-        WARNING: The calling function must not be another module's thread that may hold
-        a lock to the scanning_probe_logic. This may deadlock the BlockingQueuedConnection.
-
+        Offload __scan_poll_timer.start() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.start()
 
     def __stop_timer(self):
-        self.log.debug("Stopping poll timer")
+        """
+        Offload __scan_poll_timer.stop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
-                                            'stop',
-                                            QtCore.Qt.QueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.stop()
 

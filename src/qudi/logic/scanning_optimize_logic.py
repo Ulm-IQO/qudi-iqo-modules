@@ -102,7 +102,7 @@ class ScanningOptimizeLogic(LogicBase):
             self._set_default_scan_settings()
 
         self._avail_axes = tuple(axes.values())
-        self._set_scan_sequence()
+        self._set_default_scan_sequence()
 
         if self._data_channel is None:
             self._data_channel = tuple(channels.values())[0].name
@@ -114,7 +114,7 @@ class ScanningOptimizeLogic(LogicBase):
 
         self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
         self._scan_logic().sigScanStateChanged.connect(self._scan_state_changed, QtCore.Qt.QueuedConnection)
-        self.sigOptimizeSequenceDimensionsChanged.connect(self._set_scan_sequence, QtCore.Qt.QueuedConnection)
+        self.sigOptimizeSequenceDimensionsChanged.connect(self._set_default_scan_sequence, QtCore.Qt.QueuedConnection)
 
     def on_deactivate(self):
         """Reverse steps of activation"""
@@ -275,11 +275,14 @@ class ScanningOptimizeLogic(LogicBase):
 
     def start_optimize(self):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            scan_logic: ScanningProbeLogic = self._scan_logic()
+
+            if self.module_state() != 'idle' or scan_logic.module_state() != 'idle':
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
                 return
 
-            scan_logic: ScanningProbeLogic = self._scan_logic()
+            self.module_state.lock()
+
             curr_pos = scan_logic.scanner_target
             constraints = scan_logic.scanner_constraints
             for ax, rel_rng in self.scan_range.items():
@@ -302,7 +305,6 @@ class ScanningOptimizeLogic(LogicBase):
             # optimizer scans always explicitly configure the backwards scan settings
             scan_logic.set_use_back_scan_settings(True)
 
-            self.module_state.lock()
             with self._result_lock:
                 self._last_scans = list()
                 self._last_fits = list()
@@ -321,8 +323,6 @@ class ScanningOptimizeLogic(LogicBase):
     def _scan_state_changed(self, is_running: bool,
                             data: Optional[ScanData], back_scan_data: Optional[ScanData],
                             caller_id: UUID):
-        self.log.debug("optimizer state changed")
-
         with self._thread_lock:
             if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
                 return
@@ -331,7 +331,6 @@ class ScanningOptimizeLogic(LogicBase):
                 self.stop_optimize()
             elif data is not None:
                 # self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
-                self.log.debug(f"Trying to fit on data after scan of dim {data.settings.axes}")
 
                 try:
                     if data.settings.scan_dimension == 1:
@@ -355,8 +354,6 @@ class ScanningOptimizeLogic(LogicBase):
                         fit_data = {'fit_data': fit_data, 'full_fit_res': fit_res}
 
                     self._optimal_position.update(position_update)
-
-                    self.log.debug(f"Result added")
                     with self._result_lock:
                         self._last_scans.append(cp.copy(data))
                         self._last_fits.append(fit_res)
@@ -372,8 +369,6 @@ class ScanningOptimizeLogic(LogicBase):
                     self.log.exception("")
 
             self._sequence_index += 1
-
-            self.log.debug("Optimize done")
 
             # Terminate optimize sequence if finished; continue with next sequence step otherwise
             if self._sequence_index >= len(self._scan_sequence):
@@ -454,7 +449,7 @@ class ScanningOptimizeLogic(LogicBase):
         self._back_scan_resolution = {}
         self._back_scan_frequency = {}
 
-    def _set_scan_sequence(self):
+    def _set_default_scan_sequence(self):
         possible_scan_sequences = self._allowed_sequences(self._optimizer_sequence_dimensions)
         if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
             self.log.info(
