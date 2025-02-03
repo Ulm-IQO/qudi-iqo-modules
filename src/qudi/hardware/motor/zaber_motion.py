@@ -23,14 +23,18 @@ top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi
 from collections import OrderedDict
 
 from qudi.interface.motor_interface import MotorInterface
+from qudi.interface.magnet_interface import MagnetInterface
 from qudi.core.configoption import ConfigOption, MissingOption
+from qudi.util.constraints import ScalarConstraint
+from qudi.interface.magnet_interface import MagnetControlAxis, MagnetConstraints
+
 
 from zaber_motion import Library as zlib
 from zaber_motion.ascii import Connection as zcon
 from zaber_motion import Units
 
 
-class ZaberStage(MotorInterface):
+class ZaberStage(MotorInterface, MagnetInterface):
 
     """ Control class for an arbitrary collection of ZaberMotor axes.
 
@@ -213,7 +217,7 @@ class ZaberStage(MotorInterface):
 
         if wait_until_done:
             for label, axis in self._axis_dict.items():
-                axis.wait_until_idle()
+                axis._wait_until_idle()
 
     def move_abs(self, param_dict, wait_until_done=False):
         """ Moves stage to absolute position (absolute movement)
@@ -235,7 +239,7 @@ class ZaberStage(MotorInterface):
 
         if wait_until_done:
             for label, axis in self._axis_dict.items():
-                axis.wait_until_idle()
+                axis._wait_until_idle()   # todo private call
 
     def abort(self):
         """ Stops movement of the stage. """
@@ -291,6 +295,12 @@ class ZaberStage(MotorInterface):
         else:
             for label_axis in self._axis_dict:
                 status[label_axis] = self._axis_dict[label_axis].get_status()
+
+        # todo: more elegant way of satisfying new magnetInterface
+        is_not_busy = all([not d['busy'] for d in status.values()])
+        is_not_parked = all([not d['parked'] for d in status.values()])
+        if is_not_busy and is_not_parked:
+            status.update({0: 'idle'})
 
         return status
 
@@ -381,6 +391,48 @@ class ZaberStage(MotorInterface):
 
                 if self._check_in_range(desired_vel, label_axis, ['vel_min', 'vel_max']):
                     self._axis_dict[label_axis].set_velocity(desired_vel)
+
+    def constraints(self):
+
+        constr = self.get_constraints()
+        axes = list()
+        for axis, constr_i in constr.items():
+            dist = constr_i['pos_max'] - constr_i['pos_min']
+            resolution_range = (1, float('inf'))
+
+            control_value = ScalarConstraint(default=constr_i['pos_min'],
+                                             bounds=(constr_i['pos_min'], constr_i['pos_max']))
+            resolution = ScalarConstraint(default=min(resolution_range), bounds=resolution_range, enforce_int=False)
+            step = ScalarConstraint(default=0, bounds=(0, dist))
+
+            axes.append(MagnetControlAxis(name=axis,
+                                    unit='m',
+                                    control_value=control_value,
+                                    step=step,
+                                    resolution=resolution))
+
+        constraints = MagnetConstraints(axis_objects=tuple(axes),
+                                        has_position_feedback=False,
+                                        control_accuracy={ax: val['pos_accuracy'] for ax, val in constr.items()})
+
+        return constraints
+
+
+
+    def get_control(self):
+        return self.get_pos()
+
+    def set_control(self, pos, blocking=False):
+        self.move_abs(pos, wait_until_done=blocking)
+
+    def emergency_stop(self):
+        """
+        """
+        self.abort()
+        return
+
+    def set_activity_state(self, active, channel=None) -> None:
+        pass
 
     def get_acceleration(self, param_list=None):
         """ Gets the current acceleration for all connected axes.
@@ -479,7 +531,8 @@ class ZaberAxis():
     def get_constrains(self):
         default_constr = {
             'unit': 'm',            # for compatibility with magnet_gui
-            'pos_step': 1e-9,       # for compatibility with magnet_gui
+            'pos_step': 1e-9,
+            'pos_accuracy': 3e-6,   # x-lrq-de "repeatability". todo: make configoption.
             'vel_step': 1e-9,       # for compatibility with magnet_gui
             'pos_min': None,
             'pos_max': None,
