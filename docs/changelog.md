@@ -29,6 +29,7 @@
 - Fixed `ScanningOptimizeLogic` crashing on first start when using scanner with less than the default 3 axes configured
 - Fixed Keysight M8195A AWG sequence mode
 - Fixed setting of digital channel amplitude of Keysight M819X AWG
+- added `waiting_element` to `generate_t1_sequencing` method
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.
@@ -51,7 +52,7 @@
 - Save and restore window position of various module GUIs
 - Added DMC output mode for Keysight M8195A AWG
 - Updated workflows to follow new 'pyproject.toml' release workflow
-
+- Altered tektronix_awg70k hardware file to allow the use of the newer, B-series of Tektronix AWGs
 
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.

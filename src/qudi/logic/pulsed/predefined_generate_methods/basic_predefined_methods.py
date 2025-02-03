@@ -1020,10 +1020,12 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # Get necessary PulseBlockElements
         laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
         delay_element = self._get_delay_gate_element()
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
         # Create PulseBlock and append PulseBlockElements
         readout_block = PulseBlock(name='{0}_readout'.format(name))
         readout_block.append(laser_element)
         readout_block.append(delay_element)
+        readout_block.append(waiting_element)
         created_blocks.append(readout_block)
         # Create PulseBlockEnsemble and append block to it
         readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
@@ -1038,6 +1040,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
             sync_readout_block = PulseBlock(name='{0}_readout_sync'.format(name))
             sync_readout_block.append(laser_element)
             sync_readout_block.append(delay_element)
+            sync_readout_block.append(waiting_element)
             sync_readout_block.append(sync_element)
             created_blocks.append(sync_readout_block)
             # Create PulseBlockEnsemble and append block to it

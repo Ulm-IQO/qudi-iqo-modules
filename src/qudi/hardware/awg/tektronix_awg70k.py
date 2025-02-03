@@ -166,12 +166,12 @@ class AWG70K(PulserInterface):
         """
         constraints = PulserConstraints()
 
-        if self.awg_model == 'AWG70002A':
+        if self.awg_model in ['AWG70002A','AWG70002B']:
             constraints.sample_rate.min = 1.5e3
             constraints.sample_rate.max = 25.0e9
             constraints.sample_rate.step = 5.0e2
             constraints.sample_rate.default = 25.0e9
-        elif self.awg_model == 'AWG70001A':
+        elif self.awg_model in ['AWG70001A', 'AWG70001B']:
             constraints.sample_rate.min = 1.49e3
             constraints.sample_rate.max = 50.0e9
             constraints.sample_rate.step = 10
@@ -196,10 +196,10 @@ class AWG70K(PulserInterface):
 
         constraints.waveform_length.min = self.__min_waveform_length
         constraints.waveform_length.max = self.__max_waveform_length
-        if self.awg_model == 'AWG70002A':
+        if self.awg_model in ['AWG70002A','AWG70002B']:
             constraints.waveform_length.step = 1
             constraints.waveform_length.default = self.__min_waveform_length
-        elif self.awg_model == 'AWG70001A':
+        elif self.awg_model in ['AWG70001A', 'AWG70001B']:
             constraints.waveform_length.step = 2
             constraints.waveform_length.default = self.__min_waveform_length
 
@@ -239,7 +239,7 @@ class AWG70K(PulserInterface):
         # channels. Here all possible channel configurations are stated, where only the generic
         # names should be used. The names for the different configurations can be customary chosen.
         activation_config = dict()
-        if self.awg_model == 'AWG70002A':
+        if self.awg_model in ['AWG70002A','AWG70002B']:
             activation_config['all'] = frozenset(
                 {'a_ch1', 'd_ch1', 'd_ch2', 'a_ch2', 'd_ch3', 'd_ch4'})
             # Usage of both channels but reduced markers (higher analog resolution)
@@ -264,7 +264,7 @@ class AWG70K(PulserInterface):
             activation_config['ch1_0mrk'] = frozenset({'a_ch1'})
             # Usage of only channel 2 with no marker:
             activation_config['ch2_0mrk'] = frozenset({'a_ch2'})
-        elif self.awg_model == 'AWG70001A':
+        elif self.awg_model in ['AWG70001A', 'AWG70001B']:
             activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
             # Usage of only channel 1 with one marker:
             activation_config['ch1_1mrk'] = frozenset({'a_ch1', 'd_ch1'})
@@ -1696,4 +1696,7 @@ class AWG70K(PulserInterface):
         return xml_header
 
     def _has_sequence_mode(self):
-        return '03' in self.__installed_options
+        if self.awg_model in ['AWG70001A', 'AWG70002A']:
+            return '03' in self.__installed_options
+        if self.awg_model in ['AWG70001B', 'AWG70002B']:
+            return 'SEQ' in self.__installed_options
