@@ -43,8 +43,10 @@
 - Added option to specify custom save file name in scanning GUI (PR #148)
 - Add support for digital output to NI X-series finite sampling io
 - Added fastcounter hardware file support for Adlink PCIe 9834
+- Save and restore window position of various module GUIs
+- Added DMC output mode for Keysight M8195A AWG
+- Updated workflows to follow new 'pyproject.toml' release workflow
 - Altered tektronix_awg70k hardware file to allow the use of the newer, B-series of Tektronix AWGs
-
 
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
