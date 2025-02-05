@@ -57,14 +57,13 @@ class Analyzer(ABC):
 
 @dataclass
 class AnalyzerSettings(SettingsBase):
-    pass
+    sequence_length: float = 1
 
 @dataclass
 class FourierAnalyzerSettings(AnalyzerSettings):
     name: str = "default"
     padding_parameter: int = 1
     spectrum_type: str = "amp"
-    sequence_length: float = 1
 
 
 class FourierAnalyzer(Analyzer):

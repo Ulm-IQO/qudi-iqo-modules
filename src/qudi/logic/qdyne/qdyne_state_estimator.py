@@ -45,7 +45,8 @@ class StateEstimator(ABC):
 
 @dataclass
 class StateEstimatorSettings(SettingsBase):
-    pass
+    sequence_length: float = 1e-9
+    bin_width: float = 1e-9
 
 
 @dataclass
@@ -90,8 +91,6 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     sig_start: float = 0
     sig_end: float = 0
     weight: list = field(default_factory=list)
-    sequence_length: float = 1e-9
-    bin_width: float = 1e-9
 
     @property
     def sig_start_int(self):

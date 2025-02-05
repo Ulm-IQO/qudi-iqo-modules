@@ -178,17 +178,17 @@ class MeasurementGenerator:
         _logger.debug(f"{settings_dict=}")
         if "_bin_width" in settings_dict:
             settings_dict["bin_width"] = float(settings_dict["bin_width"])  # add to configure estimator settings
+            self._qdyne_logic.settings.estimator_stg.mediator.set_single_value('bin_width', settings_dict["bin_width"])
         if "sequence_length" in settings_dict:
             self.__sequence_length = float(settings_dict["sequence_length"])
+            self._qdyne_logic.settings.estimator_stg.mediator.set_single_value(
+                'sequence_length', settings_dict["sequence_length"])
+            self._qdyne_logic.settings.analyzer_stg.mediator.set_single_value(
+                'sequence_length', settings_dict["sequence_length"])
         _logger.debug(f"{settings_dict=}")
 
         # Todo: check interference with pulsed
         #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
-        #self._pulsedmasterlogic().set_measurement_settings(settings_dict)
-        _logger.debug("settings.estimator_stg.configure_settings")
-        self._qdyne_logic.settings.estimator_stg.configure_settings(settings_dict)
-        _logger.debug("settings.analyzer.configure_settings")
-        self._qdyne_logic.settings.analyzer_stg.configure_settings(settings_dict)
         _logger.debug("emitting signal")
         self._qdyne_logic.sigMeasurementSettingsUpdated.emit(settings_dict)
 
