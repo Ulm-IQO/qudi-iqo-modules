@@ -64,7 +64,6 @@ class QdyneSettings(QtCore.QObject):
         self.analyzer_stg.initialize_data_container(analyzer_cls_dict)
 
 
-
 # class SettingsManager:
 #
 #     def __init__(self, abstract_class_obj=None, save_path=None, settings_updated_sig=None):

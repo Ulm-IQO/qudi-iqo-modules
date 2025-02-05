@@ -61,6 +61,9 @@ class DataclassMediator(QObject):
 
     @Slot(dict)
     def update_values(self, new_dc_dict):
+        """
+        update values of dataclass according to new_dc_dict from gui.
+        """
         self.data.from_dict(new_dc_dict)
 
     def set_values(self, new_dc_dict):
@@ -72,6 +75,19 @@ class DataclassMediator(QObject):
 
     def create_default(self, dataclass_cls):
         self.data = dataclass_cls()
+
+    def set_single_value(self, param_name, value):
+        """
+        update a single value in the dataclass.
+        """
+        new_dc_dict = self.data.to_dict()
+        if param_name in new_dc_dict:
+            new_dc_dict[param_name] = value
+            self.update_values(new_dc_dict)
+            self.data_updated_sig.emit()
+
+        else:
+            self._log.error(f"Parameter {param_name} not found in dataclass.")
 
 class DataclassStorage:
 
