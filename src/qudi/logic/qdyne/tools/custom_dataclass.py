@@ -43,12 +43,14 @@ class CustomDataclass:
             if not field.metadata.get("exclude", False)
         }
 
+
 class DataclassMediator(QObject):
     """
 
     """
     data_updated_sig = Signal()
     def __init__(self, parent=None):
+        self._log = get_logger(__name__)
         self.data = None
         self.data_container = None
         pass

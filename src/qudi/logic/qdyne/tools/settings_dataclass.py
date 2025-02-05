@@ -51,6 +51,15 @@ class SettingsMediator(DataclassMediator):
         self.update_mode(new_mode)
         self.mode_updated_sig.emit()
 
+    def add_mode(self, new_mode_name, new_setting):
+        if new_mode_name not in self.mode_dict:
+            self.mode_dict[new_mode_name] = new_setting
+        else:
+            self._log.error('Name already taken in settings modes')
+
+    def remove_mode(self, mode_name: str):
+        self.mode_dict.pop(mode_name)
+
     @property
     def mode_list(self):
         return list(self.mode_dict.keys())
