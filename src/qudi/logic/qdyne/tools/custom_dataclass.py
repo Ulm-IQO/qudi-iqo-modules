@@ -98,8 +98,7 @@ class DataclassStorage:
 
 class DataclassManager:
 
-    def __init__(self, abstract_dataclass, mediator, save_path):
-        self._abstract_dataclass = abstract_dataclass
+    def __init__(self, mediator, save_path):
         self._mediator = mediator
         self._data_storage = DataclassStorage(save_path, self._mediator.data_container)
 

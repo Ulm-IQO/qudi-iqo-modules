@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-This file contains the Qudi Manager class.
+This file contains the tools to support dataclass.
+Here, methods are subclasses of a dataclass
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -22,30 +23,40 @@ import inspect
 import sys
 
 
-def get_subclasses(module_name, class_obj):
+def get_subclasses(module_name, parent_cls):
     """
-    Given a class, find its subclasses and get their names.
+    Find subclasses of a parent class defined in a module.
     """
 
     subclasses = []
     module = sys.modules.get(module_name)
     for name, obj in inspect.getmembers(module, inspect.isclass):
-        if inspect.isclass(obj) and issubclass(obj, class_obj) and obj != class_obj:
+        if inspect.isclass(obj) and issubclass(obj, parent_cls) and obj != parent_cls:
             subclasses.append(obj)
 
     return subclasses
 
 
-def get_method_names(subclass_obj, class_obj):
-    subclass_names = [cls.__name__ for cls in subclass_obj]
-    method_names = [
-        subclass_name.replace(class_obj.__name__, "")
-        for subclass_name in subclass_names
-    ]
-    return method_names
+def get_subclass_qualifier(subclass_cls, parent_cls):
+    """
+    Remove the part of subclass name common to parent class name.
+    """
+
+    subclass_name = subclass_cls.__name__
+    try:
+        subclass_qualifier = subclass_name.replace(parent_cls.__name__, "")
+    except ValueError:
+        subclass_qualifier = subclass_name
+    return subclass_qualifier
 
 
-def get_method_name(subclass_obj, class_obj):
-    subclass_name = subclass_obj.__name__
-    method_name = subclass_name.replace(class_obj.__name__, "")
-    return method_name
+def get_subclass_dict(module_name, parent_cls):
+    """
+    get a dictionary of subclasses defined in a moudle.
+    """
+    subclass_dict = dict()
+    subclasses = get_subclasses(module_name, parent_cls)
+    for subclass_cls in subclasses:
+        subclass_qualifier = get_subclass_qualifier(subclass_cls, parent_cls)
+        subclass_dict[subclass_qualifier] = subclass_cls
+    return subclass_dict

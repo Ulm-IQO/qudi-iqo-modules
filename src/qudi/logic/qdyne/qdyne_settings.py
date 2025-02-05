@@ -26,17 +26,43 @@ from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorSettings
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import AnalyzerSettings
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
 from qudi.logic.qdyne.qdyne_tools import get_subclasses, get_method_name
+from qudi.logic.qdyne.tools.dataclass_tools import get_subclass_dict
+from qudi.logic.qdyne.tools.custom_dataclass import DataclassManager
+from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediator
+
+
+
+
+# class QdyneSettings:
+#     def __init__(self, settings_dir, estimator_stg_updated_sig, analyzer_stg_updated_sig):
+#         self.estimator_stg = SettingsManager(StateEstimatorSettings,
+#                                              os.path.join(settings_dir, 'estimator_stg.pickle'),
+#                                              estimator_stg_updated_sig)
+#         self.analyzer_stg = SettingsManager(AnalyzerSettings,
+#                                             os.path.join(settings_dir, 'analyzer_stg.pickle'),
+#                                             analyzer_stg_updated_sig)
+#         self.data_manager_stg = DataManagerSettings()
 
 
 class QdyneSettings:
-    def __init__(self, settings_dir, estimator_stg_updated_sig, analyzer_stg_updated_sig):
-        self.estimator_stg = SettingsManager(StateEstimatorSettings,
-                                             os.path.join(settings_dir, 'estimator_stg.pickle'),
-                                             estimator_stg_updated_sig)
-        self.analyzer_stg = SettingsManager(AnalyzerSettings,
-                                            os.path.join(settings_dir, 'analyzer_stg.pickle'),
-                                            analyzer_stg_updated_sig)
-        self.data_manager_stg = DataManagerSettings()
+    def __init__(self, settings_dir):
+        self._generate_estimator_settings(settings_dir)
+        self._generate_analyzer_settings(settings_dir)
+
+    def _generate_estimator_settings(self, settings_dir):
+        self.estimator_stg_mediator = MultiSettingsMediator()
+        estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)
+        self.estimator_stg_mediator.create_default(estimator_cls_dict)
+        self.estimator_stg = DataclassManager(self.estimator_stg_mediator,
+                                              os.path.join(settings_dir, 'estimator_stg.pickle'))
+
+    def _generate_analyzer_settings(self, settings_dir):
+        self.analyzer_stg_mediator = MultiSettingsMediator()
+        analyzer_cls_dict = get_subclass_dict(AnalyzerSettings.__module__, AnalyzerSettings)
+        self.analyzer_stg_mediator.create_default(analyzer_cls_dict)
+        self.analyzer_stg = DataclassManager(self.analyzer_stg_stg_mediator,
+                                             os.path.join(settings_dir, 'analyzer_stg.pickle'))
+
 
 
 class SettingsManager:
