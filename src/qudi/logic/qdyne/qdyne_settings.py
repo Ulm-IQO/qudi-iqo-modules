@@ -42,10 +42,12 @@ from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediato
 #         self.data_manager_stg = DataManagerSettings()
 
 
-class QdyneSettings:
+class QdyneSettings(QtCore.QObject):
     def __init__(self, settings_dir):
+        super().__init__()
         self._generate_estimator_settings(settings_dir)
         self._generate_analyzer_settings(settings_dir)
+        self.data_manager_stg = DataManagerSettings()
 
     def _generate_estimator_settings(self, settings_dir):
         self.estimator_stg_mediator = MultiSettingsMediator()

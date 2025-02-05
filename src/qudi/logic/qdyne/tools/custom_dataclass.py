@@ -103,8 +103,8 @@ class DataclassManager:
 
     def __init__(self, mediator, save_path):
         self._log = get_logger(__name__)
-        self._mediator = mediator
-        self._data_storage = DataclassStorage(save_path, self._mediator.data_container)
+        self.mediator = mediator
+        self._data_storage = DataclassStorage(save_path, self.mediator.data_container)
 
     def load_data_container(self):
         self._data_storage.load()
@@ -121,6 +121,6 @@ class DataclassManager:
             self._log.debug("Saved settings loaded")
 
         else:
-            self._mediator.create_default(args)
+            self.mediator.create_default(args)
             self._log.debug("Default settings created")
 

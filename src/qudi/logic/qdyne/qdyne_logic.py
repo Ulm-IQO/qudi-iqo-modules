@@ -330,9 +330,9 @@ class QdyneLogic(LogicBase):
     _estimator_stg_dict = StatusVar(default=dict())
     _analyzer_stg_dict = StatusVar(default=dict())
     _current_estimator_method = StatusVar(default="TimeTag")
-    _current_estimator_stg_name = StatusVar(default="default")
+    _current_estimator_mode = StatusVar(default="default")
     _current_analyzer_method = StatusVar(default="Fourier")
-    _current_analyzer_stg_name = StatusVar(default="default")
+    _current_analyzer_mode = StatusVar(default="default")
     analysis_timer_interval = StatusVar(default=1.0)
 
     _fit_configs = StatusVar(name="fit_configs", default=None)
@@ -342,8 +342,6 @@ class QdyneLogic(LogicBase):
     # signals for connecting modules
     sigFitUpdated = QtCore.Signal(str, object)
     sigToggleQdyneMeasurement = QtCore.Signal(bool)
-    estimator_stg_updated_sig = QtCore.Signal()
-    analyzer_stg_updated_sig = QtCore.Signal()
     sigCounterSettingsUpdated = QtCore.Signal(dict)
     sigMeasurementSettingsUpdated = QtCore.Signal(dict)
 
@@ -365,9 +363,7 @@ class QdyneLogic(LogicBase):
             self.new_data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
-            self.settings = QdyneSettings(self._settings_storage_dir,
-                                          self.estimator_stg_updated_sig,
-                                          self.analyzer_stg_updated_sig)
+            self.settings = QdyneSettings(self._settings_storage_dir)
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )
@@ -392,19 +388,11 @@ class QdyneLogic(LogicBase):
             self.measurement_generator.set_counter_settings(
                 self._measurement_generator_dict
             )
-            # self.settings.estimator_stg.initialize_settings(self._estimator_stg_dict)
-            self.settings.estimator_stg.initialize_settings()
-            self.settings.estimator_stg.current_method = self._current_estimator_method
-            self.settings.estimator_stg.current_stg_name = (
-                self._current_estimator_stg_name
-            )
+            self.settings.estimator_stg.mediator.set_method(self._current_estimator_method)
+            self.settings.estimator_stg.mediator.set_mode(self._current_estimator_mode)
 
-            # self.settings.analyzer_stg.initialize_settings(self._analyzer_stg_dict)
-            self.settings.analyzer_stg.initialize_settings()
-            self.settings.analyzer_stg.current_method = self._current_analyzer_method
-            self.settings.analyzer_stg.current_stg_name = (
-                self._current_analyzer_stg_name
-            )
+            self.settings.analyzer_stg.mediator.set_method(self._current_analyzer_method)
+            self.settings.analyzer_stg.set_mode(self._current_analyzer_mode)
 
         def input_initial_settings():
             self.input_estimator_method()
@@ -429,14 +417,14 @@ class QdyneLogic(LogicBase):
         self._measurement_generator_dict = self.measurement_generator.counter_settings
         # self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
         # self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
-        self.settings.estimator_stg.save_settings()
-        self.settings.analyzer_stg.save_settings()
+        self.settings.estimator_stg.save_data_container()
+        self.settings.analyzer_stg.save_data_container()
 
     def input_estimator_method(self):
-        self.estimator.method = self.settings.estimator_stg.current_method
+        self.estimator.method = self.settings.estimator_stg.mediator.current_method
 
     def input_analyzer_method(self):
-        self.analyzer.method = self.settings.analyzer_stg.current_method
+        self.analyzer.method = self.settings.analyzer_stg.mediator.current_method
 
     @QtCore.Slot(bool)
     @QtCore.Slot(bool, str)
