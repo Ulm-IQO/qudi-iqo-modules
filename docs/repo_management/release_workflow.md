@@ -42,7 +42,7 @@ unspecified in qudi-iqo-modules `setup.py`. This is most likely the case for the
    To this end, create a new Python environment and activate it.
    Install qudi-core via
          
-         python -m install qudi-core 
+         python -m pip install qudi-core 
    
    and install qudi-iqo-modules via
 
@@ -64,14 +64,23 @@ unspecified in qudi-iqo-modules `setup.py`. This is most likely the case for the
 
 8. Increment version number in `qudi-iqo-modules/VERSIONS`.
    This will already trigger a release from the main branch to test.pypi.
+
+9. Test whether the `test.pypi.org` release worked by installing it. For this:
+   - Create new python environment and activate it
+   - pip install the `test.pypi.org` release into it (replace all `X` with the correct version number)
+     
+           pip install --index-url https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ qudi-iqo-modules==<X.X.X.devX>
+
+   - Note: Using the `pip install` command provided on `test.pypi.org`'s release page does not work
+   - Quickly test running qudi with dummy modules
    
-9. Execute the release by navigating in github to qudi-iqo-modules. On the right bar you can 'create a new release' in 
+11. Execute the release by navigating in github to qudi-iqo-modules. On the right bar you can 'create a new release' in 
    the Releases section.
    By convention we tag releases by a string like 'Release v0.1.0'.
    As the description text, you can copy the respective release section from `qudi-iqo-modules/docs/changelog.md`.
-   Don't add a heading like "Relaase v0.1.0", this is automatically created by github.   
+   Don't add a heading like "Release v0.1.0", this is automatically created by github.   
 
-10. Change the requirement equalities (`==`) (branch `main`) in`qudi-iqo-modules/setup.py` back to `>=`.
-11. Iterate the version number in `qudi-iqo-modules/VERSIONS` from release to development. Eg. 1.0.0 to 1.0.1.dev0
+12. Change the requirement equalities (`==`) (branch `main`) in`qudi-iqo-modules/setup.py` back to `>=`.
+13. Iterate the version number in `qudi-iqo-modules/VERSIONS` from release to development. Eg. 1.0.0 to 1.0.1.dev0
 
-12. Lean back and get some cold drink. You just released a new qudi-iqo-modules version! 
+14. Lean back and get some cold drink. You just released a new qudi-iqo-modules version! 

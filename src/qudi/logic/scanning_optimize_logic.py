@@ -276,11 +276,13 @@ class ScanningOptimizeLogic(LogicBase):
 
     def start_optimize(self):
         with self._thread_lock:
-            if self.module_state() != 'idle':
+            scan_logic: ScanningProbeLogic = self._scan_logic()
+
+            if self.module_state() != 'idle' or scan_logic.module_state() != 'idle':
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
                 return
 
-            scan_logic: ScanningProbeLogic = self._scan_logic()
+            self.module_state.lock()
 
             self._stashed_settings = scan_logic.get_scan_settings_per_ax()
 
@@ -306,7 +308,6 @@ class ScanningOptimizeLogic(LogicBase):
             # optimizer scans always explicitly configure the backwards scan settings
             scan_logic.set_use_back_scan_settings(True)
 
-            self.module_state.lock()
             with self._result_lock:
                 self._last_scans = list()
                 self._last_fits = list()
