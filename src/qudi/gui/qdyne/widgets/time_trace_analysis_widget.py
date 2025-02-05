@@ -220,9 +220,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.plot2_fitwidget.link_fit_container(self._logic.fit_container2)
 
     def connect_signals(self):
-        self.analyze_pushButton.clicked.connect(self._logic.measure.analyze_time_trace)
-        self.get_freq_domain_pushButton.clicked.connect(self.get_spectrum)
-        self.get_peaks_pushButton.clicked.connect(self.get_peaks)
+        self.analyze_pushButton.clicked.connect(self.analyze_data)
         self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
         self.range_spinBox.valueChanged.connect(self.update_spectrum)
         self.plot1_fitwidget.sigDoFit.connect(
@@ -235,15 +233,17 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self._logic.measure.sigQdyneDataUpdated.connect(self.data_updated)
 
     def disconnect_signals(self):
-        self.get_peaks_pushButton.clicked.disconnect()
+        self.analyze_pushButton.clicked.disconnect()
         self.current_peak_comboBox.currentTextChanged.disconnect()
         self.range_spinBox.valueChanged.disconnect()
         self.plot1_fitwidget.sigDoFit.disconnect()
         self.plot2_fitwidget.sigDoFit.disconnect()
 
-    def get_spectrum(self):
+    def analyze_data(self):
+        self._logic.measure.analyze_time_trace()
         self._logic.measure.get_spectrum()
-        # self.freq_data = self._logic.data.freq_data
+        self.get_peaks()
+        self.update_spectrum()
 
     def get_peaks(self):
         self.freq_data.get_peaks()
@@ -253,19 +253,27 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
             item.setData(peak)
             self.model.appendRow(item)
 
+        # block signals to avoid emitting currentTextChanged() and redundant call of update_spectrum()
+        self.current_peak_comboBox.blockSignals(True)
+        current_peak = float(self.current_peak_comboBox.currentText()) if \
+            self.current_peak_comboBox.currentText() else 0
+        model_float_list = [float(self.model.item(i, 0).text()) for i in
+                            range(self.model.rowCount()) if self.model.item(i, 0)]
+        new_idx = (np.abs(np.array(model_float_list) - current_peak)).argmin()
         self.current_peak_comboBox.setModel(self.model)
+        self.current_peak_comboBox.setCurrentIndex(new_idx)
+        self.current_peak_comboBox.blockSignals(True)
 
     def update_spectrum(self):
-        if self.current_peak_comboBox.currentText():
-            self.freq_data.current_peak = self.model.item(
-                self.current_peak_comboBox.currentIndex()
-            ).data()
-            self.freq_data.range_index = self.range_spinBox.value() if \
-                self.range_spinBox.value() < self.freq_data.x.size else self.freq_data.x.size
-            spectrum = self.freq_data.data_around_peak
-            self.signal_image.setData(x=spectrum[0], y=spectrum[1])
-            self.plot1_PlotWidget.clear()
-            self.plot1_PlotWidget.addItem(self.signal_image)
+        current_index = self.current_peak_comboBox.currentIndex() if \
+            self.current_peak_comboBox.currentIndex() >= 0 else 0
+        self.freq_data.current_peak = self.model.item(current_index).data()
+        self.freq_data.range_index = self.range_spinBox.value() if \
+            self.range_spinBox.value() < self.freq_data.x.size else self.freq_data.x.size
+        spectrum = self.freq_data.data_around_peak
+        self.signal_image.setData(x=spectrum[0], y=spectrum[1])
+        self.plot1_PlotWidget.clear()
+        self.plot1_PlotWidget.addItem(self.signal_image)
 
     def data_updated(self):
         self.range_spinBox.setMaximum(int(1e9))  #self.freq_data.x.size

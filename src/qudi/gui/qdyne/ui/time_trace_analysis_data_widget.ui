@@ -23,7 +23,7 @@
          <string>Perform the fourier transform.</string>
         </property>
         <property name="text">
-         <string>Analyze</string>
+         <string>Analyze data</string>
         </property>
        </widget>
       </item>
@@ -39,13 +39,6 @@
          </size>
         </property>
        </spacer>
-      </item>
-      <item row="0" column="1">
-       <widget class="QPushButton" name="get_freq_domain_pushButton">
-        <property name="text">
-         <string>get freq domain</string>
-        </property>
-       </widget>
       </item>
      </layout>
     </widget>
@@ -66,9 +59,9 @@
        <widget class="QGroupBox" name="horizontalGroupBox">
         <layout class="QHBoxLayout" name="horizontalLayout">
          <item>
-          <widget class="QPushButton" name="get_peaks_pushButton">
+          <widget class="QLabel" name="freq_peaks_label">
            <property name="text">
-            <string>get peaks</string>
+            <string>Signal peaks:</string>
            </property>
           </widget>
          </item>
