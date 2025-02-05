@@ -1,6 +1,5 @@
 # Changelog
 
-
 ## Pre-Release
 
 ### Breaking Changes
@@ -29,7 +28,10 @@
 - Fixed `ScanningOptimizeLogic` crashing on first start when using scanner with less than the default 3 axes configured
 - Fixed Keysight M8195A AWG sequence mode
 - Fixed setting of digital channel amplitude of Keysight M819X AWG
+- Fixed potential `scanning_optimize_logic` deadlock when starting the optimizer
+- Fixed loading of most recent target when starting scanning GUI
 - added `waiting_element` to `generate_t1_sequencing` method
+
 
 ### New Features
 - New `qudi.interface.scanning_probe_interface.ScanSettings` dataclass added.

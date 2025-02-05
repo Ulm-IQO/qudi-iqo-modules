@@ -682,21 +682,24 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             line_time = self.scan_settings.resolution[0] / self.scan_settings.frequency
             timer_interval_ms = int(0.5 * line_time * 1000)  # update twice every line
             self.__update_timer.setInterval(timer_interval_ms)
-            self.__start_timer()
+
+        self.__start_timer()
 
     def stop_scan(self):
         """Stop the currently running scan.
         Log an error if something fails or no 1D/2D scan is in progress.
         """
-        with self._thread_lock:
-            self.log.debug('Scanning probe dummy "stop_scan" called.')
-            if self.module_state() == 'locked':
+
+        self.log.debug('Scanning probe dummy "stop_scan" called.')
+        if self.module_state() == 'locked':
+            with self._thread_lock:
                 self._scan_image = None
                 self._back_scan_image = None
-                self.__stop_timer()
-                self.module_state.unlock()
-            else:
-                raise RuntimeError('No scan in progress. Cannot stop scan.')
+
+            self.__stop_timer()
+            self.module_state.unlock()
+        else:
+            raise RuntimeError('No scan in progress. Cannot stop scan.')
 
     def emergency_stop(self):
         """ """
@@ -783,12 +786,22 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             return self._back_scan_data.copy()
 
     def __start_timer(self):
+        """
+        Offload __update_timer.start() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self.__update_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__update_timer.start()
 
     def __stop_timer(self):
+        """
+        Offload __update_timer.stop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
         else:
