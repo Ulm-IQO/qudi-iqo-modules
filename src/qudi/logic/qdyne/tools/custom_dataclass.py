@@ -18,6 +18,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+import os
 import pickle
 from dataclasses import dataclass, field, fields
 from PySide2.QtCore import QObject, Signal, Slot
@@ -99,6 +100,7 @@ class DataclassStorage:
 class DataclassManager:
 
     def __init__(self, mediator, save_path):
+        self._log = get_logger(__name__)
         self._mediator = mediator
         self._data_storage = DataclassStorage(save_path, self._mediator.data_container)
 
@@ -107,3 +109,16 @@ class DataclassManager:
 
     def save_data_container(self):
         self._data_storage.save()
+
+    def initialize_data_container(self, *args):
+        """
+        Initialize the data container.
+        """
+        if os.path.exists(self._data_storage.save_path):
+            self._data_storage.load()
+            self._log.debug("Saved settings loaded")
+
+        else:
+            self._mediator.create_default(args)
+            self._log.debug("Default settings created")
+

@@ -52,16 +52,16 @@ class QdyneSettings:
     def _generate_estimator_settings(self, settings_dir):
         self.estimator_stg_mediator = MultiSettingsMediator()
         estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)
-        self.estimator_stg_mediator.create_default(estimator_cls_dict)
         self.estimator_stg = DataclassManager(self.estimator_stg_mediator,
                                               os.path.join(settings_dir, 'estimator_stg.pickle'))
+        self.estimator_stg.initialize_data_container(estimator_cls_dict)
 
     def _generate_analyzer_settings(self, settings_dir):
         self.analyzer_stg_mediator = MultiSettingsMediator()
         analyzer_cls_dict = get_subclass_dict(AnalyzerSettings.__module__, AnalyzerSettings)
-        self.analyzer_stg_mediator.create_default(analyzer_cls_dict)
         self.analyzer_stg = DataclassManager(self.analyzer_stg_stg_mediator,
                                              os.path.join(settings_dir, 'analyzer_stg.pickle'))
+        self.analyzer_stg.initialize_data_container(analyzer_cls_dict)
 
 
 
