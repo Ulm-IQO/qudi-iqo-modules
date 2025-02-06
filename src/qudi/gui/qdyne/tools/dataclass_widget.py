@@ -191,6 +191,10 @@ class DataclassWidget(QtWidgets.QWidget):
         self.data_labels = dict()
         self.data_widgets = dict()
         self.layouts = dict()
+
+        self.labels = dict()
+        self.widgets = dict()
+
         self.init_UI()
 
         self._widget_value_updated_sig = None

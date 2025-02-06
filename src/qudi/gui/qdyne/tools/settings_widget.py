@@ -20,6 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 from PySide2 import QtCore, QtWidgets
 from PySide2.QtCore import Signal
+from PySide2.QtWidgets import QLabel, QComboBox, QHBoxLayout
 
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
@@ -29,13 +30,19 @@ class SettingsWidget(DataclassWidget):
 
     def __init__(self, parent):
         super().__init__(parent)
+        self.mode_list =
 
     def create_widgets(self):
         super().create_widgets()
         self.create_mode_widgets()
 
     def create_mode_widgets(self):
-        pass
+        mode_label = QLabel()
+        mode_label.setText("Mode")
+        mode_comboBox = QComboBox()
+        mode_comboBox.addItems(self.mode_list)
+        self.labels["mode"] = mode_label
+        self.widgets["mode"] = mode_comboBox
 
     def arange_layout(self):
         self.layout_main = QtWidgets.QVBoxLayout()
@@ -47,6 +54,9 @@ class SettingsWidget(DataclassWidget):
         return self.layouts['header']
 
     def create_mode_layout(self):
-        self.layouts["mode"] =
-        return self.layouts["mode"]
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(self.labels["mode"])
+        mode_layout.addWidget(self.widgets["mode"])
+        self.layouts["mode"] = mode_layout
+        return mode_layout
 
