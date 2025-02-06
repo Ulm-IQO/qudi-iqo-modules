@@ -18,9 +18,9 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from PySide2.QtCore import Signal
-from PySide2.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
+from PySide2.QtWidgets import QLabel, QComboBox, QHBoxLayout, QVBoxLayout, QWidget
 
-from qudi.gui.qdyne.tools.dataclass_widget import SettingsWidget
+from qudi.gui.qdyne.tools.settings_widget import SettingsWidget
 
 
 class MultiSettingsWidget(SettingsWidget):
@@ -34,7 +34,12 @@ class MultiSettingsWidget(SettingsWidget):
         self.create_method_widgets()
 
     def create_method_widgets(self):
-        pass
+        method_label = QLabel()
+        method_label.setText("Method")
+        method_comboBox = QComboBox()
+        method_comboBox.addItems(self.methodlist)
+        self.labels["method"] = method_label
+        self.widgets["method"] = method_comboBox
 
     def arange_layout(self):
         """
@@ -59,6 +64,10 @@ class MultiSettingsWidget(SettingsWidget):
         return header_layout
 
     def create_method_layout(self):
-        self.layouts["method"] =
-        return self.layouts["method"]
+        method_layout = QHBoxLayout()
+        method_layout.addWidget(self.labels["method"])
+        method_layout.addWidget(self.widgets["method"])
+
+        self.layouts["method"] = method_layout
+        return method_layout
 
