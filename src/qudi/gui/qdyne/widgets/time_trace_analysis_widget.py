@@ -20,9 +20,6 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import copy
-from inspect import Attribute
-import time
 import os
 from PySide2.QtGui import QStandardItem, QStandardItemModel
 import pyqtgraph as pg
@@ -33,7 +30,6 @@ from logging import getLogger
 from qudi.util import uic
 from qudi.util.colordefs import QudiPalettePale as palette
 
-from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
 from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
 
 logger = getLogger(__name__)

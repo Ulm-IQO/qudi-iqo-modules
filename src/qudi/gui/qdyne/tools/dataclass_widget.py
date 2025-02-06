@@ -186,16 +186,30 @@ class DataclassWidget(QtWidgets.QWidget):
         """
         super().__init__()
         self.data = dataclass_obj
-        self.layout = None
+        self.layout_main = None
         self.labels = dict()
         self.widgets = dict()
+        self.layouts = dict()
         self.init_UI()
 
         self._widget_value_updated_sig = None
 
     def init_UI(self):
-        self._create_layout()
+        self.create_widgets()
+        self.arange_layout()
         self.set_data(self.data)
+
+    def create_widgets(self):
+        self.create_data_widgets()
+
+    def arange_layout(self):
+        self.layout_main = QtWidgets.QGridLayout()
+        self.layout_main.addLayout(self.create_data_layout())
+
+    def create_data_layout(self):
+        self.layouts['data'] =
+        return self.layouts['data']
+
 
     def set_widget_value_updated_sig(self, widget_value_updated_sig):
         """

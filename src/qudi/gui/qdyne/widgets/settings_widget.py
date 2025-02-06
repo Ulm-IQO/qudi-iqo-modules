@@ -20,17 +20,13 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import copy
 import os
-import numpy as np
-import pyqtgraph as pg
 from PySide2 import QtWidgets, QtCore
 
 from qudi.core.logger import get_logger
 from qudi.util import uic
-from qudi.util.colordefs import QudiPalettePale as palette
 
-from qudi.gui.qdyne.widgets.dataclass_widget import DataclassWidget
+from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
 
 class SettingsWidget(QtWidgets.QWidget):
