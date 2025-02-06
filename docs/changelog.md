@@ -55,6 +55,7 @@
 - Added DMC output mode for Keysight M8195A AWG
 - Updated workflows to follow new 'pyproject.toml' release workflow
 - Altered tektronix_awg70k hardware file to allow the use of the newer, B-series of Tektronix AWGs
+- Added ruff configuration to `pyproject.toml` to standardize formatting
 
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
