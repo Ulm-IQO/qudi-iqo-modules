@@ -19,10 +19,13 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from PySide2 import QtCore, QtWidgets
+from PySide2.QtCore import Signal
+
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
 
 class SettingsWidget(DataclassWidget):
+    mode_widget_updated_sig = Signal()
 
     def __init__(self, parent):
         super().__init__(parent)

@@ -20,8 +20,8 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from dataclasses import dataclass, fields
-from PySide2 import QtCore, QtWidgets
-
+from PySide2 import QtWidgets
+from PySide2.QtCore import Signal
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 
 
@@ -179,6 +179,7 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 #                 old_widget.valueChanged.disconnect()
 
 class DataclassWidget(QtWidgets.QWidget):
+    widget_value_updated_sig = Signal()
     def __init__(self, dataclass_obj: dataclass) -> None:
         """
         dataclass_obj: dataclass object used for the widgets

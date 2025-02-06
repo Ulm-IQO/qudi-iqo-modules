@@ -17,12 +17,14 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+from PySide2.QtCore import Signal
 from PySide2.QtWidgets import QHBoxLayout
 
 from qudi.gui.qdyne.tools.dataclass_widget import SettingsWidget
 
 
 class MultiSettingsWidget(SettingsWidget):
+    method_widget_updated_sig = Signal()
 
     def __init__(self, parent):
         super().__init__(parent)
