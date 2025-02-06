@@ -179,8 +179,8 @@ from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
 #                 old_widget.valueChanged.disconnect()
 
 class DataclassWidget(QtWidgets.QWidget):
-    widget_value_updated_sig = Signal()
-    def __init__(self, dataclass_obj: Dataclass, mediator: DataclassMediator) -> None:
+    data_widget_updated_sig = Signal()
+    def __init__(self, dataclass_obj: dataclass, mediator: DataclassMediator) -> None:
         """
         dataclass_obj: dataclass object used for the widgets
         func: function invoked after values are changed.

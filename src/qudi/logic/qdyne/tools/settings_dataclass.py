@@ -22,6 +22,7 @@ from dataclasses import dataclass, field, fields
 from PySide2.QtCore import QObject, Signal, Slot
 
 from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass, DataclassMediator
+from qudi.gui.qdyne.tools.settings_widget import SettingsWidget
 
 
 class Settings(CustomDataclass):
@@ -36,7 +37,7 @@ class SettingsMediator(DataclassMediator):
     """
     mode_updated_sig = Signal()
 
-    def __init__(self):
+    def __init__(self, widget: SettingsWidget):
         super().__init__()
         self.current_mode = "default"
         self.mode_dict = dict()
@@ -69,3 +70,10 @@ class SettingsMediator(DataclassMediator):
         create default settings mode from initialized dataclass.
         """
         self.mode_dict["default"] = dataclass_cls()
+
+    def connect_signals(self):
+        super().connect_signals()
+        self.widget.mode_widget_updated_sig.connect(self.update_mode) #TODO consider how
+
+    def disconnect_signas(self):
+        self.widget.mode_widget_updated_sig.disconnect()

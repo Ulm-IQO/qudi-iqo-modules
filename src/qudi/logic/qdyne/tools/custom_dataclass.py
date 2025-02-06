@@ -24,7 +24,7 @@ from dataclasses import dataclass, field, fields
 from PySide2.QtCore import QObject, Signal, Slot
 
 from qudi.core.logger import get_logger
-
+from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 from qudi.util.datastorage import NpyDataStorage
 
 @dataclass
@@ -49,10 +49,11 @@ class DataclassMediator(QObject):
 
     """
     data_updated_sig = Signal()
-    def __init__(self, parent=None):
+    def __init__(self, widget: DataclassWidget):
         self._log = get_logger(__name__)
         self.data = None
         self.data_container = None
+        self.widget = widget
         pass
 
     @property
@@ -89,8 +90,14 @@ class DataclassMediator(QObject):
         else:
             self._log.error(f"Parameter {param_name} not found in dataclass.")
 
-class DataclassStorage:
+    def connect_signals(self):
+        self.widget.data_widget_updated_sig.connect(self.update_values)
 
+    def disconnect_signas(self):
+        self.widget.data_widget_updated_sig.disconnect()
+
+
+class DataclassStorage:
 
     def __init__(self, save_path, data_container):
         self._save_path = save_path
