@@ -18,9 +18,8 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from PySide2 import QtCore, QtWidgets
 from PySide2.QtCore import Signal
-from PySide2.QtWidgets import QLabel, QComboBox, QHBoxLayout
+from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout
 
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
@@ -45,7 +44,7 @@ class SettingsWidget(DataclassWidget):
         self.widgets["mode"] = mode_comboBox
 
     def arange_layout(self):
-        self.layout_main = QtWidgets.QVBoxLayout()
+        self.layout_main = QVBoxLayout()
         self.layout_main.addLayout(self.create_header_layout())
         self.layout_main.addLayout(self.create_data_layout())
 
