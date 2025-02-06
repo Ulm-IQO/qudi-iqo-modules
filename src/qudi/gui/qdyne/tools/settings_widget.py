@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 from dataclasses import dataclass
 from PySide2.QtCore import Signal, Slot
-from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout
+from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QPushButton
 
 from qudi.logic.qdyne.tools.settings_dataclass import SettingsMediator
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
@@ -40,10 +40,17 @@ class SettingsWidget(DataclassWidget):
     def create_mode_widgets(self):
         mode_label = QLabel()
         mode_label.setText("Mode")
+
         mode_comboBox = QComboBox()
         mode_comboBox.addItems(self.mode_list)
+
+        add_mode_pushButton = QPushButton("Add")
+        delete_mode_pushButton = QPushButton("Delete")
+
         self.labels["mode"] = mode_label
         self.widgets["mode"] = mode_comboBox
+        self.widgets["add_mode"] = add_mode_pushButton
+        self.widgets["delete_mode"] = delete_mode_pushButton
 
     def arange_layout(self):
         self.layout_main = QVBoxLayout()
@@ -58,6 +65,8 @@ class SettingsWidget(DataclassWidget):
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(self.labels["mode"])
         mode_layout.addWidget(self.widgets["mode"])
+        mode_layout.addWidget(self.widgets["add_mode"])
+        mode_layout.addWidget(self.widgets["delete_mode"])
         self.layouts["mode"] = mode_layout
         return mode_layout
 
