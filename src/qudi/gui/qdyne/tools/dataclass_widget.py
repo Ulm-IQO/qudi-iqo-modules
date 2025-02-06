@@ -235,6 +235,7 @@ class DataclassWidget(QtWidgets.QWidget):
 
     def disconnect_signals(self):
         self.disconnect_signals_from_mediator()
+
     def disconnect_signals_from_mediator(self):
         self.mediator.data_updated_sig.disconnect()
 

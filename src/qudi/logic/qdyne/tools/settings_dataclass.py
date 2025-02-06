@@ -52,12 +52,14 @@ class SettingsMediator(DataclassMediator):
         self.update_mode(new_mode)
         self.mode_updated_sig.emit(new_mode)
 
+    @Slot(str, dict)
     def add_mode(self, new_mode_name, new_setting):
         if new_mode_name not in self.mode_dict:
             self.mode_dict[new_mode_name] = new_setting
         else:
             self._log.error('Name already taken in settings modes')
 
+    @Slot(str)
     def remove_mode(self, mode_name: str):
         self.mode_dict.pop(mode_name)
 
@@ -71,9 +73,3 @@ class SettingsMediator(DataclassMediator):
         """
         self.mode_dict["default"] = dataclass_cls()
 
-    def connect_signals(self):
-        super().connect_signals()
-        self.widget.mode_widget_updated_sig.connect(self.update_mode) #TODO consider how
-
-    def disconnect_signas(self):
-        self.widget.mode_widget_updated_sig.disconnect()

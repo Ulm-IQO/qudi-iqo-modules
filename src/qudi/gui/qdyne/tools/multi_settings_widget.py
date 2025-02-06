@@ -31,6 +31,10 @@ class MultiSettingsWidget(SettingsWidget):
     def __init__(self, dataclass_obj: dataclass, mediator: MultiSettingsMediator):
         super().__init__(dataclass_obj, mediator)
 
+    @property
+    def current_method(self):
+        return self.widgets["method"].currentText()
+
     def create_widgets(self):
         super().create_widgets()
         self.create_method_widgets()
@@ -86,3 +90,11 @@ class MultiSettingsWidget(SettingsWidget):
         update the method widget with the new mode from mediator.
         """
         self.widgets["method"].setText(new_method) #TODO consider how to update widgets
+
+    def connect_signals_from_widgets(self):
+        super().connect_signals_from_widgets()
+        self.widgets["method"].editingFinished.connect(lambda method: self.mediator.update_method(self.current_method))
+
+    def disconnect_signals_from_widgets(self):
+        super().disconnect_signals_from_mediator()
+        self.widgets["method"].editingFinished.disconnect()

@@ -28,10 +28,16 @@ from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
 class SettingsWidget(DataclassWidget):
     mode_widget_updated_sig = Signal()
+    add_mode_pushed_sig = Signal()
+    delete_mode_pushed_sig = Signal()
 
     def __init__(self, dataclass_obj: dataclass, mediator: SettingsMediator):
         super().__init__(dataclass_obj, mediator)
         self.mode_list =
+
+    @property
+    def current_mode(self):
+        return self.widgets["mode"].currentText()
 
     def create_widgets(self):
         super().create_widgets()
@@ -84,3 +90,13 @@ class SettingsWidget(DataclassWidget):
         update the mode widget with the new mode from mediator.
         """
         self.widgets["mode"].setText(new_mode) #TODO consider how to update widgets
+
+    def connect_signals_from_widgets(self):
+        self.widgets["mode"].editingFinished.connect(lambda clicked :self.mediator.update_mode(self.current_mode))
+        self.widgets["add_mode"].clicked.connect(lambda clicked :self.mediator.add_mode(self.current_mode))
+        self.widgets["delete_mode"].clicked.connect(lambda clicked :self.mediator.delete_mode(self.current_mode))
+
+    def connect_signals_from_widgets(self):
+        self.widget["mode"].editingFinished.disconnect()
+        self.widgets["add_mode"].clicked.disconnect()
+        self.widgets["delete_mode"].clicked.disconnect()

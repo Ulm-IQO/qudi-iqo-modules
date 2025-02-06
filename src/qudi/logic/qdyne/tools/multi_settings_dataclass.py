@@ -58,9 +58,3 @@ class MultiSettingsMediator(SettingsMediator):
             default_mode_dict = {"default": dataclass_cls_dict[key]()}
             self.method_dict[key] = default_mode_dict
 
-    def connect_signals(self):
-        super().connect_signals()
-        self.widget.method_widget_updated_sig.connect(self.update_method) #TODO consider how
-
-    def disconnect_signas(self):
-        self.widget.method_widget_updated_sig.disconnect()
