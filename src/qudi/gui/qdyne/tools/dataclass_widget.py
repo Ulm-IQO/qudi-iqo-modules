@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 from dataclasses import dataclass, fields
 from PySide2 import QtWidgets
-from PySide2.QtCore import Signal
+from PySide2.QtCore import Signal, QSize
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 
 
@@ -188,8 +188,8 @@ class DataclassWidget(QtWidgets.QWidget):
         super().__init__()
         self.data = dataclass_obj
         self.layout_main = None
-        self.labels = dict()
-        self.widgets = dict()
+        self.data_labels = dict()
+        self.data_widgets = dict()
         self.layouts = dict()
         self.init_UI()
 
@@ -201,22 +201,27 @@ class DataclassWidget(QtWidgets.QWidget):
         self.set_data(self.data)
 
     def create_widgets(self):
-        self.create_data_widgets()
+        self.create_data_widgets(self.data)
 
     def arange_layout(self):
         self.layout_main = QtWidgets.QGridLayout()
         self.layout_main.addLayout(self.create_data_layout())
 
     def create_data_layout(self):
-        self.layouts['data'] =
-        return self.layouts['data']
-
-
-    def set_widget_value_updated_sig(self, widget_value_updated_sig):
         """
-        Set a signal on update of a value in a widget. This should be defined elsewhere.
+        create grid layout for names and parameters of a dataclass.
         """
-        self._widget_value_updated_sig = widget_value_updated_sig
+        data_layout = QtWidgets.QGridLayout()
+        param_index = 0
+
+        for field in fields(self.data):
+            data_layout.addWidget(self.data_labels[field.name], 0, param_index + 1, 1, 1)
+            data_layout.addWidget(self.data_widgets[field.name], 1, param_index + 1, 1, 1)
+            param_index += 1
+
+        data_layout
+        return data_layout
+
 
     def _emit_update_sig(self):
         self._widget_value_updated_sig.emit(self.current_values_dict)
@@ -234,7 +239,7 @@ class DataclassWidget(QtWidgets.QWidget):
         self._clear_layout()
         self._set_widgets(self.data)
         self._setLayout(self.layout)
-        self.widgets['name'].setReadOnly(True)
+        self.data_widgets['name'].setReadOnly(True)
         self.setUpdatesEnabled(True)
 
     def update_widgets(self, data_dict):
@@ -244,39 +249,35 @@ class DataclassWidget(QtWidgets.QWidget):
         for param_name in data_dict.keys():
             self.update_widget_value(param_name, data_dict[param_name])
 
-    def _create_layout(self):
-        self.layout = QtWidgets.QGridLayout()
-
-    def _clear_layout(self):
-        while self.layout.count():
-            item = self.layout.takeAt(0)
+    def _clear_data_layout(self):
+        """
+        remove widgets in data_layout.
+        """
+        data_layout = self.layouts['data']
+        while data_layout.count():
+            item = data_layout.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()
             elif item.layout():
                 item.layout().deleteLater()
 
-    def _set_widgets(self, data):
+    def create_data_widgets(self, data):
         """
-        create widgets based on dataclass and set them in the layout
+        create widgets based on dataclass
         """
-        self.labels = dict()
-        self.widgets = dict()
-        param_index = 0
+        self.data_labels = dict()
+        self.data_widgets = dict()
         for field in fields(data):
             if not field.name.startswith("_"):
                 label = self.create_label(field.name)
                 widget = self.create_widget(field)
                 if widget is None:
                     continue
-                widget.setMinimumSize(QtCore.QSize(80, 0))
+                widget.setMinimumSize(QSize(80, 0))
 
-                self.layout.addWidget(label, 0, param_index + 1, 1, 1)
-                self.layout.addWidget(widget, 1, param_index + 1, 1, 1)
-
-                self.labels[field.name] = label
-                self.widgets[field.name] = widget
-                param_index += 1
+                self.data_labels[field.name] = label
+                self.data_widgets[field.name] = widget
 
     def _create_widget(self, field):
         """
@@ -338,16 +339,16 @@ class DataclassWidget(QtWidgets.QWidget):
         param_type = self.data.__dataclass_fields__[param_name]
 
         if param_type == int or param_type == float:
-            self.widgets[param_name].setValue(value)
+            self.data_widgets[param_name].setValue(value)
         elif param_type == str:
-            self.widgets[param_name].setText(value)
+            self.data_widgets[param_name].setText(value)
         elif param_type == bool:
-            self.widgets[param_name].setChecked(value)
+            self.data_widgets[param_name].setChecked(value)
         else:
             return
 
     def disconnect_widgets(self):
-        for field_name, old_widget in self.widgets.items():
+        for field_name, old_widget in self.data_widgets.items():
             if isinstance(old_widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
                 old_widget.editingFinished.disconnect()
             elif isinstance(old_widget, QtWidgets.QCheckBox):

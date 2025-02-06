@@ -18,7 +18,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from PySide2.QtCore import Signal
-from PySide2.QtWidgets import QHBoxLayout
+from PySide2.QtWidgets import QHBoxLayout, QVBoxLayout, QWidget
 
 from qudi.gui.qdyne.tools.dataclass_widget import SettingsWidget
 
@@ -35,6 +35,21 @@ class MultiSettingsWidget(SettingsWidget):
 
     def create_method_widgets(self):
         pass
+
+    def arange_layout(self):
+        """
+        Arange layout for multi settings dataclass.
+        When another method is selected, the layout should be updated
+        by setting the new layout into the data_container widget.
+        """
+        self.layout_main = QVBoxLayout()
+        self.layout_main.addLayout(self.create_header_layout())
+        data_container = QWidget()
+        data_container.setLayout(self.create_data_layout())
+        self.layout_main.addWidget(data_container)
+
+        self.layouts["data_container"] = data_container
+
 
     def create_header_layout(self):
         header_layout = QHBoxLayout()
