@@ -229,12 +229,14 @@ class DataclassWidget(QtWidgets.QWidget):
 
     def connect_signals(self):
         self.connect_signals_from_mediator()
+        self.connect_signals_from_widgets()
 
     def connect_signals_from_mediator(self):
         self.mediator.data_updated_sig.connect(self.update_widgets)
 
     def disconnect_signals(self):
         self.disconnect_signals_from_mediator()
+        self.disconnect_signals_from_widgets()
 
     def disconnect_signals_from_mediator(self):
         self.mediator.data_updated_sig.disconnect()
@@ -329,25 +331,21 @@ class DataclassWidget(QtWidgets.QWidget):
     def _int_to_widget(self, value):
         widget = ScienSpinBox()
         widget.setValue(value)
-        widget.editingFinished.connect(self._emit_update_sig)
         return widget
 
     def _float_to_widget(self, value):
         widget = ScienDSpinBox()
         widget.setValue(value)
-        widget.editingFinished.connect(self._emit_update_sig)
         return widget
 
     def _str_to_widget(self, value):
         widget = QtWidgets.QLineEdit()
         widget.setText(value)
-        widget.editingFinished.connect(self._emit_update_sig)
         return widget
 
     def _bool_to_widget(self, value):
         widget = QtWidgets.QCheckBox()
         widget.setChecked(value)
-        widget.stateChanged.connect(self._emit_update_sig)
         return widget
 
     def _update_widget_value(self, param_name, value):
@@ -365,11 +363,20 @@ class DataclassWidget(QtWidgets.QWidget):
         else:
             return
 
-    def disconnect_widgets(self):
-        for field_name, old_widget in self.data_widgets.items():
-            if isinstance(old_widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
-                old_widget.editingFinished.disconnect()
-            elif isinstance(old_widget, QtWidgets.QCheckBox):
-                old_widget.stateChanged.disconnect()
+    def connect_signals_from_widgets(self):
+        for field_name, widget in self.data_widgets.items():
+            if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
+                widget.editingFinished.connect(self._emit_update_sig)
+            elif isinstance(widget, QtWidgets.QCheckBox):
+                widget.stateChanged.connect(self._emit_update_sig)
             else:
-                old_widget.valueChanged.disconnect()
+                widget.valueChanged.connect(self._emit_update_sig)
+
+    def disconnect_widgets(self):
+        for field_name, widget in self.data_widgets.items():
+            if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
+                widget.editingFinished.disconnect()
+            elif isinstance(widget, QtWidgets.QCheckBox):
+                widget.stateChanged.disconnect()
+            else:
+                widget.valueChanged.disconnect()
