@@ -18,17 +18,19 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from PySide2.QtCore import Signal
+from dataclasses import dataclass
+from PySide2.QtCore import Signal, Slot
 from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout
 
+from qudi.logic.qdyne.tools.settings_dataclass import SettingsMediator
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
 
 class SettingsWidget(DataclassWidget):
     mode_widget_updated_sig = Signal()
 
-    def __init__(self, parent):
-        super().__init__(parent)
+    def __init__(self, dataclass_obj: dataclass, mediator: SettingsMediator):
+        super().__init__(dataclass_obj, mediator)
         self.mode_list =
 
     def create_widgets(self):
@@ -59,3 +61,17 @@ class SettingsWidget(DataclassWidget):
         self.layouts["mode"] = mode_layout
         return mode_layout
 
+    def connect_signals_from_mediator(self):
+        super().connect_signals_from_mediator()
+        self.mediator.mode_updated_signal.connect(self.update_mode_widget)
+
+    def disconnect_signals_from_mediator(self):
+        super().disconnect_signals_from_mediator()
+        self.mediator.mode_updated_signal.disconnect()
+
+    @Slot(str)
+    def update_mode_widget(self, new_mode):
+        """
+        update the mode widget with the new mode from mediator.
+        """
+        self.widgets["mode"].setText(new_mode) #TODO consider how to update widgets

@@ -49,7 +49,7 @@ class SettingsMediator(DataclassMediator):
 
     def set_mode(self, new_mode: str):
         self.update_mode(new_mode)
-        self.mode_updated_sig.emit()
+        self.mode_updated_sig.emit(new_mode)
 
     def add_mode(self, new_mode_name, new_setting):
         if new_mode_name not in self.mode_dict:

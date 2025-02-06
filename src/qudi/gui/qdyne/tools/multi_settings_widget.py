@@ -17,17 +17,19 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from PySide2.QtCore import Signal
+from dataclasses import dataclass
+from PySide2.QtCore import Signal, Slot
 from PySide2.QtWidgets import QLabel, QComboBox, QHBoxLayout, QVBoxLayout, QWidget
 
+from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediator
 from qudi.gui.qdyne.tools.settings_widget import SettingsWidget
 
 
 class MultiSettingsWidget(SettingsWidget):
     method_widget_updated_sig = Signal()
 
-    def __init__(self, parent):
-        super().__init__(parent)
+    def __init__(self, dataclass_obj: dataclass, mediator: MultiSettingsMediator):
+        super().__init__(dataclass_obj, mediator)
 
     def create_widgets(self):
         super().create_widgets()
@@ -55,7 +57,6 @@ class MultiSettingsWidget(SettingsWidget):
 
         self.layouts["data_container"] = data_container
 
-
     def create_header_layout(self):
         header_layout = QHBoxLayout()
         header_layout.addLayout(self.create_method_layout())
@@ -71,3 +72,17 @@ class MultiSettingsWidget(SettingsWidget):
         self.layouts["method"] = method_layout
         return method_layout
 
+    def connect_signals_from_mediator(self):
+        super().connect_signals_from_mediator()
+        self.mediator.method_updated_signal.connect(self.update_method_widget)
+
+    def disconnect_signals_from_mediator(self):
+        super().disconnect_signals_from_mediator()
+        self.mediator.method_updated_signal.disconnect()
+
+    @Slot(str)
+    def update_method_widget(self, new_method):
+        """
+        update the method widget with the new mode from mediator.
+        """
+        self.widgets["method"].setText(new_method) #TODO consider how to update widgets

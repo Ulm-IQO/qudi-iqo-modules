@@ -21,9 +21,9 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 from dataclasses import dataclass, fields
 from PySide2 import QtWidgets
-from PySide2.QtCore import Signal, QSize
+from PySide2.QtCore import Signal, Slot, QSize
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
-
+from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
 
 # class DataclassWidget(QtWidgets.QWidget):
 #     def __init__(self, dataclass_obj: dataclass, invoke_func=None) -> None:
@@ -180,13 +180,14 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 
 class DataclassWidget(QtWidgets.QWidget):
     widget_value_updated_sig = Signal()
-    def __init__(self, dataclass_obj: dataclass) -> None:
+    def __init__(self, dataclass_obj: Dataclass, mediator: DataclassMediator) -> None:
         """
         dataclass_obj: dataclass object used for the widgets
         func: function invoked after values are changed.
         """
         super().__init__()
         self.data = dataclass_obj
+        self.mediator = mediator
         self.layout_main = None
         self.data_labels = dict()
         self.data_widgets = dict()
@@ -226,6 +227,17 @@ class DataclassWidget(QtWidgets.QWidget):
         data_layout
         return data_layout
 
+    def connect_signals(self):
+        self.connect_signals_from_mediator()
+
+    def connect_signals_from_mediator(self):
+        self.mediator.data_updated_sig.connect(self.update_widgets)
+
+    def disconnect_signals(self):
+        self.disconnect_signals_from_mediator()
+    def disconnect_signals_from_mediator(self):
+        self.mediator.data_updated_sig.disconnect()
+
 
     def _emit_update_sig(self):
         self._widget_value_updated_sig.emit(self.current_values_dict)
@@ -246,6 +258,7 @@ class DataclassWidget(QtWidgets.QWidget):
         self.data_widgets['name'].setReadOnly(True)
         self.setUpdatesEnabled(True)
 
+    @Slot()
     def update_widgets(self, data_dict):
         """
         update the parameters of widgets according to the data.
