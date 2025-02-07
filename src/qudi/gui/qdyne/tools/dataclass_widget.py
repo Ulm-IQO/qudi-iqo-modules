@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 from dataclasses import dataclass, fields
 from PySide2 import QtWidgets
 from PySide2.QtCore import Signal, Slot, QSize
+from qudi.core.logger import get_logger
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
 
@@ -188,6 +189,7 @@ class DataclassWidget(QtWidgets.QWidget):
         func: function invoked after values are changed.
         """
         super().__init__()
+        self._log = get_logger(__name__)
         self.data = dataclass_obj
         self.mediator = mediator
         self.layout_main = None
@@ -200,7 +202,6 @@ class DataclassWidget(QtWidgets.QWidget):
 
         self.init_UI()
 
-        self._widget_value_updated_sig = None
 
     def init_UI(self):
         self.create_widgets()
@@ -243,7 +244,7 @@ class DataclassWidget(QtWidgets.QWidget):
         self.mediator.data_updated_sig.disconnect()
 
     def _emit_update_sig(self):
-        self._widget_value_updated_sig.emit(self.current_values_dict)
+        self.data_widget_updated_sig.emit(self.current_values_dict)
 
     @property
     def values_dict(self):
@@ -260,6 +261,18 @@ class DataclassWidget(QtWidgets.QWidget):
         self._setLayout(self.layout)
         self.data_widgets['name'].setReadOnly(True)
         self.setUpdatesEnabled(True)
+
+    @Slot(dict)
+    def set_data_from_dict(self, data_dict):
+        """
+        set data from a dictionary. This coule be a partial set of dataclass.
+        """
+        self.setUpdatesEnabled(False)
+        for key in data_dict.keys():
+            self._update_widget_value(key, data_dict[key])
+        self._emit_update_sig()
+        self.setUpdatesEnabled(True)
+
 
     @Slot()
     def update_widgets(self, data_dict):
@@ -352,16 +365,19 @@ class DataclassWidget(QtWidgets.QWidget):
         """
         update the value of a widget.
         """
-        param_type = self.data.__dataclass_fields__[param_name]
+        if hasattr(self.data, param_name):
+            param_type = self.data.__dataclass_fields__[param_name]
 
-        if param_type == int or param_type == float:
-            self.data_widgets[param_name].setValue(value)
-        elif param_type == str:
-            self.data_widgets[param_name].setText(value)
-        elif param_type == bool:
-            self.data_widgets[param_name].setChecked(value)
+            if param_type == int or param_type == float:
+                self.data_widgets[param_name].setValue(value)
+            elif param_type == str:
+                self.data_widgets[param_name].setText(value)
+            elif param_type == bool:
+                self.data_widgets[param_name].setChecked(value)
+            else:
+                self._log.error(f"{param_type} type is not supported.")
         else:
-            return
+            self._log.error("name not found in data.")
 
     def connect_signals_from_widgets(self):
         for field_name, widget in self.data_widgets.items():

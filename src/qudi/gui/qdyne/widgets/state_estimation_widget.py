@@ -24,7 +24,8 @@ from logging import getLogger
 import os
 import numpy as np
 import pyqtgraph as pg
-from PySide2 import QtWidgets, QtCore
+from PySide2.QtCore import Signal, Slot
+from PySide2.QtWidgets import QWidget, QVBoxLayout, QLabel, QSizePolicy
 
 from qudi.core.logger import get_logger
 from qudi.util import uic
@@ -34,7 +35,7 @@ from qudi.gui.qdyne.tools.multi_settings_widget import MultiSettingsWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
-class StateEstimationTab(QtWidgets.QWidget):
+class StateEstimationTab(QWidget):
     def __init__(self, logic):
         super().__init__()
         self._log = get_logger(__name__)
@@ -43,114 +44,113 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._form_layout()
 
     def _instantiate_widgets(self, logic):
-        self._sew_layout = QtWidgets.QVBoxLayout(self)
-        self._sw = StateEstimationSettingsWidget(logic().settings.estimator_stg,
-                                                 logic().estimator.method_list,
-                                                 self._invoke_func)
-        self._pw = StateEstimationPulseWidget(logic)
-        self._ttw = StateEstimationTimeTraceWidget(logic)
+        self._sew_layout = QVBoxLayout(self)
+        self._settings_widget = StateEstimationSettingsWidget(logic().settings.estimator_stg.estimator_mediator)
+        self._pulse_widget = StateEstimationPulseWidget(logic)
+        self._time_trace_widget = StateEstimationTimeTraceWidget(logic)
         self._analysis_interval_spinbox = ScienDSpinBox()
         self._analysis_interval_spinbox.setSuffix("s")
         self._analysis_interval_spinbox.setMinimum(0)
         self._analysis_interval_spinbox.setValue(self._logic().measure.analysis_timer_interval)
-        self._analysis_interval_label = QtWidgets.QLabel("Analysis interval")
-        self._sew_layout.addWidget(self._sw)
-        self._sew_layout.addWidget(self._pw)
-        self._sew_layout.addWidget(self._ttw)
+        self._analysis_interval_label = QLabel("Analysis interval")
+        self._sew_layout.addWidget(self._settings_widget)
+        self._sew_layout.addWidget(self._pulse_widget)
+        self._sew_layout.addWidget(self._time_trace_widget)
         self._sew_layout.addWidget(self._analysis_interval_label)
         self._sew_layout.addWidget(self._analysis_interval_spinbox)
 
-    def _invoke_func(self):
-        """
-        functions invoked after the values of the settings changed.
-        """
-        self._logic().settings.estimator_stg.sync_param_dict()
-        self._pw.update_lines()
-
     def _form_layout(self):
-        self._sw.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        self._settings_widget.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
-        self._pw.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        self._pulse_widget.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
-        self._ttw.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+        self._time_trace_widget.setSizePolicy(
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
 
-        self._sew_layout.setStretchFactor(self._sw, 1)
-        self._sew_layout.setStretchFactor(self._pw, 3)
-        self._sew_layout.setStretchFactor(self._ttw, 3)
+        self._sew_layout.setStretchFactor(self._settings_widget, 1)
+        self._sew_layout.setStretchFactor(self._pulse_widget, 3)
+        self._sew_layout.setStretchFactor(self._time_trace_widget, 3)
 
     def connect_signals(self):
-        self._sw.connect_signals()
-        self._pw.connect_signals()
-        self._ttw.connect_signals()
+        self._settings_widget.connect_signals()
+        self._pulse_widget.connect_signals()
+        self._time_trace_widget.connect_signals()
         self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
         self.connect_mutual_signals()
-        self._pw.update_lines()
+        self._pulse_widget.update_lines()
 
-        self._sw.method_updated_sig.connect(self.reconnect_mutual_signals)
-        self._sw.method_updated_sig.connect(self._pw.toggle_lines)
-        self._sw.setting_name_updated_sig.connect(self.reconnect_mutual_signals)
-        self._sw.setting_name_updated_sig.connect(self._pw.update_lines)
+        self._settings_widget.method_updated_sig.connect(self.reconnect_mutual_signals)
+        self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.toggle_lines)
+        self._settings_widget.setting_name_updated_sig.connect(self.reconnect_mutual_signals)
+        self._settings_widget.setting_name_updated_sig.connect(self._pulse_widget.update_lines)
 
     def connect_mutual_signals(self):
-        param_names = self._sw.settings.current_setting.__annotations__
+        param_names = self._settings_widget.settings.current_setting.__annotations__
         if "sig_start" in param_names:
-            self._sw.settings_widget.widgets["sig_start"].valueChanged.connect(
-                self._pw.update_lines
+            self._settings_widget.settings_widget.widgets["sig_start"].valueChanged.connect(
+                self._pulse_widget.update_lines
             )
         if "sig_end" in param_names:
-            self._sw.settings_widget.widgets["sig_end"].valueChanged.connect(
-                self._pw.update_lines
+            self._settings_widget.settings_widget.widgets["sig_end"].valueChanged.connect(
+                self._pulse_widget.update_lines
             )
         if "ref_start" in param_names:
-            self._sw.settings_widget.widgets["ref_start"].valueChanged.connect(
-                self._pw.update_lines
+            self._settings_widget.settings_widget.widgets["ref_start"].valueChanged.connect(
+                self._pulse_widget.update_lines
             )
         if "ref_end" in param_names:
-            self._sw.settings_widget.widgets["ref_end"].valueChanged.connect(
-                self._pw.update_lines
+            self._settings_widget.settings_widget.widgets["ref_end"].valueChanged.connect(
+                self._pulse_widget.update_lines
             )
 
-        self._pw.sig_line_changed_sig.connect(self._sw.update_from_sig_lines)
-        self._pw.ref_line_changed_sig.connect(self._sw.update_from_ref_lines)
+        self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.update_from_sig_lines)
+        self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.update_from_ref_lines)
+
+    def connect_settings_widget_signals(self):
+        self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.update_lines)
+
+    def connect_pulse_widget_signals(self):
+        self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
+
+
 
     def disconnect_mutual_signals(self):
-        param_names = self._sw.settings.current_setting.__annotations__
+        param_names = self._settings_widget.settings.current_setting.__annotations__
         if "sig_start" in param_names:
-            self._sw.settings_widget.widgets["sig_start"].valueChanged.disconnect()
+            self._settings_widget.settings_widget.widgets["sig_start"].valueChanged.disconnect()
         if "sig_end" in param_names:
-            self._sw.settings_widget.widgets["sig_end"].valueChanged.disconnect()
+            self._settings_widget.settings_widget.widgets["sig_end"].valueChanged.disconnect()
         if "ref_start" in param_names:
-            self._sw.settings_widget.widgets["ref_start"].valueChanged.disconnect()
+            self._settings_widget.settings_widget.widgets["ref_start"].valueChanged.disconnect()
         if "ref_end" in param_names:
-            self._sw.settings_widget.widgets["ref_end"].valueChanged.disconnect()
+            self._settings_widget.settings_widget.widgets["ref_end"].valueChanged.disconnect()
 
-        self._pw.sig_line_changed_sig.disconnect()
-        self._pw.ref_line_changed_sig.disconnect()
+        self._pulse_widget.sig_line_changed_sig.disconnect()
+        self._pulse_widget.ref_line_changed_sig.disconnect()
 
     def reconnect_mutual_signals(self):
         self.connect_mutual_signals()
 
     def disconnect_signals(self):
-        self._sw.disconnect_signals()
-        self._pw.disconnect_signals()
-        self._ttw.disconnect_signals()
+        self._settings_widget.disconnect_signals()
+        self._pulse_widget.disconnect_signals()
+        self._time_trace_widget.disconnect_signals()
         self._analysis_interval_spinbox.editingFinished.disconnect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.disconnect(self._analysis_interval_spinbox.setValue)
 
     def activate_ui(self):
-        self._sw.activate()
-        self._pw.activate()
-        self._ttw.activate()
+        self._settings_widget.activate()
+        self._pulse_widget.activate()
+        self._time_trace_widget.activate()
 
     def deactivate_ui(self):
-        self._sw.deactivate()
-        self._pw.deactivate()
-        self._ttw.deactivate()
+        self._settings_widget.deactivate()
+        self._pulse_widget.deactivate()
+        self._time_trace_widget.deactivate()
 
 
     def analysis_timer_interval(self):
@@ -161,37 +161,40 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
     def __init__(self, estimator_settings_mediator):
         super(MultiSettingsWidget, self).__init__(estimator_settings_mediator)
 
-    @QtCore.Slot(float, float)
-    def update_from_sig_lines(self, sig_start, sig_end):
-        param_names = self.settings.current_setting.__annotations__
-        if "sig_start" in param_names:
-            self.settings.current_setting.sig_start = sig_start
-            self.settings_widget.widgets["sig_start"].setValue(sig_start)
-        if "sig_end" in param_names:
-            self.settings.current_setting.sig_end = sig_end
-            self.settings_widget.widgets["sig_end"].setValue(sig_end)
+    # @QtCore.Slot(float, float)
+    # def update_from_sig_lines(self, sig_start, sig_end):
+    #     param_names = self.settings.current_setting.__annotations__
+    #     if "sig_start" in param_names:
+    #         self.settings.current_setting.sig_start = sig_start
+    #         self.settings_widget.widgets["sig_start"].setValue(sig_start)
+    #     if "sig_end" in param_names:
+    #         self.settings.current_setting.sig_end = sig_end
+    #         self.settings_widget.widgets["sig_end"].setValue(sig_end)
+    #
+    # @QtCore.Slot(float, float)
+    # def update_from_ref_lines(self, ref_start, ref_end):
+    #     param_names = self.settings.current_setting.__annotations__
+    #     if "ref_start" in param_names:
+    #         self.settings.current_setting.ref_start = ref_start
+    #         self.settings_widget.widgets["ref_start"].setValue(ref_start)
+    #
+    #     if "ref_end" in param_names:
+    #         self.settings.current_setting.ref_end = ref_end
+    #         self.settings_widget.widgets["ref_end"].setValue(ref_end)
 
-    @QtCore.Slot(float, float)
-    def update_from_ref_lines(self, ref_start, ref_end):
-        param_names = self.settings.current_setting.__annotations__
-        if "ref_start" in param_names:
-            self.settings.current_setting.ref_start = ref_start
-            self.settings_widget.widgets["ref_start"].setValue(ref_start)
 
-        if "ref_end" in param_names:
-            self.settings.current_setting.ref_end = ref_end
-            self.settings_widget.widgets["ref_end"].setValue(ref_end)
+class StateEstimationPulseWidget(QWidget):
+    """
+    Widget to confirm the shape of pulse data. A set of start line and end line is provided for signal and reference.
+    They are used to change the dataclass widgets.
+    Communication with dataclass mediators should be done solely by the dataclass widgets.
+    """
+    sig_line_changed_sig = Signal(float, float)
+    ref_line_changed_sig = Signal(float, float)
 
-
-class StateEstimationPulseWidget(QtWidgets.QWidget):
-    sig_line_changed_sig = QtCore.Signal(float, float)
-    ref_line_changed_sig = QtCore.Signal(float, float)
-
-    def __init__(self, logic):
-        self._logic = logic()
+    def __init__(self):
         self._log = getLogger(__name__)
-        self.estimator = logic().estimator
-        self.settings = logic().settings.estimator_stg
+
         self.sig_start = 0
         self.sig_end = 0
         self.ref_start = 0
@@ -237,77 +240,86 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.close()
 
     def connect_signals(self):
+        """
+        connect internal signals from lines.
+        """
         self.sig_start_line.sigPositionChangeFinished.connect(self.sig_lines_dragged)
         self.sig_end_line.sigPositionChangeFinished.connect(self.sig_lines_dragged)
         self.ref_start_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
         self.ref_end_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
         self.update_pushButton.clicked.connect(self.update_pulse)
-        # Connect update signals from qdyne_measurement_logic
-        self._logic.measure.sigPulseDataUpdated.connect(self.pulse_updated)
-        # Connect to measurement state changes
-        self._logic.measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
-        self._logic.measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
+        # # Connect update signals from qdyne_measurement_logic #TODO move this somewhere else
+        # self._measure.sigPulseDataUpdated.connect(self.pulse_updated)
+        # # Connect to measurement state changes
+        # self._measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
+        # self._measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
 
-    #        self.settings.current_stg_changed_sig.connect(self.update_lines)
     def disconnect_signals(self):
+        """
+        disconnect internal signals from lines.
+        """
         self.sig_start_line.sigPositionChangeFinished.disconnect()
         self.sig_end_line.sigPositionChangeFinished.disconnect()
         self.ref_start_line.sigPositionChangeFinished.disconnect()
         self.ref_end_line.sigPositionChangeFinished.disconnect()
-        self._logic.measure.sigPulseDataUpdated.disconnect()
+        # self._measure.sigPulseDataUpdated.disconnect() #TODO move this somewhere else
 
-    def toggle_lines(self):
-        param_names = self.settings.current_setting.__annotations__
-        self.sig_start_line.setVisible("sig_start" in param_names)
-        self.sig_end_line.setVisible("sig_end" in param_names)
-        self.ref_start_line.setVisible("ref_start" in param_names)
-        self.ref_end_line.setVisible("ref_end" in param_names)
+    @Slot(dict)
+    def toggle_lines(self, current_values_dict):
+        """
+        toggle lines based on the current values
+        """
+        self.sig_start_line.setVisible("sig_start" in current_values_dict)
+        self.sig_end_line.setVisible("sig_end" in current_values_dict)
+        self.ref_start_line.setVisible("ref_start" in current_values_dict)
+        self.ref_end_line.setVisible("ref_end" in current_values_dict)
 
     def sig_lines_dragged(self):
         sig_start = self.sig_start_line.value()
         sig_end = self.sig_end_line.value()
-        self.settings.current_setting.sig_start = (
-            sig_start if sig_start <= sig_end else sig_end
-        )
-        self.settings.current_setting.sig_end = (
-            sig_end if sig_end >= sig_start else sig_start
-        )
-        self.sig_line_changed_sig.emit(sig_start, sig_end)
+
+        sig_start = (sig_start if sig_start <= sig_end else sig_end)
+        sig_end = (sig_end if sig_end >= sig_start else sig_start)
+
+        update_dict = dict()
+        update_dict["sig_start"] = sig_start
+        update_dict["sig_end"] = sig_end
+        self.sig_line_changed_sig.emit(update_dict)
 
     def ref_lines_dragged(self):
         ref_start = self.ref_start_line.value()
         ref_end = self.ref_end_line.value()
-        self.settings.current_setting.ref_start = (
-            ref_start if ref_start <= ref_end else ref_end
-        )
-        self.settings.current_setting.ref_end = (
-            ref_end if ref_end >= ref_start else ref_start
-        )
-        self.ref_line_changed_sig.emit(ref_start, ref_end)
 
-    def update_lines(self):
-        param_names = self.settings.current_setting.__annotations__
-        if "sig_start" in param_names:
-            self.sig_start_line.setValue(self.settings.current_setting.sig_start)
-        if "sig_end" in param_names:
-            self.sig_end_line.setValue(self.settings.current_setting.sig_end)
-        if "ref_start" in param_names:
-            self.ref_start_line.setValue(self.settings.current_setting.ref_start)
-        if "ref_end" in param_names:
-            self.ref_end_line.setValue(self.settings.current_setting.ref_end)
+        ref_start = (ref_start if ref_start <= ref_end else ref_end)
+        ref_end = (ref_end if ref_end >= ref_start else ref_start)
 
-    def update_pulse(self):
-        self._logic.measure.get_raw_data()
-        self._logic.measure.get_pulse()
-        self._logic.measure.sigPulseDataUpdated.emit()
-        self._logic.measure.extract_data()
-        self._logic.measure.estimate_state()
-        self._logic.measure.sigTimeTraceDataUpdated.emit()
+        update_dict = dict()
+        update_dict["ref_start"] = ref_start
+        update_dict["ref_end"] = ref_end
+        self.ref_line_changed_sig.emit(update_dict)
 
-    def pulse_updated(self):
-        pulse = self._logic.data.pulse_data
-        self._log.warning(f"{pulse=}")
-        self.pulse_image.setData(x=pulse[0], y=pulse[1])
+    @Slot(dict)
+    def update_lines(self, data_dict):
+        if "sig_start" in data_dict:
+            self.sig_start_line.setValue(data_dict["sig_start"])
+        if "sig_end" in data_dict:
+            self.sig_end_line.setValue(data_dict["sig_end"])
+        if "ref_start" in data_dict:
+            self.ref_start_line.setValue(data_dict["ref_start"])
+        if "ref_end" in data_dict:
+            self.ref_end_line.setValue(data_dict["ref_end"])
+
+    # def update_pulse(self): #TODO move to logic
+    #     self._measure.get_raw_data()
+    #     self._measure.get_pulse()
+    #     self._measure.sigPulseDataUpdated.emit()
+    #     self._measure.extract_data()
+    #     self._measure.estimate_state()
+    #     self._measure.sigTimeTraceDataUpdated.emit()
+
+    Slot()
+    def pulse_updated(self, pulse_data):
+        self.pulse_image.setData(x=pulse_data[0], y=pulse_data[1]) #TODO modify emit from loic
 
     def set_lines_movable(self, movable):
         """
@@ -319,7 +331,9 @@ class StateEstimationPulseWidget(QtWidgets.QWidget):
         self.sig_end_line.setMovable(movable)
         self.ref_start_line.setMovable(movable)
         self.ref_end_line.setMovable(movable)
-class StateEstimationTimeTraceWidget(QtWidgets.QWidget):
+
+
+class StateEstimationTimeTraceWidget(QWidget):
     _log = get_logger(__name__)
 
     def __init__(self, logic):
