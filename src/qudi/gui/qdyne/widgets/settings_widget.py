@@ -99,25 +99,25 @@ class SettingsWidget(QtWidgets.QWidget):
         self.settings_widget.update_params_from_data(self.settings.current_setting)
         self.setting_widget_updated_sig.emit()
 
-    def add_setting(self):
-        new_name = self.setting_comboBox.currentText()
-        if new_name in self.settings.current_setting_list:
-            self._log.error("Setting name already exists")
-        else:
-            self.add_button_pushed_sig.emit(new_name)
-            self.setting_comboBox.addItem(self.settings.current_stg_name)
-            self.setting_comboBox.setCurrentText(self.settings.current_stg_name)
-            self.update_widget()
-
-    def delete_setting(self):
-        stg_name_to_remove = self.setting_comboBox.currentText()
-
-        if stg_name_to_remove == "default":
-            self._log.error("Cannot delete default setting")
-        else:
-            index_to_remove = self.setting_comboBox.findText(stg_name_to_remove)
-            next_index = int(index_to_remove - 1)
-            self.setting_comboBox.setCurrentIndex(next_index)
-            self.settings.current_stg_name = self.setting_comboBox.currentText()
-            self.setting_comboBox.removeItem(index_to_remove)
-            self.remove_setting_sig.emit(stg_name_to_remove)
+    # def add_setting(self):
+    #     new_name = self.setting_comboBox.currentText()
+    #     if new_name in self.settings.current_setting_list:
+    #         self._log.error("Setting name already exists")
+    #     else:
+    #         self.add_button_pushed_sig.emit(new_name)
+    #         self.setting_comboBox.addItem(self.settings.current_stg_name)
+    #         self.setting_comboBox.setCurrentText(self.settings.current_stg_name)
+    #         self.update_widget()
+    #
+    # def delete_setting(self):
+    #     stg_name_to_remove = self.setting_comboBox.currentText()
+    #
+    #     if stg_name_to_remove == "default":
+    #         self._log.error("Cannot delete default setting")
+    #     else:
+    #         index_to_remove = self.setting_comboBox.findText(stg_name_to_remove)
+    #         next_index = int(index_to_remove - 1)
+    #         self.setting_comboBox.setCurrentIndex(next_index)
+    #         self.settings.current_stg_name = self.setting_comboBox.currentText()
+    #         self.setting_comboBox.removeItem(index_to_remove)
+    #         self.remove_setting_sig.emit(stg_name_to_remove)

@@ -18,6 +18,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+from copy import deepcopy
 from dataclasses import dataclass, field, fields
 from PySide2.QtCore import QObject, Signal, Slot
 
@@ -44,24 +45,52 @@ class SettingsMediator(DataclassMediator):
         self.data = self.mode_dict[self.current_mode]
         self.data_container = self.mode_dict
 
+    @property
+    def default_data(self):
+        return self.mode_dict["default"]
+
     @Slot(str)
     def update_mode(self, new_mode: str):
         self.current_mode = new_mode
+        self.data_updated_sig.emit(self.data)
 
     def set_mode(self, new_mode: str):
         self.update_mode(new_mode)
         self.mode_updated_sig.emit(new_mode)
 
-    @Slot(str, dict)
-    def add_mode(self, new_mode_name, new_setting):
+    @Slot(str)
+    def add_mode(self, new_mode_name):
         if new_mode_name not in self.mode_dict:
-            self.mode_dict[new_mode_name] = new_setting
+            self.mode_dict[new_mode_name] = deepcopy(self.default_data)
+            self.set_mode(new_mode_name)
+
         else:
             self._log.error('Name already taken in settings modes')
 
     @Slot(str)
     def remove_mode(self, mode_name: str):
-        self.mode_dict.pop(mode_name)
+        if mode_name in self.mode_dict:
+            self._log.error("Name not found in settings modes")
+            return
+        else:
+            if mode_name == "default":
+                self._log.error("Cannot delete default mode")
+            else:
+                try:
+                    new_mode = self.find_key_before(self.mode_dict, mode_name) #get the mode one before
+                except KeyError:
+                    new_mode = "default"
+                self.mode_dict.pop(mode_name)
+                self.set_mode(new_mode)
+
+    @staticmethod
+    def find_key_before(d: dict, k: str):
+        it = iter(d)
+        for key in it:
+            if key == k:
+                break
+            previous_key = key
+        return previous_key
 
     @property
     def mode_list(self):
