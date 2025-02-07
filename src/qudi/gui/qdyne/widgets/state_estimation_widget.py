@@ -47,7 +47,7 @@ class StateEstimationTab(QWidget):
         self._sew_layout = QVBoxLayout(self)
         self._settings_widget = StateEstimationSettingsWidget(logic().settings.estimator_stg.estimator_mediator)
         self._pulse_widget = StateEstimationPulseWidget()
-        self._time_trace_widget = StateEstimationTimeTraceWidget(logic)
+        self._time_trace_widget = StateEstimationTimeTraceWidget()
 
         self._analysis_interval_spinbox = ScienDSpinBox()
         self._analysis_interval_spinbox.setSuffix("s")
@@ -354,10 +354,7 @@ class StateEstimationPulseWidget(QWidget):
 class StateEstimationTimeTraceWidget(QWidget):
     _log = get_logger(__name__)
 
-    def __init__(self, logic):
-        self._logic = logic()
-        self.estimator = logic().estimator
-        self.settings = logic().settings.estimator_stg
+    def __init__(self):
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
         ui_file = os.path.join(qdyne_dir, "ui", "state_estimation_time_trace_widget.ui")
@@ -383,39 +380,41 @@ class StateEstimationTimeTraceWidget(QWidget):
         self.close()
 
     def connect_signals(self):
-        self.get_time_trace_pushButton.clicked.connect(self.update_time_trace)
-        # Connect update signals from qdyne_measurement_logic
-        self._logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
+        # self.get_time_trace_pushButton.clicked.connect(self.update_time_trace) #TODO connect it to logic
+        # # Connect update signals from qdyne_measurement_logic #TODO move this
+        # self._logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
 
     def disconnect_signals(self):
-        self.get_time_trace_pushButton.clicked.disconnect()
-        self._logic.measure.sigTimeTraceDataUpdated.disconnect()
+        # self.get_time_trace_pushButton.clicked.disconnect() # TODO conect it to logic
+        # self._logic.measure.sigTimeTraceDataUpdated.disconnect() #TODO move this
 
-    def update_time_trace(self):
-        self._logic.measure.get_raw_data()
-        self._logic.measure.get_pulse()
-        self._logic.measure.sigPulseDataUpdated.emit()
-        self._logic.measure.extract_data()
-        self._logic.measure.estimate_state()
-        self._logic.measure.sigTimeTraceDataUpdated.emit()
+    # def update_time_trace(self): #TODO move this
+    #     self._logic.measure.get_raw_data()
+    #     self._logic.measure.get_pulse()
+    #     self._logic.measure.sigPulseDataUpdated.emit()
+    #     self._logic.measure.extract_data()
+    #     self._logic.measure.estimate_state()
+    #     self._logic.measure.sigTimeTraceDataUpdated.emit()
 
-    def time_trace_updated(self):
-        y = self._logic.data.time_trace
-        time_between_readouts = (
-            self._logic.pulsedmasterlogic()
-            .sequencegeneratorlogic()
-            .get_ensemble_info(
-                self._logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
-            )[0]
-        )
+    @Slot()
+    def update_time_trace_image(self, time_trace, readout_interval):
+        y = time_trace
+        # TODO move this to logic
+        # time_between_readouts = (
+        #     self._logic.pulsedmasterlogic()
+        #     .sequencegeneratorlogic()
+        #     .get_ensemble_info(
+        #         self._logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
+        #     )[0]
+        # )
         self.time_trace_PlotWidget.setLabel(axis="bottom", text="time", units="s")
-        if time_between_readouts == 0:
-            time_between_readouts = 1
+        if readout_interval == 0:
+            readout_interval = 1
             self._log.warn(
                 "Time between readouts could not be determined from loaded pulse sequence. Make sure a pulse sequence is loaded. Switching to number of readouts as x axis."
             )
             self.time_trace_PlotWidget.setLabel(
                 axis="bottom", text="readouts", units="#"
             )
-        x = np.arange(len(y)) * time_between_readouts
+        x = np.arange(len(y)) * readout_interval
         self.time_trace_image.setData(x=x, y=y)
