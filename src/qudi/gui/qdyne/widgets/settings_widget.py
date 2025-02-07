@@ -81,23 +81,23 @@ class SettingsWidget(QtWidgets.QWidget):
     #
     #     self.settings.settings_updated_sig.disconnect()
 
-    def update_current_method(self):
-        self.settings.current_method = self.method_comboBox.currentText()
-        self.setting_comboBox.blockSignals(True)
-        self.setting_comboBox.clear()
-        self.setting_comboBox.blockSignals(False)
-        self.setting_comboBox.addItems(self.settings.current_setting_list)
-        self.settings.current_stg_name = "default"
-        self.setting_comboBox.setCurrentText(self.settings.current_stg_name)
+    # def update_current_method(self):
+    #     self.settings.current_method = self.method_comboBox.currentText()
+    #     self.setting_comboBox.blockSignals(True)
+    #     self.setting_comboBox.clear()
+    #     self.setting_comboBox.blockSignals(False)
+    #     self.setting_comboBox.addItems(self.settings.current_setting_list)
+    #     self.settings.current_stg_name = "default"
+    #     self.setting_comboBox.setCurrentText(self.settings.current_stg_name)
 
-    def update_current_setting(self):
-        self.settings.current_stg_name = self.setting_comboBox.currentText()
-        self.setting_name_updated_sig.emit()
-        self.update_widget()
+    # def update_current_setting(self):
+    #     self.settings.current_stg_name = self.setting_comboBox.currentText()
+    #     self.setting_name_updated_sig.emit()
+    #     self.update_widget()
 
-    def update_widget(self):
-        self.settings_widget.update_params_from_data(self.settings.current_setting)
-        self.setting_widget_updated_sig.emit()
+    # def update_widget(self):
+    #     self.settings_widget.update_params_from_data(self.settings.current_setting)
+    #     self.setting_widget_updated_sig.emit()
 
     # def add_setting(self):
     #     new_name = self.setting_comboBox.currentText()

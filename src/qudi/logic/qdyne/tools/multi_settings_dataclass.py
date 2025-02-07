@@ -41,6 +41,7 @@ class MultiSettingsMediator(SettingsMediator):
     @Slot(str)
     def update_method(self, new_method: str):
         self.current_method = new_method
+        self.set_mode("default")
 
     def set_method(self, new_method: str):
         self.update_method(new_method)
