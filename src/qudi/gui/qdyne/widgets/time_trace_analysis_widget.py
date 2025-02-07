@@ -21,10 +21,11 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
+from PySide2.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
+from PySide2.QtCore import Slot, Qt
 from PySide2.QtGui import QStandardItem, QStandardItemModel
 import pyqtgraph as pg
 import numpy as np
-from PySide2 import QtCore, QtWidgets
 from logging import getLogger
 
 from qudi.util import uic
@@ -35,34 +36,59 @@ from qudi.gui.qdyne.tools.multi_settings_widget import MultiSettingsWidget
 logger = getLogger(__name__)
 
 
-class TimeTraceAnalysisTab(QtWidgets.QWidget):
-    def __init__(self, logic, gui):
+class TimeTraceAnalysisTab(QWidget):
+    def __init__(self, logic):
         super().__init__()
-        self._instantiate_widgets(logic, gui)
+        self._logic = logic
+        self._instantiate_widgets(logic)
         self._form_layout()
 
-    def _instantiate_widgets(self, logic, gui):
-        self._tta_layout = QtWidgets.QVBoxLayout(self)
+    def _instantiate_widgets(self, logic):
+        self._tta_layout = QVBoxLayout(self)
         self._sw = MultiSettingsWidget(logic().settings.analyzer_stg.analyzer_mediator)
-        self._dw = TimeTraceAnalysisDataWidget(logic, gui)
+        self._dw = TimeTraceAnalysisDataWidget(logic().fit_logic, logic().data)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)
 
     def _form_layout(self):
         self._sw.setSizePolicy(
-            QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum
+            QSizePolicy.Minimum, QSizePolicy.Minimum
         )
         self._dw.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
 
     def connect_signals(self):
         self._sw.connect_signals()
-        self._dw.connect_signals()
+        self._connect_signals_from_data_widget()
+        self._connect_signals_from_logic()
+
+    def _connect_signals_from_data_widget(self):
+        self._dw.plot1_fitwidget.sigDoFit.connect(lambda fit_config: self._logic.do_fit(fit_config))
+        self._dw.plot2_fitwidget.sigDoFit.connect(lambda fit_config: self._logic.do_fit(fit_config))
+
+        self._dw.analyze_pushButton.clicked.connect(self._logic.measure.analyze_time_trace)
+        self._dw.get_freq_domain_pushButton.clicked.connect(self._logic.measure.get_spectrum)
+
+    def _connect_signals_from_logic(self):
+        self._logic.measure.sigQdyneDataUpdated.connect(self._dw.data_updated)
+        self._logic.sigFitUpdated.connect(self._dw.fit_data_updated)
 
     def disconnect_signals(self):
         self._sw.disconnect_signals()
-        self._dw.disconnect_signals()
+        self._disconnect_signals_from_data_widget()
+        self._disconnect_signals_from_logic()
+
+    def _disconnect_signals_from_data_widget(self):
+        self._dw.plot1_fitwidget.sigDoFit.disconnect()
+        self._dw.plot2_fitwidget.sigDoFit.disconnect()
+
+        self._dw.analyze_pushButton.clicked.disconnect()
+        self._dw.get_freq_domain_pushButton.clicked.disconnect()
+
+    def _disconnect_signals_from_logic(self):
+        self._logic.measure.sigQdyneDataUpdated.disconnect()
+        self._logic.sigFitUpdated.disconnect()
 
     def activate(self):
         self._sw.activate()
@@ -72,78 +98,10 @@ class TimeTraceAnalysisTab(QtWidgets.QWidget):
         self.close()
 
 
-
-# class TimeTraceAnalysisSettingsWidget(QtWidgets.QWidget):
-#     def __init__(self, logic, gui):
-#         self._logic = logic()
-#         self._gui = gui
-#         self.analyzer = logic().analyzer
-#         self.settings = logic().settings.analyzer_stg
-#         # Get the path to the *.ui file
-#         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
-#         ui_file = os.path.join(
-#             qdyne_dir, "ui", "time_trace_analysis_settings_widget.ui"
-#         )
-#
-#         # Load it
-#         super(TimeTraceAnalysisSettingsWidget, self).__init__()
-#
-#         uic.loadUi(ui_file, self)
-#
-#     def activate(self):
-#         self._activate_widgets()
-#
-#     def _activate_widgets(self):
-#         self.tta_method_comboBox.addItems(self.analyzer.method_lists)
-#         self.tta_method_comboBox.setCurrentText(self.settings.current_method)
-#         self.tta_setting_comboBox.addItems(self.settings.current_setting_list)
-#         self.tta_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#         self.tta_setting_comoBox.setEditable(True)
-#         self.tta_setting_add_pushButton.setToolTip('Enter new name in combo box')
-#
-#         self.tta_settings_widget = DataclassWidget(self.settings.current_setting)
-#         self.tta_settings_gridLayout.addWidget(self.tta_settings_widget)
-#
-#     def connect_signals(self):
-#         self.tta_method_comboBox.currentTextChanged.connect(self.update_current_method)
-#         self.tta_setting_comboBox.currentTextChanged.connect(
-#             self.update_current_setting
-#         )
-#         self.tta_setting_add_pushButton.clicked.connect(self.add_setting)
-#         self.tta_setting_delete_pushButton.clicked.connect(self.delete_setting)
-#
-#     def disconnect_signals(self):
-#         self.tta_method_comboBox.currentTextChanged.disconnect()
-#         self.tta_setting_comboBox.currentTextChanged.disconnect()
-#         self.tta_setting_add_pushButton.clicked.disconnect()
-#         self.tta_setting_delete_pushButton.clicked.disconnect()
-#
-#     def update_current_method(self):
-#         self.settings.current_method = self.tta_method_comboBox.currentText()
-#
-#     def update_current_setting(self):
-#         self.settings.current_stg_name = self.tta_setting_comboBox.currentText()
-#         current_setting = copy.deepcopy(self.settings.current_setting)
-#         self.tta_settings_widget.update_data(current_setting)
-#
-#     def add_setting(self):
-#         self.settings.add_setting()
-#         self.tta_setting_comboBox.addItem(self.settings.current_stg_name)
-#         self.tta_setting_comboBox.setCurrentText(self.settings.current_stg_name)
-#
-#     def delete_setting(self):
-#         self.settings.current_stg_name = self.tta_setting_comboBox.currentText()
-#         current_index = self.tta_setting_comboBox.currentIndex()
-#         self.settings.remove_setting()
-#         self.tta_setting_comboBox.removeItem(current_index)
-
-
-class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
-    def __init__(self, logic, gui):
-        self._logic = logic()
-        self._gui = gui
-
-        self.freq_data = self._logic.data.freq_data
+class TimeTraceAnalysisDataWidget(QWidget):
+    def __init__(self, fit_logic, data):
+        self._fit = fit_logic
+        self.freq_data = data.freq_data
 
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
@@ -161,20 +119,20 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
 
     def _form_layout(self):
         self.tta_gridGroupBox.setSizePolicy(
-            QtWidgets.QSizePolicy.Minimum, QtWidgets.QSizePolicy.Minimum
+            QSizePolicy.Minimum, QSizePolicy.Minimum
         )
         self.plot1_GroupBox.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
         self.plot2_GroupBox.setSizePolicy(
-            QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding
+            QSizePolicy.Expanding, QSizePolicy.Expanding
         )
 
     def _activate_plot1_widget(self):
         self.range_spinBox.setValue(self.freq_data.range_index)
         self.signal_image = pg.PlotDataItem(
-            pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
-            style=QtCore.Qt.DotLine,
+            pen=pg.mkPen(palette.c1, style=Qt.DotLine),
+            style=Qt.DotLine,
             symbol="o",
             symbolPen=palette.c1,
             symbolBrush=palette.c1,
@@ -194,14 +152,14 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
             x=np.arange(10), y=np.zeros(10), top=0.0, bottom=0.0, pen=palette.c2
         )
 
-        self.plot1_fitwidget.link_fit_container(self._logic.fit.fit_container)
+        self.plot1_fitwidget.link_fit_container(self._fit.fit_container)
         self.model = QStandardItemModel()
 
     def _activate_plot2_widget(self):
         # Configure the second signal plot display:
         self.second_signal_image = pg.PlotDataItem(
-            pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
-            style=QtCore.Qt.DotLine,
+            pen=pg.mkPen(palette.c1, style=Qt.DotLine),
+            style=Qt.DotLine,
             symbol="o",
             symbolPen=palette.c1,
             symbolBrush=palette.c1,
@@ -212,22 +170,13 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         # Configure the fit of the data in the secondary pulse analysis display:
         self.second_fit_image = pg.PlotDataItem(pen=palette.c3)
         self.plot2_PlotWidget.addItem(self.second_fit_image)
-        self.plot2_fitwidget.link_fit_container(self._logic.fit_container2)
+        self.plot2_fitwidget.link_fit_container(self._fit.fit_container2)
 
     def connect_signals(self):
-        self.analyze_pushButton.clicked.connect(self._logic.measure.analyze_time_trace)
-        self.get_freq_domain_pushButton.clicked.connect(self.get_spectrum)
         self.get_peaks_pushButton.clicked.connect(self.get_peaks)
         self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
         self.range_spinBox.editingFinished.connect(self.update_spectrum)
-        self.plot1_fitwidget.sigDoFit.connect(
-            lambda x: self._logic.do_fit(x)
-        )  # fit config is input
-        self.plot2_fitwidget.sigDoFit.connect(lambda x: self._logic.do_fit(x))
 
-        self._logic.sigFitUpdated.connect(self.fit_data_updated)
-        # Connect update signals from qdyne_measurement_logic
-        self._logic.measure.sigQdyneDataUpdated.connect(self.data_updated)
 
     def disconnect_signals(self):
         self.get_peaks_pushButton.clicked.disconnect()
@@ -235,10 +184,6 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.range_spinBox.valueChanged.disconnect()
         self.plot1_fitwidget.sigDoFit.disconnect()
         self.plot2_fitwidget.sigDoFit.disconnect()
-
-    def get_spectrum(self):
-        self._logic.measure.get_spectrum()
-        # self.freq_data = self._logic.data.freq_data
 
     def get_peaks(self):
         self.freq_data.get_peaks()
@@ -251,18 +196,18 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.current_peak_comboBox.setModel(self.model)
 
     def update_spectrum(self):
-        def update_spectrum(self):
-            if not self.current_peak_comboBox.currentText():
-                return
-            range_index = self.range_spinBox.value()
-            if range_index >= self.freq_data.x.size:
-                range_index = self.freq_data.x.size - 1
-
-            self.freq_data.range_index = range_index
-            spectrum = self.freq_data.data_around_peak
-            self.signal_image.setData(x=spectrum[0], y=spectrum[1])
-            self.plot1_PlotWidget.clear()
-            self.plot1_PlotWidget.addItem(self.signal_image)
+        # def update_spectrum(self):
+        #     if not self.current_peak_comboBox.currentText():
+        #         return
+        #     range_index = self.range_spinBox.value()
+        #     if range_index >= self.freq_data.x.size:
+        #         range_index = self.freq_data.x.size - 1
+        #
+        #     self.freq_data.range_index = range_index
+        #     spectrum = self.freq_data.data_around_peak
+        #     self.signal_image.setData(x=spectrum[0], y=spectrum[1])
+        #     self.plot1_PlotWidget.clear()
+        #     self.plot1_PlotWidget.addItem(self.signal_image)
         if self.current_peak_comboBox.currentText():
             self.freq_data.current_peak = self.model.item(
                 self.current_peak_comboBox.currentIndex()
@@ -281,7 +226,7 @@ class TimeTraceAnalysisDataWidget(QtWidgets.QWidget):
         self.update_spectrum()
         pass
 
-    @QtCore.Slot(str, object)
+    @Slot(str, object)
     def fit_data_updated(self, fit_config, fit_result):
         """
 

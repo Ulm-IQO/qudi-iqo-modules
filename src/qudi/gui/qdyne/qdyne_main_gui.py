@@ -57,7 +57,7 @@ class QdyneMainGui(GuiBase):
         self._gw = GenerationWidget(self)
         self._gsw = PredefinedMethodsConfigDialogWidget(self)
         self._sew = StateEstimationTab(self.logic)
-        self._ttaw = TimeTraceAnalysisTab(self.logic, self)
+        self._ttaw = TimeTraceAnalysisTab(self.logic)
         self._fcd = FitConfigurationDialog(
             parent=self._mainw,
             fit_config_model=self.logic().fit.fit_config_model
