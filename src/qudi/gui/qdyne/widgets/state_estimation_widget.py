@@ -79,7 +79,6 @@ class StateEstimationTab(QWidget):
     def connect_signals(self):
         self._settings_widget.connect_signals()
         self._pulse_widget.connect_signals()
-        self._time_trace_widget.connect_signals()
 
         self._connect_settings_widget_signals()
         self._connect_pulse_widget_signals()
@@ -108,7 +107,6 @@ class StateEstimationTab(QWidget):
     def disconnect_signals(self):
         self._settings_widget.disconnect_signals()
         self._pulse_widget.disconnect_signals()
-        self._time_trace_widget.disconnect_signals()
 
         self._disconnect_settings_widget_signals()
         self._disconnect_pulse_widget_signals()
@@ -140,7 +138,6 @@ class StateEstimationTab(QWidget):
         self._settings_widget.deactivate()
         self._pulse_widget.deactivate()
         self._time_trace_widget.deactivate()
-
 
     def analysis_timer_interval(self):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()

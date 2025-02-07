@@ -30,7 +30,7 @@ from logging import getLogger
 from qudi.util import uic
 from qudi.util.colordefs import QudiPalettePale as palette
 
-from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
+from qudi.gui.qdyne.tools.multi_settings_widget import MultiSettingsWidget
 
 logger = getLogger(__name__)
 
@@ -43,8 +43,7 @@ class TimeTraceAnalysisTab(QtWidgets.QWidget):
 
     def _instantiate_widgets(self, logic, gui):
         self._tta_layout = QtWidgets.QVBoxLayout(self)
-        self._sw = SettingsWidget(logic().settings.analyzer_stg,
-                                  logic().analyzer.method_list)
+        self._sw = MultiSettingsWidget(logic().settings.analyzer_stg.analyzer_mediator)
         self._dw = TimeTraceAnalysisDataWidget(logic, gui)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)
