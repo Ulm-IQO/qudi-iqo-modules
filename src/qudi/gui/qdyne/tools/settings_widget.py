@@ -18,20 +18,33 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from dataclasses import dataclass
 from PySide2.QtCore import Signal, Slot
 from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QPushButton
 
-from qudi.logic.qdyne.tools.settings_dataclass import SettingsMediator
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
 
 class SettingsWidget(DataclassWidget):
+    """Data widget class for settings widget.
+
+    Several modes of settings can be handled.
+    Modes are variants of a dataclass.
+    """
     mode_widget_updated_sig = Signal()
     add_mode_pushed_sig = Signal()
     delete_mode_pushed_sig = Signal()
 
-    def __init__(self, mediator: SettingsMediator, dataclass_obj: dataclass = None):
+    def __init__(self, mediator, dataclass_obj=None) -> None:
+        """Initialize the dataclass widget with the corresponding mediator.
+
+        Parameters
+        ----------
+        mediator : SettingsMediator
+            mediator class object to communicate with a set of variants for a single dataclass.
+        dataclass_obj : dataclass
+            dataclass object for creation of initial widgets.
+            When None is passed, no widget is created. set_data should be called later.
+        """
         super().__init__(mediator, dataclass_obj)
 
     @property

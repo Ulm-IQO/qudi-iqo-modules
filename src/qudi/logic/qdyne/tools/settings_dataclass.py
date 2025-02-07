@@ -19,27 +19,29 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from copy import deepcopy
-from dataclasses import dataclass, field, fields
-from PySide2.QtCore import QObject, Signal, Slot
+from PySide2.QtCore import Signal, Slot
 
-from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass, DataclassMediator
-from qudi.gui.qdyne.tools.settings_widget import SettingsWidget
-
-
-class Settings(CustomDataclass):
-    pass
+from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
 
 
 class SettingsMediator(DataclassMediator):
-    """
-    Extended DataclassManager class to provide multiple settings modes.
+    """Extended DataclassManager class to provide multiple settings modes.
+
     This class can manage several sets of settings modes sharing the same dataclass,
     but not different types of classes.
     """
     mode_updated_sig = Signal()
 
-    def __init__(self, widget: SettingsWidget):
-        super().__init__()
+    def __init__(self, widget):
+        """Initialize the dataclass mediator with the corresponding widget.
+
+        Parameters
+        ----------
+        widget : SettingsWidget
+            dataclass widget object handling different modes of settings.
+        """
+
+        super().__init__(widget)
         self.current_mode = "default"
         self.mode_dict = dict()
         self.data = self.mode_dict[self.current_mode]

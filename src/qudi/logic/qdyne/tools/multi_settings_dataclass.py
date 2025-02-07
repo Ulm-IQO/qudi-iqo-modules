@@ -18,20 +18,28 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from dataclasses import dataclass, field, fields
-from PySide2.QtCore import QObject, Signal, Slot
+from PySide2.QtCore import Signal, Slot
 
-from qudi.logic.qdyne.tools.settings_dataclass import Settings, SettingsMediator
+from qudi.logic.qdyne.tools.settings_dataclass import SettingsMediator
 
 
 class MultiSettingsMediator(SettingsMediator):
-    """
-    A class to manage multiple settings dataclasses.
+    """A class to manage multiple settings dataclasses.
+
+    These settings could be different and called methods.
+    Each method can also have several modes.
     """
     method_updated_sig = Signal()
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, widget):
+        """Initialize the dataclass mediator with the corresponding widget.
+
+        Parameters
+        ----------
+        widget : MultiSettingsWidget
+            dataclass widget object handling different methods.
+        """
+        super().__init__(widget)
         self.current_method = "default"
         self.method_dict = dict() #2D dict [method][mode]
         self.mode_dict = self.method_dict[self.current_method] #current_mode_dict

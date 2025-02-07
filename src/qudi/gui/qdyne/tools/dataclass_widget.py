@@ -19,13 +19,11 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from dataclasses import dataclass, fields
+from dataclasses import fields
 from PySide2 import QtWidgets
 from PySide2.QtCore import Signal, Slot, QSize
 from qudi.core.logger import get_logger
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
-from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
-
 
 # class DataclassWidget(QtWidgets.QWidget):
 #     def __init__(self, dataclass_obj: dataclass, invoke_func=None) -> None:
@@ -181,12 +179,19 @@ from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
 #                 old_widget.valueChanged.disconnect()
 
 class DataclassWidget(QtWidgets.QWidget):
+    """Data widget class which can create widgets from a dataclass object."""
     data_widget_updated_sig = Signal()
 
-    def __init__(self, mediator: DataclassMediator, dataclass_obj: dataclass = None) -> None:
-        """
-        dataclass_obj: dataclass object used for the widgets
-        func: function invoked after values are changed.
+    def __init__(self, mediator, dataclass_obj=None) -> None:
+        """Initialize the dataclass widget with the corresponding mediator.
+
+        Parameters
+        ----------
+        mediator : DataclassMediator
+            mediator class object to communicate with a dataclass.
+        dataclass_obj : dataclass
+            dataclass object for creation of initial widgets.
+            When None is passed, no widget is created. set_data should be called later.
         """
         super().__init__()
         self._log = get_logger(__name__)

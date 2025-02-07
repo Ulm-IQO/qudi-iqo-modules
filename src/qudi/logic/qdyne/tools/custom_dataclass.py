@@ -20,12 +20,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import os
 import pickle
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, fields
 from PySide2.QtCore import QObject, Signal, Slot
 
 from qudi.core.logger import get_logger
-from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
-from qudi.util.datastorage import NpyDataStorage
 
 @dataclass
 class CustomDataclass:
@@ -45,11 +43,20 @@ class CustomDataclass:
 
 
 class DataclassMediator(QObject):
-    """
+    """Dataclass mediator class communicating with gui widgets.
 
     """
     data_updated_sig = Signal()
-    def __init__(self, widget: DataclassWidget):
+
+    def __init__(self, widget):
+        """Initialize the dataclass mediator with the corresponding widget.
+
+        Parameters
+        ----------
+        widget : DataclassWidget
+            dataclass widget object for data widgets handling.
+        """
+
         self._log = get_logger(__name__)
         self.data = None
         self.data_container = None
