@@ -25,6 +25,7 @@ from PySide2.QtCore import Signal, Slot, QSize
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
 
+
 # class DataclassWidget(QtWidgets.QWidget):
 #     def __init__(self, dataclass_obj: dataclass, invoke_func=None) -> None:
 #         """
@@ -180,7 +181,8 @@ from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
 
 class DataclassWidget(QtWidgets.QWidget):
     data_widget_updated_sig = Signal()
-    def __init__(self, dataclass_obj: dataclass, mediator: DataclassMediator) -> None:
+
+    def __init__(self, mediator: DataclassMediator, dataclass_obj: dataclass = None) -> None:
         """
         dataclass_obj: dataclass object used for the widgets
         func: function invoked after values are changed.
@@ -224,7 +226,6 @@ class DataclassWidget(QtWidgets.QWidget):
             data_layout.addWidget(self.data_widgets[field.name], 1, param_index + 1, 1, 1)
             param_index += 1
 
-        data_layout
         return data_layout
 
     def connect_signals(self):
@@ -240,7 +241,6 @@ class DataclassWidget(QtWidgets.QWidget):
 
     def disconnect_signals_from_mediator(self):
         self.mediator.data_updated_sig.disconnect()
-
 
     def _emit_update_sig(self):
         self._widget_value_updated_sig.emit(self.current_values_dict)

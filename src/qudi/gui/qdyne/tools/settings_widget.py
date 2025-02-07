@@ -31,9 +31,8 @@ class SettingsWidget(DataclassWidget):
     add_mode_pushed_sig = Signal()
     delete_mode_pushed_sig = Signal()
 
-    def __init__(self, dataclass_obj: dataclass, mediator: SettingsMediator):
-        super().__init__(dataclass_obj, mediator)
-        self.mode_list =
+    def __init__(self, mediator: SettingsMediator, dataclass_obj: dataclass = None):
+        super().__init__(mediator, dataclass_obj)
 
     @property
     def current_mode(self):
@@ -48,7 +47,7 @@ class SettingsWidget(DataclassWidget):
         mode_label.setText("Mode")
 
         mode_comboBox = QComboBox()
-        mode_comboBox.addItems(self.mode_list)
+        mode_comboBox.addItems(self.mediator.mode_list)
         mode_comboBox.setEditable(True)
 
         add_mode_pushButton = QPushButton("Add")

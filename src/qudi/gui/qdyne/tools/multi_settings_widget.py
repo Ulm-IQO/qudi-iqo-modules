@@ -28,8 +28,8 @@ from qudi.gui.qdyne.tools.settings_widget import SettingsWidget
 class MultiSettingsWidget(SettingsWidget):
     method_widget_updated_sig = Signal()
 
-    def __init__(self, dataclass_obj: dataclass, mediator: MultiSettingsMediator):
-        super().__init__(dataclass_obj, mediator)
+    def __init__(self, mediator: MultiSettingsMediator, dataclass_obj: dataclass = None):
+        super().__init__(mediator, dataclass_obj)
 
     @property
     def current_method(self):

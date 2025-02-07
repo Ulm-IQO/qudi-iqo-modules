@@ -30,7 +30,7 @@ from qudi.core.logger import get_logger
 from qudi.util import uic
 from qudi.util.colordefs import QudiPalettePale as palette
 
-from qudi.gui.qdyne.widgets.settings_widget import SettingsWidget
+from qudi.gui.qdyne.tools.multi_settings_widget import MultiSettingsWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
@@ -157,9 +157,9 @@ class StateEstimationTab(QtWidgets.QWidget):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
 
 
-class StateEstimationSettingsWidget(SettingsWidget):
-    def __init__(self, settings, method_list, invoke_func=None):
-        super(StateEstimationSettingsWidget, self).__init__(settings, method_list, invoke_func)
+class StateEstimationSettingsWidget(MultiSettingsWidget):
+    def __init__(self, estimator_settings_mediator):
+        super(MultiSettingsWidget, self).__init__(estimator_settings_mediator)
 
     @QtCore.Slot(float, float)
     def update_from_sig_lines(self, sig_start, sig_end):
