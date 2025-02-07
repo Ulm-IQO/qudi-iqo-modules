@@ -46,13 +46,15 @@ class StateEstimationTab(QWidget):
     def _instantiate_widgets(self, logic):
         self._sew_layout = QVBoxLayout(self)
         self._settings_widget = StateEstimationSettingsWidget(logic().settings.estimator_stg.estimator_mediator)
-        self._pulse_widget = StateEstimationPulseWidget(logic)
+        self._pulse_widget = StateEstimationPulseWidget()
         self._time_trace_widget = StateEstimationTimeTraceWidget(logic)
+
         self._analysis_interval_spinbox = ScienDSpinBox()
         self._analysis_interval_spinbox.setSuffix("s")
         self._analysis_interval_spinbox.setMinimum(0)
         self._analysis_interval_spinbox.setValue(self._logic().measure.analysis_timer_interval)
         self._analysis_interval_label = QLabel("Analysis interval")
+
         self._sew_layout.addWidget(self._settings_widget)
         self._sew_layout.addWidget(self._pulse_widget)
         self._sew_layout.addWidget(self._time_trace_widget)
@@ -78,69 +80,85 @@ class StateEstimationTab(QWidget):
         self._settings_widget.connect_signals()
         self._pulse_widget.connect_signals()
         self._time_trace_widget.connect_signals()
+
+        self._connect_settings_widget_signals()
+        self._connect_pulse_widget_signals()
+
         self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
         self.connect_mutual_signals()
         self._pulse_widget.update_lines()
 
-        self._settings_widget.method_updated_sig.connect(self.reconnect_mutual_signals)
+        # self._settings_widget.method_updated_sig.connect(self.reconnect_mutual_signals)
+        # self._settings_widget.setting_name_updated_sig.connect(self.reconnect_mutual_signals)
+        # self._settings_widget.setting_name_updated_sig.connect(self._pulse_widget.update_lines)
+
+    # def connect_mutual_signals(self):
+        # param_names = self._settings_widget.settings.current_setting.__annotations__
+        # if "sig_start" in param_names:
+        #     self._settings_widget.settings_widget.widgets["sig_start"].valueChanged.connect(
+        #         self._pulse_widget.update_lines
+        #     )
+        # if "sig_end" in param_names:
+        #     self._settings_widget.settings_widget.widgets["sig_end"].valueChanged.connect(
+        #         self._pulse_widget.update_lines
+        #     )
+        # if "ref_start" in param_names:
+        #     self._settings_widget.settings_widget.widgets["ref_start"].valueChanged.connect(
+        #         self._pulse_widget.update_lines
+        #     )
+        # if "ref_end" in param_names:
+        #     self._settings_widget.settings_widget.widgets["ref_end"].valueChanged.connect(
+        #         self._pulse_widget.update_lines
+        #     )
+
+        # self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.update_from_sig_lines)
+        # self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.update_from_ref_lines)
+
+    def _connect_settings_widget_signals(self):
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.toggle_lines)
-        self._settings_widget.setting_name_updated_sig.connect(self.reconnect_mutual_signals)
-        self._settings_widget.setting_name_updated_sig.connect(self._pulse_widget.update_lines)
-
-    def connect_mutual_signals(self):
-        param_names = self._settings_widget.settings.current_setting.__annotations__
-        if "sig_start" in param_names:
-            self._settings_widget.settings_widget.widgets["sig_start"].valueChanged.connect(
-                self._pulse_widget.update_lines
-            )
-        if "sig_end" in param_names:
-            self._settings_widget.settings_widget.widgets["sig_end"].valueChanged.connect(
-                self._pulse_widget.update_lines
-            )
-        if "ref_start" in param_names:
-            self._settings_widget.settings_widget.widgets["ref_start"].valueChanged.connect(
-                self._pulse_widget.update_lines
-            )
-        if "ref_end" in param_names:
-            self._settings_widget.settings_widget.widgets["ref_end"].valueChanged.connect(
-                self._pulse_widget.update_lines
-            )
-
-        self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.update_from_sig_lines)
-        self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.update_from_ref_lines)
-
-    def connect_settings_widget_signals(self):
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.update_lines)
 
-    def connect_pulse_widget_signals(self):
+    def _connect_pulse_widget_signals(self):
         self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
+        self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
 
 
 
-    def disconnect_mutual_signals(self):
-        param_names = self._settings_widget.settings.current_setting.__annotations__
-        if "sig_start" in param_names:
-            self._settings_widget.settings_widget.widgets["sig_start"].valueChanged.disconnect()
-        if "sig_end" in param_names:
-            self._settings_widget.settings_widget.widgets["sig_end"].valueChanged.disconnect()
-        if "ref_start" in param_names:
-            self._settings_widget.settings_widget.widgets["ref_start"].valueChanged.disconnect()
-        if "ref_end" in param_names:
-            self._settings_widget.settings_widget.widgets["ref_end"].valueChanged.disconnect()
+    # def disconnect_mutual_signals(self):
+    #     param_names = self._settings_widget.settings.current_setting.__annotations__
+    #     if "sig_start" in param_names:
+    #         self._settings_widget.settings_widget.widgets["sig_start"].valueChanged.disconnect()
+    #     if "sig_end" in param_names:
+    #         self._settings_widget.settings_widget.widgets["sig_end"].valueChanged.disconnect()
+    #     if "ref_start" in param_names:
+    #         self._settings_widget.settings_widget.widgets["ref_start"].valueChanged.disconnect()
+    #     if "ref_end" in param_names:
+    #         self._settings_widget.settings_widget.widgets["ref_end"].valueChanged.disconnect()
+    #
+    #     self._pulse_widget.sig_line_changed_sig.disconnect()
+    #     self._pulse_widget.ref_line_changed_sig.disconnect()
 
-        self._pulse_widget.sig_line_changed_sig.disconnect()
-        self._pulse_widget.ref_line_changed_sig.disconnect()
-
-    def reconnect_mutual_signals(self):
-        self.connect_mutual_signals()
+    # def reconnect_mutual_signals(self):
+    #     self.connect_mutual_signals()
 
     def disconnect_signals(self):
         self._settings_widget.disconnect_signals()
         self._pulse_widget.disconnect_signals()
         self._time_trace_widget.disconnect_signals()
+
+        self._disconnect_settings_widget_signals()
+        self._disconnect_pulse_widget_signals()
+
         self._analysis_interval_spinbox.editingFinished.disconnect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.disconnect(self._analysis_interval_spinbox.setValue)
+
+    def _disconnect_settings_widget_signals(self):
+        self._settings_widget.data_widget_updated_sig.disconnect()
+
+    def _disconnect_pulse_widget_signals(self):
+        self._pulse_widget.sig_line_changed_sig.disconnect()
+        self._pulse_widget.ref_line_changed_sig.disconnect()
 
     def activate_ui(self):
         self._settings_widget.activate()
