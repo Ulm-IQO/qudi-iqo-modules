@@ -49,8 +49,10 @@ class SettingsWidget(DataclassWidget):
 
         mode_comboBox = QComboBox()
         mode_comboBox.addItems(self.mode_list)
+        mode_comboBox.setEditable(True)
 
         add_mode_pushButton = QPushButton("Add")
+        add_mode_pushButton.setToolTip('Enter new name in combo box')
         delete_mode_pushButton = QPushButton("Delete")
 
         self.labels["mode"] = mode_label
@@ -92,11 +94,11 @@ class SettingsWidget(DataclassWidget):
         self.widgets["mode"].setText(new_mode) #TODO consider how to update widgets
 
     def connect_signals_from_widgets(self):
-        self.widgets["mode"].editingFinished.connect(lambda clicked :self.mediator.update_mode(self.current_mode))
+        self.widgets["mode"].currentIndexChanged.connect(lambda clicked :self.mediator.update_mode(self.current_mode))
         self.widgets["add_mode"].clicked.connect(lambda clicked :self.mediator.add_mode(self.current_mode))
         self.widgets["delete_mode"].clicked.connect(lambda clicked :self.mediator.delete_mode(self.current_mode))
 
     def connect_signals_from_widgets(self):
-        self.widget["mode"].editingFinished.disconnect()
+        self.widget["mode"].currentIndexChanged.disconnect()
         self.widgets["add_mode"].clicked.disconnect()
         self.widgets["delete_mode"].clicked.disconnect()

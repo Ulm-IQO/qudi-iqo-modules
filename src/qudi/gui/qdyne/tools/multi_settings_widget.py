@@ -93,8 +93,8 @@ class MultiSettingsWidget(SettingsWidget):
 
     def connect_signals_from_widgets(self):
         super().connect_signals_from_widgets()
-        self.widgets["method"].editingFinished.connect(lambda method: self.mediator.update_method(self.current_method))
+        self.widgets["method"].currentTextChanged.connect(lambda method: self.mediator.update_method(self.current_method))
 
     def disconnect_signals_from_widgets(self):
         super().disconnect_signals_from_mediator()
-        self.widgets["method"].editingFinished.disconnect()
+        self.widgets["method"].currentTextChanged.disconnect()

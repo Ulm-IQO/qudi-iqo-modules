@@ -31,11 +31,11 @@ from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
 class SettingsWidget(QtWidgets.QWidget):
     _log = get_logger(__name__)
-    method_updated_sig = QtCore.Signal()
-    setting_name_updated_sig = QtCore.Signal()
-    setting_widget_updated_sig = QtCore.Signal()
-    add_button_pushed_sig = QtCore.Signal(str)
-    remove_setting_sig = QtCore.Signal(str)
+    # method_updated_sig = QtCore.Signal()
+    # setting_name_updated_sig = QtCore.Signal()
+    # setting_widget_updated_sig = QtCore.Signal()
+    # add_button_pushed_sig = QtCore.Signal(str)
+    # remove_setting_sig = QtCore.Signal(str)
 
     def __init__(self, settings, method_list, invoke_func=None):
         self.settings = settings
@@ -50,36 +50,36 @@ class SettingsWidget(QtWidgets.QWidget):
         uic.loadUi(ui_file, self)
 
     def activate(self):
-        self.method_comboBox.addItems(self.method_list)
-        self.method_comboBox.setCurrentText(self.settings.current_method)
-        self.setting_comboBox.addItems(self.settings.current_setting_list)
-        self.setting_comboBox.setCurrentText(self.settings.current_stg_name)
-        self.setting_comboBox.setEditable(True)
-        self.setting_add_pushButton.setToolTip('Enter new name in combo box')
-
-        self.settings_widget = DataclassWidget(self.settings.current_setting, self.invoke_func)
-        self.setting_gridLayout.addWidget(self.settings_widget)
+        # self.method_comboBox.addItems(self.method_list)
+        # self.method_comboBox.setCurrentText(self.settings.current_method)
+        # self.setting_comboBox.addItems(self.settings.current_setting_list)
+        # self.setting_comboBox.setCurrentText(self.settings.current_stg_name)
+        # self.setting_comboBox.setEditable(True)
+        # self.setting_add_pushButton.setToolTip('Enter new name in combo box')
+        #
+        # self.settings_widget = DataclassWidget(self.settings.current_setting, self.invoke_func)
+        # self.setting_gridLayout.addWidget(self.settings_widget)
 
     def deactivate(self):
         self.close()
 
     def connect_signals(self):
-        self.method_comboBox.currentTextChanged.connect(self.update_current_method)
-        self.setting_comboBox.currentIndexChanged.connect(self.update_current_setting)
-        self.setting_add_pushButton.clicked.connect(self.add_setting)
-        self.setting_delete_pushButton.clicked.connect(self.delete_setting)
-        self.add_button_pushed_sig.connect(self.settings.add_setting)
-        self.remove_setting_sig.connect(self.settings.remove_setting)
-
-        self.settings.settings_updated_sig.connect(self.update_widget)
-
-    def disconnect_signals(self):
-        self.method_comboBox.currentTextChanged.disconnect()
-        self.setting_comboBox.currentIndexChanged.disconnect()
-        self.setting_add_pushButton.clicked.disconnect()
-        self.setting_delete_pushButton.clicked.disconnect()
-
-        self.settings.settings_updated_sig.disconnect()
+    #     self.method_comboBox.currentTextChanged.connect(self.update_current_method)
+    #     self.setting_comboBox.currentIndexChanged.connect(self.update_current_setting)
+    #     self.setting_add_pushButton.clicked.connect(self.add_setting)
+    #     self.setting_delete_pushButton.clicked.connect(self.delete_setting)
+    #     self.add_button_pushed_sig.connect(self.settings.add_setting)
+    #     self.remove_setting_sig.connect(self.settings.remove_setting)
+    #
+    #     self.settings.settings_updated_sig.connect(self.update_widget)
+    #
+    # def disconnect_signals(self):
+    #     self.method_comboBox.currentTextChanged.disconnect()
+    #     self.setting_comboBox.currentIndexChanged.disconnect()
+    #     self.setting_add_pushButton.clicked.disconnect()
+    #     self.setting_delete_pushButton.clicked.disconnect()
+    #
+    #     self.settings.settings_updated_sig.disconnect()
 
     def update_current_method(self):
         self.settings.current_method = self.method_comboBox.currentText()
