@@ -385,6 +385,8 @@ class DataclassWidget(QtWidgets.QWidget):
             self._log.error("name not found in data.")
 
     def connect_signals_from_widgets(self):
+        self.data_widget_updated_sig.connect(self.mediator.update_values)
+
         for field_name, widget in self.data_widgets.items():
             if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
                 widget.editingFinished.connect(self._emit_update_sig)
@@ -394,6 +396,8 @@ class DataclassWidget(QtWidgets.QWidget):
                 widget.valueChanged.connect(self._emit_update_sig)
 
     def disconnect_widgets(self):
+        self.data_widget_updated_sig.disconnect()
+
         for field_name, widget in self.data_widgets.items():
             if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
                 widget.editingFinished.disconnect()

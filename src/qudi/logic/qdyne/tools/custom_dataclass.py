@@ -48,20 +48,12 @@ class DataclassMediator(QObject):
     """
     data_updated_sig = Signal()
 
-    def __init__(self, widget):
-        """Initialize the dataclass mediator with the corresponding widget.
-
-        Parameters
-        ----------
-        widget : DataclassWidget
-            dataclass widget object for data widgets handling.
-        """
+    def __init__(self):
+        """Initialize the dataclass mediator with the corresponding widget."""
 
         self._log = get_logger(__name__)
         self.data = None
         self.data_container = None
-        self.widget = widget
-        pass
 
     @property
     def current_data(self):
@@ -96,12 +88,6 @@ class DataclassMediator(QObject):
 
         else:
             self._log.error(f"Parameter {param_name} not found in dataclass.")
-
-    def connect_signals(self):
-        self.widget.data_widget_updated_sig.connect(self.update_values)
-
-    def disconnect_signas(self):
-        self.widget.data_widget_updated_sig.disconnect()
 
 
 class DataclassStorage:

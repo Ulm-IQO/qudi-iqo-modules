@@ -32,16 +32,10 @@ class SettingsMediator(DataclassMediator):
     """
     mode_updated_sig = Signal()
 
-    def __init__(self, widget):
-        """Initialize the dataclass mediator with the corresponding widget.
+    def __init__(self):
+        """Initialize the dataclass mediator with the corresponding widget."""
 
-        Parameters
-        ----------
-        widget : SettingsWidget
-            dataclass widget object handling different modes of settings.
-        """
-
-        super().__init__(widget)
+        super().__init__()
         self.current_mode = "default"
         self.mode_dict = dict()
         self.data = self.mode_dict[self.current_mode]

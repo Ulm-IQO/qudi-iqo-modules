@@ -31,15 +31,9 @@ class MultiSettingsMediator(SettingsMediator):
     """
     method_updated_sig = Signal()
 
-    def __init__(self, widget):
-        """Initialize the dataclass mediator with the corresponding widget.
-
-        Parameters
-        ----------
-        widget : MultiSettingsWidget
-            dataclass widget object handling different methods.
-        """
-        super().__init__(widget)
+    def __init__(self):
+        """Initialize the dataclass mediator with the corresponding widget."""
+        super().__init__()
         self.current_method = "default"
         self.method_dict = dict() #2D dict [method][mode]
         self.mode_dict = self.method_dict[self.current_method] #current_mode_dict
