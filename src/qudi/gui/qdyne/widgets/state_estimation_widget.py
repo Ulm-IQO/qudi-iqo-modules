@@ -83,6 +83,7 @@ class StateEstimationTab(QWidget):
 
         self._connect_settings_widget_signals()
         self._connect_pulse_widget_signals()
+        self._connect_measurement_signals(self._logic().measure)
 
         self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
@@ -123,7 +124,10 @@ class StateEstimationTab(QWidget):
         self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
         self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
 
-
+    def _connect_measurement_signals(self, measurement_logic):
+        measurement_logic.sigPulseDataUpdated.connect(self._pulse_widget.pulse_updated)
+        measurement_logic.sigMeasurementStarted.connect(lambda: self._pulse_widget.set_lines_movable(False))
+        measurement_logic.sigMeasurementStopped.connect(lambda: self._pulse_widget.set_lines_movable(True))
 
     # def disconnect_mutual_signals(self):
     #     param_names = self._settings_widget.settings.current_setting.__annotations__
@@ -149,6 +153,7 @@ class StateEstimationTab(QWidget):
 
         self._disconnect_settings_widget_signals()
         self._disconnect_pulse_widget_signals()
+        self._disconnect_measurement_signals(self._logic().measure)
 
         self._analysis_interval_spinbox.editingFinished.disconnect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.disconnect(self._analysis_interval_spinbox.setValue)
@@ -159,6 +164,11 @@ class StateEstimationTab(QWidget):
     def _disconnect_pulse_widget_signals(self):
         self._pulse_widget.sig_line_changed_sig.disconnect()
         self._pulse_widget.ref_line_changed_sig.disconnect()
+
+    def _disconnect_measurement_signals(self, measurement_logic):
+        measurement_logic.sigPulseDataUpdated.disconnect()
+        measurement_logic.sigMeasurementStarted.disconnect()
+        measurement_logic.sigMeasurementStopped.disconnect()
 
     def activate_ui(self):
         self._settings_widget.activate()
@@ -265,12 +275,6 @@ class StateEstimationPulseWidget(QWidget):
         self.sig_end_line.sigPositionChangeFinished.connect(self.sig_lines_dragged)
         self.ref_start_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
         self.ref_end_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
-        self.update_pushButton.clicked.connect(self.update_pulse)
-        # # Connect update signals from qdyne_measurement_logic #TODO move this somewhere else
-        # self._measure.sigPulseDataUpdated.connect(self.pulse_updated)
-        # # Connect to measurement state changes
-        # self._measure.sigMeasurementStarted.connect(lambda: self.set_lines_movable(False))
-        # self._measure.sigMeasurementStopped.connect(lambda: self.set_lines_movable(True))
 
     def disconnect_signals(self):
         """
@@ -280,7 +284,6 @@ class StateEstimationPulseWidget(QWidget):
         self.sig_end_line.sigPositionChangeFinished.disconnect()
         self.ref_start_line.sigPositionChangeFinished.disconnect()
         self.ref_end_line.sigPositionChangeFinished.disconnect()
-        # self._measure.sigPulseDataUpdated.disconnect() #TODO move this somewhere else
 
     @Slot(dict)
     def toggle_lines(self, current_values_dict):
@@ -327,18 +330,11 @@ class StateEstimationPulseWidget(QWidget):
         if "ref_end" in data_dict:
             self.ref_end_line.setValue(data_dict["ref_end"])
 
-    # def update_pulse(self): #TODO move to logic
-    #     self._measure.get_raw_data()
-    #     self._measure.get_pulse()
-    #     self._measure.sigPulseDataUpdated.emit()
-    #     self._measure.extract_data()
-    #     self._measure.estimate_state()
-    #     self._measure.sigTimeTraceDataUpdated.emit()
-
-    Slot()
+    @Slot()
     def pulse_updated(self, pulse_data):
-        self.pulse_image.setData(x=pulse_data[0], y=pulse_data[1]) #TODO modify emit from loic
+        self.pulse_image.setData(x=pulse_data[0], y=pulse_data[1])
 
+    @Slot(bool)
     def set_lines_movable(self, movable):
         """
         Enable or disable the ability to move the lines.

@@ -165,7 +165,7 @@ class QdyneMeasurement(QtCore.QObject):
                 self.get_raw_data()
                 self.get_pulse()
                 logger.debug("emitting sigPulseDataUpdated")
-                self.sigPulseDataUpdated.emit()
+                self.sigPulseDataUpdated.emit(self.data.pulse_data)
 
                 self.extract_data()
                 self.estimate_state()
@@ -259,3 +259,12 @@ class QdyneMeasurement(QtCore.QObject):
             self.__analysis_timer.blockSignals(True)
 
         self.sigTimerIntervalUpdated.emit(self.qdyne_logic.analysis_timer_interval)
+
+    def get_time_trace(self):
+        """
+        For test purpose. Try to get time trace from input raw data.
+        """
+        self.get_raw_data()
+        self.get_pulse()
+        self.extract_data()
+        self.estimate_state()
