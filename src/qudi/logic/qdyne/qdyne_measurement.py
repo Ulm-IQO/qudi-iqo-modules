@@ -99,6 +99,16 @@ class QdyneMeasurement(QtCore.QObject):
     def input_settings(self, settings: QdyneMeasurementSettings) -> None:
         self.stg = settings
 
+    @property
+    def readout_interval(self):
+        return (
+            self.qdyne_logic.pulsedmasterlogic()
+            .sequencegeneratorlogic()
+            .get_ensemble_info(
+                self.qdyne_logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
+            )[0]
+        )
+
     @QtCore.Slot(bool, str)
     def toggle_qdyne_measurement(self, start):
         """
@@ -170,7 +180,7 @@ class QdyneMeasurement(QtCore.QObject):
                 self.extract_data()
                 self.estimate_state()
                 logger.debug("emitting sigTimeTraceDataUpdated")
-                self.sigTimeTraceDataUpdated.emit()
+                self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
                 self.analyze_time_trace()
                 self.get_spectrum()

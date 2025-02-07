@@ -90,32 +90,6 @@ class StateEstimationTab(QWidget):
         self.connect_mutual_signals()
         self._pulse_widget.update_lines()
 
-        # self._settings_widget.method_updated_sig.connect(self.reconnect_mutual_signals)
-        # self._settings_widget.setting_name_updated_sig.connect(self.reconnect_mutual_signals)
-        # self._settings_widget.setting_name_updated_sig.connect(self._pulse_widget.update_lines)
-
-    # def connect_mutual_signals(self):
-        # param_names = self._settings_widget.settings.current_setting.__annotations__
-        # if "sig_start" in param_names:
-        #     self._settings_widget.settings_widget.widgets["sig_start"].valueChanged.connect(
-        #         self._pulse_widget.update_lines
-        #     )
-        # if "sig_end" in param_names:
-        #     self._settings_widget.settings_widget.widgets["sig_end"].valueChanged.connect(
-        #         self._pulse_widget.update_lines
-        #     )
-        # if "ref_start" in param_names:
-        #     self._settings_widget.settings_widget.widgets["ref_start"].valueChanged.connect(
-        #         self._pulse_widget.update_lines
-        #     )
-        # if "ref_end" in param_names:
-        #     self._settings_widget.settings_widget.widgets["ref_end"].valueChanged.connect(
-        #         self._pulse_widget.update_lines
-        #     )
-
-        # self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.update_from_sig_lines)
-        # self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.update_from_ref_lines)
-
     def _connect_settings_widget_signals(self):
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.toggle_lines)
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.update_lines)
@@ -129,22 +103,7 @@ class StateEstimationTab(QWidget):
         measurement_logic.sigMeasurementStarted.connect(lambda: self._pulse_widget.set_lines_movable(False))
         measurement_logic.sigMeasurementStopped.connect(lambda: self._pulse_widget.set_lines_movable(True))
 
-    # def disconnect_mutual_signals(self):
-    #     param_names = self._settings_widget.settings.current_setting.__annotations__
-    #     if "sig_start" in param_names:
-    #         self._settings_widget.settings_widget.widgets["sig_start"].valueChanged.disconnect()
-    #     if "sig_end" in param_names:
-    #         self._settings_widget.settings_widget.widgets["sig_end"].valueChanged.disconnect()
-    #     if "ref_start" in param_names:
-    #         self._settings_widget.settings_widget.widgets["ref_start"].valueChanged.disconnect()
-    #     if "ref_end" in param_names:
-    #         self._settings_widget.settings_widget.widgets["ref_end"].valueChanged.disconnect()
-    #
-    #     self._pulse_widget.sig_line_changed_sig.disconnect()
-    #     self._pulse_widget.ref_line_changed_sig.disconnect()
-
-    # def reconnect_mutual_signals(self):
-    #     self.connect_mutual_signals()
+        measurement_logic.sigTimeTraceDataUpdated.connect(self._time_trace_widget.update_time_trace_image)
 
     def disconnect_signals(self):
         self._settings_widget.disconnect_signals()
@@ -170,6 +129,8 @@ class StateEstimationTab(QWidget):
         measurement_logic.sigMeasurementStarted.disconnect()
         measurement_logic.sigMeasurementStopped.disconnect()
 
+        measurement_logic.sigTimeTraceDataUpdated.disconnect()
+
     def activate_ui(self):
         self._settings_widget.activate()
         self._pulse_widget.activate()
@@ -188,27 +149,6 @@ class StateEstimationTab(QWidget):
 class StateEstimationSettingsWidget(MultiSettingsWidget):
     def __init__(self, estimator_settings_mediator):
         super(MultiSettingsWidget, self).__init__(estimator_settings_mediator)
-
-    # @QtCore.Slot(float, float)
-    # def update_from_sig_lines(self, sig_start, sig_end):
-    #     param_names = self.settings.current_setting.__annotations__
-    #     if "sig_start" in param_names:
-    #         self.settings.current_setting.sig_start = sig_start
-    #         self.settings_widget.widgets["sig_start"].setValue(sig_start)
-    #     if "sig_end" in param_names:
-    #         self.settings.current_setting.sig_end = sig_end
-    #         self.settings_widget.widgets["sig_end"].setValue(sig_end)
-    #
-    # @QtCore.Slot(float, float)
-    # def update_from_ref_lines(self, ref_start, ref_end):
-    #     param_names = self.settings.current_setting.__annotations__
-    #     if "ref_start" in param_names:
-    #         self.settings.current_setting.ref_start = ref_start
-    #         self.settings_widget.widgets["ref_start"].setValue(ref_start)
-    #
-    #     if "ref_end" in param_names:
-    #         self.settings.current_setting.ref_end = ref_end
-    #         self.settings_widget.widgets["ref_end"].setValue(ref_end)
 
 
 class StateEstimationPulseWidget(QWidget):
@@ -375,39 +315,15 @@ class StateEstimationTimeTraceWidget(QWidget):
     def deactivate(self):
         self.close()
 
-    def connect_signals(self):
-        # self.get_time_trace_pushButton.clicked.connect(self.update_time_trace) #TODO connect it to logic
-        # # Connect update signals from qdyne_measurement_logic #TODO move this
-        # self._logic.measure.sigTimeTraceDataUpdated.connect(self.time_trace_updated)
-
-    def disconnect_signals(self):
-        # self.get_time_trace_pushButton.clicked.disconnect() # TODO conect it to logic
-        # self._logic.measure.sigTimeTraceDataUpdated.disconnect() #TODO move this
-
-    # def update_time_trace(self): #TODO move this
-    #     self._logic.measure.get_raw_data()
-    #     self._logic.measure.get_pulse()
-    #     self._logic.measure.sigPulseDataUpdated.emit()
-    #     self._logic.measure.extract_data()
-    #     self._logic.measure.estimate_state()
-    #     self._logic.measure.sigTimeTraceDataUpdated.emit()
-
     @Slot()
     def update_time_trace_image(self, time_trace, readout_interval):
         y = time_trace
-        # TODO move this to logic
-        # time_between_readouts = (
-        #     self._logic.pulsedmasterlogic()
-        #     .sequencegeneratorlogic()
-        #     .get_ensemble_info(
-        #         self._logic.pulsedmasterlogic().sequencegeneratorlogic().loaded_asset[0]
-        #     )[0]
-        # )
         self.time_trace_PlotWidget.setLabel(axis="bottom", text="time", units="s")
         if readout_interval == 0:
             readout_interval = 1
             self._log.warn(
-                "Time between readouts could not be determined from loaded pulse sequence. Make sure a pulse sequence is loaded. Switching to number of readouts as x axis."
+                "Time between readouts could not be determined from loaded pulse sequence. "
+                "Make sure a pulse sequence is loaded. Switching to number of readouts as x axis."
             )
             self.time_trace_PlotWidget.setLabel(
                 axis="bottom", text="readouts", units="#"
