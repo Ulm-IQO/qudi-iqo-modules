@@ -32,10 +32,10 @@ class SettingsMediator(DataclassMediator):
     """
     mode_updated_sig = Signal()
 
-    def __init__(self):
+    def __init__(self, parent):
         """Initialize the dataclass mediator with the corresponding widget."""
 
-        super().__init__()
+        super().__init__(parent)
         if hasattr(self, "_data"):
             del self._data
 

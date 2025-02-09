@@ -25,6 +25,7 @@ from PySide2.QtCore import QObject, Signal, Slot
 
 from qudi.core.logger import get_logger
 
+
 @dataclass
 class CustomDataclass:
     name: str = ""
@@ -48,9 +49,10 @@ class DataclassMediator(QObject):
     """
     data_updated_sig = Signal()
 
-    def __init__(self):
+    def __init__(self, parent):
         """Initialize the dataclass mediator with the corresponding widget."""
 
+        super().__init__(parent)
         self._log = get_logger(__name__)
         self._data = None
 
@@ -124,11 +126,26 @@ class DataclassStorage:
             self.log.error(f"cannot load settings from {self.save_path}")
 
 
-class DataclassManager:
+class DataclassManager(QObject):
+    """ Manager class for dataclass mediator.
 
-    def __init__(self, mediator, save_path):
+    This class manages the slected mediator and data storage class.
+    The mediator has to take care of the communication between the dataclass and gui.
+    The storage class has to save and load the data in the mediator.
+    """
+
+    def __init__(self, mediator_cls, save_path):
+        """Initialize the dataclass with the selected mediator class.
+
+        Parameters
+        ----------
+        mediator_cls
+            Mediator class to be used in this manager.
+        save_path : str
+            Path to save the data container.
+        """
         self._log = get_logger(__name__)
-        self.mediator = mediator
+        self.mediator = mediator_cls(parent=self)
         self._data_storage = DataclassStorage(save_path, self.mediator.data_container)
 
     def load_data_container(self):
