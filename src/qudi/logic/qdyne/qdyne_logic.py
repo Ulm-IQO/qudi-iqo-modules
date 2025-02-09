@@ -392,7 +392,7 @@ class QdyneLogic(LogicBase):
             self.settings.estimator_stg.mediator.set_mode(self._current_estimator_mode)
 
             self.settings.analyzer_stg.mediator.set_method(self._current_analyzer_method)
-            self.settings.analyzer_stg.set_mode(self._current_analyzer_mode)
+            self.settings.analyzer_stg.mediator.set_mode(self._current_analyzer_mode)
 
         def input_initial_settings():
             self.input_estimator_method()

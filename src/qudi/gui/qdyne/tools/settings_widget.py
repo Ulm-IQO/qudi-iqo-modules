@@ -103,7 +103,9 @@ class SettingsWidget(DataclassWidget):
         """
         update the mode widget with the new mode from mediator.
         """
-        self.widgets["mode"].setText(new_mode) #TODO consider how to update widgets
+        self.setUpdatesEnabled(False)
+        self.widgets["mode"].setText(new_mode)
+        self.setUpdatesEnabled(True)
 
     def connect_signals_from_widgets(self):
         self.widgets["mode"].currentIndexChanged.connect(lambda clicked :self.mediator.update_mode(self.current_mode))

@@ -30,7 +30,7 @@ class SettingsMediator(DataclassMediator):
     This class can manage several sets of settings modes sharing the same dataclass,
     but not different types of classes.
     """
-    mode_updated_sig = Signal()
+    mode_updated_sig = Signal(str)
 
     def __init__(self, parent):
         """Initialize the dataclass mediator with the corresponding widget."""

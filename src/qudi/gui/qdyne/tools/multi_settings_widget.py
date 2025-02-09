@@ -30,8 +30,6 @@ class MultiSettingsWidget(SettingsWidget):
         Modes are variants of parameters for each dataclass.
     """
 
-    method_widget_updated_sig = Signal()
-
     def __init__(self, mediator, dataclass_obj=None) -> None:
         """Initialize the dataclass widget with the corresponding mediator.
 
@@ -103,11 +101,14 @@ class MultiSettingsWidget(SettingsWidget):
         """
         update the method widget with the new mode from mediator.
         """
-        self.widgets["method"].setText(new_method) #TODO consider how to update widgets
+        self.setUpdatesEnabled(False)
+        self.widgets["method"].setText(new_method)
+        self.setUpdatesEnabled(True)
 
     def connect_signals_from_widgets(self):
         super().connect_signals_from_widgets()
-        self.widgets["method"].currentTextChanged.connect(lambda method: self.mediator.update_method(self.current_method))
+        self.widgets["method"].currentTextChanged.connect(
+            lambda method: self.mediator.update_method(self.current_method))
 
     def disconnect_signals_from_widgets(self):
         super().disconnect_signals_from_mediator()
