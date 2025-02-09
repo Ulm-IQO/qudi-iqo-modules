@@ -20,8 +20,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, fields
 import numpy as np
 
+from qudi.logic.qdyne.tools.dataclass_tools import get_subclasses, get_subclass_qualifier
 from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
-from qudi.logic.qdyne.qdyne_tools import SettingsBase, get_subclasses, get_method_names
 from logging import getLogger
 
 logger = getLogger(__name__)
@@ -182,7 +182,7 @@ class StateEstimatorMain:
 
     def generate_method_list(self):
         estimator_subclasses = get_subclasses(__name__, StateEstimator)
-        self.method_list = get_method_names(estimator_subclasses, StateEstimator)
+        self.method_list = [get_subclass_qualifier(subclass, StateEstimator) for subclass in estimator_subclasses]
 
     def configure_method(self, method):
         self.estimator = globals()[method + "StateEstimator"](self.log)

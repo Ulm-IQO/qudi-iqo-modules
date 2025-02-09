@@ -20,8 +20,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
 
+from qudi.logic.qdyne.tools.dataclass_tools import get_subclasses, get_subclass_qualifier
 from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
-from qudi.logic.qdyne.qdyne_tools import SettingsBase, get_subclasses, get_method_names
 
 
 class Analyzer(ABC):
@@ -146,7 +146,7 @@ class TimeTraceAnalyzerMain:
 
     def generate_method_list(self):
         analyzer_subclasses = get_subclasses(__name__, Analyzer)
-        self.method_list = get_method_names(analyzer_subclasses, Analyzer)
+        self.method_list = [get_subclass_qualifier(subclass, Analyzer) for subclass in analyzer_subclasses]
 
     @property
     def method(self):
