@@ -52,19 +52,28 @@ class DataclassMediator(QObject):
         """Initialize the dataclass mediator with the corresponding widget."""
 
         self._log = get_logger(__name__)
-        self.data = None
-        self.data_container = None
+        self._data = None
 
     @property
     def current_data(self):
-        return self.data
+        """Current data handled by this class."""
+        return self._data
+
+    @property
+    def data_container(self):
+        """Data container of the class.
+
+        This data will be saved in a data sorage.
+        The data in a data sotrage will be loaded here.
+        """
+        return self._data
 
     @Slot(dict)
     def update_values(self, new_dc_dict):
         """
         update values of dataclass according to new_dc_dict from gui.
         """
-        self.data.from_dict(new_dc_dict)
+        self.current_data.from_dict(new_dc_dict)
 
     def set_values(self, new_dc_dict):
         """
@@ -74,13 +83,13 @@ class DataclassMediator(QObject):
         self.data_updated_sig.emit()
 
     def create_default(self, dataclass_cls):
-        self.data = dataclass_cls()
+        self._data = dataclass_cls()
 
     def set_single_value(self, param_name, value):
         """
         update a single value in the dataclass.
         """
-        new_dc_dict = self.data.to_dict()
+        new_dc_dict = self.current_data.to_dict()
         if param_name in new_dc_dict:
             new_dc_dict[param_name] = value
             self.update_values(new_dc_dict)

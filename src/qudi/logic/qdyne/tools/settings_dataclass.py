@@ -36,10 +36,35 @@ class SettingsMediator(DataclassMediator):
         """Initialize the dataclass mediator with the corresponding widget."""
 
         super().__init__()
+        if hasattr(self, "_data"):
+            del self._data
+
+        self._mode_dict = dict()
         self.current_mode = "default"
-        self.mode_dict = dict()
-        self.data = self.mode_dict[self.current_mode]
-        self.data_container = self.mode_dict
+
+    @property
+    def current_data(self):
+        """Current data handled by this class.
+
+        In SettingsMediator, this is given by the currently selected mode
+        inside the mode dictionary.
+        """
+
+        return self.mode_dict[self.current_mode]
+
+    @property
+    def mode_dict(self):
+        """Current mode dictionary."""
+        return self._mode_dict
+
+    @property
+    def data_container(self):
+        """Data container of the class.
+
+        This data will be saved in a data sorage.
+        The data in a data sotrage will be loaded here.
+        """
+        return self.mode_dict
 
     @property
     def default_data(self):
@@ -48,7 +73,7 @@ class SettingsMediator(DataclassMediator):
     @Slot(str)
     def update_mode(self, new_mode: str):
         self.current_mode = new_mode
-        self.data_updated_sig.emit(self.data)
+        self.data_updated_sig.emit(self.current_data)
 
     def set_mode(self, new_mode: str):
         self.update_mode(new_mode)

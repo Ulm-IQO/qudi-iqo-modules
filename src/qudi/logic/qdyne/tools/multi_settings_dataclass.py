@@ -34,11 +34,37 @@ class MultiSettingsMediator(SettingsMediator):
     def __init__(self):
         """Initialize the dataclass mediator with the corresponding widget."""
         super().__init__()
+        if hasattr(self, "_mode_dict"):
+            del self._mode_dict
+
         self.current_method = "default"
         self.method_dict = dict() #2D dict [method][mode]
-        self.mode_dict = self.method_dict[self.current_method] #current_mode_dict
-        self.data_container = self.method_dict
-        self.data = self.method_dict[self.current_method][self.current_mode]
+
+    @property
+    def current_data(self):
+        """Current data handled by this class.
+
+        In MultiSettingsMediator, this is given by the currently selected method and mode.
+        """
+
+        return self.method_dict[self.current_method][self.current_mode]
+
+    @property
+    def mode_dict(self):
+        """Current mode dictionary.
+
+        In MultiSettingsMediator, this is the mode dictionary of currently slected method.
+        """
+        return self.method_dict[self.current_method]
+
+    @property
+    def data_container(self):
+        """Data container of the class.
+
+        This data will be saved in a data sorage.
+        The data in a data sotrage will be loaded here.
+        """
+        return self.method_dict
 
     @Slot(str)
     def update_method(self, new_method: str):
