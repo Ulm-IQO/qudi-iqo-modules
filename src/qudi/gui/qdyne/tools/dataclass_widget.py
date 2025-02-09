@@ -178,9 +178,10 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 #             else:
 #                 old_widget.valueChanged.disconnect()
 
+
 class DataclassWidget(QtWidgets.QWidget):
     """Data widget class which can create widgets from a dataclass object."""
-    data_widget_updated_sig = Signal()
+    data_widget_updated_sig = Signal(dict)
 
     def __init__(self, mediator, dataclass_obj=None) -> None:
         """Initialize the dataclass widget with the corresponding mediator.
@@ -249,11 +250,15 @@ class DataclassWidget(QtWidgets.QWidget):
         self.mediator.data_updated_sig.disconnect()
 
     def _emit_update_sig(self):
-        self.data_widget_updated_sig.emit(self.current_values_dict)
+        self.data_widget_updated_sig.emit(self.values_dict)
 
     @property
     def values_dict(self):
-        return
+        """Get the current values of the widget in a dictionary."""
+        values_dict = dict()
+        for key in self.data_widgets.keys():
+            values_dict[key] = self._get_widget_value(key)
+        return values_dict
 
     def set_data(self, data):
         """
@@ -278,8 +283,7 @@ class DataclassWidget(QtWidgets.QWidget):
         self._emit_update_sig()
         self.setUpdatesEnabled(True)
 
-
-    @Slot()
+    @Slot(dict)
     def update_widgets(self, data_dict):
         """
         update the parameters of widgets according to the data.
@@ -379,6 +383,24 @@ class DataclassWidget(QtWidgets.QWidget):
                 self.data_widgets[param_name].setText(value)
             elif param_type == bool:
                 self.data_widgets[param_name].setChecked(value)
+            else:
+                self._log.error(f"{param_type} type is not supported.")
+        else:
+            self._log.error("name not found in data.")
+
+    def _get_widget_value(self, param_name):
+        """
+        update the value of a widget.
+        """
+        if hasattr(self.data, param_name):
+            param_type = self.data.__dataclass_fields__[param_name]
+
+            if param_type == int or param_type == float:
+                return self.data_widgets[param_name].value()
+            elif param_type == str:
+                return self.data_widgets[param_name].text()
+            elif param_type == bool:
+                return self.data_widgets[param_name].isChecked()
             else:
                 self._log.error(f"{param_type} type is not supported.")
         else:

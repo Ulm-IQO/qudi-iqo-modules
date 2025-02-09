@@ -25,7 +25,6 @@ from qudi.core.logger import get_logger
 from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorSettings
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import AnalyzerSettings
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
-from qudi.logic.qdyne.qdyne_tools import get_subclasses, get_method_name
 from qudi.logic.qdyne.tools.dataclass_tools import get_subclass_dict
 from qudi.logic.qdyne.tools.custom_dataclass import DataclassManager
 from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediator
@@ -51,13 +50,15 @@ class QdyneSettings(QtCore.QObject):
 
     def _generate_estimator_settings(self, settings_dir):
         estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)
-        self.estimator_stg = DataclassManager(MultiSettingsMediator,
+        self.estimator_stg = DataclassManager(self,
+                                              MultiSettingsMediator,
                                               os.path.join(settings_dir, 'estimator_stg.pickle'))
         self.estimator_stg.initialize_data_container(estimator_cls_dict)
 
     def _generate_analyzer_settings(self, settings_dir):
         analyzer_cls_dict = get_subclass_dict(AnalyzerSettings.__module__, AnalyzerSettings)
-        self.analyzer_stg = DataclassManager(MultiSettingsMediator,
+        self.analyzer_stg = DataclassManager(self,
+                                             MultiSettingsMediator,
                                              os.path.join(settings_dir, 'analyzer_stg.pickle'))
         self.analyzer_stg.initialize_data_container(analyzer_cls_dict)
 

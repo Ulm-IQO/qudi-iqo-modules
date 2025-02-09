@@ -47,7 +47,7 @@ class DataclassMediator(QObject):
     """Dataclass mediator class communicating with gui widgets.
 
     """
-    data_updated_sig = Signal()
+    data_updated_sig = Signal(dict)
 
     def __init__(self, parent):
         """Initialize the dataclass mediator with the corresponding widget."""
@@ -82,7 +82,7 @@ class DataclassMediator(QObject):
         Use this function to directly set values.
         """
         self.update_values(new_dc_dict)
-        self.data_updated_sig.emit()
+        self.data_updated_sig.emit(self.current_data.to_dict())
 
     def create_default(self, dataclass_cls):
         self._data = dataclass_cls()
@@ -95,7 +95,7 @@ class DataclassMediator(QObject):
         if param_name in new_dc_dict:
             new_dc_dict[param_name] = value
             self.update_values(new_dc_dict)
-            self.data_updated_sig.emit()
+            self.data_updated_sig.emit(self.current_data.to_dict())
 
         else:
             self._log.error(f"Parameter {param_name} not found in dataclass.")
@@ -134,7 +134,7 @@ class DataclassManager(QObject):
     The storage class has to save and load the data in the mediator.
     """
 
-    def __init__(self, mediator_cls, save_path):
+    def __init__(self, parent, mediator_cls, save_path):
         """Initialize the dataclass with the selected mediator class.
 
         Parameters
@@ -144,6 +144,7 @@ class DataclassManager(QObject):
         save_path : str
             Path to save the data container.
         """
+        super().__init__(parent)
         self._log = get_logger(__name__)
         self.mediator = mediator_cls(parent=self)
         self._data_storage = DataclassStorage(save_path, self.mediator.data_container)
