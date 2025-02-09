@@ -143,9 +143,9 @@ class DataclassManager:
         """
         if os.path.exists(self._data_storage.save_path):
             self._data_storage.load()
-            self._log.debug("Saved settings loaded")
+            self._log.debug(f"Saved settings loaded from {self._data_storage.save_path}")
 
         else:
-            self.mediator.create_default(args)
+            self.mediator.create_default(*args)
             self._log.debug("Default settings created")
 
