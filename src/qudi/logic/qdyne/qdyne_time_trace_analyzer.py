@@ -20,8 +20,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 import numpy as np
 
+from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
 from qudi.logic.qdyne.qdyne_tools import SettingsBase, get_subclasses, get_method_names
-from qudi.util.network import netobtain
 
 
 class Analyzer(ABC):
@@ -56,7 +56,7 @@ class Analyzer(ABC):
 
 
 @dataclass
-class AnalyzerSettings(SettingsBase):
+class AnalyzerSettings(CustomDataclass):
     sequence_length: float = 1
 
 @dataclass

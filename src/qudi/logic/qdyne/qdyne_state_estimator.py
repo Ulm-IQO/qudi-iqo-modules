@@ -20,9 +20,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field, fields
 import numpy as np
 
-from qudi.util.network import netobtain
-from qudi.logic.pulsed.pulse_extractor import PulseExtractor
-from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
+from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
 from qudi.logic.qdyne.qdyne_tools import SettingsBase, get_subclasses, get_method_names
 from logging import getLogger
 
@@ -44,7 +42,7 @@ class StateEstimator(ABC):
 
 
 @dataclass
-class StateEstimatorSettings(SettingsBase):
+class StateEstimatorSettings(CustomDataclass):
     sequence_length: float = 1e-9
     bin_width: float = 1e-9
 
