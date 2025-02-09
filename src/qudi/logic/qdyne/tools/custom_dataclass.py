@@ -102,26 +102,26 @@ class DataclassMediator(QObject):
 class DataclassStorage:
 
     def __init__(self, save_path, data_container):
-        self._save_path = save_path
+        self.save_path = save_path
         self._data_container = data_container
         self.log = get_logger(__name__)
 
     def save(self):
         try:
 
-            with open(self._save_path, 'wb') as f:
+            with open(self.save_path, 'wb') as f:
                 pickle.dump(self._data_container, f)
 
         except EOFError:
-            self.log.error(f"cannot save settings to {self._save_path}")
+            self.log.error(f"cannot save settings to {self.save_path}")
 
     def load(self):
         try:
-            with open(self._save_path, 'rb') as f:
+            with open(self.save_path, 'rb') as f:
                 self._data_container = pickle.load(f)
 
         except EOFError:
-            self.log.error(f"cannot load settings from {self._save_path}")
+            self.log.error(f"cannot load settings from {self.save_path}")
 
 
 class DataclassManager:
