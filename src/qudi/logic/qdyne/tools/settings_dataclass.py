@@ -74,7 +74,6 @@ class SettingsMediator(DataclassMediator):
     def update_mode(self, new_mode: str):
         """Update mode from the new mode from widget."""
         self.current_mode = new_mode
-        print(f"self.current_data {self.current_data}")
         self.data_updated_sig.emit(self.current_data.to_dict())
 
     def set_mode(self, new_mode: str):

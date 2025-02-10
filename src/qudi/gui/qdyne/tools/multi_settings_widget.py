@@ -64,6 +64,7 @@ class MultiSettingsWidget(SettingsWidget):
         method_label.setText("Method")
         method_comboBox = QComboBox()
         method_comboBox.addItems(self.mediator.method_list)
+        method_comboBox.setCurrentIndex(self.mediator.method_list.index(self.mediator.current_method))
         self.labels["method"] = method_label
         self.widgets["method"] = method_comboBox
 
@@ -135,8 +136,6 @@ class MultiSettingsWidget(SettingsWidget):
         super().connect_signals_from_widgets()
         self.widgets["method"].currentIndexChanged.connect(
             lambda method: self.mediator.update_method(self.current_method))
-        self.widgets["method"].currentIndexChanged[int].connect(
-            lambda index: print("Index changed to:", index))
 
     def disconnect_signals_from_widgets(self):
         super().disconnect_signals_from_mediator()
