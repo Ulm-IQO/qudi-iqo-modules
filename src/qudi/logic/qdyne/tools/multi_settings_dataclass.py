@@ -30,6 +30,7 @@ class MultiSettingsMediator(SettingsMediator):
     Each method can also have several modes.
     """
     method_updated_sig = Signal(str)
+    data_renewed_sig = Signal(object)
 
     def __init__(self, parent):
         """Initialize the dataclass mediator with the corresponding widget."""
@@ -69,7 +70,9 @@ class MultiSettingsMediator(SettingsMediator):
     @Slot(str)
     def update_method(self, new_method: str):
         self.current_method = new_method
-        self.set_mode("default")
+        self.current_mode = "default"
+        self.mode_updated_sig.emit("default")
+        self.data_renewed_sig.emit(self.current_data)
 
     def set_method(self, new_method: str):
         self.update_method(new_method)

@@ -51,7 +51,9 @@ class MultiSettingsWidget(SettingsWidget):
         """Update the dataclass object used for widgets creation.
         """
         self.dataclass_obj = new_dataclass_obj
-        self.init_widgets()
+        print(f"dataclass_obj: {self.dataclass_obj}")
+        self.create_data_widgets(self.dataclass_obj)
+        self.update_data_container()
 
     def create_widgets(self):
         super().create_widgets()
@@ -96,13 +98,28 @@ class MultiSettingsWidget(SettingsWidget):
         self.layouts["method"] = method_layout
         return method_layout
 
+    def update_data_container(self):
+        data_container = self.layouts["data_container"]
+        old_layout = data_container.layout()
+        if old_layout is not None:
+            temp = QWidget()
+            temp.setLayout(old_layout)
+        self._clear_layout(old_layout)
+
+        new_layout = self.create_data_layout()
+        data_container.setLayout(new_layout)
+        data_container.update()
+        self.layout_main.update()
+
     def connect_signals_from_mediator(self):
         super().connect_signals_from_mediator()
         self.mediator.method_updated_sig.connect(self.update_method_widget)
+        self.mediator.data_renewed_sig.connect(self.reset_widgets)
 
     def disconnect_signals_from_mediator(self):
         super().disconnect_signals_from_mediator()
         self.mediator.method_updated_sig.disconnect()
+        self.mediator.data_renewed_sig.disconnect()
 
     @Slot(str)
     def update_method_widget(self, new_method):
@@ -116,9 +133,11 @@ class MultiSettingsWidget(SettingsWidget):
 
     def connect_signals_from_widgets(self):
         super().connect_signals_from_widgets()
-        self.widgets["method"].currentTextChanged.connect(
+        self.widgets["method"].currentIndexChanged.connect(
             lambda method: self.mediator.update_method(self.current_method))
+        self.widgets["method"].currentIndexChanged[int].connect(
+            lambda index: print("Index changed to:", index))
 
     def disconnect_signals_from_widgets(self):
         super().disconnect_signals_from_mediator()
-        self.widgets["method"].currentTextChanged.disconnect()
+        self.widgets["method"].currentIndexChanged.disconnect()

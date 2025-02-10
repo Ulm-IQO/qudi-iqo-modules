@@ -131,13 +131,12 @@ class DataclassWidget(QtWidgets.QWidget):
         for param_name in data_dict.keys():
             self._update_widget_value(param_name, data_dict[param_name])
 
-    def _clear_data_layout(self):
+    def _clear_layout(self, layout):
         """
         remove widgets in data_layout.
         """
-        data_layout = self.layouts['data']
-        while data_layout.count():
-            item = data_layout.takeAt(0)
+        while layout.count():
+            item = layout.takeAt(0)
             widget = item.widget()
             if widget:
                 widget.deleteLater()

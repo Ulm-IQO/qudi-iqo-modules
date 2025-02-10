@@ -49,7 +49,7 @@ class StateEstimatorSettings(CustomDataclass):
 
 @dataclass
 class TimeSeriesStateEstimatorSettings(StateEstimatorSettings):
-    name: str = "TimeSeries"
+    name: str = "default"
 
 
 #    extractor_settings: dict
