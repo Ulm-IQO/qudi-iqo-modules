@@ -77,3 +77,6 @@ Changelog = "https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/changelo
 
 [tool.setuptools.dynamic]
 version = {file = "VERSION"}
+
+[project.optional-dependencies]
+dev-test = ["pytest", "pytest-qt", "coverage"]
