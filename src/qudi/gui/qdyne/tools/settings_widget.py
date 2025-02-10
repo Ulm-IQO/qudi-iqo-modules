@@ -92,11 +92,11 @@ class SettingsWidget(DataclassWidget):
 
     def connect_signals_from_mediator(self):
         super().connect_signals_from_mediator()
-        self.mediator.mode_updated_signal.connect(self.update_mode_widget)
+        self.mediator.mode_updated_sig.connect(self.update_mode_widget)
 
     def disconnect_signals_from_mediator(self):
         super().disconnect_signals_from_mediator()
-        self.mediator.mode_updated_signal.disconnect()
+        self.mediator.mode_updated_sig.disconnect()
 
     @Slot(str)
     def update_mode_widget(self, new_mode):

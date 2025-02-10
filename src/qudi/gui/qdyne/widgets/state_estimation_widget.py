@@ -45,7 +45,7 @@ class StateEstimationTab(QWidget):
 
     def _instantiate_widgets(self, logic):
         self._sew_layout = QVBoxLayout(self)
-        self._settings_widget = StateEstimationSettingsWidget(logic().settings.estimator_stg.estimator_mediator)
+        self._settings_widget = StateEstimationSettingsWidget(logic().settings.estimator_stg.mediator)
         self._pulse_widget = StateEstimationPulseWidget()
         self._time_trace_widget = StateEstimationTimeTraceWidget()
 

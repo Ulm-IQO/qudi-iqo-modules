@@ -47,6 +47,12 @@ class MultiSettingsWidget(SettingsWidget):
     def current_method(self):
         return self.widgets["method"].currentText()
 
+    def reset_widgets(self, new_dataclass_obj):
+        """Update the dataclass object used for widgets creation.
+        """
+        self.dataclass_obj = new_dataclass_obj
+        self.init_widgets()
+
     def create_widgets(self):
         super().create_widgets()
         self.create_method_widgets()
@@ -55,7 +61,7 @@ class MultiSettingsWidget(SettingsWidget):
         method_label = QLabel()
         method_label.setText("Method")
         method_comboBox = QComboBox()
-        method_comboBox.addItems(self.methodlist)
+        method_comboBox.addItems(self.mediator.method_list)
         self.labels["method"] = method_label
         self.widgets["method"] = method_comboBox
 
@@ -90,11 +96,11 @@ class MultiSettingsWidget(SettingsWidget):
 
     def connect_signals_from_mediator(self):
         super().connect_signals_from_mediator()
-        self.mediator.method_updated_signal.connect(self.update_method_widget)
+        self.mediator.method_updated_sig.connect(self.update_method_widget)
 
     def disconnect_signals_from_mediator(self):
         super().disconnect_signals_from_mediator()
-        self.mediator.method_updated_signal.disconnect()
+        self.mediator.method_updated_sig.disconnect()
 
     @Slot(str)
     def update_method_widget(self, new_method):
@@ -103,6 +109,7 @@ class MultiSettingsWidget(SettingsWidget):
         """
         self.setUpdatesEnabled(False)
         self.widgets["method"].setText(new_method)
+        self.reset_widgets(self.mediator.current_data)
         self.setUpdatesEnabled(True)
 
     def connect_signals_from_widgets(self):

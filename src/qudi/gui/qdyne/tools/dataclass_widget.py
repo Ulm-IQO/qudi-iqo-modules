@@ -196,7 +196,7 @@ class DataclassWidget(QtWidgets.QWidget):
         """
         super().__init__()
         self._log = get_logger(__name__)
-        self.data = dataclass_obj
+        self.dataclass_obj = dataclass_obj
         self.mediator = mediator
         self.layout_main = None
         self.data_labels = dict()
@@ -206,16 +206,18 @@ class DataclassWidget(QtWidgets.QWidget):
         self.labels = dict()
         self.widgets = dict()
 
-        self.init_UI()
+        self.init_widgets()
 
-
-    def init_UI(self):
+    def init_widgets(self):
+        """Initialize the widgets from self.dataclass_obj."""
         self.create_widgets()
         self.arange_layout()
-        self.set_data(self.data)
 
     def create_widgets(self):
-        self.create_data_widgets(self.data)
+        if self.dataclass_obj is not None:
+            self.create_data_widgets(self.dataclass_obj)
+        else:
+            return
 
     def arange_layout(self):
         self.layout_main = QtWidgets.QGridLayout()
@@ -228,9 +230,9 @@ class DataclassWidget(QtWidgets.QWidget):
         data_layout = QtWidgets.QGridLayout()
         param_index = 0
 
-        for field in fields(self.data):
-            data_layout.addWidget(self.data_labels[field.name], 0, param_index + 1, 1, 1)
-            data_layout.addWidget(self.data_widgets[field.name], 1, param_index + 1, 1, 1)
+        for param_key in self.data_labels.keys():
+            data_layout.addWidget(self.data_labels[param_key], 0, param_index + 1, 1, 1)
+            data_layout.addWidget(self.data_widgets[param_key], 1, param_index + 1, 1, 1)
             param_index += 1
 
         return data_layout
@@ -259,18 +261,6 @@ class DataclassWidget(QtWidgets.QWidget):
         for key in self.data_widgets.keys():
             values_dict[key] = self._get_widget_value(key)
         return values_dict
-
-    def set_data(self, data):
-        """
-        set data to widgets.
-        """
-        self.setUpdatesEnabled(False)
-        self.data = data
-        self._clear_layout()
-        self._set_widgets(self.data)
-        self._setLayout(self.layout)
-        self.data_widgets['name'].setReadOnly(True)
-        self.setUpdatesEnabled(True)
 
     @Slot(dict)
     def set_data_from_dict(self, data_dict):
@@ -326,7 +316,7 @@ class DataclassWidget(QtWidgets.QWidget):
         create widget based on the field of parameter.
         """
         widget = None
-        value = getattr(self.data, field.name)
+        value = getattr(self.dataclass_obj, field.name)
 
         if field.type == int:
             widget = self._int_to_widget(value)
@@ -363,6 +353,8 @@ class DataclassWidget(QtWidgets.QWidget):
     def _str_to_widget(self, value):
         widget = QtWidgets.QLineEdit()
         widget.setText(value)
+        if value == "name":
+            widget.setReadOnly(True)
         return widget
 
     def _bool_to_widget(self, value):
@@ -374,8 +366,8 @@ class DataclassWidget(QtWidgets.QWidget):
         """
         update the value of a widget.
         """
-        if hasattr(self.data, param_name):
-            param_type = self.data.__dataclass_fields__[param_name]
+        if hasattr(self.dataclass_obj, param_name):
+            param_type = self.dataclass_obj.__dataclass_fields__[param_name]
 
             if param_type == int or param_type == float:
                 self.data_widgets[param_name].setValue(value)
@@ -392,8 +384,8 @@ class DataclassWidget(QtWidgets.QWidget):
         """
         update the value of a widget.
         """
-        if hasattr(self.data, param_name):
-            param_type = self.data.__dataclass_fields__[param_name]
+        if hasattr(self.dataclass_obj, param_name):
+            param_type = self.dataclass_obj.__dataclass_fields__[param_name]
 
             if param_type == int or param_type == float:
                 return self.data_widgets[param_name].value()
