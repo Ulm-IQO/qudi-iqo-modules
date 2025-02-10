@@ -148,8 +148,8 @@ class StateEstimationPulseWidget(QWidget):
     They are used to change the dataclass widgets.
     Communication with dataclass mediators should be done solely by the dataclass widgets.
     """
-    sig_line_changed_sig = Signal(float, float)
-    ref_line_changed_sig = Signal(float, float)
+    sig_line_changed_sig = Signal(dict)
+    ref_line_changed_sig = Signal(dict)
 
     def __init__(self):
         self._log = getLogger(__name__)

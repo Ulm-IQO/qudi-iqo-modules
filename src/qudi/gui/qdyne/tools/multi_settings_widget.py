@@ -51,7 +51,6 @@ class MultiSettingsWidget(SettingsWidget):
         """Update the dataclass object used for widgets creation.
         """
         self.dataclass_obj = new_dataclass_obj
-        print(f"dataclass_obj: {self.dataclass_obj}")
         self.create_data_widgets(self.dataclass_obj)
         self.update_data_container()
 

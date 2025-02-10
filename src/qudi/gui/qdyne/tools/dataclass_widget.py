@@ -259,7 +259,7 @@ class DataclassWidget(QtWidgets.QWidget):
             else:
                 widget.valueChanged.connect(self._emit_update_sig)
 
-    def disconnect_widgets(self):
+    def disconnect_signals_from_widgets(self):
         self.data_widget_updated_sig.disconnect()
 
         for field_name, widget in self.data_widgets.items():

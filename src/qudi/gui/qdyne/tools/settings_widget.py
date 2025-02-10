@@ -127,6 +127,7 @@ class SettingsWidget(DataclassWidget):
             self.delete_mode_pushed_sig.emit(mode_to_delete)
 
     def connect_signals_from_widgets(self):
+        super().connect_signals_from_widgets()
         self.widgets["mode"].currentIndexChanged.connect(lambda clicked : self.mediator.update_mode(self.current_mode))
         self.widgets["add_mode"].clicked.connect(self._add_button_pushed)
         self.widgets["delete_mode"].clicked.connect(self._delete_button_pushed)
@@ -134,6 +135,7 @@ class SettingsWidget(DataclassWidget):
         self.delete_mode_pushed_sig.connect(self.mediator.delete_mode)
 
     def disconnect_signals_from_widgets(self):
+        super().disconnect_signals_from_widgets()
         self.widgets["mode"].currentIndexChanged.disconnect()
         self.widgets["add_mode"].clicked.disconnect()
         self.widgets["delete_mode"].clicked.disconnect()
