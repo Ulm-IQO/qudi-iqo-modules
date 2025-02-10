@@ -31,8 +31,8 @@ class SettingsWidget(DataclassWidget):
     Modes are variants of a dataclass.
     """
     mode_widget_updated_sig = Signal()
-    add_mode_pushed_sig = Signal()
-    delete_mode_pushed_sig = Signal()
+    add_mode_pushed_sig = Signal(str)
+    delete_mode_pushed_sig = Signal(str)
 
     def __init__(self, mediator, dataclass_obj=None) -> None:
         """Initialize the dataclass widget with the corresponding mediator.
@@ -106,15 +106,36 @@ class SettingsWidget(DataclassWidget):
         update the mode widget with the new mode from mediator.
         """
         self.setUpdatesEnabled(False)
-        self.widgets["mode"].setText(new_mode)
+        self.widgets["mode"].setCurrentText(new_mode)
         self.setUpdatesEnabled(True)
 
+    def _add_button_pushed(self):
+        self.setUpdatesEnabled(False)
+        mode_to_add = self.current_mode
+        self.widgets["mode"].addItem(mode_to_add)
+        self.widgets["mode"].setCurrentText(mode_to_add)
+        self.setUpdatesEnabled(True)
+        self.add_mode_pushed_sig.emit(mode_to_add)
+
+    def _delete_button_pushed(self):
+        self.setUpdatesEnabled(False)
+        mode_to_delete = self.current_mode
+        if mode_to_delete != "default":
+            # self.widgets["mode"].setCurrentItem(mode_to_add)
+            self.widgets["mode"].removeItem(self.widgets["mode"].findText(mode_to_delete))
+            self.setUpdatesEnabled(True)
+            self.delete_mode_pushed_sig.emit(mode_to_delete)
+
     def connect_signals_from_widgets(self):
-        self.widgets["mode"].currentIndexChanged.connect(lambda clicked :self.mediator.update_mode(self.current_mode))
-        self.widgets["add_mode"].clicked.connect(lambda clicked :self.mediator.add_mode(self.current_mode))
-        self.widgets["delete_mode"].clicked.connect(lambda clicked :self.mediator.delete_mode(self.current_mode))
+        self.widgets["mode"].currentIndexChanged.connect(lambda clicked : self.mediator.update_mode(self.current_mode))
+        self.widgets["add_mode"].clicked.connect(self._add_button_pushed)
+        self.widgets["delete_mode"].clicked.connect(self._delete_button_pushed)
+        self.add_mode_pushed_sig.connect(self.mediator.add_mode)
+        self.delete_mode_pushed_sig.connect(self.mediator.delete_mode)
 
     def disconnect_signals_from_widgets(self):
         self.widgets["mode"].currentIndexChanged.disconnect()
         self.widgets["add_mode"].clicked.disconnect()
         self.widgets["delete_mode"].clicked.disconnect()
+        self.add_mode_pushed_sig.disconnect()
+        self.delete_mode_pushed_sig.disconnect()

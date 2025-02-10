@@ -110,7 +110,7 @@ class MultiSettingsWidget(SettingsWidget):
         update the method widget with the new mode from mediator.
         """
         self.setUpdatesEnabled(False)
-        self.widgets["method"].setText(new_method)
+        self.widgets["method"].setCurrentText(new_method)
         self.reset_widgets(self.mediator.current_data)
         self.setUpdatesEnabled(True)
 

@@ -129,7 +129,7 @@ class DataclassWidget(QtWidgets.QWidget):
         update the parameters of widgets according to the data.
         """
         for param_name in data_dict.keys():
-            self.update_widget_value(param_name, data_dict[param_name])
+            self._update_widget_value(param_name, data_dict[param_name])
 
     def _clear_data_layout(self):
         """
@@ -217,7 +217,7 @@ class DataclassWidget(QtWidgets.QWidget):
         update the value of a widget.
         """
         if hasattr(self.dataclass_obj, param_name):
-            param_type = self.dataclass_obj.__dataclass_fields__[param_name]
+            param_type = self.dataclass_obj.__dataclass_fields__[param_name].type
 
             if param_type == int or param_type == float:
                 self.data_widgets[param_name].setValue(value)
@@ -226,7 +226,7 @@ class DataclassWidget(QtWidgets.QWidget):
             elif param_type == bool:
                 self.data_widgets[param_name].setChecked(value)
             else:
-                self._log.error(f"{param_type} type is not supported.")
+                self._log.debug(f"{param_type} type is not supported.")
         else:
             self._log.error("name not found in data.")
 
@@ -235,7 +235,7 @@ class DataclassWidget(QtWidgets.QWidget):
         update the value of a widget.
         """
         if hasattr(self.dataclass_obj, param_name):
-            param_type = self.dataclass_obj.__dataclass_fields__[param_name]
+            param_type = self.dataclass_obj.__dataclass_fields__[param_name].type
 
             if param_type == int or param_type == float:
                 return self.data_widgets[param_name].value()
@@ -244,7 +244,8 @@ class DataclassWidget(QtWidgets.QWidget):
             elif param_type == bool:
                 return self.data_widgets[param_name].isChecked()
             else:
-                self._log.error(f"{param_type} type is not supported.")
+                self._log.debug(f"{param_type} type is not supported.")
+                return None
         else:
             self._log.error("name not found in data.")
 

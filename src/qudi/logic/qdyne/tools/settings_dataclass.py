@@ -73,7 +73,7 @@ class SettingsMediator(DataclassMediator):
     @Slot(str)
     def update_mode(self, new_mode: str):
         self.current_mode = new_mode
-        self.data_updated_sig.emit(self.current_data)
+        self.data_updated_sig.emit(self.current_data.to_dict())
 
     def set_mode(self, new_mode: str):
         self.update_mode(new_mode)
@@ -89,7 +89,7 @@ class SettingsMediator(DataclassMediator):
             self._log.error('Name already taken in settings modes')
 
     @Slot(str)
-    def remove_mode(self, mode_name: str):
+    def delete_mode(self, mode_name: str):
         if mode_name in self.mode_dict:
             self._log.error("Name not found in settings modes")
             return
