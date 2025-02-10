@@ -61,6 +61,7 @@ In future releases, `python 3.8` support will be dropped to be able to upgrade t
 
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
+- Removed `setup.py` and moved fully to `pyproject.toml` instead.
 
 ## Version 0.5.1
 
