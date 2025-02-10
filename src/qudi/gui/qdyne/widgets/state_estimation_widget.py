@@ -86,8 +86,7 @@ class StateEstimationTab(QWidget):
 
         self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
-        self.connect_mutual_signals()
-        self._pulse_widget.update_lines()
+        self._pulse_widget.update_lines(self._logic().settings.estimator_stg.mediator.current_data.to_dict())
 
     def _connect_settings_widget_signals(self):
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.toggle_lines)
@@ -130,12 +129,11 @@ class StateEstimationTab(QWidget):
         measurement_logic.sigTimeTraceDataUpdated.disconnect()
 
     def activate_ui(self):
-        self._settings_widget.activate()
         self._pulse_widget.activate()
         self._time_trace_widget.activate()
+        self._pulse_widget.toggle_lines(self._logic().settings.estimator_stg.mediator.current_data.to_dict())
 
     def deactivate_ui(self):
-        self._settings_widget.deactivate()
         self._pulse_widget.deactivate()
         self._time_trace_widget.deactivate()
 
@@ -198,8 +196,6 @@ class StateEstimationPulseWidget(QWidget):
         self.pulse_PlotWidget.addItem(self.ref_end_line)
         self.pulse_PlotWidget.setLabel(axis="bottom", text="time", units="s")
         self.pulse_PlotWidget.setLabel(axis="left", text="events", units="#")
-
-        self.toggle_lines()
 
     def deactivate(self):
         self.close()

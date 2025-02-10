@@ -46,7 +46,7 @@ class TimeTraceAnalysisTab(QWidget):
     def _instantiate_widgets(self, logic):
         self._tta_layout = QVBoxLayout(self)
         self._sw = MultiSettingsWidget(logic().settings.analyzer_stg.mediator)
-        self._dw = TimeTraceAnalysisDataWidget(logic().fit_logic, logic().data)
+        self._dw = TimeTraceAnalysisDataWidget(logic().fit, logic().data)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)
 
@@ -64,15 +64,15 @@ class TimeTraceAnalysisTab(QWidget):
         self._connect_signals_from_logic()
 
     def _connect_signals_from_data_widget(self):
-        self._dw.plot1_fitwidget.sigDoFit.connect(lambda fit_config: self._logic.do_fit(fit_config))
-        self._dw.plot2_fitwidget.sigDoFit.connect(lambda fit_config: self._logic.do_fit(fit_config))
+        self._dw.plot1_fitwidget.sigDoFit.connect(lambda fit_config: self._logic().do_fit(fit_config))
+        self._dw.plot2_fitwidget.sigDoFit.connect(lambda fit_config: self._logic().do_fit(fit_config))
 
-        self._dw.analyze_pushButton.clicked.connect(self._logic.measure.analyze_time_trace)
-        self._dw.get_freq_domain_pushButton.clicked.connect(self._logic.measure.get_spectrum)
+        self._dw.analyze_pushButton.clicked.connect(self._logic().measure.analyze_time_trace)
+        self._dw.get_freq_domain_pushButton.clicked.connect(self._logic().measure.get_spectrum)
 
     def _connect_signals_from_logic(self):
-        self._logic.measure.sigQdyneDataUpdated.connect(self._dw.data_updated)
-        self._logic.sigFitUpdated.connect(self._dw.fit_data_updated)
+        self._logic().measure.sigQdyneDataUpdated.connect(self._dw.data_updated)
+        self._logic().sigFitUpdated.connect(self._dw.fit_data_updated)
 
     def disconnect_signals(self):
         self._sw.disconnect_signals()
@@ -87,11 +87,10 @@ class TimeTraceAnalysisTab(QWidget):
         self._dw.get_freq_domain_pushButton.clicked.disconnect()
 
     def _disconnect_signals_from_logic(self):
-        self._logic.measure.sigQdyneDataUpdated.disconnect()
-        self._logic.sigFitUpdated.disconnect()
+        self._logic().measure.sigQdyneDataUpdated.disconnect()
+        self._logic().sigFitUpdated.disconnect()
 
     def activate(self):
-        self._sw.activate()
         self._dw.activate()
 
     def deactivate(self):

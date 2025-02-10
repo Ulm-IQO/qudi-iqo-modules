@@ -112,7 +112,7 @@ class SettingsWidget(DataclassWidget):
         self.widgets["add_mode"].clicked.connect(lambda clicked :self.mediator.add_mode(self.current_mode))
         self.widgets["delete_mode"].clicked.connect(lambda clicked :self.mediator.delete_mode(self.current_mode))
 
-    def connect_signals_from_widgets(self):
-        self.widget["mode"].currentIndexChanged.disconnect()
+    def disconnect_signals_from_widgets(self):
+        self.widgets["mode"].currentIndexChanged.disconnect()
         self.widgets["add_mode"].clicked.disconnect()
         self.widgets["delete_mode"].clicked.disconnect()
