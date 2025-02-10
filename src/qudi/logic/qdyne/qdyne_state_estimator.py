@@ -88,7 +88,7 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
     count_mode: str = 'Average'
     sig_start: float = 0
     sig_end: float = 0
-    weight: list = field(default_factory=list)
+    weight: list = field(default_factory=list, metadata={"exclude": True})
 
     @property
     def sig_start_int(self):

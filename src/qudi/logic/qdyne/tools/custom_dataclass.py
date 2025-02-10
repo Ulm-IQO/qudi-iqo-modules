@@ -28,6 +28,11 @@ from qudi.core.logger import get_logger
 
 @dataclass
 class CustomDataclass:
+    """Custom dataclass for mediator class.
+
+    If you want to add a parameter hidden in the widget, you can define it as below:
+    param: type = field(metadata={"exclude": True})
+    """
     name: str = ""
 
     def from_dict(self, data_dict: dict):
@@ -35,7 +40,7 @@ class CustomDataclass:
             setattr(self, key, value)
 
     def to_dict(self):
-        """Convert the dataclass to a dictionary excluding `_settings_updated_sig`."""
+        """Convert the dataclass to a dictionary excluding parameters unwanted for the widgets."""
         return {
             field.name: getattr(self, field.name)
             for field in fields(self)

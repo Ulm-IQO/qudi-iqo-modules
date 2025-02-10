@@ -144,14 +144,14 @@ class DataclassWidget(QtWidgets.QWidget):
             elif item.layout():
                 item.layout().deleteLater()
 
-    def create_data_widgets(self, data):
+    def create_data_widgets(self, dataclass_obj):
         """
         create widgets based on dataclass
         """
         self.data_labels = dict()
         self.data_widgets = dict()
-        for field in fields(data):
-            if not field.name.startswith("_"):
+        for field in fields(dataclass_obj):
+            if not field.name.startswith("_") or not field.metadata.get("exclude"):
                 label = self._create_label(field.name)
                 widget = self._create_widget(field)
                 if widget is None:

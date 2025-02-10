@@ -90,7 +90,7 @@ class SettingsMediator(DataclassMediator):
 
     @Slot(str)
     def delete_mode(self, mode_name: str):
-        if mode_name in self.mode_dict:
+        if mode_name not in self.mode_dict:
             self._log.error("Name not found in settings modes")
             return
         else:
