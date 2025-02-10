@@ -157,6 +157,8 @@ class DataclassWidget(QtWidgets.QWidget):
                 if widget is None:
                     continue
                 widget.setMinimumSize(QSize(80, 0))
+                if field.name == "name":
+                    widget.setReadOnly(True)
 
                 self.data_labels[field.name] = label
                 self.data_widgets[field.name] = widget
@@ -203,8 +205,6 @@ class DataclassWidget(QtWidgets.QWidget):
     def _str_to_widget(self, value):
         widget = QtWidgets.QLineEdit()
         widget.setText(value)
-        if value == "name":
-            widget.setReadOnly(True)
         return widget
 
     def _bool_to_widget(self, value):
