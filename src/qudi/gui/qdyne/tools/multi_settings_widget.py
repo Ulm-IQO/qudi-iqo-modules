@@ -79,6 +79,8 @@ class MultiSettingsWidget(SettingsWidget):
 
         self.layouts["data_container"] = data_container
 
+        self.setLayout(self.layout_main)
+
     def create_header_layout(self):
         header_layout = QHBoxLayout()
         header_layout.addLayout(self.create_method_layout())

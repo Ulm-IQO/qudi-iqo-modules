@@ -77,6 +77,8 @@ class SettingsWidget(DataclassWidget):
         self.layout_main.addLayout(self.create_header_layout())
         self.layout_main.addLayout(self.create_data_layout())
 
+        self.setLayout(self.layout_main)
+
     def create_header_layout(self):
         self.layouts['header'] = self.create_mode_layout()
         return self.layouts['header']

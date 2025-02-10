@@ -207,6 +207,7 @@ class DataclassWidget(QtWidgets.QWidget):
         self.widgets = dict()
 
         self.init_widgets()
+        self.show()
 
     def init_widgets(self):
         """Initialize the widgets from self.dataclass_obj."""
@@ -222,6 +223,8 @@ class DataclassWidget(QtWidgets.QWidget):
     def arange_layout(self):
         self.layout_main = QtWidgets.QGridLayout()
         self.layout_main.addLayout(self.create_data_layout())
+
+        self.setLayout(self.layout_main)
 
     def create_data_layout(self):
         """
@@ -302,8 +305,8 @@ class DataclassWidget(QtWidgets.QWidget):
         self.data_widgets = dict()
         for field in fields(data):
             if not field.name.startswith("_"):
-                label = self.create_label(field.name)
-                widget = self.create_widget(field)
+                label = self._create_label(field.name)
+                widget = self._create_widget(field)
                 if widget is None:
                     continue
                 widget.setMinimumSize(QSize(80, 0))

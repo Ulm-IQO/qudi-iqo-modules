@@ -45,7 +45,8 @@ class StateEstimationTab(QWidget):
 
     def _instantiate_widgets(self, logic):
         self._sew_layout = QVBoxLayout(self)
-        self._settings_widget = StateEstimationSettingsWidget(logic().settings.estimator_stg.mediator)
+        self._settings_widget = MultiSettingsWidget(logic().settings.estimator_stg.mediator,
+                                                    logic().settings.estimator_stg.mediator.current_data)
         self._pulse_widget = StateEstimationPulseWidget()
         self._time_trace_widget = StateEstimationTimeTraceWidget()
 
@@ -139,11 +140,6 @@ class StateEstimationTab(QWidget):
 
     def analysis_timer_interval(self):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
-
-
-class StateEstimationSettingsWidget(MultiSettingsWidget):
-    def __init__(self, estimator_settings_mediator):
-        super(MultiSettingsWidget, self).__init__(estimator_settings_mediator)
 
 
 class StateEstimationPulseWidget(QWidget):
