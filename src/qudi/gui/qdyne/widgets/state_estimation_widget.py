@@ -47,8 +47,8 @@ class StateEstimationTab(QWidget):
     def _instantiate_widgets(self, logic):
         self._sew_layout = QVBoxLayout(self)
         self._settings_widget = StateEstimationSettingsWidget(
-            logic().settings.estimator_stg.mediator,
-            logic().settings.estimator_stg.mediator.current_data)
+            logic().settings.estimator_stg,
+            logic().settings.estimator_stg.current_data)
         self._pulse_widget = StateEstimationPulseWidget()
         self._time_trace_widget = StateEstimationTimeTraceWidget()
 
@@ -89,7 +89,7 @@ class StateEstimationTab(QWidget):
 
         self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
-        self._pulse_widget.update_lines(self._logic().settings.estimator_stg.mediator.current_data.to_dict())
+        self._pulse_widget.update_lines(self._logic().settings.estimator_stg.current_data.to_dict())
 
     def _connect_settings_widget_signals(self):
         """additional signal connections to the settings widget.
@@ -133,7 +133,7 @@ class StateEstimationTab(QWidget):
     def activate_ui(self):
         self._pulse_widget.activate()
         self._time_trace_widget.activate()
-        self._pulse_widget.toggle_lines(self._logic().settings.estimator_stg.mediator.current_data.to_dict())
+        self._pulse_widget.toggle_lines(self._logic().settings.estimator_stg.current_data.to_dict())
 
     def deactivate_ui(self):
         self._pulse_widget.deactivate()

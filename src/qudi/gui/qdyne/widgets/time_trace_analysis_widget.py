@@ -45,8 +45,8 @@ class TimeTraceAnalysisTab(QWidget):
 
     def _instantiate_widgets(self, logic):
         self._tta_layout = QVBoxLayout(self)
-        self._sw = MultiSettingsWidget(logic().settings.analyzer_stg.mediator,
-                                       logic().settings.analyzer_stg.mediator.current_data)
+        self._sw = MultiSettingsWidget(logic().settings.analyzer_stg,
+                                       logic().settings.analyzer_stg.current_data)
         self._dw = TimeTraceAnalysisDataWidget(logic().fit, logic().data)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)

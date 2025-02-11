@@ -26,21 +26,16 @@ from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediato
 
 
 class QdyneSettings(QtCore.QObject):
-    def __init__(self, settings_dir):
+    def __init__(self):
         super().__init__()
-        self._generate_estimator_settings(settings_dir)
-        self._generate_analyzer_settings(settings_dir)
+        self._generate_estimator_settings()
+        self._generate_analyzer_settings()
         self.data_manager_stg = DataManagerSettings()
 
-    def _generate_estimator_settings(self, settings_dir):
+    def _generate_estimator_settings(self):
         self.estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)
-        self.estimator_stg = DataclassManager(self,
-                                              MultiSettingsMediator,
-                                              os.path.join(settings_dir, 'estimator_stg.pickle'))
+        self.estimator_stg = MultiSettingsMediator(self)
 
-    def _generate_analyzer_settings(self, settings_dir):
+    def _generate_analyzer_settings(self):
         self.analyzer_cls_dict = get_subclass_dict(AnalyzerSettings.__module__, AnalyzerSettings)
-        self.analyzer_stg = DataclassManager(self,
-                                             MultiSettingsMediator,
-                                             os.path.join(settings_dir, 'analyzer_stg.pickle'))
-
+        self.analyzer_stg = MultiSettingsMediator(self)
