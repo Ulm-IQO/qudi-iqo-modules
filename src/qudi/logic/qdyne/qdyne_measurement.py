@@ -150,7 +150,7 @@ class QdyneMeasurement(QtCore.QObject):
             metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
             metadata.update({'generation method parameters':
                              self.qdyne_logic.measurement_generator.generate_method_params[
-                                     self.qdyne_logic.measurement_generator.loaded_asset[0]]})
+                                     self.qdyne_logic.measurement_generator.loaded_asset[0]]}) #TODO add error handling for empty loaded_asset
             logger.debug("set metadata")
             self.qdyne_logic.data_manager.set_metadata(metadata)
         except Exception as e:
@@ -223,7 +223,7 @@ class QdyneMeasurement(QtCore.QObject):
             self.new_data.extracted_data, self.settings.estimator_stg.mediator.current_data
         )
         self.data.time_trace = np.append(self.data.time_trace, self.new_data.time_trace)
-        self.sigTimeTraceDataUpdated.emit()
+        self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
     def analyze_time_trace(self):
         try:
