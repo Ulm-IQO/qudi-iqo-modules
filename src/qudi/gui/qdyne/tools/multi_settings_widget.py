@@ -137,5 +137,5 @@ class MultiSettingsWidget(SettingsWidget):
             lambda method: self.mediator.update_method(self.current_method))
 
     def disconnect_signals_from_widgets(self):
-        super().disconnect_signals_from_mediator()
+        super().disconnect_signals_from_widgets()
         self.widgets["method"].currentIndexChanged.disconnect()

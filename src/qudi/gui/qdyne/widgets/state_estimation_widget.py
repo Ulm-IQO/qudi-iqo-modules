@@ -91,6 +91,10 @@ class StateEstimationTab(QWidget):
         self._pulse_widget.update_lines(self._logic().settings.estimator_stg.mediator.current_data.to_dict())
 
     def _connect_settings_widget_signals(self):
+        """additional signal connections to the settings widget.
+
+        Disconnections are done in settings widget.
+        """
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.toggle_lines)
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.update_lines)
 
@@ -107,19 +111,14 @@ class StateEstimationTab(QWidget):
 
     def disconnect_signals(self):
         self._settings_widget.disconnect_signals()
-        self._pulse_widget.disconnect_signals()
-
-        self._disconnect_settings_widget_signals()
         self._disconnect_pulse_widget_signals()
         self._disconnect_measurement_signals(self._logic().measure)
 
         self._analysis_interval_spinbox.editingFinished.disconnect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.disconnect(self._analysis_interval_spinbox.setValue)
 
-    def _disconnect_settings_widget_signals(self):
-        self._settings_widget.data_widget_updated_sig.disconnect()
-
     def _disconnect_pulse_widget_signals(self):
+        self._pulse_widget.disconnect_signals()
         self._pulse_widget.sig_line_changed_sig.disconnect()
         self._pulse_widget.ref_line_changed_sig.disconnect()
 
