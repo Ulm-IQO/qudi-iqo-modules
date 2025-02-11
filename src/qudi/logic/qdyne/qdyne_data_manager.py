@@ -26,26 +26,6 @@ from logging import getLogger
 
 logger = getLogger(__name__)
 
-class QdyneNpyDataStorage(NpyDataStorage):
-    """
-    TODO repair get_header_from_file
-    """
-    def load_data(self, file_path):
-        """ See: DataStorageBase.load_data()
-
-        @param str file_path: path to file to load data from
-        """
-        # Load numpy array
-        data = np.load(file_path, allow_pickle=False, fix_imports=False)
-        # Try to find and load metadata from text file
-        metadata_path = file_path.split('.npy')[0] + '_metadata.txt'
-        try:
-            header = get_header_from_file(metadata_path)
-        except FileNotFoundError:
-            return data, dict(), dict()
-        logger.warning(header)
-        return data, dict(), dict()
-
 
 @dataclass
 class QdyneSaveOptions:
@@ -107,7 +87,7 @@ class DataStorage:
         if cfg_str == 'csv':
             return CsvDataStorage
         if cfg_str == 'npy':
-            return QdyneNpyDataStorage
+            return NpyDataStorage
         raise ValueError('Invalid ConfigOption value to specify data storage type.')
 
     def save_data(self, data, options: Optional[QdyneSaveOptions] = QdyneSaveOptions()) -> None:
