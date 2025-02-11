@@ -187,6 +187,7 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
         self.mediator.data_updated_sig.emit(new_values_dict)
         self.data_widget_updated_sig.emit(new_values_dict)
 
+
 class StateEstimationPulseWidget(QWidget):
     """
     Widget to confirm the shape of pulse data. A set of start line and end line is provided for signal and reference.

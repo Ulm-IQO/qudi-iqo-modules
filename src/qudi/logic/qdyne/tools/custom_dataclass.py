@@ -170,9 +170,13 @@ class DataclassManager(QObject):
         """
         if os.path.exists(self._data_storage.save_path):
             self.mediator.data_container = self._data_storage.load()
-            self._log.debug(f"Saved settings loaded from {self._data_storage.save_path}")
+            if not self.mediator.data_container:
+                self._log.info(f"Saved settings loaded from {self._data_storage.save_path}")
+            else:
+                self.mediator.create_default(*args)
+                self._log.warning("loading of settings failed. Default settings created.")
 
         else:
             self.mediator.create_default(*args)
-            self._log.debug("Default settings created")
+            self._log.info("Default settings created")
 
