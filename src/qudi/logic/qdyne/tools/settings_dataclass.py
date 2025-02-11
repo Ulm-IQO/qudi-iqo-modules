@@ -66,6 +66,10 @@ class SettingsMediator(DataclassMediator):
         """
         return self.mode_dict
 
+    @data_container.setter
+    def data_container(self, data_container):
+        self.mode_dict = data_container
+
     @property
     def default_data(self):
         return self.mode_dict["default"]

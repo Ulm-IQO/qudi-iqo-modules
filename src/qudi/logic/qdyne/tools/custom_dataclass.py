@@ -75,6 +75,10 @@ class DataclassMediator(QObject):
         """
         return self._data
 
+    @data_container.setter
+    def data_container(self, data_container):
+        self._data = data_container
+
     @Slot(dict)
     def update_values(self, new_dc_dict):
         """
@@ -125,7 +129,7 @@ class DataclassStorage:
     def load(self):
         try:
             with open(self.save_path, 'rb') as f:
-                self._data_container = pickle.load(f)
+                return pickle.load(f)
 
         except EOFError:
             self.log.error(f"cannot load settings from {self.save_path}")
@@ -165,7 +169,7 @@ class DataclassManager(QObject):
         Initialize the data container.
         """
         if os.path.exists(self._data_storage.save_path):
-            self._data_storage.load()
+            self.mediator.data_container = self._data_storage.load()
             self._log.debug(f"Saved settings loaded from {self._data_storage.save_path}")
 
         else:

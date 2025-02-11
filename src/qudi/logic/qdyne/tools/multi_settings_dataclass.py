@@ -47,7 +47,7 @@ class MultiSettingsMediator(SettingsMediator):
 
         In MultiSettingsMediator, this is given by the currently selected method and mode.
         """
-
+        print(self.method_dict)
         return self.method_dict[self.current_method][self.current_mode]
 
     @property
@@ -66,6 +66,10 @@ class MultiSettingsMediator(SettingsMediator):
         The data in a data sotrage will be loaded here.
         """
         return self.method_dict
+
+    @data_container.setter
+    def data_container(self, data_container):
+        self.method_dict = data_container
 
     @Slot(str)
     def update_method(self, new_method: str):
