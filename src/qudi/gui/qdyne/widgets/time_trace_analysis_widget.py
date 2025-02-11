@@ -69,7 +69,7 @@ class TimeTraceAnalysisTab(QWidget):
         self._dw.plot2_fitwidget.sigDoFit.connect(lambda fit_config: self._logic().do_fit(fit_config))
 
         self._dw.analyze_pushButton.clicked.connect(self._logic().measure.analyze_time_trace)
-        self._dw.get_freq_domain_pushButton.clicked.connect(self._logic().measure.get_spectrum)
+        # self._dw.get_freq_domain_pushButton.clicked.connect(self._logic().measure.get_spectrum)
 
     def _connect_signals_from_logic(self):
         self._logic().measure.sigQdyneDataUpdated.connect(self._dw.data_updated)
@@ -85,7 +85,7 @@ class TimeTraceAnalysisTab(QWidget):
         self._dw.plot2_fitwidget.sigDoFit.disconnect()
 
         self._dw.analyze_pushButton.clicked.disconnect()
-        self._dw.get_freq_domain_pushButton.clicked.disconnect()
+        # self._dw.get_freq_domain_pushButton.clicked.disconnect()
 
     def _disconnect_signals_from_logic(self):
         self._logic().measure.sigQdyneDataUpdated.disconnect()
