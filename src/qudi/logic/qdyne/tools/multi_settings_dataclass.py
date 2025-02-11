@@ -106,8 +106,7 @@ class MultiSettingsMediator(SettingsMediator):
 
             mode_dict = dict()
             for mode in method_map[method].keys():
-                mode = mode_map[mode]
-                mode_dict[mode] = dataclass_cls(**mode)
+                mode_dict[mode] = dataclass_cls(**mode_map[mode])
             self.method_dict[method] = mode_dict
 
     def dump_as_dict(self):

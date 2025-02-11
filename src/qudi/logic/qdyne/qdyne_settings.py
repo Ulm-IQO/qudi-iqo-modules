@@ -49,18 +49,16 @@ class QdyneSettings(QtCore.QObject):
         self.data_manager_stg = DataManagerSettings()
 
     def _generate_estimator_settings(self, settings_dir):
-        estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)
+        self.estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)
         self.estimator_stg = DataclassManager(self,
                                               MultiSettingsMediator,
                                               os.path.join(settings_dir, 'estimator_stg.pickle'))
-        self.estimator_stg.initialize_data_container(estimator_cls_dict)
 
     def _generate_analyzer_settings(self, settings_dir):
-        analyzer_cls_dict = get_subclass_dict(AnalyzerSettings.__module__, AnalyzerSettings)
+        self.analyzer_cls_dict = get_subclass_dict(AnalyzerSettings.__module__, AnalyzerSettings)
         self.analyzer_stg = DataclassManager(self,
                                              MultiSettingsMediator,
                                              os.path.join(settings_dir, 'analyzer_stg.pickle'))
-        self.analyzer_stg.initialize_data_container(analyzer_cls_dict)
 
 
 # class SettingsManager:

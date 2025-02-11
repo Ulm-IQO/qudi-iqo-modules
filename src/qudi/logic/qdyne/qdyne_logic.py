@@ -385,6 +385,22 @@ class QdyneLogic(LogicBase):
             if not os.path.exists(self._settings_storage_dir):
                 os.makedirs(self._settings_storage_dir)
 
+            if not self._estimator_stg_dict:
+                self.log.info("Default settings created")
+                self.settings.estimator_stg.mediator.create_default(self.settings.estimator_cls_dict)
+            else:
+                self.settings.estimator_stg.mediator.load_from_dict(
+                    self.settings.estimator_cls_dict, self._estimator_stg_dict)
+                self.log.info(f"Saved settings loaded from ")
+
+            if not self._analyzer_stg_dict:
+                self.log.info("Default settings created")
+                self.settings.analyzer_stg.mediator.create_default(self.settings.analyzer_cls_dict)
+            else:
+                self.settings.analyzer_stg.mediator.load_from_dict(
+                    self.settings.analyzer_cls_dict, self._analyzer_stg_dict)
+                self.log.info(f"Saved settings loaded from ")
+
             self.measurement_generator.set_counter_settings(
                 self._measurement_generator_dict
             )
@@ -417,8 +433,10 @@ class QdyneLogic(LogicBase):
         self._measurement_generator_dict = self.measurement_generator.counter_settings
         # self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
         # self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
-        self.settings.estimator_stg.save_data_container()
-        self.settings.analyzer_stg.save_data_container()
+        self._estimator_stg_dict = self.settings.estimator_stg.mediator.dump_as_dict()
+        # self.settings.estimator_stg.save_data_container()
+        # self.settings.analyzer_stg.save_data_container()
+        self._analyzer_stg_dict = self.settings.analyzer_stg.mediator.dump_as_dict()
 
     def input_estimator_method(self):
         self.estimator.method = self.settings.estimator_stg.mediator.current_method
