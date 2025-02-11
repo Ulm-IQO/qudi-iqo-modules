@@ -302,10 +302,6 @@ class QdyneLogic(LogicBase):
     pulsedmasterlogic = Connector(interface="PulsedMasterLogic")
     _data_streamer = Connector(name="data_streamer", interface="QdyneCounterInterface")
 
-    _settings_storage_dir = ConfigOption(name='settings_storage_dir',
-                                         default=os.path.join(get_userdata_dir(), r'settings\qdyne_settings'),
-                                         missing='nothing')
-
     # declare config options
     estimator_method = ConfigOption(
         name="estimator_method", default="TimeTag", missing="warn"
@@ -381,42 +377,44 @@ class QdyneLogic(LogicBase):
 
         #            self.fitting = QdyneFittingMain()
 
-        def initialize_settings():
-            if not os.path.exists(self._settings_storage_dir):
-                os.makedirs(self._settings_storage_dir)
 
-            if not self._estimator_stg_dict:
-                self.log.info("Default settings created")
-                self.settings.estimator_stg.create_default(self.settings.estimator_cls_dict)
-            else:
+        def initialize_estimator_settings():
+            if self._estimator_stg_dict:
                 self.settings.estimator_stg.load_from_dict(
                     self.settings.estimator_cls_dict, self._estimator_stg_dict)
-                self.log.info(f"Saved settings loaded from ")
 
-            if not self._analyzer_stg_dict:
-                self.log.info("Default settings created")
-                self.settings.analyzer_stg.create_default(self.settings.analyzer_cls_dict)
             else:
-                self.settings.analyzer_stg.load_from_dict(
-                    self.settings.analyzer_cls_dict, self._analyzer_stg_dict)
-                self.log.info(f"Saved settings loaded from ")
+                self.settings.estimator_stg.create_default(self.settings.estimator_cls_dict)
+                self.log.info("Default estimator settings created.")
 
-            self.measurement_generator.set_counter_settings(
-                self._measurement_generator_dict
-            )
             self.settings.estimator_stg.set_method(self._current_estimator_method)
             self.settings.estimator_stg.set_mode(self._current_estimator_mode)
+
+            self.input_estimator_method()
+
+        def initialize_analyzer_settings():
+            if self._analyzer_stg_dict:
+                self.settings.analyzer_stg.load_from_dict(
+                    self.settings.analyzer_cls_dict, self._analyzer_stg_dict)
+
+            else:
+                self.settings.analyzer_stg.create_default(self.settings.analyzer_cls_dict)
+                self.log.info("Default settings created")
 
             self.settings.analyzer_stg.set_method(self._current_analyzer_method)
             self.settings.analyzer_stg.set_mode(self._current_analyzer_mode)
 
-        def input_initial_settings():
-            self.input_estimator_method()
             self.input_analyzer_method()
 
+
+
+
         activate_classes()
-        initialize_settings()
-        input_initial_settings()
+        initialize_estimator_settings()
+        initialize_analyzer_settings()
+        self.measurement_generator.set_counter_settings(
+            self._measurement_generator_dict
+        )
 
         self.sigToggleQdyneMeasurement.connect(
             self.measure.toggle_qdyne_measurement, QtCore.Qt.QueuedConnection

@@ -21,7 +21,6 @@ from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorSettings
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import AnalyzerSettings
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
 from qudi.logic.qdyne.tools.dataclass_tools import get_subclass_dict
-from qudi.logic.qdyne.tools.custom_dataclass import DataclassManager
 from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediator
 
 
