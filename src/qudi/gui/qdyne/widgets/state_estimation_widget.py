@@ -301,7 +301,7 @@ class StateEstimationPulseWidget(QWidget):
         if "ref_end" in data_dict:
             self.ref_end_line.setValue(data_dict["ref_end"])
 
-    @Slot()
+    @Slot(object)
     def pulse_updated(self, pulse_data):
         self.pulse_image.setData(x=pulse_data[0], y=pulse_data[1])
 
