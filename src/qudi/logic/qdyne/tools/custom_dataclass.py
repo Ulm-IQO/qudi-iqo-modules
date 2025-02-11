@@ -109,6 +109,14 @@ class DataclassMediator(QObject):
         else:
             self._log.error(f"Parameter {param_name} not found in dataclass.")
 
+    def load_from_dict(self, data_dict):
+        """Load data from dictionary."""
+        self.set_values(data_dict)
+
+    def dump_as_dict(self):
+        """dump the data container as a dictionary"""
+        return self.data_container.to_dict()
+
 
 class DataclassStorage:
 

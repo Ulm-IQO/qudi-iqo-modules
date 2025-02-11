@@ -129,3 +129,13 @@ class SettingsMediator(DataclassMediator):
         """
         self.mode_dict["default"] = dataclass_cls()
 
+    def load_from_dict(self, dataclass_cls, mode_map):
+        """Load data from dict."""
+        for mode in mode_map:
+            self.mode_dict[mode] = dataclass_cls(**mode_map[mode])
+
+    def dump_as_dict(self):
+        mode_map = dict()
+        for mode in self.data_container:
+            mode_map[mode] = self.data_container[mode].to_dict()
+        return mode_map
