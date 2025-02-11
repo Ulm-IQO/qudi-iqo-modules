@@ -232,6 +232,9 @@ class ScannerGui(GuiBase):
         self._mw.action_history_back.triggered.connect(self._data_logic().history_previous, QtCore.Qt.QueuedConnection)
 
         self._scanning_logic().sigScannerTargetChanged.connect(self.scanner_target_updated, QtCore.Qt.QueuedConnection)
+        self._scanning_logic().sigScanSettingsChanged.connect(
+            self.update_scanner_settings_from_logic, QtCore.Qt.QueuedConnection
+        )
         self._scanning_logic().sigScanStateChanged.connect(self.scan_state_updated, QtCore.Qt.QueuedConnection)
         self._data_logic().sigHistoryScanDataRestored.connect(self._update_from_history, QtCore.Qt.QueuedConnection)
         self._optimize_logic().sigOptimizeStateChanged.connect(self.optimize_state_updated, QtCore.Qt.QueuedConnection)
@@ -309,6 +312,7 @@ class ScannerGui(GuiBase):
         self._mw.action_utility_zoom.toggled.disconnect()
         self._scanning_logic().sigScannerTargetChanged.disconnect(self.scanner_target_updated)
         self._scanning_logic().sigScanStateChanged.disconnect(self.scan_state_updated)
+        self._scanning_logic().sigScanSettingsChanged.disconnect(self.update_scanner_settings_from_logic)
         self._optimize_logic().sigOptimizeStateChanged.disconnect(self.optimize_state_updated)
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(self._init_optimizer_dockwidget)
         self._optimize_logic().sigOptimizeSequenceDimensionsChanged.disconnect(
@@ -541,7 +545,11 @@ class ScannerGui(GuiBase):
         tilt_settings = self._scanning_logic().tilt_correction_settings
 
         self.tilt_corr_support_vector_updated(tilt_settings)
-        self.apply_tilt_corr_support_vectors()
+        try:
+            self.apply_tilt_corr_support_vectors()
+        except ValueError:
+            self.log.warning("Couldn't restore tilt correction settings.")
+            pass
 
     @QtCore.Slot(tuple)
     def save_scan_data(self, scan_axes: Union[None, Tuple[str], Tuple[str, str]]):
@@ -678,7 +686,6 @@ class ScannerGui(GuiBase):
 
         use_back_settings = self._ssd.settings_widget.configure_backward_scan
         self.sigUseBackScanSettings.emit(use_back_settings)
-        self.scanner_control_dockwidget.set_backward_settings_visibility(use_back_settings)
 
     @QtCore.Slot()
     def update_scanner_settings_from_logic(self):
@@ -693,6 +700,9 @@ class ScannerGui(GuiBase):
             self._ssd.settings_widget.set_forward_frequency(ax, forward)
         for ax, backward in scan_logic.back_scan_frequency.items():
             self._ssd.settings_widget.set_backward_frequency(ax, backward)
+
+        self._ssd.settings_widget.configure_backward_scan = scan_logic.use_back_scan_settings
+        self.scanner_control_dockwidget.set_backward_settings_visibility(scan_logic.use_back_scan_settings)
 
     @QtCore.Slot()
     def set_full_range(self) -> None:
@@ -858,8 +868,12 @@ class ScannerGui(GuiBase):
         avail_axs.extend(self.scan_2d_dockwidgets.keys())
 
         data_logic: ScanningDataLogic = self._data_logic()
+        # populate all plot widgets with scandata
         for ax in avail_axs:
-            data_logic.restore_from_history(ax)
+            data_logic.restore_from_history(ax, set_target=False)
+        # restore the latest scan
+        data_logic.restore_from_history()
+
 
     def _update_scan_markers(self, pos_dict, exclude_scan=None):
         """ """
@@ -884,9 +898,10 @@ class ScannerGui(GuiBase):
                 continue
         self.scanner_control_dockwidget.set_target(pos_dict)
 
-    @QtCore.Slot(ScanData, ScanData)
-    def _update_from_history(self, scan_data: ScanData, back_scan_data: Optional[ScanData]):
-        self.set_scanner_target_position(scan_data.scanner_target_at_start)
+    @QtCore.Slot(ScanData, ScanData, int)
+    def _update_from_history(self, scan_data: ScanData, back_scan_data: Optional[ScanData], set_target: bool):
+        if set_target:
+            self.set_scanner_target_position(scan_data.scanner_target_at_start)
         self._update_scan_data(scan_data, back_scan_data)
         self.set_active_tab(scan_data.settings.axes)
 

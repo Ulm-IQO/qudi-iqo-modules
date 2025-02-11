@@ -107,7 +107,7 @@ class FourierAnalyzer(Analyzer):
         n = int(np.floor(np.log2(m)))
         if padding_param > 0:
             target_length = 2**(n + padding_param)
-        if padding_param < - n:
+        elif padding_param < - n:
             raise ValueError(f"Padding parameter too small. Minimum padding parameter: {-n}")
         else:
             target_length = 2**(n + padding_param + 1)

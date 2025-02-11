@@ -36,6 +36,7 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
 class StateEstimationTab(QWidget):
+
     def __init__(self, logic):
         super().__init__()
         self._log = get_logger(__name__)
@@ -143,6 +144,8 @@ class StateEstimationTab(QWidget):
 
 
 class StateEstimationSettingsWidget(MultiSettingsWidget):
+    """Settings widget in the state estimation tab."""
+
     def __init__(self, mediator, dataclass_obj):
         super().__init__(mediator, dataclass_obj)
 
@@ -319,6 +322,8 @@ class StateEstimationPulseWidget(QWidget):
 
 
 class StateEstimationTimeTraceWidget(QWidget):
+    """Display the time trace data."""
+
     _log = get_logger(__name__)
 
     def __init__(self):

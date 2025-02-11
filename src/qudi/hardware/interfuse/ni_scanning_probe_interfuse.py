@@ -398,14 +398,15 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     def start_scan(self):
         """Start a scan as configured beforehand.
         Log an error if something fails or a 1D/2D scan is in progress.
+
+        Offload self._start_scan() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
         """
+
         try:
-
-            #self.log.debug(f"Start scan in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()}... ")
-
             if self.thread() is not QtCore.QThread.currentThread():
-                QtCore.QMetaObject.invokeMethod(self, '_start_scan',
-                                                QtCore.Qt.BlockingQueuedConnection)
+                QtCore.QMetaObject.invokeMethod(self, '_start_scan', QtCore.Qt.BlockingQueuedConnection)
             else:
                 self._start_scan()
 
@@ -445,8 +446,12 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     def stop_scan(self):
         """Stop the currently running scan.
         Log an error if something fails or no 1D/2D scan is in progress.
+
+        Offload self._stop_scan() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
         """
-        #self.log.debug("Stopping scan")
+
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
                                             QtCore.Qt.BlockingQueuedConnection)
@@ -546,17 +551,21 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
             new_data = {reverse_routing[key]: samples for key, samples in samples_dict.items()}
 
+            do_stop = False
             with self._thread_lock_data:
                 self.raw_data_container.fill_container(new_data)
                 self._scan_data.data = self.raw_data_container.forwards_data()
                 self._back_scan_data.data = self.raw_data_container.backwards_data()
 
                 if self._check_scan_end_reached():
-                    self.stop_scan()
+                    do_stop = True
                 elif not self.is_scan_running:
                     return
                 else:
                     self.sigNextDataChunk.emit()
+
+            if do_stop:
+                self.stop_scan()
 
         except Exception as e:
             self.log.error("Error while fetching data chunk.", exc_info=e)
@@ -899,10 +908,14 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self.__ni_ao_write_timer.setInterval(1e3*self._min_step_interval)  # (ms), dynamically calculated during write loop
 
     def __start_ao_write_timer(self):
-        #self.log.debug(f"ao start write timer in thread {self.thread()}, QT.QThread {QtCore.QThread.currentThread()} ")
+        """
+        Offload self.__ni_ao_write_timer.start() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
+
         try:
             if not self.is_move_running:
-                #self.log.debug("Starting AO write timer...")
                 if self.thread() is not QtCore.QThread.currentThread():
                     QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
                                                     'start',
@@ -911,8 +924,6 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
                     self.__ni_ao_write_timer.start()
             else:
                 pass
-                #self.log.debug("Dropping timer start, already running")
-
         except:
             self.log.exception("")
 
