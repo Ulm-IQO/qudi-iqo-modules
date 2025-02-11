@@ -45,8 +45,9 @@ class StateEstimationTab(QWidget):
 
     def _instantiate_widgets(self, logic):
         self._sew_layout = QVBoxLayout(self)
-        self._settings_widget = MultiSettingsWidget(logic().settings.estimator_stg.mediator,
-                                                    logic().settings.estimator_stg.mediator.current_data)
+        self._settings_widget = StateEstimationSettingsWidget(
+            logic().settings.estimator_stg.mediator,
+            logic().settings.estimator_stg.mediator.current_data)
         self._pulse_widget = StateEstimationPulseWidget()
         self._time_trace_widget = StateEstimationTimeTraceWidget()
 
@@ -141,6 +142,48 @@ class StateEstimationTab(QWidget):
     def analysis_timer_interval(self):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
 
+
+class StateEstimationSettingsWidget(MultiSettingsWidget):
+    def __init__(self, mediator, dataclass_obj):
+        super().__init__(mediator, dataclass_obj)
+
+    @property
+    def values_dict(self):
+        """Get the current values of the widget in a dictionary."""
+        values_dict = dict()
+        for key in self.data_widgets.keys():
+            values_dict[key] = self._get_widget_value(key)
+
+        ordered_values_dict = self._order_sig_values(values_dict)
+        ordered_values_dict = self._order_ref_values(ordered_values_dict)
+        return values_dict
+
+    def _order_sig_values(self, values_dict):
+        if "sig_start" in values_dict and "sig_end" in values_dict:
+            sig_start = values_dict["sig_start"]
+            sig_end = values_dict["sig_end"]
+
+            new_sig_start = (sig_start if sig_start <= sig_end else sig_end)
+            new_sig_end = (sig_end if sig_end >= sig_start else sig_start)
+            values_dict["sig_start"] = new_sig_start
+            values_dict["sig_end"] = new_sig_end
+        return values_dict
+
+    def _order_ref_values(self, values_dict):
+        if "ref_start" in values_dict and "ref_end" in values_dict:
+            ref_start = values_dict["ref_start"]
+            ref_end = values_dict["ref_end"]
+
+            new_ref_start = (ref_start if ref_start <= ref_end else ref_end)
+            new_ref_end = (ref_end if ref_end >= ref_start else ref_start)
+            values_dict["ref_start"] = new_ref_start
+            values_dict["ref_end"] = new_ref_end
+        return values_dict
+
+    def _emit_update_sig(self):
+        new_values_dict = self.values_dict
+        self.mediator.data_updated_sig.emit(new_values_dict)
+        self.data_widget_updated_sig.emit(new_values_dict)
 
 class StateEstimationPulseWidget(QWidget):
     """
