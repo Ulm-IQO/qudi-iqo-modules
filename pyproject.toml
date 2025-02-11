@@ -1,6 +1,82 @@
 [build-system]
 requires = [
-    "setuptools>=42",
+    "setuptools>=61.0",
+    "setuptools-scm>=8.0",
     "wheel"
 ]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "qudi-iqo-modules"
+dynamic = ["version"]
+description = "IQO measurement modules collection for qudi"
+readme = "README.md"
+keywords = [
+    "qudi",
+    "diamond",
+    "quantum",
+    "confocal",
+    "experiment",
+    "lab",
+    "laboratory",
+    "instrumentation",
+    "instrument",
+    "modular",
+    "measurement",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications",
+    "Environment :: MacOS X",
+
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: End Users/Desktop",
+
+    "License :: OSI Approved :: GNU Lesser General Public License v3 (LGPLv3)",
+
+    "Natural Language :: English",
+
+    "Operating System :: Microsoft :: Windows :: Windows 8",
+    "Operating System :: Microsoft :: Windows :: Windows 8.1",
+    "Operating System :: Microsoft :: Windows :: Windows 10",
+    "Operating System :: Microsoft :: Windows :: Windows 11",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: Unix",
+    "Operating System :: POSIX :: Linux",
+
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+
+    "Topic :: Scientific/Engineering",
+]
+requires-python = ">=3.8, <3.11"
+dependencies = [
+    "qudi-core>=1.5.1",
+    "entrypoints>=0.4",
+    "fysom>=2.1.6",
+    "lmfit>=1.0.3",
+    "lxml>=4.9.1",
+    "matplotlib>=3.6.0",
+    "nidaqmx>=0.5.7",
+    "numpy>=1.23.3,<2.0",
+    "pyqtgraph>=0.13.1",
+    "PySide2",  # get fixed version from core
+    "PyVisa>=1.12.0",
+    "scipy>=1.9.1",
+    "zaber_motion>=2.14.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/Ulm-IQO/qudi-iqo-modules"
+Repository = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
+"Bug Tracker" = "https://github.com/Ulm-IQO/qudi-iqo-modules/issues"
+Changelog = "https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/changelog.md"
+
+[tool.setuptools.dynamic]
+version = {file = "VERSION"}
+
+[project.optional-dependencies]
+dev-test = ["pytest", "pytest-qt", "coverage"]

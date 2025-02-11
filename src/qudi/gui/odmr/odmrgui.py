@@ -138,10 +138,12 @@ class OdmrGui(GuiBase):
         # Close dialogs and windows
         self._odmr_settings_dialog.close()
         self._fit_config_dialog.close()
+        self._save_window_geometry(self._mw)
         self._mw.close()
 
     def show(self):
         """Make window visible and put it above all other windows. """
+        self._restore_window_geometry(self._mw)
         self._mw.show()
         self._mw.activateWindow()
         self._mw.raise_()
