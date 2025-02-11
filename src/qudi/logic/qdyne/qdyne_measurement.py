@@ -202,23 +202,23 @@ class QdyneMeasurement(QtCore.QObject):
 
     def get_pulse(self):
         logger.debug(f"Qdyne Measurement: get_pulse: estimator.configure_method")
-        self.estimator.configure_method(self.settings.estimator_stg.current_method)
+        self.estimator.configure_method(self.settings.estimator_stg.mediator.current_method)
         logger.debug(f"Qdyne Measurement: get_pulse: estimator.get_pulse")
         self.data.pulse_data = self.estimator.get_pulse(
-            self.data.raw_data, self.settings.estimator_stg.current_setting
+            self.data.raw_data, self.settings.estimator_stg.mediator.current_data
         )
         logger.debug(f"Qdyne Measurement: get_pulse: emitting signal")
         self.sigPulseDataUpdated.emit()
 
     def extract_data(self):
         self.new_data.extracted_data = self.estimator.extract(
-            self.new_data.raw_data, self.settings.estimator_stg.current_setting
+            self.new_data.raw_data, self.settings.estimator_stg.mediator.current_data
         )
         self.data.extracted_data = np.append(self.data.extracted_data, self.new_data.extracted_data)
 
     def estimate_state(self):
         self.new_data.time_trace = self.estimator.estimate(
-            self.new_data.extracted_data, self.settings.estimator_stg.current_setting
+            self.new_data.extracted_data, self.settings.estimator_stg.mediator.current_setting
         )
         self.data.time_trace = np.append(self.data.time_trace, self.new_data.time_trace)
         self.sigTimeTraceDataUpdated.emit()
@@ -226,7 +226,7 @@ class QdyneMeasurement(QtCore.QObject):
     def analyze_time_trace(self):
         try:
             self.data.signal = self.analyzer.analyze(
-                self.data, self.settings.analyzer_stg.current_setting
+                self.data, self.settings.analyzer_stg.mediator.current_data
             )
         except Exception as e:
             logger.exception(e)
@@ -235,7 +235,7 @@ class QdyneMeasurement(QtCore.QObject):
     def get_spectrum(self):
         try:
             self.data.freq_domain = self.analyzer.get_freq_domain_signal(
-                self.data, self.settings.analyzer_stg.current_setting
+                self.data, self.settings.analyzer_stg.mediator.current_data
             )
             self.data.freq_data.x = self.data.freq_domain[0]
             self.data.freq_data.y = self.data.freq_domain[1]
