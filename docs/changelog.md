@@ -59,6 +59,7 @@
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
 - Removed `setup.py` and moved fully to `pyproject.toml` instead.
+- Added some integration tests that run automatically via Github Actions on PRs and commits to main.
 
 ## Version 0.5.1
 
