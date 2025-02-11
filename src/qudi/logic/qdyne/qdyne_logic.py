@@ -178,12 +178,12 @@ class MeasurementGenerator:
         _logger.debug(f"{settings_dict=}")
         if "_bin_width" in settings_dict:
             settings_dict["bin_width"] = float(settings_dict["bin_width"])  # add to configure estimator settings
-            self._qdyne_logic.settings.estimator_stg.mediator.set_single_value('bin_width', settings_dict["bin_width"])
+            self._qdyne_logic.settings.estimator_stg.set_single_value('bin_width', settings_dict["bin_width"])
         if "sequence_length" in settings_dict:
             self.__sequence_length = float(settings_dict["sequence_length"])
-            self._qdyne_logic.settings.estimator_stg.mediator.set_single_value(
+            self._qdyne_logic.settings.estimator_stg.set_single_value(
                 'sequence_length', settings_dict["sequence_length"])
-            self._qdyne_logic.settings.analyzer_stg.mediator.set_single_value(
+            self._qdyne_logic.settings.analyzer_stg.set_single_value(
                 'sequence_length', settings_dict["sequence_length"])
         _logger.debug(f"{settings_dict=}")
 
@@ -302,10 +302,6 @@ class QdyneLogic(LogicBase):
     pulsedmasterlogic = Connector(interface="PulsedMasterLogic")
     _data_streamer = Connector(name="data_streamer", interface="QdyneCounterInterface")
 
-    _settings_storage_dir = ConfigOption(name='settings_storage_dir',
-                                         default=os.path.join(get_userdata_dir(), r'settings\qdyne_settings'),
-                                         missing='nothing')
-
     # declare config options
     estimator_method = ConfigOption(
         name="estimator_method", default="TimeTag", missing="warn"
@@ -363,7 +359,7 @@ class QdyneLogic(LogicBase):
             self.new_data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
-            self.settings = QdyneSettings(self._settings_storage_dir)
+            self.settings = QdyneSettings()
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )
@@ -381,26 +377,44 @@ class QdyneLogic(LogicBase):
 
         #            self.fitting = QdyneFittingMain()
 
-        def initialize_settings():
-            if not os.path.exists(self._settings_storage_dir):
-                os.makedirs(self._settings_storage_dir)
 
-            self.measurement_generator.set_counter_settings(
-                self._measurement_generator_dict
-            )
-            self.settings.estimator_stg.mediator.set_method(self._current_estimator_method)
-            self.settings.estimator_stg.mediator.set_mode(self._current_estimator_mode)
+        def initialize_estimator_settings():
+            if self._estimator_stg_dict:
+                self.settings.estimator_stg.load_from_dict(
+                    self.settings.estimator_cls_dict, self._estimator_stg_dict)
 
-            self.settings.analyzer_stg.mediator.set_method(self._current_analyzer_method)
-            self.settings.analyzer_stg.mediator.set_mode(self._current_analyzer_mode)
+            else:
+                self.settings.estimator_stg.create_default(self.settings.estimator_cls_dict)
+                self.log.info("Default estimator settings created.")
 
-        def input_initial_settings():
+            self.settings.estimator_stg.set_method(self._current_estimator_method)
+            self.settings.estimator_stg.set_mode(self._current_estimator_mode)
+
             self.input_estimator_method()
+
+        def initialize_analyzer_settings():
+            if self._analyzer_stg_dict:
+                self.settings.analyzer_stg.load_from_dict(
+                    self.settings.analyzer_cls_dict, self._analyzer_stg_dict)
+
+            else:
+                self.settings.analyzer_stg.create_default(self.settings.analyzer_cls_dict)
+                self.log.info("Default settings created")
+
+            self.settings.analyzer_stg.set_method(self._current_analyzer_method)
+            self.settings.analyzer_stg.set_mode(self._current_analyzer_mode)
+
             self.input_analyzer_method()
 
+
+
+
         activate_classes()
-        initialize_settings()
-        input_initial_settings()
+        initialize_estimator_settings()
+        initialize_analyzer_settings()
+        self.measurement_generator.set_counter_settings(
+            self._measurement_generator_dict
+        )
 
         self.sigToggleQdyneMeasurement.connect(
             self.measure.toggle_qdyne_measurement, QtCore.Qt.QueuedConnection
@@ -417,14 +431,16 @@ class QdyneLogic(LogicBase):
         self._measurement_generator_dict = self.measurement_generator.counter_settings
         # self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
         # self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
-        self.settings.estimator_stg.save_data_container()
-        self.settings.analyzer_stg.save_data_container()
+        self._estimator_stg_dict = self.settings.estimator_stg.dump_as_dict()
+        # self.settings.estimator_stg.save_data_container()
+        # self.settings.analyzer_stg.save_data_container()
+        self._analyzer_stg_dict = self.settings.analyzer_stg.dump_as_dict()
 
     def input_estimator_method(self):
-        self.estimator.method = self.settings.estimator_stg.mediator.current_method
+        self.estimator.method = self.settings.estimator_stg.current_method
 
     def input_analyzer_method(self):
-        self.analyzer.method = self.settings.analyzer_stg.mediator.current_method
+        self.analyzer.method = self.settings.analyzer_stg.current_method
 
     @QtCore.Slot(bool)
     @QtCore.Slot(bool, str)

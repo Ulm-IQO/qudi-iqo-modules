@@ -26,7 +26,7 @@ import datetime
 import numpy as np
 from functools import reduce
 import operator
-from typing import List, Optional, Tuple, Dict, Set
+from typing import List, Optional, Tuple, Dict, Set, Union
 
 import matplotlib as mpl
 import matplotlib.pyplot as plt
@@ -47,9 +47,9 @@ from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 class ScanningDataLogic(LogicBase):
     """
     Todo: add some info about this module
-    
+
     Example config:
-    
+
     scanning_data_logic:
         module.Class: 'scanning_data_logic.ScanningDataLogic'
         options:
@@ -57,7 +57,7 @@ class ScanningDataLogic(LogicBase):
             save_back_scan_data: False
         connect:
             scan_logic: scanning_probe_logic
-    
+
     """
 
     # declare connectors
@@ -72,7 +72,7 @@ class ScanningDataLogic(LogicBase):
     _scan_history: List[Tuple[ScanData, Optional[ScanData]]] = StatusVar(name='scan_history', default=list())
 
     # signals
-    sigHistoryScanDataRestored = QtCore.Signal(ScanData, ScanData)
+    sigHistoryScanDataRestored = QtCore.Signal(ScanData, ScanData, int)
     sigSaveStateChanged = QtCore.Signal(bool)
 
     def __init__(self, *args, **kwargs):
@@ -114,13 +114,27 @@ class ScanningDataLogic(LogicBase):
     def __scan_history_from_dicts(self, history_dicts: List[List[Optional[Dict]]])\
             -> List[Tuple[ScanData, Optional[ScanData]]]:
         history = []
+
+        scan_axes = self._scan_logic().scanner_axes
+        scan_axes_avail = [ax.name for ax in scan_axes.values()]
+
+        data_dropped = False
         try:
             for data_dict, back_data_dict in history_dicts:
                 data = ScanData.from_dict(data_dict)
                 back_data = ScanData.from_dict(back_data_dict) if back_data_dict is not None else None
+                data_axs = data.scanner_target_at_start.keys()
+                if not (set(data_axs) <= set(scan_axes_avail)):
+                    data_dropped = True
+                    continue
+
                 history.append((data, back_data))
         except Exception as e:
             self.log.warning("Unable to load scan history. Deleting scan history.", exc_info=e)
+
+        if data_dropped:
+            self.log.warning("Deleted scan history entries containing an incompatible scan axes configuration.")
+            
         return history
 
     def get_last_history_entry(self, scan_axes: Optional[Tuple[str, ...]] = None)\
@@ -149,12 +163,12 @@ class ScanningDataLogic(LogicBase):
         """Get all axes with at least one history entry."""
         return {data.settings.axes for data, _ in self._scan_history}
 
-    def restore_from_history(self, scan_axes: Tuple[str, ...]):
+    def restore_from_history(self, scan_axes: Optional[Tuple[str, ...]] = None, set_target: bool = True):
         """Restore the latest entry in history for specified scan axes."""
         with self._thread_lock:
             index = self._get_last_history_entry_index(scan_axes)
             if index is not None:
-                self._restore_from_history_index(index)
+                self._restore_from_history_index(index, set_target)
 
     def history_previous(self):
         with self._thread_lock:
@@ -174,7 +188,7 @@ class ScanningDataLogic(LogicBase):
                 return
             return self._restore_from_history_index(self._curr_history_index + 1)
 
-    def _restore_from_history_index(self, index: int):
+    def _restore_from_history_index(self, index: int, set_target: bool = True):
         with self._thread_lock:
             scan_logic: ScanningProbeLogic = self._scan_logic()
             if scan_logic.module_state() != 'idle':
@@ -190,16 +204,18 @@ class ScanningDataLogic(LogicBase):
                 return
 
             self._curr_history_index = index
-            self.sigHistoryScanDataRestored.emit(data, back_data)
+            self.sigHistoryScanDataRestored.emit(data, back_data, set_target)
 
-    def _get_last_history_entry_index(self, scan_axes: Tuple[str, ...])\
-            -> int:
+    def _get_last_history_entry_index(self, scan_axes: Optional[Tuple[str, ...]] = None)\
+            -> Union[int, None]:
         """
         Get the history index of the most recent entry for a certain scan axes.
         @param tuple scan_axes: axis or 2D axis pair to get data for
         @return int: index
         """
         with self._thread_lock:
+            if scan_axes is None and self._scan_history:
+                return -1
             for i in range(len(self._scan_history) - 1, -1, -1):
                 data, _ = self._scan_history[i]
                 if data.settings.axes == scan_axes:
@@ -210,7 +226,7 @@ class ScanningDataLogic(LogicBase):
             self._scan_history.append((data, back_data))
             self._shrink_history()
             self._curr_history_index = len(self._scan_history) - 1
-            self.sigHistoryScanDataRestored.emit(data, back_data)
+            self.sigHistoryScanDataRestored.emit(data, back_data, True)
 
     def _shrink_history(self):
         while len(self._scan_history) > self._max_history_length:

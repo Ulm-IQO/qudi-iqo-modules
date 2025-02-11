@@ -86,10 +86,35 @@ class MultiSettingsMediator(SettingsMediator):
         return list(self.method_dict.keys())
 
     def create_default(self, dataclass_cls_dict: dict):
-        """
-        create default method dictionary from a dictionary with different dataclasses.
+        """Create default method dictionary from a dictionary with different dataclasses.
+
+        Parameters
+        ----------
+        dataclass_cls_dict : dict
+            Dictionary of dataclass to be used as different methods.
         """
         for key in dataclass_cls_dict:
             default_mode_dict = {"default": dataclass_cls_dict[key]()}
             self.method_dict[key] = default_mode_dict
 
+    def load_from_dict(self, dataclass_cls_dict, method_map):
+        """Load data from dict."""
+
+        for method in dataclass_cls_dict:
+            dataclass_cls = dataclass_cls_dict[method]
+            mode_map = method_map[method]
+
+            mode_dict = dict()
+            for mode in method_map[method].keys():
+                mode_dict[mode] = dataclass_cls(**mode_map[mode])
+            self.method_dict[method] = mode_dict
+
+    def dump_as_dict(self):
+        method_map = dict()
+        for method in self.data_container:
+            mode_map = dict()
+            for mode in self.data_container[method]:
+                mode_map[mode] = self.data_container[method][mode].to_dict()
+            method_map[method] = mode_map
+
+        return method_map

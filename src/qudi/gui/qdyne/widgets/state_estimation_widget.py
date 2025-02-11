@@ -36,6 +36,7 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 
 
 class StateEstimationTab(QWidget):
+
     def __init__(self, logic):
         super().__init__()
         self._log = get_logger(__name__)
@@ -46,8 +47,8 @@ class StateEstimationTab(QWidget):
     def _instantiate_widgets(self, logic):
         self._sew_layout = QVBoxLayout(self)
         self._settings_widget = StateEstimationSettingsWidget(
-            logic().settings.estimator_stg.mediator,
-            logic().settings.estimator_stg.mediator.current_data)
+            logic().settings.estimator_stg,
+            logic().settings.estimator_stg.current_data)
         self._pulse_widget = StateEstimationPulseWidget()
         self._time_trace_widget = StateEstimationTimeTraceWidget()
 
@@ -88,7 +89,7 @@ class StateEstimationTab(QWidget):
 
         self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
-        self._pulse_widget.update_lines(self._logic().settings.estimator_stg.mediator.current_data.to_dict())
+        self._pulse_widget.update_lines(self._logic().settings.estimator_stg.current_data.to_dict())
 
     def _connect_settings_widget_signals(self):
         """additional signal connections to the settings widget.
@@ -132,7 +133,7 @@ class StateEstimationTab(QWidget):
     def activate_ui(self):
         self._pulse_widget.activate()
         self._time_trace_widget.activate()
-        self._pulse_widget.toggle_lines(self._logic().settings.estimator_stg.mediator.current_data.to_dict())
+        self._pulse_widget.toggle_lines(self._logic().settings.estimator_stg.current_data.to_dict())
 
     def deactivate_ui(self):
         self._pulse_widget.deactivate()
@@ -143,6 +144,8 @@ class StateEstimationTab(QWidget):
 
 
 class StateEstimationSettingsWidget(MultiSettingsWidget):
+    """Settings widget in the state estimation tab."""
+
     def __init__(self, mediator, dataclass_obj):
         super().__init__(mediator, dataclass_obj)
 
@@ -183,6 +186,7 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
         new_values_dict = self.values_dict
         self.mediator.data_updated_sig.emit(new_values_dict)
         self.data_widget_updated_sig.emit(new_values_dict)
+
 
 class StateEstimationPulseWidget(QWidget):
     """
@@ -319,6 +323,8 @@ class StateEstimationPulseWidget(QWidget):
 
 
 class StateEstimationTimeTraceWidget(QWidget):
+    """Display the time trace data."""
+
     _log = get_logger(__name__)
 
     def __init__(self):

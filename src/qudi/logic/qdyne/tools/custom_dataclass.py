@@ -109,70 +109,12 @@ class DataclassMediator(QObject):
         else:
             self._log.error(f"Parameter {param_name} not found in dataclass.")
 
+    def load_from_dict(self, data_dict):
+        """Load data from dictionary."""
+        self.set_values(data_dict)
 
-class DataclassStorage:
+    def dump_as_dict(self):
+        """dump the data container as a dictionary"""
+        return self.data_container.to_dict()
 
-    def __init__(self, save_path, data_container):
-        self.save_path = save_path
-        self._data_container = data_container
-        self.log = get_logger(__name__)
-
-    def save(self):
-        try:
-
-            with open(self.save_path, 'wb') as f:
-                pickle.dump(self._data_container, f)
-
-        except EOFError:
-            self.log.error(f"cannot save settings to {self.save_path}")
-
-    def load(self):
-        try:
-            with open(self.save_path, 'rb') as f:
-                return pickle.load(f)
-
-        except EOFError:
-            self.log.error(f"cannot load settings from {self.save_path}")
-
-
-class DataclassManager(QObject):
-    """ Manager class for dataclass mediator.
-
-    This class manages the slected mediator and data storage class.
-    The mediator has to take care of the communication between the dataclass and gui.
-    The storage class has to save and load the data in the mediator.
-    """
-
-    def __init__(self, parent, mediator_cls, save_path):
-        """Initialize the dataclass with the selected mediator class.
-
-        Parameters
-        ----------
-        mediator_cls
-            Mediator class to be used in this manager.
-        save_path : str
-            Path to save the data container.
-        """
-        super().__init__(parent)
-        self._log = get_logger(__name__)
-        self.mediator = mediator_cls(parent=self)
-        self._data_storage = DataclassStorage(save_path, self.mediator.data_container)
-
-    def load_data_container(self):
-        self._data_storage.load()
-
-    def save_data_container(self):
-        self._data_storage.save()
-
-    def initialize_data_container(self, *args):
-        """
-        Initialize the data container.
-        """
-        if os.path.exists(self._data_storage.save_path):
-            self.mediator.data_container = self._data_storage.load()
-            self._log.debug(f"Saved settings loaded from {self._data_storage.save_path}")
-
-        else:
-            self.mediator.create_default(*args)
-            self._log.debug("Default settings created")
 
