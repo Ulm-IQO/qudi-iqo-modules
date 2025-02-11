@@ -47,7 +47,6 @@ class MultiSettingsMediator(SettingsMediator):
 
         In MultiSettingsMediator, this is given by the currently selected method and mode.
         """
-        print(self.method_dict)
         return self.method_dict[self.current_method][self.current_mode]
 
     @property

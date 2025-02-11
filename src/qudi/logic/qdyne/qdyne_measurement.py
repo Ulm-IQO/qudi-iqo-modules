@@ -49,8 +49,8 @@ class QdyneMeasurement(QtCore.QObject):
     sigMeasurementStarted = QtCore.Signal()
     sigMeasurementStopped = QtCore.Signal()
     # notification signals for master module (i.e. GUI)
-    sigPulseDataUpdated = QtCore.Signal()
-    sigTimeTraceDataUpdated = QtCore.Signal()
+    sigPulseDataUpdated = QtCore.Signal(object)
+    sigTimeTraceDataUpdated = QtCore.Signal(object, object)
     sigQdyneDataUpdated = QtCore.Signal()
 
     def __init__(self, qdyne_logic):
@@ -148,7 +148,9 @@ class QdyneMeasurement(QtCore.QObject):
             metadata.update({'generation parameters': self.qdyne_logic.measurement_generator.generation_parameters})
             metadata.update({'measurement settings': self.qdyne_logic.measurement_generator.measurement_settings})
             metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
-            metadata.update({'generation method parameters': self.qdyne_logic.measurement_generator.generate_method_params[self.qdyne_logic.measurement_generator.loaded_asset[0]]})
+            metadata.update({'generation method parameters':
+                             self.qdyne_logic.measurement_generator.generate_method_params[
+                                     self.qdyne_logic.measurement_generator.loaded_asset[0]]})
             logger.debug("set metadata")
             self.qdyne_logic.data_manager.set_metadata(metadata)
         except Exception as e:
@@ -208,7 +210,7 @@ class QdyneMeasurement(QtCore.QObject):
             self.data.raw_data, self.settings.estimator_stg.mediator.current_data
         )
         logger.debug(f"Qdyne Measurement: get_pulse: emitting signal")
-        self.sigPulseDataUpdated.emit()
+        self.sigPulseDataUpdated.emit(self.data.pulse_data)
 
     def extract_data(self):
         self.new_data.extracted_data = self.estimator.extract(
@@ -218,7 +220,7 @@ class QdyneMeasurement(QtCore.QObject):
 
     def estimate_state(self):
         self.new_data.time_trace = self.estimator.estimate(
-            self.new_data.extracted_data, self.settings.estimator_stg.mediator.current_setting
+            self.new_data.extracted_data, self.settings.estimator_stg.mediator.current_data
         )
         self.data.time_trace = np.append(self.data.time_trace, self.new_data.time_trace)
         self.sigTimeTraceDataUpdated.emit()
