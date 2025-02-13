@@ -102,6 +102,7 @@ class StateEstimationTab(QWidget):
     def _connect_pulse_widget_signals(self):
         self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
         self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
+        self._pulse_widget.update_pushButton.clicked.connect(self.pull_data_and_estimate)
 
     def _connect_measurement_signals(self, measurement_logic):
         measurement_logic.sigPulseDataUpdated.connect(self._pulse_widget.pulse_updated)
@@ -122,6 +123,7 @@ class StateEstimationTab(QWidget):
         self._pulse_widget.disconnect_signals()
         self._pulse_widget.sig_line_changed_sig.disconnect()
         self._pulse_widget.ref_line_changed_sig.disconnect()
+        self._pulse_widget.update_pushButton.clicked.disconnect()
 
     def _disconnect_measurement_signals(self, measurement_logic):
         measurement_logic.sigPulseDataUpdated.disconnect()
@@ -141,6 +143,9 @@ class StateEstimationTab(QWidget):
 
     def analysis_timer_interval(self):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
+
+    def pull_data_and_estimate(self):
+        self._logic().measure.pull_data_and_estimate()
 
 
 class StateEstimationSettingsWidget(MultiSettingsWidget):
