@@ -175,15 +175,7 @@ class QdyneMeasurement(QtCore.QObject):
         with self.__lock:
             logger.debug("Entering Analysis loop")
             try:
-                self.get_raw_data()
-                self.get_pulse()
-                logger.debug("emitting sigPulseDataUpdated")
-                self.sigPulseDataUpdated.emit(self.data.pulse_data)
-
-                self.extract_data()
-                self.estimate_state()
-                logger.debug("emitting sigTimeTraceDataUpdated")
-                self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
+                self.pull_data_and_estimate()
 
                 self.analyze_time_trace()
                 self.get_spectrum()
@@ -194,6 +186,17 @@ class QdyneMeasurement(QtCore.QObject):
             logger.debug("Exiting Analysis loop")
             if self._measurement_running:
                 self.sigStartTimer.emit()
+
+    def pull_data_and_estimate(self):
+        self.get_raw_data()
+        self.get_pulse()
+        logger.debug("emitting sigPulseDataUpdated")
+        self.sigPulseDataUpdated.emit(self.data.pulse_data)
+
+        self.extract_data()
+        self.estimate_state()
+        logger.debug("emitting sigTimeTraceDataUpdated")
+        self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
     def get_raw_data(self):
         try:
