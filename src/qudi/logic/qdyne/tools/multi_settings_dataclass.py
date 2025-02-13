@@ -47,7 +47,15 @@ class MultiSettingsMediator(SettingsMediator):
 
         In MultiSettingsMediator, this is given by the currently selected method and mode.
         """
-        return self.method_dict[self.current_method][self.current_mode]
+        if self.current_method in self.method_dict:
+            if self.current_mode in self.method_dict[self.current_method]:
+                return self.method_dict[self.current_method][self.current_mode]
+            else:
+                self._log.error(f"Mode {self.current_mode} not found. Use default mode.")
+                return self.method_dict[self.current_method]["default"]
+        else:
+            self._log.error(f"Method {self.current_method} not implemented.")
+            return None
 
     @property
     def mode_dict(self):

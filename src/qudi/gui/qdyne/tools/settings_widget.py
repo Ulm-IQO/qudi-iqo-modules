@@ -117,7 +117,7 @@ class SettingsWidget(DataclassWidget):
             self.widgets["mode"].setCurrentText(mode_to_add)
             self.add_mode_pushed_sig.emit(mode_to_add)
         else:
-            self._log.error("Mode name already taken.")
+            self._log.error(f"Mode {mode_to_add} name already used.")
         self.setUpdatesEnabled(True)
 
     def _delete_button_pushed(self):
