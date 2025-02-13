@@ -112,10 +112,13 @@ class SettingsWidget(DataclassWidget):
     def _add_button_pushed(self):
         self.setUpdatesEnabled(False)
         mode_to_add = self.current_mode
-        self.widgets["mode"].addItem(mode_to_add)
-        self.widgets["mode"].setCurrentText(mode_to_add)
+        if mode_to_add not in self.mediator.mode_list:
+            self.widgets["mode"].addItem(mode_to_add)
+            self.widgets["mode"].setCurrentText(mode_to_add)
+            self.add_mode_pushed_sig.emit(mode_to_add)
+        else:
+            self._log.error("Mode name already taken.")
         self.setUpdatesEnabled(True)
-        self.add_mode_pushed_sig.emit(mode_to_add)
 
     def _delete_button_pushed(self):
         self.setUpdatesEnabled(False)
