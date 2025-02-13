@@ -61,6 +61,7 @@ class TimeTraceAnalysisTab(QWidget):
 
     def connect_signals(self):
         self._sw.connect_signals()
+        self._dw.connect_signals()
         self._connect_signals_from_data_widget()
         self._connect_signals_from_logic()
 
