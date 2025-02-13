@@ -131,7 +131,7 @@ class SettingsWidget(DataclassWidget):
 
     def connect_signals_from_widgets(self):
         super().connect_signals_from_widgets()
-        self.widgets["mode"].currentIndexChanged.connect(lambda clicked : self.mediator.update_mode(self.current_mode))
+        self.widgets["mode"].activated[str].connect(lambda clicked : self.mediator.update_mode(self.current_mode))
         self.widgets["add_mode"].clicked.connect(self._add_button_pushed)
         self.widgets["delete_mode"].clicked.connect(self._delete_button_pushed)
         self.add_mode_pushed_sig.connect(self.mediator.add_mode)
