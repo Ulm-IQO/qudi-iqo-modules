@@ -23,6 +23,7 @@ import numpy as np
 
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
+from qudi.logic.qdyne.tools.state_enums import DataSource
 
 logger = getLogger(__name__)
 
@@ -199,6 +200,9 @@ class QdyneMeasurement(QtCore.QObject):
         self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
     def get_raw_data(self):
+        if self.qdyne_logic._data_source is not DataSource.MEASUREMENT:
+            self.log.debug(f"Current data source is not measurement, skipping raw data acquisition.")
+            return
         try:
             self.new_data.raw_data, _ = self.qdyne_logic._data_streamer().get_data()
             self.data.raw_data = np.append(self.data.raw_data, self.new_data.raw_data)
