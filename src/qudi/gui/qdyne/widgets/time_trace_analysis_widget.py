@@ -47,7 +47,7 @@ class TimeTraceAnalysisTab(QWidget):
         self._tta_layout = QVBoxLayout(self)
         self._sw = MultiSettingsWidget(logic().settings.analyzer_stg,
                                        logic().settings.analyzer_stg.current_data)
-        self._dw = TimeTraceAnalysisDataWidget(logic().fit, logic().data)
+        self._dw = TimeTraceAnalysisDataWidget(logic(), logic().fit, logic().data)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)
 
@@ -100,8 +100,9 @@ class TimeTraceAnalysisTab(QWidget):
 
 
 class TimeTraceAnalysisDataWidget(QWidget):
-    def __init__(self, fit_logic, data):
+    def __init__(self, logic, fit_logic, data):
         self._fit = fit_logic
+        self._logic = logic
         self.freq_data = data.freq_data
 
         # Get the path to the *.ui file
