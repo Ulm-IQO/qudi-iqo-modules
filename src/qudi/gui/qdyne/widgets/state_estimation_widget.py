@@ -49,7 +49,7 @@ class StateEstimationTab(QWidget):
         self._settings_widget = StateEstimationSettingsWidget(
             logic().settings.estimator_stg,
             logic().settings.estimator_stg.current_data)
-        self._pulse_widget = StateEstimationPulseWidget()
+        self._pulse_widget = StateEstimationPulseWidget(logic().measure.pull_data_and_estimate)
         self._time_trace_widget = StateEstimationTimeTraceWidget()
 
         self._analysis_interval_spinbox = ScienDSpinBox()
@@ -204,9 +204,10 @@ class StateEstimationPulseWidget(QWidget):
     sig_line_changed_sig = Signal(dict)
     ref_line_changed_sig = Signal(dict)
 
-    def __init__(self):
+    def __init__(self, pull_data_handler):
         self._log = getLogger(__name__)
 
+        self._pull_data_handler = pull_data_handler
         self.sig_start = 0
         self.sig_end = 0
         self.ref_start = 0
@@ -253,6 +254,7 @@ class StateEstimationPulseWidget(QWidget):
         """
         connect internal signals from lines.
         """
+        self.update_pushButton.clicked.connect(self._pull_data_handler)
         self.sig_start_line.sigPositionChangeFinished.connect(self.sig_lines_dragged)
         self.sig_end_line.sigPositionChangeFinished.connect(self.sig_lines_dragged)
         self.ref_start_line.sigPositionChangeFinished.connect(self.ref_lines_dragged)
@@ -262,6 +264,7 @@ class StateEstimationPulseWidget(QWidget):
         """
         disconnect internal signals from lines.
         """
+        self.update_pushButton.clicked.disconnect()
         self.sig_start_line.sigPositionChangeFinished.disconnect()
         self.sig_end_line.sigPositionChangeFinished.disconnect()
         self.ref_start_line.sigPositionChangeFinished.disconnect()

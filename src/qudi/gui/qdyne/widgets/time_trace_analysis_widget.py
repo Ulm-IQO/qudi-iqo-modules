@@ -47,7 +47,7 @@ class TimeTraceAnalysisTab(QWidget):
         self._tta_layout = QVBoxLayout(self)
         self._sw = MultiSettingsWidget(logic().settings.analyzer_stg,
                                        logic().settings.analyzer_stg.current_data)
-        self._dw = TimeTraceAnalysisDataWidget(logic().fit, logic().data)
+        self._dw = TimeTraceAnalysisDataWidget(logic(), logic().fit, logic().data)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)
 
@@ -61,6 +61,7 @@ class TimeTraceAnalysisTab(QWidget):
 
     def connect_signals(self):
         self._sw.connect_signals()
+        self._dw.connect_signals()
         self._connect_signals_from_data_widget()
         self._connect_signals_from_logic()
 
@@ -99,8 +100,9 @@ class TimeTraceAnalysisTab(QWidget):
 
 
 class TimeTraceAnalysisDataWidget(QWidget):
-    def __init__(self, fit_logic, data):
+    def __init__(self, logic, fit_logic, data):
         self._fit = fit_logic
+        self._logic = logic
         self.freq_data = data.freq_data
 
         # Get the path to the *.ui file
@@ -173,7 +175,6 @@ class TimeTraceAnalysisDataWidget(QWidget):
         self.plot2_fitwidget.link_fit_container(self._fit.fit_container2)
 
     def connect_signals(self):
-        self.get_peaks_pushButton.clicked.connect(self.get_peaks)
         self.analyze_pushButton.clicked.connect(self.analyze_data)
         self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
         self.range_spinBox.editingFinished.connect(self.update_spectrum)
