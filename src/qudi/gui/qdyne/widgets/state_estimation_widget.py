@@ -103,6 +103,7 @@ class StateEstimationTab(QWidget):
         self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
         self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
         self._pulse_widget.update_pushButton.clicked.connect(self.pull_data_and_estimate)
+        self._pulse_widget.hide_time_trace_checkBox.stateChanged.connect(self.hide_time_trace)
 
     def _connect_measurement_signals(self, measurement_logic):
         measurement_logic.sigPulseDataUpdated.connect(self._pulse_widget.pulse_updated)
@@ -124,6 +125,7 @@ class StateEstimationTab(QWidget):
         self._pulse_widget.sig_line_changed_sig.disconnect()
         self._pulse_widget.ref_line_changed_sig.disconnect()
         self._pulse_widget.update_pushButton.clicked.disconnect()
+        self._pulse_widget.hide_time_trace_checkBox.stateChanged.disconnect()
 
     def _disconnect_measurement_signals(self, measurement_logic):
         measurement_logic.sigPulseDataUpdated.disconnect()
@@ -146,6 +148,12 @@ class StateEstimationTab(QWidget):
 
     def pull_data_and_estimate(self):
         self._logic().measure.pull_data_and_estimate()
+
+    def hide_time_trace(self):
+        if self._pulse_widget.hide_time_trace_checkBox.isChecked():
+            self._time_trace_widget.hide()
+        else:
+            self._time_trace_widget.show()
 
 
 class StateEstimationSettingsWidget(MultiSettingsWidget):
