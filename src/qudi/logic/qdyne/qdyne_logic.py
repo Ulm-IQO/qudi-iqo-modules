@@ -419,11 +419,12 @@ class QdyneLogic(LogicBase):
         self.sigToggleQdyneMeasurement.connect(
             self.measure.toggle_qdyne_measurement, QtCore.Qt.QueuedConnection
         )
+        self.sigCounterSettingsUpdated.connect(self.settings.estimator_stg.set_values)
         return
 
     def on_deactivate(self):
         self.sigToggleQdyneMeasurement.disconnect()
-
+        self.sigCounterSettingsUpdated.disconnect(self.settings.estimator_stg.set_values)
         self._save_status_variables()
         return
 
