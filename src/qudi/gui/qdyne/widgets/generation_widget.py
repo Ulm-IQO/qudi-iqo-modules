@@ -118,7 +118,7 @@ class GenerationWidget(QtWidgets.QWidget):
             self.counter_settings_updated
         )
         self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
-            self.measurement_settings_updated
+            self.sequence_length_updated
         )
         self._gui.logic().sigCounterSettingsUpdated.connect(
             self.counter_settings_updated
@@ -181,7 +181,7 @@ class GenerationWidget(QtWidgets.QWidget):
             self.measurement_settings_changed
         )
         self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect(
-            self.measurement_settings_updated
+            self.sequence_length_updated
         )
         self._gui.logic().sigMeasurementSettingsUpdated.disconnect(
             self.measurement_settings_updated
@@ -668,24 +668,37 @@ class GenerationWidget(QtWidgets.QWidget):
         @param dict settings_dict:
         """
         # block signals
-        self.ana_param_sequence_length_DoubleSpinBox.blockSignals(True)
         self.ana_param_invoke_settings_CheckBox.blockSignals(True)
 
         # set widgets
-        self.bin_width_updated(settings_dict)
-        if "sequence_length" in settings_dict:
-            self.ana_param_sequence_length_DoubleSpinBox.setValue(
-                settings_dict["sequence_length"]
-            )
         if "invoke_settings" in settings_dict:
             self.ana_param_invoke_settings_CheckBox.setChecked(
                 settings_dict["invoke_settings"]
             )
             self.toggle_measurement_settings_editor(settings_dict["invoke_settings"])
+        self.bin_width_updated(settings_dict)
+        self.sequence_length_updated(settings_dict)
+
+        # unblock signals
+        self.ana_param_invoke_settings_CheckBox.blockSignals(False)
+
+    @QtCore.Slot(dict)
+    def sequence_length_updated(self, settings_dict):
+        """
+
+        @param dict settings_dict:
+        """
+        # block signals
+        self.ana_param_sequence_length_DoubleSpinBox.blockSignals(True)
+
+        # set widgets
+        if "sequence_length" in settings_dict:
+            self.ana_param_sequence_length_DoubleSpinBox.setValue(
+                settings_dict["sequence_length"]
+            )
 
         # unblock signals
         self.ana_param_sequence_length_DoubleSpinBox.blockSignals(False)
-        self.ana_param_invoke_settings_CheckBox.blockSignals(False)
 
     def toggle_measurement_settings_editor(self, hide_editor):
         """
