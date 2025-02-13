@@ -42,6 +42,7 @@ from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 from qudi.interface.qdyne_counter_interface import GateMode, QdyneCounterConstraints
+from qudi.logic.qdyne.tools.state_enums import DataSource
 
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
 from logging import getLogger
@@ -352,6 +353,7 @@ class QdyneLogic(LogicBase):
         self.save = None
         self.measurement_generator: Optional[MeasurementGenerator] = None
         self.data_manager: Optional[QdyneDataManager] = None
+        self._data_source = DataSource.MEASUREMENT
 
     def on_activate(self):
         def activate_classes():
@@ -448,6 +450,7 @@ class QdyneLogic(LogicBase):
         """
         @param bool start: True for start measurement, False for stop measurement
         """
+        self._data_source = DataSource.MEASUREMENT
         if isinstance(start, bool):
             self.sigToggleQdyneMeasurement.emit(start)
         return
@@ -475,7 +478,9 @@ class QdyneLogic(LogicBase):
 
     @QtCore.Slot(str, str, str)
     def load_data(self, data_type, file_path, index):
+        self._data_source = DataSource.LOADED
         if "all" in data_type:
             self.log.error("Select one data type")
             return
         self.data_manager.load_data(data_type, file_path, index)
+        self.log.info(f"Loaded {data_type} data from {file_path}")
