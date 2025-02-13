@@ -200,8 +200,8 @@ class QdyneMeasurement(QtCore.QObject):
         self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
     def get_raw_data(self):
-        if self.qdyne_logic._data_source is not DataSource.MEASUREMENT:
-            self.log.debug(f"Current data source is not measurement, skipping raw data acquisition.")
+        if self.qdyne_logic._data_source is DataSource.LOADED:
+            self.new_data.raw_data = self.data.raw_data
             return
         try:
             self.new_data.raw_data, _ = self.qdyne_logic._data_streamer().get_data()
