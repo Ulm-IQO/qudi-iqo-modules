@@ -150,6 +150,7 @@ class QdyneMeasurement(QtCore.QObject):
             metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
             metadata.update({'generation method parameters':
                              self.qdyne_logic.measurement_generator.generate_method_params[
+                             # TODO: fix this line, if name differs from predefined method name
                                      self.qdyne_logic.measurement_generator.loaded_asset[0]]}) #TODO add error handling for empty loaded_asset
             logger.debug("set metadata")
             self.qdyne_logic.data_manager.set_metadata(metadata)
