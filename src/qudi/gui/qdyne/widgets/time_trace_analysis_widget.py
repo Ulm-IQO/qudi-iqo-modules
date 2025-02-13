@@ -174,7 +174,6 @@ class TimeTraceAnalysisDataWidget(QWidget):
         self.plot2_fitwidget.link_fit_container(self._fit.fit_container2)
 
     def connect_signals(self):
-        self.get_peaks_pushButton.clicked.connect(self.get_peaks)
         self.analyze_pushButton.clicked.connect(self.analyze_data)
         self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
         self.range_spinBox.editingFinished.connect(self.update_spectrum)
