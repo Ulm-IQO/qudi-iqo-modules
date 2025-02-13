@@ -148,6 +148,13 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
 
     def __init__(self, mediator, dataclass_obj):
         super().__init__(mediator, dataclass_obj)
+        self.initialize_data_widgets()
+
+    def initialize_data_widgets(self):
+        if "sequence_length" in self.data_widgets:
+            self.data_widgets["sequence_length"].setReadOnly(True)
+        if "bin_width" in self.data_widgets:
+            self.data_widgets["bin_width"].setReadOnly(True)
 
     @property
     def values_dict(self):
