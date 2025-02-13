@@ -84,7 +84,7 @@ class MultiSettingsWidget(SettingsWidget):
         self.setLayout(self.layout_main)
 
     def create_header_layout(self):
-        header_layout = QHBoxLayout()
+        header_layout = QVBoxLayout()
         header_layout.addLayout(self.create_method_layout())
         header_layout.addLayout(self.create_mode_layout())
         self.layouts["header"] = header_layout

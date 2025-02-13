@@ -19,7 +19,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from PySide2.QtCore import Signal, Slot
-from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QPushButton
+from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QSizePolicy, QSpacerItem
 
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 
@@ -61,16 +61,22 @@ class SettingsWidget(DataclassWidget):
 
         mode_comboBox = QComboBox()
         mode_comboBox.addItems(self.mediator.mode_list)
-        mode_comboBox.setEditable(True)
+        mode_comboBox.setEditable(False)
 
-        add_mode_pushButton = QPushButton("Add")
-        add_mode_pushButton.setToolTip('Enter new name in combo box')
         delete_mode_pushButton = QPushButton("Delete")
+
+        new_mode_label = QLabel()
+        new_mode_label.setText("New Name")
+        new_mode_lineEdit = QLineEdit()
+        add_mode_pushButton = QPushButton("Add")
+        add_mode_pushButton.setToolTip('Enter new name')
 
         self.labels["mode"] = mode_label
         self.widgets["mode"] = mode_comboBox
-        self.widgets["add_mode"] = add_mode_pushButton
         self.widgets["delete_mode"] = delete_mode_pushButton
+        self.labels["new_mode"] = new_mode_label
+        self.widgets["new_mode"] = new_mode_lineEdit
+        self.widgets["add_mode"] = add_mode_pushButton
 
     def arange_layout(self):
         self.layout_main = QVBoxLayout()
@@ -87,8 +93,11 @@ class SettingsWidget(DataclassWidget):
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(self.labels["mode"])
         mode_layout.addWidget(self.widgets["mode"])
-        mode_layout.addWidget(self.widgets["add_mode"])
         mode_layout.addWidget(self.widgets["delete_mode"])
+        mode_layout.addWidget(self.labels["new_mode"])
+        mode_layout.addWidget(self.widgets["new_mode"])
+        mode_layout.addWidget(self.widgets["add_mode"])
+
         self.layouts["mode"] = mode_layout
         return mode_layout
 
@@ -111,13 +120,13 @@ class SettingsWidget(DataclassWidget):
 
     def _add_button_pushed(self):
         self.setUpdatesEnabled(False)
-        mode_to_add = self.current_mode
+        mode_to_add = self.widgets["new_mode"].text()
         if mode_to_add not in self.mediator.mode_list:
             self.widgets["mode"].addItem(mode_to_add)
             self.widgets["mode"].setCurrentText(mode_to_add)
             self.add_mode_pushed_sig.emit(mode_to_add)
         else:
-            self._log.error(f"Mode {mode_to_add} name already used.")
+            self._log.error(f"Mode {mode_to_add} name already taken.")
         self.setUpdatesEnabled(True)
 
     def _delete_button_pushed(self):
