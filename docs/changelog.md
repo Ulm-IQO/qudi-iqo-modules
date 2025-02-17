@@ -2,6 +2,9 @@
 
 ## Pre-Release
 
+**⚠ DEPRECATION WARNING**
+In future releases, `python 3.8` support will be dropped to be able to upgrade to `numpy > 1.24` package versions.
+
 ### Breaking Changes
 - Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Will break custom modules
   implementing this interface.
