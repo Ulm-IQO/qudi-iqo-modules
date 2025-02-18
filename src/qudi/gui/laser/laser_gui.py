@@ -172,7 +172,9 @@ class LaserGui(GuiBase):
         """ Definition and initialisation of the GUI plus staring the measurement.
         """
         logic = self._laser_logic()
-
+        # initialize data and start the laser data query loop
+        logic._initialize_data()
+        logic.start_query_loop()
         #####################
         # create main window
         self._mw = LaserMainWindow()
@@ -184,6 +186,7 @@ class LaserGui(GuiBase):
         )
         self.control_dock_widget.setAllowedAreas(QtCore.Qt.AllDockWidgetAreas)
         self._mw.addDockWidget(QtCore.Qt.LeftDockWidgetArea, self.control_dock_widget)
+
         self.control_dock_widget.visibilityChanged.connect(self._mw.action_view_controls.setChecked)
         self._mw.action_view_controls.triggered[bool].connect(self.control_dock_widget.setVisible)
         self.control_dock_widget.power_slider.setRange(*logic.power_range)
@@ -279,6 +282,11 @@ class LaserGui(GuiBase):
         """ Deactivate the module properly.
         """
         self._mw.close()
+        self.output_graph_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_output_graph.triggered[bool].disconnect()
+        self.temperature_graph_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_temperature_graph.triggered[bool].disconnect()
+
         # disconnect all signals
         logic = self._laser_logic()
         logic.sigPowerSetpointChanged.disconnect(self._power_setpoint_updated)
@@ -287,6 +295,9 @@ class LaserGui(GuiBase):
         logic.sigLaserStateChanged.disconnect(self._laser_state_updated)
         logic.sigShutterStateChanged.disconnect(self._shutter_state_updated)
         logic.sigDataChanged.disconnect(self._data_updated)
+
+        self.control_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_controls.triggered.disconnect()
         self.control_dock_widget.laser_button.clicked[bool].disconnect()
         self.control_dock_widget.shutter_button.clicked[bool].disconnect()
         self.control_dock_widget.sigControlModeChanged.disconnect()

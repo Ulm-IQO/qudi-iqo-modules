@@ -23,15 +23,18 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('ScannerSettingDialog', 'ScannerSettingsWidget')
 
+from typing import List, Dict, Tuple
+
 from PySide2 import QtCore, QtGui, QtWidgets
+
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
+from qudi.interface.scanning_probe_interface import BackScanCapability, ScanConstraints, ScannerAxis
 
 
 class ScannerSettingDialog(QtWidgets.QDialog):
     """
     """
-
-    def __init__(self, scanner_axes, scanner_constraints):
+    def __init__(self, scanner_axes: List[ScannerAxis], scanner_constraints: ScanConstraints):
         super().__init__()
         self.setObjectName('scanner_settings_dialog')
         self.setWindowTitle('Scanner Settings')
@@ -51,35 +54,31 @@ class ScannerSettingDialog(QtWidgets.QDialog):
         layout.addWidget(self.button_box)
         layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
         self.setLayout(layout)
-        return
 
 
 class ScannerSettingsWidget(QtWidgets.QWidget):
     """ Widget containing infrequently used scanner settings
     """
-
-    sigFrequencyChanged = QtCore.Signal(str, float, float)
-    # TODO sigRangeChanged does not exist
-
-    def __init__(self, *args, scanner_axes, scanner_constraints, **kwargs):
+    def __init__(self, *args, scanner_axes: List[ScannerAxis], scanner_constraints: ScanConstraints, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.axes_widgets = dict()
-        self._backscan_configurable = scanner_constraints._backscan_configurable
+        self._back_scan_capability = scanner_constraints.back_scan_capability
 
         font = QtGui.QFont()
         font.setBold(True)
         layout = QtWidgets.QGridLayout()
 
-        label = QtWidgets.QLabel('Forward')
-        label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, 1)
+        forward_label = QtWidgets.QLabel('Forward')
+        forward_label.setFont(font)
+        forward_label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(forward_label, 0, 1)
 
-        label = QtWidgets.QLabel('Backward')
-        label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignCenter)
-        layout.addWidget(label, 0, 2)
+        backward_label = QtWidgets.QLabel('Backward')
+        backward_label.setFont(font)
+        backward_label.setAlignment(QtCore.Qt.AlignCenter)
+        layout.addWidget(backward_label, 0, 2)
+        self._forward_backward_labels = [forward_label, backward_label]
 
         for index, axis in enumerate(scanner_axes, 1):
             ax_name = axis.name
@@ -90,8 +89,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
 
             forward_spinbox = ScienDSpinBox()
             forward_spinbox.setObjectName('{0}_forward_scienDSpinBox'.format(ax_name))
-            forward_spinbox.setRange(*axis.frequency_range)
-            forward_spinbox.setValue(max(axis.min_frequency, axis.max_frequency / 100))
+            forward_spinbox.setRange(*axis.frequency.bounds)
             forward_spinbox.setSuffix('Hz')
             forward_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             forward_spinbox.setMinimumSize(75, 0)
@@ -100,31 +98,21 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
 
             backward_spinbox = ScienDSpinBox()
             backward_spinbox.setObjectName('{0}_backward_scienDSpinBox'.format(ax_name))
-            backward_spinbox.setRange(*axis.frequency_range)
-            backward_spinbox.setValue(max(axis.min_frequency, axis.max_frequency / 100))
+            backward_spinbox.setRange(*axis.frequency.bounds)
             backward_spinbox.setSuffix('Hz')
             backward_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
             backward_spinbox.setMinimumSize(75, 0)
             backward_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                            QtWidgets.QSizePolicy.Preferred)
-            if not self._backscan_configurable:
-                backward_spinbox.setRange(0, 1)
-                backward_spinbox.setValue(0.)
-                backward_spinbox.setSuffix('/na')
-                backward_spinbox.setDisabled(True)
+            if BackScanCapability.FREQUENCY_CONFIGURABLE not in self._back_scan_capability:
+                backward_spinbox.setToolTip("Back frequency is not configurable.")
+                backward_spinbox.setEnabled(False)
+                forward_spinbox.valueChanged.connect(backward_spinbox.setValue)
 
             # Add to layout
             layout.addWidget(label, index, 0)
             layout.addWidget(forward_spinbox, index, 1)
             layout.addWidget(backward_spinbox, index, 2)
-
-            # Connect signals
-            forward_spinbox.editingFinished.connect(
-                self.__get_axis_forward_callback(ax_name, forward_spinbox)
-            )
-            backward_spinbox.editingFinished.connect(
-                self.__get_axis_backward_callback(ax_name, backward_spinbox)
-            )
 
             # Remember widgets references for later access
             self.axes_widgets[ax_name] = dict()
@@ -139,56 +127,59 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
         frequency_groupbox.setFont(font)
         frequency_groupbox.setLayout(layout)
 
+        # general settings
+        h_layout = QtWidgets.QHBoxLayout()
+        self.configure_backward_scan_checkbox = QtWidgets.QCheckBox()
+        self.configure_backward_scan_checkbox.stateChanged.connect(self.set_backward_settings_visibility)
+        h_layout.addWidget(self.configure_backward_scan_checkbox)
+        label = QtWidgets.QLabel('Configure backward scan')
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        h_layout.addWidget(label)
+
+        general_groupbox = QtWidgets.QGroupBox('General')
+        general_groupbox.setFont(font)
+        general_groupbox.setLayout(h_layout)
+
         self.setLayout(QtWidgets.QVBoxLayout())
+        self.layout().addWidget(general_groupbox)
         self.layout().addWidget(frequency_groupbox)
+
+        if BackScanCapability.AVAILABLE not in self._back_scan_capability:
+            self.set_backward_settings_visibility(False)
+            general_groupbox.hide()
+
+    @property
+    def configure_backward_scan(self) -> bool:
+        return self.configure_backward_scan_checkbox.isChecked()
+
+    @configure_backward_scan.setter
+    def configure_backward_scan(self, backward_on):
+        self.configure_backward_scan_checkbox.setChecked(backward_on)
 
     @property
     def axes(self):
         return tuple(self.axes_widgets)
 
     @property
-    def frequency(self):
+    def frequency(self) -> Dict[str, Tuple[float, float]]:
         """
         :return: dict with
         """
         return {
-            ax: (widgets['forward_freq_spinbox'].value(), widgets['backward_freq_spinbox'].value()
-                if self._backscan_configurable else None)
+            ax: (widgets['forward_freq_spinbox'].value(), widgets['backward_freq_spinbox'].value())
             for ax, widgets in self.axes_widgets.items()
         }
 
-    @QtCore.Slot(dict)
-    @QtCore.Slot(object, str)
-    def set_frequency(self, value, axis=None):
-        if axis is None or isinstance(value, dict):
-            for ax, (forward, backwards) in value.items():
-                forward_spinbox = self.axes_widgets[ax]['forward_freq_spinbox']
-                backward_spinbox = self.axes_widgets[ax]['backward_freq_spinbox']
-                forward_spinbox.blockSignals(True)
-                forward_spinbox.setValue(forward)
-                forward_spinbox.blockSignals(False)
-                backward_spinbox.blockSignals(True)
-                backward_spinbox.setValue(backwards) if self._backscan_configurable else None
-                backward_spinbox.blockSignals(False)
-        else:
-            forward_spinbox = self.axes_widgets[axis]['forward_freq_spinbox']
-            backward_spinbox = self.axes_widgets[axis]['backward_freq_spinbox']
-            forward, backwards = value
-            forward_spinbox.blockSignals(True)
-            forward_spinbox.setValue(forward)
-            forward_spinbox.blockSignals(False)
-            backward_spinbox.blockSignals(True)
-            backward_spinbox.setValue(backwards) if self._backscan_configurable else None
-            backward_spinbox.blockSignals(False)
+    def set_forward_frequency(self, ax: str, freq: float) -> None:
+        spinbox = self.axes_widgets[ax]['forward_freq_spinbox']
+        spinbox.setValue(freq)
 
-    def __get_axis_forward_callback(self, axis, spinbox):
-        def callback():
-            backward_spinbox = self.axes_widgets[axis]['backward_freq_spinbox']
-            self.sigFrequencyChanged.emit(axis, spinbox.value(), backward_spinbox.value())
-        return callback
+    def set_backward_frequency(self, ax: str, freq: float) -> None:
+        spinbox = self.axes_widgets[ax]['backward_freq_spinbox']
+        spinbox.setValue(freq)
 
-    def __get_axis_backward_callback(self, axis, spinbox):
-        def callback():
-            forward_spinbox = self.axes_widgets[axis]['forward_freq_spinbox']
-            self.sigFrequencyChanged.emit(axis, spinbox.value(), backward_spinbox.value())
-        return callback
+    def set_backward_settings_visibility(self, visible: bool):
+        for widgets in self.axes_widgets.values():
+            widgets['backward_freq_spinbox'].setVisible(visible)
+        for label in self._forward_backward_labels:
+            label.setVisible(visible)

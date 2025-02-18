@@ -83,24 +83,13 @@ class LaserLogic(LogicBase):
         # initialize data buffer
         laser = self._laser()
         allowed_modes = laser.allowed_control_modes()
-        self._data = {name: np.zeros(self._buffer_length) for name in laser.get_temperatures()}
-        self._data['time'] = time.time() - np.arange(self._buffer_length)[::-1] * self._query_interval
-        if ControlMode.POWER in allowed_modes:
-            self._data['power'] = np.zeros(self._buffer_length)
-        else:
-            self._data['power'] = None
-        if ControlMode.CURRENT in allowed_modes:
-            self._data['current'] = np.zeros(self._buffer_length)
-        else:
-            self._data['current'] = None
+        self._initialize_data()
         self._last_shutter_state = laser.get_shutter_state()
         self._last_laser_state = laser.get_laser_state()
         self._last_power_setpoint = laser.get_power_setpoint()
         self._last_current_setpoint = laser.get_current_setpoint()
         self._last_control_mode = laser.get_control_mode()
 
-        # start timed query loop
-        QtCore.QTimer.singleShot(0, self.start_query_loop)
 
     def on_deactivate(self):
         """ Deactivate module
@@ -274,7 +263,11 @@ class LaserLogic(LogicBase):
 
     @QtCore.Slot()
     def start_query_loop(self):
-        """ Start the readout loop. """
+        """ Start the readout loop.
+        Offload self.start_query_loop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'start_query_loop',
@@ -288,7 +281,11 @@ class LaserLogic(LogicBase):
 
     @QtCore.Slot()
     def stop_query_loop(self):
-        """ Stop the readout loop. """
+        """ Stop the readout loop.
+        Offload self.stop_query_loop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'stop_query_loop',
@@ -357,3 +354,9 @@ class LaserLogic(LogicBase):
         with self._thread_lock:
             self._laser().set_current(current)
             self.sigCurrentSetpointChanged.emit(self.current_setpoint, caller_id)
+
+    def _initialize_data(self):
+        self._data = {name: np.zeros(self._buffer_length) for name in self._laser().get_temperatures()}
+        self._data['time'] = time.time() - np.arange(self._buffer_length)[::-1] * self._query_interval
+        self._data['power'] = np.zeros(self._buffer_length)
+        self._data['current'] = np.zeros(self._buffer_length)

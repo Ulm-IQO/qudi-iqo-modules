@@ -203,9 +203,9 @@ class PulsedMeasurementGui(GuiBase):
         self._activate_main_window_ui()
         self._activate_extraction_ui()
         self._activate_analysis_ui()
+        self._activate_predefined_methods_ui()
         self._activate_generator_settings_ui()
         self._activate_pulse_generator_ui()
-        self._activate_predefined_methods_ui()
         self._activate_sequence_generator_ui()
         self._activate_analysis_settings_ui()
         self._activate_predefined_methods_settings_ui()
@@ -621,10 +621,11 @@ class PulsedMeasurementGui(GuiBase):
     def _activate_main_window_ui(self):
         self._setup_toolbar()
         self.loaded_asset_updated(*self.pulsedmasterlogic().loaded_asset)
+        self._restore_window_geometry(self._mw)
         return
 
     def _deactivate_main_window_ui(self):
-        pass
+        self._save_window_geometry(self._mw)
 
     def _setup_toolbar(self):
         # create all the needed control widgets on the fly
