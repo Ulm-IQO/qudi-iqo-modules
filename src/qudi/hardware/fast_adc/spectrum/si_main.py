@@ -311,7 +311,6 @@ class SpectrumInstrumentation(FastCounterInterface):
         """
         self.log.info('Measurement started')
         if self._internal_status == CardStatus.idle:
-#            self.loop_manager.init_measure_params()
             if self.ms.gated:
                 self.cmd.ts_buf.reset_ts_counter()
                 self.cmd.card.start_all_with_extradma()

@@ -48,10 +48,6 @@ class LoopManager(QThread):
     def input_ms(self, ms):
         self._reps = ms.reps
 
-    def init_measure_params(self):
-        self.start_time = time.time()
-        self.loop_on = False
-
     def start_data_process(self):
         """
         Start the data process with creating a new thread.
