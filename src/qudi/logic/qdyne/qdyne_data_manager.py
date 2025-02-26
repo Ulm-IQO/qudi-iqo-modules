@@ -14,12 +14,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import os
-import numpy as np
 import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from typing import Optional
 
-from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase, get_header_from_file
+from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase
 from qudi.util.conversions import convert_nested_numpy_to_list
 
 from logging import getLogger
@@ -42,13 +41,8 @@ class QdyneSaveOptions:
     def get_default_timestamp(self):
         self.timestamp = datetime.datetime.now()
 
-    def get_file_path(self, file_path):
-        if file_path is None:
-            # TODO: Is this not causing an exception?
-            self.data_dir = self.module_default_data_dir
-            self.filename = None
-        else:
-            self.data_dir, self.filename = os.path.split(file_path)
+    def get_file_path(self, file_path: str):
+        self.data_dir, self.filename = os.path.split(file_path)
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
@@ -103,16 +97,23 @@ class DataStorage:
 
     def load_data(self, file_path):
         data, metadata, general = self.storage.load_data(file_path)
-        return data
+        return data, metadata, general
 
 
 class DataManagerSettings:
     data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
 
-    def __init__(self):
+    def __init__(self, default_data_dir: str):
+        self.default_data_dir = default_data_dir
         self.options = dict()
+        self.set_options()
+
+    def set_options(self, **kwargs):
+        if "data_dir" not in kwargs:
+            kwargs["data_dir"] = self.default_data_dir
+
         for data_type in self.data_types:
-            self.options[data_type] = QdyneSaveOptions()
+            self.options[data_type] = QdyneSaveOptions(**kwargs)
         self.set_columns()
 
     def set_columns(self):
@@ -143,6 +144,12 @@ class DataManagerSettings:
     def set_metadata_all(self, metadata: dict) -> None:
         self.set_all(self.set_metadata, metadata)
 
+    def load_options(self, general: dict, metadata: dict):
+        dictionary = {**general, 'metadata': metadata}
+        valid_fields = [f.name for f in fields(QdyneSaveOptions)]
+        filtered_dict = {key: dictionary[key] for key in valid_fields if key in dictionary.keys()}
+        self.set_options(**filtered_dict)
+
 
 class QdyneDataManager:
     data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
@@ -169,10 +176,11 @@ class QdyneDataManager:
         self.storages[data_type].save_data(data, options)
 
     def load_data(self, data_type, file_path, index=None):
-        loaded_data = self.storages[data_type].load_data(file_path)
+        loaded_data, metadata, general= self.storages[data_type].load_data(file_path)
         if index is not None and index != "":
             loaded_data = loaded_data[index]
         setattr(self.data, data_type, loaded_data)
+        self.settings.load_options(general, metadata)
 
     def set_metadata(self, metadata: dict, data_type: str = "") -> None:
         if not data_type:

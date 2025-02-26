@@ -86,6 +86,7 @@ class FourierAnalyzer(Analyzer):
         """
         @return ft: complex ndarray
         """
+        time_trace = time_trace - np.mean(time_trace)
         n_point = self._get_padded_time_trace_length(time_trace, padding_param)
         ft = np.fft.rfft(time_trace, n_point)
         freq = np.fft.rfftfreq(n_point, sequence_length_bins)

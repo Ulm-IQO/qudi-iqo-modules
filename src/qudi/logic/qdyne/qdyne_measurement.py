@@ -23,6 +23,7 @@ import numpy as np
 
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
+from qudi.logic.qdyne.tools.state_enums import DataSource
 
 logger = getLogger(__name__)
 
@@ -149,10 +150,13 @@ class QdyneMeasurement(QtCore.QObject):
             metadata.update({'generation parameters': self.qdyne_logic.measurement_generator.generation_parameters})
             metadata.update({'measurement settings': self.qdyne_logic.measurement_generator.measurement_settings})
             metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
-            metadata.update({'generation method parameters':
+            try:
+                metadata.update({'generation method parameters':
                              self.qdyne_logic.measurement_generator.generate_method_params[
                              # TODO: fix this line, if name differs from predefined method name
                                      self.qdyne_logic.measurement_generator.loaded_asset[0]]}) #TODO add error handling for empty loaded_asset
+            except Exception as e:
+                logger.exception(e)
             logger.debug("set metadata")
             self.qdyne_logic.data_manager.set_metadata(metadata)
         except Exception as e:
@@ -203,6 +207,9 @@ class QdyneMeasurement(QtCore.QObject):
         self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
     def get_raw_data(self):
+        if self.qdyne_logic._data_source is DataSource.LOADED:
+            self.new_data.raw_data = self.data.raw_data
+            return
         try:
             self.new_data.raw_data, _ = self.qdyne_logic._data_streamer().get_data()
             self.data.raw_data = np.append(self.data.raw_data, self.new_data.raw_data)

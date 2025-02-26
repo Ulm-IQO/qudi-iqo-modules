@@ -42,6 +42,7 @@ from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 from qudi.interface.qdyne_counter_interface import GateMode, QdyneCounterConstraints
+from qudi.logic.qdyne.tools.state_enums import DataSource
 
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
 from logging import getLogger
@@ -353,6 +354,7 @@ class QdyneLogic(LogicBase):
         self.save = None
         self.measurement_generator: Optional[MeasurementGenerator] = None
         self.data_manager: Optional[QdyneDataManager] = None
+        self._data_source = DataSource.MEASUREMENT
 
     def on_activate(self):
         def activate_classes():
@@ -360,7 +362,7 @@ class QdyneLogic(LogicBase):
             self.new_data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
-            self.settings = QdyneSettings()
+            self.settings = QdyneSettings(self.module_default_data_dir)
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )
@@ -368,9 +370,6 @@ class QdyneLogic(LogicBase):
                 self.pulsedmasterlogic, self, self._data_streamer
             )
             self.fit = QdyneFit(self, self._fit_configs)
-            self.data_manager = QdyneDataManager(
-                self.data, self.settings.data_manager_stg
-            )
             self.measure = QdyneMeasurement(self)
             self.data_manager = QdyneDataManager(
                 self.data, self.settings.data_manager_stg
@@ -447,6 +446,7 @@ class QdyneLogic(LogicBase):
         """
         @param bool start: True for start measurement, False for stop measurement
         """
+        self._data_source = DataSource.MEASUREMENT
         if isinstance(start, bool):
             self.sigToggleQdyneMeasurement.emit(start)
         return
@@ -474,7 +474,9 @@ class QdyneLogic(LogicBase):
 
     @QtCore.Slot(str, str, str)
     def load_data(self, data_type, file_path, index):
+        self._data_source = DataSource.LOADED
         if "all" in data_type:
             self.log.error("Select one data type")
             return
         self.data_manager.load_data(data_type, file_path, index)
+        self.log.info(f"Loaded {data_type} data from {file_path}")
