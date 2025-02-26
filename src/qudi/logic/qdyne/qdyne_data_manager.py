@@ -103,7 +103,7 @@ class DataStorage:
 
     def load_data(self, file_path):
         data, metadata, general = self.storage.load_data(file_path)
-        return data
+        return data, metadata, general
 
 
 class DataManagerSettings:
