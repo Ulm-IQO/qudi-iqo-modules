@@ -36,8 +36,15 @@ class CustomDataclass:
     name: str = ""
 
     def from_dict(self, data_dict: dict):
+        """Update values from dictionary if the key is contained in the dataclass.
+
+        Partial update of parameters are also possible.
+        """
         for key, value in data_dict.items():
-            setattr(self, key, value)
+            if hasattr(self, key):
+                setattr(self, key, value)
+            else:
+                pass
 
     def to_dict(self):
         """Convert the dataclass to a dictionary excluding parameters unwanted for the widgets."""
@@ -86,6 +93,7 @@ class DataclassMediator(QObject):
         """
         self.current_data.from_dict(new_dc_dict)
 
+    @Slot(dict)
     def set_values(self, new_dc_dict):
         """
         Use this function to directly set values.
