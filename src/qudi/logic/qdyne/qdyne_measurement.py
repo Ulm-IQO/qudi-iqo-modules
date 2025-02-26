@@ -149,10 +149,13 @@ class QdyneMeasurement(QtCore.QObject):
             metadata.update({'generation parameters': self.qdyne_logic.measurement_generator.generation_parameters})
             metadata.update({'measurement settings': self.qdyne_logic.measurement_generator.measurement_settings})
             metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
-            metadata.update({'generation method parameters':
+            try:
+                metadata.update({'generation method parameters':
                              self.qdyne_logic.measurement_generator.generate_method_params[
                              # TODO: fix this line, if name differs from predefined method name
                                      self.qdyne_logic.measurement_generator.loaded_asset[0]]}) #TODO add error handling for empty loaded_asset
+            except Exception as e:
+                logger.exception(e)
             logger.debug("set metadata")
             self.qdyne_logic.data_manager.set_metadata(metadata)
         except Exception as e:
