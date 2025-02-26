@@ -291,11 +291,3 @@ class QdyneMeasurement(QtCore.QObject):
 
         self.sigTimerIntervalUpdated.emit(self.qdyne_logic.analysis_timer_interval)
 
-    def get_time_trace(self):
-        """
-        For test purpose. Try to get time trace from input raw data.
-        """
-        self.get_raw_data()
-        self.get_pulse()
-        self.extract_data()
-        self.estimate_state()
