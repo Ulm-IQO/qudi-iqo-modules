@@ -369,9 +369,6 @@ class QdyneLogic(LogicBase):
                 self.pulsedmasterlogic, self, self._data_streamer
             )
             self.fit = QdyneFit(self, self._fit_configs)
-            self.data_manager = QdyneDataManager(
-                self.data, self.settings.data_manager_stg
-            )
             self.measure = QdyneMeasurement(self)
             self.data_manager = QdyneDataManager(
                 self.data, self.settings.data_manager_stg
