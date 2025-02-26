@@ -14,12 +14,11 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import os
-import numpy as np
 import datetime
 from dataclasses import dataclass, field, fields
 from typing import Optional
 
-from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase, get_header_from_file
+from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase
 from qudi.util.conversions import convert_nested_numpy_to_list
 
 from logging import getLogger
