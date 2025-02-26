@@ -361,7 +361,7 @@ class QdyneLogic(LogicBase):
             self.new_data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
-            self.settings = QdyneSettings()
+            self.settings = QdyneSettings(self.module_default_data_dir)
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )
