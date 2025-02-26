@@ -30,7 +30,7 @@ logger = getLogger(__name__)
 class QdyneSaveOptions:
     data_dir: Optional[str] = None
     use_default: bool = True
-    timestamp: Optional[datetime.datetime] = None
+    timestamp: Optional[datetime.datetime] = datetime.datetime.now()
     metadata: dict = field(default_factory=dict)
     notes: Optional[str] = None
     nametag: Optional[str] = None
