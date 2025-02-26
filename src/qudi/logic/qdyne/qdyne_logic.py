@@ -345,7 +345,7 @@ class QdyneLogic(LogicBase):
         super().__init__(*args, **kwargs)
 
         self.measure = None
-        self.estimator = None
+        self.estimator: Optional[StateEstimatorMain] = None
         self.analyzer = None
         self.settings = None
         self.data = None
