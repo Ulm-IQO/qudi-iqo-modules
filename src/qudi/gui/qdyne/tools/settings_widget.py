@@ -148,7 +148,7 @@ class SettingsWidget(DataclassWidget):
 
     def disconnect_signals_from_widgets(self):
         super().disconnect_signals_from_widgets()
-        self.widgets["mode"].activate[int].disconnect()
+        self.widgets["mode"].activated[str].disconnect()
         self.widgets["add_mode"].clicked.disconnect()
         self.widgets["delete_mode"].clicked.disconnect()
         self.add_mode_pushed_sig.disconnect()
