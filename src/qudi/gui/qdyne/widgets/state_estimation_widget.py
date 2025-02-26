@@ -25,7 +25,8 @@ import os
 import numpy as np
 import pyqtgraph as pg
 from PySide2.QtCore import Signal, Slot
-from PySide2.QtWidgets import QWidget, QVBoxLayout, QLabel, QSizePolicy
+from PySide2.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, \
+    QPushButton, QCheckBox, QSpacerItem, QSizePolicy
 
 from qudi.core.logger import get_logger
 from qudi.util import uic
@@ -98,12 +99,13 @@ class StateEstimationTab(QWidget):
         """
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.toggle_lines)
         self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.update_lines)
+        self._settings_widget.update_pushButton.clicked.connect(self.pull_data_and_estimate)
+        self._settings_widget.disable_histogram_checkBox.stateChanged.connect(self.disable_histogram)
+        self._settings_widget.hide_time_trace_checkBox.stateChanged.connect(self.hide_time_trace)
 
     def _connect_pulse_widget_signals(self):
         self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
         self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
-        self._pulse_widget.update_pushButton.clicked.connect(self.pull_data_and_estimate)
-        self._pulse_widget.hide_time_trace_checkBox.stateChanged.connect(self.hide_time_trace)
 
     def _connect_measurement_signals(self, measurement_logic):
         measurement_logic.sigPulseDataUpdated.connect(self._pulse_widget.pulse_updated)
@@ -124,8 +126,6 @@ class StateEstimationTab(QWidget):
         self._pulse_widget.disconnect_signals()
         self._pulse_widget.sig_line_changed_sig.disconnect()
         self._pulse_widget.ref_line_changed_sig.disconnect()
-        self._pulse_widget.update_pushButton.clicked.disconnect()
-        self._pulse_widget.hide_time_trace_checkBox.stateChanged.disconnect()
 
     def _disconnect_measurement_signals(self, measurement_logic):
         measurement_logic.sigPulseDataUpdated.disconnect()
@@ -149,11 +149,19 @@ class StateEstimationTab(QWidget):
     def pull_data_and_estimate(self):
         self._logic().measure.pull_data_and_estimate()
 
-    def hide_time_trace(self):
-        if self._pulse_widget.hide_time_trace_checkBox.isChecked():
-            self._time_trace_widget.hide()
+    def disable_histogram(self):
+        if self._settings_widget.disable_histogram_checkBox.isChecked():
+            self._logic().measure._pulse_histogram_disabled = True
+            self._pulse_widget.setVisible(False)
         else:
-            self._time_trace_widget.show()
+            self._logic().measure._pulse_histogram_disabled = False
+            self._pulse_widget.setVisible(True)
+
+    def hide_time_trace(self):
+        if self._settings_widget.hide_time_trace_checkBox.isChecked():
+            self._time_trace_widget.setVisible(False)
+        else:
+            self._time_trace_widget.setVisible(True)
 
 
 class StateEstimationSettingsWidget(MultiSettingsWidget):
@@ -168,6 +176,22 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
             self.data_widgets["sequence_length"].setReadOnly(True)
         if "bin_width" in self.data_widgets:
             self.data_widgets["bin_width"].setReadOnly(True)
+
+        # make layout for the control options
+        self.control_layout = QHBoxLayout()
+        # Create widgets
+        self.update_pushButton = QPushButton("Pull data")
+        self.disable_histogram_checkBox = QCheckBox()
+        self.hide_time_trace_checkBox = QCheckBox()
+        spacer = QSpacerItem(40, 20, QSizePolicy.Expanding, QSizePolicy.Minimum)
+        # Add widgets to the new layout
+        self.control_layout.addWidget(self.update_pushButton)
+        self.control_layout.addWidget(QLabel("Disable Histogram:"))
+        self.control_layout.addWidget(self.disable_histogram_checkBox)
+        self.control_layout.addWidget(QLabel("Hide Time Trace:"))
+        self.control_layout.addWidget(self.hide_time_trace_checkBox)
+        self.control_layout.addSpacerItem(spacer)
+        self.layout_main.addLayout(self.control_layout)
 
     @property
     def values_dict(self):
