@@ -103,11 +103,15 @@ class DataStorage:
 class DataManagerSettings:
     data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
 
-    def __init__(self):
+    def __init__(self, default_data_dir: str):
+        self.default_data_dir = default_data_dir
         self.options = dict()
         self.set_options()
 
     def set_options(self, **kwargs):
+        if "data_dir" not in kwargs:
+            kwargs["data_dir"] = self.default_data_dir
+
         for data_type in self.data_types:
             self.options[data_type] = QdyneSaveOptions(**kwargs)
         self.set_columns()
