@@ -229,12 +229,20 @@ class QdyneMeasurement(QtCore.QObject):
         self.new_data.extracted_data = self.estimator.extract(
             self.new_data.raw_data, self.settings.estimator_stg.current_data
         )
+        if self.qdyne_logic.data_source is DataSource.LOADED:
+            self.data.extracted_data = self.new_data.extracted_data
+            return
+
         self.data.extracted_data = np.append(self.data.extracted_data, self.new_data.extracted_data)
 
     def estimate_state(self):
         self.new_data.time_trace = self.estimator.estimate(
             self.new_data.extracted_data, self.settings.estimator_stg.current_data
         )
+        if self.qdyne_logic.data_source is DataSource.LOADED:
+            self.data.time_trace = self.new_data.time_trace
+            return
+
         self.data.time_trace = np.append(self.data.time_trace, self.new_data.time_trace)
         self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
