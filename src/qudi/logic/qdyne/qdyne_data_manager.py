@@ -157,7 +157,7 @@ class QdyneDataManager:
 
     def __init__(self, data, settings:DataManagerSettings):
         self.data = data
-        self.settings = settings
+        self.settings: DataManagerSettings = settings
         self.storages = dict()
         self.activate_storage()
 
