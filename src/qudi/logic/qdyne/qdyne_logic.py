@@ -139,9 +139,6 @@ class MeasurementGenerator:
             "record_length": self.__record_length,
             "number_of_gates": 0,
         }
-        # Todo: check interference with pulsed
-        #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
-        #self.pulsedmasterlogic().set_fast_counter_settings(settings)
 
         (self.__active_channels,
         self.__binwidth,
@@ -157,8 +154,13 @@ class MeasurementGenerator:
         self._qdyne_logic.sigCounterSettingsUpdated.emit(settings_dict)
         return
 
-    def set_measurement_settings(self, settings_dict):
-        _logger.debug(f"set_measurement_settings {settings_dict=}")
+    def set_measurement_settings(self, settings_dict=None, **kwargs):
+        # Determine complete settings dictionary
+        if not isinstance(settings_dict, dict):
+            settings_dict = kwargs
+        else:
+            settings_dict.update(kwargs)
+
         if 'invoke_settings' in settings_dict:
             self._invoke_settings = bool(settings_dict.get('invoke_settings'))
 
@@ -175,7 +177,7 @@ class MeasurementGenerator:
             if ens_lasers != 1:
                 raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
             settings_dict['sequence_length'] = ens_length
-        _logger.debug(f"{settings_dict=}")
+
         if "_bin_width" in settings_dict:
             settings_dict["bin_width"] = float(settings_dict["bin_width"])  # add to configure estimator settings
             self._qdyne_logic.settings.estimator_stg.set_single_value('bin_width', settings_dict["bin_width"])
@@ -187,9 +189,6 @@ class MeasurementGenerator:
                 'sequence_length', settings_dict["sequence_length"])
         _logger.debug(f"{settings_dict=}")
 
-        # Todo: check interference with pulsed
-        #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
-        _logger.debug("emitting signal")
         self._qdyne_logic.sigMeasurementSettingsUpdated.emit(settings_dict)
 
     def check_counter_record_length_constraint(self, record_length: float):
@@ -405,9 +404,6 @@ class QdyneLogic(LogicBase):
             self.settings.analyzer_stg.set_mode(self._current_analyzer_mode)
 
             self.input_analyzer_method()
-
-
-
 
         activate_classes()
         initialize_estimator_settings()
