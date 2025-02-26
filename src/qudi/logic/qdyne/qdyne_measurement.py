@@ -207,7 +207,7 @@ class QdyneMeasurement(QtCore.QObject):
         self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
     def get_raw_data(self):
-        if self.qdyne_logic._data_source is DataSource.LOADED:
+        if self.qdyne_logic.data_source is DataSource.LOADED:
             self.new_data.raw_data = self.data.raw_data
             return
         try:

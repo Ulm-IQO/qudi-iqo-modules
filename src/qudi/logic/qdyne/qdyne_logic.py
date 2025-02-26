@@ -478,3 +478,7 @@ class QdyneLogic(LogicBase):
             return
         self.data_manager.load_data(data_type, file_path, index)
         self.log.info(f"Loaded {data_type} data from {file_path}")
+
+    @property
+    def data_source(self):
+        return self._data_source
