@@ -90,6 +90,8 @@ class StateEstimationTab(QWidget):
 
         self._analysis_interval_spinbox.editingFinished.connect(self.analysis_timer_interval)
         self._logic().measure.sigTimerIntervalUpdated.connect(self._analysis_interval_spinbox.setValue)
+        self._logic().measure.sigMeasurementStarted.connect(self._disable_settings)
+        self._logic().measure.sigMeasurementStopped.connect(self._enable_settings)
         self._pulse_widget.update_lines(self._logic().settings.estimator_stg.current_data.to_dict())
 
     def _connect_settings_widget_signals(self):
@@ -111,7 +113,6 @@ class StateEstimationTab(QWidget):
         measurement_logic.sigPulseDataUpdated.connect(self._pulse_widget.pulse_updated)
         measurement_logic.sigMeasurementStarted.connect(lambda: self._pulse_widget.set_lines_movable(False))
         measurement_logic.sigMeasurementStopped.connect(lambda: self._pulse_widget.set_lines_movable(True))
-
         measurement_logic.sigTimeTraceDataUpdated.connect(self._time_trace_widget.update_time_trace_image)
 
     def disconnect_signals(self):
@@ -131,7 +132,6 @@ class StateEstimationTab(QWidget):
         measurement_logic.sigPulseDataUpdated.disconnect()
         measurement_logic.sigMeasurementStarted.disconnect()
         measurement_logic.sigMeasurementStopped.disconnect()
-
         measurement_logic.sigTimeTraceDataUpdated.disconnect()
 
     def activate_ui(self):
@@ -142,6 +142,20 @@ class StateEstimationTab(QWidget):
     def deactivate_ui(self):
         self._pulse_widget.deactivate()
         self._time_trace_widget.deactivate()
+    def _disable_settings(self):
+        for widget in self._settings_widget.findChildren(QWidget):
+            widget.setEnabled(False)
+        self._settings_widget.update_pushButton.setEnabled(True)
+        self._settings_widget.disable_histogram_checkBox.setEnabled(True)
+        self._settings_widget.hide_time_trace_checkBox.setEnabled(True)
+
+        for label in self._settings_widget.findChildren(QLabel):
+            if "Disable Histogram" in label.text() or "Hide Time Trace" in label.text():
+                label.setEnabled(True)
+
+    def _enable_settings(self):
+        for widget in self._settings_widget.findChildren(QWidget):
+            widget.setEnabled(True)
 
     def analysis_timer_interval(self):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
