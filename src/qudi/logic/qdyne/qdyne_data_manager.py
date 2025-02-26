@@ -170,9 +170,11 @@ class QdyneDataManager:
             self.storages[data_type] = DataStorage(
                 self.settings.options[data_type].data_dir, self.storage_dict[data_type])
 
-    def save_data(self, data_type):
+    def save_data(self, data_type, timestamp: Optional[datetime.datetime] = None):
         data = getattr(self.data, data_type)
         options = self.settings.options[data_type]
+        if timestamp:
+            options.timestamp = timestamp
         self.storages[data_type].save_data(data, options)
 
     def load_data(self, data_type, file_path, index=None):
