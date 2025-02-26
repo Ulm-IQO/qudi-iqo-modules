@@ -115,7 +115,8 @@ class MeasurementGenerator:
                 ens_length, ens_bins, ens_lasers = \
                     self._pulsedmasterlogic().get_sequence_info(loaded_asset)
             else:
-                self._qdyne_logic.log.error('No valid waveform loaded. Cannot invoke record length.')
+                ens_length, ens_lasers = (self.__record_length, 1)
+                self._qdyne_logic.log.warning('No valid waveform loaded. Cannot invoke record length.')
             if ens_lasers != 1:
                 raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
             settings_dict['record_length'] = ens_length
@@ -173,7 +174,8 @@ class MeasurementGenerator:
                 ens_length, ens_bins, ens_lasers = \
                     self._pulsedmasterlogic().get_sequence_info(loaded_asset)
             else:
-                raise ValueError('No valid waveform loaded. Cannot invoke sequence length.')
+                ens_length, ens_lasers = (self.__sequence_length, 1)
+                self._qdyne_logic.log.warning('No valid waveform loaded. Cannot invoke sequence length.')
             if ens_lasers != 1:
                 raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
             settings_dict['sequence_length'] = ens_length
