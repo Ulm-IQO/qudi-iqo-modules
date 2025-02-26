@@ -86,19 +86,22 @@ class DataclassMediator(QObject):
     def data_container(self, data_container):
         self._data = data_container
 
+    def _update_values(self, new_dc_dict):
+        self.current_data.from_dict(new_dc_dict)
+
     @Slot(dict)
     def sync_values(self, new_dc_dict):
         """
         sync values of dataclass according to new_dc_dict from gui.
         """
-        self.current_data.from_dict(new_dc_dict)
+        self._update_values(new_dc_dict)
 
     @Slot(dict)
     def set_values(self, new_dc_dict):
         """
         Use this function to directly set values.
         """
-        self.update_values(new_dc_dict)
+        self._update_values(new_dc_dict)
         self.data_updated_sig.emit(self.current_data.to_dict())
 
     def create_default(self, dataclass_cls):
@@ -111,7 +114,7 @@ class DataclassMediator(QObject):
         new_dc_dict = self.current_data.to_dict()
         if param_name in new_dc_dict:
             new_dc_dict[param_name] = value
-            self.update_values(new_dc_dict)
+            self._update_values(new_dc_dict)
             self.data_updated_sig.emit(self.current_data.to_dict())
 
         else:

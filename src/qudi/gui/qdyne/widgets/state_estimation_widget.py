@@ -97,15 +97,17 @@ class StateEstimationTab(QWidget):
 
         Disconnections are done in settings widget.
         """
-        self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.toggle_lines)
-        self._settings_widget.data_widget_updated_sig.connect(self._pulse_widget.update_lines)
+        self._settings_widget.data_widget_synced_sig.connect(self._pulse_widget.toggle_lines)
+        self._settings_widget.data_widget_synced_sig.connect(self._pulse_widget.update_lines)
+        self._settings_widget.data_widget_refreshed_sig.connect(self._pulse_widget.toggle_lines)
+        self._settings_widget.data_widget_refreshed_sig.connect(self._pulse_widget.update_lines)
         self._settings_widget.update_pushButton.clicked.connect(self.pull_data_and_estimate)
         self._settings_widget.disable_histogram_checkBox.stateChanged.connect(self.disable_histogram)
         self._settings_widget.hide_time_trace_checkBox.stateChanged.connect(self.hide_time_trace)
 
     def _connect_pulse_widget_signals(self):
-        self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
-        self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.set_data_from_dict)
+        self._pulse_widget.sig_line_changed_sig.connect(self._settings_widget.refresh_data_widgets)
+        self._pulse_widget.ref_line_changed_sig.connect(self._settings_widget.refresh_data_widgets)
 
     def _connect_measurement_signals(self, measurement_logic):
         measurement_logic.sigPulseDataUpdated.connect(self._pulse_widget.pulse_updated)
@@ -228,8 +230,14 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
 
     def _emit_data_widget_refreshed_sig(self):
         new_values_dict = self.values_dict
-        self.mediator.data_updated_sig.emit(new_values_dict)
-        # self.data_widget_refreshed_sig.emit(new_values_dict)
+        self.mediator.set_values(new_values_dict)
+
+    def _emit_data_widget_synced_sig(self):
+        new_values_dict = self.values_dict
+        self.data_widget_synced_sig.emit(self.values_dict)
+        self.mediator.sync_values(new_values_dict)
+
+
 
 class StateEstimationPulseWidget(QWidget):
     """
@@ -339,7 +347,6 @@ class StateEstimationPulseWidget(QWidget):
 
     @Slot(dict)
     def update_lines(self, data_dict):
-        print('update lines')
         if "sig_start" in data_dict:
             self.sig_start_line.setValue(data_dict["sig_start"])
         if "sig_end" in data_dict:

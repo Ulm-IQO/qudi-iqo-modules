@@ -105,6 +105,8 @@ class DataclassWidget(QtWidgets.QWidget):
     def _emit_data_widget_refreshed_sig(self):
         self.data_widget_refreshed_sig.emit(self.values_dict)
 
+    def _emit_data_widget_synced_sig(self):
+        self.data_widget_synced_sig.emit(self.values_dict)
     @property
     def values_dict(self):
         """Get the current values of the widget in a dictionary."""
@@ -139,6 +141,7 @@ class DataclassWidget(QtWidgets.QWidget):
         """
         self.setUpdatesEnabled(False)
         self._set_data_widgets(data_dict)
+        self._emit_data_widget_synced_sig()
         self.setUpdatesEnabled(True)
 
 
