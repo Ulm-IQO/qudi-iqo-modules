@@ -103,9 +103,18 @@ class DataclassWidget(QtWidgets.QWidget):
         self.mediator.data_updated_sig.disconnect()
 
     def _emit_data_widget_refreshed_sig(self):
+        """Emit data widget refreshed signal.
+        This signal is emitted when the widget refreshed and the dataclass has to be synchronized..
+        """
         self.data_widget_refreshed_sig.emit(self.values_dict)
 
     def _emit_data_widget_synced_sig(self):
+        """Emit data widget synchronized signal.
+        This signals is emitted when the widget is synchronized from the dataclass
+        and no synchronization of the dataclass is needed.
+        By default, this is not connected to anything.
+        data_widget_synced_sig can be used when additional synchronization with another widget(e.g. line widgets).
+        """
         self.data_widget_synced_sig.emit(self.values_dict)
     @property
     def values_dict(self):
@@ -114,16 +123,6 @@ class DataclassWidget(QtWidgets.QWidget):
         for key in self.data_widgets.keys():
             values_dict[key] = self._get_widget_value(key)
         return values_dict
-
-    # @Slot(dict)
-    # def set_data_from_dict(self, data_dict):
-    #     """
-    #     set data from a dictionary.
-    #     """
-    #     self.setUpdatesEnabled(False)
-    #     self._set_data_widgets(data_dict)
-    #     self._emit_update_sig()
-    #     self.setUpdatesEnabled(True)
 
     @Slot(dict)
     def refresh_data_widgets(self, data_dict):
