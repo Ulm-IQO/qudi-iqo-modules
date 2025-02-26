@@ -25,11 +25,11 @@ from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediato
 
 
 class QdyneSettings(QtCore.QObject):
-    def __init__(self):
+    def __init__(self, default_data_dir: str):
         super().__init__()
         self._generate_estimator_settings()
         self._generate_analyzer_settings()
-        self.data_manager_stg = DataManagerSettings()
+        self.data_manager_stg = DataManagerSettings(default_data_dir)
 
     def _generate_estimator_settings(self):
         self.estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)

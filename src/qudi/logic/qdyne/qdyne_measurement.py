@@ -23,6 +23,7 @@ import numpy as np
 
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
+from qudi.logic.qdyne.tools.state_enums import DataSource
 
 logger = getLogger(__name__)
 
@@ -125,8 +126,6 @@ class QdyneMeasurement(QtCore.QObject):
 
     def start_qdyne_measurement(self, fname=None):
         logger.debug("Starting QDyne measurement")
-        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
-        fname = timestamp + fname if fname else timestamp
         logger.debug("resetting data")
         self.data.reset()
         # Todo: is this needed?
@@ -149,10 +148,13 @@ class QdyneMeasurement(QtCore.QObject):
             metadata.update({'generation parameters': self.qdyne_logic.measurement_generator.generation_parameters})
             metadata.update({'measurement settings': self.qdyne_logic.measurement_generator.measurement_settings})
             metadata.update({'counter settings': self.qdyne_logic.measurement_generator.counter_settings})
-            metadata.update({'generation method parameters':
+            try:
+                metadata.update({'generation method parameters':
                              self.qdyne_logic.measurement_generator.generate_method_params[
                              # TODO: fix this line, if name differs from predefined method name
                                      self.qdyne_logic.measurement_generator.loaded_asset[0]]}) #TODO add error handling for empty loaded_asset
+            except Exception as e:
+                logger.exception(e)
             logger.debug("set metadata")
             self.qdyne_logic.data_manager.set_metadata(metadata)
         except Exception as e:
@@ -203,6 +205,9 @@ class QdyneMeasurement(QtCore.QObject):
         self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
     def get_raw_data(self):
+        if self.qdyne_logic.data_source is DataSource.LOADED:
+            self.new_data.raw_data = self.data.raw_data
+            return
         try:
             self.new_data.raw_data, _ = self.qdyne_logic._data_streamer().get_data()
             self.data.raw_data = np.append(self.data.raw_data, self.new_data.raw_data)
@@ -222,12 +227,20 @@ class QdyneMeasurement(QtCore.QObject):
         self.new_data.extracted_data = self.estimator.extract(
             self.new_data.raw_data, self.settings.estimator_stg.current_data
         )
+        if self.qdyne_logic.data_source is DataSource.LOADED:
+            self.data.extracted_data = self.new_data.extracted_data
+            return
+
         self.data.extracted_data = np.append(self.data.extracted_data, self.new_data.extracted_data)
 
     def estimate_state(self):
         self.new_data.time_trace = self.estimator.estimate(
             self.new_data.extracted_data, self.settings.estimator_stg.current_data
         )
+        if self.qdyne_logic.data_source is DataSource.LOADED:
+            self.data.time_trace = self.new_data.time_trace
+            return
+
         self.data.time_trace = np.append(self.data.time_trace, self.new_data.time_trace)
         self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
@@ -278,11 +291,3 @@ class QdyneMeasurement(QtCore.QObject):
 
         self.sigTimerIntervalUpdated.emit(self.qdyne_logic.analysis_timer_interval)
 
-    def get_time_trace(self):
-        """
-        For test purpose. Try to get time trace from input raw data.
-        """
-        self.get_raw_data()
-        self.get_pulse()
-        self.extract_data()
-        self.estimate_state()

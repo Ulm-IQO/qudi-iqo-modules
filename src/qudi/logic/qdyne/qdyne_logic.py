@@ -42,6 +42,7 @@ from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 from qudi.interface.qdyne_counter_interface import GateMode, QdyneCounterConstraints
+from qudi.logic.qdyne.tools.state_enums import DataSource
 
 # from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
 from logging import getLogger
@@ -115,7 +116,8 @@ class MeasurementGenerator:
                 ens_length, ens_bins, ens_lasers = \
                     self._pulsedmasterlogic().get_sequence_info(loaded_asset)
             else:
-                self._qdyne_logic.log.error('No valid waveform loaded. Cannot invoke record length.')
+                ens_length, ens_lasers = (self.__record_length, 1)
+                self._qdyne_logic.log.warning('No valid waveform loaded. Cannot invoke record length.')
             if ens_lasers != 1:
                 raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
             settings_dict['record_length'] = ens_length
@@ -139,9 +141,6 @@ class MeasurementGenerator:
             "record_length": self.__record_length,
             "number_of_gates": 0,
         }
-        # Todo: check interference with pulsed
-        #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
-        #self.pulsedmasterlogic().set_fast_counter_settings(settings)
 
         (self.__active_channels,
         self.__binwidth,
@@ -157,8 +156,13 @@ class MeasurementGenerator:
         self._qdyne_logic.sigCounterSettingsUpdated.emit(settings_dict)
         return
 
-    def set_measurement_settings(self, settings_dict):
-        _logger.debug(f"set_measurement_settings {settings_dict=}")
+    def set_measurement_settings(self, settings_dict=None, **kwargs):
+        # Determine complete settings dictionary
+        if not isinstance(settings_dict, dict):
+            settings_dict = kwargs
+        else:
+            settings_dict.update(kwargs)
+
         if 'invoke_settings' in settings_dict:
             self._invoke_settings = bool(settings_dict.get('invoke_settings'))
 
@@ -171,11 +175,12 @@ class MeasurementGenerator:
                 ens_length, ens_bins, ens_lasers = \
                     self._pulsedmasterlogic().get_sequence_info(loaded_asset)
             else:
-                raise ValueError('No valid waveform loaded. Cannot invoke sequence length.')
+                ens_length, ens_lasers = (self.__sequence_length, 1)
+                self._qdyne_logic.log.warning('No valid waveform loaded. Cannot invoke sequence length.')
             if ens_lasers != 1:
                 raise ValueError(f'Number of lasers has to be 1, but is {ens_lasers}.')
             settings_dict['sequence_length'] = ens_length
-        _logger.debug(f"{settings_dict=}")
+
         if "_bin_width" in settings_dict:
             settings_dict["bin_width"] = float(settings_dict["bin_width"])  # add to configure estimator settings
             self._qdyne_logic.settings.estimator_stg.set_single_value('bin_width', settings_dict["bin_width"])
@@ -187,9 +192,6 @@ class MeasurementGenerator:
                 'sequence_length', settings_dict["sequence_length"])
         _logger.debug(f"{settings_dict=}")
 
-        # Todo: check interference with pulsed
-        #  is this needed? if yes, make sure that nothing is messed up with feedback from pulsed
-        _logger.debug("emitting signal")
         self._qdyne_logic.sigMeasurementSettingsUpdated.emit(settings_dict)
 
     def check_counter_record_length_constraint(self, record_length: float):
@@ -345,13 +347,14 @@ class QdyneLogic(LogicBase):
         super().__init__(*args, **kwargs)
 
         self.measure = None
-        self.estimator = None
+        self.estimator: Optional[StateEstimatorMain] = None
         self.analyzer = None
         self.settings = None
         self.data = None
         self.save = None
         self.measurement_generator: Optional[MeasurementGenerator] = None
         self.data_manager: Optional[QdyneDataManager] = None
+        self._data_source = DataSource.MEASUREMENT
 
     def on_activate(self):
         def activate_classes():
@@ -359,7 +362,7 @@ class QdyneLogic(LogicBase):
             self.new_data = MainDataClass()
             self.estimator = StateEstimatorMain(self.log)
             self.analyzer = TimeTraceAnalyzerMain()
-            self.settings = QdyneSettings()
+            self.settings = QdyneSettings(self.module_default_data_dir)
             self.settings.data_manager_stg.set_data_dir_all(
                 self.module_default_data_dir
             )
@@ -367,9 +370,6 @@ class QdyneLogic(LogicBase):
                 self.pulsedmasterlogic, self, self._data_streamer
             )
             self.fit = QdyneFit(self, self._fit_configs)
-            self.data_manager = QdyneDataManager(
-                self.data, self.settings.data_manager_stg
-            )
             self.measure = QdyneMeasurement(self)
             self.data_manager = QdyneDataManager(
                 self.data, self.settings.data_manager_stg
@@ -405,9 +405,6 @@ class QdyneLogic(LogicBase):
             self.settings.analyzer_stg.set_mode(self._current_analyzer_mode)
 
             self.input_analyzer_method()
-
-
-
 
         activate_classes()
         initialize_estimator_settings()
@@ -449,6 +446,7 @@ class QdyneLogic(LogicBase):
         """
         @param bool start: True for start measurement, False for stop measurement
         """
+        self._data_source = DataSource.MEASUREMENT
         if isinstance(start, bool):
             self.sigToggleQdyneMeasurement.emit(start)
         return
@@ -468,15 +466,23 @@ class QdyneLogic(LogicBase):
 
     @QtCore.Slot(str)
     def save_data(self, data_type):
+        timestamp = datetime.datetime.now()
         if "all" in data_type:
             for data_type in self.data_manager.data_types:
-                self.data_manager.save_data(data_type)
+                self.data_manager.save_data(data_type, timestamp)
         else:
-            self.data_manager.save_data(data_type)
+            self.data_manager.save_data(data_type, timestamp)
 
     @QtCore.Slot(str, str, str)
     def load_data(self, data_type, file_path, index):
+        self._data_source = DataSource.LOADED
         if "all" in data_type:
             self.log.error("Select one data type")
             return
         self.data_manager.load_data(data_type, file_path, index)
+        self.measure.pull_data_and_estimate()
+        self.log.info(f"Loaded {data_type} data from {file_path}")
+
+    @property
+    def data_source(self):
+        return self._data_source
