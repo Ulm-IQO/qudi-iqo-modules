@@ -28,7 +28,8 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 
 class DataclassWidget(QtWidgets.QWidget):
     """Data widget class which can create widgets from a dataclass object."""
-    data_widget_updated_sig = Signal(dict)
+    data_widget_synced_sig = Signal(dict) #used when data widgets are synced from mediator
+    data_widget_refreshed_sig = Signal(dict) #used when mediator has to be changed
 
     def __init__(self, mediator, dataclass_obj=None) -> None:
         """Initialize the dataclass widget with the corresponding mediator.
@@ -92,7 +93,7 @@ class DataclassWidget(QtWidgets.QWidget):
         self.connect_signals_from_widgets()
 
     def connect_signals_from_mediator(self):
-        self.mediator.data_updated_sig.connect(self.update_widgets)
+        self.mediator.data_updated_sig.connect(self.sync_data_widgets)
 
     def disconnect_signals(self):
         self.disconnect_signals_from_mediator()
@@ -101,8 +102,8 @@ class DataclassWidget(QtWidgets.QWidget):
     def disconnect_signals_from_mediator(self):
         self.mediator.data_updated_sig.disconnect()
 
-    def _emit_update_sig(self):
-        self.data_widget_updated_sig.emit(self.values_dict)
+    def _emit_data_widget_refreshed_sig(self):
+        self.data_widget_refreshed_sig.emit(self.values_dict)
 
     @property
     def values_dict(self):
@@ -112,24 +113,41 @@ class DataclassWidget(QtWidgets.QWidget):
             values_dict[key] = self._get_widget_value(key)
         return values_dict
 
+    # @Slot(dict)
+    # def set_data_from_dict(self, data_dict):
+    #     """
+    #     set data from a dictionary.
+    #     """
+    #     self.setUpdatesEnabled(False)
+    #     self._set_data_widgets(data_dict)
+    #     self._emit_update_sig()
+    #     self.setUpdatesEnabled(True)
+
     @Slot(dict)
-    def set_data_from_dict(self, data_dict):
-        """
-        set data from a dictionary. This coule be a partial set of dataclass.
+    def refresh_data_widgets(self, data_dict):
+        """Refresh the data widgets.
         """
         self.setUpdatesEnabled(False)
-        for key in data_dict.keys():
-            self._update_widget_value(key, data_dict[key])
-        self._emit_update_sig()
+        self._set_data_widgets(data_dict)
+        self._emit_data_widget_refreshed_sig()
         self.setUpdatesEnabled(True)
 
     @Slot(dict)
-    def update_widgets(self, data_dict):
+    def sync_data_widgets(self, data_dict):
+        """Sync the data widgets from mediator.
+        No signal will be sent to the mediator.
         """
-        update the parameters of widgets according to the data.
+        self.setUpdatesEnabled(False)
+        self._set_data_widgets(data_dict)
+        self.setUpdatesEnabled(True)
+
+
+    def _set_data_widgets(self, data_dict):
+        """Set the parameters of widgets according to the data.
+        This coule be a partial set of dataclass.
         """
         for param_name in data_dict.keys():
-            self._update_widget_value(param_name, data_dict[param_name])
+            self._set_data_widget_value(param_name, data_dict[param_name])
 
     def _clear_layout(self, layout):
         """
@@ -211,9 +229,9 @@ class DataclassWidget(QtWidgets.QWidget):
         widget.setChecked(value)
         return widget
 
-    def _update_widget_value(self, param_name, value):
+    def _set_data_widget_value(self, param_name, value):
         """
-        update the value of a widget.
+        set the value of a widget.
         """
         if hasattr(self.dataclass_obj, param_name):
             param_type = self.dataclass_obj.__dataclass_fields__[param_name].type
@@ -249,18 +267,18 @@ class DataclassWidget(QtWidgets.QWidget):
             self._log.error("name not found in data.")
 
     def connect_signals_from_widgets(self):
-        self.data_widget_updated_sig.connect(self.mediator.update_values)
+        self.data_widget_refreshed_sig.connect(self.mediator.sync_values)
 
         for field_name, widget in self.data_widgets.items():
             if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
-                widget.editingFinished.connect(self._emit_update_sig)
+                widget.editingFinished.connect(self._emit_data_widget_refreshed_sig)
             elif isinstance(widget, QtWidgets.QCheckBox):
-                widget.stateChanged.connect(self._emit_update_sig)
+                widget.stateChanged.connect(self._emit_data_widget_refreshed_sig)
             else:
-                widget.valueChanged.connect(self._emit_update_sig)
+                widget.valueChanged.connect(self._emit_data_widget_refreshed_sig)
 
     def disconnect_signals_from_widgets(self):
-        self.data_widget_updated_sig.disconnect()
+        self.data_widget_refreshed_sig.disconnect()
 
         for field_name, widget in self.data_widgets.items():
             if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):

@@ -87,9 +87,9 @@ class DataclassMediator(QObject):
         self._data = data_container
 
     @Slot(dict)
-    def update_values(self, new_dc_dict):
+    def sync_values(self, new_dc_dict):
         """
-        update values of dataclass according to new_dc_dict from gui.
+        sync values of dataclass according to new_dc_dict from gui.
         """
         self.current_data.from_dict(new_dc_dict)
 

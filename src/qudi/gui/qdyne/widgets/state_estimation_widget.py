@@ -202,7 +202,7 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
 
         ordered_values_dict = self._order_sig_values(values_dict)
         ordered_values_dict = self._order_ref_values(ordered_values_dict)
-        return values_dict
+        return ordered_values_dict
 
     def _order_sig_values(self, values_dict):
         if "sig_start" in values_dict and "sig_end" in values_dict:
@@ -226,11 +226,10 @@ class StateEstimationSettingsWidget(MultiSettingsWidget):
             values_dict["ref_end"] = new_ref_end
         return values_dict
 
-    def _emit_update_sig(self):
+    def _emit_data_widget_refreshed_sig(self):
         new_values_dict = self.values_dict
         self.mediator.data_updated_sig.emit(new_values_dict)
-        self.data_widget_updated_sig.emit(new_values_dict)
-
+        # self.data_widget_refreshed_sig.emit(new_values_dict)
 
 class StateEstimationPulseWidget(QWidget):
     """
@@ -340,6 +339,7 @@ class StateEstimationPulseWidget(QWidget):
 
     @Slot(dict)
     def update_lines(self, data_dict):
+        print('update lines')
         if "sig_start" in data_dict:
             self.sig_start_line.setValue(data_dict["sig_start"])
         if "sig_end" in data_dict:
