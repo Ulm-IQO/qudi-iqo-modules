@@ -75,8 +75,6 @@ class TimeTraceAnalysisTab(QWidget):
     def _connect_signals_from_logic(self):
         self._logic().measure.sigQdyneDataUpdated.connect(self._dw.data_updated)
         self._logic().sigFitUpdated.connect(self._dw.fit_data_updated)
-        self._logic().measure.sigMeasurementStarted.connect(self._disable_settings)
-        self._logic().measure.sigMeasurementStopped.connect(self._enable_settings)
 
     def disconnect_signals(self):
         self._sw.disconnect_signals()
@@ -93,12 +91,6 @@ class TimeTraceAnalysisTab(QWidget):
     def _disconnect_signals_from_logic(self):
         self._logic().measure.sigQdyneDataUpdated.disconnect()
         self._logic().sigFitUpdated.disconnect()
-
-    def _disable_settings(self):
-        self._sw.setEnabled(False)
-
-    def _enable_settings(self):
-        self._sw.setEnabled(True)
 
     def activate(self):
         self._dw.activate()
