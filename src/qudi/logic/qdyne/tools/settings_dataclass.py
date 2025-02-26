@@ -128,6 +128,7 @@ class SettingsMediator(DataclassMediator):
         create default settings mode from initialized dataclass.
         """
         self.mode_dict["default"] = dataclass_cls()
+        self.mode_dict["loaded"] = dataclass_cls()
 
     def load_from_dict(self, dataclass_cls, mode_map):
         """Load data from dict."""
