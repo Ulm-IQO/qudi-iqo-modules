@@ -466,11 +466,12 @@ class QdyneLogic(LogicBase):
 
     @QtCore.Slot(str)
     def save_data(self, data_type):
+        timestamp = datetime.datetime.now()
         if "all" in data_type:
             for data_type in self.data_manager.data_types:
-                self.data_manager.save_data(data_type)
+                self.data_manager.save_data(data_type, timestamp)
         else:
-            self.data_manager.save_data(data_type)
+            self.data_manager.save_data(data_type, timestamp)
 
     @QtCore.Slot(str, str, str)
     def load_data(self, data_type, file_path, index):
