@@ -41,13 +41,8 @@ class QdyneSaveOptions:
     def get_default_timestamp(self):
         self.timestamp = datetime.datetime.now()
 
-    def get_file_path(self, file_path):
-        if file_path is None:
-            # TODO: Is this not causing an exception?
-            self.data_dir = self.module_default_data_dir
-            self.filename = None
-        else:
-            self.data_dir, self.filename = os.path.split(file_path)
+    def get_file_path(self, file_path: str):
+        self.data_dir, self.filename = os.path.split(file_path)
 
     @staticmethod
     def _get_patched_filename_nametag(file_name=None, nametag=None, suffix_str=''):
