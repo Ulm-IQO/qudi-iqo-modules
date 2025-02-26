@@ -143,10 +143,19 @@ class StateEstimationTab(QWidget):
         self._pulse_widget.deactivate()
         self._time_trace_widget.deactivate()
     def _disable_settings(self):
-        self._settings_widget.setEnabled(False)
+        for widget in self._settings_widget.findChildren(QWidget):
+            widget.setEnabled(False)
+        self._settings_widget.update_pushButton.setEnabled(True)
+        self._settings_widget.disable_histogram_checkBox.setEnabled(True)
+        self._settings_widget.hide_time_trace_checkBox.setEnabled(True)
+
+        for label in self._settings_widget.findChildren(QLabel):
+            if "Disable Histogram" in label.text() or "Hide Time Trace" in label.text():
+                label.setEnabled(True)
 
     def _enable_settings(self):
-        self._settings_widget.setEnabled(True)
+        for widget in self._settings_widget.findChildren(QWidget):
+            widget.setEnabled(True)
 
     def analysis_timer_interval(self):
         self._logic().measure.analysis_timer_interval = self._analysis_interval_spinbox.value()
