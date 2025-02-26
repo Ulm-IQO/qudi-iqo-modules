@@ -267,5 +267,7 @@ class DataclassWidget(QtWidgets.QWidget):
                 widget.editingFinished.disconnect()
             elif isinstance(widget, QtWidgets.QCheckBox):
                 widget.stateChanged.disconnect()
+            elif isinstance(widget, QtWidgets.QPushButton):
+                widget.clicked.disconnect()
             else:
                 widget.valueChanged.disconnect()

@@ -73,6 +73,7 @@ class QdyneMeasurement(QtCore.QObject):
         self.__elapsed_sweeps = 0
 
         self._measurement_running = False
+        self._pulse_histogram_disabled = False
 
         # set up the analysis timer
         self.__analysis_timer = QtCore.QTimer()
@@ -193,9 +194,12 @@ class QdyneMeasurement(QtCore.QObject):
 
     def pull_data_and_estimate(self):
         self.get_raw_data()
-        self.get_pulse()
-        logger.debug("emitting sigPulseDataUpdated")
-        self.sigPulseDataUpdated.emit(self.data.pulse_data)
+        logger.debug(f"Qdyne Measurement: get_pulse: estimator.configure_method")
+        self.estimator.configure_method(self.settings.estimator_stg.current_method)
+        if not self._pulse_histogram_disabled:
+            self.get_pulse()
+            logger.debug("emitting sigPulseDataUpdated")
+            self.sigPulseDataUpdated.emit(self.data.pulse_data)
 
         self.extract_data()
         self.estimate_state()
@@ -214,8 +218,6 @@ class QdyneMeasurement(QtCore.QObject):
             raise e
 
     def get_pulse(self):
-        logger.debug(f"Qdyne Measurement: get_pulse: estimator.configure_method")
-        self.estimator.configure_method(self.settings.estimator_stg.current_method)
         logger.debug(f"Qdyne Measurement: get_pulse: estimator.get_pulse")
         self.data.pulse_data = self.estimator.get_pulse(
             self.data.raw_data, self.settings.estimator_stg.current_data
