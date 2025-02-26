@@ -480,6 +480,7 @@ class QdyneLogic(LogicBase):
             self.log.error("Select one data type")
             return
         self.data_manager.load_data(data_type, file_path, index)
+        self.measure.pull_data_and_estimate()
         self.log.info(f"Loaded {data_type} data from {file_path}")
 
     @property
