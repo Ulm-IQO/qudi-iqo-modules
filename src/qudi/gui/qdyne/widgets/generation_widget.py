@@ -114,9 +114,6 @@ class GenerationWidget(QtWidgets.QWidget):
         )
         self.binwidth_spinbox.editingFinished.connect(self.counter_settings_changed)
 
-        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
-            self.counter_settings_updated
-        )
         self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
             self.sequence_length_updated
         )
@@ -134,9 +131,9 @@ class GenerationWidget(QtWidgets.QWidget):
         )
 
     def disconnect_signals(self):
-        # self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect(
-        #     self.predefined_generated
-        # )
+        self._gui.logic().pulsedmasterlogic().sigPredefinedSequenceGenerated.disconnect(
+            self.predefined_generated
+        )
         self._gui.logic().pulsedmasterlogic().sigLoadedAssetUpdated.disconnect(
             self.predefined_generated
         )
@@ -168,9 +165,6 @@ class GenerationWidget(QtWidgets.QWidget):
         )
         self.binwidth_spinbox.editingFinished.disconnect(self.counter_settings_changed)
 
-        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect(
-            self.counter_settings_updated
-        )
         self._gui.logic().sigCounterSettingsUpdated.disconnect(
             self.counter_settings_updated
         )
@@ -491,6 +485,10 @@ class GenerationWidget(QtWidgets.QWidget):
             self._gui._mainw.action_run_stop.setEnabled(True)
             self.loading_indicator.setVisible(False)
 
+        if self.ana_param_invoke_settings_CheckBox.isChecked():
+            # This will set sequence and record length from generated ensemble length
+            self._gui.logic().measurement_generator.set_counter_settings()
+            self._gui.logic().measurement_generator.set_measurement_settings()
         return
 
     def generation_parameters_changed(self):
