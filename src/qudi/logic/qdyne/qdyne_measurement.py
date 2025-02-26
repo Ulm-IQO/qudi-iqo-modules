@@ -126,8 +126,6 @@ class QdyneMeasurement(QtCore.QObject):
 
     def start_qdyne_measurement(self, fname=None):
         logger.debug("Starting QDyne measurement")
-        timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M-%S")
-        fname = timestamp + fname if fname else timestamp
         logger.debug("resetting data")
         self.data.reset()
         # Todo: is this needed?
