@@ -528,7 +528,7 @@ class MagnetGui(GuiBase):
             }
             self._ssd.settings_widget.set_frequency(new_freq)
             """
-            self.update_crosshair_sizes()
+        self.update_crosshair_sizes()
         return
 
     @QtCore.Slot(dict)
@@ -591,7 +591,6 @@ class MagnetGui(GuiBase):
             if dockwidget is not None:
                 dockwidget.scan_widget.toggle_scan_button.setChecked(is_running)
                 self._update_scan_data(scan_data)
-                self.update_crosshair_sizes()
         return
 
     def restore_history(self):
