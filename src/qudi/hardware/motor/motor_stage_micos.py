@@ -19,6 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+from typing import Dict
 
 import pyvisa as visa
 import time
@@ -29,7 +30,7 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.util.constraints import ScalarConstraint
 from qudi.interface.magnet_interface import MagnetInterface, MagnetConstraints, MagnetControlAxis
 from qudi.core.configoption import ConfigOption
-from qudi.interface.motor_interface import MotorInterface
+from qudi.interface.motor_interface import MotorInterface, MotorAxisStatus
 
 
 class MotorStageMicos(MotorInterface):
@@ -555,7 +556,7 @@ class MotorStageMicos(MotorInterface):
                     break
         return param_dict
 
-    def get_status(self, param_list=None):
+    def get_status(self, param_list=None) -> Dict[str, MotorAxisStatus]:
         """ Get the status of the position
 
         @param list param_list: optional, if a specific status of an axis
@@ -832,275 +833,10 @@ class MotorStageMicos(MotorInterface):
                 self._write('phi', '0 {} 0 rmove'.format(step))
         return 0
 
+    def is_ready(self) -> bool:
+        """ Queries if the motor is ready to accept a command
 
-
-class MicosMotorNew(MagnetInterface):
-    """
-    Hardware class for a Micos PI linear motor stage.
-
-    Example config for copy-paste:
-
-    motorstage_micos:
-        module.Class: 'motor.motor_stage_micos.MotorStageMicos'
-        options:
-            port_1:
-                address: 'ASRL5::INSTR'
-                baud_rate: 57600
-                timeout: 250 # ms
-                query_delay: 0.1 # s
-                axes:
-                    x:
-                        axis_id: 0
-                        pos_range: [0, 100] # mm
-                        step: 1.0e-04 # mm
-                        resolution: 1e-6 # mm
-                        velocity_range: [1.0e-02, 12] # mm/s
-                        velocity_step: 1.0e-02 # mm/s
-                        absolute_accuracy: 1e-3 # mm
-                    y:
-                        axis_id: 1
-                        pos_range: [0, 87] # mm
-                        step: 1.0e-04 # mm
-                        resolution: 1e-6 # mm
-                        velocity_range: [1.0e-02, 12] # mm/s
-                        velocity_step: 1.0e-02 # mm/s
-                        absolute_accuracy: 1e-3 # mm
-            port_2:
-                address: 'ASRL4::INSTR'
-                baud_rate: 57600
-                timeout: 250 # ms
-                query_delay: 0.1 # s
-                axes:
-                    z:
-                        axis_id: 0
-                        pos_range: [0, 90] # mm
-                        step: 1.0e-04 # mm
-                        resolution: 1e-6 # mm
-                        velocity_range: [5.0e-02, 12] # mm/s
-                        velocity_step: 1.0e-02 # mm/s
-                        absolute_accuracy: 1e-3 # mm
-                    phi:
-                        axis_id: 1
-                        pos_range: [0, 1.440e6] # deg
-                        step: 1.0e-04 # deg
-                        resolution: 1e-6 # deg
-                        velocity_range: [5.0e-02, 12] # deg/s
-                        velocity_step: 1.0e-02 # deg/s
-                        absolute_accuracy: 1e-3 # deg
-    """
-
-    # config options
-    _port1 = ConfigOption(name='port_1', missing='error', constructor=lambda config_data: OrderedDict(*config_data))
-    _port2 = ConfigOption(name='port_1', missing='error', constructor=lambda config_data: OrderedDict(*config_data))
-
-    def __init__(self, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        self._current_position = dict()
-        self._constraints = None
-        # Mutex for access serialization
-        self._thread_lock = RecursiveMutex()
-
-    def on_activate(self):
-        """ Initialisation performed during activation of the module.
+        @return bool: True if ready False otherwise
         """
-        # merge both configoption dictionaries into one
-        self._ports = self._port1 | self._port2
-        # establish connection to the ports and record which ports point to which axis
-        self.rm = visa.ResourceManager()
-        self._serial_connections = {}
-        self._axis_port_mapper = {}
-        for port in self._ports:
-            # establish serial connection
-            self._serial_connections[port] = self.rm.open_resource(resource_name=self._ports[port]["address"],
-                                                                   baud_rate=self._ports[port]["baud_rate"],
-                                                                   timeout=self._ports[port]["timeout"],
-                                                                   read_termination='\n',
-                                                                   write_termination='\n')
-            self._serial_connections[port].query_delay = self._ports[port]["query_delay"]
-            # map axis name to correct port
-            for axis in self._ports[port]["axes"]:
-                self._axis_port_mapper[axis] = port
-
-        # get the current position
-
-
-        # Generate static constraints
-        axes = list()
-        for axis, port in self._axis_port_mapper.items():
-            axis_config = self._ports[port]["axes"][axis]
-            pos_range = axis_config["pos_range"]
-            dist = max(pos_range) - min(pos_range)
-
-            # TODO: What to do with velocity constraint?
-            control_value = ScalarConstraint(default=min(pos_range), bounds=pos_range)
-            resolution = ScalarConstraint(default=axis_config["resolution"], bounds=tuple([axis_config["resolution"], dist]), enforce_int=False)
-            step = ScalarConstraint(default=axis_config["step"], bounds=(axis_config["step"], dist))
-
-            unit = "mm"
-            if axis == "phi":
-                unit = "°"
-
-            axes.append(MagnetControlAxis(name=axis,
-                                    unit='mm',
-                                    control_value=control_value,
-                                    step=step,
-                                    resolution=resolution))
-
-        self._constraints = MagnetConstraints(axis_objects=tuple(axes),
-                                              has_position_feedback=True,
-                                              control_accuracy={axis: axis_dict["absolute_accuracy"] for port_dict in self._ports for axis, axis_dict in port_dict["axes"].items()})
-
-        # check if axis units are set to mm
-        for axis, port in self._axis_port_mapper.items():
-            if int(self._ask(axis, '{} getunit'.format(int(self._ports[port]["axes"][axis]["axis_id"])+1))) == 2:
-                self.log.info('As supposed the micos stage axis {} is set to the unit mm! '.format(axis))
-            else:
-                self.log.error('The micos stage is NOT set to the unit mm!!!! '
-                               'DANGER of damaging stage or periphery!!!!')
-
-        # Setting hardware limits to the stage. The stage will not move further these limits!
-        self._write('x', '{} {} 0 {} {} 0 setlimit'.format(constraints['x']['pos_min']*self.unit_factor,
-                                                           constraints['y']['pos_min']*self.unit_factor,
-                                                           constraints['x']['pos_max']*self.unit_factor,
-                                                           constraints['y']['pos_max']*self.unit_factor,
-                                                           ))
-
-        self._write('z', '{} {} 0 {} {} 0 setlimit'.format(constraints['z']['pos_min'] * self.unit_factor,
-                                                           constraints['z']['pos_min'] * self.unit_factor,
-                                                           constraints['phi']['pos_max'] * self.unit_factor,
-                                                           constraints['phi']['pos_max'] * self.unit_factor,
-                                                           ))
-
-        self.log.info("Hardware limits were set to micos stage. To change the limits adjust the config file.")
-
-    def on_deactivate(self) -> None:
-        """
-        Deinitialisation performed during deactivation of the module.
-        """
-        for _, connection in self._serial_connections.items():
-            connection.close()
-        self.rm.close()
-
-    @property
-    def constraints(self) -> MagnetConstraints:
-        """ Read-only property returning the constraints of this scanning probe hardware.
-        """
-        pass
-
-
-    @abstractmethod
-    def get_status(self):  # todo fix types
-        pass
-
-
-    @abstractmethod
-    def set_control(self, control: Dict[str, float], blocking: bool=False) -> Dict[str, float]:
-        """ Move the scanning probe to an absolute position as fast as possible or with a defined
-        velocity.
-
-        Log error and return current target position if something fails or a scan is in progress.
-
-        @param dict position: absolute positions for all axes to move to, axis names as keys
-        @param float velocity: movement velocity
-        @param bool blocking: If True this call returns only after the final position is reached.
-
-        @return dict: new position of all axes
-        """
-        pass
-
-
-    @abstractmethod
-    def get_control(self) -> Dict[str, float]:
-        """ Get the current target position of the scanner hardware
-        (i.e. the "theoretical" position).
-
-        @return dict: current target position per axis.
-        """
-        pass
-
-    @abstractmethod
-    def set_activity_state(self, channel: str, active: bool) -> None:
-        """
-
-        @return:
-        """
-        pass
-
-    @abstractmethod
-    def emergency_stop(self) -> None:
-        """
-
-        @return:
-        """
-        pass
-
-    def block_while_moving(self):
-        # helper function that wait's until magnet is idle after reaching a certain control value
-        pass
-
-
-    def _write(self, axis: str, command: str) -> None:
-        """this method just sends a command to the motor! DOES NOT RETURN AN ANSWER!
-        @param axis string: name of the axis that should be asked
-        @param command string: command
-        """
-        try:
-            port = self._axis_port_mapper[axis]
-            connection = self._serial_connections[port]
-            connection.write(command)
-            # delete a possible answer from the device
-            self._read_answer(axis)
-        except KeyError as e:
-            self.log.error(f'The specified axis {axis} is not valid. Valid options are: {list(self._axis_port_mapper.keys())}')
-        except Exception as e:
-            self.log.error(f"Error when writing to device! \n{e}")
-
-    def _get_connection(self, axis: str) -> visa.resources.MessageBasedResource:
-        """
-        Method that gets the serial connection for the specified axis.
-        @param axis, str: name of the axis to get the connection for
-        @return connection, visa.resources.MessageBasedResource: the serial connection for the specified axis
-        """
-        port = self._axis_port_mapper[axis]
-        connection = self._serial_connections[port]
-        return connection
-
-
-    def _read_answer(self, axis: str) -> str:
-        """this method reads the answer from the motor!
-        @param axis, str: name of the axis to get the answer for
-        @return answer, str: answer of motor
-        """
-        # TODO: Fix this (maybe with a proper delay time before reading an answer)
-        answer = ''
-        try:
-            connection = self._get_connection(axis)
-            still_reading = True
-            while still_reading:
-                try:
-                    answer += connection.read()
-                except:
-                    still_reading = False
-        except KeyError as e:
-            self.log.error(f'The specified axis {axis} is not valid. Valid options are: {list(self._axis_port_mapper.keys())}')
-        except Exception as e:
-            self.log.error(f"Error when reading from device! \n{e}")
-        return answer
-
-    def _query(self, axis: str, command: str) -> str:
-        """this method combines writing a command and reading the answer
-        @param axis, str: name of the axis that should be asked
-        @param command, str: command to send
-
-        @return answer, str: answer of motor
-        """
-        connection = self._get_connection(axis)
-        answer = ''
-        try:
-            answer = connection.query(command)
-        except KeyError as e:
-            self.log.error(f'The specified axis {axis} is not valid. Valid options are: {list(self._axis_port_mapper.keys())}')
-        except Exception as e:
-            self.log.error(f"Error when querying from device! \n{e}")
-        return answer
+        self.log.warning("For use as a magnet I need to be implemented")
+        return False # todo: add proper implementation

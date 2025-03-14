@@ -20,11 +20,13 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+import datetime
+from abc import abstractmethod
 from dataclasses import dataclass, field, asdict, replace
 from typing import Optional, Tuple, Dict
-import datetime
+
 import numpy as np
-from abc import abstractmethod
+
 from qudi.core.module import Base
 from qudi.util.constraints import ScalarConstraint
 
@@ -37,7 +39,7 @@ class MagnetFOM:
     """
     name: str
     func: callable
-    #func_full: callable   # for now, only scalar FOM result
+    # func_full: callable   # for now, only scalar FOM result
     measurement_time: float
     unit: str = ''
     # saving this as str instead of e.g. np.float64 object eases __dict__ representation
@@ -68,6 +70,7 @@ class MagnetControlAxis:
     def __post_init__(self):
         if self.name == '':
             raise ValueError('Parameter "name" must be non-empty str.')
+
 
 @dataclass(frozen=True)
 class MagnetScanSettings:
@@ -102,7 +105,6 @@ class MagnetScanSettings:
         if self.frequency <= 0:
             raise ValueError(f"Frequency must be positive, not {self.frequency}")
 
-
         if not set(self.position_feedback_axes).issubset(self.axes):
             raise TypeError(
                 'The "position_feedback_axes" must be a subset of scan axes.'
@@ -130,6 +132,7 @@ class MagnetScanSettings:
     @property
     def channels(self):
         return ['FOM']
+
 
 @dataclass(frozen=True)
 class MagnetConstraints:
@@ -176,7 +179,6 @@ class MagnetConstraints:
             except TypeError as e:
                 raise TypeError(f'Scan resolution type check failed for axis "{axis_name}".') from e
 
-
     def clip(self, settings: MagnetScanSettings) -> MagnetScanSettings:
         self.check_axes(settings)
         clipped_range = []
@@ -194,6 +196,7 @@ class MagnetConstraints:
             position_feedback_axes=settings.position_feedback_axes
         )
         return clipped_settings
+
 
 @dataclass
 class MagnetScanData:
@@ -280,7 +283,7 @@ class MagnetScanData:
         """ Dict of channel data arrays with channel names as keys. """
         if self._data is None:
             return None
-        return {'FOM':  self._data}
+        return {'FOM': self._data}
 
     @data.setter
     def data(self, data_dict: Dict[str, np.ndarray]) -> None:
@@ -331,9 +334,17 @@ class MagnetScanData:
             self._position_data = None
         self.data = {
             'FOM': np.full(self.settings.resolution, np.nan,
-                        dtype=self.channel_dtypes)
+                           dtype=self.channel_dtypes)
         }
         return
+
+
+@dataclass
+class MagnetStatus:
+    """Data class representing the magnet setting parameters.
+    """
+
+    is_ready: bool
 
 
 class MagnetInterface(Base):
@@ -349,27 +360,22 @@ class MagnetInterface(Base):
         """
         pass
 
-
     @abstractmethod
-    def get_status(self):  # todo fix types
+    def get_status(self) -> MagnetStatus:
         pass
 
-
     @abstractmethod
-    def set_control(self, control: Dict[str, float], blocking: bool=False) -> Dict[str, float]:
-        """ Move the scanning probe to an absolute position as fast as possible or with a defined
-        velocity.
+    def set_control(self, control: Dict[str, float], blocking: bool = False) -> Dict[str, float]:
+        """ Move the scanning probe to an absolute position.
 
         Log error and return current target position if something fails or a scan is in progress.
 
-        @param dict position: absolute positions for all axes to move to, axis names as keys
-        @param float velocity: movement velocity
+        @param dict control: absolute positions for all axes to move to, axis names as keys
         @param bool blocking: If True this call returns only after the final position is reached.
 
         @return dict: new position of all axes
         """
         pass
-
 
     @abstractmethod
     def get_control(self) -> Dict[str, float]:
@@ -381,24 +387,9 @@ class MagnetInterface(Base):
         pass
 
     @abstractmethod
-    def set_activity_state(self, channel: str, active: bool) -> None:
-        """
-
-        @return:
-        """
-        pass
-
-    @abstractmethod
     def emergency_stop(self) -> None:
         """
 
         @return:
         """
         pass
-
-    def block_while_moving(self):
-        # helper function that wait's until magnet is idle after reaching a certain control value
-        pass
-
-
-

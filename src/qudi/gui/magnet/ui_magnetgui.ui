@@ -17,7 +17,7 @@
    </sizepolicy>
   </property>
   <property name="windowTitle">
-   <string>qudi: Confocal</string>
+   <string>qudi: Magnet</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <property name="maximumSize">
@@ -33,7 +33,7 @@
      <x>0</x>
      <y>0</y>
      <width>1440</width>
-     <height>30</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -43,13 +43,6 @@
     <addaction name="separator"/>
     <addaction name="action_close_window"/>
     <addaction name="action_save_all_scans"/>
-   </widget>
-   <widget class="QMenu" name="menu_Settings">
-    <property name="title">
-     <string>Settings</string>
-    </property>
-    <addaction name="action_scanner_settings"/>
-    <addaction name="action_display_settings"/>
    </widget>
    <widget class="QMenu" name="menuView">
     <property name="title">
@@ -65,7 +58,6 @@
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuView"/>
-   <addaction name="menu_Settings"/>
   </widget>
   <widget class="QToolBar" name="util_toolBar">
    <property name="windowTitle">
@@ -92,15 +84,6 @@
    <addaction name="action_history_back"/>
    <addaction name="action_history_forward"/>
   </widget>
-  <action name="action_scanner_settings">
-   <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</iconset>
-   </property>
-   <property name="text">
-    <string>Scan Settings</string>
-   </property>
-  </action>
   <action name="action_close_window">
    <property name="icon">
     <iconset>
@@ -236,15 +219,6 @@ Shortcut: Shift+R</string>
    </property>
    <property name="shortcut">
     <string>Shift+R</string>
-   </property>
-  </action>
-  <action name="action_display_settings">
-   <property name="icon">
-    <iconset>
-     <normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</normaloff>../../../../../../../../Software/qudivenv/src/qudi/qudi/core/artwork/icons/configure.svg</iconset>
-   </property>
-   <property name="text">
-    <string>Display Settings</string>
    </property>
   </action>
   <action name="action_view_toolbar">

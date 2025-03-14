@@ -20,19 +20,16 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore
 import copy as cp
+
 import numpy as np
+from PySide2 import QtCore
 
-from qudi.core.module import LogicBase
-from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
-from qudi.core.configoption import ConfigOption
+from qudi.core.module import LogicBase
 from qudi.core.statusvariable import StatusVar
-
 from qudi.interface.magnet_interface import MagnetFOM, MagnetScanData, MagnetScanSettings
-from qudi.interface.magnet_interface import MagnetControlAxis, MagnetConstraints
-
+from qudi.util.mutex import RecursiveMutex
 
 
 class MagnetLogic(LogicBase):
@@ -86,7 +83,8 @@ class MagnetLogic(LogicBase):
         constr = self.magnet_constraints
         self._scan_saved_to_hist = True
 
-        self.log.debug(f"Magnet scan settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
+        self.log.debug(
+            f"Magnet scan settings at startup, type {type(self._scan_ranges)} {self._scan_ranges, self._scan_resolution}")
         # scanner settings loaded from StatusVar or defaulted
         new_settings = self.check_sanity_scan_settings(self.scan_settings)
         if new_settings != self.scan_settings:
@@ -142,11 +140,11 @@ class MagnetLogic(LogicBase):
     @property
     def figure_of_merit(self):
         pass
-        #return self.scanner_constraints.channels
+        # return self.scanner_constraints.channels
 
     @property
     def magnet_constraints(self):
-        return self._magnet().constraints()
+        return self._magnet().constraints
 
     @property
     def scan_ranges(self):
@@ -162,7 +160,7 @@ class MagnetLogic(LogicBase):
     def scan_frequency(self):
         # todo: no hw scanner. derive scan frequency from FOM mes time?
         with self._thread_lock:
-            return 0.1 # todo: needed or handled in fom?
+            return 0.1  # todo: needed or handled in fom?
             return cp.copy(self._scan_frequency)
 
     @property
@@ -224,7 +222,6 @@ class MagnetLogic(LogicBase):
                 if key == 'frequency':
                     settings['frequency'] = 0.1
 
-
         return settings
 
     def set_scan_range(self, ranges):
@@ -281,12 +278,12 @@ class MagnetLogic(LogicBase):
                 new_freq = self.scan_frequency
 
                 # todo: this emit seems broken
-                #self.sigScanSettingsChanged.emit({'frequency': new_freq})
+                # self.sigScanSettingsChanged.emit({'frequency': new_freq})
 
                 return new_freq
 
-            self._scan_frequency = 0.1   # todo handle frequency
-            #self._scan_frequency = frequency
+            self._scan_frequency = 0.1  # todo handle frequency
+            # self._scan_frequency = frequency
 
             self.sigScanSettingsChanged.emit({'frequency': self._scan_frequency})
             return self._scan_frequency
@@ -309,7 +306,7 @@ class MagnetLogic(LogicBase):
     def target_reached(self):
         # todo: check control within accuracy at target
 
-        tol = self._magnet().constraints().control_accuracy
+        tol = self._magnet().constraints.control_accuracy
         magnet_control = self._magnet().get_control()
         target = self._target
 
@@ -336,7 +333,7 @@ class MagnetLogic(LogicBase):
 
             # self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
             self.sigScannerTargetChanged.emit(new_pos,
-                self.module_uuid if caller_id is None else caller_id)
+                                              self.module_uuid if caller_id is None else caller_id)
 
             return new_pos
 
@@ -354,12 +351,12 @@ class MagnetLogic(LogicBase):
 
             self._target = new_pos
             self.log.debug(f"Storing new target {self._target}. Not executed yet!")
-            #new_pos = self._magnet().set_control(new_pos, blocking=move_blocking)
-            #if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
+            # new_pos = self._magnet().set_control(new_pos, blocking=move_blocking)
+            # if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
             #    caller_id = None
-            #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
+            # self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
             self.sigScannerTargetChanged.emit(new_pos,
-                self.module_uuid if caller_id is None else caller_id)
+                                              self.module_uuid if caller_id is None else caller_id)
 
             return new_pos
 
@@ -408,7 +405,7 @@ class MagnetLogic(LogicBase):
         # Update scan frequency if needed
         new = float(settings['frequency'])
         if self._scan_frequency != new:
-            self._scan_frequency = 0.1 # new todo: new
+            self._scan_frequency = 0.1  # new todo: new
             self.sigScanSettingsChanged.emit({'frequency': self._scan_frequency})
 
     def configure_figure_of_merit(self, func_scalar, func_full, mes_time=1,
@@ -430,7 +427,7 @@ class MagnetLogic(LogicBase):
             if counter_logic.module_state() != 'locked':
                 counter_logic.start_reading()
             sample_rate = counter_logic.sampling_rate
-            n_samples = int(mes_time*sample_rate)
+            n_samples = int(mes_time * sample_rate)
 
             time.sleep(mes_time)
 
@@ -444,7 +441,8 @@ class MagnetLogic(LogicBase):
         self._fom = fom
 
     def _config_debug_fom(self, mes_time=0.1):
-        func_scalar = lambda : np.random.random()
+        func_scalar = lambda: np.random.random()
+
         def func_full():
             import time
             time.sleep(mes_time)
@@ -482,11 +480,11 @@ class MagnetLogic(LogicBase):
             self.log.debug('Scan settings fulfill constraints.')
 
             self._scan_settings = settings
-            self._fom.measurement_time = 1/self.scan_frequency
+            self._fom.measurement_time = 1 / self.scan_frequency
 
             self._scan_data = MagnetScanData.from_constraints(
-                                            settings=settings,
-                                            constraints=self.magnet_constraints)
+                settings=settings,
+                constraints=self.magnet_constraints)
             self._scan_data.new_scan()
             self._scan_data_flat = np.copy(self._scan_data.data['FOM']).T.flatten()
             self.log.debug(f'New ScanData created.')
@@ -494,8 +492,8 @@ class MagnetLogic(LogicBase):
             self._scan_path = self._init_scan_path(self._scan_data)
             self._scan_idx = 0
 
-            #self._update_scan_settings(scan_axes, settings)  # check whether can be dropped, most likely
-            #self.log.debug("Applied new scan settings")
+            # self._update_scan_settings(scan_axes, settings)  # check whether can be dropped, most likely
+            # self.log.debug("Applied new scan settings")
 
             self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)
             self.__start_timer()
@@ -508,7 +506,7 @@ class MagnetLogic(LogicBase):
                 self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
                 return 0
 
-            #self.__stop_timer()   # todo understand why locks
+            # self.__stop_timer()   # todo understand why locks
             self.module_state.unlock()
             self.sigScanStateChanged.emit(False, self.scan_data, self._curr_caller_id)
 
@@ -552,7 +550,7 @@ class MagnetLogic(LogicBase):
             horizontal_resolution = scan_data.settings.resolution[0]
 
             horizontal_line = np.linspace(scan_data.settings.range[0][0], scan_data.settings.range[0][1],
-                                     horizontal_resolution)
+                                          horizontal_resolution)
 
             coord_dict = {axis: horizontal_line}
 
@@ -600,7 +598,7 @@ class MagnetLogic(LogicBase):
                 if self.module_state() == 'idle':
                     return
 
-                if 0 not in self._magnet().get_status().keys():
+                if not self._magnet().get_status().is_ready:
                     self.log.warning("Magnet hardware not ready. Aborting scan.")
                     self.stop_scan()
                     return
@@ -618,15 +616,15 @@ class MagnetLogic(LogicBase):
                 self.log.debug(f"Next scan pos: [{self._scan_idx}] {target_control}. Actual control: {actual_control}")
 
                 fom_value = self._fom.func()
-                #fom_full_result = self._fom.func_full()
+                # fom_full_result = self._fom.func_full()
 
                 self._scan_data_flat[self._scan_idx] = fom_value
                 resolution = self.scan_data.settings.resolution
 
                 # swap rows, assuming a meander like scan path
-                self._scan_data.data['FOM'][:] = self._swap_2nd_rows(self._scan_data_flat.reshape(resolution)).T
-                #self.log.debug(f"New data: {fom_value}. Scan: {self._scan_data.data['FOM']}")
-
+                transpose_resolution = (resolution[1], resolution[0])
+                self._scan_data.data['FOM'][:] = self._swap_2nd_rows(self._scan_data_flat.reshape(transpose_resolution)).T
+                # self.log.debug(f"New data: {fom_value}. Scan: {self._scan_data.data['FOM']}")
 
                 self._scan_idx += 1
                 self.sigScanStateChanged.emit(True, self.scan_data, self._curr_caller_id)

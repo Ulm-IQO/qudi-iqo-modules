@@ -19,23 +19,17 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-
 from collections import OrderedDict
 
-from qudi.interface.motor_interface import MotorInterface
-from qudi.interface.magnet_interface import MagnetInterface
-from qudi.core.configoption import ConfigOption, MissingOption
-from qudi.util.constraints import ScalarConstraint
-from qudi.interface.magnet_interface import MagnetControlAxis, MagnetConstraints
-
-
-from zaber_motion import Library as zlib
 from zaber_motion.ascii import Connection as zcon
+
+from qudi.core.configoption import ConfigOption, MissingOption
+from qudi.interface.motor_interface import MotorInterface
+from zaber_motion import Library as zlib
 from zaber_motion import Units
 
 
-class ZaberStage(MotorInterface, MagnetInterface):
-
+class ZaberStage(MotorInterface):
     """ Control class for an arbitrary collection of ZaberMotor axes.
 
     The required config file entries are based around a few key ideas:
@@ -180,13 +174,12 @@ class ZaberStage(MotorInterface, MagnetInterface):
         config = self._axes_configs
 
         for axis_label in config.keys():
-
             this_axis = self._axis_dict[axis_label].get_constrains()
             constraints[axis_label] = this_axis
 
         return constraints
 
-    def move_rel(self,  param_dict, wait_until_done=False):
+    def move_rel(self, param_dict, wait_until_done=False):
         """ Moves stage in given direction (relative movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
@@ -239,7 +232,7 @@ class ZaberStage(MotorInterface, MagnetInterface):
 
         if wait_until_done:
             for label, axis in self._axis_dict.items():
-                axis._wait_until_idle()   # todo private call
+                axis._wait_until_idle()  # todo private call
 
     def abort(self):
         """ Stops movement of the stage. """
@@ -392,48 +385,6 @@ class ZaberStage(MotorInterface, MagnetInterface):
                 if self._check_in_range(desired_vel, label_axis, ['vel_min', 'vel_max']):
                     self._axis_dict[label_axis].set_velocity(desired_vel)
 
-    def constraints(self):
-
-        constr = self.get_constraints()
-        axes = list()
-        for axis, constr_i in constr.items():
-            dist = constr_i['pos_max'] - constr_i['pos_min']
-            resolution_range = (1, float('inf'))
-
-            control_value = ScalarConstraint(default=constr_i['pos_min'],
-                                             bounds=(constr_i['pos_min'], constr_i['pos_max']))
-            resolution = ScalarConstraint(default=min(resolution_range), bounds=resolution_range, enforce_int=False)
-            step = ScalarConstraint(default=0, bounds=(0, dist))
-
-            axes.append(MagnetControlAxis(name=axis,
-                                    unit='m',
-                                    control_value=control_value,
-                                    step=step,
-                                    resolution=resolution))
-
-        constraints = MagnetConstraints(axis_objects=tuple(axes),
-                                        has_position_feedback=False,
-                                        control_accuracy={ax: val['pos_accuracy'] for ax, val in constr.items()})
-
-        return constraints
-
-
-
-    def get_control(self):
-        return self.get_pos()
-
-    def set_control(self, pos, blocking=False):
-        self.move_abs(pos, wait_until_done=blocking)
-
-    def emergency_stop(self):
-        """
-        """
-        self.abort()
-        return
-
-    def set_activity_state(self, active, channel=None) -> None:
-        pass
-
     def get_acceleration(self, param_list=None):
         """ Gets the current acceleration for all connected axes.
 
@@ -503,7 +454,7 @@ class ZaberStage(MotorInterface, MagnetInterface):
         c_max = constr_range[1]
 
         constraints[c_min] = -float("inf") if constraints[c_min] is None else constraints[c_min]
-        constraints[c_max] = float("inf")  if constraints[c_max] is None else constraints[c_max]
+        constraints[c_max] = float("inf") if constraints[c_max] is None else constraints[c_max]
 
         if value < constraints[c_min] or value > constraints[c_max]:
             raise ValueError(f"Value check failed on axis {axis_label}. {value} is outside of "
@@ -512,7 +463,7 @@ class ZaberStage(MotorInterface, MagnetInterface):
         return True
 
 
-class ZaberAxis():
+class ZaberAxis:
 
     def __init__(self, axis_handle, device_parent, label=''):
         """
@@ -530,10 +481,10 @@ class ZaberAxis():
 
     def get_constrains(self):
         default_constr = {
-            'unit': 'm',            # for compatibility with magnet_gui
+            'unit': 'm',  # for compatibility with magnet_gui
             'pos_step': 1e-9,
-            'pos_accuracy': 3e-6,   # x-lrq-de "repeatability". todo: make configoption.
-            'vel_step': 1e-9,       # for compatibility with magnet_gui
+            'pos_accuracy': 3e-6,  # x-lrq-de "repeatability". todo: make configoption.
+            'vel_step': 1e-9,  # for compatibility with magnet_gui
             'pos_min': None,
             'pos_max': None,
             'vel_min': None,
@@ -572,7 +523,7 @@ class ZaberAxis():
 
     def get_acceleration(self):
 
-        return self._axis.settings.get("accel",  Units.ACCELERATION_METRES_PER_SECOND_SQUARED)
+        return self._axis.settings.get("accel", Units.ACCELERATION_METRES_PER_SECOND_SQUARED)
 
     def set_velocity(self, velocity):
         """ Set the maximal velocity (of the velocity profile) for the motor movement.
@@ -698,3 +649,12 @@ class ZaberAxis():
 
         self._axis.home(wait_until_idle=wait_until_done)
 
+    def is_ready(self) -> bool:
+        """ Queries if the motor is ready to accept a command
+
+        @return bool: True if ready False otherwise
+        """
+        status = self.get_status()
+        is_not_busy = all(not axis_status.is_busy for axis_status in status.values())
+        is_not_parked = all(not axis_status.is_parked for axis_status in status.values())
+        return is_not_busy and is_not_parked

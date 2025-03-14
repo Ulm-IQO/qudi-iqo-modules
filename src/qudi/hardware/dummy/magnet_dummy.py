@@ -20,14 +20,15 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import time
+from typing import Dict
+
 import numpy as np
-from PySide2 import QtCore
-from fysom import FysomError
+
 from qudi.core.configoption import ConfigOption
-from qudi.util.mutex import RecursiveMutex
-from qudi.util.constraints import ScalarConstraint
-from qudi.interface.magnet_interface import MagnetInterface
 from qudi.interface.magnet_interface import MagnetControlAxis, MagnetConstraints
+from qudi.interface.magnet_interface import MagnetInterface, MagnetStatus
+from qudi.util.constraints import ScalarConstraint
+from qudi.util.mutex import RecursiveMutex
 
 
 class MagnetDummy(MagnetInterface):
@@ -72,16 +73,12 @@ class MagnetDummy(MagnetInterface):
         # Mutex for access serialization
         self._thread_lock = RecursiveMutex()
 
-
     def on_activate(self):
         """ Initialisation performed during activation of the module.
         """
 
         self._current_control = {ax: min(rng) + (max(rng) - min(rng)) / 2 for ax, rng in
-                                  self._control_ranges.items()}
-
-
-
+                                 self._control_ranges.items()}
 
         # Generate static constraints
         axes = list()
@@ -96,29 +93,33 @@ class MagnetDummy(MagnetInterface):
             step = ScalarConstraint(default=0, bounds=(0, dist))
 
             axes.append(MagnetControlAxis(name=axis,
-                                    unit='T',
-                                    control_value=control_value,
-                                    step=step,
-                                    resolution=resolution))
+                                          unit='T',
+                                          control_value=control_value,
+                                          step=step,
+                                          resolution=resolution))
 
         self._constraints = MagnetConstraints(axis_objects=tuple(axes),
                                               has_position_feedback=False,
-                                              control_accuracy={key: 3*val for key, val in self._position_accuracy.items()})
+                                              control_accuracy={key: 3 * val for key, val in
+                                                                self._position_accuracy.items()})
 
     def on_deactivate(self):
         self.set_activity_state(False)
 
-    def constraints(self):
+    @property
+    def constraints(self) -> MagnetConstraints:
         """
 
         @return:
         """
         return self._constraints
 
-    def get_status(self):
-        return {0: 'idle'}
+    def get_status(self) -> MagnetStatus:
+        return MagnetStatus(
+            is_ready=True
+        )
 
-    def set_control(self, control, blocking=False):
+    def set_control(self, control: Dict[str, float], blocking: bool = False) -> Dict[str, float]:
         """ Move the magnet to an absolute control value.
         Return current control.
         """
@@ -142,7 +143,7 @@ class MagnetDummy(MagnetInterface):
 
             return self._current_control
 
-    def get_control(self):
+    def get_control(self) -> Dict[str, float]:
         """ Get a snapshot of the actual magnet control.
 
         @return dict: current control per axis.
@@ -152,13 +153,7 @@ class MagnetDummy(MagnetInterface):
                         self._current_control.items()}
             return position
 
-    def emergency_stop(self):
+    def emergency_stop(self) -> None:
         """
         """
         self.log.warning('Magnet has been emergency stopped.')
-        return 0
-
-    def set_activity_state(self, active, channel=None) -> None:
-        pass
-
-

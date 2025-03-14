@@ -21,24 +21,19 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
-import numpy as np
-import copy as cp
 from typing import Union, Tuple
-from functools import partial
-from PySide2 import QtCore, QtGui, QtWidgets
+
+import numpy as np
+from PySide2 import QtCore, QtWidgets
 
 import qudi.util.uic as uic
-from qudi.core.connector import Connector
-from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
-from qudi.interface.scanning_probe_interface import ScanData
+from qudi.core.connector import Connector
 from qudi.core.module import GuiBase
-from qudi.logic.scanning_optimize_logic import OptimizerScanSequence
-from qudi.interface.scanning_probe_interface import ScannerChannel
-
+from qudi.core.statusvariable import StatusVar
 from qudi.gui.magnet.axes_control_dockwidget import AxesControlDockWidget
 from qudi.gui.scanning.scan_dockwidget import ScanDockWidget
-from qudi.gui.scanning.optimizer_dockwidget import OptimizerDockWidget
+from qudi.interface.scanning_probe_interface import ScannerChannel
 
 
 class ConfocalMainWindow(QtWidgets.QMainWindow):
@@ -65,6 +60,7 @@ class ConfocalMainWindow(QtWidgets.QMainWindow):
 
 class SaveDialog(QtWidgets.QDialog):
     """ Dialog to provide feedback and block GUI while saving """
+
     def __init__(self, parent, title="Please wait", text="Saving..."):
         super().__init__(parent)
         self.setWindowTitle(title)
@@ -92,7 +88,7 @@ class MagnetGui(GuiBase):
             default_position_unit_prefix: null  # optional, use unit prefix characters, e.g. 'u' or 'n'
         connect:
                 scanning_logic: magnet_logic
-
+                data_logic: magnet_data_logic
     """
 
     # declare connectors
@@ -101,10 +97,6 @@ class MagnetGui(GuiBase):
 
     # config options for gui
     _default_position_unit_prefix = ConfigOption(name='default_position_unit_prefix', default=None)
-    # for all optimizer sub widgets, (2= xy, 1=z)
-    _optimizer_plot_dims = ConfigOption(name='optimizer_plot_dimensions', default=[2,1])
-    # minimum crosshair size as fraction of the displayed scan range
-    _min_crosshair_size_fraction = ConfigOption(name='min_crosshair_size_fraction', default=1/50, missing='nothing')
 
     # status vars
     _window_state = StatusVar(name='window_state', default=None)
@@ -114,8 +106,7 @@ class MagnetGui(GuiBase):
     sigScannerTargetChanged = QtCore.Signal(dict, object)
     sigScanSettingsChanged = QtCore.Signal(dict)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
-    sigOptimizerSettingsChanged = QtCore.Signal(dict)
-    sigToggleOptimize = QtCore.Signal(bool)
+
     sigSaveScan = QtCore.Signal(object, object)
     sigSaveFinished = QtCore.Signal()
     sigShowSaveDialog = QtCore.Signal(bool)
@@ -125,24 +116,18 @@ class MagnetGui(GuiBase):
 
         # QMainWindow and QDialog child instances
         self._mw = None
-        self._ssd = None
-        self._osd = None
 
         # References to automatically generated GUI elements
         self.axes_control_widgets = None
-        self.optimizer_settings_axes_widgets = None
         self.scanner_settings_axes_widgets = None
         self.scan_2d_dockwidgets = None
         self.scan_1d_dockwidgets = None
 
         # References to static dockwidgets
-        self.optimizer_dockwidget = None
         self.scanner_control_dockwidget = None
 
         # misc
-        self._optimizer_id = 0
         self._scanner_settings_locked = False
-        self._optimizer_state = {'is_running': False}
         self._n_save_tasks = 0
         return
 
@@ -169,7 +154,7 @@ class MagnetGui(GuiBase):
         scans = list()
         axes = tuple(self._scanning_logic().magnet_control_axes)
         for i, first_ax in enumerate(axes, 1):
-            #if not scans:
+            # if not scans:
             scans.append((first_ax,))
             for second_ax in axes[i:]:
                 scans.append((first_ax, second_ax))
@@ -222,8 +207,6 @@ class MagnetGui(GuiBase):
             self._update_from_history, QtCore.Qt.QueuedConnection
         )
 
-
-
         self.sigShowSaveDialog.connect(lambda x: self._save_dialog.show() if x else self._save_dialog.hide(),
                                        QtCore.Qt.DirectConnection)
 
@@ -234,7 +217,7 @@ class MagnetGui(GuiBase):
         self.restore_history()
 
         self._restore_window_geometry(self._mw)
-
+        self.update_crosshair_sizes()
         return
 
     def on_deactivate(self):
@@ -275,43 +258,6 @@ class MagnetGui(GuiBase):
         self._mw.activateWindow()
         self._mw.raise_()
 
-    def _init_optimizer_settings(self):
-        """ Configuration and initialisation of the optimizer settings dialog.
-        """
-        # Create the Settings window
-        self._osd = OptimizerSettingDialog(tuple(self._scanning_logic().magnet_control_axes.values()),
-                                           tuple(self._scanning_logic().scanner_channels.values()),
-                                           self._optimizer_plot_dims)
-
-        # Connect MainWindow actions
-        self._mw.action_optimizer_settings.triggered.connect(lambda x: self._osd.exec_())
-
-        # Connect the action of the settings window with the code:
-        self._osd.accepted.connect(self.change_optimizer_settings)
-        self._osd.rejected.connect(self.update_optimizer_settings)
-        self._osd.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
-            self.change_optimizer_settings)
-        # pull in data
-        self.update_optimizer_settings()
-        return
-
-    def _init_scanner_settings(self):
-        """
-        """
-        # Create the Settings dialog
-        self._ssd = ScannerSettingDialog(tuple(self._scanning_logic().magnet_control_axes.values()),
-                                         self._scanning_logic().scanner_constraints)
-
-        # Connect MainWindow actions
-        self._mw.action_scanner_settings.triggered.connect(lambda x: self._ssd.exec_())
-
-        # Connect the action of the settings dialog with the GUI module:
-        self._ssd.accepted.connect(self.apply_scanner_settings)
-        self._ssd.rejected.connect(self.restore_scanner_settings)
-        self._ssd.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
-            self.apply_scanner_settings
-        )
-
     def _init_static_dockwidgets(self):
         self.scanner_control_dockwidget = AxesControlDockWidget(
             tuple(self._scanning_logic().magnet_control_axes.values())
@@ -331,7 +277,7 @@ class MagnetGui(GuiBase):
         )
         self.scanner_control_dockwidget.sigResolutionChanged.connect(
             lambda ax, res: self.sigScanSettingsChanged.emit({'resolution': {ax: res}})
-             if not self._scanner_settings_locked else None
+            if not self._scanner_settings_locked else None
         )
         self.scanner_control_dockwidget.sigRangeChanged.connect(
             lambda ax, ranges: self.sigScanSettingsChanged.emit({'range': {ax: ranges}})
@@ -344,14 +290,13 @@ class MagnetGui(GuiBase):
         # ToDo: Implement a way to avoid too fast position update from slider movement.
         # todo: why is _update_scan_crosshairds issuing (not only displaying) at all?
         self.scanner_control_dockwidget.sigSliderMoved.connect(
-            #lambda ax, pos: self._update_scan_markers(pos_dict={ax: pos}, exclude_scan=None)
+            # lambda ax, pos: self._update_scan_markers(pos_dict={ax: pos}, exclude_scan=None)
             lambda ax, pos: self.set_scanner_target_position({ax: pos})
         )
 
         self.scanner_control_dockwidget.widget().move_pushButton.clicked.connect(
             self._scanning_logic().set_control
         )
-
 
         self._mw.util_toolBar.visibilityChanged.connect(
             self._mw.action_view_toolbar.setChecked)
@@ -363,7 +308,6 @@ class MagnetGui(GuiBase):
         self._mw.setDockNestingEnabled(True)
 
         # Remove all dockwidgets from main window layout
-        self._mw.removeDockWidget(self.optimizer_dockwidget)
         self._mw.removeDockWidget(self.scanner_control_dockwidget)
         for dockwidget in self.scan_2d_dockwidgets.values():
             self._mw.removeDockWidget(dockwidget)
@@ -396,8 +340,6 @@ class MagnetGui(GuiBase):
                 self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
                 dockwidget.setFloating(False)
 
-
-        # split scan dock widget with optimizer dock widget if needed. Resize all groups.
         if has_1d_scans and has_2d_scans:
 
             self._mw.resizeDocks((dockwidgets_2d[0], dockwidgets_1d[0]),
@@ -407,7 +349,6 @@ class MagnetGui(GuiBase):
             self._mw.resizeDocks((dockwidgets_2d[0], dockwidgets_2d[1]),
                                  (1, 1),
                                  QtCore.Qt.Horizontal)
-
 
         # tabify dockwidgets if needed, needs to be done after .splitDockWidget()
         if multiple_2d_scans:
@@ -420,7 +361,7 @@ class MagnetGui(GuiBase):
                     if ii == 0:
                         self._mw.tabifyDockWidget(dockwidgets_2d[ii], dockwidget)
                     else:
-                        self._mw.tabifyDockWidget(dockwidgets_2d[ii+1], dockwidget)
+                        self._mw.tabifyDockWidget(dockwidgets_2d[ii + 1], dockwidget)
                 dockwidgets_2d[0].raise_()
         if multiple_1d_scans:
             for ii, dockwidget in enumerate(dockwidgets_1d[1:]):
@@ -499,8 +440,7 @@ class MagnetGui(GuiBase):
             marker_bounds = (axes_constr[0].control_value.bounds, axes_constr[1].control_value.bounds)
             marker_size = [(marker_bounds[0][1]-marker_bounds[0][0])/10,
                            (marker_bounds[1][1]-marker_bounds[1][0])/10]
-            dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr,
-                                        xy_region_min_size_percentile=self._min_crosshair_size_fraction)
+            dockwidget = ScanDockWidget(axes=axes_constr, channels=channel_constr)
             dockwidget.scan_widget.set_marker_size(marker_size)
             dockwidget.scan_widget.set_marker_bounds(marker_bounds)
             dockwidget.scan_widget.set_plot_range(x_range=axes_constr[0].control_value.bounds,
@@ -547,14 +487,6 @@ class MagnetGui(GuiBase):
             dockwidget.scan_widget.toggle_zoom(enable)
 
     @QtCore.Slot()
-    def apply_scanner_settings(self):
-        """ ToDo: Document
-        """
-        # ToDo: make configable
-        #forward_freq = {ax: freq[0] for ax, freq in self._ssd.settings_widget.frequency.items()}
-        self.sigScanSettingsChanged.emit({'frequency': self._scanning_logic().scan_frequency})
-
-    @QtCore.Slot()
     def restore_scanner_settings(self):
         """ ToDo: Document
         """
@@ -596,6 +528,7 @@ class MagnetGui(GuiBase):
             }
             self._ssd.settings_widget.set_frequency(new_freq)
             """
+            self.update_crosshair_sizes()
         return
 
     @QtCore.Slot(dict)
@@ -658,6 +591,7 @@ class MagnetGui(GuiBase):
             if dockwidget is not None:
                 dockwidget.scan_widget.toggle_scan_button.setChecked(is_running)
                 self._update_scan_data(scan_data)
+                self.update_crosshair_sizes()
         return
 
     def restore_history(self):
@@ -750,14 +684,13 @@ class MagnetGui(GuiBase):
         if exclude_action is not self._mw.action_history_forward:
             self._mw.action_history_forward.setEnabled(enable)
 
-
     def __get_marker_update_func(self, axes: Union[Tuple[str], Tuple[str, str]]):
         def update_func(pos: Union[float, Tuple[float, float]]):
             if len(axes) == 1:
                 pos_dict = {axes[0]: pos}
             else:
                 pos_dict = {axes[0]: pos[0], axes[1]: pos[1]}
-            #self._update_scan_markers(pos_dict, exclude_scan=axes)
+            # self._update_scan_markers(pos_dict, exclude_scan=axes)
             # self.scanner_control_dockwidget.widget().set_target(pos_dict)
             self.set_scanner_target_position(pos_dict)
         return update_func
@@ -789,81 +722,17 @@ class MagnetGui(GuiBase):
                 self._mw.action_utility_zoom.setChecked(False)
         return set_range_func
 
-    @QtCore.Slot()
-    def change_optimizer_settings(self):
-        self.sigOptimizerSettingsChanged.emit(self._osd.settings)
-        self.optimizer_dockwidget.scan_sequence = self._osd.settings['scan_sequence']
-        self.update_crosshair_sizes()
-
     def update_crosshair_sizes(self):
-        axes_constr = self._scanning_logic().magnet_control_axes
+        scan_ranges = self._scanning_logic()._scan_ranges
+        scan_resolution = self._scanning_logic().scan_resolution
         for ax, dockwidget in self.scan_2d_dockwidgets.items():
-            width = self._osd.settings['scan_range'][ax[0]]
-            height = self._osd.settings['scan_range'][ax[1]]
-            x_min, x_max = axes_constr[ax[0]].control_value.bounds
-            y_min, y_max = axes_constr[ax[1]].control_value.bounds
-            marker_bounds = (
-                (x_min - width / 2, x_max + width / 2),
-                (y_min - height / 2, y_max + height / 2)
-            )
+            x_min, x_max = scan_ranges[ax[0]]
+            y_min, y_max = scan_ranges[ax[1]]
             dockwidget.scan_widget.blockSignals(True)
             try:
                 old_pos = dockwidget.scan_widget.marker_position
-                dockwidget.scan_widget.set_marker_size((width, height))
+                dockwidget.scan_widget.set_marker_size(((x_max - x_min) / (scan_resolution[ax[0]] - 1), (y_max - y_min) / (scan_resolution[ax[1]] - 1)))
                 dockwidget.scan_widget.set_marker_position(old_pos)
             finally:
                 dockwidget.scan_widget.blockSignals(False)
 
-    @QtCore.Slot(dict)
-    def update_optimizer_settings(self, settings=None):
-        if not isinstance(settings, dict):
-            settings = self._optimize_logic().optimize_settings
-
-        # Update optimizer settings QDialog
-        self._osd.change_settings(settings)
-
-        # Adjust optimizer settings
-        if 'scan_sequence' in settings:
-            new_settings = self._optimize_logic().check_sanity_optimizer_settings(settings, self._optimizer_plot_dims)
-            if settings['scan_sequence'] != new_settings['scan_sequence']:
-                new_seq = new_settings['scan_sequence']
-                self.log.warning(f"Tried to update gui with illegal optimizer sequence= {settings['scan_sequence']}."
-                                 f" Defaulted optimizer to= {new_seq}")
-                self._optimize_logic().scan_sequence = new_seq
-            settings = new_settings
-
-            axes_constr = self._scanning_logic().magnet_control_axes
-            self.optimizer_dockwidget.scan_sequence = settings['scan_sequence']
-
-            for seq_step in settings['scan_sequence']:
-                if len(seq_step) == 1:
-                    axis = seq_step[0]
-                    self.optimizer_dockwidget.set_plot_label(axis='bottom',
-                                                             axs=seq_step,
-                                                             text=axis,
-                                                             units=axes_constr[axis].unit)
-                    self.optimizer_dockwidget.set_plot_data(axs=seq_step)
-                    self.optimizer_dockwidget.set_fit_data(axs=seq_step)
-                elif len(seq_step) == 2:
-                    x_axis, y_axis = seq_step
-                    self.optimizer_dockwidget.set_image_label(axis='bottom',
-                                                              axs=seq_step,
-                                                              text=x_axis,
-                                                              units=axes_constr[x_axis].unit)
-                    self.optimizer_dockwidget.set_image_label(axis='left',
-                                                              axs=seq_step,
-                                                              text=y_axis,
-                                                              units=axes_constr[y_axis].unit)
-                    self.optimizer_dockwidget.set_image(None, axs=seq_step,
-                                                        extent=((-0.5, 0.5), (-0.5, 0.5)))
-
-                # Adjust 1D plot y-axis label
-                if 'data_channel' in settings and len(seq_step)==1:
-                    channel_constr = self._scanning_logic().scanner_channels
-                    channel = settings['data_channel']
-                    self.optimizer_dockwidget.set_plot_label(axs=seq_step, axis='left',
-                                                             text=channel,
-                                                             units=channel_constr[channel].unit)
-
-                # Adjust crosshair size according to optimizer range
-                self.update_crosshair_sizes()
