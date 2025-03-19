@@ -233,21 +233,6 @@ class LaserScanningLogic(LogicBase):
             max_samples: -1  # optional, maximum number of samples to record (-1 for unlimited)
     """
 
-    @staticmethod
-    def __construct_histogram_span(value: Sequence[float]) -> Tuple[float, float]:
-        if (len(value) != 2) or (value[0] == value[1]) or not all(np.isfinite(v) for v in value):
-            raise ValueError(
-                f'Expected exactly two unequal, finite values (min, max) but received "{value}"'
-            )
-        return min(value), max(value)
-
-    @staticmethod
-    def __construct_histogram_bins(value: int) -> int:
-        value = int(value)
-        if value < 3:
-            raise ValueError(f'Number of histogram bins must be >= 3 but received "{value:d}"')
-        return value
-
     __default_fit_configs = [
         {'name'             : 'Lorentzian Dip',
          'model'            : 'Lorentzian',
@@ -293,12 +278,26 @@ class LaserScanningLogic(LogicBase):
     _fit_config_model: FitConfigurationsModel = StatusVar(name='fit_configs',
                                                           default=__default_fit_configs)
     _histogram_span: Tuple[float, float] = StatusVar(name='histogram_span',
-                                                     default=(500.0e-9, 750.0e-9),
-                                                     constructor=__construct_histogram_span)
-    _histogram_bins: int = StatusVar(name='histogram_bins',
-                                     default=200,
-                                     constructor=__construct_histogram_bins)
+                                                     default=(500.0e-9, 750.0e-9))
+    _histogram_bins: int = StatusVar(name='histogram_bins', default=200)
     _current_laser_is_frequency: bool = StatusVar(name='current_laser_is_frequency', default=False)
+
+    @staticmethod
+    @_histogram_span.constructor
+    def __construct_histogram_span(value: Sequence[float]) -> Tuple[float, float]:
+        if (len(value) != 2) or (value[0] == value[1]) or not all(np.isfinite(v) for v in value):
+            raise ValueError(
+                f'Expected exactly two unequal, finite values (min, max) but received "{value}"'
+            )
+        return min(value), max(value)
+
+    @staticmethod
+    @_histogram_bins.constructor
+    def __construct_histogram_bins(value: int) -> int:
+        value = int(value)
+        if value < 3:
+            raise ValueError(f'Number of histogram bins must be >= 3 but received "{value:d}"')
+        return value
 
     @staticmethod
     @_fit_config_model.representer
