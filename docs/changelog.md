@@ -88,6 +88,7 @@ In future releases, `python 3.8` support will be dropped to be able to upgrade t
 - Updated .gitignore to better exclude unwanted files
 - Fix typos in repo management documentation
 - Added documentation on testing of `test.pypi.org` release
+- Added some integration tests that run automatically via Github Actions on PRs and commits to main.
 
 ## Version 0.5.1
 
