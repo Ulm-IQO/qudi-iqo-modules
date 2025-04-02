@@ -2,6 +2,16 @@
 
 ## Pre-Release
 
+### Breaking Changes
+
+### Bugfixes
+
+### New Features
+
+### Other
+
+## Version 0.6.0
+
 **⚠ DEPRECATION WARNING**
 In future releases, `python 3.8` support will be dropped to be able to upgrade to `numpy > 1.24` package versions.
 
