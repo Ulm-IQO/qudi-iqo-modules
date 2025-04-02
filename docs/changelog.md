@@ -34,6 +34,15 @@ In future releases, `python 3.8` support will be dropped to be able to upgrade t
 - Fixed potential `scanning_optimize_logic` deadlock when starting the optimizer
 - Fixed loading of most recent target when starting scanning GUI
 - added `waiting_element` to `generate_t1_sequencing` method
+- Fixed example config typo in `tektronix_awg70k.py`
+- Fixed issue when using same pfi channel on two different ni cards for NI instreamer
+- Fixed POI manager auto-find
+- Fixed overwriting of file in scanner GUI when using custom nametag
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used
+- Fixed StatusVar initialization in POI manager
+- Fixed checker for optimizer plot dimensions in scanning toolchain
+- Disconnect GUI widgets on deactivation of laser `LaserGui`
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 
 
 ### New Features
@@ -58,10 +67,17 @@ In future releases, `python 3.8` support will be dropped to be able to upgrade t
 - Added DMC output mode for Keysight M8195A AWG
 - Updated workflows to follow new 'pyproject.toml' release workflow
 - Altered tektronix_awg70k hardware file to allow the use of the newer, B-series of Tektronix AWGs
+- Added Windfreak synthHD documentation
+- Added cursor position in `Scan2DWidget` of the scanning toolchain
+- Added scanning settings to scanning toolchain
+- Updated Documentation in `basic_predefined_methods`
 
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
 - Removed `setup.py` and moved fully to `pyproject.toml` instead.
+- Updated .gitignore to better exclude unwanted files
+- Fix typos in repo management documentation
+- Added documentation on testing of `test.pypi.org` release
 
 ## Version 0.5.1
 
