@@ -622,7 +622,7 @@ class MagnetLogic(LogicBase):
                 resolution = self.scan_data.settings.resolution
 
                 # swap rows, assuming a meander like scan path
-                transpose_resolution = (resolution[1], resolution[0])
+                transpose_resolution = (resolution[1], resolution[0]) if len(resolution) > 1 else resolution
                 self._scan_data.data['FOM'][:] = self._swap_2nd_rows(self._scan_data_flat.reshape(transpose_resolution)).T
                 # self.log.debug(f"New data: {fom_value}. Scan: {self._scan_data.data['FOM']}")
 
