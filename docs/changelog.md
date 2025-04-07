@@ -4,6 +4,8 @@
 
 ### Breaking Changes
 
+- Dropped `Python 3.8` support
+
 ### Bugfixes
 
 ### New Features
