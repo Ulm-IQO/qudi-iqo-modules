@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from collections import OrderedDict
+from typing import Dict, Any
 
 import serial
 import numpy as np
@@ -31,8 +32,8 @@ class KanfitMotorStage(MotorInterface):
     """ Control class for the 3 axes magnet motor stage in Ulm university."""
 
     _com_port = ConfigOption('com_port', 'COM8', missing='warn')
-    _baud_rate = ConfigOption('baud_rate_xy', 115200, missing='warn')
-    _timeout = ConfigOption('timeout_xy', 1000, missing='warn')
+    _baud_rate = ConfigOption('baud_rate', 115_200, missing='warn')
+    _timeout = ConfigOption('timeout', 1000, missing='warn')
 
     _first_axis_label = ConfigOption('first_axis_label', 'x', missing='warn')
     _second_axis_label = ConfigOption('second_axis_label', 'y', missing='warn')
@@ -49,6 +50,7 @@ class KanfitMotorStage(MotorInterface):
     # relative movement therefore has to be emulated by comparing
     # to the previous position
     _abs_pos = (0.0, 0.0, 0.0)
+    _pos = dict()
 
     def on_activate(self):
         """ Initialisation performed during activation of the module.
@@ -56,6 +58,10 @@ class KanfitMotorStage(MotorInterface):
         """
         # establish connection to the stage
         self.con = serial.Serial(self._com_port)
+        self._pos[self._first_axis_label] = 0.0
+        self._pos[self._second_axis_label] = 0.0
+        self._pos[self._third_axis_label] = 0.0
+
         if self.con.readable():
             self.log.info("Successfully established connection to the stage.")
         else:
@@ -68,6 +74,20 @@ class KanfitMotorStage(MotorInterface):
         """
         self.con.close()
         return
+
+    def get_status(self, param_list=None) -> Dict[str, Any]:
+        """ Get the status of the position
+
+        @param list param_list: optional, if a specific status of an axis
+                                is desired, then the labels of the needed
+                                axis should be passed in the param_list.
+                                If nothing is passed, then from each axis the
+                                status is asked.
+
+        @return dict: with the axis label as key and the axis status as value.
+        """
+        pass
+
 
     def get_constraints(self):
         """ Retrieve the hardware constrains from the motor device.
@@ -88,12 +108,13 @@ class KanfitMotorStage(MotorInterface):
         constraints = OrderedDict()
 
         axis0 = {'label': self._first_axis_label,
-                 'ID': self._first_axis_ID,
+                 'ID': None,
                  'unit': 'm',
                  'ramp': None,
                  'pos_min': self._min_first,
                  'pos_max': self._max_first,
-                 'pos_step': self.step_first_axis,
+                 'pos_step': (self._max_first - self._min_first) / 4096,
+                 'pos_accuracy': (self._max_first - self._min_first) / 4096,
                  'vel_min': None,
                  'vel_max': None,
                  'vel_step': None,
@@ -102,12 +123,13 @@ class KanfitMotorStage(MotorInterface):
                  'acc_step': None}
 
         axis1 = {'label': self._second_axis_label,
-                 'ID': self._second_axis_ID,
+                 'ID': None,
                  'unit': 'm',
                  'ramp': None,
                  'pos_min': self._min_second,
                  'pos_max': self._max_second,
-                 'pos_step': self.step_second_axis,
+                 'pos_step': (self._max_second - self._min_second) / 4096,
+                 'pos_accuracy': (self._max_second - self._min_second) / 4096,
                  'vel_min': None,
                  'vel_max': None,
                  'vel_step': None,
@@ -116,11 +138,12 @@ class KanfitMotorStage(MotorInterface):
                  'acc_step': None}
 
         axis2 = {'label': self._third_axis_label,
-                 'ID': self._third_axis_ID,
+                 'ID': None,
                  'unit': 'm', 'ramp': None,
                  'pos_min': self._min_third,
                  'pos_max': self._max_third,
-                 'pos_step': self.step_third_axis,
+                 'pos_step': (self._max_third - self._min_third) / 4096,
+                 'pos_accuracy': (self._max_third - self._min_third) / 4096,
                  'vel_min': None,
                  'vel_max': None,
                  'vel_step': None,
@@ -152,11 +175,13 @@ class KanfitMotorStage(MotorInterface):
         @return int: error code (0:OK, -1:error)
         """
         # TODO implement safety checks
+        self.log.warning(f"what is the input to move_abs {param_dict}")
+
         def movement_to_num(mov, ax_id):
             """Translates the movement in meter to a number, that is understood
             by the stage."""
             thread_pitch_xy = 3e-3
-            thread_pitch_z = 9e-3
+            thread_pitch_z = 1.16e-3
             # one rotation corresponds to 2 ** 12
             bit_encoding = 12
             enc = mov * 2 ** bit_encoding
@@ -167,6 +192,7 @@ class KanfitMotorStage(MotorInterface):
             return rot
 
         def format_hex(hn, ln):
+            """ Format number into hex that is understood by the stage"""
             _, rhn = hn.split('x')
             if len(rhn) < ln:
                 thn = ""
@@ -185,19 +211,26 @@ class KanfitMotorStage(MotorInterface):
                 ffhn += hh + tt + " "
             return ffhn
 
-        base_command = "23 63 3E"
+        # the base command contain the 3 bytes that are in front of
+        # every movement command.
+        base_command = "23 63 3E B3"
         hns = list()
-        for key in param_dict:
-            rot = movement_to_num(param_dict[key],  key)
+        self.log.warning(f"self._pos {self._pos} before update")
+        self._pos.update(param_dict)
+        self.log.warning(f"self._pos {self._pos} after update")
+        for key in self._pos:
+            rot = movement_to_num(self._pos[key],  key)
+            self.log.warning(f"rot {rot} for key {key}")
             # each axis has 6 byte and 2 byte represent [0 .. 255] which equal to the number
             # range of a two digit hex number [00 .. FF].
             hn = format_hex(rot, 6)
+            self.log.warning(f"hex num {hn} for key {key}")
             hns.append(hn)
 
         # construct the final command an remove the last space
         cmd = "".join([base_command, " "] + hns)[0:-1]
-        self.write(cmd)
-
+        self.log.warning(f"sending cmd {cmd} to stage")
+        self.con.write(bytes.fromhex(cmd))
         return
 
     def abort(self):
@@ -219,7 +252,7 @@ class KanfitMotorStage(MotorInterface):
         @return dict: with keys being the axis labels and value the current
                       position.
         """
-        pass
+        return self._pos
 
 
     def calibrate(self, param_list=None):
@@ -237,6 +270,7 @@ class KanfitMotorStage(MotorInterface):
         zero point for the passed axis. The calibration procedure will be
         different for each stage.
         """
+        # this command sets the zero of the stage
         self.con.write(bytes.fromhex('23 63 3e 77'))
         return
 
@@ -271,4 +305,4 @@ class KanfitMotorStage(MotorInterface):
 
         @return bool: True if ready False otherwise
         """
-        pass
+        return True
