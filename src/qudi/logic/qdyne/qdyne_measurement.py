@@ -14,23 +14,22 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import copy
+import logging
 import numpy as np
 from dataclasses import dataclass
 import datetime
 from PySide2 import QtCore
-from logging import getLogger
 import numpy as np
 
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
-from qudi.logic.qdyne.qdyne_logic import QdyneLogic
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorMain
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import TimeTraceAnalyzerMain
 from qudi.logic.qdyne.tools.state_enums import DataSource
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -61,6 +60,7 @@ class QdyneMeasurement(QtCore.QObject):
 
     def __init__(self, qdyne_logic: 'QdyneLogic'):
         super().__init__()
+        self.log: logging.Logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         self.__lock = RecursiveMutex()
 
@@ -130,24 +130,24 @@ class QdyneMeasurement(QtCore.QObject):
         return
 
     def start_qdyne_measurement(self, fname=None):
-        logger.debug("Starting QDyne measurement")
-        logger.debug("resetting data")
+        self.log.debug("Starting QDyne measurement")
+        self.log.debug("resetting data")
         self.data.reset()
         # Todo: is this needed?
         #  set settings to make sure that hardware has actual settings (and not of pulsed)
-        logger.debug("set counter settings")
+        self.log.debug("set counter settings")
         self.qdyne_logic.measurement_generator.set_counter_settings(
             self.qdyne_logic.measurement_generator.counter_settings
         )
-        logger.debug("set measurement_settings")
+        self.log.debug("set measurement_settings")
         self.qdyne_logic.measurement_generator.set_measurement_settings(
             self.qdyne_logic.measurement_generator.measurement_settings
         )
-        logger.debug("start measurement")
+        self.log.debug("start measurement")
         self.qdyne_logic._data_streamer().start_measure()
-        logger.debug("start pulser")
+        self.log.debug("start pulser")
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_on()
-        logger.debug("creating metadata")
+        self.log.debug("creating metadata")
         try:
             metadata = {}
             metadata.update({'generation parameters': self.qdyne_logic.measurement_generator.generation_parameters})
@@ -163,15 +163,14 @@ class QdyneMeasurement(QtCore.QObject):
             logger.debug("set metadata")
             self.qdyne_logic.data_manager.set_metadata(metadata)
         except Exception as e:
-            logger.exception(e)
-            pass
-        logger.debug("emitting started signals")
+            self.log.exception(e)
+        self.log.debug("emitting started signals")
         self.sigMeasurementStarted.emit()
         self._measurement_running = True
         self.sigStartTimer.emit()
 
     def stop_qdyne_measurement(self):
-        logger.debug("Stopping QDyne measurement")
+        self.log.debug("Stopping QDyne measurement")
         self.qdyne_logic.pulsedmasterlogic().pulsedmeasurementlogic().pulse_generator_off()
         self.qdyne_logic._data_streamer().stop_measure()
         self.sigMeasurementStopped.emit()
