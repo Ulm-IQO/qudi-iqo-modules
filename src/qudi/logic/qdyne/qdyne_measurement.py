@@ -192,6 +192,8 @@ class QdyneMeasurement(QtCore.QObject):
         self.get_raw_data()
         logger.debug(f"Qdyne Measurement: get_pulse: estimator.configure_method")
         self.estimator.configure_method(self.settings.estimator_stg.current_method)
+        self.qdyne_logic.data.metadata.state_estimation_method = self.settings.estimator_stg.current_method
+        self.qdyne_logic.data.metadata.state_estimation_mode = self.settings.estimator_stg.current_mode
         self.qdyne_logic.data.metadata.state_estimation_settings = self.settings.estimator_stg.current_data.to_dict()
         if not self._pulse_histogram_disabled:
             self.get_pulse()
@@ -245,6 +247,8 @@ class QdyneMeasurement(QtCore.QObject):
 
     def analyze_time_trace(self):
         try:
+            self.qdyne_logic.data.metadata.analysis_method = self.settings.analyzer_stg.current_method
+            self.qdyne_logic.data.metadata.analysis_mode = self.settings.analyzer_stg.current_mode
             self.qdyne_logic.data.metadata.analysis_settings = self.settings.analyzer_stg.current_data.to_dict()
             self.data.signal = self.analyzer.analyze(
                 self.data, self.settings.analyzer_stg.current_data

@@ -25,7 +25,11 @@ class QDyneMetadata:
     generation_parameters: dict = field(default_factory=dict)
     counter_settings: dict = field(default_factory=dict)
     measurement_settings: dict = field(default_factory=dict)
+    state_estimation_method: str = ""
+    state_estimation_mode: str = ""
     state_estimation_settings: dict = field(default_factory=dict)
+    analysis_method: str = ""
+    analysis_mode: str = ""
     analysis_settings: dict = field(default_factory=dict)
 
 
