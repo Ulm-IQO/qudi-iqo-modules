@@ -42,7 +42,7 @@
      <x>0</x>
      <y>0</y>
      <width>929</width>
-     <height>22</height>
+     <height>21</height>
     </rect>
    </property>
    <widget class="QMenu" name="menuFile">
@@ -59,9 +59,7 @@
     </property>
     <addaction name="action_Predefined_Methods_Config"/>
     <addaction name="separator"/>
-    <addaction name="action_Settings_Analysis"/>
     <addaction name="action_FitSettings"/>
-    <addaction name="action_Settings_Generator"/>
    </widget>
    <addaction name="menuFile"/>
    <addaction name="menuSettings"/>
@@ -125,6 +123,9 @@
    </attribute>
   </widget>
   <action name="action_Settings_Analysis">
+   <property name="enabled">
+    <bool>true</bool>
+   </property>
    <property name="icon">
     <iconset>
      <normaloff>../../artwork/icons/configure.svg</normaloff>../../artwork/icons/configure.svg</iconset>
