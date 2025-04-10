@@ -28,7 +28,7 @@ class Analyzer(ABC):
     def analyze(self, data, settings):
         """
         @param MainDataClass data: qdyne dataclass
-        @param AnalyzerSettings settings: corresponding anlyzer settings
+        @param AnalyzerSettings settings: corresponding analyzer settings
 
         @return signal
         """
@@ -38,7 +38,7 @@ class Analyzer(ABC):
     def get_freq_domain_signal(self, data, settings):
         """
         @param MainDataClass data: qdyne dataclass
-        @param AnalyzerSettings settings: corresponding anlyzer settings
+        @param AnalyzerSettings settings: corresponding analyzer settings
 
         @return time_domain_data
         """
@@ -48,7 +48,7 @@ class Analyzer(ABC):
     def get_time_domain_signal(self, data, settings):
         """
         @param MainDataClass data: qdyne dataclass
-        @param AnalyzerSettings settings: corresponding anlyzer settings
+        @param AnalyzerSettings settings: corresponding analyzer settings
 
         @return time_domain_data
         """
