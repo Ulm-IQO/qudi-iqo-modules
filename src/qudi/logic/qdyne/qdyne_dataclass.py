@@ -28,13 +28,19 @@ class FreqDomainData:
         self.peaks = []
         self.current_peak = 0
         self.range_index = 10
+        self.peak_threshold = 10.0
+        self.peak_separation = 10
 
     def get_peaks(self):
         """
         find the peaks of the non-negative frequency domain signal.
         """
-        height = max(self.y[1:])
-        self.peaks = signal.find_peaks(self.y, height=height)[0]
+        height = self.peak_threshold * np.mean(self.y[1:])
+        all_peaks = signal.find_peaks(self.y, height=height)[0]
+        self.peaks = [all_peaks[0]]
+        for peak in all_peaks[1:]:
+            if peak - self.peaks[-1] >= self.peak_separation:
+                self.peaks.append(peak)
         if len(self.peaks) == 0:
             self.peaks = [int(np.argmax(self.y)),]
 
