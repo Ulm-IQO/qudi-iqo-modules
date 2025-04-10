@@ -339,24 +339,24 @@ class StateEstimationPulseWidget(QWidget):
         sig_start = self.sig_start_line.value()
         sig_end = self.sig_end_line.value()
 
-        sig_start = (sig_start if sig_start <= sig_end else sig_end)
-        sig_end = (sig_end if sig_end >= sig_start else sig_start)
+        new_sig_start = (sig_start if sig_start <= sig_end else sig_end)
+        new_sig_end = (sig_end if sig_end >= sig_start else sig_start)
 
         update_dict = dict()
-        update_dict["sig_start"] = sig_start
-        update_dict["sig_end"] = sig_end
+        update_dict["sig_start"] = new_sig_start
+        update_dict["sig_end"] = new_sig_end
         self.sig_line_changed_sig.emit(update_dict)
 
     def ref_lines_dragged(self):
         ref_start = self.ref_start_line.value()
         ref_end = self.ref_end_line.value()
 
-        ref_start = (ref_start if ref_start <= ref_end else ref_end)
-        ref_end = (ref_end if ref_end >= ref_start else ref_start)
+        new_ref_start = (ref_start if ref_start <= ref_end else ref_end)
+        new_ref_end = (ref_end if ref_end >= ref_start else ref_start)
 
         update_dict = dict()
-        update_dict["ref_start"] = ref_start
-        update_dict["ref_end"] = ref_end
+        update_dict["ref_start"] = new_ref_start
+        update_dict["ref_end"] = new_ref_end
         self.ref_line_changed_sig.emit(update_dict)
 
     @Slot(dict)
