@@ -80,9 +80,11 @@ class MultiSettingsMediator(SettingsMediator):
 
     @Slot(str)
     def update_method(self, new_method: str):
+        self._log.debug(f"update_method {new_method=}")
         self.current_method = new_method
         self.current_mode = "default"
         self.mode_updated_sig.emit("default")
+        self._log.warning(f"{self.current_data=}")
         self.data_renewed_sig.emit(self.current_data)
 
     def set_method(self, new_method: str):
@@ -106,7 +108,7 @@ class MultiSettingsMediator(SettingsMediator):
 
     def load_from_dict(self, dataclass_cls_dict, method_map):
         """Load data from dict."""
-        self._log.warning(f"load_from_dict {dataclass_cls_dict=}")
+        self._log.debug(f"load_from_dict {dataclass_cls_dict=}, {method_map=}")
 
         for method in dataclass_cls_dict:
             dataclass_cls = dataclass_cls_dict[method]

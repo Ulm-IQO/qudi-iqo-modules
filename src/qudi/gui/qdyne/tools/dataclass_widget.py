@@ -283,11 +283,16 @@ class DataclassWidget(QtWidgets.QWidget):
         self.data_widget_refreshed_sig.disconnect()
 
         for field_name, widget in self.data_widgets.items():
-            if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
-                widget.editingFinished.disconnect()
-            elif isinstance(widget, QtWidgets.QCheckBox):
-                widget.stateChanged.disconnect()
-            elif isinstance(widget, QtWidgets.QPushButton):
-                widget.clicked.disconnect()
-            else:
-                widget.valueChanged.disconnect()
+            try:
+                #self._log.warning(f"{field_name=}, {widget=}, {type(widget)}, {widget.text()=}")
+                # TODO: Fix this disconnection bug when data was loaded
+                if isinstance(widget, (QtWidgets.QLineEdit, ScienSpinBox, ScienDSpinBox)):
+                    widget.editingFinished.disconnect()
+                elif isinstance(widget, QtWidgets.QCheckBox):
+                    widget.stateChanged.disconnect()
+                elif isinstance(widget, QtWidgets.QPushButton):
+                    widget.clicked.disconnect()
+                else:
+                    widget.valueChanged.disconnect()
+            except Exception as e:
+                self._log.warning(f"Once data was loaded there is an error when disconnecting the editingFinished signal. Why?")
