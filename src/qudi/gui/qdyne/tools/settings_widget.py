@@ -22,6 +22,7 @@ from PySide2.QtCore import Signal, Slot
 from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QSizePolicy, QSpacerItem
 
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
+from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
 
 
 class SettingsWidget(DataclassWidget):
@@ -31,7 +32,7 @@ class SettingsWidget(DataclassWidget):
     Modes are variants of a dataclass.
     """
     mode_widget_updated_sig = Signal()
-    add_mode_pushed_sig = Signal(str)
+    add_mode_pushed_sig = Signal(str, bool, CustomDataclass)
     delete_mode_pushed_sig = Signal(str)
 
     def __init__(self, mediator, dataclass_obj=None) -> None:
@@ -124,7 +125,7 @@ class SettingsWidget(DataclassWidget):
         if mode_to_add not in self.mediator.mode_list:
             self.widgets["mode"].addItem(mode_to_add)
             self.widgets["mode"].setCurrentText(mode_to_add)
-            self.add_mode_pushed_sig.emit(mode_to_add)
+            self.add_mode_pushed_sig.emit(mode_to_add, False, None)
         else:
             self._log.error(f"Mode {mode_to_add} name already taken.")
         self.setUpdatesEnabled(True)

@@ -20,9 +20,10 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 from copy import deepcopy
 from os import name
+from typing import Optional
 from PySide2.QtCore import Signal, Slot
 
-from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
+from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass, DataclassMediator
 
 
 class SettingsMediator(DataclassMediator):
@@ -78,21 +79,28 @@ class SettingsMediator(DataclassMediator):
     @Slot(str)
     def update_mode(self, new_mode: str):
         """Update mode from the new mode from widget."""
+        self._log.debug(f"update_mode {new_mode=}")
         self.current_mode = new_mode
         self.data_updated_sig.emit(self.current_data.to_dict())
 
     def set_mode(self, new_mode: str):
         """Set mode from logic."""
+        self._log.debug(f"set_mode {new_mode=}")
         self.update_mode(new_mode)
         self.mode_updated_sig.emit(new_mode)
 
-    @Slot(str)
-    def add_mode(self, new_mode_name, force_creation = False):
+    @Slot(str, bool, dict)
+    def add_mode(self, new_mode_name: str, force_creation: bool = False, setting: Optional[CustomDataclass] = None):
+        self._log.debug(f"add_mode {new_mode_name=}, {force_creation=}, {setting=}")
         if new_mode_name not in self.mode_dict or force_creation:
-            self.mode_dict[new_mode_name] = deepcopy(self.default_data)
-            self.mode_dict[new_mode_name].name = new_mode_name
+            try:
+                self.mode_dict[new_mode_name] = deepcopy(self.default_data)
+                self.mode_dict[new_mode_name].name = new_mode_name
+                self.set_mode(new_mode_name)
+            except Exception as e:
+                self._log.exception(e)
+        if force_creation:
             self.set_mode(new_mode_name)
-
         else:
             self._log.error('Name already taken in settings modes')
 

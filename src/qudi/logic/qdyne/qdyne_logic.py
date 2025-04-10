@@ -483,7 +483,15 @@ class QdyneLogic(LogicBase):
             self.log.error("Select one data type")
             return
         self.data_manager.load_data(data_type, file_path, index)
+        self.settings.estimator_stg.update_method(self.data.metadata.state_estimation_method)
+        try:
+            self.settings.estimator_stg.add_mode("loaded", True, self.settings.estimator_cls_dict[self.data.metadata.state_estimation_method](**self.data.metadata.state_estimation_settings))
+        except Exception as e:
+            self.log.exception(e)
+        self.settings.analyzer_stg.update_method(self.data.metadata.analysis_method)
+        self.settings.analyzer_stg.add_mode("loaded", True, self.settings.analyzer_cls_dict[self.data.metadata.analysis_method](**self.data.metadata.analysis_settings))
         self.measure.pull_data_and_estimate()
+        # TODO: Fix what to do when it is not raw_data
         self.log.info(f"Loaded {data_type} data from {file_path}")
 
     @property
