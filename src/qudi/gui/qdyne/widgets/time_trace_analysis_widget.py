@@ -131,7 +131,9 @@ class TimeTraceAnalysisDataWidget(QWidget):
         )
 
     def _activate_plot1_widget(self):
-        self.range_spinBox.setValue(self.freq_data.range_index)
+        self.peak_range_spinBox.setValue(self.freq_data.range_index)
+        self.peak_threshold_spinBox.setValue(self.freq_data.peak_threshold)
+        self.peak_separation_spinBox.setValue(self.freq_data.peak_separation)
         self.signal_image = pg.PlotDataItem(
             pen=pg.mkPen(palette.c1, style=Qt.DotLine),
             style=Qt.DotLine,
@@ -177,13 +179,16 @@ class TimeTraceAnalysisDataWidget(QWidget):
     def connect_signals(self):
         self.analyze_pushButton.clicked.connect(self.analyze_data)
         self.current_peak_comboBox.currentTextChanged.connect(self.update_spectrum)
-        self.range_spinBox.editingFinished.connect(self.update_spectrum)
-
+        self.peak_range_spinBox.editingFinished.connect(self.update_spectrum)
+        self.peak_threshold_spinBox.editingFinished.connect(self.update_spectrum)
+        self.peak_separation_spinBox.editingFinished.connect(self.update_spectrum)
 
     def disconnect_signals(self):
         self.analyze_pushButton.clicked.disconnect()
         self.current_peak_comboBox.currentTextChanged.disconnect()
-        self.range_spinBox.valueChanged.disconnect()
+        self.peak_range_spinBox.valueChanged.disconnect()
+        self.peak_threshold_spinBox.valueChanged.disconnect()
+        self.peak_separation_spinBox.valueChanged.disconnect()
         self.plot1_fitwidget.sigDoFit.disconnect()
         self.plot2_fitwidget.sigDoFit.disconnect()
 
@@ -194,6 +199,9 @@ class TimeTraceAnalysisDataWidget(QWidget):
         self.update_spectrum()
 
     def get_peaks(self):
+        # block signals to avoid emitting currentTextChanged() and redundant call of update_spectrum()
+        self.current_peak_comboBox.blockSignals(True)
+
         self.freq_data.get_peaks()
         self.model.clear()
         for peak in self.freq_data.peaks:
@@ -201,8 +209,6 @@ class TimeTraceAnalysisDataWidget(QWidget):
             item.setData(peak)
             self.model.appendRow(item)
 
-        # block signals to avoid emitting currentTextChanged() and redundant call of update_spectrum()
-        self.current_peak_comboBox.blockSignals(True)
         current_peak = float(self.current_peak_comboBox.currentText()) if \
             self.current_peak_comboBox.currentText() else 0
         model_float_list = [float(self.model.item(i, 0).text()) for i in
@@ -210,22 +216,28 @@ class TimeTraceAnalysisDataWidget(QWidget):
         new_idx = (np.abs(np.array(model_float_list) - current_peak)).argmin()
         self.current_peak_comboBox.setModel(self.model)
         self.current_peak_comboBox.setCurrentIndex(new_idx)
-        self.current_peak_comboBox.blockSignals(True)
+        self.current_peak_comboBox.blockSignals(False)
 
     def update_spectrum(self):
         current_index = self.current_peak_comboBox.currentIndex() if \
             self.current_peak_comboBox.currentIndex() >= 0 else 0
         self.freq_data.current_peak = self.model.item(current_index).data()
-        self.freq_data.range_index = self.range_spinBox.value() if \
-            self.range_spinBox.value() < self.freq_data.x.size else self.freq_data.x.size
+        self.freq_data.range_index = self.peak_range_spinBox.value() if \
+            self.peak_range_spinBox.value() < self.freq_data.x.size else self.freq_data.x.size
+        self.freq_data.peak_threshold = self.peak_threshold_spinBox.value()
+        self.freq_data.peak_separation = self.peak_separation_spinBox.value()
         spectrum = self.freq_data.data_around_peak
         self.signal_image.setData(x=spectrum[0], y=spectrum[1])
         self.plot1_PlotWidget.clear()
         self.plot1_PlotWidget.addItem(self.signal_image)
 
     def data_updated(self):
-        self.range_spinBox.setMaximum(int(1e9))  #self.freq_data.x.size
-        self.range_spinBox.setMinimum(0)
+        self.peak_range_spinBox.setMaximum(int(1e9))
+        self.peak_range_spinBox.setMinimum(0)
+        self.peak_threshold_spinBox.setMaximum(int(1e9))
+        self.peak_threshold_spinBox.setMinimum(1)
+        self.peak_separation_spinBox.setMaximum(int(1e9))
+        self.peak_separation_spinBox.setMinimum(0)
         self.get_peaks()
         self.update_spectrum()
         pass

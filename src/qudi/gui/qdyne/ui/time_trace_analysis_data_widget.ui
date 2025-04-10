@@ -92,9 +92,44 @@
             </widget>
            </item>
            <item>
-            <widget class="QSpinBox" name="range_spinBox">
+            <widget class="QLabel" name="peak_range_label">
+             <property name="text">
+              <string>Points around peak:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSpinBox" name="peak_range_spinBox">
              <property name="toolTip">
               <string>Width around the peak that should be displayed.</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="peak_threshold_label">
+             <property name="text">
+              <string>Peak threshold:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QDoubleSpinBox" name="peak_threshold_spinBox">
+             <property name="toolTip">
+              <string>Minimum height of the peak as multiplicative factor of the data mean.</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="peak_separation_label">
+             <property name="text">
+              <string>Peak separation:</string>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QSpinBox" name="peak_separation_spinBox">
+             <property name="toolTip">
+              <string>Minimum number of data points between neighboring peaks.</string>
              </property>
             </widget>
            </item>
