@@ -19,6 +19,12 @@ import numpy as np
 from dataclasses import dataclass
 from scipy import signal
 
+@dataclass
+class QDyneMetadata:
+    measurement_settings: dict = {}
+    state_estimation_settings: dict = {}
+    time_trace_analysis_settings: dict = {}
+
 
 class FreqDomainData:
     def __init__(self):
@@ -62,6 +68,7 @@ class MainDataClass:
     freq_domain: np.ndarray = np.array([])
     time_domain: np.ndarray = np.array([])
     freq_data: FreqDomainData = FreqDomainData()
+    metadata: QDyneMetadata = QDyneMetadata()
 
     @property
     def data_list(self):
