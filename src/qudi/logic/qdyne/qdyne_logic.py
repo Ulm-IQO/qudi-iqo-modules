@@ -21,6 +21,7 @@ import time
 from collections import OrderedDict
 from PySide2 import QtCore
 import datetime
+import logging
 
 from qudi.util.paths import get_userdata_dir
 from qudi.core.module import LogicBase
@@ -43,10 +44,7 @@ from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 from qudi.interface.qdyne_counter_interface import GateMode, QdyneCounterConstraints
 from qudi.logic.qdyne.tools.state_enums import DataSource
 
-# from qudi.logic.qdyne.qdyne_fitting import QdyneFittingMain
-from logging import getLogger
-
-_logger = getLogger(__name__)
+_logger = logging.getLogger(__name__)
 
 
 class MeasurementGenerator:
@@ -55,6 +53,7 @@ class MeasurementGenerator:
     """
 
     def __init__(self, pulsedmasterlogic, qdyne_logic: 'QdyneLogic', data_streamer):
+        self.log: logging.Logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self._pulsedmasterlogic = pulsedmasterlogic
         self._qdyne_logic = qdyne_logic
         self._data_streamer = data_streamer
@@ -190,8 +189,7 @@ class MeasurementGenerator:
                 'sequence_length', settings_dict["sequence_length"])
             self._qdyne_logic.settings.analyzer_stg.set_single_value(
                 'sequence_length', settings_dict["sequence_length"])
-        _logger.debug(f"{settings_dict=}")
-
+        self.log.debug(f"{settings_dict=}")
         self._qdyne_logic.sigMeasurementSettingsUpdated.emit(settings_dict)
 
     def check_counter_record_length_constraint(self, record_length: float):
