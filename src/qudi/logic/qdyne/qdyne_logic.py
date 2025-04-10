@@ -190,6 +190,7 @@ class MeasurementGenerator:
             self._qdyne_logic.settings.analyzer_stg.set_single_value(
                 'sequence_length', settings_dict["sequence_length"])
         self.log.debug(f"{settings_dict=}")
+        self._qdyne_logic.data.metadata.measurement_settings = settings_dict
         self._qdyne_logic.sigMeasurementSettingsUpdated.emit(settings_dict)
 
     def check_counter_record_length_constraint(self, record_length: float):
