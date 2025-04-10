@@ -17,14 +17,16 @@ If not, see <https://www.gnu.org/licenses/>.
 import numpy as np
 
 from dataclasses import dataclass
+from dataclasses import field
 from scipy import signal
 
 @dataclass
 class QDyneMetadata:
-    counter_settings: dict = {}
-    measurement_settings: dict = {}
-    state_estimation_settings: dict = {}
-    time_trace_analysis_settings: dict = {}
+    generation_parameters: dict = field(default_factory=dict)
+    counter_settings: dict = field(default_factory=dict)
+    measurement_settings: dict = field(default_factory=dict)
+    state_estimation_settings: dict = field(default_factory=dict)
+    time_trace_analysis_settings: dict = field(default_factory=dict)
 
 
 class FreqDomainData:
