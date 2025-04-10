@@ -21,14 +21,13 @@ from qudi.logic.qdyne.qdyne_time_trace_analyzer import AnalyzerSettings
 from qudi.logic.qdyne.qdyne_data_manager import DataManagerSettings
 from qudi.logic.qdyne.tools.dataclass_tools import get_subclass_dict
 from qudi.logic.qdyne.tools.multi_settings_dataclass import MultiSettingsMediator
-from typing import Optional
 
 
 class QdyneSettings(QtCore.QObject):
     def __init__(self, default_data_dir: str):
         super().__init__()
-        self.estimator_stg: Optional[MultiSettingsMediator] = None
-        self.analyzer_stg: Optional[MultiSettingsMediator] = None
+        self.estimator_stg: MultiSettingsMediator = None
+        self.analyzer_stg: MultiSettingsMediator = None
         self._generate_estimator_settings()
         self._generate_analyzer_settings()
         self.data_manager_stg = DataManagerSettings(default_data_dir)
