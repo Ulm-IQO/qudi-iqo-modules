@@ -13,17 +13,17 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+import logging
 import os
 import datetime
-from dataclasses import dataclass, field, fields
-from typing import Optional
+from dataclasses import asdict, dataclass, field, fields
+from typing import Dict, Optional
 
 from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase
+from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.util.conversions import convert_nested_numpy_to_list
 
-from logging import getLogger
-
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -105,7 +105,7 @@ class DataManagerSettings:
 
     def __init__(self, default_data_dir: str):
         self.default_data_dir = default_data_dir
-        self.options = dict()
+        self.options: Dict[str, QdyneSaveOptions] = dict()
         self.set_options()
 
     def set_options(self, **kwargs):
@@ -155,8 +155,9 @@ class QdyneDataManager:
     data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
     storage_dict = {'raw_data': 'npy', 'time_trace': 'npy', 'freq_domain': 'npy', 'time_domain': 'npy'}
 
-    def __init__(self, data, settings: DataManagerSettings):
-        self.data = data
+    def __init__(self, data: MainDataClass, settings: DataManagerSettings):
+        self.log = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.data: MainDataClass = data
         self.settings: DataManagerSettings = settings
         self.storages = dict()
         self.activate_storage()
@@ -171,10 +172,12 @@ class QdyneDataManager:
                 self.settings.options[data_type].data_dir, self.storage_dict[data_type])
 
     def save_data(self, data_type, timestamp: Optional[datetime.datetime] = None):
-        data = getattr(self.data, data_type)
+        self.log.debug(f"saving data, {data_type=}, {timestamp=}")
+        data: MainDataClass = getattr(self.data, data_type)
         options = self.settings.options[data_type]
         if timestamp:
             options.timestamp = timestamp
+        self.settings.set_metadata(data_type, asdict(self.data.metadata))
         self.storages[data_type].save_data(data, options)
 
     def load_data(self, data_type, file_path, index=None):

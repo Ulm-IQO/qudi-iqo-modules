@@ -16,6 +16,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 from os import stat
+from typing import Optional
 import numpy as np
 import time
 from collections import OrderedDict
@@ -466,7 +467,8 @@ class QdyneLogic(LogicBase):
         return self.data.fit_result
 
     @QtCore.Slot(str)
-    def save_data(self, data_type):
+    def save_data(self, data_type: str):
+        self.log.debug(f"Saving data, {data_type=}")
         timestamp = datetime.datetime.now()
         if "all" in data_type:
             for data_type in self.data_manager.data_types:
