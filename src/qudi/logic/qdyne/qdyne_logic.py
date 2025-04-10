@@ -29,14 +29,14 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.constraints import DiscreteScalarConstraint
 from qudi.util.mutex import RecursiveMutex
-from typing import Optional
+from typing import Union
 
 from qudi.logic.qdyne.qdyne_measurement import (
     QdyneMeasurement,
     QdyneMeasurementSettings,
 )
-from qudi.logic.qdyne.qdyne_state_estimator import *
-from qudi.logic.qdyne.qdyne_time_trace_analyzer import *
+from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorMain
+from qudi.logic.qdyne.qdyne_time_trace_analyzer import TimeTraceAnalyzerMain
 from qudi.logic.qdyne.qdyne_fit import QdyneFit
 from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
@@ -347,13 +347,15 @@ class QdyneLogic(LogicBase):
         super().__init__(*args, **kwargs)
 
         self.measure = None
-        self.estimator: Optional[StateEstimatorMain] = None
-        self.analyzer = None
-        self.settings = None
-        self.data = None
+        self.estimator: Union[StateEstimatorMain, None] = None
+        self.analyzer: Union[TimeTraceAnalyzerMain, None] = None
+        self.settings: Union[QdyneSettings, None] = None
+        self.data: Union[MainDataClass, None] = None
+        self.new_data: Union[MainDataClass, None] = None
+        self.fit: Union[QdyneFit, None] = None
         self.save = None
-        self.measurement_generator: Optional[MeasurementGenerator] = None
-        self.data_manager: Optional[QdyneDataManager] = None
+        self.measurement_generator: Union[MeasurementGenerator, None] = None
+        self.data_manager: Union[QdyneDataManager, None] = None
         self._data_source = DataSource.MEASUREMENT
 
     def on_activate(self):
