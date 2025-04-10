@@ -23,6 +23,11 @@ import numpy as np
 
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
+from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
+from qudi.logic.qdyne.qdyne_logic import QdyneLogic
+from qudi.logic.qdyne.qdyne_settings import QdyneSettings
+from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorMain
+from qudi.logic.qdyne.qdyne_time_trace_analyzer import TimeTraceAnalyzerMain
 from qudi.logic.qdyne.tools.state_enums import DataSource
 
 logger = getLogger(__name__)
@@ -54,17 +59,17 @@ class QdyneMeasurement(QtCore.QObject):
     sigTimeTraceDataUpdated = QtCore.Signal(object, object)
     sigQdyneDataUpdated = QtCore.Signal()
 
-    def __init__(self, qdyne_logic):
+    def __init__(self, qdyne_logic: 'QdyneLogic'):
         super().__init__()
 
         self.__lock = RecursiveMutex()
 
-        self.qdyne_logic = qdyne_logic
-        self.data = self.qdyne_logic.data
-        self.new_data = self.qdyne_logic.new_data
-        self.estimator = self.qdyne_logic.estimator
-        self.settings = self.qdyne_logic.settings
-        self.analyzer = self.qdyne_logic.analyzer
+        self.qdyne_logic: 'QdyneLogic' = qdyne_logic
+        self.data: MainDataClass = self.qdyne_logic.data
+        self.new_data: MainDataClass = self.qdyne_logic.new_data
+        self.estimator: StateEstimatorMain = self.qdyne_logic.estimator
+        self.settings: QdyneSettings = self.qdyne_logic.settings
+        self.analyzer: TimeTraceAnalyzerMain = self.qdyne_logic.analyzer
 
         self.stg = None
 
