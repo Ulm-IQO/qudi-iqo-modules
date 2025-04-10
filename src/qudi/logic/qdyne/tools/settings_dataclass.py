@@ -19,6 +19,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from copy import deepcopy
+from os import name
 from PySide2.QtCore import Signal, Slot
 
 from qudi.logic.qdyne.tools.custom_dataclass import DataclassMediator
@@ -124,12 +125,14 @@ class SettingsMediator(DataclassMediator):
     def mode_list(self):
         return list(self.mode_dict.keys())
 
-    def create_default(self, dataclass_cls):
+    def _create_default(self, dataclass_cls):
         """
         create default settings mode from initialized dataclass.
         """
-        self.mode_dict["default"] = dataclass_cls()
-        self.mode_dict["loaded"] = dataclass_cls()
+        mode_dict={}
+        mode_dict["default"] = dataclass_cls(name="default")
+        mode_dict["loaded"] = dataclass_cls(name="loaded settings")
+        return mode_dict
 
     def load_from_dict(self, dataclass_cls, mode_map):
         """Load data from dict."""

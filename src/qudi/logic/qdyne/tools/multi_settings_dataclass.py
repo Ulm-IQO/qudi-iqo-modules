@@ -102,11 +102,11 @@ class MultiSettingsMediator(SettingsMediator):
             Dictionary of dataclass to be used as different methods.
         """
         for key in dataclass_cls_dict:
-            default_mode_dict = {"default": dataclass_cls_dict[key]()}
-            self.method_dict[key] = default_mode_dict
+            self.method_dict[key] = self._create_default(dataclass_cls_dict[key])
 
     def load_from_dict(self, dataclass_cls_dict, method_map):
         """Load data from dict."""
+        self._log.warning(f"load_from_dict {dataclass_cls_dict=}")
 
         for method in dataclass_cls_dict:
             dataclass_cls = dataclass_cls_dict[method]
