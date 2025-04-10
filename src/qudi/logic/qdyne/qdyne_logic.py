@@ -54,7 +54,7 @@ class MeasurementGenerator:
     Class that gives access to the settings for the generation of sequences from the pulsedmasterlogic.
     """
 
-    def __init__(self, pulsedmasterlogic, qdyne_logic, data_streamer):
+    def __init__(self, pulsedmasterlogic, qdyne_logic: 'QdyneLogic', data_streamer):
         self._pulsedmasterlogic = pulsedmasterlogic
         self._qdyne_logic = qdyne_logic
         self._data_streamer = data_streamer
@@ -152,6 +152,7 @@ class MeasurementGenerator:
             self.__gate_mode,
             self.__data_type,
         )
+        self._qdyne_logic.data.metadata.counter_settings = settings_dict
         self._qdyne_logic.sigCounterSettingsUpdated.emit(settings_dict)
         return
 

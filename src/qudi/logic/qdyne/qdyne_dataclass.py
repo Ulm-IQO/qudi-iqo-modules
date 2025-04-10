@@ -21,6 +21,7 @@ from scipy import signal
 
 @dataclass
 class QDyneMetadata:
+    counter_settings: dict = {}
     measurement_settings: dict = {}
     state_estimation_settings: dict = {}
     time_trace_analysis_settings: dict = {}
