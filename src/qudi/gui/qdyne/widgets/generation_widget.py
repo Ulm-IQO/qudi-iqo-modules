@@ -113,10 +113,6 @@ class GenerationWidget(QtWidgets.QWidget):
             self.counter_settings_changed
         )
         self.binwidth_spinbox.editingFinished.connect(self.counter_settings_changed)
-
-        self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.connect(
-            self.sequence_length_updated
-        )
         self._gui.logic().sigCounterSettingsUpdated.connect(
             self.counter_settings_updated
         )
@@ -128,6 +124,14 @@ class GenerationWidget(QtWidgets.QWidget):
         )
         self._gui.logic().sigMeasurementSettingsUpdated.connect(
             self.measurement_settings_updated
+        )
+
+        # connect signals from pulsed
+        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.connect(
+            self.sequence_length_updated
+        )
+        self._gui.logic().pulsedmasterlogic().sequencegeneratorlogic().sigSamplingSettingsUpdated.connect(
+            self.generation_parameters_updated
         )
 
     def disconnect_signals(self):
@@ -174,11 +178,16 @@ class GenerationWidget(QtWidgets.QWidget):
         self.ana_param_sequence_length_DoubleSpinBox.editingFinished.disconnect(
             self.measurement_settings_changed
         )
-        self._gui.logic().pulsedmasterlogic().sigMeasurementSettingsUpdated.disconnect(
-            self.sequence_length_updated
-        )
         self._gui.logic().sigMeasurementSettingsUpdated.disconnect(
             self.measurement_settings_updated
+        )
+
+        # disconnect signals from pulsed
+        self._gui.logic().pulsedmasterlogic().sigFastCounterSettingsUpdated.disconnect(
+            self.sequence_length_updated
+        )
+        self._gui.logic().pulsedmasterlogic().sequencegeneratorlogic().sigSamplingSettingsUpdated.disconnect(
+            self.generation_parameters_updated
         )
 
     def sampling_or_loading_busy(self):
