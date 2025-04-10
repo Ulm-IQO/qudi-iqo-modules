@@ -40,7 +40,7 @@ class Analyzer(ABC):
         @param MainDataClass data: qdyne dataclass
         @param AnalyzerSettings settings: corresponding analyzer settings
 
-        @return time_domain_data
+        @return freq_domain_data
         """
 
         pass
