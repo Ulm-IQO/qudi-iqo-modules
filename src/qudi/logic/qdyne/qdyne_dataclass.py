@@ -26,7 +26,7 @@ class QDyneMetadata:
     counter_settings: dict = field(default_factory=dict)
     measurement_settings: dict = field(default_factory=dict)
     state_estimation_settings: dict = field(default_factory=dict)
-    time_trace_analysis_settings: dict = field(default_factory=dict)
+    analysis_settings: dict = field(default_factory=dict)
 
 
 class FreqDomainData:
