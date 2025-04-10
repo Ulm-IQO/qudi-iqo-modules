@@ -29,7 +29,6 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.constraints import DiscreteScalarConstraint
 from qudi.util.mutex import RecursiveMutex
-from typing import Union
 
 from qudi.logic.qdyne.qdyne_measurement import (
     QdyneMeasurement,
@@ -347,15 +346,15 @@ class QdyneLogic(LogicBase):
         super().__init__(*args, **kwargs)
 
         self.measure = None
-        self.estimator: Union[StateEstimatorMain, None] = None
-        self.analyzer: Union[TimeTraceAnalyzerMain, None] = None
-        self.settings: Union[QdyneSettings, None] = None
-        self.data: Union[MainDataClass, None] = None
-        self.new_data: Union[MainDataClass, None] = None
-        self.fit: Union[QdyneFit, None] = None
+        self.estimator: StateEstimatorMain = None
+        self.analyzer: TimeTraceAnalyzerMain = None
+        self.settings: QdyneSettings = None
+        self.data: MainDataClass = None
+        self.new_data: MainDataClass = None
+        self.fit: QdyneFit = None
         self.save = None
-        self.measurement_generator: Union[MeasurementGenerator, None] = None
-        self.data_manager: Union[QdyneDataManager, None] = None
+        self.measurement_generator: MeasurementGenerator = None
+        self.data_manager: QdyneDataManager = None
         self._data_source = DataSource.MEASUREMENT
 
     def on_activate(self):
