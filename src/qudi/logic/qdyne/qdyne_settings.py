@@ -27,11 +27,11 @@ from typing import Optional
 class QdyneSettings(QtCore.QObject):
     def __init__(self, default_data_dir: str):
         super().__init__()
+        self.estimator_stg: Optional[MultiSettingsMediator] = None
+        self.analyzer_stg: Optional[MultiSettingsMediator] = None
         self._generate_estimator_settings()
         self._generate_analyzer_settings()
         self.data_manager_stg = DataManagerSettings(default_data_dir)
-        self.estimator_stg: Optional[MultiSettingsMediator] = None
-        self.analyzer_stg: Optional[MultiSettingsMediator] = None
 
     def _generate_estimator_settings(self):
         self.estimator_cls_dict = get_subclass_dict(StateEstimatorSettings.__module__, StateEstimatorSettings)
