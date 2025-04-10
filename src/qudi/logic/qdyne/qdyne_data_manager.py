@@ -155,7 +155,7 @@ class QdyneDataManager:
     data_types = ['raw_data', 'time_trace', 'freq_domain', 'time_domain']
     storage_dict = {'raw_data': 'npy', 'time_trace': 'npy', 'freq_domain': 'npy', 'time_domain': 'npy'}
 
-    def __init__(self, data, settings:DataManagerSettings):
+    def __init__(self, data, settings: DataManagerSettings):
         self.data = data
         self.settings: DataManagerSettings = settings
         self.storages = dict()
