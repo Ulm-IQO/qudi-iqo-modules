@@ -20,7 +20,7 @@ from dataclasses import asdict, dataclass, field, fields
 from typing import Dict, Optional
 
 from qudi.util.datastorage import TextDataStorage, CsvDataStorage, NpyDataStorage, DataStorageBase
-from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
+from qudi.logic.qdyne.qdyne_dataclass import MainDataClass, QDyneMetadata
 from qudi.util.conversions import convert_nested_numpy_to_list
 
 logger = logging.getLogger(__name__)
@@ -185,6 +185,10 @@ class QdyneDataManager:
         if index is not None and index != "":
             loaded_data = loaded_data[index]
         setattr(self.data, data_type, loaded_data)
+        try:
+            self.data.metadata = QDyneMetadata(**metadata)
+        except Exception as e:
+            self.log.exception(e)
         self.settings.load_options(general, metadata)
 
     def set_metadata(self, metadata: dict, data_type: str = "") -> None:
