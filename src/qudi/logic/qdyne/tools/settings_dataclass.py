@@ -86,8 +86,8 @@ class SettingsMediator(DataclassMediator):
         self.mode_updated_sig.emit(new_mode)
 
     @Slot(str)
-    def add_mode(self, new_mode_name):
-        if new_mode_name not in self.mode_dict:
+    def add_mode(self, new_mode_name, force_creation = False):
+        if new_mode_name not in self.mode_dict or force_creation:
             self.mode_dict[new_mode_name] = deepcopy(self.default_data)
             self.mode_dict[new_mode_name].name = new_mode_name
             self.set_mode(new_mode_name)
