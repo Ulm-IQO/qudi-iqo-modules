@@ -89,6 +89,7 @@ class SettingsMediator(DataclassMediator):
     def add_mode(self, new_mode_name):
         if new_mode_name not in self.mode_dict:
             self.mode_dict[new_mode_name] = deepcopy(self.default_data)
+            self.mode_dict[new_mode_name].name = new_mode_name
             self.set_mode(new_mode_name)
 
         else:
