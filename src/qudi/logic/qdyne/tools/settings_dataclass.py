@@ -99,7 +99,7 @@ class SettingsMediator(DataclassMediator):
                 self.set_mode(new_mode_name)
             except Exception as e:
                 self._log.exception(e)
-        if force_creation:
+        elif force_creation:
             self.set_mode(new_mode_name)
         else:
             self._log.error('Name already taken in settings modes')
