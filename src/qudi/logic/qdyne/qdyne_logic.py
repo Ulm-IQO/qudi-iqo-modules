@@ -325,6 +325,8 @@ class QdyneLogic(LogicBase):
     #    estimator_method = StatusVar(default='TimeTag')
     #    analyzer_method = StatusVar(default='Fourier')
     _measurement_generator_dict = StatusVar(default=dict())
+    _counter_settings_dict = StatusVar(default=dict())
+    _measurement_settings_dict = StatusVar(default=dict())
     _estimator_stg_dict = StatusVar(default=dict())
     _analyzer_stg_dict = StatusVar(default=dict())
     _current_estimator_method = StatusVar(default="TimeTag")
@@ -411,8 +413,14 @@ class QdyneLogic(LogicBase):
         activate_classes()
         initialize_estimator_settings()
         initialize_analyzer_settings()
-        self.measurement_generator.set_counter_settings(
+        self.measurement_generator.set_generation_parameters(
             self._measurement_generator_dict
+        )
+        self.measurement_generator.set_counter_settings(
+            self._counter_settings_dict
+        )
+        self.measurement_generator.set_measurement_settings(
+            self._measurement_settings_dict
         )
 
         self.sigToggleQdyneMeasurement.connect(
@@ -428,7 +436,9 @@ class QdyneLogic(LogicBase):
         return
 
     def _save_status_variables(self):
-        self._measurement_generator_dict = self.measurement_generator.counter_settings
+        self._measurement_generator_dict = self.measurement_generator.generation_parameters
+        self._counter_settings_dict = self.measurement_generator.counter_settings
+        self._measurement_settings_dict = self.measurement_generator.measurement_settings
         # self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
         # self._analyzer_stg_dict = self.settings.analyzer_stg.convert_settings()
         self._estimator_stg_dict = self.settings.estimator_stg.dump_as_dict()
