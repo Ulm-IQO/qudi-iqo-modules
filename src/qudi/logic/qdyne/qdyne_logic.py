@@ -437,6 +437,7 @@ class QdyneLogic(LogicBase):
 
     def _save_status_variables(self):
         self._measurement_generator_dict = self.measurement_generator.generation_parameters
+        self._measurement_generator_dict.pop('is_gated')  # remove is_gated from StatusVar dict
         self._counter_settings_dict = self.measurement_generator.counter_settings
         self._measurement_settings_dict = self.measurement_generator.measurement_settings
         # self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
