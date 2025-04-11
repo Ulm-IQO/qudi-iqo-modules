@@ -234,7 +234,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                 self._binwidth = self.set_binwidth(bin_width)
                 self.change_sweep_mode(gated=False, cycles=None, preset=None)
                 no_of_bins = int((record_length - self._trigger_safety) / self.binwidth)
-                self._record_length = self.set_length(no_of_bins) * self._binwidth
+                self._record_length = self.set_length(no_of_bins) * self._binwidth + self._trigger_safety
             except Exception as err:
                 self._set_active_channels(old_channels)
                 self._binwidth = self.set_binwidth(old_binwidth)
