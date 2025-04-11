@@ -243,7 +243,6 @@ class QdyneMeasurement(QtCore.QObject):
             return
 
         self.data.time_trace = np.append(self.data.time_trace, self.new_data.time_trace)
-        self.sigTimeTraceDataUpdated.emit(self.data.time_trace, self.readout_interval)
 
     def analyze_time_trace(self):
         try:
