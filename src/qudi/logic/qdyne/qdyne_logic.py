@@ -129,8 +129,8 @@ class MeasurementGenerator:
             self._qdyne_logic.log.debug(['set count sett: rec len', self.__record_length])
         if "active_channels" in settings_dict:
             self.__active_channels = settings_dict["active_channels"]
-        if "gate_mode" in settings_dict:
-            self.__gate_mode = GateMode(int(settings_dict["gate_mode"]))
+        if "is_gated" in settings_dict:
+            self.__gate_mode = GateMode(int(settings_dict["is_gated"]))
         if "data_type" in settings_dict:
             self.__data_type = settings_dict["data_type"]
 
