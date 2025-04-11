@@ -221,7 +221,11 @@ class TimeTraceAnalysisDataWidget(QWidget):
     def update_spectrum(self):
         current_index = self.current_peak_comboBox.currentIndex() if \
             self.current_peak_comboBox.currentIndex() >= 0 else 0
-        self.freq_data.current_peak = self.model.item(current_index).data()
+        try:
+            self.freq_data.current_peak = self.model.item(current_index).data()
+        except AttributeError:
+            # return if there is no data yet
+            return
         self.freq_data.range_index = self.peak_range_spinBox.value() if \
             self.peak_range_spinBox.value() < self.freq_data.x.size else self.freq_data.x.size
         self.freq_data.peak_threshold = self.peak_threshold_spinBox.value()

@@ -50,11 +50,12 @@ class FreqDomainData:
         """
         height = self.peak_threshold * np.mean(self.y[1:])
         all_peaks = signal.find_peaks(self.y, height=height)[0]
-        self.peaks = [all_peaks[0]]
-        for peak in all_peaks[1:]:
-            if peak - self.peaks[-1] >= self.peak_separation:
-                self.peaks.append(peak)
-        if len(self.peaks) == 0:
+        if len(all_peaks) > 0:
+            self.peaks = [all_peaks[0]]
+            for peak in all_peaks[1:]:
+                if peak - self.peaks[-1] >= self.peak_separation:
+                    self.peaks.append(peak)
+        else:
             self.peaks = [int(np.argmax(self.y)),]
 
     @property
