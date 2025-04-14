@@ -75,6 +75,7 @@ class TimeSeriesReaderLogic(LogicBase):
                                        default=1024**3,
                                        missing='info',
                                        constructor=lambda x: int(round(x)))
+    _save_thumbnails: bool = ConfigOption('save_thumbnails',default=False)
 
     # status vars
     _trace_window_size = StatusVar('trace_window_size', default=6)
@@ -722,16 +723,17 @@ class TimeSeriesReaderLogic(LogicBase):
                 )
                 print(data.shape, '\n')
                 column_headers.insert(0, 'Time (s)')
-            try:
-                fig = self._draw_raw_data_thumbnail(data) if save_figure else None
-            finally:
-                storage = TextDataStorage(root_dir=self.module_default_data_dir)
-                filepath, _, _ = storage.save_data(data,
-                                                   metadata=metadata,
-                                                   nametag=nametag,
-                                                   column_headers=column_headers)
-            if fig is not None:
-                storage.save_thumbnail(mpl_figure=fig, file_path=filepath)
+            if self._save_thumbnails:
+                try:
+                    fig = self._draw_raw_data_thumbnail(data) if save_figure else None
+                finally:
+                    storage = TextDataStorage(root_dir=self.module_default_data_dir)
+                    filepath, _, _ = storage.save_data(data,
+                                                       metadata=metadata,
+                                                       nametag=nametag,
+                                                       column_headers=column_headers)
+                if fig is not None:
+                    storage.save_thumbnail(mpl_figure=fig, file_path=filepath)
         except:
             self.log.exception('Something went wrong while saving raw data:')
             raise
@@ -793,21 +795,22 @@ class TimeSeriesReaderLogic(LogicBase):
             data_offset = self._trace_data.shape[0] - self._moving_average_width // 2
             data = self._trace_data[:data_offset, :]
             x = self._trace_times
-            try:
-                fig = self._draw_trace_snapshot_thumbnail(x, data) if save_figure else None
-            finally:
-                if constraints.sample_timing != SampleTiming.RANDOM:
-                    data = np.column_stack([x, data])
-                    column_headers.insert(0, 'Time (s)')
+            if self._save_thumbnails:
+                try:
+                    fig = self._draw_trace_snapshot_thumbnail(x, data) if save_figure else None
+                finally:
+                    if constraints.sample_timing != SampleTiming.RANDOM:
+                        data = np.column_stack([x, data])
+                        column_headers.insert(0, 'Time (s)')
 
-                storage = TextDataStorage(root_dir=self.module_default_data_dir)
-                filepath, _, _ = storage.save_data(data,
-                                                   timestamp=timestamp,
-                                                   metadata=metadata,
-                                                   nametag=nametag,
-                                                   column_headers=column_headers)
-            if fig is not None:
-                storage.save_thumbnail(mpl_figure=fig, file_path=filepath)
+                    storage = TextDataStorage(root_dir=self.module_default_data_dir)
+                    filepath, _, _ = storage.save_data(data,
+                                                       timestamp=timestamp,
+                                                       metadata=metadata,
+                                                       nametag=nametag,
+                                                       column_headers=column_headers)
+                if fig is not None:
+                    storage.save_thumbnail(mpl_figure=fig, file_path=filepath)
         except:
             self.log.exception('Something went wrong while saving trace snapshot:')
             raise
