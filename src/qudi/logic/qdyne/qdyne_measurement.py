@@ -28,6 +28,7 @@ from qudi.logic.qdyne.qdyne_settings import QdyneSettings
 from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorMain
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import TimeTraceAnalyzerMain
 from qudi.logic.qdyne.tools.state_enums import DataSource
+import qudi.logic.qdyne.qdyne_logic
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +59,13 @@ class QdyneMeasurement(QtCore.QObject):
     sigTimeTraceDataUpdated = QtCore.Signal(object, object)
     sigQdyneDataUpdated = QtCore.Signal()
 
-    def __init__(self, qdyne_logic: 'QdyneLogic'):
+    def __init__(self, qdyne_logic: "qudi.logic.qdyne.qdyne_logic.QdyneLogic"):
         super().__init__()
         self.log: logging.Logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         self.__lock = RecursiveMutex()
 
-        self.qdyne_logic: 'QdyneLogic' = qdyne_logic
+        self.qdyne_logic: qudi.logic.qdyne.qdyne_logic.QdyneLogic = qdyne_logic
         self.data: MainDataClass = self.qdyne_logic.data
         self.new_data: MainDataClass = self.qdyne_logic.new_data
         self.estimator: StateEstimatorMain = self.qdyne_logic.estimator

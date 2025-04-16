@@ -32,10 +32,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.util.constraints import DiscreteScalarConstraint
 from qudi.util.mutex import RecursiveMutex
 
-from qudi.logic.qdyne.qdyne_measurement import (
-    QdyneMeasurement,
-    QdyneMeasurementSettings,
-)
+import qudi.logic.qdyne.qdyne_measurement
 from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorMain
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import TimeTraceAnalyzerMain
 from qudi.logic.qdyne.qdyne_fit import QdyneFit
@@ -348,7 +345,7 @@ class QdyneLogic(LogicBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.measure = None
+        self.measure: qudi.logic.qdyne.qdyne_measurement.QdyneMeasurement = None
         self.estimator: StateEstimatorMain = None
         self.analyzer: TimeTraceAnalyzerMain = None
         self.settings: QdyneSettings = None
@@ -374,7 +371,7 @@ class QdyneLogic(LogicBase):
                 self.pulsedmasterlogic, self, self._data_streamer
             )
             self.fit = QdyneFit(self, self._fit_configs)
-            self.measure = QdyneMeasurement(self)
+            self.measure = qudi.logic.qdyne.qdyne_measurement.QdyneMeasurement(self)
             self.data_manager = QdyneDataManager(
                 self.data, self.settings.data_manager_stg
             )
