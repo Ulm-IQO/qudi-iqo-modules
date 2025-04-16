@@ -44,6 +44,7 @@ class StateEstimator(ABC):
 @dataclass
 class StateEstimatorSettings(CustomDataclass):
     sequence_length: float = 1e-9
+    record_length: float = 1e-9
     bin_width: float = 1e-9
 
 
@@ -100,7 +101,7 @@ class TimeTagStateEstimatorSettings(StateEstimatorSettings):
 
     @property
     def max_bins(self):
-        return int(self.sequence_length / self.bin_width)
+        return int(self.record_length / self.bin_width)
 
 
 class TimeTagStateEstimator(StateEstimator):

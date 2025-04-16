@@ -129,8 +129,8 @@ class MeasurementGenerator:
             self._qdyne_logic.log.debug(['set count sett: rec len', self.__record_length])
         if "active_channels" in settings_dict:
             self.__active_channels = settings_dict["active_channels"]
-        if "gate_mode" in settings_dict:
-            self.__gate_mode = GateMode(int(settings_dict["gate_mode"]))
+        if "is_gated" in settings_dict:
+            self.__gate_mode = GateMode(int(settings_dict["is_gated"]))
         if "data_type" in settings_dict:
             self.__data_type = settings_dict["data_type"]
 
@@ -437,6 +437,7 @@ class QdyneLogic(LogicBase):
 
     def _save_status_variables(self):
         self._measurement_generator_dict = self.measurement_generator.generation_parameters
+        self._measurement_generator_dict.pop('is_gated')  # remove is_gated from StatusVar dict
         self._counter_settings_dict = self.measurement_generator.counter_settings
         self._measurement_settings_dict = self.measurement_generator.measurement_settings
         # self._estimator_stg_dict = self.settings.estimator_stg.convert_settings()
