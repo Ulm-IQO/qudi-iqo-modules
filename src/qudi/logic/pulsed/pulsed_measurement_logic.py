@@ -361,10 +361,6 @@ class PulsedMeasurementLogic(LogicBase):
         If both are present, both are being used by updating the settings_dict with kwargs.
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
-
-        @param settings_dict:
-        @param kwargs:
-        @return:
         """
         # Check if fast counter is running and do nothing if that is the case
         counter_status = self._fastcounter().get_status()
@@ -403,16 +399,26 @@ class PulsedMeasurementLogic(LogicBase):
         return self.fast_counter_settings
 
     def fast_counter_on(self):
-        """Switching on the fast counter
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switching on the fast counter
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return self._fastcounter().start_measure()
 
     def fast_counter_off(self):
-        """Switching off the fast counter
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switching off the fast counter
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return self._fastcounter().stop_measure()
 
@@ -430,16 +436,26 @@ class PulsedMeasurementLogic(LogicBase):
         return err
 
     def fast_counter_pause(self):
-        """Switching off the fast counter
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switching off the fast counter
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return self._fastcounter().pause_measure()
 
     def fast_counter_continue(self):
-        """Switching off the fast counter
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Switching off the fast counter
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         return self._fastcounter().continue_measure()
 
@@ -491,8 +507,11 @@ class PulsedMeasurementLogic(LogicBase):
     def microwave_on(self):
         """
         Turns the external (CW) microwave output on.
-
-        :return int: error code (0:OK, -1:error)
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         microwave = self._microwave()
         if microwave is None:
@@ -508,8 +527,11 @@ class PulsedMeasurementLogic(LogicBase):
     def microwave_off(self):
         """
         Turns the external (CW) microwave output off.
-
-        :return int: error code (0:OK, -1:error)
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         microwave = self._microwave()
         if microwave is None:
@@ -526,9 +548,15 @@ class PulsedMeasurementLogic(LogicBase):
     def toggle_microwave(self, switch_on):
         """
         Turn the external microwave output on/off.
-
-        :param switch_on: bool, turn microwave on (True) or off (False)
-        :return int: error code (0:OK, -1:error)
+        Parameters
+        ----------
+        switch_on :
+            bool, turn microwave on (True) or off (False)
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         if not isinstance(switch_on, bool):
             return -1
@@ -547,10 +575,6 @@ class PulsedMeasurementLogic(LogicBase):
         If both are present both are being used by updating the settings_dict with kwargs.
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
-
-        @param settings_dict:
-        @param kwargs:
-        @return:
         """
         # Check if microwave is running and do nothing if that is the case
         try:
@@ -616,9 +640,15 @@ class PulsedMeasurementLogic(LogicBase):
     def toggle_pulse_generator(self, switch_on):
         """
         Switch the pulse generator on or off.
-
-        :param switch_on: bool, turn the pulse generator on (True) or off (False)
-        :return int: error code (0: OK, -1: error)
+        Parameters
+        ----------
+        switch_on :
+            bool, turn the pulse generator on (True) or off (False)
+        
+        Returns
+        -------
+        int
+            error code (0: OK, -1: error)
         """
         if not isinstance(switch_on, bool):
             return -1
@@ -759,10 +789,6 @@ class PulsedMeasurementLogic(LogicBase):
         If both are present both are being used by updating the settings_dict with kwargs.
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
-
-        @param settings_dict:
-        @param kwargs:
-        @return:
         """
         # Determine complete settings dictionary
         if not isinstance(settings_dict, dict):
@@ -789,10 +815,6 @@ class PulsedMeasurementLogic(LogicBase):
         If both are present both are being used by updating the settings_dict with kwargs.
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
-
-        @param settings_dict:
-        @param kwargs:
-        @return:
         """
         # Determine complete settings dictionary
         if not isinstance(settings_dict, dict):
@@ -814,10 +836,6 @@ class PulsedMeasurementLogic(LogicBase):
         If both are present both are being used by updating the settings_dict with kwargs.
         The keyword arguments take precedence over the items in settings_dict if there are
         conflicting names.
-
-        @param settings_dict:
-        @param kwargs:
-        @return:
         """
         # Determine complete settings dictionary
         if not isinstance(settings_dict, dict):
@@ -867,8 +885,11 @@ class PulsedMeasurementLogic(LogicBase):
     def toggle_pulsed_measurement(self, start, stash_raw_data_tag=''):
         """
         Convenience method to start/stop measurement
-
-        @param bool start: Start the measurement (True) or stop the measurement (False)
+        
+        Parameters
+        ----------
+        start : bool
+            Start the measurement (True) or stop the measurement (False)
         """
         if start:
             self.start_pulsed_measurement(stash_raw_data_tag)
@@ -981,8 +1002,11 @@ class PulsedMeasurementLogic(LogicBase):
     def toggle_measurement_pause(self, pause):
         """
         Convenience method to pause/continue measurement
-
-        @param bool pause: Pause the measurement (True) or continue the measurement (False)
+        
+        Parameters
+        ----------
+        pause : bool
+            Pause the measurement (True) or continue the measurement (False)
         """
         if pause:
             self.pause_pulsed_measurement()
@@ -1048,8 +1072,11 @@ class PulsedMeasurementLogic(LogicBase):
     def set_timer_interval(self, interval):
         """
         Change the interval of the measurement analysis timer
-
-        @param int|float interval: Interval of the timer in s
+        
+        Parameters
+        ----------
+        interval : int|float
+            Interval of the timer in s
         """
         with self._threadlock:
             self.__timer_interval = interval
@@ -1067,9 +1094,7 @@ class PulsedMeasurementLogic(LogicBase):
     @QtCore.Slot(str)
     def set_alternative_data_type(self, alt_data_type):
         """
-
-        @param alt_data_type:
-        @return:
+        
         """
         with self._threadlock:
             if alt_data_type != self.alternative_data_type:
@@ -1102,13 +1127,21 @@ class PulsedMeasurementLogic(LogicBase):
     def do_fit(self, fit_config, use_alternative_data=False):
         """
         Performs the chosen fit on the measured data.
-
-        @param str fit_config: name of the fit configuration to use
-        @param bool use_alternative_data: Flag indicating if the signal data (False) or the
-                                          alternative signal data (True) should be fitted.
-                                          Ignored if data is given as parameter
-
-        @return result_object: the lmfit result object
+        
+        Parameters
+        ----------
+        fit_config : str
+            name of the fit configuration to use
+        use_alternative_data : bool
+            Flag indicating if the signal data (False) or the
+            alternative signal data (True) should be fitted.
+            Ignored if data is given as parameter
+        
+        
+        Returns
+        -------
+        result_object
+            the lmfit result object
         """
         container = self.alt_fc if use_alternative_data else self.fc
         data = self.signal_alt_data if use_alternative_data else self.signal_data
@@ -1291,8 +1324,12 @@ class PulsedMeasurementLogic(LogicBase):
         """
         Get the raw count data from the fast counting hardware and perform sanity checks.
         Also add recalled raw data to the newly received data.
-        @return tuple(numpy.ndarray, info_dict): The count data (1D for ungated, 2D for gated counter) and
-                                                 info_dict with keys 'elapsed_sweeps' and 'elapsed_time'
+        
+        Returns
+        -------
+        tuple(numpy.ndarray, info_dict)
+            The count data (1D for ungated, 2D for gated counter) and
+            info_dict with keys 'elapsed_sweeps' and 'elapsed_time'
         """
         # get raw data from fast counter
         fc_data = self._fastcounter().get_data_trace()
@@ -1415,11 +1452,19 @@ class PulsedMeasurementLogic(LogicBase):
             return f'{file_name_stub}{suffix_str}.{file_extension}', None
 
     def _get_signal_column_headers(self, with_error):
-        """ Helper method to retrieve formatted column header strings for pulsed measurement data.
-
-        @param bool with_error: Boolean flag indicating if error data should be included
-
-        @return list: List of column header strings
+        """
+        Helper method to retrieve formatted column header strings for pulsed measurement data.
+        
+        Parameters
+        ----------
+        with_error : bool
+            Boolean flag indicating if error data should be included
+        
+        
+        Returns
+        -------
+        list
+            List of column header strings
         """
         column_headers = [f'{self._data_labels[0]} ({self._data_units[0]})',
                           f'{self._data_labels[1]} ({self._data_units[1]})']
@@ -1430,17 +1475,28 @@ class PulsedMeasurementLogic(LogicBase):
     def save_measurement_data(self, tag=None, notes=None, file_path=None, storage_cls=None,
                               with_error=True, save_laser_pulses=True, save_pulsed_measurement=True,
                               save_figure=None):
-        """ Prepare data to be saved and create a proper plot of the data
-
-        @param str tag: a name tag which will be included in the filename if file_path is None
-        @param str file_path: optional, custom full file path including file extension to use.
-                              If given, tag is ignored.
-        @param type storage_cls: optional, override for data storage class to use
-        @param bool with_error: select whether errors should be saved/plotted
-        @param bool save_laser_pulses: select whether extracted lasers should be saved
-        @param bool save_pulsed_measurement: select whether final measurement should be saved
-        @param bool save_figure: select whether a thumbnail plot should be saved
-        @param str notes: optional, string that is included in the metadata "as-is" without a field
+        """
+        Prepare data to be saved and create a proper plot of the data
+        
+        Parameters
+        ----------
+        tag : str
+            a name tag which will be included in the filename if file_path is None
+        file_path : str
+            optional, custom full file path including file extension to use.
+            If given, tag is ignored.
+        storage_cls : type
+            optional, override for data storage class to use
+        with_error : bool
+            select whether errors should be saved/plotted
+        save_laser_pulses : bool
+            select whether extracted lasers should be saved
+        save_pulsed_measurement : bool
+            select whether final measurement should be saved
+        save_figure : bool
+            select whether a thumbnail plot should be saved
+        notes : str
+            optional, string that is included in the metadata "as-is" without a field
         """
         # Use default data storage type if none has been given explicitly
         if storage_cls is None:

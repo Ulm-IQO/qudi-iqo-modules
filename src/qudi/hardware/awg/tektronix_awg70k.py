@@ -139,9 +139,13 @@ class AWG70K(PulserInterface):
     def get_constraints(self):
         """
         Retrieve the hardware constrains from the Pulsing device.
-
-        @return constraints object: object with pulser constraints as attributes.
-
+        
+        
+        Returns
+        -------
+        constraints object
+            object with pulser constraints as attributes.
+        
         Provides all the constraints (e.g. sample_rate, amplitude, total_length_bins,
         channel_config, ...) related to the pulse generator hardware to the caller.
 
@@ -282,11 +286,16 @@ class AWG70K(PulserInterface):
         return constraints
 
     def pulser_on(self):
-        """ Switches the pulsing device on.
-
-        @return int: error code (0:OK, -1:error, higher number corresponds to
-                                 current status of the device. Check then the
-                                 class variable status_dic.)
+        """
+        Switches the pulsing device on.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error, higher number corresponds to
+            current status of the device. Check then the
+            class variable status_dic.)
         """
         # do nothing if AWG is already running
         if not self._is_output_on():
@@ -297,11 +306,16 @@ class AWG70K(PulserInterface):
         return self.get_status()[0]
 
     def pulser_off(self):
-        """ Switches the pulsing device off.
-
-        @return int: error code (0:OK, -1:error, higher number corresponds to
-                                 current status of the device. Check then the
-                                 class variable status_dic.)
+        """
+        Switches the pulsing device off.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error, higher number corresponds to
+            current status of the device. Check then the
+            class variable status_dic.)
         """
         # do nothing if AWG is already idle
         if self._is_output_on():
@@ -319,24 +333,36 @@ class AWG70K(PulserInterface):
         be created or if the write process to a waveform should be terminated.
 
         NOTE: All sample arrays in analog_samples and digital_samples must be of equal length!
-
-        @param str name: the name of the waveform to be created/append to
-        @param dict analog_samples: keys are the generic analog channel names (i.e. 'a_ch1') and
-                                    values are 1D numpy arrays of type float32 containing the
-                                    voltage samples.
-        @param dict digital_samples: keys are the generic digital channel names (i.e. 'd_ch1') and
-                                     values are 1D numpy arrays of type bool containing the marker
-                                     states.
-        @param bool is_first_chunk: Flag indicating if it is the first chunk to write.
-                                    If True this method will create a new empty wavveform.
-                                    If False the samples are appended to the existing waveform.
-        @param bool is_last_chunk:  Flag indicating if it is the last chunk to write.
-                                    Some devices may need to know when to close the appending wfm.
-        @param int total_number_of_samples: The number of sample points for the entire waveform
-                                            (not only the currently written chunk)
-
-        @return (int, list): Number of samples written (-1 indicates failed process) and list of
-                             created waveform names
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        analog_samples : dict
+            keys are the generic analog channel names (i.e. 'a_ch1') and
+            values are 1D numpy arrays of type float32 containing the
+            voltage samples.
+        digital_samples : dict
+            keys are the generic digital channel names (i.e. 'd_ch1') and
+            values are 1D numpy arrays of type bool containing the marker
+            states.
+        is_first_chunk : bool
+            Flag indicating if it is the first chunk to write.
+            If True this method will create a new empty wavveform.
+            If False the samples are appended to the existing waveform.
+        is_last_chunk : bool
+            Flag indicating if it is the last chunk to write.
+            Some devices may need to know when to close the appending wfm.
+        total_number_of_samples : int
+            The number of sample points for the entire waveform
+            (not only the currently written chunk)
+        
+        
+        Returns
+        -------
+        (int, list)
+            Number of samples written (-1 indicates failed process) and list of
+            created waveform names
         """
         waveforms = list()
 
@@ -433,12 +459,20 @@ class AWG70K(PulserInterface):
     def write_sequence(self, name, sequence_parameter_list):
         """
         Write a new sequence on the device memory.
-
-        @param name: str, the name of the waveform to be created/append to
-        @param sequence_parameter_list: list, contains the parameters for each sequence step and
-                                        the according waveform names.
-
-        @return: int, number of sequence steps written (-1 indicates failed process)
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        sequence_parameter_list : list
+            list, contains the parameters for each sequence step and
+            the according waveform names.
+        
+        
+        Returns
+        -------
+        int
+            number of sequence steps written (-1 indicates failed process)
         """
         # Check if device has sequencer option installed
         if not self._has_sequence_mode():
@@ -502,9 +536,14 @@ class AWG70K(PulserInterface):
         return num_steps
 
     def get_waveform_names(self):
-        """ Retrieve the names of all uploaded waveforms on the device.
-
-        @return list: List of all uploaded waveform name strings in the device workspace.
+        """
+        Retrieve the names of all uploaded waveforms on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded waveform name strings in the device workspace.
         """
         try:
             query_return = self.query('WLIS:LIST?')
@@ -515,9 +554,14 @@ class AWG70K(PulserInterface):
         return waveform_list
 
     def get_sequence_names(self):
-        """ Retrieve the names of all uploaded sequence on the device.
-
-        @return list: List of all uploaded sequence name strings in the device workspace.
+        """
+        Retrieve the names of all uploaded sequence on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded sequence name strings in the device workspace.
         """
         sequence_list = list()
 
@@ -533,12 +577,20 @@ class AWG70K(PulserInterface):
         return sequence_list
 
     def delete_waveform(self, waveform_name):
-        """ Delete the waveform with name "waveform_name" from the device memory.
-
-        @param str waveform_name: The name of the waveform to be deleted
-                                  Optionally a list of waveform names can be passed.
-
-        @return list: a list of deleted waveform names.
+        """
+        Delete the waveform with name "waveform_name" from the device memory.
+        
+        Parameters
+        ----------
+        waveform_name : str
+            The name of the waveform to be deleted
+            Optionally a list of waveform names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted waveform names.
         """
         if isinstance(waveform_name, str):
             waveform_name = [waveform_name]
@@ -552,12 +604,20 @@ class AWG70K(PulserInterface):
         return deleted_waveforms
 
     def delete_sequence(self, sequence_name):
-        """ Delete the sequence with name "sequence_name" from the device memory.
-
-        @param str sequence_name: The name of the sequence to be deleted
-                                  Optionally a list of sequence names can be passed.
-
-        @return list: a list of deleted sequence names.
+        """
+        Delete the sequence with name "sequence_name" from the device memory.
+        
+        Parameters
+        ----------
+        sequence_name : str
+            The name of the sequence to be deleted
+            Optionally a list of sequence names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted sequence names.
         """
         if isinstance(sequence_name, str):
             sequence_name = [sequence_name]
@@ -571,25 +631,33 @@ class AWG70K(PulserInterface):
         return deleted_sequences
 
     def load_waveform(self, load_dict):
-        """ Loads a waveform to the specified channel of the pulsing device.
-        @param dict|list load_dict: a dictionary with keys being one of the available channel
-                                    index and values being the name of the already written
-                                    waveform to load into the channel.
-                                    Examples:   {1: rabi_ch1, 2: rabi_ch2} or
-                                                {1: rabi_ch2, 2: rabi_ch1}
-                                    If just a list of waveform names if given, the channel
-                                    association will be invoked from the channel
-                                    suffix '_ch1', '_ch2' etc.
-                                        {1: rabi_ch1, 2: rabi_ch2}
-                                    or
-                                        {1: rabi_ch2, 2: rabi_ch1}
-                                    If just a list of waveform names if given,
-                                    the channel association will be invoked from
-                                    the channel suffix '_ch1', '_ch2' etc. A
-                                    possible configuration can be e.g.
-                                        ['rabi_ch1', 'rabi_ch2', 'rabi_ch3']
-        @return dict: Dictionary containing the actually loaded waveforms per
-                      channel.
+        """
+        Loads a waveform to the specified channel of the pulsing device.
+        Parameters
+        ----------
+        load_dict : dict|list
+            a dictionary with keys being one of the available channel
+            index and values being the name of the already written
+            waveform to load into the channel.
+            Examples:   {1: rabi_ch1, 2: rabi_ch2} or
+                        {1: rabi_ch2, 2: rabi_ch1}
+            If just a list of waveform names if given, the channel
+            association will be invoked from the channel
+            suffix '_ch1', '_ch2' etc.
+                {1: rabi_ch1, 2: rabi_ch2}
+            or
+                {1: rabi_ch2, 2: rabi_ch1}
+            If just a list of waveform names if given,
+            the channel association will be invoked from
+            the channel suffix '_ch1', '_ch2' etc. A
+            possible configuration can be e.g.
+                ['rabi_ch1', 'rabi_ch2', 'rabi_ch3']
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per
+            channel.
         For devices that have a workspace (i.e. AWG) this will load the waveform
         from the device workspace into the channel. For a device without mass
         memory, this will make the waveform/pattern that has been previously
@@ -633,20 +701,28 @@ class AWG70K(PulserInterface):
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
-        """ Loads a sequence to the channels of the device in order to be ready for playback.
+        """
+        Loads a sequence to the channels of the device in order to be ready for playback.
         For devices that have a workspace (i.e. AWG) this will load the sequence from the device
         workspace into the channels.
         For a device without mass memory this will make the waveform/pattern that has been
         previously written with self.write_waveform ready to play.
-        @param dict|list sequence_name: a dictionary with keys being one of the available channel
-                                        index and values being the name of the already written
-                                        waveform to load into the channel.
-                                        Examples:   {1: rabi_ch1, 2: rabi_ch2} or
-                                                    {1: rabi_ch2, 2: rabi_ch1}
-                                        If just a list of waveform names if given, the channel
-                                        association will be invoked from the channel
-                                        suffix '_ch1', '_ch2' etc.
-        @return dict: Dictionary containing the actually loaded waveforms per channel.
+        Parameters
+        ----------
+        sequence_name : dict|list
+            a dictionary with keys being one of the available channel
+            index and values being the name of the already written
+            waveform to load into the channel.
+            Examples:   {1: rabi_ch1, 2: rabi_ch2} or
+                        {1: rabi_ch2, 2: rabi_ch1}
+            If just a list of waveform names if given, the channel
+            association will be invoked from the channel
+            suffix '_ch1', '_ch2' etc.
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per channel.
         """
         if sequence_name not in self.get_sequence_names():
             self.log.error('Unable to load sequence.\n'
@@ -681,10 +757,14 @@ class AWG70K(PulserInterface):
         In case of loaded waveforms the dictionary values will be the waveform names.
         In case of a loaded sequence the values will be the sequence name appended by a suffix
         representing the track loaded to the respective channel (i.e. '<sequence_name>_1').
-
-        @return (dict, str): Dictionary with keys being the channel number and values being the
-                             respective asset loaded into the channel,
-                             string describing the asset type ('waveform' or 'sequence')
+        
+        
+        Returns
+        -------
+        (dict, str)
+            Dictionary with keys being the channel number and values being the
+            respective asset loaded into the channel,
+            string describing the asset type ('waveform' or 'sequence')
         """
         # Get all active channels
         chnl_activation = self.get_active_channels()
@@ -718,10 +798,15 @@ class AWG70K(PulserInterface):
         return loaded_assets, current_type
 
     def clear_all(self):
-        """ Clears all loaded waveform from the pulse generators RAM.
-
-        @return int: error code (0:OK, -1:error)
-
+        """
+        Clears all loaded waveform from the pulse generators RAM.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
+        
         Unused for digital pulse generators without storage capability
         (PulseBlaster, FPGA).
         """
@@ -735,12 +820,17 @@ class AWG70K(PulserInterface):
         return 0
 
     def get_status(self):
-        """ Retrieves the status of the pulsing hardware
-
-        @return (int, dict): inter value of the current status with the
-                             corresponding dictionary containing status
-                             description for all the possible status variables
-                             of the pulse generator hardware
+        """
+        Retrieves the status of the pulsing hardware
+        
+        
+        Returns
+        -------
+        (int, dict)
+            inter value of the current status with the
+            corresponding dictionary containing status
+            description for all the possible status variables
+            of the pulse generator hardware
         """
         status_dic = {-1: 'Failed Request or Communication',
                        0: 'Device has stopped, but can receive commands',
@@ -750,11 +840,19 @@ class AWG70K(PulserInterface):
         return current_status, status_dic
 
     def set_sample_rate(self, sample_rate):
-        """ Set the sample rate of the pulse generator hardware
-
-        @param float sample_rate: The sample rate to be set (in Hz)
-
-        @return foat: the sample rate returned from the device (-1:error)
+        """
+        Set the sample rate of the pulse generator hardware
+        
+        Parameters
+        ----------
+        sample_rate : float
+            The sample rate to be set (in Hz)
+        
+        
+        Returns
+        -------
+        foat
+            the sample rate returned from the device (-1:error)
         """
         # Check if AWG is in function generator mode
         # self._activate_awg_mode()
@@ -766,27 +864,41 @@ class AWG70K(PulserInterface):
         return self.get_sample_rate()
 
     def get_sample_rate(self):
-        """ Set the sample rate of the pulse generator hardware
-
-        @return float: The current sample rate of the device (in Hz)
+        """
+        Set the sample rate of the pulse generator hardware
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate of the device (in Hz)
         """
         return_rate = float(self.query('CLOCK:SRATE?'))
         return return_rate
 
     def get_analog_level(self, amplitude=None, offset=None):
-        """ Retrieve the analog amplitude and offset of the provided channels.
-
-        @param list amplitude: optional, if a specific amplitude value (in Volt
-                               peak to peak, i.e. the full amplitude) of a
-                               channel is desired.
-        @param list offset: optional, if a specific high value (in Volt) of a
-                            channel is desired.
-
-        @return dict: with keys being the generic string channel names and items
-                      being the values for those channels. Amplitude is always
-                      denoted in Volt-peak-to-peak and Offset in (absolute)
-                      Voltage.
-
+        """
+        Retrieve the analog amplitude and offset of the provided channels.
+        
+        Parameters
+        ----------
+        amplitude : list
+            optional, if a specific amplitude value (in Volt
+            peak to peak, i.e. the full amplitude) of a
+            channel is desired.
+        offset : list
+            optional, if a specific high value (in Volt) of a
+            channel is desired.
+        
+        
+        Returns
+        -------
+        dict
+            with keys being the generic string channel names and items
+            being the values for those channels. Amplitude is always
+            denoted in Volt-peak-to-peak and Offset in (absolute)
+            Voltage.
+        
         Note: Do not return a saved amplitude and/or offset value but instead
               retrieve the current amplitude and/or offset directly from the
               device.
@@ -842,18 +954,27 @@ class AWG70K(PulserInterface):
         return amp, off
 
     def set_analog_level(self, amplitude=None, offset=None):
-        """ Set amplitude and/or offset value of the provided analog channel.
-
-        @param dict amplitude: dictionary, with key being the channel and items
-                               being the amplitude values (in Volt peak to peak,
-                               i.e. the full amplitude) for the desired channel.
-        @param dict offset: dictionary, with key being the channel and items
-                            being the offset values (in absolute volt) for the
-                            desired channel.
-
-        @return (dict, dict): tuple of two dicts with the actual set values for
-                              amplitude and offset.
-
+        """
+        Set amplitude and/or offset value of the provided analog channel.
+        
+        Parameters
+        ----------
+        amplitude : dict
+            dictionary, with key being the channel and items
+            being the amplitude values (in Volt peak to peak,
+            i.e. the full amplitude) for the desired channel.
+        offset : dict
+            dictionary, with key being the channel and items
+            being the offset values (in absolute volt) for the
+            desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts with the actual set values for
+            amplitude and offset.
+        
         If nothing is passed then the command will return two empty dicts.
 
         Note: After setting the analog and/or offset of the device, retrieve
@@ -931,18 +1052,27 @@ class AWG70K(PulserInterface):
         return self.get_analog_level()
 
     def get_digital_level(self, low=None, high=None):
-        """ Retrieve the digital low and high level of the provided channels.
-
-        @param list low: optional, if a specific low value (in Volt) of a
-                         channel is desired.
-        @param list high: optional, if a specific high value (in Volt) of a
-                          channel is desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel
-                               number and items being the values for those
-                               channels. Both low and high value of a channel is
-                               denoted in (absolute) Voltage.
-
+        """
+        Retrieve the digital low and high level of the provided channels.
+        
+        Parameters
+        ----------
+        low : list
+            optional, if a specific low value (in Volt) of a
+            channel is desired.
+        high : list
+            optional, if a specific high value (in Volt) of a
+            channel is desired.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel
+            number and items being the values for those
+            channels. Both low and high value of a channel is
+            denoted in (absolute) Voltage.
+        
         Note: Do not return a saved low and/or high value but instead retrieve
               the current low and/or high value directly from the device.
 
@@ -998,17 +1128,26 @@ class AWG70K(PulserInterface):
         return low_val, high_val
 
     def set_digital_level(self, low=None, high=None):
-        """ Set low and/or high value of the provided digital channel.
-
-        @param dict low: dictionary, with key being the channel and items being
-                         the low values (in volt) for the desired channel.
-        @param dict high: dictionary, with key being the channel and items being
-                         the high values (in volt) for the desired channel.
-
-        @return (dict, dict): tuple of two dicts where first dict denotes the
-                              current low value and the second dict the high
-                              value.
-
+        """
+        Set low and/or high value of the provided digital channel.
+        
+        Parameters
+        ----------
+        low : dict
+            dictionary, with key being the channel and items being
+            the low values (in volt) for the desired channel.
+        high : dict
+            dictionary, with key being the channel and items being
+            the high values (in volt) for the desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts where first dict denotes the
+            current low value and the second dict the high
+            value.
+        
         If nothing is passed then the command will return two empty dicts.
 
         Note: After setting the high and/or low values of the device, retrieve
@@ -1080,14 +1219,22 @@ class AWG70K(PulserInterface):
         return self.get_digital_level()
 
     def get_active_channels(self, ch=None):
-        """ Get the active channels of the pulse generator hardware.
-
-        @param list ch: optional, if specific analog or digital channels are
-                        needed to be asked without obtaining all the channels.
-
-        @return dict:  where keys denoting the channel number and items boolean
-                       expressions whether channel are active or not.
-
+        """
+        Get the active channels of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : list
+            optional, if specific analog or digital channels are
+            needed to be asked without obtaining all the channels.
+        
+        
+        Returns
+        -------
+        dict
+            where keys denoting the channel number and items boolean
+            expressions whether channel are active or not.
+        
         Example for an possible input (order is not important):
             ch = ['a_ch2', 'd_ch2', 'a_ch1', 'd_ch5', 'd_ch1']
         then the output might look like
@@ -1139,13 +1286,20 @@ class AWG70K(PulserInterface):
         activation_config must still be valid according to the constraints.
         If the resulting set of active channels can not be found in the available
         activation_configs, the channel states must remain unchanged.
-
-        @param dict ch: dictionary with keys being the analog or digital string generic names for
-                        the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
-                        True: Activate channel, False: Deactivate channel
-
-        @return dict: with the actual set values for ALL active analog and digital channels
-
+        
+        Parameters
+        ----------
+        ch : dict
+            dictionary with keys being the analog or digital string generic names for
+            the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
+            True: Activate channel, False: Deactivate channel
+        
+        
+        Returns
+        -------
+        dict
+            with the actual set values for ALL active analog and digital channels
+        
         If nothing is passed then the command will simply return the unchanged current state.
 
         Note: After setting the active channels of the device, use the returned dict for further
@@ -1204,22 +1358,35 @@ class AWG70K(PulserInterface):
         return self.get_active_channels()
 
     def get_interleave(self):
-        """ Check whether Interleave is ON or OFF in AWG.
-
-        @return bool: True: ON, False: OFF
-
+        """
+        Check whether Interleave is ON or OFF in AWG.
+        
+        
+        Returns
+        -------
+        bool
+            True: ON, False: OFF
+        
         Unused for pulse generator hardware other than an AWG.
         """
         return False
 
     def set_interleave(self, state=False):
-        """ Turns the interleave of an AWG on or off.
-
-        @param bool state: The state the interleave should be set to
-                           (True: ON, False: OFF)
-
-        @return bool: actual interleave status (True: ON, False: OFF)
-
+        """
+        Turns the interleave of an AWG on or off.
+        
+        Parameters
+        ----------
+        state : bool
+            The state the interleave should be set to
+            (True: ON, False: OFF)
+        
+        
+        Returns
+        -------
+        bool
+            actual interleave status (True: ON, False: OFF)
+        
         Note: After setting the interleave of the device, retrieve the
               interleave again and use that information for further processing.
 
@@ -1231,29 +1398,50 @@ class AWG70K(PulserInterface):
         return False
 
     def reset(self):
-        """Reset the device.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Reset the device.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self.write('*RST')
         self.write('*WAI')
         return 0
 
     def query(self, question):
-        """ Asks the device a 'question' and receive and return an answer from it.
-
-        @param string question: string containing the command
-
-        @return string: the answer of the device to the 'question' in a string
+        """
+        Asks the device a 'question' and receive and return an answer from it.
+        
+        Parameters
+        ----------
+        question : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        string
+            the answer of the device to the 'question' in a string
         """
         return self.awg.query(question).strip().rstrip('\n').rstrip().strip('"')
 
     def write(self, command):
-        """ Sends a command string to the device.
-
-        @param string command: string containing the command
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Sends a command string to the device.
+        
+        Parameters
+        ----------
+        command : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         bytes_written = self.awg.write(command)
         return 0
@@ -1262,11 +1450,19 @@ class AWG70K(PulserInterface):
         """
         Generate a new sequence 'name' having 'steps' number of steps with immediate (async.) jump
         timing.
-
-        @param str name: Name of the sequence which should be generated
-        @param int steps: Number of steps
-
-        @return int: error code
+        
+        Parameters
+        ----------
+        name : str
+            Name of the sequence which should be generated
+        steps : int
+            Number of steps
+        
+        
+        Returns
+        -------
+        int
+            error code
         """
         if not self._has_sequence_mode():
             self.log.error('Sequence generation in AWG not possible. '
@@ -1282,13 +1478,23 @@ class AWG70K(PulserInterface):
     def sequence_set_waveform(self, sequence_name, waveform_name, step, track):
         """
         Set the waveform 'waveform_name' to position 'step' in the sequence 'sequence_name'.
-
-        @param str sequence_name: Name of the sequence which should be editted
-        @param str waveform_name: Name of the waveform which should be added
-        @param int step: Position of the added waveform
-        @param int track: track which should be editted
-
-        @return int: error code
+        
+        Parameters
+        ----------
+        sequence_name : str
+            Name of the sequence which should be editted
+        waveform_name : str
+            Name of the waveform which should be added
+        step : int
+            Position of the added waveform
+        track : int
+            track which should be editted
+        
+        
+        Returns
+        -------
+        int
+            error code
         """
         if not self._has_sequence_mode():
             self.log.error('Direct sequence generation in AWG not possible. '
@@ -1305,12 +1511,21 @@ class AWG70K(PulserInterface):
         """
         Set the repetition counter of sequence "sequence_name" at step "step" to "repeat".
         A repeat value of -1 denotes infinite repetitions; 0 means the step is played once.
-
-        @param str sequence_name: Name of the sequence to be edited
-        @param int step: Sequence step to be edited
-        @param int repeat: number of repetitions. (-1: infinite, 0: once, 1: twice, ...)
-
-        @return int: error code
+        
+        Parameters
+        ----------
+        sequence_name : str
+            Name of the sequence to be edited
+        step : int
+            Sequence step to be edited
+        repeat : int
+            number of repetitions. (-1: infinite, 0: once, 1: twice, ...)
+        
+        
+        Returns
+        -------
+        int
+            error code
         """
         if not self._has_sequence_mode():
             self.log.error('Direct sequence generation in AWG not possible. '
@@ -1322,12 +1537,17 @@ class AWG70K(PulserInterface):
 
     def sequence_set_goto(self, sequence_name, step, goto=-1):
         """
-
-        @param str sequence_name:
-        @param int step:
-        @param int goto:
-
-        @return int: error code
+        Parameters
+        ----------
+        sequence_name : str
+        step : int
+        goto : int
+        
+        
+        Returns
+        -------
+        int
+            error code
         """
         if not self._has_sequence_mode():
             self.log.error('Direct sequence generation in AWG not possible. '
@@ -1341,13 +1561,23 @@ class AWG70K(PulserInterface):
     def sequence_set_event_jump(self, sequence_name, step, trigger='OFF', jumpto=0):
         """
         Set the event trigger input of the specified sequence step and the jump_to destination.
-
-        @param str sequence_name: Name of the sequence to be edited
-        @param int step: Sequence step to be edited
-        @param str trigger: Trigger string specifier. ('OFF', 'A', 'B' or 'INT')
-        @param int jumpto: The sequence step to jump to. 0 or -1 is interpreted as next step
-
-        @return int: error code
+        
+        Parameters
+        ----------
+        sequence_name : str
+            Name of the sequence to be edited
+        step : int
+            Sequence step to be edited
+        trigger : str
+            Trigger string specifier. ('OFF', 'A', 'B' or 'INT')
+        jumpto : int
+            The sequence step to jump to. 0 or -1 is interpreted as next step
+        
+        
+        Returns
+        -------
+        int
+            error code
         """
         if not self._has_sequence_mode():
             self.log.error('Direct sequence generation in AWG not possible. '
@@ -1370,12 +1600,21 @@ class AWG70K(PulserInterface):
     def sequence_set_wait_trigger(self, sequence_name, step, trigger='OFF'):
         """
         Make a certain sequence step wait for a trigger to start playing.
-
-        @param str sequence_name: Name of the sequence to be edited
-        @param int step: Sequence step to be edited
-        @param str trigger: Trigger string specifier. ('OFF', 'A', 'B' or 'INT')
-
-        @return int: error code
+        
+        Parameters
+        ----------
+        sequence_name : str
+            Name of the sequence to be edited
+        step : int
+            Sequence step to be edited
+        trigger : str
+            Trigger string specifier. ('OFF', 'A', 'B' or 'INT')
+        
+        
+        Returns
+        -------
+        int
+            error code
         """
         if not self._has_sequence_mode():
             self.log.error('Direct sequence generation in AWG not possible. '
@@ -1395,14 +1634,24 @@ class AWG70K(PulserInterface):
         """
         Set the flags in "flags" to HIGH (trigger=False) during the sequence step or let the flags
         send out a fixed duration trigger pulse (trigger=True). All other flags are set to LOW.
-
-        @param str sequence_name: Name of the sequence to be edited
-        @param int step: Sequence step to be edited
-        @param list flags_t: List of flag trigger specifiers to be active during this sequence step, if both options are
-                             selected, the flag is set to trigger (PULS)
-        @param list flags_h: List of flag high specifiers to be active during this sequence step
-
-        @return int: error code
+        
+        Parameters
+        ----------
+        sequence_name : str
+            Name of the sequence to be edited
+        step : int
+            Sequence step to be edited
+        flags_t : list
+            List of flag trigger specifiers to be active during this sequence step, if both options are
+            selected, the flag is set to trigger (PULS)
+        flags_h : list
+            List of flag high specifiers to be active during this sequence step
+        
+        
+        Returns
+        -------
+        int
+            error code
         """
         if not self._has_sequence_mode():
             self.log.error('Direct sequence generation in AWG not possible. '
@@ -1428,10 +1677,17 @@ class AWG70K(PulserInterface):
         Usually after a run of a sequence the output stops. Many times it is desired that the full
         sequence is repeated many times. This is achieved here by setting the 'jump to' value of
         the last element to 'First'
-
-        @param sequencename: Name of the sequence which should be made continous
-
-        @return int last_step: The step number which 'jump to' has to be set to 'First'
+        
+        Parameters
+        ----------
+        sequencename : any
+            Name of the sequence which should be made continous
+        
+        
+        Returns
+        -------
+        int last_step
+            The step number which 'jump to' has to be set to 'First'
         """
         if not self._has_sequence_mode():
             self.log.error('Direct sequence generation in AWG not possible. '
@@ -1450,9 +1706,13 @@ class AWG70K(PulserInterface):
         force jump does not require a trigger event to execute the jump.
         For two channel instruments, if both channels are playing the same sequence, then
         both channels jump simultaneously to the same sequence step.
-
-        @param channel: determines the channel number. If omitted, interpreted as 1
-        @param final_step: Step to jump to. Possible options are
+        
+        Parameters
+        ----------
+        channel : any
+            determines the channel number. If omitted, interpreted as 1
+        final_step : any
+            Step to jump to. Possible options are
             FIRSt - This enables the sequencer to jump to first step in the sequence.
             CURRent - This enables the sequencer to jump to the current sequence step,
             essentially starting the current step over.
@@ -1470,8 +1730,12 @@ class AWG70K(PulserInterface):
         """
         Helper method to return a sorted list of all technically available channel descriptors
         (e.g. ['a_ch1', 'a_ch2', 'd_ch1', 'd_ch2'])
-
-        @return list: Sorted list of channels
+        
+        
+        Returns
+        -------
+        list
+            Sorted list of channels
         """
         configs = self.get_constraints().activation_config
         if 'all' in configs:
@@ -1487,8 +1751,12 @@ class AWG70K(PulserInterface):
         """
         Helper method to return a sorted list of all technically available analog channel
         descriptors (e.g. ['a_ch1', 'a_ch2'])
-
-        @return list: Sorted list of analog channels
+        
+        
+        Returns
+        -------
+        list
+            Sorted list of analog channels
         """
         return [chnl for chnl in self._get_all_channels() if chnl.startswith('a')]
 
@@ -1496,23 +1764,33 @@ class AWG70K(PulserInterface):
         """
         Helper method to return a sorted list of all technically available digital channel
         descriptors (e.g. ['d_ch1', 'd_ch2'])
-
-        @return list: Sorted list of digital channels
+        
+        
+        Returns
+        -------
+        list
+            Sorted list of digital channels
         """
         return [chnl for chnl in self._get_all_channels() if chnl.startswith('d')]
 
     def _is_output_on(self):
         """
         Aks the AWG if the output is enabled, i.e. if the AWG is running
-
-        @return: bool, (True: output on, False: output off)
+        
+        
+        Returns
+        -------
+        bool
+            (True: output on, False: output off)
         """
         return bool(int(self.query('AWGC:RST?')))
 
     def _get_filenames_on_device(self):
         """
-
-        @return list: filenames found in <ftproot>\\waves
+        Returns
+        -------
+        list
+            filenames found in <ftproot>\\waves
         """
         filename_list = list()
         with FTP(self._ip_address) as ftp:
@@ -1537,8 +1815,9 @@ class AWG70K(PulserInterface):
 
     def _delete_file(self, filename):
         """
-
-        @param str filename:
+        Parameters
+        ----------
+        filename : str
         """
         if filename in self._get_filenames_on_device():
             with FTP(self._ip_address) as ftp:
@@ -1549,9 +1828,7 @@ class AWG70K(PulserInterface):
 
     def _send_file(self, filename):
         """
-
-        @param filename:
-        @return:
+        
         """
         # check input
         if not filename:
@@ -1582,23 +1859,35 @@ class AWG70K(PulserInterface):
         if it is the first chunk.
         If both flags (is_first_chunk, is_last_chunk) are set to TRUE it means
         that the whole ensemble is written as a whole in one big chunk.
-
-        @param name: string, represents the name of the sampled ensemble
-        @param analog_samples: dict containing float32 numpy ndarrays, contains the
-                                       samples for the analog channels that
-                                       are to be written by this function call.
-        @param marker_bytes: np.ndarray containing bool numpy ndarrays, contains the samples
-                                      for the digital channels that
-                                      are to be written by this function call.
-        @param total_number_of_samples: int, The total number of samples in the
-                                        entire waveform. Has to be known in advance.
-        @param is_first_chunk: bool, indicates if the current chunk is the
-                               first write to this file.
-        @param is_last_chunk: bool, indicates if the current chunk is the last
-                              write to this file.
-
-        @return list: the list contains the string names of the created files for the passed
-                      presampled arrays
+        
+        Parameters
+        ----------
+        name : string
+            represents the name of the sampled ensemble
+        analog_samples : dict
+            containing float32 numpy ndarrays, contains the
+            samples for the analog channels that
+            are to be written by this function call.
+        marker_bytes : np.ndarray
+            np.ndarray containing bool numpy ndarrays, contains the samples
+            for the digital channels that
+            are to be written by this function call.
+        total_number_of_samples : int
+            The total number of samples in the
+            entire waveform. Has to be known in advance.
+        is_first_chunk : bool
+            indicates if the current chunk is the
+            first write to this file.
+        is_last_chunk : bool
+            indicates if the current chunk is the last
+            write to this file.
+        
+        
+        Returns
+        -------
+        list
+            the list contains the string names of the created files for the passed
+            presampled arrays
         """
         # The memory overhead of the tmp file write/read process in bytes. Only used if wfmx file is
         # written in chunks in order to avoid excessive memory usage.

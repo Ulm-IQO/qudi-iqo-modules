@@ -438,8 +438,14 @@ class HighFinesseWavemeter(DataInStreamInterface):
     def _remove_samples_from_buffer(self, samples_per_channel: int) -> None:
         """
         Remove samples that have been read from buffer to make space for new samples.
-        :param samples_per_channel: number of samples per channel to clear off the buffer
-        :return: None
+        Parameters
+        ----------
+        samples_per_channel :
+            number of samples per channel to clear off the buffer
+        
+        Returns
+        -------
+        None
         """
         total_samples = len(self.active_channels) * samples_per_channel
         self._data_buffer = np.roll(self._data_buffer, -total_samples)

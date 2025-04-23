@@ -550,10 +550,14 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
             self._back_scan_settings = None
 
     def configure_back_scan(self, settings: ScanSettings) -> None:
-        """Configure the hardware with all parameters of the backwards scan.
+        """
+        Configure the hardware with all parameters of the backwards scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
-
-        @param ScanSettings settings: ScanSettings instance holding all parameters for the back scan
+        
+        Parameters
+        ----------
+        settings : ScanSettings
+            ScanSettings instance holding all parameters for the back scan
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -789,7 +793,9 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         """
         Offload __update_timer.start() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self.__update_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
@@ -800,7 +806,9 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         """
         Offload __update_timer.stop() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)

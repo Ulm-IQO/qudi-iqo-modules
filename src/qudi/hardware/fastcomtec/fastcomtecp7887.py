@@ -195,11 +195,16 @@ class FastComtec(FastCounterInterface):
         return
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the Fast counting device.
-
-        @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constaints.
-
+        """
+        Retrieve the hardware constrains from the Fast counting device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with keys being the constraint names as string and
+            items are the definition for the constaints.
+        
          The keys of the returned dictionary are the str name for the constraints
         (which are set in this method).
 
@@ -238,20 +243,29 @@ class FastComtec(FastCounterInterface):
         return constraints
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=0, filename=None):
-        """ Configuration of the fast counter.
-
-        @param float bin_width_s: Length of a single time bin in the time trace
-                                  histogram in seconds.
-        @param float record_length_s: Total length of the timetrace/each single
-                                      gate in seconds.
-        @param int number_of_gates: optional, number of gates in the pulse
-                                    sequence. Ignore for not gated counter.
-
-        @return tuple(binwidth_s, record_length_s, number_of_gates):
-                    binwidth_s: float the actual set binwidth in seconds
-                    gate_length_s: the actual record length in seconds
-                    number_of_gates: the number of gated, which are accepted,
-                    None if not-gated
+        """
+        Configuration of the fast counter.
+        
+        Parameters
+        ----------
+        bin_width_s : float
+            Length of a single time bin in the time trace
+            histogram in seconds.
+        record_length_s : float
+            Total length of the timetrace/each single
+            gate in seconds.
+        number_of_gates : int
+            optional, number of gates in the pulse
+            sequence. Ignore for not gated counter.
+        
+        
+        Returns
+        -------
+        tuple(binwidth_s, record_length_s, number_of_gates)
+            binwidth_s: float the actual set binwidth in seconds
+            gate_length_s: the actual record length in seconds
+            number_of_gates: the number of gated, which are accepted,
+            None if not-gated
         """
 
         # when not gated, record length = total sequence length, when gated, record length = laser length.
@@ -301,7 +315,11 @@ class FastComtec(FastCounterInterface):
     def get_current_runtime(self):
         """
         Returns the current runtime.
-        @return float runtime: in s
+        
+        Returns
+        -------
+        float runtime
+            in s
         """
         status = AcqStatus()
         self.dll.GetStatusData(ctypes.byref(status), 0)
@@ -310,8 +328,12 @@ class FastComtec(FastCounterInterface):
     def get_current_sweeps(self):
         """
         Returns the current sweeps.
-        @return int sweeps: in sweeps
-
+        
+        Returns
+        -------
+        int sweeps
+            in sweeps
+        
         The fastcomtec has "start" and "sweep" parameters that are generally equal but might differ depending on the
         configuration. Here the number of trigger events is called "start". This is what is meant by the "sweep"
         parameter of the fast_counter interface.
@@ -360,20 +382,30 @@ class FastComtec(FastCounterInterface):
         return status
 
     def get_binwidth(self):
-        """ Returns the width of a single timebin in the timetrace in seconds.
-
-        @return float: current length of a single bin in seconds (seconds/bin)
-
+        """
+        Returns the width of a single timebin in the timetrace in seconds.
+        
+        
+        Returns
+        -------
+        float
+            current length of a single bin in seconds (seconds/bin)
+        
         The red out bitshift will be converted to binwidth. The binwidth is
         defined as 2**bitshift*minimal_binwidth.
         """
         return self.minimal_binwidth*(2**int(self.get_bitshift()))
 
     def is_gated(self):
-        """ Check the gated counting possibility.
-
-        @return bool: Boolean value indicates if the fast counter is a gated
-                      counter (TRUE) or not (FALSE).
+        """
+        Check the gated counting possibility.
+        
+        
+        Returns
+        -------
+        bool
+            Boolean value indicates if the fast counter is a gated
+            counter (TRUE) or not (FALSE).
         """
         return self.gated
 
@@ -384,8 +416,12 @@ class FastComtec(FastCounterInterface):
         A possible overflow of the histogram bins must be caught here and taken care of.
         If the counter is UNgated it will return a 1D-numpy-array with returnarray[timebin_index]
         If the counter is gated it will return a 2D-numpy-array with returnarray[gate_index, timebin_index]
-
-          @return arrray: Time trace.
+        
+        
+        Returns
+        -------
+        arrray
+            Time trace.
         """
         setting = AcqSettings()
         self.dll.GetSettingData(ctypes.byref(setting), 0)
@@ -425,9 +461,14 @@ class FastComtec(FastCounterInterface):
     # =========================================================================
 
     def get_bitshift(self):
-        """Get bitshift from Fastcomtec.
-
-        @return int settings.bitshift: the red out bitshift
+        """
+        Get bitshift from Fastcomtec.
+        
+        
+        Returns
+        -------
+        int settings.bitshift
+            the red out bitshift
         """
 
         settings = AcqSettings()
@@ -435,11 +476,18 @@ class FastComtec(FastCounterInterface):
         return int(settings.bitshift)
 
     def set_bitshift(self, bitshift):
-        """ Sets the bitshift properly for this card.
-
-        @param int bitshift:
-
-        @return int: asks the actual bitshift and returns the red out value
+        """
+        Sets the bitshift properly for this card.
+        
+        Parameters
+        ----------
+        bitshift : int
+        
+        
+        Returns
+        -------
+        int
+            asks the actual bitshift and returns the red out value
         """
 
         cmd = 'BITSHIFT={0}'.format(bitshift)
@@ -447,12 +495,20 @@ class FastComtec(FastCounterInterface):
         return self.get_bitshift()
 
     def set_binwidth(self, binwidth):
-        """ Set defined binwidth in Card.
-
-        @param float binwidth: the current binwidth in seconds
-
-        @return float: Red out bitshift converted to binwidth
-
+        """
+        Set defined binwidth in Card.
+        
+        Parameters
+        ----------
+        binwidth : float
+            the current binwidth in seconds
+        
+        
+        Returns
+        -------
+        float
+            Red out bitshift converted to binwidth
+        
         The binwidth is converted into to an appropiate bitshift defined as
         2**bitshift*minimal_binwidth.
         """
@@ -463,11 +519,19 @@ class FastComtec(FastCounterInterface):
 
     #TODO: Check such that only possible lengths are set.
     def set_length(self, length_bins, preset=None, cycles=None, sequences=None):
-        """ Sets the length of the length of the actual measurement.
-
-        @param int length_bins: Length of the measurement in bins
-
-        @return float: Red out length of measurement
+        """
+        Sets the length of the length of the actual measurement.
+        
+        Parameters
+        ----------
+        length_bins : int
+            Length of the measurement in bins
+        
+        
+        Returns
+        -------
+        float
+            Red out length of measurement
         """
         constraints = self.get_constraints()
         if length_bins * self.get_binwidth() < constraints['max_sweep_len']:
@@ -501,9 +565,14 @@ class FastComtec(FastCounterInterface):
         return cycles
 
     def get_length(self):
-        """ Get the length of the current measurement.
-
-          @return int: length of the current measurement
+        """
+        Get the length of the current measurement.
+        
+        
+        Returns
+        -------
+        int
+            length of the current measurement
         """
         setting = AcqSettings()
         self.dll.GetSettingData(ctypes.byref(setting), 0)
@@ -537,23 +606,39 @@ class FastComtec(FastCounterInterface):
         return gated
 
     def change_save_mode(self, mode):
-        """ Changes the save mode of p7887
-
-        @param int mode: Specifies the save mode (0: No Save at Halt, 1: Save at Halt,
-                        2: Write list file, No Save at Halt, 3: Write list file, Save at Halt
-
-        @return int mode: specified save mode
+        """
+        Changes the save mode of p7887
+        
+        Parameters
+        ----------
+        mode : int
+            Specifies the save mode (0: No Save at Halt, 1: Save at Halt,
+            2: Write list file, No Save at Halt, 3: Write list file, Save at Halt
+        
+        
+        Returns
+        -------
+        int mode
+            specified save mode
         """
         cmd = 'savedata={0}'.format(mode)
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         return mode
 
     def set_delay_start(self, delay_s):
-        """ Sets the record delay length
-
-        @param int delay_s: Record delay after receiving a start trigger
-
-        @return int mode: specified save mode
+        """
+        Sets the record delay length
+        
+        Parameters
+        ----------
+        delay_s : int
+            Record delay after receiving a start trigger
+        
+        
+        Returns
+        -------
+        int mode
+            specified save mode
         """
 
         # A delay can only be adjusted in steps of 6.4ns
@@ -563,9 +648,14 @@ class FastComtec(FastCounterInterface):
         return delay_bins
 
     def get_delay_start(self):
-        """ Returns the current record delay length
-
-        @return float delay_s: current record delay length in seconds
+        """
+        Returns the current record delay length
+        
+        
+        Returns
+        -------
+        float delay_s
+            current record delay length in seconds
         """
         bsetting = AcqSettings()
         self.dll.GetSettingData(ctypes.byref(bsetting), 0)

@@ -79,8 +79,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def _create_header_data(self):
         """
-
-        @return:
+        
         """
         # The horizontal header data
         self._h_header_data = ['length\nin s', 'increment\nin s', 'laser\nchannel']
@@ -93,9 +92,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def _notify_column_width(self, column=None):
         """
-
-        @param column:
-        @return:
+        
         """
         if column is None:
             for column, width in enumerate(self._col_widths):
@@ -109,8 +106,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def _get_column_widths(self):
         """
-
-        @return:
+        
         """
         widths = list()
         for column in range(self.columnCount()):
@@ -122,8 +118,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def _get_column_width(self, column):
         """
-
-        @return:
+        
         """
         if not isinstance(column, int):
             return -1
@@ -170,9 +165,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_activation_config(self, activation_config):
         """
-
-        @param activation_config:
-        @return:
+        
         """
         if isinstance(activation_config, list):
             activation_config = set(activation_config)
@@ -370,11 +363,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def insertRows(self, row, count, parent=None):
         """
-
-        @param row:
-        @param count:
-        @param parent:
-        @return:
+        
         """
         # Sanity/range checking
         if row < 0 or row > self.rowCount():
@@ -393,11 +382,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def removeRows(self, row, count, parent=None):
         """
-
-        @param row:
-        @param count:
-        @param parent:
-        @return:
+        
         """
         # Sanity/range checking
         if row < 0 or row >= self.rowCount() or (row + count) > self.rowCount():
@@ -418,9 +403,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_pulse_block(self, pulse_block):
         """
-
-        @param pulse_block:
-        @return:
+        
         """
         if not isinstance(pulse_block, PulseBlock):
             return False
@@ -469,8 +452,7 @@ class BlockEditor(QtWidgets.QTableView):
 
     def _set_item_delegates(self):
         """
-
-        @return:
+        
         """
         # Set item delegates (scientific SpinBoxes) for length and increment column
         length_item_dict = {'unit': 's',
@@ -519,9 +501,7 @@ class BlockEditor(QtWidgets.QTableView):
 
     def set_activation_config(self, activation_config):
         """
-
-        @param activation_config:
-        @return:
+        
         """
         # Remove item delegates
         for column in range(self.model().columnCount()):
@@ -534,9 +514,7 @@ class BlockEditor(QtWidgets.QTableView):
 
     def setModel(self, model):
         """
-
-        @param model:
-        @return:
+        
         """
         super().setModel(model)
         for column in range(model.columnCount()):
@@ -564,10 +542,10 @@ class BlockEditor(QtWidgets.QTableView):
 
     def add_elements(self, count=1, at_position=None):
         """
-
-        @param count:
-        @param at_position:
-        @return: bool, operation success
+        Returns
+        -------
+        bool
+            operation success
         """
         # Sanity checking
         if count < 1:
@@ -582,10 +560,10 @@ class BlockEditor(QtWidgets.QTableView):
 
     def remove_elements(self, count=1, at_position=None):
         """
-
-        @param count:
-        @param at_position:
-        @return: bool, operation success
+        Returns
+        -------
+        bool
+            operation success
         """
         # Sanity checking
         if count < 1:
@@ -601,8 +579,12 @@ class BlockEditor(QtWidgets.QTableView):
     def clear(self):
         """
         Removes all PulseBlockElements from the view/model and inserts a single afterwards.
-
-        @return: bool, operation success
+        
+        
+        Returns
+        -------
+        bool
+            operation success
         """
         success = self.remove_elements(self.model().rowCount(), 0)
         if success:
@@ -612,8 +594,12 @@ class BlockEditor(QtWidgets.QTableView):
     def get_block(self):
         """
         Returns a (deep)copy of the PulseBlock instance serving as model for this editor.
-
-        @return: PulseBlock, an instance of PulseBlock
+        
+        
+        Returns
+        -------
+        PulseBlock
+            an instance of PulseBlock
         """
         block_copy = copy.deepcopy(
             self.model().data(QtCore.QModelIndex(), self.model().pulseBlockRole))
@@ -624,9 +610,16 @@ class BlockEditor(QtWidgets.QTableView):
     def load_block(self, pulse_block):
         """
         Load an instance of PulseBlock into the model in order to view/edit it.
-
-        @param pulse_block: PulseBlock, the PulseBlock instance to load into the model/view
-        @return: bool, operation success
+        
+        Parameters
+        ----------
+        pulse_block : PulseBlock
+            , the PulseBlock instance to load into the model/view
+        
+        Returns
+        -------
+        bool
+            operation success
         """
         return self.model().set_pulse_block(pulse_block)
 
@@ -655,9 +648,15 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_available_pulse_blocks(self, blocks):
         """
-
-        @param blocks: list|dict|set, list/dict/set containing all available PulseBlock names
-        @return: int, error code (>=0: OK, <0: ERR)
+        Parameters
+        ----------
+        blocks : list|dict|set
+            list/dict/set containing all available PulseBlock names
+        
+        Returns
+        -------
+        int
+            error code (>=0: OK, <0: ERR)
         """
         # Convert to set
         if isinstance(blocks, (list, dict)):
@@ -690,9 +689,7 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_rotating_frame(self, rotating_frame=True):
         """
-
-        @param rotating_frame:
-        @return:
+        
         """
         if isinstance(rotating_frame, bool):
             self._block_ensemble.rotating_frame = rotating_frame
@@ -758,11 +755,7 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
 
     def insertRows(self, row, count, parent=None):
         """
-
-        @param row:
-        @param count:
-        @param parent:
-        @return:
+        
         """
         # Do nothing if no blocks are available
         if len(self.available_pulse_blocks) == 0:
@@ -785,11 +778,7 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
 
     def removeRows(self, row, count, parent=None):
         """
-
-        @param row:
-        @param count:
-        @param parent:
-        @return:
+        
         """
         # Sanity/range checking
         if row < 0 or row >= self.rowCount() or (row + count) > self.rowCount():
@@ -807,9 +796,7 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_block_ensemble(self, block_ensemble):
         """
-
-        @param block_ensemble:
-        @return:
+        
         """
         if not isinstance(block_ensemble, PulseBlockEnsemble):
             return False
@@ -861,9 +848,14 @@ class EnsembleEditor(QtWidgets.QTableView):
 
     def set_available_pulse_blocks(self, blocks):
         """
-
-        @param list|set blocks:
-        @return: int, error code (>=0: OK, <0: ERR)
+        Parameters
+        ----------
+        blocks : list|set
+        
+        Returns
+        -------
+        int
+            error code (>=0: OK, <0: ERR)
         """
         if isinstance(blocks, (list, dict, set)):
             blocks = natural_sort(blocks)
@@ -878,9 +870,7 @@ class EnsembleEditor(QtWidgets.QTableView):
 
     def set_rotating_frame(self, rotating_frame=True):
         """
-
-        @param rotating_frame:
-        @return:
+        
         """
         self.model().set_rotating_frame(rotating_frame)
         return
@@ -901,10 +891,10 @@ class EnsembleEditor(QtWidgets.QTableView):
 
     def add_blocks(self, count=1, at_position=None):
         """
-
-        @param count:
-        @param at_position:
-        @return: bool, operation success
+        Returns
+        -------
+        bool
+            operation success
         """
         # Sanity checking
         if count < 1:
@@ -918,10 +908,10 @@ class EnsembleEditor(QtWidgets.QTableView):
 
     def remove_blocks(self, count=1, at_position=None):
         """
-
-        @param count:
-        @param at_position:
-        @return: bool, operation success
+        Returns
+        -------
+        bool
+            operation success
         """
         # Sanity checking
         if count < 1:
@@ -936,8 +926,12 @@ class EnsembleEditor(QtWidgets.QTableView):
     def clear(self):
         """
         Removes all PulseBlocks from the view/model and inserts a single one afterwards.
-
-        @return: bool, operation success
+        
+        
+        Returns
+        -------
+        bool
+            operation success
         """
         success = self.remove_blocks(self.model().rowCount(), 0)
         if not success:
@@ -948,8 +942,12 @@ class EnsembleEditor(QtWidgets.QTableView):
     def get_ensemble(self):
         """
         Returns a (deep)copy of the PulseBlockEnsemble instance serving as model for this editor.
-
-        @return: PulseBlockEnsemble, an instance of PulseBlockEnsemble
+        
+        
+        Returns
+        -------
+        PulseBlockEnsemble
+            an instance of PulseBlockEnsemble
         """
         data_container = self.model().data(QtCore.QModelIndex(), self.model().blockEnsembleRole)
         ensemble_copy = copy.deepcopy(data_container)
@@ -959,10 +957,17 @@ class EnsembleEditor(QtWidgets.QTableView):
     def load_ensemble(self, block_ensemble):
         """
         Load an instance of PulseBlockEnsemble into the model in order to view/edit it.
-
-        @param block_ensemble: PulseBlockEnsemble, the PulseBlockEnsemble instance to load into the
-                               model/view
-        @return: bool, operation success
+        
+        Parameters
+        ----------
+        block_ensemble : PulseBlockEnsemble
+            the PulseBlockEnsemble instance to load into the
+            model/view
+        
+        Returns
+        -------
+        bool
+            operation success
         """
         return self.model().set_block_ensemble(block_ensemble)
 
@@ -1007,9 +1012,15 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_available_block_ensembles(self, ensembles):
         """
-
-        @param ensembles: list|set, list/set containing all available PulseBlockEnsemble names
-        @return: int, error code (>=0: OK, <0: ERR)
+        Parameters
+        ----------
+        ensembles : list|set
+            list/set containing all available PulseBlockEnsemble names
+        
+        Returns
+        -------
+        int
+            error code (>=0: OK, <0: ERR)
         """
         # Convert to set
         if isinstance(ensembles, (list, dict)):
@@ -1045,9 +1056,15 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_available_flags(self, flags):
         """
-
-        @param flags: list|set, list/set containing all available flag names
-        @return: int, error code (>=0: OK, <0: ERR)
+        Parameters
+        ----------
+        flags : list|set
+            list/set containing all available flag names
+        
+        Returns
+        -------
+        int
+            error code (>=0: OK, <0: ERR)
         """
         # Convert to set
         if isinstance(flags, (list, dict)):
@@ -1075,9 +1092,7 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_rotating_frame(self, rotating_frame=True):
         """
-
-        @param rotating_frame:
-        @return:
+        
         """
         if isinstance(rotating_frame, bool):
             self._pulse_sequence.rotating_frame = rotating_frame
@@ -1162,11 +1177,7 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
 
     def insertRows(self, row, count, parent=None):
         """
-
-        @param row:
-        @param count:
-        @param parent:
-        @return:
+        
         """
         # Do nothing if no ensembles are available
         if len(self.available_block_ensembles) == 0:
@@ -1189,11 +1200,7 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
 
     def removeRows(self, row, count, parent=None):
         """
-
-        @param row:
-        @param count:
-        @param parent:
-        @return:
+        
         """
         # Sanity/range checking
         if row < 0 or row >= self.rowCount() or (row + count) > self.rowCount():
@@ -1211,9 +1218,7 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
 
     def set_pulse_sequence(self, pulse_sequence):
         """
-
-        @param pulse_sequence:
-        @return:
+        
         """
         if not isinstance(pulse_sequence, PulseSequence):
             return False
@@ -1285,9 +1290,10 @@ class SequenceEditor(QtWidgets.QTableView):
 
     def set_available_block_ensembles(self, ensembles):
         """
-
-        @param ensembles:
-        @return: int, error code (>=0: OK, <0: ERR)
+        Returns
+        -------
+        int
+            error code (>=0: OK, <0: ERR)
         """
         err_code = self.model().set_available_block_ensembles(ensembles)
         if err_code >= 0:
@@ -1298,18 +1304,18 @@ class SequenceEditor(QtWidgets.QTableView):
 
     def set_rotating_frame(self, rotating_frame=True):
         """
-
-        @param rotating_frame:
-        @return:
+        
         """
         self.model().set_rotating_frame(rotating_frame)
         return
 
     def set_available_triggers(self, trigger_list):
         """
-
-        @param list trigger_list: List of strings describing the available pulse generator trigger
-                                  input channels.
+        Parameters
+        ----------
+        trigger_list : list
+            List of strings describing the available pulse generator trigger
+            input channels.
         """
         if not isinstance(trigger_list, list):
             return
@@ -1324,8 +1330,10 @@ class SequenceEditor(QtWidgets.QTableView):
 
     def set_available_flags(self, flag_set):
         """
-
-        @param list flag_set: Set of strings describing the available pulse generator flag output channels.
+        Parameters
+        ----------
+        flag_set : list
+            Set of strings describing the available pulse generator flag output channels.
         """
         if not isinstance(flag_set, set):
             return
@@ -1369,10 +1377,10 @@ class SequenceEditor(QtWidgets.QTableView):
 
     def add_steps(self, count=1, at_position=None):
         """
-
-        @param count:
-        @param at_position:
-        @return: bool, operation success
+        Returns
+        -------
+        bool
+            operation success
         """
         # Sanity checking
         if count < 1:
@@ -1386,10 +1394,10 @@ class SequenceEditor(QtWidgets.QTableView):
 
     def remove_steps(self, count=1, at_position=None):
         """
-
-        @param count:
-        @param at_position:
-        @return: bool, operation success
+        Returns
+        -------
+        bool
+            operation success
         """
         # Sanity checking
         if count < 1:
@@ -1404,8 +1412,12 @@ class SequenceEditor(QtWidgets.QTableView):
     def clear(self):
         """
         Removes all sequence steps from the view/model and inserts a single one afterwards.
-
-        @return: bool, operation success
+        
+        
+        Returns
+        -------
+        bool
+            operation success
         """
         success = self.remove_steps(self.model().rowCount(), 0)
         if success:
@@ -1415,8 +1427,12 @@ class SequenceEditor(QtWidgets.QTableView):
     def get_sequence(self):
         """
         Returns a (deep)copy of the PulseSequence instance serving as model for this editor.
-
-        @return: object, an instance of PulseSequence
+        
+        
+        Returns
+        -------
+        object
+            an instance of PulseSequence
         """
         data_container = self.model().data(QtCore.QModelIndex(), self.model().sequenceRole)
         sequence_copy = PulseSequence('', ensemble_list=data_container.ensemble_list)
@@ -1425,8 +1441,15 @@ class SequenceEditor(QtWidgets.QTableView):
     def load_sequence(self, pulse_sequence):
         """
         Load an instance of PulseSequence into the model in order to view/edit it.
-
-        @param pulse_sequence: object, the PulseSequence instance to load into the model/view
-        @return: bool, operation success
+        
+        Parameters
+        ----------
+        pulse_sequence : object
+            the PulseSequence instance to load into the model/view
+        
+        Returns
+        -------
+        bool
+            operation success
         """
         return self.model().set_pulse_sequence(pulse_sequence)

@@ -87,9 +87,14 @@ class SwitchLogic(LogicBase):
 
     @property
     def device_name(self):
-        """ Name of the connected hardware switch as string.
-
-        @return str: The name of the connected hardware switch
+        """
+        Name of the connected hardware switch as string.
+        
+        
+        Returns
+        -------
+        str
+            The name of the connected hardware switch
         """
         return self.switch().name
 
@@ -99,10 +104,15 @@ class SwitchLogic(LogicBase):
 
     @property
     def states(self):
-        """ The current states the hardware is in as state dictionary with switch names as keys and
+        """
+        The current states the hardware is in as state dictionary with switch names as keys and
         state names as values.
-
-        @return dict: All the current states of the switches in the form {"switch": "state"}
+        
+        
+        Returns
+        -------
+        dict
+            All the current states of the switches in the form {"switch": "state"}
         """
         with self._thread_lock:
             try:
@@ -119,12 +129,16 @@ class SwitchLogic(LogicBase):
 
     @states.setter
     def states(self, state_dict):
-        """ The setter for the states of the hardware.
-
+        """
+        The setter for the states of the hardware.
+        
         The states of the system can be set by specifying a dict that has the switch names as keys
         and the names of the states as values.
-
-        @param dict state_dict: state dict of the form {"switch": "state"}
+        
+        Parameters
+        ----------
+        state_dict : dict
+            state dict of the form {"switch": "state"}
         """
         with self._thread_lock:
             try:
@@ -137,10 +151,18 @@ class SwitchLogic(LogicBase):
                 self.sigSwitchesChanged.emit({switch: states[switch] for switch in state_dict})
 
     def get_state(self, switch):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to query the state for
-        @return str: The current switch state
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to query the state for
+        
+        Returns
+        -------
+        str
+            The current switch state
         """
         with self._thread_lock:
             try:
@@ -152,10 +174,15 @@ class SwitchLogic(LogicBase):
 
     @QtCore.Slot(str, str)
     def set_state(self, switch, state):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to change
-        @param str state: name of the state to set
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to change
+        state : str
+            name of the state to set
         """
         with self._thread_lock:
             try:
@@ -171,8 +198,9 @@ class SwitchLogic(LogicBase):
     @QtCore.Slot(bool)
     def toggle_watchdog(self, enable):
         """
-
-        @param bool enable:
+        Parameters
+        ----------
+        enable : bool
         """
         enable = bool(enable)
         with self._thread_lock:

@@ -43,69 +43,104 @@ class FiniteSamplingIOInterface(Base):
     @property
     @abstractmethod
     def active_channels(self):
-        """ Names of all currently active input and output channels.
-
-        @return (frozenset, frozenset): active input channels, active output channels
+        """
+        Names of all currently active input and output channels.
+        
+        
+        Returns
+        -------
+        (frozenset, frozenset)
+            active input channels, active output channels
         """
         pass
 
     @property
     @abstractmethod
     def sample_rate(self):
-        """ The sample rate (in Hz) at which the samples will be emitted.
-
-        @return float: The current sample rate in Hz
+        """
+        The sample rate (in Hz) at which the samples will be emitted.
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate in Hz
         """
         pass
 
     @property
     @abstractmethod
     def frame_size(self):
-        """ Currently set number of samples per channel to emit for each data frame.
-
-        @return int: Number of samples per frame
+        """
+        Currently set number of samples per channel to emit for each data frame.
+        
+        
+        Returns
+        -------
+        int
+            Number of samples per frame
         """
         pass
 
     @property
     @abstractmethod
     def output_mode(self):
-        """ Currently set output mode.
-
-        @return SamplingOutputMode: Enum representing the currently active output mode
+        """
+        Currently set output mode.
+        
+        
+        Returns
+        -------
+        SamplingOutputMode
+            Enum representing the currently active output mode
         """
         pass
 
     @property
     @abstractmethod
     def samples_in_buffer(self):
-        """ Current number of acquired but unread samples per channel in the input buffer.
-
-        @return int: Unread samples in input buffer
+        """
+        Current number of acquired but unread samples per channel in the input buffer.
+        
+        
+        Returns
+        -------
+        int
+            Unread samples in input buffer
         """
         pass
 
     @abstractmethod
     def set_sample_rate(self, rate):
-        """ Will set the sample rate to a new value.
-
-        @param float rate: The sample rate to set
+        """
+        Will set the sample rate to a new value.
+        
+        Parameters
+        ----------
+        rate : float
+            The sample rate to set
         """
         pass
 
     @abstractmethod
     def set_active_channels(self, input_channels, output_channels):
-        """ Will set the currently active input and output channels.
+        """
+        Will set the currently active input and output channels.
         All other channels will be deactivated.
-
-        @param iterable(str) input_channels: Iterable of input channel names to set active
-        @param iterable(str) output_channels: Iterable of output channel names to set active
+        
+        Parameters
+        ----------
+        input_channels : iterable(str)
+            Iterable of input channel names to set active
+        output_channels : iterable(str)
+            Iterable of output channel names to set active
         """
         pass
 
     @abstractmethod
     def set_frame_data(self, data):
-        """ Fills the frame buffer for the next data frame to be emitted. Data must be a dict
+        """
+        Fills the frame buffer for the next data frame to be emitted. Data must be a dict
         containing exactly all active channels as keys with corresponding sample data as values.
 
         If <output_mode> is SamplingOutputMode.JUMP_LIST, the values must be 1D numpy.ndarrays
@@ -115,16 +150,23 @@ class FiniteSamplingIOInterface(Base):
         i.e. (start, stop, steps).
 
         Calling this method will alter read-only property <frame_size>
-
-        @param dict data: The frame data (values) to be set for all active output channels (keys)
+        
+        Parameters
+        ----------
+        data : dict
+            The frame data (values) to be set for all active output channels (keys)
         """
         pass
 
     @abstractmethod
     def set_output_mode(self, mode):
-        """ Setter for the current output mode.
-
-        @param SamplingOutputMode mode: The output mode to set as SamplingOutputMode Enum
+        """
+        Setter for the current output mode.
+        
+        Parameters
+        ----------
+        mode : SamplingOutputMode
+            The output mode to set as SamplingOutputMode Enum
         """
         pass
 
@@ -153,7 +195,8 @@ class FiniteSamplingIOInterface(Base):
 
     @abstractmethod
     def get_buffered_samples(self, number_of_samples=None):
-        """ Returns a chunk of the current data frame for all active input channels read from the
+        """
+        Returns a chunk of the current data frame for all active input channels read from the
         input frame buffer.
         If parameter <number_of_samples> is omitted, this method will return the currently
         available samples within the input frame buffer (i.e. the value of property
@@ -170,23 +213,38 @@ class FiniteSamplingIOInterface(Base):
 
         If the data acquisition has been stopped before the frame has been acquired completely,
         this method must still return all available samples already read into buffer.
-
-        @param int number_of_samples: optional, the number of samples to read from buffer
-
-        @return dict: Sample arrays (values) for each active input channel (keys)
+        
+        Parameters
+        ----------
+        number_of_samples : int
+            optional, the number of samples to read from buffer
+        
+        
+        Returns
+        -------
+        dict
+            Sample arrays (values) for each active input channel (keys)
         """
         pass
 
     @abstractmethod
     def get_frame(self, data):
-        """ Performs io for a single data frame for all active channels.
+        """
+        Performs io for a single data frame for all active channels.
         This method call is blocking until the entire data frame has been emitted.
 
         See <start_buffered_output>, <stop_buffered_output> and <set_frame_data> for more details.
-
-        @param dict data: The frame data (values) to be emitted for all active channels (keys)
-
-        @return dict: Frame data (values) for all active input channels (keys)
+        
+        Parameters
+        ----------
+        data : dict
+            The frame data (values) to be emitted for all active channels (keys)
+        
+        
+        Returns
+        -------
+        dict
+            Frame data (values) for all active input channels (keys)
         """
         pass
 

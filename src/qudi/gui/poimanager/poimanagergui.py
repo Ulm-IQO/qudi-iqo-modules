@@ -40,10 +40,14 @@ from qudi.util.widgets.plotting.image_widget import MouseTrackingImageWidget
 class PoiMarker(pg.EllipseROI):
     """
     Creates a circle as a marker.
-
-    @param float[2] pos: The (x, y) position of the POI.
-    @param **args: All extra keyword arguments are passed to ROI()
-
+    
+    Parameters
+    ----------
+    pos : float[2]
+        The (x, y) position of the POI.
+    **args : 
+        All extra keyword arguments are passed to ROI()
+    
     Have a look at:
     http://www.pyqtgraph.org/documentation/graphicsItems/roi.html
     """
@@ -54,12 +58,7 @@ class PoiMarker(pg.EllipseROI):
 
     def __init__(self, position, radius, poi_name=None, view_widget=None, **kwargs):
         """
-
-        @param position:
-        @param radius:
-        @param poi_name:
-        @param view_widget:
-        @param kwargs:
+        
         """
         self._poi_name = '' if poi_name is None else poi_name
         self._view_widget = view_widget
@@ -118,8 +117,11 @@ class PoiMarker(pg.EllipseROI):
         """
         Sets the POI position and center the marker circle on that position.
         Also position the label accordingly.
-
-        @param float[2] position: The (x,y) center position of the POI marker
+        
+        Parameters
+        ----------
+        position : float[2]
+            The (x,y) center position of the POI marker
         """
         self._position = np.array(position, dtype=float)
         radius = self.radius
@@ -131,8 +133,10 @@ class PoiMarker(pg.EllipseROI):
     def set_name(self, name):
         """
         Set the poi_name of the marker and update tha label accordingly.
-
-        @param str name:
+        
+        Parameters
+        ----------
+        name : str
         """
         self._poi_name = name
         self.label.setText(self._poi_name)
@@ -141,8 +145,11 @@ class PoiMarker(pg.EllipseROI):
     def set_radius(self, radius):
         """
         Set the size of the marker and reposition itself and the label to center it again.
-
-        @param float radius: The radius of the circle
+        
+        Parameters
+        ----------
+        radius : float
+            The radius of the circle
         """
         label_offset = radius / np.sqrt(2)
         self.setSize((2 * radius, 2 * radius))
@@ -193,10 +200,21 @@ class NameValidator(QtGui.QValidator):
         3) Intermediate: The user input is not a valid string yet but on the right track. Use this
                          return value to allow the user to type fill-characters needed in order to
                          complete an expression.
-        @param string: The current input string (from a QLineEdit for example)
-        @param position: The current position of the text cursor
-        @return: enum QValidator::State: the returned validator state,
-                 str: the input string, int: the cursor position
+        Parameters
+        ----------
+        string : 
+            The current input string (from a QLineEdit for example)
+        position : 
+            The current position of the text cursor
+        
+        Returns
+        -------
+        enum
+            QValidator::State: the returned validator state,
+        str 
+            the input string
+        int
+            the cursor position
         """
         # Return intermediate status when empty string is passed
         if not string:
@@ -801,8 +819,7 @@ class PoiManagerGui(GuiBase):
 
     def _update_scan_image(self, scan_image, image_extent):
         """
-        @param scan_image:
-        @param image_extent:
+        
         """
         if scan_image is not None:
             self._mw.roi_image.set_image(image=scan_image)

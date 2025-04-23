@@ -56,7 +56,9 @@ class BenchmarkTool(object):
     def reset(self):
         """
         Reset all gathered data.
-        :return:
+        
+        Returns
+        -------
         """
         self._datapoints_fixed = []
         self._datapoints.clear()
@@ -64,10 +66,17 @@ class BenchmarkTool(object):
     def add_benchmark(self, time_s, y, is_persistent=False):
         """
         Add a single data point to the benchmark.
-        :param time_s: time needed (s)
-        :param y: quantity
-        :param is_persistent: will not be cleared. If 'False' data is stored in a rolling buffer.
-        :return:
+        Parameters
+        ----------
+        time_s :
+            time needed (s)
+        y :
+            quantity
+        is_persistent :
+            will not be cleared. If 'False' data is stored in a rolling buffer.
+        
+        Returns
+        -------
         """
 
         if time_s <= 0.:
@@ -81,9 +90,16 @@ class BenchmarkTool(object):
     def estimate_time(self, y, check_sanity=True):
         """
         Estimate the time needed to perform a task of given 'quantity'.
-        :param y: quantity
-        :param check_sanity: if 'True' will check sanity of the estimation
-        :return: time (s) to perform task, -1 if sanity check fails
+        Parameters
+        ----------
+        y :
+            quantity
+        check_sanity :
+            if 'True' will check sanity of the estimation
+        
+        Returns
+        -------
+        time (s) to perform task, -1 if sanity check fails
         """
 
         a, t0, _ = self._get_speed_fit()
@@ -96,8 +112,14 @@ class BenchmarkTool(object):
     def estimate_speed(self, check_sanity=True):
         """
         Estimate the speed value from the gathered data.
-        :param check_sanity: if 'True' will check sanity of the estimation
-        :return: speed ([quantity] / s), np.nan if sanity check fails
+        Parameters
+        ----------
+        check_sanity :
+            if 'True' will check sanity of the estimation
+        
+        Returns
+        -------
+        speed ([quantity] / s), np.nan if sanity check fails
         """
         a, t0, _ = self._get_speed_fit()
 

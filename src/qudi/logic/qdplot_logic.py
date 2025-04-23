@@ -411,10 +411,15 @@ class QDPlotLogic(LogicBase):
             return name
 
     def do_fit(self, plot_index: int, fit_config: str) -> Dict[str, Union[None, _ModelResult]]:
-        """ Perform desired fit on data of given plot_index.
-
-        @param int plot_index: index of the plot
-        @param str fit_config: name of the fit. Must match a fit configuration in fit_config_model.
+        """
+        Perform desired fit on data of given plot_index.
+        
+        Parameters
+        ----------
+        plot_index : int
+            index of the plot
+        fit_config : str
+            name of the fit. Must match a fit configuration in fit_config_model.
         """
         with self._thread_lock:
             valid_fit_configs = self._fit_config_model.configuration_names
@@ -550,23 +555,43 @@ class QDPlotLogic(LogicBase):
             data_set.config.set_limits(*config.limits)
 
     def save_data(self, plot_index: int, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> str:
-        """ Save data of a single plot to file.
-
-        @param int plot_index: index of the plot
-        @param str postfix: optional, an additional tag added to the generic filename
-        @param str root_dir: optional, define a deviating folder for the data to be saved into
-        @return str: file path the data was saved to
+        """
+        Save data of a single plot to file.
+        
+        Parameters
+        ----------
+        plot_index : int
+            index of the plot
+        postfix : str
+            optional, an additional tag added to the generic filename
+        root_dir : str
+            optional, define a deviating folder for the data to be saved into
+        
+        Returns
+        -------
+        str
+            file path the data was saved to
         """
         with self._thread_lock:
             return self._save_data(plot_index, postfix, root_dir)
 
     def _save_data(self, plot_index: int, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> str:
-        """ Save data of a single plot to file.
-
-        @param int plot_index: index of the plot
-        @param str postfix: optional, an additional tag added to the generic filename
-        @param str root_dir: optional, define a deviating folder for the data to be saved into
-        @return str: file path the data was saved to
+        """
+        Save data of a single plot to file.
+        
+        Parameters
+        ----------
+        plot_index : int
+            index of the plot
+        postfix : str
+            optional, an additional tag added to the generic filename
+        root_dir : str
+            optional, define a deviating folder for the data to be saved into
+        
+        Returns
+        -------
+        str
+            file path the data was saved to
         """
         data_set = self._get_plot_data_set(plot_index)
         fit_container = self._get_fit_container(plot_index)
@@ -630,11 +655,20 @@ class QDPlotLogic(LogicBase):
         return file_path
 
     def save_all_data(self, postfix: Optional[str] = None, root_dir: Optional[str] = None) -> Tuple[str]:
-        """ Save data of all the available plots.
-
-        @param str postfix: optional, an additional tag added to the generic filename
-        @param str root_dir: optional, define a deviating folder for the data to be saved into
-        @return str: list of all the file paths the data was saved to
+        """
+        Save data of all the available plots.
+        
+        Parameters
+        ----------
+        postfix : str
+            optional, an additional tag added to the generic filename
+        root_dir : str
+            optional, define a deviating folder for the data to be saved into
+        
+        Returns
+        -------
+        str
+            list of all the file paths the data was saved to
         """
         with self._thread_lock:
             file_path = list()

@@ -34,13 +34,18 @@ class MotorInterface(Base):
 
     @abstractmethod
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
-
-        @return dict: dict with constraints for the magnet hardware. These
-                      constraints will be passed via the logic to the GUI so
-                      that proper display elements with boundary conditions
-                      could be made.
-
+        """
+        Retrieve the hardware constrains from the motor device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with constraints for the magnet hardware. These
+            constraints will be passed via the logic to the GUI so
+            that proper display elements with boundary conditions
+            could be made.
+        
         Provides all the constraints for each axis of a motorized stage
         (like total travel distance, velocity, ...)
         Each axis has its own dictionary, where the label is used as the
@@ -97,83 +102,128 @@ class MotorInterface(Base):
 
     @abstractmethod
     def move_rel(self,  param_dict):
-        """ Moves stage in given direction (relative movement)
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-abs-pos-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
-
+        """
+        Moves stage in given direction (relative movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-abs-pos-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
+        
         A smart idea would be to ask the position after the movement.
-
-        @return int: error code (0:OK, -1:error)
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         pass
 
     @abstractmethod
     def move_abs(self, param_dict):
-        """ Moves stage to absolute position (absolute movement)
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-abs-pos-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Moves stage to absolute position (absolute movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-abs-pos-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         pass
 
     @abstractmethod
     def abort(self):
-        """ Stops movement of the stage
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Stops movement of the stage
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         pass
 
     @abstractmethod
     def get_pos(self, param_list=None):
-        """ Gets current position of the stage arms
-
-        @param list param_list: optional, if a specific position of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                position is asked.
-
-        @return dict: with keys being the axis labels and item the current
-                      position.
+        """
+        Gets current position of the stage arms
+        
+        Parameters
+        ----------
+        param_list : list
+            optional, if a specific position of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            position is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with keys being the axis labels and item the current
+            position.
         """
         pass
 
     @abstractmethod
     def get_status(self, param_list=None):
-        """ Get the status of the position
-
-        @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                status is asked.
-
-        @return dict: with the axis label as key and the status number as item.
+        """
+        Get the status of the position
+        
+        Parameters
+        ----------
+        param_list : list
+            optional, if a specific status of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            status is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with the axis label as key and the status number as item.
         """
         pass
 
     @abstractmethod
     def calibrate(self, param_list=None):
-        """ Calibrates the stage.
-
-        @param dict param_list: param_list: optional, if a specific calibration
-                                of an axis is desired, then the labels of the
-                                needed axis should be passed in the param_list.
-                                If nothing is passed, then all connected axis
-                                will be calibrated.
-
-        @return int: error code (0:OK, -1:error)
-
+        """
+        Calibrates the stage.
+        
+        Parameters
+        ----------
+        param_list : dict
+            param_list: optional, if a specific calibration
+            of an axis is desired, then the labels of the
+            needed axis should be passed in the param_list.
+            If nothing is passed, then all connected axis
+            will be calibrated.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
+        
         After calibration the stage moves to home position which will be the
         zero point for the passed axis. The calibration procedure will be
         different for each stage.
@@ -182,28 +232,44 @@ class MotorInterface(Base):
 
     @abstractmethod
     def get_velocity(self, param_list=None):
-        """ Gets the current velocity for all connected axes.
-
-        @param dict param_list: optional, if a specific velocity of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed as the param_list.
-                                If nothing is passed, then from each axis the
-                                velocity is asked.
-
-        @return dict : with the axis label as key and the velocity as item.
+        """
+        Gets the current velocity for all connected axes.
+        
+        Parameters
+        ----------
+        param_list : dict
+            optional, if a specific velocity of an axis
+            is desired, then the labels of the needed
+            axis should be passed as the param_list.
+            If nothing is passed, then from each axis the
+            velocity is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with the axis label as key and the velocity as item.
         """
         pass
 
     @abstractmethod
     def set_velocity(self, param_dict):
-        """ Write new value for velocity.
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-velocity-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Write new value for velocity.
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-velocity-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         pass

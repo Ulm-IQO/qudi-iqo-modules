@@ -263,10 +263,13 @@ class LaserLogic(LogicBase):
 
     @QtCore.Slot()
     def start_query_loop(self):
-        """ Start the readout loop.
+        """
+        Start the readout loop.
         Offload self.start_query_loop() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
@@ -281,10 +284,13 @@ class LaserLogic(LogicBase):
 
     @QtCore.Slot()
     def stop_query_loop(self):
-        """ Stop the readout loop.
+        """
+        Stop the readout loop.
         Offload self.stop_query_loop() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,

@@ -142,80 +142,120 @@ class MicrowaveSMR(MicrowaveInterface):
 
     @property
     def is_scanning(self):
-        """Read-Only boolean flag indicating if a scan is running at the moment. Can be used together with
+        """
+        Read-Only boolean flag indicating if a scan is running at the moment. Can be used together with
         module_state() to determine if the currently running microwave output is a scan or CW.
         Should return False if module_state() is 'idle'.
-
-        @return bool: Flag indicating if a scan is running (True) or not (False)
+        
+        
+        Returns
+        -------
+        bool
+            Flag indicating if a scan is running (True) or not (False)
         """
         with self._thread_lock:
             return (self.module_state() != 'idle') and not self._in_cw_mode()
 
     @property
     def cw_power(self):
-        """The CW microwave power in dBm. Must implement setter as well.
-
-        @return float: The currently set CW microwave power in dBm.
+        """
+        The CW microwave power in dBm. Must implement setter as well.
+        
+        
+        Returns
+        -------
+        float
+            The currently set CW microwave power in dBm.
         """
         with self._thread_lock:
             return self._cw_power
 
     @property
     def cw_frequency(self):
-        """The CW microwave frequency in Hz. Must implement setter as well.
-
-        @return float: The currently set CW microwave frequency in Hz.
+        """
+        The CW microwave frequency in Hz. Must implement setter as well.
+        
+        
+        Returns
+        -------
+        float
+            The currently set CW microwave frequency in Hz.
         """
         with self._thread_lock:
             return self._cw_frequency
 
     @property
     def scan_power(self):
-        """The microwave power in dBm used for scanning. Must implement setter as well.
-
-        @return float: The currently set scanning microwave power in dBm
+        """
+        The microwave power in dBm used for scanning. Must implement setter as well.
+        
+        
+        Returns
+        -------
+        float
+            The currently set scanning microwave power in dBm
         """
         with self._thread_lock:
             return self._scan_power
 
     @property
     def scan_frequencies(self):
-        """The microwave frequencies used for scanning. Must implement setter as well.
-
+        """
+        The microwave frequencies used for scanning. Must implement setter as well.
+        
         In case of scan_mode == SamplingOutputMode.JUMP_LIST, this will be a 1D numpy array.
         In case of scan_mode == SamplingOutputMode.EQUIDISTANT_SWEEP, this will be a tuple
         containing 3 values (freq_begin, freq_end, number_of_samples).
         If no frequency scan has been specified, return None.
-
-        @return float[]: The currently set scanning frequencies. None if not set.
+        
+        
+        Returns
+        -------
+        float[]
+            The currently set scanning frequencies. None if not set.
         """
         with self._thread_lock:
             return self._scan_frequencies
 
     @property
     def scan_mode(self):
-        """Scan mode Enum. Must implement setter as well.
-
-        @return SamplingOutputMode: The currently set scan mode Enum
+        """
+        Scan mode Enum. Must implement setter as well.
+        
+        
+        Returns
+        -------
+        SamplingOutputMode
+            The currently set scan mode Enum
         """
         with self._thread_lock:
             return SamplingOutputMode.JUMP_LIST
 
     @property
     def scan_sample_rate(self):
-        """Read-only property returning the currently configured scan sample rate in Hz.
-
-        @return float: The currently set scan sample rate in Hz
+        """
+        Read-only property returning the currently configured scan sample rate in Hz.
+        
+        
+        Returns
+        -------
+        float
+            The currently set scan sample rate in Hz
         """
         with self._thread_lock:
             return self._scan_sample_rate
 
     def set_cw(self, frequency, power):
-        """Configure the CW microwave output. Does not start physical signal output, see also
+        """
+        Configure the CW microwave output. Does not start physical signal output, see also
         "cw_on".
-
-        @param float frequency: frequency to set in Hz
-        @param float power: power to set in dBm
+        
+        Parameters
+        ----------
+        frequency : float
+            frequency to set in Hz
+        power : float
+            power to set in dBm
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -319,10 +359,14 @@ class MicrowaveSMR(MicrowaveInterface):
             self._device.write(':ABOR:LIST')
 
     def _command_wait(self, command_str):
-        """ Writes the command in command_str via PyVisa and waits until the device has finished
+        """
+        Writes the command in command_str via PyVisa and waits until the device has finished
         processing it.
-
-        @param str command_str: The command to be written
+        
+        Parameters
+        ----------
+        command_str : str
+            The command to be written
         """
         self._device.write(command_str)
         self._device.write('*WAI')
@@ -379,12 +423,20 @@ class MicrowaveSMR(MicrowaveInterface):
     # ================== Non interface commands: ==================
 
     def turn_AM_on(self, depth):
-        """ Turn on the Amplitude Modulation mode.
-
-        @param float depth: modulation depth in percent (from 0 to 100%).
-
-        @return int: error code (0:OK, -1:error)
-
+        """
+        Turn on the Amplitude Modulation mode.
+        
+        Parameters
+        ----------
+        depth : float
+            modulation depth in percent (from 0 to 100%).
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
+        
         Set the Amplitude modulation based on an external DC signal source and
         switch on the device after configuration.
         """
@@ -394,8 +446,13 @@ class MicrowaveSMR(MicrowaveInterface):
         self._device.write('AM:STAT ON')
 
     def turn_AM_off(self):
-        """ Turn off the Amlitude Modulation Mode.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Turn off the Amlitude Modulation Mode.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self._device.write(':AM:STAT OFF')

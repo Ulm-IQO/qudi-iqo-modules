@@ -340,30 +340,42 @@ class LaserGui(GuiBase):
 
     @QtCore.Slot(bool)
     def _laser_clicked(self, checked):
-        """ Laser button callback. Disables button and sends a signal to the logic. Logic
+        """
+        Laser button callback. Disables button and sends a signal to the logic. Logic
         response will enable the button again.
-
-        @param bool checked: Button check state after click
+        
+        Parameters
+        ----------
+        checked : bool
+            Button check state after click
         """
         self.control_dock_widget.laser_button.setEnabled(False)
         self.sigLaserToggled.emit(checked)
 
     @QtCore.Slot(bool)
     def _shutter_clicked(self, checked):
-        """ Shutter button callback. Disables button and sends a signal to the logic. Logic
+        """
+        Shutter button callback. Disables button and sends a signal to the logic. Logic
         response will enable the button again.
-
-        @param bool checked: Button check state after click
+        
+        Parameters
+        ----------
+        checked : bool
+            Button check state after click
         """
         self.control_dock_widget.shutter_button.setEnabled(False)
         self.sigShutterToggled.emit(checked)
 
     @QtCore.Slot(object)
     def _control_mode_clicked(self, mode):
-        """ Control mode button group callback. Disables control elements and sends a signal to the
+        """
+        Control mode button group callback. Disables control elements and sends a signal to the
         logic. Logic response will enable the control elements again.
-
-        @param ControlMode mode: Selected ControlMode enum
+        
+        Parameters
+        ----------
+        mode : ControlMode
+            Selected ControlMode enum
         """
         self.control_dock_widget.control_current_radio_button.setEnabled(False)
         self.control_dock_widget.current_setpoint_spinbox.setEnabled(False)

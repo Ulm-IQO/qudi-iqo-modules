@@ -33,7 +33,10 @@ class CheckBoxItemDelegate(QtWidgets.QStyledItemDelegate):
 
     def __init__(self, parent, data_access_role=QtCore.Qt.DisplayRole):
         """
-        @param QWidget parent: the parent QWidget which hosts this child widget
+        Parameters
+        ----------
+        parent : QWidget
+            the parent QWidget which hosts this child widget
         """
         super().__init__(parent)
         self._access_role = data_access_role
@@ -42,14 +45,19 @@ class CheckBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         """
         Create for the display and interaction with the user an editor.
-
-        @param QtGui.QWidget parent: The parent object (probably QTableView)
-        @param QtGui.QStyleOptionViewItemV4 option: This is a setting option which you can use for
-                                                    style configuration.
-        @param QtCore.QModelIndex index: That index will be passed by the model object of the
-                                         QTableView to the delegated object. This index contains
-                                         information about the selected current cell.
-
+        
+        Parameters
+        ----------
+        parent : QtGui.QWidget
+            The parent object (probably QTableView)
+        option : QtGui.QStyleOptionViewItemV4
+            This is a setting option which you can use for
+            style configuration.
+        index : QtCore.QModelIndex
+            That index will be passed by the model object of the
+            QTableView to the delegated object. This index contains
+            information about the selected current cell.
+        
         An editor can be in principle any QWidget, which you want to use to display the current
         (model-)data. Therefore the editor is like a container, which handles the passed entries
         from the user interface and should save the data to the model object of the QTableWidget.
@@ -78,11 +86,15 @@ class CheckBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setEditorData(self, editor, index):
         """
         Set the display of the current value of the used editor.
-
-        @param ScienDSpinBox editor: QObject which was created in createEditor function,
-                                     here a ScienDSpinBox.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : ScienDSpinBox
+            QObject which was created in createEditor function,
+            here a ScienDSpinBox.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         This function converts the passed data to an value, which can be
         understood by the editor.
         """
@@ -97,12 +109,17 @@ class CheckBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         """
         Save the data of the editor to the model.
-
-        @param ScienDSpinBox editor: QObject which was created in createEditor function,
-                                                here a ScienDSpinBox.
-        @param QtCore.QAbstractTableModel model: That is the object which contains the data model.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : ScienDSpinBox
+            QObject which was created in createEditor function,
+            here a ScienDSpinBox.
+        model : QtCore.QAbstractTableModel
+            That is the object which contains the data model.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         Before the editor is destroyed the current selection should be saved in the underlying data
         model. The setModelData() function reads the content of the editor, and writes it to the
         model. Furthermore here the postprocessing of the data can happen, where the data can be
@@ -131,10 +148,14 @@ class SpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
 
     def __init__(self, parent, item_dict=None, data_access_role=QtCore.Qt.DisplayRole):
         """
-        @param QWidget parent: the parent QWidget which hosts this child widget
-        @param dict item_dict:  dict with the following keys which give informations about the
-                                current viewbox: 'unit', 'init_val', 'min', 'max', 'view_stepsize',
-                                                 'dec', 'unit_prefix'
+        Parameters
+        ----------
+        parent : QWidget
+            the parent QWidget which hosts this child widget
+        item_dict : dict
+            dict with the following keys which give informations about the
+            current viewbox: 'unit', 'init_val', 'min', 'max', 'view_stepsize',
+            'dec', 'unit_prefix'
         """
         super().__init__(parent)
         if item_dict is None:
@@ -146,14 +167,19 @@ class SpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         """
         Create for the display and interaction with the user an editor.
-
-        @param QtGui.QWidget parent: The parent object (probably QTableView)
-        @param QtGui.QStyleOptionViewItemV4 option: This is a setting option which you can use for
-                                                    style configuration.
-        @param QtCore.QModelIndex index: That index will be passed by the model object of the
-                                         QTableView to the delegated object. This index contains
-                                         information about the selected current cell.
-
+        
+        Parameters
+        ----------
+        parent : QtGui.QWidget
+            The parent object (probably QTableView)
+        option : QtGui.QStyleOptionViewItemV4
+            This is a setting option which you can use for
+            style configuration.
+        index : QtCore.QModelIndex
+            That index will be passed by the model object of the
+            QTableView to the delegated object. This index contains
+            information about the selected current cell.
+        
         An editor can be in principle any QWidget, which you want to use to display the current
         (model-)data. Therefore the editor is like a container, which handles the passed entries
         from the user interface and should save the data to the model object of the QTableWidget.
@@ -188,11 +214,15 @@ class SpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setEditorData(self, editor, index):
         """
         Set the display of the current value of the used editor.
-
-        @param ScienDSpinBox editor: QObject which was created in createEditor function,
-                                     here a ScienDSpinBox.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : ScienDSpinBox
+            QObject which was created in createEditor function,
+            here a ScienDSpinBox.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         This function converts the passed data to an value, which can be
         understood by the editor.
         """
@@ -207,12 +237,17 @@ class SpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         """
         Save the data of the editor to the model.
-
-        @param ScienDSpinBox editor: QObject which was created in createEditor function,
-                                     here a ScienDSpinBox.
-        @param QtCore.QAbstractTableModel model: That is the object which contains the data model.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : ScienDSpinBox
+            QObject which was created in createEditor function,
+            here a ScienDSpinBox.
+        model : QtCore.QAbstractTableModel
+            That is the object which contains the data model.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         Before the editor is destroyed the current selection should be saved in the underlying data
         model. The setModelData() function reads the content of the editor, and writes it to the
         model. Furthermore here the postprocessing of the data can happen, where the data can be
@@ -247,9 +282,13 @@ class ScienDSpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
 
     def __init__(self, parent, item_dict, data_access_role=QtCore.Qt.DisplayRole):
         """
-        @param QWidget parent: the parent QWidget which hosts this child widget
-        @param dict item_dict:  dict with the following keys which give informations about the
-                                current viewbox: 'unit', 'init_val', 'min', 'max'
+        Parameters
+        ----------
+        parent : QWidget
+            the parent QWidget which hosts this child widget
+        item_dict : dict
+            dict with the following keys which give informations about the
+            current viewbox: 'unit', 'init_val', 'min', 'max'
         """
         super().__init__(parent)
         self.item_dict = item_dict
@@ -261,14 +300,19 @@ class ScienDSpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         """
         Create for the display and interaction with the user an editor.
-
-        @param QtGui.QWidget parent: The parent object (probably QTableView)
-        @param QtGui.QStyleOptionViewItemV4 option: This is a setting option which you can use for
-                                                    style configuration.
-        @param QtCore.QModelIndex index: That index will be passed by the model object of the
-                                         QTableView to the delegated object. This index contains
-                                         information about the selected current cell.
-
+        
+        Parameters
+        ----------
+        parent : QtGui.QWidget
+            The parent object (probably QTableView)
+        option : QtGui.QStyleOptionViewItemV4
+            This is a setting option which you can use for
+            style configuration.
+        index : QtCore.QModelIndex
+            That index will be passed by the model object of the
+            QTableView to the delegated object. This index contains
+            information about the selected current cell.
+        
         An editor can be in principle any QWidget, which you want to use to display the current
         (model-)data. Therefore the editor is like a container, which handles the passed entries
         from the user interface and should save the data to the model object of the QTableWidget.
@@ -305,11 +349,15 @@ class ScienDSpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setEditorData(self, editor, index):
         """
         Set the display of the current value of the used editor.
-
-        @param ScienDSpinBox editor: QObject which was created in createEditor function,
-                                     here a ScienDSpinBox.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : ScienDSpinBox
+            QObject which was created in createEditor function,
+            here a ScienDSpinBox.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         This function converts the passed data to an value, which can be
         understood by the editor.
         """
@@ -324,12 +372,17 @@ class ScienDSpinBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         """
         Save the data of the editor to the model.
-
-        @param ScienDSpinBox editor: QObject which was created in createEditor function,
-                                                here a ScienDSpinBox.
-        @param QtCore.QAbstractTableModel model: That is the object which contains the data model.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : ScienDSpinBox
+            QObject which was created in createEditor function,
+            here a ScienDSpinBox.
+        model : QtCore.QAbstractTableModel
+            That is the object which contains the data model.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         Before the editor is destroyed the current selection should be saved in the underlying data
         model. The setModelData() function reads the content of the editor, and writes it to the
         model. Furthermore here the postprocessing of the data can happen, where the data can be
@@ -371,14 +424,19 @@ class ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         """
         Create for the display and interaction with the user an editor.
-
-        @param QtGui.QWidget parent: The parent object (probably QTableView)
-        @param QtGui.QStyleOptionViewItemV4 option: This is a setting option which you can use for
-                                                    style configuration.
-        @param QtCore.QModelIndex index: That index will be passed by the model object of the
-                                         QTableView to the delegated object. This index contains
-                                         information about the selected current cell.
-
+        
+        Parameters
+        ----------
+        parent : QtGui.QWidget
+            The parent object (probably QTableView)
+        option : QtGui.QStyleOptionViewItemV4
+            This is a setting option which you can use for
+            style configuration.
+        index : QtCore.QModelIndex
+            That index will be passed by the model object of the
+            QTableView to the delegated object. This index contains
+            information about the selected current cell.
+        
         An editor can be in principle any QWidget, which you want to use to display the current
         (model-)data. Therefore the editor is also a container, which handles the passed entries
         from the user interface and should save the data in the model object of the QTableWidget.
@@ -407,10 +465,14 @@ class ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setEditorData(self, editor, index):
         """
         Set the display of the current value of the used editor.
-
-        @param QComboBox editor: QObject which was created in createEditor function,
-                                 here a QCombobox.
-        @param QtCore.QModelIndex index: explained in createEditor function.
+        
+        Parameters
+        ----------
+        editor : QComboBox
+            QObject which was created in createEditor function,
+            here a QCombobox.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
         """
         data = index.data(self._access_role)
         combo_index = editor.findText(data)
@@ -422,12 +484,17 @@ class ComboBoxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         """
         Save the data of the editor to the model.
-
-        @param QComboBox editor: QObject which was created in createEditor function,
-                                 here a QCombobox.
-        @param QtCore.QAbstractTableModel model: That is the object which contains the data model.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : QComboBox
+            QObject which was created in createEditor function,
+            here a QCombobox.
+        model : QtCore.QAbstractTableModel
+            That is the object which contains the data model.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         Before the editor is destroyed the current selection should be saved in the data model.
         The setModelData() function reads the content of the editor, and writes it to the model.
         Furthermore here the postprocessing of the data can happen, where the data can be
@@ -463,14 +530,19 @@ class MultipleCheckboxItemDelegate(QtWidgets.QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         """
         Create for the display and interaction with the user an editor.
-
-        @param QtGui.QWidget parent: The parent object, here QTableWidget
-        @param QtGui.QStyleOptionViewItemV4 option: This is a setting option which you can use
-                                                    for style configuration.
-        @param QtCore.QModelIndex index: That index will be passed by the model object of the
-                                         QTableWidget to the delegated object. This index contains
-                                         information about the selected current cell.
-
+        
+        Parameters
+        ----------
+        parent : QtGui.QWidget
+            The parent object, here QTableWidget
+        option : QtGui.QStyleOptionViewItemV4
+            This is a setting option which you can use
+            for style configuration.
+        index : QtCore.QModelIndex
+            That index will be passed by the model object of the
+            QTableWidget to the delegated object. This index contains
+            information about the selected current cell.
+        
         An editor can be in principle any QWidget, which you want to use to display the current
         (model-)data. Therefore the editor is also a container, which handles the passed entries
         from the user interface and should save the data in the model object of the QTableWidget.
@@ -499,11 +571,15 @@ class MultipleCheckboxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setEditorData(self, editor, index):
         """
         Set the display of the current value of the used editor.
-
-        @param MultipleCheckboxWidget editor: QObject which was created in createEditor function,
-                                              here a MultipleCheckboxWidget.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : MultipleCheckboxWidget
+            QObject which was created in createEditor function,
+            here a MultipleCheckboxWidget.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         This function converts the passed data to an value, which can be understood by the editor.
         """
         data = index.data(self._access_role)
@@ -515,12 +591,17 @@ class MultipleCheckboxItemDelegate(QtWidgets.QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         """
         Save the data of the editor to the model.
-
-        @param MultipleCheckboxWidget editor: QObject which was created in createEditor function,
-                                              here a MultipleCheckboxWidget.
-        @param QtCore.QAbstractTableModel model: That is the object which contains the data model.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : MultipleCheckboxWidget
+            QObject which was created in createEditor function,
+            here a MultipleCheckboxWidget.
+        model : QtCore.QAbstractTableModel
+            That is the object which contains the data model.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         Before the editor is destroyed the current selection should be saved in the underlying data
         model. The setModelData() function reads the content of the editor, and writes it to the
         model. Furthermore here the postprocessing of the data can happen, where the data can be
@@ -555,14 +636,19 @@ class AnalogParametersItemDelegate(QtWidgets.QStyledItemDelegate):
     def createEditor(self, parent, option, index):
         """
         Create for the display and interaction with the user an editor.
-
-        @param QtGui.QWidget parent: The parent object, here QTableWidget
-        @param QtGui.QStyleOptionViewItemV4 option: This is a setting option which you can use
-                                                    for style configuration.
-        @param QtCore.QModelIndex index: That index will be passed by the model object of the
-                                         QTableWidget to the delegated object. This index contains
-                                         information about the selected current cell.
-
+        
+        Parameters
+        ----------
+        parent : QtGui.QWidget
+            The parent object, here QTableWidget
+        option : QtGui.QStyleOptionViewItemV4
+            This is a setting option which you can use
+            for style configuration.
+        index : QtCore.QModelIndex
+            That index will be passed by the model object of the
+            QTableWidget to the delegated object. This index contains
+            information about the selected current cell.
+        
         An editor can be in principle any QWidget, which you want to use to display the current
         (model-)data. Therefore the editor is also a container, which handles the passed entries
         from the user interface and should save the data in the model object of the QTableWidget.
@@ -593,11 +679,15 @@ class AnalogParametersItemDelegate(QtWidgets.QStyledItemDelegate):
     def setEditorData(self, editor, index):
         """
         Set the display of the current value of the used editor.
-
-        @param AnalogParametersWidget editor: QObject which was created in createEditor function,
-                                              here a AnalogParametersWidget.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : AnalogParametersWidget
+            QObject which was created in createEditor function,
+            here a AnalogParametersWidget.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         This function converts the passed data to an value, which can be understood by the editor.
         """
         data = index.data(self._access_role[1])
@@ -609,12 +699,17 @@ class AnalogParametersItemDelegate(QtWidgets.QStyledItemDelegate):
     def setModelData(self, editor, model, index):
         """
         Save the data of the editor to the model.
-
-        @param AnalogParametersWidget editor: QObject which was created in createEditor function,
-                                              here a AnalogParametersWidget.
-        @param QtCore.QAbstractTableModel model: That is the object which contains the data model.
-        @param QtCore.QModelIndex index: explained in createEditor function.
-
+        
+        Parameters
+        ----------
+        editor : AnalogParametersWidget
+            QObject which was created in createEditor function,
+            here a AnalogParametersWidget.
+        model : QtCore.QAbstractTableModel
+            That is the object which contains the data model.
+        index : QtCore.QModelIndex
+            explained in createEditor function.
+        
         Before the editor is destroyed the current selection should be saved in the underlying data
         model. The setModelData() function reads the content of the editor, and writes it to the
         model. Furthermore here the postprocessing of the data can happen, where the data can be

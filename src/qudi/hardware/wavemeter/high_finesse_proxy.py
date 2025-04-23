@@ -180,7 +180,10 @@ class HighFinesseProxy(Base):
     def sample_rate(self) -> float:
         """
         Estimate the current sample rate by the exposure times per channel and switching times.
-        :return: sample rate in Hz
+        
+        Returns
+        -------
+        sample rate in Hz
         """
         exposure_times = []
         active_channels = self.get_active_channels()
@@ -205,7 +208,10 @@ class HighFinesseProxy(Base):
     def get_active_channels(self) -> List[int]:
         """
         Get a list of all active channels on the multi-channel switch.
-        :return: list of active channels
+        
+        Returns
+        -------
+        list of active channels
         """
         if not self._wm_has_switch:
             return [1]
@@ -243,7 +249,10 @@ class HighFinesseProxy(Base):
     def get_pid_setting(self, output_port: int, cmi_val: int):
         """
         Generic method to get PID values and settings
-        @return: PID value or setting
+
+        Returns
+        -------
+            PID value or setting
         """
         i_val = c_long()
         d_val = c_double()
@@ -264,7 +273,11 @@ class HighFinesseProxy(Base):
     def get_setpoint(self, output_port: int) -> float:
         """
         Get the setpoint for a specific control voltage output port
-        @return (float): The setpoint for this output port
+        
+        Returns
+        -------
+        (float)
+            The setpoint for this output port
         """
         pidc = c_char_p(b'0' * 1024)
         err = self._wavemeter_dll.GetPIDCourseNum(output_port, pidc)
@@ -301,7 +314,11 @@ class HighFinesseProxy(Base):
     def get_pid_enabled(self) -> bool:
         """
         Get the PID status
-        @return (bool): True if PID is enabled, False otherwise
+        
+        Returns
+        -------
+        (bool)
+            True if PID is enabled, False otherwise
         """
         return self._wavemeter_dll.GetDeviationMode(False)
     
@@ -312,9 +329,13 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Error while setting PID enabled: {high_finesse_constants.ResultError(err)}')
 
     def get_laser_control_setting(self, output_port: int, cmi_val: int):
-        """ 
+        """
         Generic method to get laser control settings
-        @return: laser control setting
+
+        Returns
+        -------
+            laser control setting
+        
         """
         pidc = c_char_p(b'0' * 1024)
         i_val = c_long()
@@ -328,7 +349,11 @@ class HighFinesseProxy(Base):
     def get_control_value(self, output_port: int):
         """
         Get the control value for a specific voltage output port
-        @return (float): The control value in V for the output port
+        
+        Returns
+        -------
+        (float)
+            The control value in V for the output port
         """
         i_val = c_long(output_port)
         d_val = c_double()
@@ -337,7 +362,11 @@ class HighFinesseProxy(Base):
     def get_wavelength(self, channel: int) -> float:
         """
         Get the current wavelength for a specific input channel
-        @return (float): wavelength in m
+        
+        Returns
+        -------
+        (float)
+            wavelength in m
         """
         i_val = c_long(channel)
         d_val = c_double()
@@ -439,7 +468,10 @@ class HighFinesseProxy(Base):
         """
         Define the callback procedure that should be called by the DLL every time a new measurement result
         is available or any of the wavelength meter's states changes.
-        :return: callback function
+        
+        Returns
+        -------
+        callback function
         """
         def handle_callback(version, mode: int, intval: int, dblval: float, res1) -> int:
             """
@@ -448,15 +480,24 @@ class HighFinesseProxy(Base):
 
             In this implementation, the new wavelength is converted to the desired unit and
             appended to a list together with the current timestamp.
-
-            :param version: Device version number which called the procedure.
-            Only relevant if multiple wavemeter applications are running.
-            :param mode: Indicates which state has changed or what new result is available.
-            :param intval: Contains the time stamp rounded to ms if mode indicates that the new value is in dblval.
-            If not, it contains the new value itself.
-            :param dblval: May contain the new value (e.g. wavelength), depending on mode.
-            :param res1: Mostly meaningless.
-            :return: 0
+            Parameters
+            ----------
+            version :
+                Device version number which called the procedure.
+                Only relevant if multiple wavemeter applications are running.
+            mode :
+                Indicates which state has changed or what new result is available.
+            intval :
+                Contains the time stamp rounded to ms if mode indicates that the new value is in dblval.
+                If not, it contains the new value itself.
+            dblval :
+                May contain the new value (e.g. wavelength), depending on mode.
+            res1 :
+                Mostly meaningless.
+            
+            Returns
+            -------
+            0
             """
             # check if an evil user messed with the manufacturer GUI
             if mode == high_finesse_constants.cmiOperation and intval == high_finesse_constants.cStop:

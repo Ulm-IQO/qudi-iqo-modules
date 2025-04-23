@@ -109,9 +109,13 @@ class PulserDummy(PulserInterface):
     def get_constraints(self):
         """
         Retrieve the hardware constrains from the Pulsing device.
-
-        @return constraints object: object with pulser constraints as attributes.
-
+        
+        
+        Returns
+        -------
+        constraints object
+            object with pulser constraints as attributes.
+        
         Provides all the constraints (e.g. sample_rate, amplitude, total_length_bins,
         channel_config, ...) related to the pulse generator hardware to the caller.
 
@@ -231,9 +235,14 @@ class PulserDummy(PulserInterface):
         return constraints
 
     def pulser_on(self):
-        """ Switches the pulsing device on.
-
-        @return int: error code (0:stopped, -1:error, 1:running)
+        """
+        Switches the pulsing device on.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:stopped, -1:error, 1:running)
         """
         if self.current_status == 0:
             self.current_status = 1
@@ -244,9 +253,14 @@ class PulserDummy(PulserInterface):
             return -1
 
     def pulser_off(self):
-        """ Switches the pulsing device off.
-
-        @return int: error code (0:stopped, -1:error, 1:running)
+        """
+        Switches the pulsing device off.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:stopped, -1:error, 1:running)
         """
         if self.current_status == 1:
             self.current_status = 0
@@ -261,24 +275,36 @@ class PulserDummy(PulserInterface):
         be created or if the write process to a waveform should be terminated.
 
         NOTE: All sample arrays in analog_samples and digital_samples must be of equal length!
-
-        @param str name: the name of the waveform to be created/append to
-        @param dict analog_samples: keys are the generic analog channel names (i.e. 'a_ch1') and
-                                    values are 1D numpy arrays of type float32 containing the
-                                    voltage samples.
-        @param dict digital_samples: keys are the generic digital channel names (i.e. 'd_ch1') and
-                                     values are 1D numpy arrays of type bool containing the marker
-                                     states.
-        @param bool is_first_chunk: Flag indicating if it is the first chunk to write.
-                                    If True this method will create a new empty wavveform.
-                                    If False the samples are appended to the existing waveform.
-        @param bool is_last_chunk:  Flag indicating if it is the last chunk to write.
-                                    Some devices may need to know when to close the appending wfm.
-        @param int total_number_of_samples: The number of sample points for the entire waveform
-                                            (not only the currently written chunk)
-
-        @return (int, list): Number of samples written (-1 indicates failed process) and list of
-                             created waveform names
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        analog_samples : dict
+            keys are the generic analog channel names (i.e. 'a_ch1') and
+            values are 1D numpy arrays of type float32 containing the
+            voltage samples.
+        digital_samples : dict
+            keys are the generic digital channel names (i.e. 'd_ch1') and
+            values are 1D numpy arrays of type bool containing the marker
+            states.
+        is_first_chunk : bool
+            Flag indicating if it is the first chunk to write.
+            If True this method will create a new empty wavveform.
+            If False the samples are appended to the existing waveform.
+        is_last_chunk : bool
+            Flag indicating if it is the last chunk to write.
+            Some devices may need to know when to close the appending wfm.
+        total_number_of_samples : int
+            The number of sample points for the entire waveform
+            (not only the currently written chunk)
+        
+        
+        Returns
+        -------
+        (int, list)
+            Number of samples written (-1 indicates failed process) and list of
+            created waveform names
         """
         waveforms = list()
 
@@ -351,12 +377,20 @@ class PulserDummy(PulserInterface):
     def write_sequence(self, name, sequence_parameter_list):
         """
         Write a new sequence on the device memory.
-
-        @param name: str, the name of the waveform to be created/append to
-        @param sequence_parameter_list: list, contains the parameters for each sequence step and
-                                        the according waveform names.
-
-        @return: int, number of sequence steps written (-1 indicates failed process)
+        
+        Parameters
+        ----------
+        name : str
+            the name of the waveform to be created/append to
+        sequence_parameter_list : list
+            contains the parameters for each sequence step and
+            the according waveform names.
+        
+        
+        Returns
+        -------
+        int
+            number of sequence steps written (-1 indicates failed process)
         """
         # Check if all waveforms are present on virtual device memory
         for waveform_tuple, param_dict in sequence_parameter_list:
@@ -382,26 +416,44 @@ class PulserDummy(PulserInterface):
         return len(sequence_parameter_list)
 
     def get_waveform_names(self):
-        """ Retrieve the names of all uploaded waveforms on the device.
-
-        @return list: List of all uploaded waveform name strings in the device workspace.
+        """
+        Retrieve the names of all uploaded waveforms on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded waveform name strings in the device workspace.
         """
         return list(self.waveform_set)
 
     def get_sequence_names(self):
-        """ Retrieve the names of all uploaded sequence on the device.
-
-        @return list: List of all uploaded sequence name strings in the device workspace.
+        """
+        Retrieve the names of all uploaded sequence on the device.
+        
+        
+        Returns
+        -------
+        list
+            List of all uploaded sequence name strings in the device workspace.
         """
         return list(self.sequence_dict)
 
     def delete_waveform(self, waveform_name):
-        """ Delete the waveform with name "waveform_name" from the device memory.
-
-        @param str waveform_name: The name of the waveform to be deleted
-                                  Optionally a list of waveform names can be passed.
-
-        @return list: a list of deleted waveform names.
+        """
+        Delete the waveform with name "waveform_name" from the device memory.
+        
+        Parameters
+        ----------
+        waveform_name : str
+            The name of the waveform to be deleted
+            Optionally a list of waveform names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted waveform names.
         """
         if isinstance(waveform_name, str):
             waveform_name = [waveform_name]
@@ -415,12 +467,20 @@ class PulserDummy(PulserInterface):
         return deleted_waveforms
 
     def delete_sequence(self, sequence_name):
-        """ Delete the sequence with name "sequence_name" from the device memory.
-
-        @param str sequence_name: The name of the sequence to be deleted
-                                  Optionally a list of sequence names can be passed.
-
-        @return list: a list of deleted sequence names.
+        """
+        Delete the sequence with name "sequence_name" from the device memory.
+        
+        Parameters
+        ----------
+        sequence_name : str
+            The name of the sequence to be deleted
+            Optionally a list of sequence names can be passed.
+        
+        
+        Returns
+        -------
+        list
+            a list of deleted sequence names.
         """
         if isinstance(sequence_name, str):
             sequence_name = [sequence_name]
@@ -434,27 +494,35 @@ class PulserDummy(PulserInterface):
         return deleted_sequences
 
     def load_waveform(self, load_dict):
-        """ Loads a waveform to the specified channel of the pulsing device.
-
-        @param dict|list load_dict: a dictionary with keys being one of the available channel
-                                    index and values being the name of the already written
-                                    waveform to load into the channel.
-                                    Examples:   {1: rabi_ch1, 2: rabi_ch2} or
-                                                {1: rabi_ch2, 2: rabi_ch1}
-                                    If just a list of waveform names if given, the channel
-                                    association will be invoked from the channel
-                                    suffix '_ch1', '_ch2' etc.
-                                        {1: rabi_ch1, 2: rabi_ch2}
-                                    or
-                                        {1: rabi_ch2, 2: rabi_ch1}
-                                    If just a list of waveform names if given,
-                                    the channel association will be invoked from
-                                    the channel suffix '_ch1', '_ch2' etc. A
-                                    possible configuration can be e.g.
-                                        ['rabi_ch1', 'rabi_ch2', 'rabi_ch3']
-        @return dict: Dictionary containing the actually loaded waveforms per
-                      channel.
-
+        """
+        Loads a waveform to the specified channel of the pulsing device.
+        
+        Parameters
+        ----------
+        load_dict : dict|list
+            a dictionary with keys being one of the available channel
+            index and values being the name of the already written
+            waveform to load into the channel.
+            Examples:   {1: rabi_ch1, 2: rabi_ch2} or
+                        {1: rabi_ch2, 2: rabi_ch1}
+            If just a list of waveform names if given, the channel
+            association will be invoked from the channel
+            suffix '_ch1', '_ch2' etc.
+                {1: rabi_ch1, 2: rabi_ch2}
+            or
+                {1: rabi_ch2, 2: rabi_ch1}
+            If just a list of waveform names if given,
+            the channel association will be invoked from
+            the channel suffix '_ch1', '_ch2' etc. A
+            possible configuration can be e.g.
+                ['rabi_ch1', 'rabi_ch2', 'rabi_ch3']
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per
+            channel.
+        
         For devices that have a workspace (i.e. AWG) this will load the waveform
         from the device workspace into the channel. For a device without mass
         memory, this will make the waveform/pattern that has been previously
@@ -500,21 +568,29 @@ class PulserDummy(PulserInterface):
         return self.get_loaded_assets()[0]
 
     def load_sequence(self, sequence_name):
-        """ Loads a sequence to the channels of the device in order to be ready for playback.
+        """
+        Loads a sequence to the channels of the device in order to be ready for playback.
         For devices that have a workspace (i.e. AWG) this will load the sequence from the device
         workspace into the channels.
         For a device without mass memory this will make the waveform/pattern that has been
         previously written with self.write_waveform ready to play.
-
-        @param dict|list sequence_name: a dictionary with keys being one of the available channel
-                                        index and values being the name of the already written
-                                        waveform to load into the channel.
-                                        Examples:   {1: rabi_ch1, 2: rabi_ch2} or
-                                                    {1: rabi_ch2, 2: rabi_ch1}
-                                        If just a list of waveform names if given, the channel
-                                        association will be invoked from the channel
-                                        suffix '_ch1', '_ch2' etc.
-        @return dict: Dictionary containing the actually loaded waveforms per channel.
+        
+        Parameters
+        ----------
+        sequence_name : dict|list
+            a dictionary with keys being one of the available channel
+            index and values being the name of the already written
+            waveform to load into the channel.
+            Examples:   {1: rabi_ch1, 2: rabi_ch2} or
+                        {1: rabi_ch2, 2: rabi_ch1}
+            If just a list of waveform names if given, the channel
+            association will be invoked from the channel
+            suffix '_ch1', '_ch2' etc.
+        
+        Returns
+        -------
+        dict
+            Dictionary containing the actually loaded waveforms per channel.
         """
         if sequence_name not in self.sequence_dict:
             self.log.error('Sequence loading failed. No sequence with name "{0}" found on device '
@@ -557,10 +633,14 @@ class PulserDummy(PulserInterface):
         In case of loaded waveforms the dictionary values will be the waveform names.
         In case of a loaded sequence the values will be the sequence name appended by a suffix
         representing the track loaded to the respective channel (i.e. '<sequence_name>_1').
-
-        @return (dict, str): Dictionary with keys being the channel number and values being the
-                             respective asset loaded into the channel,
-                             string describing the asset type ('waveform' or 'sequence')
+        
+        
+        Returns
+        -------
+        (dict, str)
+            Dictionary with keys being the channel number and values being the
+            respective asset loaded into the channel,
+            string describing the asset type ('waveform' or 'sequence')
         """
         # Determine if it's a waveform or a sequence
         asset_type = None
@@ -580,10 +660,15 @@ class PulserDummy(PulserInterface):
         return self.current_loaded_assets, asset_type
 
     def clear_all(self):
-        """ Clears all loaded waveform from the pulse generators RAM.
-
-        @return int: error code (0:OK, -1:error)
-
+        """
+        Clears all loaded waveform from the pulse generators RAM.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
+        
         Unused for digital pulse generators without storage capability
         (PulseBlaster, FPGA).
         """
@@ -593,12 +678,17 @@ class PulserDummy(PulserInterface):
         return 0
 
     def get_status(self):
-        """ Retrieves the status of the pulsing hardware
-
-        @return (int, dict): inter value of the current status with the
-                             corresponding dictionary containing status
-                             description for all the possible status variables
-                             of the pulse generator hardware
+        """
+        Retrieves the status of the pulsing hardware
+        
+        
+        Returns
+        -------
+        (int, dict)
+            inter value of the current status with the
+            corresponding dictionary containing status
+            description for all the possible status variables
+            of the pulse generator hardware
         """
         status_dic = {-1: 'Failed Request or Communication', 0: 'Device has stopped, but can receive commands.',
                       1: 'Device is active and running.'}
@@ -607,10 +697,15 @@ class PulserDummy(PulserInterface):
         return self.current_status, status_dic
 
     def get_sample_rate(self):
-        """ Get the sample rate of the pulse generator hardware
-
-        @return float: The current sample rate of the device (in Hz)
-
+        """
+        Get the sample rate of the pulse generator hardware
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate of the device (in Hz)
+        
         Do not return a saved sample rate in a class variable, but instead
         retrieve the current sample rate directly from the device.
         """
@@ -618,12 +713,20 @@ class PulserDummy(PulserInterface):
         return self.sample_rate
 
     def set_sample_rate(self, sample_rate):
-        """ Set the sample rate of the pulse generator hardware
-
-        @param float sample_rate: The sampling rate to be set (in Hz)
-
-        @return float: the sample rate returned from the device.
-
+        """
+        Set the sample rate of the pulse generator hardware
+        
+        Parameters
+        ----------
+        sample_rate : float
+            The sampling rate to be set (in Hz)
+        
+        
+        Returns
+        -------
+        float
+            the sample rate returned from the device.
+        
         Note: After setting the sampling rate of the device, retrieve it again
               for obtaining the actual set value and use that information for
               further processing.
@@ -638,19 +741,28 @@ class PulserDummy(PulserInterface):
         return self.sample_rate
 
     def get_analog_level(self, amplitude=None, offset=None):
-        """ Retrieve the analog amplitude and offset of the provided channels.
-
-        @param list amplitude: optional, if a specific amplitude value (in Volt
-                               peak to peak, i.e. the full amplitude) of a
-                               channel is desired.
-        @param list offset: optional, if a specific high value (in Volt) of a
-                            channel is desired.
-
-        @return dict: with keys being the generic string channel names and items
-                      being the values for those channels. Amplitude is always
-                      denoted in Volt-peak-to-peak and Offset in (absolute)
-                      Voltage.
-
+        """
+        Retrieve the analog amplitude and offset of the provided channels.
+        
+        Parameters
+        ----------
+        amplitude : list
+            optional, if a specific amplitude value (in Volt
+            peak to peak, i.e. the full amplitude) of a
+            channel is desired.
+        offset : list
+            optional, if a specific high value (in Volt) of a
+            channel is desired.
+        
+        
+        Returns
+        -------
+        dict
+            with keys being the generic string channel names and items
+            being the values for those channels. Amplitude is always
+            denoted in Volt-peak-to-peak and Offset in (absolute)
+            Voltage.
+        
         Note: Do not return a saved amplitude and/or offset value but instead
               retrieve the current amplitude and/or offset directly from the
               device.
@@ -699,18 +811,27 @@ class PulserDummy(PulserInterface):
         return ampl, off
 
     def set_analog_level(self, amplitude=None, offset=None):
-        """ Set amplitude and/or offset value of the provided analog channel.
-
-        @param dict amplitude: dictionary, with key being the channel and items
-                               being the amplitude values (in Volt peak to peak,
-                               i.e. the full amplitude) for the desired channel.
-        @param dict offset: dictionary, with key being the channel and items
-                            being the offset values (in absolute volt) for the
-                            desired channel.
-
-        @return (dict, dict): tuple of two dicts with the actual set values for
-                              amplitude and offset.
-
+        """
+        Set amplitude and/or offset value of the provided analog channel.
+        
+        Parameters
+        ----------
+        amplitude : dict
+            dictionary, with key being the channel and items
+            being the amplitude values (in Volt peak to peak,
+            i.e. the full amplitude) for the desired channel.
+        offset : dict
+            dictionary, with key being the channel and items
+            being the offset values (in absolute volt) for the
+            desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts with the actual set values for
+            amplitude and offset.
+        
         If nothing is passed then the command will return two empty dicts.
 
         Note: After setting the analog and/or offset of the device, retrieve
@@ -741,18 +862,27 @@ class PulserDummy(PulserInterface):
         return self.get_analog_level(amplitude=list(amplitude), offset=list(offset))
 
     def get_digital_level(self, low=None, high=None):
-        """ Retrieve the digital low and high level of the provided channels.
-
-        @param list low: optional, if a specific low value (in Volt) of a
-                         channel is desired.
-        @param list high: optional, if a specific high value (in Volt) of a
-                          channel is desired.
-
-        @return: (dict, dict): tuple of two dicts, with keys being the channel
-                               number and items being the values for those
-                               channels. Both low and high value of a channel is
-                               denoted in (absolute) Voltage.
-
+        """
+        Retrieve the digital low and high level of the provided channels.
+        
+        Parameters
+        ----------
+        low : list
+            optional, if a specific low value (in Volt) of a
+            channel is desired.
+        high : list
+            optional, if a specific high value (in Volt) of a
+            channel is desired.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts, with keys being the channel
+            number and items being the values for those
+            channels. Both low and high value of a channel is
+            denoted in (absolute) Voltage.
+        
         Note: Do not return a saved low and/or high value but instead retrieve
               the current low and/or high value directly from the device.
 
@@ -794,17 +924,26 @@ class PulserDummy(PulserInterface):
         return low_val, high_val
 
     def set_digital_level(self, low=None, high=None):
-        """ Set low and/or high value of the provided digital channel.
-
-        @param dict low: dictionary, with key being the channel and items being
-                         the low values (in volt) for the desired channel.
-        @param dict high: dictionary, with key being the channel and items being
-                         the high values (in volt) for the desired channel.
-
-        @return (dict, dict): tuple of two dicts where first dict denotes the
-                              current low value and the second dict the high
-                              value.
-
+        """
+        Set low and/or high value of the provided digital channel.
+        
+        Parameters
+        ----------
+        low : dict
+            dictionary, with key being the channel and items being
+            the low values (in volt) for the desired channel.
+        high : dict
+            dictionary, with key being the channel and items being
+            the high values (in volt) for the desired channel.
+        
+        
+        Returns
+        -------
+        (dict, dict)
+            tuple of two dicts where first dict denotes the
+            current low value and the second dict the high
+            value.
+        
         If nothing is passed then the command will return two empty dicts.
 
         Note: After setting the high and/or low values of the device, retrieve
@@ -834,14 +973,22 @@ class PulserDummy(PulserInterface):
         return self.get_digital_level(low=list(low), high=list(high))
 
     def get_active_channels(self, ch=None):
-        """ Get the active channels of the pulse generator hardware.
-
-        @param list ch: optional, if specific analog or digital channels are
-                        needed to be asked without obtaining all the channels.
-
-        @return dict:  where keys denoting the channel number and items boolean
-                       expressions whether channel are active or not.
-
+        """
+        Get the active channels of the pulse generator hardware.
+        
+        Parameters
+        ----------
+        ch : list
+            optional, if specific analog or digital channels are
+            needed to be asked without obtaining all the channels.
+        
+        
+        Returns
+        -------
+        dict
+            where keys denoting the channel number and items boolean
+            expressions whether channel are active or not.
+        
         Example for an possible input (order is not important):
             ch = ['a_ch2', 'd_ch2', 'a_ch1', 'd_ch5', 'd_ch1']
         then the output might look like
@@ -875,13 +1022,20 @@ class PulserDummy(PulserInterface):
         activation_config must still be valid according to the constraints.
         If the resulting set of active channels can not be found in the available
         activation_configs, the channel states must remain unchanged.
-
-        @param dict ch: dictionary with keys being the analog or digital string generic names for
-                        the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
-                        True: Activate channel, False: Deactivate channel
-
-        @return dict: with the actual set values for ALL active analog and digital channels
-
+        
+        Parameters
+        ----------
+        ch : dict
+            dictionary with keys being the analog or digital string generic names for
+            the channels (i.e. 'd_ch1', 'a_ch2') with items being a boolean value.
+            True: Activate channel, False: Deactivate channel
+        
+        
+        Returns
+        -------
+        dict
+            with the actual set values for ALL active analog and digital channels
+        
         If nothing is passed then the command will simply return the unchanged current state.
 
         Note: After setting the active channels of the device, use the returned dict for further
@@ -909,23 +1063,36 @@ class PulserDummy(PulserInterface):
         return self.get_active_channels(ch=list(ch))
 
     def get_interleave(self):
-        """ Check whether Interleave is ON or OFF in AWG.
-
-        @return bool: True: ON, False: OFF
-
+        """
+        Check whether Interleave is ON or OFF in AWG.
+        
+        
+        Returns
+        -------
+        bool
+            True: ON, False: OFF
+        
         Unused for pulse generator hardware other than an AWG.
         """
 
         return self.interleave
 
     def set_interleave(self, state=False):
-        """ Turns the interleave of an AWG on or off.
-
-        @param bool state: The state the interleave should be set to
-                           (True: ON, False: OFF)
-
-        @return bool: actual interleave status (True: ON, False: OFF)
-
+        """
+        Turns the interleave of an AWG on or off.
+        
+        Parameters
+        ----------
+        state : bool
+            The state the interleave should be set to
+            (True: ON, False: OFF)
+        
+        
+        Returns
+        -------
+        bool
+            actual interleave status (True: ON, False: OFF)
+        
         Note: After setting the interleave of the device, retrieve the
               interleave again and use that information for further processing.
 
@@ -936,11 +1103,19 @@ class PulserDummy(PulserInterface):
         return self.get_interleave()
 
     def write(self, command):
-        """ Sends a command string to the device.
-
-        @param string command: string containing the command
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Sends a command string to the device.
+        
+        Parameters
+        ----------
+        command : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
 
         self.log.info('It is so nice that you talk to me and told me "{0}"; '
@@ -948,11 +1123,19 @@ class PulserDummy(PulserInterface):
         return 0
 
     def query(self, question):
-        """ Asks the device a 'question' and receive and return an answer from it.
-
-        @param string question: string containing the command
-
-        @return string: the answer of the device to the 'question' in a string
+        """
+        Asks the device a 'question' and receive and return an answer from it.
+        
+        Parameters
+        ----------
+        question : string
+            string containing the command
+        
+        
+        Returns
+        -------
+        string
+            the answer of the device to the 'question' in a string
         """
 
         self.log.info('Dude, I\'m a dummy! Your question \'{0}\' is way too '
@@ -960,9 +1143,14 @@ class PulserDummy(PulserInterface):
         return 'I am a dummy!'
 
     def reset(self):
-        """ Reset the device.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Reset the device.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self.__init__()
         self.connected = True
