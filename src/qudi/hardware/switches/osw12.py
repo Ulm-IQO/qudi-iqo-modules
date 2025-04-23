@@ -94,41 +94,60 @@ class OSW12(SwitchInterface):
 
     @property
     def name(self):
-        """ Name of the hardware as string.
-
-        @return str: The name of the hardware
+        """
+        Name of the hardware as string.
+        
+        
+        Returns
+        -------
+        str
+            The name of the hardware
         """
         return self._hardware_name
 
     @property
     def available_states(self):
-        """ Names of the states as a dict of tuples.
-
+        """
+        Names of the states as a dict of tuples.
+        
         The keys contain the names for each of the switches. The values are tuples of strings
         representing the ordered names of available states for each switch.
-
-        @return dict: Available states per switch in the form {"switch": ("state1", "state2")}
+        
+        
+        Returns
+        -------
+        dict
+            Available states per switch in the form {"switch": ("state1", "state2")}
         """
         return self._switches.copy()
 
     @property
     def states(self):
-        """ The current states the hardware is in as state dictionary with switch names as keys and
+        """
+        The current states the hardware is in as state dictionary with switch names as keys and
         state names as values.
-
-        @return dict: All the current states of the switches in the form {"switch": "state"}
+        
+        
+        Returns
+        -------
+        dict
+            All the current states of the switches in the form {"switch": "state"}
         """
         with self.lock:
             return {switch: self.get_state(switch) for switch in self.available_states}
 
     @states.setter
     def states(self, state_dict):
-        """ The setter for the states of the hardware.
-
+        """
+        The setter for the states of the hardware.
+        
         The states of the system can be set by specifying a dict that has the switch names as keys
         and the names of the states as values.
-
-        @param dict state_dict: state dict of the form {"switch": "state"}
+        
+        Parameters
+        ----------
+        state_dict : dict
+            state dict of the form {"switch": "state"}
         """
         assert isinstance(state_dict, dict), 'Parameter "state_dict" must be dict type'
         with self.lock:
@@ -136,10 +155,18 @@ class OSW12(SwitchInterface):
                 self.set_state(switch, state)
 
     def get_state(self, switch):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to query the state for
-        @return str: The current switch state
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to query the state for
+        
+        Returns
+        -------
+        str
+            The current switch state
         """
         avail_states = self.available_states
         assert switch in avail_states, 'Invalid switch name "{0}"'.format(switch)
@@ -158,10 +185,15 @@ class OSW12(SwitchInterface):
             raise err
 
     def set_state(self, switch, state):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to change
-        @param str state: name of the state to set
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to change
+        state : str
+            name of the state to set
         """
         avail_states = self.available_states
         assert switch in avail_states, f'Invalid switch name: "{switch}"'

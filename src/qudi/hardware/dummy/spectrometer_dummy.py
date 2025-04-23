@@ -54,9 +54,14 @@ class SpectrometerDummy(SpectrometerInterface):
         pass
 
     def record_spectrum(self):
-        """ Record a dummy spectrum.
-
-            @return ndarray: 1024-value ndarray containing wavelength and intensity of simulated spectrum
+        """
+        Record a dummy spectrum.
+        
+        
+        Returns
+        -------
+        ndarray
+            1024-value ndarray containing wavelength and intensity of simulated spectrum
         """
         length = 1024
 

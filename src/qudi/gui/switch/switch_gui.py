@@ -224,10 +224,18 @@ class SwitchGui(GuiBase):
 
     @staticmethod
     def _get_switch_label(switch):
-        """ Helper function to create a QLabel for a single switch.
-
-        @param str switch: The name of the switch to create the label for
-        @return QWidget: QLabel with switch name
+        """
+        Helper function to create a QLabel for a single switch.
+        
+        Parameters
+        ----------
+        switch : str
+            The name of the switch to create the label for
+        
+        Returns
+        -------
+        QWidget
+            QLabel with switch name
         """
         label = QtWidgets.QLabel(f'{switch}:')
         font = label.font()
@@ -255,19 +263,30 @@ class SwitchGui(GuiBase):
 
     @QtCore.Slot(dict)
     def _switches_updated(self, states):
-        """ Helper function to update the GUI on a change of the states in the logic.
+        """
+        Helper function to update the GUI on a change of the states in the logic.
         This function is connected to the signal coming from the switchlogic signaling a change in states.
-        @param dict states: The state dict of the form {"switch": "state"}
-        @return: None
+        Parameters
+        ----------
+        states : dict
+            The state dict of the form {"switch": "state"}
+        
+        Returns
+        -------
+        None
         """
         for switch, state in states.items():
             self._widgets[switch][1].set_state(state)
 
     @QtCore.Slot(bool)
     def _watchdog_updated(self, enabled):
-        """ Update the menu action accordingly if the watchdog has been (de-)activated.
-
-        @param bool enabled: Watchdog active (True) or inactive (False)
+        """
+        Update the menu action accordingly if the watchdog has been (de-)activated.
+        
+        Parameters
+        ----------
+        enabled : bool
+            Watchdog active (True) or inactive (False)
         """
         if enabled != self._mw.action_periodic_state_check.isChecked():
             self._mw.action_periodic_state_check.blockSignals(True)

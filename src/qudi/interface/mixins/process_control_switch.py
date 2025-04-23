@@ -44,18 +44,31 @@ class ProcessControlSwitchMixin(SwitchInterface):
         return {ch: ('disabled', 'enabled') for ch in self.constraints.all_channels}
 
     def get_state(self, switch: str) -> str:
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to query the state for
-        @return str: The current switch state
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to query the state for
+        
+        Returns
+        -------
+        str
+            The current switch state
         """
         return 'enabled' if self.get_activity_state(switch) else 'disabled'
 
     def set_state(self, switch: str, state: str) -> None:
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to change
-        @param str state: name of the state to set
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to change
+        state : str
+            name of the state to set
         """
         if state == 'enabled':
             state = True

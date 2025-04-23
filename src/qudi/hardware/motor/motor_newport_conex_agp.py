@@ -102,10 +102,17 @@ class MotorNewportConexAGP(MotorInterface):
         return 0
 
     def query(self, command):
-        """ Get a variable from the controller
-            @param command: two-letter command for controller
-
-            @return str: answer from controller
+        """
+        Get a variable from the controller
+        Parameters
+        ----------
+        command : 
+            two-letter command for controller
+        
+        Returns
+        -------
+        str
+            answer from controller
         """
         cmd = '{0:02d}{1:s}?\r\n'.format(self._controller_address, command).encode('ascii')
         self._serial_connection.write(cmd)
@@ -116,34 +123,48 @@ class MotorNewportConexAGP(MotorInterface):
         return ret[4:].decode('ascii').rstrip()
 
     def write_value(self, command, value):
-        """ Write a value to the controller
-
-        @param command: two-letter command/variable for controller
-        @param value: value to write to controller
+        """
+        Write a value to the controller
+        
+        Parameters
+        ----------
+        command : 
+            two-letter command/variable for controller
+        value : 
+            value to write to controller
         """
         cmd = '{0:02d}{1:s}{2}\r\n'.format(self._controller_address, command, value).encode('ascii')
         self._serial_connection.write(cmd)
 
     def write(self, command):
-        """ Write a single command
-
-        @param command: two-letter command for controller
+        """
+        Write a single command
+        
+        Parameters
+        ----------
+        command : 
+            two-letter command for controller
         """
         cmd = '{0:02d}{1:s}\r\n'.format(self._controller_address, command).encode('ascii')
         self._serial_connection.write(cmd)
 
     def read(self):
-        """ Read an answer from the controller
-
-        @return str:
+        """
+        Read an answer from the controller
+        
+        
+        Returns
+        -------
+        str
         """
         ret = self._serial_connection.read_until(b'\r\n')
         return ret[4:].decode('ascii').rstrip()
 
     def read_error(self):
         """
-
-        @return bool, str:
+        Returns
+        -------
+        bool, str
         """
         err = self.query('TE')
         if len(err) > 0 and err[0] != '@':
@@ -154,10 +175,15 @@ class MotorNewportConexAGP(MotorInterface):
         return False, ''
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
-
-        @return dict: dict with constraints for the sequence generation and GUI
-
+        """
+        Retrieve the hardware constrains from the motor device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with constraints for the sequence generation and GUI
+        
         Provides all the constraints for the xyz stage  and rot stage (like total
         movement, velocity, ...)
         Each constraint is a tuple of the form
@@ -186,11 +212,19 @@ class MotorNewportConexAGP(MotorInterface):
         return constraints
 
     def move_rel(self, param_dict):
-        """Moves stage by a given angle (relative movement)
-
-        @param dict param_dict: Dictionary with axis name and relative movement in units
-
-        @return dict: Dictionary with axis name and final position in units
+        """
+        Moves stage by a given angle (relative movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            Dictionary with axis name and relative movement in units
+        
+        
+        Returns
+        -------
+        dict
+            Dictionary with axis name and final position in units
         """
         if self._axis_label in param_dict:
             rel = param_dict[self._axis_label]
@@ -202,11 +236,19 @@ class MotorNewportConexAGP(MotorInterface):
         return {}
 
     def move_abs(self, param_dict):
-        """Moves stage to an absolute angle (absolute movement)
-
-        @param dict param_dict: Dictionary with axis name and target position in deg
-
-        @return dict velocity: Dictionary with axis name and final position in deg
+        """
+        Moves stage to an absolute angle (absolute movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            Dictionary with axis name and target position in deg
+        
+        
+        Returns
+        -------
+        dict velocity
+            Dictionary with axis name and final position in deg
         """
         if self._axis_label in param_dict:
             rel = param_dict[self._axis_label]
@@ -218,9 +260,14 @@ class MotorNewportConexAGP(MotorInterface):
         return {}
 
     def abort(self):
-        """Stops movement of the stage
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Stops movement of the stage
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self.write('ST')
         if self.read_error()[0]:
@@ -228,11 +275,19 @@ class MotorNewportConexAGP(MotorInterface):
         return 0
 
     def get_pos(self, param_list=None):
-        """ Gets current position of the rotation stage
-
-        @param list param_list: List with axis name
-
-        @return dict pos: Dictionary with axis name and pos in deg
+        """
+        Gets current position of the rotation stage
+        
+        Parameters
+        ----------
+        param_list : list
+            List with axis name
+        
+        
+        Returns
+        -------
+        dict pos
+            Dictionary with axis name and pos in deg
         """
         if param_list is None:
             param_list = [self._axis_label]
@@ -245,15 +300,22 @@ class MotorNewportConexAGP(MotorInterface):
         return {}
 
     def get_status(self, param_list=None):
-        """ Get the status of the position
-
-        @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                status is asked.
-
-        @return dict status:
+        """
+        Get the status of the position
+        
+        Parameters
+        ----------
+        param_list : list
+            optional, if a specific status of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            status is asked.
+        
+        
+        Returns
+        -------
+        dict status
         """
         self.read_error()
         st = self.query('TS')
@@ -261,11 +323,19 @@ class MotorNewportConexAGP(MotorInterface):
         return {self._axis_label: err}
 
     def calibrate(self, param_list=None):
-        """ Calibrates the rotation motor
-
-        @param list param_list: Dictionary with axis name
-
-        @return dict pos: Dictionary with axis name and pos in deg
+        """
+        Calibrates the rotation motor
+        
+        Parameters
+        ----------
+        param_list : list
+            Dictionary with axis name
+        
+        
+        Returns
+        -------
+        dict pos
+            Dictionary with axis name and pos in deg
         """
         if param_list is None:
             param_list = [self._axis_label]
@@ -279,11 +349,19 @@ class MotorNewportConexAGP(MotorInterface):
         return {}
 
     def get_velocity(self, param_list=None):
-        """ Asks current value for velocity.
-
-        @param list param_list: Dictionary with axis name
-
-        @return dict velocity: Dictionary with axis name and velocity in deg/s
+        """
+        Asks current value for velocity.
+        
+        Parameters
+        ----------
+        param_list : list
+            Dictionary with axis name
+        
+        
+        Returns
+        -------
+        dict velocity
+            Dictionary with axis name and velocity in deg/s
         """
         if param_list is None:
             param_list = [self._axis_label]
@@ -294,11 +372,19 @@ class MotorNewportConexAGP(MotorInterface):
         return {}
 
     def set_velocity(self, param_dict):
-        """ Write new value for velocity.
-
-        @param dict param_dict: Dictionary with axis name and target velocity in deg/s
-
-        @return dict velocity: Dictionary with axis name and target velocity in deg/s
+        """
+        Write new value for velocity.
+        
+        Parameters
+        ----------
+        param_dict : dict
+            Dictionary with axis name and target velocity in deg/s
+        
+        
+        Returns
+        -------
+        dict velocity
+            Dictionary with axis name and target velocity in deg/s
         """
         if self._axis_label in param_dict:
             return {self._axis_label: self._velocity}

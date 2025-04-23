@@ -240,7 +240,9 @@ class FastCounterFPGAQO(FastCounterInterface):
         """
         Reads the 32bit status register from the FPGA Timetagger via USB.
 
-        @return: 32bit status register
+        Returns
+        -------
+            32bit status register
         """
         self._fpga.UpdateWireOuts()
         status_register = self._fpga.GetWireOutValue(0x20)
@@ -248,8 +250,7 @@ class FastCounterFPGAQO(FastCounterInterface):
 
     def _get_status_messages(self):
         """
-
-        @return:
+        
         """
         status_register = self._read_status_register()
         status_messages = []
@@ -260,8 +261,7 @@ class FastCounterFPGAQO(FastCounterInterface):
 
     def _get_error_messages(self):
         """
-
-        @return:
+        
         """
         status_register = self._read_status_register()
         error_messages = []
@@ -306,12 +306,17 @@ class FastCounterFPGAQO(FastCounterInterface):
         return
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the Fast counting device.
-
-
-        @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constaints.
-
+        """
+        Retrieve the hardware constrains from the Fast counting device.
+        
+        
+        
+        Returns
+        -------
+        dict
+            dict with keys being the constraint names as string and
+            items are the definition for the constaints.
+        
          The keys of the returned dictionary are the str name for the constraints
         (which are set in this method).
 
@@ -344,19 +349,28 @@ class FastCounterFPGAQO(FastCounterInterface):
         return {'hardware_binwidth_list': [1/950e6]}
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=0):
-        """ Configuration of the fast counter.
-
-        @param float bin_width_s: Length of a single time bin in the time trace
-                                  histogram in seconds.
-        @param float record_length_s: Total length of the timetrace/each single
-                                      gate in seconds.
-        @param int number_of_gates: optional, number of gates in the pulse
-                                    sequence. Ignore for not gated counter.
-
-        @return tuple(binwidth_s, gate_length_s, number_of_gates):
-                    binwidth_s: float the actual set binwidth in seconds
-                    gate_length_s: the actual set gate length in seconds
-                    number_of_gates: the number of gated, which are accepted
+        """
+        Configuration of the fast counter.
+        
+        Parameters
+        ----------
+        bin_width_s : float
+            Length of a single time bin in the time trace
+            histogram in seconds.
+        record_length_s : float
+            Total length of the timetrace/each single
+            gate in seconds.
+        number_of_gates : int
+            optional, number of gates in the pulse
+            sequence. Ignore for not gated counter.
+        
+        
+        Returns
+        -------
+        tuple(binwidth_s, gate_length_s, number_of_gates)
+            binwidth_s: float the actual set binwidth in seconds
+            gate_length_s: the actual set gate length in seconds
+            number_of_gates: the number of gated, which are accepted
         """
         # Do nothing if fast counter is running
         if self._statusvar >= 2:
@@ -402,12 +416,17 @@ class FastCounterFPGAQO(FastCounterInterface):
             return self._statusvar
 
     def get_data_trace(self):
-        """ Polls the current timetrace data from the fast counter.
-
-        @return numpy.array: 2 dimensional numpy ndarray. This counter is gated.
-                             The return array has the following shape:
-                             returnarray[gate_index, timebin_index]
-
+        """
+        Polls the current timetrace data from the fast counter.
+        
+        
+        Returns
+        -------
+        numpy.array
+            2 dimensional numpy ndarray. This counter is gated.
+            The return array has the following shape:
+            returnarray[gate_index, timebin_index]
+        
         The binning, specified by calling configure() in forehand, must be taken
         care of in this hardware class. A possible overflow of the histogram
         bins must be caught here and taken care of.
@@ -549,17 +568,27 @@ class FastCounterFPGAQO(FastCounterInterface):
             return self._statusvar
 
     def is_gated(self):
-        """ Check the gated counting possibility.
-
-        @return bool: Boolean value indicates if the fast counter is a gated
-                      counter (TRUE) or not (FALSE).
+        """
+        Check the gated counting possibility.
+        
+        
+        Returns
+        -------
+        bool
+            Boolean value indicates if the fast counter is a gated
+            counter (TRUE) or not (FALSE).
         """
         return True
 
     def get_binwidth(self):
-        """ Returns the width of a single timebin in the timetrace in seconds.
-
-        @return float: current length of a single bin in seconds (seconds/bin)
+        """
+        Returns the width of a single timebin in the timetrace in seconds.
+        
+        
+        Returns
+        -------
+        float
+            current length of a single bin in seconds (seconds/bin)
         """
         width_in_seconds = self._binwidth / self.__internal_clock_hz
         return width_in_seconds

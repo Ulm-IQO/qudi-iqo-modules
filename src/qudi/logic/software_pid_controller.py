@@ -193,72 +193,117 @@ class SoftPIDController(PIDControllerInterface):
         self.enable = False
 
     def get_kp(self):
-        """ Return the proportional constant.
-
-            @return float: proportional constant of PID controller
+        """
+        Return the proportional constant.
+        
+        
+        Returns
+        -------
+        float
+            proportional constant of PID controller
         """
         return self.kP
 
     def set_kp(self, kp):
-        """ Set the proportional constant of the PID controller.
-
-            @param float kp: proportional constant of PID controller
+        """
+        Set the proportional constant of the PID controller.
+        
+        Parameters
+        ----------
+        kp : float
+            proportional constant of PID controller
         """
         self.kP = kp
 
     def get_ki(self):
-        """ Get the integration constant of the PID controller
-
-            @return float: integration constant of the PID controller
+        """
+        Get the integration constant of the PID controller
+        
+        
+        Returns
+        -------
+        float
+            integration constant of the PID controller
         """
         return self.kI
 
     def set_ki(self, ki):
-        """ Set the integration constant of the PID controller.
-
-            @param float ki: integration constant of the PID controller
+        """
+        Set the integration constant of the PID controller.
+        
+        Parameters
+        ----------
+        ki : float
+            integration constant of the PID controller
         """
         self.kI = ki
 
     def get_kd(self):
-        """ Get the derivative constant of the PID controller
-
-            @return float: the derivative constant of the PID controller
+        """
+        Get the derivative constant of the PID controller
+        
+        
+        Returns
+        -------
+        float
+            the derivative constant of the PID controller
         """
         return self.kD
 
     def set_kd(self, kd):
-        """ Set the derivative constant of the PID controller
-
-            @param float kd: the derivative constant of the PID controller
+        """
+        Set the derivative constant of the PID controller
+        
+        Parameters
+        ----------
+        kd : float
+            the derivative constant of the PID controller
         """
         self.kD = kd
 
     def get_setpoint(self):
-        """ Get the current setpoint of the PID controller.
-
-            @return float: current set point of the PID controller
+        """
+        Get the current setpoint of the PID controller.
+        
+        
+        Returns
+        -------
+        float
+            current set point of the PID controller
         """
         return self.setpoint
 
     def set_setpoint(self, setpoint):
-        """ Set the current setpoint of the PID controller.
-
-            @param float setpoint: new set point of the PID controller
+        """
+        Set the current setpoint of the PID controller.
+        
+        Parameters
+        ----------
+        setpoint : float
+            new set point of the PID controller
         """
         self.setpoint = setpoint
 
     def get_manual_value(self):
-        """ Return the control value for manual mode.
-
-            @return float: control value for manual mode
+        """
+        Return the control value for manual mode.
+        
+        
+        Returns
+        -------
+        float
+            control value for manual mode
         """
         return self.manual_value
 
     def set_manual_value(self, manual_value):
-        """ Set the control value for manual mode.
-
-            @param float manual_value: control value for manual mode of controller
+        """
+        Set the control value for manual mode.
+        
+        Parameters
+        ----------
+        manual_value : float
+            control value for manual mode of controller
         """
         self.manual_value = manual_value
         limits = self.get_control_limits()
@@ -268,16 +313,25 @@ class SoftPIDController(PIDControllerInterface):
             self.manual_value = limits[0]
 
     def get_enabled(self):
-        """ See if the PID controller is controlling a process.
-
-            @return bool: whether the PID controller is preparing to or controlling a process
+        """
+        See if the PID controller is controlling a process.
+        
+        
+        Returns
+        -------
+        bool
+            whether the PID controller is preparing to or controlling a process
         """
         return self.enable or self.countdown >= 0
 
     def set_enabled(self, enabled):
-        """ Set the state of the PID controller.
-
-            @param bool enabled: desired state of PID controller
+        """
+        Set the state of the PID controller.
+        
+        Parameters
+        ----------
+        enabled : bool
+            desired state of PID controller
         """
         if enabled and not self.enable and self.countdown == -1:
             self._start_loop()
@@ -285,27 +339,41 @@ class SoftPIDController(PIDControllerInterface):
             self._stop_loop()
 
     def get_control_limits(self):
-        """ Get the minimum and maximum value of the control actuator.
-
-            @return list(float): (minimum, maximum) values of the control actuator
+        """
+        Get the minimum and maximum value of the control actuator.
+        
+        
+        Returns
+        -------
+        list(float)
+            (minimum, maximum) values of the control actuator
         """
         constraints = self._control.constraints
         limits = constraints.channel_limits[self.setpoint_channel]
         return limits
 
     def set_control_limits(self, limits):
-        """ Set the minimum and maximum value of the control actuator.
-
-            @param list(float) limits: (minimum, maximum) values of the control actuator
-
+        """
+        Set the minimum and maximum value of the control actuator.
+        
+        Parameters
+        ----------
+        limits : list(float)
+            (minimum, maximum) values of the control actuator
+        
             This function does nothing, control limits are handled by the control module
         """
         pass
 
     def get_control_value(self):
-        """ Get current control output value.
-
-            @return float: control output value
+        """
+        Get current control output value.
+        
+        
+        Returns
+        -------
+        float
+            control output value
         """
         return self.cv
 
@@ -317,9 +385,14 @@ class SoftPIDController(PIDControllerInterface):
         return unit
 
     def get_process_value(self):
-        """ Get current process input value.
-
-            @return float: current process input value
+        """
+        Get current process input value.
+        
+        
+        Returns
+        -------
+        float
+            current process input value
         """
         return self.pv
 
@@ -331,10 +404,15 @@ class SoftPIDController(PIDControllerInterface):
         return unit
 
     def get_extra(self):
-        """ Extra information about the controller state.
-
-            @return dict: extra information about internal controller state
-
+        """
+        Extra information about the controller state.
+        
+        
+        Returns
+        -------
+        dict
+            extra information about internal controller state
+        
             Do not depend on the output of this function, not every field
             exists for every PID controller.
         """

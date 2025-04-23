@@ -64,9 +64,14 @@ class VoltScanGui(GuiBase):
     sigSaveMeasurement = QtCore.Signal(str, list, list)
 
     def on_deactivate(self):
-        """ Reverse steps of activation
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Reverse steps of activation
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self._mw.close()
         return 0

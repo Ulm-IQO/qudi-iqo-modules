@@ -78,11 +78,16 @@ class FastCounterFGAPiP3(FastCounterInterface):
         self.statusvar = 0
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the Fast counting device.
-
-        @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constaints.
-
+        """
+        Retrieve the hardware constrains from the Fast counting device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with keys being the constraint names as string and
+            items are the definition for the constaints.
+        
          The keys of the returned dictionary are the str name for the constraints
         (which are set in this method).
 
@@ -133,19 +138,28 @@ class FastCounterFGAPiP3(FastCounterInterface):
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=0):
 
-        """ Configuration of the fast counter.
-
-        @param float bin_width_s: Length of a single time bin in the time trace
-                                  histogram in seconds.
-        @param float record_length_s: Total length of the timetrace/each single
-                                      gate in seconds.
-        @param int number_of_gates: optional, number of gates in the pulse
-                                    sequence. Ignore for not gated counter.
-
-        @return tuple(binwidth_s, gate_length_s, number_of_gates):
-                    binwidth_s: float the actual set binwidth in seconds
-                    gate_length_s: the actual set gate length in seconds
-                    number_of_gates: the number of gated, which are accepted
+        """
+        Configuration of the fast counter.
+        
+        Parameters
+        ----------
+        bin_width_s : float
+            Length of a single time bin in the time trace
+            histogram in seconds.
+        record_length_s : float
+            Total length of the timetrace/each single
+            gate in seconds.
+        number_of_gates : int
+            optional, number of gates in the pulse
+            sequence. Ignore for not gated counter.
+        
+        
+        Returns
+        -------
+        tuple(binwidth_s, gate_length_s, number_of_gates)
+            binwidth_s: float the actual set binwidth in seconds
+            gate_length_s: the actual set gate length in seconds
+            number_of_gates: the number of gated, which are accepted
         """
         self._number_of_gates = number_of_gates
         self._bin_width = bin_width_s * 1e9
@@ -207,13 +221,18 @@ class FastCounterFGAPiP3(FastCounterInterface):
         return True
 
     def get_data_trace(self):
-        """ Polls the current timetrace data from the fast counter.
-
-        @return numpy.array: 2 dimensional array of dtype = int64. This counter
-                             is gated the the return array has the following
-                             shape:
-                                returnarray[gate_index, timebin_index]
-
+        """
+        Polls the current timetrace data from the fast counter.
+        
+        
+        Returns
+        -------
+        numpy.array
+            2 dimensional array of dtype = int64. This counter
+            is gated the the return array has the following
+            shape:
+                returnarray[gate_index, timebin_index]
+        
         The binning, specified by calling configure() in forehand, must be taken
         care of in this hardware class. A possible overflow of the histogram
         bins must be caught here and taken care of.

@@ -96,9 +96,13 @@ class PowerSupply(Base, ProcessControlInterface):
         return self._inst.query(cmd)
 
     def set_control_value(self, value):
-        """ Set control value, here heating power.
-
-            @param flaot value: control value
+        """
+        Set control value, here heating power.
+        
+        Parameters
+        ----------
+        value : flaot
+            control value
         """
         mini, maxi = self.get_control_limit()
         if mini <= value <= maxi:
@@ -107,22 +111,37 @@ class PowerSupply(Base, ProcessControlInterface):
             self.log.error('Voltage value {} out of range'.format(value))
 
     def get_control_value(self):
-        """ Get current control value, here heating power
-
-            @return float: current control value
+        """
+        Get current control value, here heating power
+        
+        
+        Returns
+        -------
+        float
+            current control value
         """
         return float(self._query("MEASure:VOLTage? CH1").split('\r')[0])
 
     def get_control_unit(self):
-        """ Get unit of control value.
-
-            @return tuple(str): short and text unit of control value
+        """
+        Get unit of control value.
+        
+        
+        Returns
+        -------
+        tuple(str)
+            short and text unit of control value
         """
         return 'V', 'Volt'
 
     def get_control_limit(self):
-        """ Get minimum and maximum of control value.
-
-            @return tuple(float, float): minimum and maximum of control value
+        """
+        Get minimum and maximum of control value.
+        
+        
+        Returns
+        -------
+        tuple(float, float)
+            minimum and maximum of control value
         """
         return 0, self._voltage_max_channel_1

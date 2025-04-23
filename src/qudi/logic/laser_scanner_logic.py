@@ -66,9 +66,13 @@ class LaserScannerLogic(LogicBase):
     sigScanStarted = QtCore.Signal()
 
     def __init__(self, **kwargs):
-        """ Create VoltageScanningLogic object with connectors.
-
-          @param dict kwargs: optional parameters
+        """
+        Create VoltageScanningLogic object with connectors.
+        
+        Parameters
+        ----------
+        kwargs : dict
+            optional parameters
         """
         self.log.warning("This module has not been tested on the new qudi core."
                          "Use with caution and contribute bug fixed back, please.")
@@ -142,11 +146,19 @@ class LaserScannerLogic(LogicBase):
 
     @QtCore.Slot(float)
     def goto_voltage(self, volts=None):
-        """Forwarding the desired output voltage to the scanning device.
-
-        @param float volts: desired voltage (volts)
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Forwarding the desired output voltage to the scanning device.
+        
+        Parameters
+        ----------
+        volts : float
+            desired voltage (volts)
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         # print(tag, x, y, z)
         # Changes the respective value
@@ -163,9 +175,14 @@ class LaserScannerLogic(LogicBase):
             return 0
 
     def _change_voltage(self, new_voltage):
-        """ Threaded method to change the hardware voltage for a goto.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Threaded method to change the hardware voltage for a goto.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         ramp_scan = self._generate_ramp(self.get_current_voltage(), new_voltage, self._goto_speed)
         self._initialise_scanner()
@@ -185,11 +202,19 @@ class LaserScannerLogic(LogicBase):
         return 0
 
     def set_clock_frequency(self, clock_frequency):
-        """Sets the frequency of the clock
-
-        @param int clock_frequency: desired frequency of the clock
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Sets the frequency of the clock
+        
+        Parameters
+        ----------
+        clock_frequency : int
+            desired frequency of the clock
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         self._clock_frequency = float(clock_frequency)
         # checks if scanner is still running
@@ -263,9 +288,14 @@ class LaserScannerLogic(LogicBase):
         return 0
 
     def start_scanning(self, v_min=None, v_max=None):
-        """Setting up the scanner device and starts the scanning procedure
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Setting up the scanner device and starts the scanning procedure
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
 
         self.current_position = self._scanning_device.get_scanner_position()
@@ -301,9 +331,14 @@ class LaserScannerLogic(LogicBase):
         return 0
 
     def stop_scanning(self):
-        """Stops the scan
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Stops the scan
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         with self.threadlock:
             if self.module_state() == 'locked':
@@ -350,13 +385,18 @@ class LaserScannerLogic(LogicBase):
         self.sigScanNextLine.emit()
 
     def _generate_ramp(self, voltage1, voltage2, speed):
-        """Generate a ramp vrom voltage1 to voltage2 that
+        """
+        Generate a ramp vrom voltage1 to voltage2 that
         satisfies the speed, step, smoothing_steps parameters.  Smoothing_steps=0 means that the
         ramp is just linear.
-
-        @param float voltage1: voltage at start of ramp.
-
-        @param float voltage2: voltage at end of ramp.
+        
+        Parameters
+        ----------
+        voltage1 : float
+            voltage at start of ramp.
+        
+        voltage2 : float
+            voltage at end of ramp.
         """
 
         # It is much easier to calculate the smoothed ramp for just one direction (upwards),
@@ -444,9 +484,14 @@ class LaserScannerLogic(LogicBase):
             raise e
 
     def kill_scanner(self):
-        """Closing the scanner device.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Closing the scanner device.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         try:
             self._scanning_device.close_scanner()
@@ -462,9 +507,14 @@ class LaserScannerLogic(LogicBase):
         return 0
 
     def save_data(self, tag=None, colorscale_range=None, percentile_range=None):
-        """ Save the counter trace data and writes it to a file.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Save the counter trace data and writes it to a file.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         if tag is None:
             tag = ''
@@ -558,15 +608,24 @@ class LaserScannerLogic(LogicBase):
         return 0
 
     def draw_figure(self, matrix_data, freq_data, count_data, fit_freq_vals, fit_count_vals, cbar_range=None, percentile_range=None):
-        """ Draw the summary figure to save with the data.
-
-        @param: list cbar_range: (optional) [color_scale_min, color_scale_max].
-                                 If not supplied then a default of data_min to data_max
-                                 will be used.
-
-        @param: list percentile_range: (optional) Percentile range of the chosen cbar_range.
-
-        @return: fig fig: a matplotlib figure object to be saved to file.
+        """
+        Draw the summary figure to save with the data.
+        
+        Parameters
+        ----------
+        cbar_range : list
+            (optional) [color_scale_min, color_scale_max].
+            If not supplied then a default of data_min to data_max
+            will be used.
+        
+        percentile_range : list
+            (optional) Percentile range of the chosen cbar_range.
+        
+        
+        Returns
+        -------
+        fig fig
+            a matplotlib figure object to be saved to file.
         """
 
         # If no colorbar range was given, take full range of data
