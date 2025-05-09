@@ -32,10 +32,12 @@ import qudi.gui.excitation_scanner.excitation_window as excitation_window
 class ScanningExcitationGui(GuiBase):
     """ The GUI class for scanning excitation control.
     Example config for copy-paste:
-        spectrometer:
-        module.Class: 'spectrometer.spectrometer_gui.ScanningExcitationGui'
+    ```
+      excitation_scanner_gui:
+        module.Class: 'excitation_scanner.excitation_gui.ScanningExcitationGui'
         connect:
-            excitation_logic: 'excitationlogic'
+          excitation_logic: excitation_scanner_logic
+    ```
     """
 
     # declare connectors
@@ -213,9 +215,13 @@ class ScanningExcitationGui(GuiBase):
         frequency = self._excitation_logic().frequency
         spectrum = self._excitation_logic().spectrum
         step_numbers = self._excitation_logic().step_number
-        all_steps = np.unique(step_numbers)
         if frequency is None or spectrum is None:
             return
+        l = min(len(frequency), len(spectrum), len(step_numbers))
+        frequency = frequency[:l]
+        spectrum = spectrum[:l]
+        step_numbers = step_numbers[:l]
+        all_steps = np.unique(step_numbers)
 
         # erase previous fit line
         if self._delete_fit:
