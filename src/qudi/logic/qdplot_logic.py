@@ -585,7 +585,7 @@ class QDPlotLogic(LogicBase):
 
         # If there is a postfix then add separating underscore
         file_label = postfix if postfix else 'qdplot'
-        file_label += f'_plot_{self._plot_data_sets.index(data_set) + 1:d}'
+        file_label += f'_plot_{plot_index + 1:d}'
 
         # Data labels
         x_label = f'{data_set.config.labels[0]} ({data_set.config.units[0]})'
