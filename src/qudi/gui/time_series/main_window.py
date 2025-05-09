@@ -120,6 +120,13 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
         self.snapshot_trace_action.setToolTip(
             'Take a snapshot of only the currently shown data trace and save it to file.'
         )
+        icon = QtGui.QIcon(os.path.join(icons_dir, 'media-playback-pause'))
+        icon.addFile(os.path.join(icons_dir, 'media-playback-start'), state=QtGui.QIcon.On)
+        self.freeze_y_axis_action = QtWidgets.QAction(icon, 'Freeze y axis', self)
+        self.freeze_y_axis_action.setCheckable(True)
+        self.freeze_y_axis_action.setToolTip(
+            'Freeze y axis range to current value.'
+        )
         icon = QtGui.QIcon(os.path.join(icons_dir, 'configure'))
         self.trace_view_selection_action = QtWidgets.QAction(icon, 'Trace view selection', self)
         self.trace_view_selection_action.setCheckable(False)
@@ -154,6 +161,7 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
         self.toolbar.addAction(self.toggle_trace_action)
         self.toolbar.addAction(self.record_trace_action)
         self.toolbar.addAction(self.snapshot_trace_action)
+        self.toolbar.addAction(self.freeze_y_axis_action)
         self.toolbar.addSeparator()
         self.toolbar.addAction(self.trace_view_selection_action)
         self.toolbar.addAction(self.channel_settings_action)
@@ -164,6 +172,7 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
         menu.addAction(self.toggle_trace_action)
         menu.addAction(self.record_trace_action)
         menu.addAction(self.snapshot_trace_action)
+        menu.addAction(self.freeze_y_axis_action)
         menu.addSeparator()
         menu.addAction(self.close_action)
         menu = menubar.addMenu('View')
