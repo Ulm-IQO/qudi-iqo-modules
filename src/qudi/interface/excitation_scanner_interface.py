@@ -96,7 +96,11 @@ class ExcitationScannerInterface(Base):
 
     @abstractmethod
     def get_current_data(self) -> np.ndarray:
-        "Return current scan data."
+        """Return current scan data. 
+
+        It is an array of dimensions (number_of_repetitions * number_of_samples_per_step, 3 + n)
+        where n is the number of channels saved by the hardware.
+        """
         pass
     @abstractmethod
     def set_exposure_time(self, time:float) -> None:
@@ -124,27 +128,33 @@ class ExcitationScannerInterface(Base):
         pass
     @property
     @abstractmethod
-    def data_column_names(self):
+    def data_column_names(self) -> Iterable[str]:
+        "Return an iterable of the columns names for the return value of `get_current_data`."
         pass
     @property
     @abstractmethod
-    def data_column_unit(self):
+    def data_column_unit(self) -> Iterable[str]:
+        "Return an iterable of the columns units for the return value of `get_current_data`."
         pass
     @property
     @abstractmethod
-    def data_column_number(self):
+    def data_column_number(self) -> Iterable[int]:
+        "Return an iterable of column numbers for adressing the data returned by `get_current_data`."
         pass
     @property
     @abstractmethod
-    def frequency_column_number(self):
+    def frequency_column_number(self) -> int:
+        "Return the column number for the frequency in the data returned by `get_current_data`."
         pass
     @property
     @abstractmethod
-    def step_number_column_number(self):
+    def step_number_column_number(self) -> int:
+        "Return the column number for the step number in the data returned by `get_current_data`."
         pass
     @property
     @abstractmethod
-    def time_column_number(self):
+    def time_column_number(self) -> int:
+        "Return the column number for the time in the data returned by `get_current_data`."
         pass
 
 
