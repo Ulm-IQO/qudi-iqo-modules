@@ -31,6 +31,7 @@ import numpy as np
 
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
+from qudi.util.datastorage import DataStorageBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
@@ -53,6 +54,7 @@ class ScanningProbeLogic(LogicBase):
             max_history_length: 20
             max_scan_update_interval: 2
             position_update_interval: 1
+            save_coord_to_global_metadata: True # default
         connect:
             scanner: scanner_dummy
 
@@ -72,6 +74,7 @@ class ScanningProbeLogic(LogicBase):
 
     # config options
     _min_poll_interval = ConfigOption(name='min_poll_interval', default=None)
+    _save_coord_to_global_metadata = ConfigOption(name='save_coord_to_global_metadata', default=True)
 
     # signals
     sigScanStateChanged = QtCore.Signal(bool, ScanData, ScanData, UUID)
@@ -123,6 +126,10 @@ class ScanningProbeLogic(LogicBase):
         self.__scan_poll_timer.timeout.connect(self.__scan_poll_loop, QtCore.Qt.QueuedConnection)
 
         self._scan_axes = OrderedDict(sorted(self._scanner().constraints.axes.items()))
+        if self._save_coord_to_global_metadata:
+            pos_dict = self._scanner().get_position()
+            for (k,v) in pos_dict.items():
+                DataStorageBase.add_global_metadata("scanner_" + k, v, overwrite=True)
 
     def on_deactivate(self):
         """Reverse steps of activation"""
@@ -410,6 +417,9 @@ class ScanningProbeLogic(LogicBase):
             # self.log.debug(f"Expand to= {pos_dict}")
 
             pos_dict = self._scanner().coordinate_transform(pos_dict)
+            if self._save_coord_to_global_metadata:
+                for (k,v) in pos_dict.items():
+                    DataStorageBase.add_global_metadata("scanner_" + k, v, overwrite=True)
 
             for ax, pos in pos_dict.items():
                 if ax not in ax_constr:
