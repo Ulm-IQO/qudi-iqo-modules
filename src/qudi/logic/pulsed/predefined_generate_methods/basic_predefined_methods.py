@@ -42,7 +42,7 @@ General Pulse Creation Procedure:
 
 class BasicPredefinedGenerator(PredefinedGeneratorBase):
     """
-
+    A collection of basic pulse sequences.
     """
 
     def __init__(self, *args, **kwargs):
@@ -52,12 +52,23 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
     #                             Generation methods for waveforms                                 #
     ################################################################################################
     def generate_laser_on(self, name='laser_on', length=3.0e-6):
-        """ Generates Laser on.
+        """Generates a laser pulse block ensemble.
 
-        @param str name: Name of the PulseBlockEnsemble
-        @param float length: laser duration in seconds
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        length : float
+            Laser pulse duration in seconds.
 
-        @return object: the generated PulseBlockEnsemble object.
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -76,12 +87,23 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_laser_mw_on(self, name='laser_mw_on', length=3.0e-6):
-        """ General generation method for laser on and microwave on generation.
+        """Generates a laser and microwave pulse block ensemble.
 
-        @param string name: Name of the PulseBlockEnsemble to be generated
-        @param float length: Length of the PulseBlockEnsemble in seconds
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        length : float
+            Laser and microwave pulse duration in seconds.
 
-        @return object: the generated PulseBlockEnsemble object.
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -103,14 +125,29 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_two_digital_high(self, name='digital_high', length=3.0e-6,
-                                  digital_channel1='d_ch1', digital_channel2='d_ch1'):
-        """ General generation method for laser on and microwave on generation.
+    def generate_two_digital_high(self, name='digital_high', length=3.0e-6, digital_channel1='d_ch1',
+                                  digital_channel2='d_ch1'):
+        """Generates a digital high pulse block ensemble on two digital channels.
 
-        @param string name: Name of the PulseBlockEnsemble to be generated
-        @param float length: Length of the PulseBlockEnsemble in seconds
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        length : float
+            Length of the digital high pulse in seconds.
+        digital_channel1 : str
+            Name of the first digital channel.
+        digital_channel2 : str
+            Name of the second digital channel.
 
-        @return object: the generated PulseBlockEnsemble object.
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -132,15 +169,26 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_n_digital_high(self, name='digital_high', length=3.0e-6,
-                                  digital_channels="1,2,3,4"):
-        """ General generation method for laser on and microwave on generation.
+    def generate_n_digital_high(self, name='digital_high', length=3.0e-6, digital_channels="1,2,3,4"):
+        """Generates a digital high pulse block ensemble on n digital channels.
 
-        @param string name: Name of the PulseBlockEnsemble to be generated
-        @param float length: Length of the PulseBlockEnsemble in seconds
-        @params string digital_channels: Comma separated channel numbers.
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        length : float
+            Length of the digital high pulse in seconds.
+        digital_channels : str
+            Comma-separated channel numbers.
 
-        @return object: the generated PulseBlockEnsemble object.
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -165,12 +213,23 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
 
     def generate_idle(self, name='idle', length=3.0e-6):
-        """ Generate just a simple idle ensemble.
+        """Generates an idle pulse block ensemble.
 
-        @param str name: Name of the PulseBlockEnsemble to be generated
-        @param float length: Length of the PulseBlockEnsemble in seconds
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        length : float
+            Length of the idle pulse in seconds.
 
-        @return object: the generated PulseBlockEnsemble object.
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -189,8 +248,27 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_rabi(self, name='rabi', tau_start=10.0e-9, tau_step=10.0e-9, num_of_points=50):
-        """
+        """Generates a Rabi pulse block ensemble where the pulse length is varied linearly.
 
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        tau_start : float
+            Length of the first pulse in seconds.
+        tau_step : float
+            Increment of the pulse length in seconds.
+        num_of_points : int
+            Number of tau steps to be generated.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -240,10 +318,28 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_pulsedodmr(self, name='pulsedODMR', freq_start=2870.0e6, freq_step=0.2e6,
-                            num_of_points=50):
-        """
+    def generate_pulsedodmr(self, name='pulsedODMR', freq_start=2870.0e6, freq_step=0.2e6, num_of_points=50):
+        """Generates a pulsed ODMR pulse block ensemble where the microwave frequency is varied linearly.
 
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        freq_start : float
+            Start frequency in Hz.
+        freq_step : float
+            Frequency step in Hz.
+        num_of_points : int
+            Number of frequency steps to be generated.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -294,10 +390,31 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_ramsey(self, name='ramsey', tau_start=1.0e-6, tau_step=1.0e-6, num_of_points=50,
-                        alternating=True):
-        """
+    def generate_ramsey(self, name='ramsey', tau_start=1.0e-6, tau_step=1.0e-6, num_of_points=50, alternating=True):
+        """Generates a Ramsey pulse block ensemble where the free evolution time tau is varied linearly.
 
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        tau_start : float
+            Start tau in seconds.
+        tau_step : float
+            Tau step in seconds.
+        num_of_points : int
+            Number of tau points to be generated.
+        alternating : bool
+            If True, the final pi/2 pulse is alternated with either a -pi/2 pulse or 3pi/2 pulse depending on whether an
+            analog or digital channel is used for microwave generation respectively. Default is True.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -373,7 +490,26 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         return created_blocks, created_ensembles, created_sequences
 
     def generate_ramsey_from_list(self, name='ramsey', tau_list='[1e-6, 2e-6]', alternating=True):
-        """
+        """Generates a Ramsey pulse block ensemble where the free evolution time tau is passed as a list.
+
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        tau_list : str
+            List of tau values in seconds as a string e.g. '[1e-6, 2e-6]'.
+        alternating : bool
+            If True, the final pi/2 pulse is alternated with either a -pi/2 pulse or 3pi/2 pulse depending on whether an
+            analog or digital channel is used for microwave generation respectively. Default is True.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -455,10 +591,32 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_hahnecho(self, name='hahn_echo', tau_start=0.0e-6, tau_step=1.0e-6,
-                          num_of_points=50, alternating=True):
-        """
+    def generate_hahnecho(self, name='hahn_echo', tau_start=0.0e-6, tau_step=1.0e-6, num_of_points=50,
+                          alternating=True):
+        """Generates a Hahn echo pulse block ensemble where the free evolution time tau is varied linearly.
 
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        tau_start : float
+            Start tau in seconds.
+        tau_step : float
+            Tau step in seconds.
+        num_of_points : int
+            Number of tau points to be generated.
+        alternating : bool
+            If True, the final pi/2 pulse is alternated with either a -pi/2 pulse or 3pi/2 pulse depending on whether an
+            analog or digital channel is used for microwave generation respectively. Default is True.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -542,10 +700,32 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_hahnecho_exp(self, name='hahn_echo', tau_start=1.0e-6, tau_end=1.0e-6,
-                              num_of_points=50, alternating=True):
-        """
+    def generate_hahnecho_exp(self, name='hahn_echo', tau_start=1.0e-6, tau_end=1.0e-6, num_of_points=50,
+                              alternating=True):
+        """Generates a Hahn echo pulse block ensemble where the free evolution time tau is varied exponentially.
 
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        tau_start : float
+            Start tau in seconds.
+        tau_end : float
+            End tau in seconds.
+        num_of_points : int
+            Number of tau points to be generated.
+        alternating : bool
+            If True, the final pi/2 pulse is alternated with either a -pi/2 pulse or 3pi/2 pulse depending on whether an
+            analog or digital channel is used for microwave generation respectively. Default is True.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -614,7 +794,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_blocks.append(hahn_block)
 
         # Create block ensemble
-        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
+        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=True)
         block_ensemble.append((hahn_block.name, 0))
 
         # Create and append sync trigger block if needed
@@ -634,10 +814,31 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_t1(self, name='T1', tau_start=1.0e-6, tau_step=1.0e-6,
-                    num_of_points=50, alternating=False):
-        """
+    def generate_t1(self, name='T1', tau_start=1.0e-6, tau_step=1.0e-6, num_of_points=50, alternating=False):
+        """Generates a T1 pulse block ensemble where the free evolution time tau is varied linearly.
 
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        tau_start: float
+            Start tau in seconds.
+        tau_step: float
+            Tau step in seconds.
+        num_of_points: int
+            Number of tau points.
+        alternating: bool
+            If True, the final pi/2 pulse is alternated with either a -pi/2 pulse or 3pi/2 pulse depending on whether an
+            analog or digital channel is used for microwave generation respectively. Default is False.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -694,10 +895,32 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_t1_exponential(self, name='T1_exp', tau_start=1.0e-6, tau_end=1.0e-6,
-                                num_of_points=50, alternating=False):
-        """
+    def generate_t1_exponential(self, name='T1_exp', tau_start=1.0e-6, tau_end=1.0e-6, num_of_points=50,
+                                alternating=False):
+        """Generates a T1 pulse block ensemble where the free evolution time tau is varied exponentially.
 
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        tau_start : float
+            Start tau in seconds.
+        tau_end : float
+            End tau in seconds.
+        num_of_points : int
+            Number of tau points.
+        alternating : bool
+            If True, the final pi/2 pulse is alternated with either a -pi/2 pulse or 3pi/2 pulse depending on whether an
+            analog or digital channel is used for microwave generation respectively. Default is False.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -997,122 +1220,39 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    ################################################################################################
-    #                             Generation methods for sequences                                 #
-    ################################################################################################
-    def generate_t1_sequencing(self, name='t1_seq', tau_start=1.0e-6, tau_max=1.0e-3,
-                               num_of_points=10):
-        """
+    def generate_chirpedodmr(self, name='LinearChirpedODMR', mw_freq_center=2870.0e6, freq_range=500.0e6,
+                             freq_overlap=20.0e6, num_of_points=50, pulse_length=500e-9, expected_rabi_frequency=30e6,
+                             expected_t2=5e-6):
+        """Generates a chirped ODMR pulse block ensemble where the microwave frequency is chirped linearly.
 
-        """
-        created_blocks = list()
-        created_ensembles = list()
-        created_sequences = list()
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        mw_freq_center : float
+            Central frequency of the chirped ODMR in Hz.
+        freq_range : float
+            Target frequency range of the whole ODMR scan in Hz.
+        freq_overlap : float
+            Additional 'overlap' frequency range for each chirped pulse, i.e. the frequency range of each single chirped
+            pulse is (freq_range / num_points) + freq_overlap.
+        num_of_points : float
+            Number of chirped pulses used in the scan.
+        pulse_length : float
+            Length of the mw pulse.
+        expected_rabi_frequency : float
+            Expected value of the Rabi frequency - used to calculate adiabaticity.
+        expected_t2 : float
+            Expected T2 time - used to check if the chirped pulse is shorter than T2.
 
-        # Get logarithmically spaced steps in multiples of tau_start.
-        # Note that the number of points and the position of the last point can change here.
-        k_array = np.unique(
-            np.rint(np.logspace(0., np.log10(tau_max / tau_start), num_of_points)).astype(int))
-        # get tau array for measurement ticks
-        tau_array = k_array * tau_start
-
-        # Create the readout PulseBlockEnsemble
-        # Get necessary PulseBlockElements
-        laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
-        delay_element = self._get_delay_gate_element()
-        # Create PulseBlock and append PulseBlockElements
-        readout_block = PulseBlock(name='{0}_readout'.format(name))
-        readout_block.append(laser_element)
-        readout_block.append(delay_element)
-        created_blocks.append(readout_block)
-        # Create PulseBlockEnsemble and append block to it
-        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
-        readout_ensemble.append((readout_block.name, 0))
-        created_ensembles.append(readout_ensemble)
-
-        if self.sync_channel:
-            # Create the last readout PulseBlockEnsemble including a sync trigger
-            # Get necessary PulseBlockElements
-            sync_element = self._get_sync_element()
-            # Create PulseBlock and append PulseBlockElements
-            sync_readout_block = PulseBlock(name='{0}_readout_sync'.format(name))
-            sync_readout_block.append(laser_element)
-            sync_readout_block.append(delay_element)
-            sync_readout_block.append(sync_element)
-            created_blocks.append(sync_readout_block)
-            # Create PulseBlockEnsemble and append block to it
-            sync_readout_ensemble = PulseBlockEnsemble(name='{0}_readout_sync'.format(name),
-                                                       rotating_frame=False)
-            sync_readout_ensemble.append((sync_readout_block.name, 0))
-            created_ensembles.append(sync_readout_ensemble)
-
-        # Create the tau/waiting PulseBlockEnsemble
-        # Get tau PulseBlockElement
-        tau_element = self._get_idle_element(length=tau_start, increment=0)
-        # Create PulseBlock and append PulseBlockElements
-        tau_block = PulseBlock(name='{0}_tau'.format(name))
-        tau_block.append(tau_element)
-        created_blocks.append(tau_block)
-        # Create PulseBlockEnsemble and append block to it
-        tau_ensemble = PulseBlockEnsemble(name='{0}_tau'.format(name), rotating_frame=False)
-        tau_ensemble.append((tau_block.name, 0))
-        created_ensembles.append(tau_ensemble)
-
-        # Create the PulseSequence and append the PulseBlockEnsemble names as sequence steps
-        # together with the necessary parameters.
-        t1_sequence = PulseSequence(name=name, rotating_frame=False)
-        count_length = 0.0
-        for k in k_array:
-            t1_sequence.append(tau_ensemble.name)
-            t1_sequence[-1].repetitions = int(k) - 1
-            count_length += k * self._get_ensemble_count_length(ensemble=tau_ensemble,
-                                                                created_blocks=created_blocks)
-
-            if self.sync_channel and k == k_array[-1]:
-                t1_sequence.append(sync_readout_ensemble.name)
-            else:
-                t1_sequence.append(readout_ensemble.name)
-            count_length += self._get_ensemble_count_length(ensemble=readout_ensemble,
-                                                            created_blocks=created_blocks)
-        # Make the sequence loop infinitely by setting the go_to parameter of the last sequence
-        # step to the first step.
-        t1_sequence[-1].go_to = 1
-
-        # Trigger the calculation of parameters in the PulseSequence instance
-        t1_sequence.refresh_parameters()
-
-        # add metadata to invoke settings later on
-        t1_sequence.measurement_information['alternating'] = False
-        t1_sequence.measurement_information['laser_ignore_list'] = list()
-        t1_sequence.measurement_information['controlled_variable'] = tau_array
-        t1_sequence.measurement_information['units'] = ('s', '')
-        t1_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        t1_sequence.measurement_information['number_of_lasers'] = len(tau_array)
-        t1_sequence.measurement_information['counting_length'] = count_length
-
-        # Append PulseSequence to created_sequences list
-        created_sequences.append(t1_sequence)
-        return created_blocks, created_ensembles, created_sequences
-
-    def generate_chirpedodmr(self, name='LinearChirpedODMR', mw_freq_center=2870.0e6,
-                             freq_range=500.0e6, freq_overlap=20.0e6, num_of_points=50,
-                             pulse_length=500e-9, expected_rabi_frequency=30e6, expected_t2=5e-6):
-        """
-        @param str name: name of Pulse Block Ensemble
-        @param float mw_freq_center: central frequency of the chirped ODMR in Hz
-        @param float freq_range: target frequency range of the whole ODMR scan in Hz
-        @param float freq_overlap: additional 'overlap' frequency range for each chirped pulse,
-        i.e. the frequency range of each single chirped pulse is
-        (freq_range / num_points) + freq_overlap
-        @param float num_of_points: number of chirped pulses, used in the scan
-        @param float pulse_length: length of the mw pulse
-        @param float expected_rabi_frequency: expected value of the Rabi frequency - used to
-        calculate adiabaticity
-        @param float expected_t2: expected T2 time - used to check if the chirped pulse is shorter
-        than T2
-
-        @return: created_blocks, created_ensembles, created_sequences for the generated pulse
-            sequences
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -1203,34 +1343,11 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_AEchirpedodmr(self, name='AllenEberlyChirpODMR', mw_freq_center=2870.0e6,
-                               freq_range=500.0e6,
-                               freq_overlap=20.0e6, num_of_points=50, pulse_length=500e-9,
-                               truncation_ratio=0.1,
-                               expected_rabi_frequency=30e6, expected_t2=5e-6,
-                               peak_mw_amplitude=0.25):
-        """
-        @param str name: name of Pulse Block Ensemble
-        @param float mw_freq_center: central frequency of the chirped ODMR in Hz
-        @param float freq_range: target frequency range of the whole ODMR scan in Hz
-        @param float freq_overlap: additional 'overlap' frequency range for each chirped pulse,
-            i.e. the frequency range of each single chirped pulse is (freq_range / num_points) +
-            freq_overlap. Truncation is usually negligible for values <0.2.
-        @param float num_of_points: number of chirped pulses, used in the scan
-        @param float pulse_length: length of the mw pulse
-        @param float truncation_ratio: ratio that characterizes the truncation of the chirped pulse
-            Specifically, the pulse shape is given by sech(t/ truncation ratio /pulse length)
-            truncation_ratio = 0.1 is excellent; the scheme will work for 0.2. Higher values
-            truncate the sech pulse and reduce the frequency range of ODMR as the transfer
-            efficiency in the wings of the pulse range drops.
-        @param float expected_rabi_frequency: expected value of the Rabi frequency - used to
-            calculate adiabaticity
-        @param float expected_t2: expected T2 time - used to check if the chirped pulse is shorter
-            than T2
-        @param float peak_mw_amplitude: Peak amplitude of the Allen-Eberly Chirp pulse
-
-        @return: created_blocks, created_ensembles, created_sequences for the generated pulse
-            sequences
+    def generate_AEchirpedodmr(self, name='AllenEberlyChirpODMR', mw_freq_center=2870.0e6, freq_range=500.0e6,
+                               freq_overlap=20.0e6, num_of_points=50, pulse_length=500e-9, truncation_ratio=0.1,
+                               expected_rabi_frequency=30e6, expected_t2=5e-6, peak_mw_amplitude=0.25):
+        """Generates a chirped ODMR pulse block ensemble where the microwave frequency is chirped using the Allen-Eberly
+        model.
 
         Additional information about the Allen-Eberly chirped ODMR
         Chirped ODMR with a pulse, following the Allen-Eberly model: a sech amplitude shape and a
@@ -1240,6 +1357,42 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         model can be found in:
         L. Allen and J. H. Eberly, Optical Resonance and Two-Level Atoms Dover, New York, 1987,
         Analytical solution is given in: F. T. Hioe, Phys. Rev. A 30, 2100 (1984).
+
+        Parameters
+        ----------
+        name : str
+            Name of the PulseBlockEnsemble to be generated.
+        mw_freq_center : float
+            Central frequency of the chirped ODMR in Hz.
+        freq_range : float
+            Target frequency range of the whole ODMR scan in Hz.
+        freq_overlap : float
+            Additional 'overlap' frequency range for each chirped pulse, i.e. the frequency range of each single chirped
+            pulse is (freq_range / num_points) + freq_overlap. Truncation is usually negligible for values <0.2.
+        num_of_points : float
+            Number of chirped pulses used in the scan.
+        pulse_length : float
+            Length of the mw pulse.
+        truncation_ratio : float
+            Ratio that characterizes the truncation of the chirped pulse. Specifically, the pulse shape is given by
+            sech(t/ truncation ratio /pulse length). truncation_ratio = 0.1 is excellent; the scheme will work for 0.2.
+            Higher values truncate the sech pulse and reduce the frequency range of ODMR as the transfer efficiency in
+            the wings of the pulse range drops.
+        expected_rabi_frequency : float
+            Expected value of the Rabi frequency - used to calculate adiabaticity.
+        expected_t2 : float
+            Expected T2 time - used to check if the chirped pulse is shorter than T2.
+        peak_mw_amplitude : float
+            Peak amplitude of the Allen-Eberly Chirp pulse.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
         """
         created_blocks = list()
         created_ensembles = list()
@@ -1329,4 +1482,122 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # append ensemble to created ensembles
         created_ensembles.append(block_ensemble)
+        return created_blocks, created_ensembles, created_sequences
+
+    ################################################################################################
+    #                             Generation methods for sequences                                 #
+    ################################################################################################
+    def generate_t1_sequencing(self, name='t1_seq', tau_start=1.0e-6, tau_max=1.0e-3, num_of_points=10):
+        """Generates a T1 pulse sequence where the free evolution time tau is varied exponentially.
+
+        Parameters
+        ----------
+        name : str
+            Name of the PulseSequence to be generated.
+        tau_start : float
+            Start tau in seconds.
+        tau_max : float
+            Maximum tau in seconds.
+        num_of_points : int
+            Number of tau points.
+
+        Returns
+        -------
+        created_blocks : list
+            List of PulseBlock objects created.
+        created_ensembles : list
+            List of PulseBlockEnsemble objects created.
+        created_sequences : list
+            List of PulseSequence objects created.
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        # Get logarithmically spaced steps in multiples of tau_start.
+        # Note that the number of points and the position of the last point can change here.
+        k_array = np.unique(
+            np.rint(np.logspace(0., np.log10(tau_max / tau_start), num_of_points)).astype(int))
+        # get tau array for measurement ticks
+        tau_array = k_array * tau_start
+
+        # Create the readout PulseBlockEnsemble
+        # Get necessary PulseBlockElements
+        laser_element = self._get_laser_gate_element(length=self.laser_length, increment=0)
+        delay_element = self._get_delay_gate_element()
+        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
+        # Create PulseBlock and append PulseBlockElements
+        readout_block = PulseBlock(name='{0}_readout'.format(name))
+        readout_block.append(laser_element)
+        readout_block.append(delay_element)
+        readout_block.append(waiting_element)
+        created_blocks.append(readout_block)
+        # Create PulseBlockEnsemble and append block to it
+        readout_ensemble = PulseBlockEnsemble(name='{0}_readout'.format(name), rotating_frame=False)
+        readout_ensemble.append((readout_block.name, 0))
+        created_ensembles.append(readout_ensemble)
+
+        if self.sync_channel:
+            # Create the last readout PulseBlockEnsemble including a sync trigger
+            # Get necessary PulseBlockElements
+            sync_element = self._get_sync_element()
+            # Create PulseBlock and append PulseBlockElements
+            sync_readout_block = PulseBlock(name='{0}_readout_sync'.format(name))
+            sync_readout_block.append(laser_element)
+            sync_readout_block.append(delay_element)
+            sync_readout_block.append(waiting_element)
+            sync_readout_block.append(sync_element)
+            created_blocks.append(sync_readout_block)
+            # Create PulseBlockEnsemble and append block to it
+            sync_readout_ensemble = PulseBlockEnsemble(name='{0}_readout_sync'.format(name),
+                                                       rotating_frame=False)
+            sync_readout_ensemble.append((sync_readout_block.name, 0))
+            created_ensembles.append(sync_readout_ensemble)
+
+        # Create the tau/waiting PulseBlockEnsemble
+        # Get tau PulseBlockElement
+        tau_element = self._get_idle_element(length=tau_start, increment=0)
+        # Create PulseBlock and append PulseBlockElements
+        tau_block = PulseBlock(name='{0}_tau'.format(name))
+        tau_block.append(tau_element)
+        created_blocks.append(tau_block)
+        # Create PulseBlockEnsemble and append block to it
+        tau_ensemble = PulseBlockEnsemble(name='{0}_tau'.format(name), rotating_frame=False)
+        tau_ensemble.append((tau_block.name, 0))
+        created_ensembles.append(tau_ensemble)
+
+        # Create the PulseSequence and append the PulseBlockEnsemble names as sequence steps
+        # together with the necessary parameters.
+        t1_sequence = PulseSequence(name=name, rotating_frame=False)
+        count_length = 0.0
+        for k in k_array:
+            t1_sequence.append(tau_ensemble.name)
+            t1_sequence[-1].repetitions = int(k) - 1
+            count_length += k * self._get_ensemble_count_length(ensemble=tau_ensemble,
+                                                                created_blocks=created_blocks)
+
+            if self.sync_channel and k == k_array[-1]:
+                t1_sequence.append(sync_readout_ensemble.name)
+            else:
+                t1_sequence.append(readout_ensemble.name)
+            count_length += self._get_ensemble_count_length(ensemble=readout_ensemble,
+                                                            created_blocks=created_blocks)
+        # Make the sequence loop infinitely by setting the go_to parameter of the last sequence
+        # step to the first step.
+        t1_sequence[-1].go_to = 1
+
+        # Trigger the calculation of parameters in the PulseSequence instance
+        t1_sequence.refresh_parameters()
+
+        # add metadata to invoke settings later on
+        t1_sequence.measurement_information['alternating'] = False
+        t1_sequence.measurement_information['laser_ignore_list'] = list()
+        t1_sequence.measurement_information['controlled_variable'] = tau_array
+        t1_sequence.measurement_information['units'] = ('s', '')
+        t1_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
+        t1_sequence.measurement_information['number_of_lasers'] = len(tau_array)
+        t1_sequence.measurement_information['counting_length'] = count_length
+
+        # Append PulseSequence to created_sequences list
+        created_sequences.append(t1_sequence)
         return created_blocks, created_ensembles, created_sequences

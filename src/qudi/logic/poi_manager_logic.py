@@ -24,18 +24,24 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-
+import dataclasses
 import os
+from typing import Dict
+
 import numpy as np
 import time
 from datetime import datetime
 from collections import OrderedDict
 from PySide2 import QtCore
+from matplotlib import pyplot as plt, patches
+from matplotlib.figure import Figure
 
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
+from qudi.interface.scanning_probe_interface import ScanImage
+from qudi.logic.scanning_data_logic import ScanningDataLogic
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
 
@@ -51,7 +57,8 @@ class RegionOfInterest:
     """
 
     def __init__(self, name=None, creation_time=None, history=None, scan_image=None,
-                 scan_image_extent=None, poi_list=None, poi_nametag=None):
+                 scan_image_extent=None, poi_list=None, poi_nametag=None, scan_image_meta: 'ScanImageMeta' = None):
+
         # Remember the creation time for drift history timestamps
         self._creation_time = None
         # Keep track of the global position history relative to the initial position (sample drift).
@@ -61,6 +68,8 @@ class RegionOfInterest:
         self._scan_image = None
         # Optional initial scan image extent.
         self._scan_image_extent = None
+        # Optional metadata of the scan image (e.g. labels and units).
+        self._scan_image_meta = None
         # Save name of the ROI. Create a generic, unambiguous one as default.
         self._name = None
         # Nametag for POIs. If you add a POI without explicitly setting a name, the name will be
@@ -73,7 +82,7 @@ class RegionOfInterest:
         self.name = name
         self.poi_nametag = poi_nametag
         self.pos_history = history
-        self.set_scan_image(scan_image, scan_image_extent)
+        self.set_scan_image(scan_image, scan_image_extent, scan_image_meta)
         if poi_list is not None:
             for poi in poi_list:
                 self.add_poi(poi)
@@ -156,6 +165,10 @@ class RegionOfInterest:
         return x_extent, y_extent
 
     @property
+    def scan_image_meta(self):
+        return self._scan_image_meta
+
+    @property
     def poi_names(self):
         return list(self._pois)
 
@@ -235,7 +248,7 @@ class RegionOfInterest:
         del self._pois[name]
         return
 
-    def set_scan_image(self, image_arr, image_extent):
+    def set_scan_image(self, image_arr, image_extent, scan_image_meta=None):
         """
 
         @param scalar[][] image_arr:
@@ -250,6 +263,7 @@ class RegionOfInterest:
             y_extent = (image_extent[1][0] - roi_y_pos, image_extent[1][1] - roi_y_pos)
             self._scan_image = np.array(image_arr)
             self._scan_image_extent = (x_extent, y_extent)
+        self._scan_image_meta = scan_image_meta
         return
 
     def add_history_entry(self, new_pos):
@@ -286,6 +300,7 @@ class RegionOfInterest:
                 'pos_history': self.pos_history,
                 'scan_image': self.scan_image,
                 'scan_image_extent': self.scan_image_extent,
+                'scan_image_meta': self.scan_image_meta.to_dict() if self.scan_image_meta else None,
                 'pois': [poi.to_dict() for poi in self._pois.values()]}
 
     @classmethod
@@ -303,9 +318,42 @@ class RegionOfInterest:
                   history=dict_repr.get('pos_history'),
                   scan_image=dict_repr.get('scan_image'),
                   scan_image_extent=dict_repr.get('scan_image_extent'),
+                  scan_image_meta=ScanImageMeta.from_dict(dict_repr.get('scan_image_meta')),
                   poi_list=poi_list,
                   poi_nametag=dict_repr.get('poi_nametag'))
         return roi
+
+
+@dataclasses.dataclass(frozen=True)
+class ScanImageMeta:
+    data_quantity: str = ''
+    data_unit: str = ''
+    x_label: str = ''
+    x_unit: str = ''
+    y_label: str = ''
+    y_unit: str = ''
+
+    def to_dict(self) -> Dict[str, str]:
+        return {'data_quantity': self.data_quantity,
+                'data_unit': self.data_unit,
+                'x_label': self.x_label,
+                'x_unit': self.x_unit,
+                'y_label': self.y_label,
+                'y_unit': self.y_unit}
+
+    @classmethod
+    def from_dict(cls, dict_repr: Dict[str, str]) -> 'ScanImageMeta':
+        if not isinstance(dict_repr, dict):
+            raise TypeError(f'Parameter to generate {ScanImageMeta.__name__} instance from must be of type '
+                            'dict.')
+
+        meta = cls(data_quantity=dict_repr.get('data_quantity'),
+                  data_unit=dict_repr.get('data_unit'),
+                  x_label=dict_repr.get('x_label'),
+                  x_unit=dict_repr.get('x_unit'),
+                  y_label=dict_repr.get('y_label'),
+                  y_unit=dict_repr.get('y_unit'))
+        return meta
 
 
 class PointOfInterest:
@@ -528,6 +576,10 @@ class PoiManagerLogic(LogicBase):
         return self._roi.scan_image_extent
 
     @property
+    def roi_scan_image_meta(self):
+        return self._roi.scan_image_meta
+
+    @property
     def refocus_period(self):
         return float(self._refocus_period)
 
@@ -637,7 +689,6 @@ class PoiManagerLogic(LogicBase):
         Deletes the given poi from the ROI.
 
         @param str name: Name of the POI to delete. If None (default) delete active POI.
-        @param bool emit_change: Flag indicating if the changed POI set should be signaled.
         """
         with self._thread_lock:
             if len(self.poi_names) == 0:
@@ -759,7 +810,7 @@ class PoiManagerLogic(LogicBase):
                     name = self.active_poi
 
             if len(position) != 3:
-                self.log.error('POI position must be iterable of length 3.')
+                self.log.error(f'POI position must be iterable of length 3, got {position}')
                 return
             if not isinstance(name, str):
                 self.log.error('POI name must be of type str.')
@@ -783,7 +834,7 @@ class PoiManagerLogic(LogicBase):
                     name = self.active_poi
 
             if len(position) != 3:
-                self.log.error('POI position must be iterable of length 3.')
+                self.log.error(f'POI position must be iterable of length 3, got {position}')
                 return
             if not isinstance(name, str):
                 self.log.error('POI name must be of type str.')
@@ -863,11 +914,19 @@ class PoiManagerLogic(LogicBase):
     def set_scan_image(self, emit_change=True, scan_axes=None):
         """ Get the current xy scan data and set as scan_image of ROI. """
         with self._thread_lock:
-            scan_data = self._data_logic().get_current_scan_data(scan_axes)
+            data_logic: ScanningDataLogic = self._data_logic()
+            scan_data, back_scan_data = data_logic.get_last_history_entry(scan_axes)
+            channel = self._optimizelogic()._data_channel
             if scan_data:
-                self._roi.set_scan_image(scan_data.data[self._optimizelogic()._data_channel],
-                                         scan_data.scan_range)
-
+                meta = ScanImageMeta(data_quantity=channel,
+                                     data_unit=scan_data.channel_units[channel],
+                                     x_label=scan_data.settings.axes[0],
+                                     x_unit=scan_data.axis_units[scan_data.settings.axes[0]],
+                                     y_label=scan_data.settings.axes[1],
+                                     y_unit=scan_data.axis_units[scan_data.settings.axes[1]],
+                                     )
+                self._roi.set_scan_image(scan_data.data[channel],
+                                         scan_data.settings.range, meta)
             if emit_change:
                 self.sigRoiUpdated.emit({'scan_image': self.roi_scan_image,
                                          'scan_image_extent': self.roi_scan_image_extent})
@@ -1039,7 +1098,8 @@ class PoiManagerLogic(LogicBase):
         If desired the relative shift of the optimised POI can be used to update the ROI position.
         The scanner is moved to the optimised POI if desired.
 
-        @param optimal_pos:
+        @param is_running:
+        @param optimal_position:
         @param fit_data:
         """
         with self._thread_lock:
@@ -1072,7 +1132,7 @@ class PoiManagerLogic(LogicBase):
                                            column_formats=['s', '.6e', '.6e', '.6e'])
 
             # File path and names
-            #filepath = self.savelogic().get_path_for_module(module_name='ROIs')
+            # filepath = self.savelogic().get_path_for_module(module_name='ROIs')
             roi_name_no_blanks = self.roi_name.replace(' ', '_')
             timestamp = datetime.now()
             pois_filename = '{0}_poi_list'.format(roi_name_no_blanks)
@@ -1116,7 +1176,34 @@ class PoiManagerLogic(LogicBase):
             #######################################################
             if self.roi_scan_image is not None:
                 np.save(os.path.join(self.module_default_data_dir, roi_image_filename), self.roi_scan_image)
+                fig = self._draw_roi_scan_image()
+                roi_png_image_filename = '{0}_{1}_scan_image.png'.format(
+                    timestamp.strftime('%Y%m%d-%H%M-%S'), roi_name_no_blanks)
+                fig.savefig(os.path.join(self.module_default_data_dir, roi_png_image_filename))
         return
+
+    def _draw_roi_scan_image(self) -> Figure:
+        meta = self.roi_scan_image_meta if self.roi_scan_image_meta else ScanImageMeta()
+        scan_image = ScanImage(axis_units=(meta.x_unit, meta.y_unit), axis_names=(meta.x_label, meta.y_label),
+                               ranges=self.roi_scan_image_extent,
+                                data=self.roi_scan_image, data_name=meta.data_quantity, data_unit=meta.data_unit)
+        cbar_range = (np.nanmin(self.roi_scan_image), np.nanmax(self.roi_scan_image))
+        fig = self._data_logic().draw_2d_scan_figure(scan_image, cbar_range=cbar_range)
+
+        # add POIs
+        si_factors = scan_image.si_factors
+        self.add_pois(plt.gca(), scan_image.ranges[1], si_factors[0].scale_val, si_factors[1].scale_val)
+        return fig
+
+    def add_pois(self, ax, scan_range_y, si_factor_x, si_factor_y):
+        radius = abs(scan_range_y[1] - scan_range_y[0]) / si_factor_y * 0.025  # 2.5% of the y-range
+        marker_color = '#F0F'
+        for name, pos in self.poi_positions.items():
+            x = pos[0] / si_factor_x
+            y = pos[1] / si_factor_y
+            circle = patches.Circle((x, y), radius, edgecolor=marker_color, facecolor='None', zorder=10)
+            ax.add_patch(circle)
+            ax.annotate(name, xy=(x, y + radius * 1.2), fontsize=8, ha="left", color=marker_color)
 
     def load_roi(self, complete_path=None):
         if complete_path is None:
@@ -1218,7 +1305,13 @@ class PoiManagerLogic(LogicBase):
     def dict_to_roi(self, roi_dict):
         if isinstance(roi_dict, RegionOfInterest):
             return roi_dict
-        return RegionOfInterest.from_dict(roi_dict)
+        try:
+            roi = RegionOfInterest.from_dict(roi_dict)
+        except Exception as e:
+            self.log.warning(f"Couldn't restore roi from dict, defaulting to empty roi: {str(e)}")
+            roi = RegionOfInterest()
+
+        return roi
 
     @_roi.representer
     def roi_to_dict(self, roi):
