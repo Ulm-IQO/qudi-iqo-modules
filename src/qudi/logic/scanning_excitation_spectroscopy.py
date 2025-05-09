@@ -15,9 +15,25 @@ from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.util.mutex import Mutex
 
 class ScanningExcitationLogic(LogicBase):
+    """
+    A logic to pilot an `ExcitationScannerInterface`.
+
+    Copy and paste configuration example:
+    ```
+      excitation_scanner_logic:
+        module.Class: 'scanning_excitation_spectroscopy.ScanningExcitationLogic'
+        options:
+          beep: True # default
+          watchdog_repeat_time_ms: 500 # default
+        connect:
+          scanner: excitation_scanner_hardware
+    ```
+    """
     _scanner = Connector(name='scanner', interface='ExcitationScannerInterface')
+
     _watchdog_repeat_time = ConfigOption(name="watchdog_repeat_time_ms", default=500)
     _beep = ConfigOption(name="beep", default=True)
+
     _spectrum = StatusVar(name='spectrum', default=[None, None, None])
     _fit_region = StatusVar(name='fit_region', default=[0, 1])
     _fit_config = StatusVar(name='fit_config', default=dict())
