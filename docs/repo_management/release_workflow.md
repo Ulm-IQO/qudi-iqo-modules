@@ -1,3 +1,4 @@
+(release)=
 # Release Workflow
 
 This document describes how IQO manages the release of a new `qudi-iqo-modules` version to github.

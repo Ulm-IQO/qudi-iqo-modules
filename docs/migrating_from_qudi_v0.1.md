@@ -9,7 +9,7 @@ Please note that we are describing the most common use case, but can't cover all
 ## General qudi config
 
 The core qudi facilities are configured in the 'global' section of the config file. You can find a detailed description in the qudi-core [configuration guide](https://github.com/Ulm-IQO/qudi-core/blob/main/docs/design_concepts/configuration.md).
-It might be instructive to have a look at the respective section in the [default config]((https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/default.cfg)) which sets up a dummy configuration without real hardware.
+It might be instructive to have a look at the respective section in the [default config](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/default.cfg) which sets up a dummy configuration without real hardware.
 
 ### Remote modules
 

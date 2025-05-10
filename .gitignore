@@ -82,6 +82,12 @@ cover/
 docs/_build/
 docs/_autosummary/
 docs/_static/
+docs/api_reference/_autosummary/
+docs/gui/_autosummary/
+docs/logic/_autosummary/
+docs/hardware/_autosummary/
+docs/interface/_autosummary/
+docs/util/_autosummary/
 
 # Jupyter Notebook
 .ipynb_checkpoints

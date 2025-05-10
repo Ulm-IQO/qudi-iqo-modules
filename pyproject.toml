@@ -79,3 +79,11 @@ version = {file = "VERSION"}
 
 [project.optional-dependencies]
 dev-test = ["pytest", "pytest-qt", "coverage"]
+
+dev-docs = [
+    "Sphinx",
+    "numpydoc",
+    "pydata_sphinx_theme",
+    "sphinx-design" ,
+    "myst_parser"
+]

@@ -1,3 +1,4 @@
+(installation)=
 # Installation Guide
 
 This guide is a step-by-step instruction how to get started with qudi + iqo-modules installation.

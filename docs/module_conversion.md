@@ -73,7 +73,7 @@ Notice that the interface is now inheriting the Base class and that the pure `ab
 Fitting and saving is now part of the core itself and does not belong to a logic module. 
 Therefore both can be accessed via core-imports instead of with connectors.
 
-For details please see [Saving](data_storage.md) and [Fitting](data_fitting_integration.md).
+For details please see [Saving](inv:core:std#data_storage) and [Fitting](inv:core:std#data_fitting).
 
 ## Threading
 In general threading in qudi should not be handled directly but through Signals in QT. 

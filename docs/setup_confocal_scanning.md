@@ -1,3 +1,4 @@
+(scanning)=
 # Introduction
 
 The scanning toolchain is designed to be fully configurable with respect to multiple signal inputs (eg. APD counts, analogue inputs) and an arbitrary scanning axes configuration.
