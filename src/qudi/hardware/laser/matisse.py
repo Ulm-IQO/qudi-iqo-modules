@@ -13,9 +13,25 @@ from qudi.interface.process_control_interface import ProcessControlConstraints, 
 from qudi.interface.switch_interface import SwitchInterface
 
 class MatisseCommander(ProcessControlInterface, SwitchInterface):
+    """
+    A Light proxy to talk to the MatisseCommander program.
+
+    Copy and paste example configuration:
+    ```yaml
+    matisse:
+        config:
+            address: 'localhost' # default
+            port: 30000 # default
+    ```
+    """
+
     _address = ConfigOption(name="address", default="localhost")
+    """Configuration option for the address at which the MatisseCommander program lives. most likely it is on the same computer, so the default is "localhost"""
     _port = ConfigOption(name="port", default=3000)
+    """Configuration option for the port at which the MatisseCommander program listens"""
+
     conversionfactor = StatusVar(default=1)
+    "Internal status variable to remember the conversion factor between tension and frequency."
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

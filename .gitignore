@@ -113,3 +113,4 @@ dmypy.json
 
 # vscode settings
 .vscode/
+docs/build

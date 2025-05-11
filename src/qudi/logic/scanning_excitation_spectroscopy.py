@@ -19,7 +19,7 @@ class ScanningExcitationLogic(LogicBase):
     A logic to pilot an `ExcitationScannerInterface`.
 
     Copy and paste configuration example:
-    ```
+    ```yaml
       excitation_scanner_logic:
         module.Class: 'scanning_excitation_spectroscopy.ScanningExcitationLogic'
         options:

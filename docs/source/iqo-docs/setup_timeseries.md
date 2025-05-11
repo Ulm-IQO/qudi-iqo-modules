@@ -1,4 +1,5 @@
-# Introduction
+# Setting up time series
+## Introduction
 The timeseries toolchain allows to plot the timetrace of an incoming digital or analogue signal in real time.
 For an confocal setup, the signal might be TTLs coming from a photon counter or the (analogue) output of a photodiode.
 A typical working toolchain consists out of the following qudi modules:
@@ -13,7 +14,7 @@ gui:
 - time_series_gui
 
 
-# Example config
+## Example config
 
 These modules need to be configured and connected in your qudi config file.
 We here provide an examplary config for a toolchain based on a NI X-series scanner with analogue output and digital (APD TTL) input.
@@ -57,8 +58,8 @@ docstring of every module's python file. In the list above, a direct link for ev
 
 
 
-# Configuration hints:
+## Configuration hints:
 Make sure that the hardware in the conig file is named as it is called by the logic. (Copy paste out of the hardware file can name it differently).
 
-# Todo this readme:
+## Todo this readme:
 

@@ -1,4 +1,5 @@
-# Introduction
+# Setting up confocal scanning
+## Introduction
 
 The scanning toolchain is designed to be fully configurable with respect to multiple signal inputs (eg. APD counts, analogue inputs) and an arbitrary scanning axes configuration.
 To this end, its written in a very modular way.
@@ -18,7 +19,7 @@ hardware (here NI X-series):
 gui:
 - [scannergui](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/src/qudi/gui/scanning/scannergui.py#L83)
 
-# Example config
+## Example config
 
 These modules need to be configured and connected in your qudi config file.
 We here provide an examplary config for a toolchain based on a NI X-series scanner with analogue output and digital (APD TTL) input.
@@ -182,14 +183,14 @@ docstring of every module's python file. In the list above, a direct link for ev
                 max_channel_samples_buffer: 10000000  # optional
                 read_write_timeout: 10  # optional
 
-# Configuration hints
+## Configuration hints
 - The maximum scanning frequency is given by the bandwidth of your Piezo controller (check the datasheet). It might make sense to put an even smaller limit into your config, since scanning at the hardware limit might introduce artifacts/offsets to your confocal scan.
 - The optimizer scan behavior and sequence are configurable in the scanning gui -> Settings -> Optimizer settings.
 
 Deprecated:
 - Until v0.5.1, the scanning gui's `optimizer_plot_dimensions` ConfigOption allowed to specify the optimizer's scanning behavior. The default setting `[2,1]` enables one 2D and one 1D optimization step. You may set to eg. `[2,2,2]` to have three two-dimensionsal scans done for optimzation. In the gui (Settings/Optimizer Settings), this will change the list of possible optimizer sequences.  
 
-# Tilt correction
+## Tilt correction
 
 The above configuration will enable the tilt correction feature for the ScanningProbeDummy and NiScanningProbeInterfuse.
 This allows to perform scans in tilted layers, eg. along the surface of a non-flat sample. 
@@ -199,4 +200,4 @@ This allows to perform scans in tilted layers, eg. along the surface of a non-fl
   insert the current crosshair position as support vector 1. 
 - Enable the transformation by the "Tilt correction" button.
 
-# Todo this readme
+## Todo this readme
