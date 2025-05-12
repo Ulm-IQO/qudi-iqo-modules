@@ -17,6 +17,7 @@ body:
       description: What version of our software are you running?
       options:
         - current main
+        - v0.6.0
         - v0.5.1
         - v0.4.0
         - v0.3.0
