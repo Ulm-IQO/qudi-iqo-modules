@@ -62,10 +62,11 @@ dependencies = [
     'nidaqmx>=1.0.2',
     'numpy>=1.24.4,<2.0',
     'pyqtgraph>=0.13.3',
-    'PySide2',  # get fixed version from core
+    'PySide2', # get fixed version from core
     'PyVisa>=1.14.1',
     'scipy>=1.10.1',
-    'zaber_motion>=7.2.3'
+    'zaber_motion>=7.2.3',
+    "sirah-matisse-commander",
 ]
 
 [project.urls]
@@ -76,6 +77,9 @@ Changelog = "https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/changelo
 
 [tool.setuptools.dynamic]
 version = {file = "VERSION"}
+
+[tool.uv.sources]
+sirah-matisse-commander = { git = "https://github.com/nelsond/sirah-matisse-commander" }
 
 [dependency-groups]
 dev = [
