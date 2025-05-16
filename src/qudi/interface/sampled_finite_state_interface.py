@@ -23,6 +23,21 @@ def state(method: Callable) -> Callable:
    method._fysom_state = True
    return method
 
+def initial(method: Callable) -> Callable:
+   """Decorator for marking a state as the initial state.
+
+   Example:
+   ```
+   class MyClass(SampledFiniteStateInterface):
+       @state
+       @initial
+       def say_hi(self):
+           print("hi")
+   ```
+   """
+   method._fysom_is_initial = True
+   return method
+
 def transition_to(*args: Tuple[str, str]) -> Callable:
    """Decorator for listing the allowed transitions from a given watchdog state (the decorated method).
 
@@ -106,22 +121,27 @@ class SampledFiniteStateInterface(Base):
         states = []
         events_structure = []
         events = set()
+        initial = None
         for name, val in cls.__dict__.items():
             transitions_from = getattr(val, "_fysom_transition_from", [])
             transitions_to = getattr(val, "_fysom_transition_to", [])
             if getattr(val, "_fysom_state", False):
                 states.append(name)
+            if getattr(val, "_fysom_is_initial", False):
+                initial = name
             for (event, from_state) in transitions_from:
                 events_structure.append(dict(name=event, src=from_state, dst=name))
                 events.add(event)
             for (event, to_state) in transitions_to:
                 events_structure.append(dict(name=event, src=name, dst=to_state))
                 events.add(event)
+        if initial is not None:
+            cls._initial_state = initial
         cls.__fysom_events_structure = events_structure
         cls.__fysom_events = events
         cls.__fysom_states = states
         if "_initial_state" not in cls.__dict__.keys():
-            raise NotImplementedError("Subclasses of SampledFiniteStateInterface must have an `_initial_state` string attribute.")
+            raise NotImplementedError("Subclasses of SampledFiniteStateInterface must have an `_initial_state` string attribute or declare a state as initial using `@initial`.")
         for event in events:
             setattr(cls, "sig_on_event_" + event, QtCore.Signal())
         for state in states:
