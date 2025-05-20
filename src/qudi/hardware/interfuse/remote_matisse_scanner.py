@@ -33,6 +33,7 @@ class RemoteMatisseScanner(ExcitationScannerInterface, SampledFiniteStateInterfa
     Copy and paste example configuration:
     ```yaml
     matisse_scanner:
+        module.Class: 'interfuse.remote_matisse_scanner.RemoteMatisseScanner'
         connect:
             input: ni_finite_sampling_input
             matisse: matisse
