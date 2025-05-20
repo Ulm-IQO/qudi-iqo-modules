@@ -4,15 +4,35 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import Mutex
-from qudi.core.module import LogicBase
 from qudi.util.enums import SamplingOutputMode
 from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints
+from qudi.interface.sampled_finite_state_interface import SampledFiniteStateInterface, transition_to, transition_from, state, initial
 
-from PySide2 import QtCore
-from fysom import Fysom
 import numpy as np
 
-class FiniteSamplingScanningExcitationLogic(LogicBase, ExcitationScannerInterface):
+class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, SampledFiniteStateInterface):
+    """
+    An ExcitationScannerInterface to use a FiniteSamplingIOInterface, and an
+    analog output, as a scanning excitation module. Typical use case is to 
+    have a laser whose frequency is set by the analog output of a NI card, and 
+    measure the corresponding count rate on an APD.
+
+    Copy and paste example configuration:
+    ```yaml
+    finite_sampling_excitation:
+        module.Class: 'interfuse.finite_sampling_scanning_excitation.FiniteSamplingScanningExcitationInterfuse'
+        connect:
+            scan_hardware: ni_finite_sampling_io
+            analog_output: ni_analog_output # to control the idle value of the laser
+        config:
+            maximum_tension: 10 # V (default)
+            minimum_tension: -10 # V (default)
+            minimum_tension_step: 1e-4 # V (default)
+            output_channel: 'ao1' # required
+            input_channel: 'pfi1' # required
+            chunk_size: 10 # default
+    ```
+    """
     _finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
     _ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
 
@@ -22,7 +42,6 @@ class FiniteSamplingScanningExcitationLogic(LogicBase, ExcitationScannerInterfac
     _output_channel = ConfigOption(name="output_channel")
     _input_channel = ConfigOption(name="input_channel")
     _chunk_size = ConfigOption(name="chunk_size", default=10)
-    _watchdog_delay = ConfigOption(name="watchdog_delay", default=0.2)
 
     _scan_data = StatusVar(name="scan_data", default=np.empty((0,3)))
     _conversion_factor = StatusVar(name="conversion_factor", default=13.1378e9)
@@ -33,129 +52,20 @@ class FiniteSamplingScanningExcitationLogic(LogicBase, ExcitationScannerInterfac
     _sleep_time_before_scan = StatusVar(name="sleep_time_before_scan", default=5)
     _n_repeat = StatusVar(name="n_repeat", default=1)
     _idle_value = StatusVar(name="idle_value", default=0.0)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._watchdog_state = Fysom({
-            "initial": "stopped",
-            "events": [
-                {"name":"start_idle", "src":"prepare_idle", "dst":"idle"},
-                {"name":"start_idle", "src":"stopped", "dst":"prepare_idle"},
-
-                {"name":"start_scan", "src":"idle", "dst":"prepare_scan"},
-                {"name":"start_prepare_step", "src":"prepare_scan", "dst":"prepare_step"},
-                {"name":"start_wait_first_value", "src":"prepare_step", "dst":"wait_ready"},
-                {"name":"start_scan_step", "src":"wait_ready", "dst":"record_scan_step"},
-                {"name":"step_done", "src":"record_scan_step", "dst":"prepare_step"},
-                {"name":"end_scan", "src":"prepare_step", "dst":"prepare_idle"},
-
-                {"name":"interrupt_scan", "src":["prepare_scan","prepare_step","wait_ready","record_scan_step"], "dst":"prepare_idle"},
-
-                {"name":"stop_watchdog", "src":"*", "dst":"stopped"},
-            ],
-            # "callbacks":{
-            #     "on_start_scan": self._on_start_scan,
-            #     "on_prepare_idle": self._on_stop_scan,
-            #     "on_step_done": self._on_step_done,
-            # }
-        })
         self._scanning_states = {"prepare_scan", "prepare_step", "wait_ready", "record_scan_step"}
-        self._watchdog_lock = Mutex()
         self._data_lock = Mutex()
         self._constraints = ExcitationScannerConstraints((0,0),(0,0),(0,0),[],[],[],[])
         self._waiting_start = time.perf_counter()
         self._repeat_no = 0
         self._data_row_index = 0
-        self._watchdog_timer = QtCore.QTimer(parent=self)
 
     # Internal utilities
-    @property
-    def watchdog_state(self):
-        with self._watchdog_lock:
-            return self._watchdog_state.current
-    def watchdog_event(self, event):
-        with self._watchdog_lock:
-            self._watchdog_state.trigger(event)
     @property 
     def _number_of_samples_per_frame(self):
         return round((self._scan_maxi - self._scan_mini) / self._scan_step_tension)
-    def _watchdog(self):
-        try:
-            time_start = time.perf_counter()
-            watchdog_state = self.watchdog_state
-            if watchdog_state == "prepare_idle": 
-                if self._finite_sampling_io().is_running:
-                    self._finite_sampling_io().stop_buffered_frame()
-                self._ao().set_activity_state(self._output_channel, True)
-                self._ao().set_setpoint(self._output_channel, self._idle_value)
-                self.watchdog_event("start_idle")
-            elif watchdog_state == "idle": 
-                if not self._ao().get_activity_state(self._output_channel):
-                    self._ao().set_activity_state(self._output_channel, True)
-                if self._ao().get_setpoint(self._output_channel) != self._idle_value:
-                    self._ao().set_setpoint(self._output_channel, self._idle_value)
-            elif watchdog_state == "prepare_scan": 
-                n = self._number_of_samples_per_frame
-                self.log.debug(f"Preparing scan from {self._scan_mini} to {self._scan_maxi} with {n} points.")
-                with self._data_lock:
-                    self._scan_data = np.zeros((n*self._n_repeat, 3))
-                    self._scan_data[:,0] = np.tile(np.linspace(start=self._scan_mini, stop=self._scan_maxi, num=n), self._n_repeat)*self._conversion_factor
-                    self._scan_data[:,2] = np.repeat(range(self._n_repeat), n)
-                self._repeat_no = 0
-                self._data_row_index = 0
-                self._finite_sampling_io().set_sample_rate(1/self._exposure_time)
-                self._finite_sampling_io().set_active_channels(
-                    input_channels=(self._input_channel,),
-                    output_channels=(self._output_channel,)
-                    #output_channels = (self._ni_channel_mapping[ax] for ax in axes)
-                )
-
-                self._finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
-                self._finite_sampling_io().set_frame_data({self._output_channel:np.linspace(start=self._scan_mini, stop=self._scan_maxi, num=n)})
-                self.log.debug("Scan prepared.")
-                self.watchdog_event("start_prepare_step")
-            elif watchdog_state == "prepare_step": 
-                if self._repeat_no >= self._n_repeat:
-                    self.watchdog_event("end_scan")
-                    self.log.info("Scan done.")
-                else:
-                    if self._finite_sampling_io().is_running:
-                        self._finite_sampling_io().stop_buffered_frame()
-                    self._ao().set_activity_state(self._output_channel, True)
-                    self._ao().set_setpoint(self._output_channel, self._scan_mini)
-                    self.log.debug("Step prepared, starting wait.")
-                    self._waiting_start = time.perf_counter()
-                    self.watchdog_event("start_wait_first_value")
-            elif watchdog_state == "wait_ready": 
-                if time_start - self._waiting_start > self._sleep_time_before_scan:
-                    self.log.debug("Ready.")
-                    self._ao().set_activity_state(self._output_channel, False)
-                    self._finite_sampling_io().start_buffered_frame()
-                    self.watchdog_event("start_scan_step")
-            elif watchdog_state == "record_scan_step": 
-                running = self._finite_sampling_io().is_running
-                samples_missing = self._number_of_samples_per_frame * (self._repeat_no+1) - self._data_row_index
-                if samples_missing <= 0:
-                    self._repeat_no += 1
-                    self.log.debug("Step done.")
-                    self.watchdog_event("step_done")
-                elif self._finite_sampling_io().samples_in_buffer < min(self._chunk_size, samples_missing):
-                    pass
-                else:
-                    new_data = self._finite_sampling_io().get_buffered_samples()[self._input_channel]
-                    i = self._data_row_index
-                    with self._data_lock:
-                        self._scan_data[i:i+len(new_data),1] = new_data
-                        self._data_row_index += len(new_data)
-            elif watchdog_state == "stopped": 
-                self.log.debug("stopped")
-                if self._finite_sampling_io().is_running:
-                    self._finite_sampling_io().stop_buffered_frame()
-            time_end = time.perf_counter()
-            time_overhead = time_end-time_start
-            new_time = max(0, self._watchdog_delay - time_overhead)
-            self._watchdog_timer.start(new_time*1000)
-        except:
-            self.log.exception("")
 
     # Activation/De-activation
     def on_activate(self):
@@ -170,13 +80,113 @@ class FiniteSamplingScanningExcitationLogic(LogicBase, ExcitationScannerInterfac
             control_variable_types=(float, float, float, float, float, float, float, float, float, float),
             control_variable_units=("Hz/V", "V", "V", "V", "Hz", "Hz", "Hz", "s", "V", "Hz")
         )
-        self.watchdog_event("start_idle")
-        self._watchdog_timer.setSingleShot(True)
-        self._watchdog_timer.timeout.connect(self._watchdog, QtCore.Qt.QueuedConnection)
-        self._watchdog_timer.start(self._watchdog_delay)
+        self.enable_watchdog()
+        self.start_watchdog()
 
     def on_deactivate(self):
-        self.watchdog_event("stop_watchdog")
+        self.watchdog_event("stop")
+        self.disable_watchdog()
+
+    # SampledFiniteStateInterface
+    @state
+    @initial
+    @transition_to(("start_idle", "idle"))
+    @transition_from(("interrupt", ["prepare_scan", "prepare_step", "wait_ready", "record_scan_step"]))
+    def prepare_idle(self):
+        "Prepare the hardware for idling: stop acquisition and enable analog output hardware."
+        if self._finite_sampling_io().is_running:
+            self._finite_sampling_io().stop_buffered_frame()
+            self._ao().set_activity_state(self._output_channel, True)
+            self._ao().set_setpoint(self._output_channel, self._idle_value)
+            self.watchdog_event("start_idle")
+    @state
+    @transition_to(("start", "prepare_scan"))
+    def idle(self):
+        "Idling between scans, setting the analog output value if requested."
+        if not self._ao().get_activity_state(self._output_channel):
+            self._ao().set_activity_state(self._output_channel, True)
+        if self._ao().get_setpoint(self._output_channel) != self._idle_value:
+            self._ao().set_setpoint(self._output_channel, self._idle_value)
+    @state
+    @transition_to(("next", "prepare_step"))
+    def prepare_scan(self):
+        """Prepare a scan, we initialize the internal buffers and status variables.
+        """
+        n = self._number_of_samples_per_frame
+        self.log.debug(f"Preparing scan from {self._scan_mini} to {self._scan_maxi} with {n} points.")
+        with self._data_lock:
+            self._scan_data = np.zeros((n*self._n_repeat, 3))
+            self._scan_data[:,0] = np.tile(np.linspace(start=self._scan_mini, stop=self._scan_maxi, num=n), self._n_repeat)*self._conversion_factor
+            self._scan_data[:,2] = np.repeat(range(self._n_repeat), n)
+        self._repeat_no = 0
+        self._data_row_index = 0
+        self._finite_sampling_io().set_sample_rate(1/self._exposure_time)
+        self._finite_sampling_io().set_active_channels(
+            input_channels=(self._input_channel,),
+            output_channels=(self._output_channel,)
+        )
+        self._finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
+        self._finite_sampling_io().set_frame_data({self._output_channel:np.linspace(start=self._scan_mini, stop=self._scan_maxi, num=n)})
+        self.log.debug("Scan prepared.")
+        self.watchdog_event("next")
+    @state
+    @transition_to(("next", "wait_ready"))
+    @transition_to(("end", "prepare_idle"))
+    def prepare_step(self):
+        """Prepare a specific scan step. We first check if we have already run 
+        all requested steps, in which cas we go back to preparing idling. Otherwise,
+        we initialize the instruments, and move the scanner to its first position.
+        """
+        if self._repeat_no >= self._n_repeat:
+            self.watchdog_event("end")
+            self.log.info("Scan done.")
+        else:
+            if self._finite_sampling_io().is_running:
+                self._finite_sampling_io().stop_buffered_frame()
+            self._ao().set_activity_state(self._output_channel, True)
+            self._ao().set_setpoint(self._output_channel, self._scan_mini)
+            self.log.debug("Step prepared, starting wait.")
+            self._waiting_start = time.perf_counter()
+            self.watchdog_event("next")
+    @state
+    @transition_to(("next", "record_scan_step"))
+    def wait_ready(self):
+        """Wait a bit for the laser to reach its first value."""
+        if time.perf_counter() - self._waiting_start > self._sleep_time_before_scan:
+            self.log.debug("Ready.")
+            self._ao().set_activity_state(self._output_channel, False)
+            self._finite_sampling_io().start_buffered_frame()
+            self.watchdog_event("next")
+    @state
+    @transition_to(("next", "prepare_step"))
+    def record_scan_step(self):
+        """Actual data recording. We collect the available data. When all data
+        have been collected, we go back to preparing a step.
+        """
+        samples_missing = self._number_of_samples_per_frame * (self._repeat_no+1) - self._data_row_index
+        if samples_missing <= 0:
+            self._repeat_no += 1
+            self.log.debug("Step done.")
+            self.watchdog_event("next")
+        elif self._finite_sampling_io().samples_in_buffer < min(self._chunk_size, samples_missing):
+            pass
+        else:
+            new_data = self._finite_sampling_io().get_buffered_samples()[self._input_channel]
+            i = self._data_row_index
+            with self._data_lock:
+                self._scan_data[i:i+len(new_data),1] = new_data
+                self._data_row_index += len(new_data)
+    @state
+    @transition_from(("stop", "*"))
+    @transition_to(("start_idle", "prepare_idle"))
+    def stopped(self):
+        """Stop all operations and wait.
+        """
+        self.log.debug("stopped")
+        if self._finite_sampling_io().is_running:
+            self._finite_sampling_io().stop_buffered_frame()
+
+    # ExcitationScannerInterface
     @property
     def scan_running(self) -> bool:
         "Return True if a scan can be launched."
@@ -187,11 +197,11 @@ class FiniteSamplingScanningExcitationLogic(LogicBase, ExcitationScannerInterfac
     def start_scan(self) -> None:
         "Start scanning in a non_blocking way."
         if not self.scan_running:
-            self.watchdog_event("start_scan")
+            self.watchdog_event("start")
     def stop_scan(self) -> None:
         "Stop scanning in a non_blocking way."
         if self.scan_running:
-            self.watchdog_event("interrupt_scan")
+            self.watchdog_event("interrupt")
     @property
     def constraints(self) -> ExcitationScannerConstraints:
         "Get the list of control variables for the scanner."

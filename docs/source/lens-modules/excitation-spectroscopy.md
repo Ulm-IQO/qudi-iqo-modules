@@ -16,4 +16,5 @@
 
 hardwares/matisse
 hardwares/dummy_excitation_scanner
+hardwares/finite_sampling_scanning_excitation
 ```
