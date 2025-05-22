@@ -88,20 +88,24 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
         tau_element = self._get_idle_element(length=tau_start, increment=tau_step)
 
         xy8_elements = [pihalf_init_element, tauhalf_element]
-
         total_blocks = xy8_order * correlation_factor
-        phase_step = 360.0 / correlation_factor
-        random_phase = np.random.uniform(0, 360) if use_random_phase else 0
+
+        if use_random_phase:
+            random_phase = np.random.uniform(0, 360, xy8_order)
+            if correlation_factor > 1:
+                phase_step = 360.0 / correlation_factor * np.random.choice([-1,1])
+                random_phase = [rp + i*phase_step for rp in random_phase for i in range(correlation_factor)]
+        else:
+            random_phase = np.zeros(total_blocks)
 
         for block in range(total_blocks):
-            correlation_phase = (block // xy8_order) * phase_step
 
             pix_element = self._get_mw_element(length=self.rabi_period / 2, increment=0,
                                                amp=self.microwave_amplitude, freq=self.microwave_frequency,
-                                               phase=0 + random_phase + correlation_phase)
+                                               phase=0 + random_phase[block])
             piy_element = self._get_mw_element(length=self.rabi_period / 2, increment=0,
                                                amp=self.microwave_amplitude, freq=self.microwave_frequency,
-                                               phase=90 + random_phase + correlation_phase)
+                                               phase=90 + random_phase[block])
 
             xy8_elements.extend([pix_element, tau_element, piy_element, tau_element,
                                  pix_element, tau_element, piy_element, tau_element,
@@ -194,7 +198,8 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
     def generate_xy8_freq(self, name='xy8_freq', freq_start=0.1e6, freq_step=0.01e6,
                           num_of_points=50, xy8_order=4, alternating=True):
         """
-        Generates an XY8 sequence, with frequency as the controlled variable.
+        Generates an XY8 sequence, where the frequency, half of the inverse pulse spacing tau,
+        is the controlled variable.
 
         Parameters
         ----------
@@ -273,7 +278,8 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
     def generate_xy8_random_tau(self, name='xy8_random_tau', tau_start=0.5e-6, tau_step=0.01e-6, num_of_points=50,
                                 xy8_order=24, alternating=True):
         """
-        Generates an XY8 sequence, where the pulse spacing tau is the controlled variable.
+        Generates an XY8 sequence with random phase in each block,
+        where the pulse spacing tau is the controlled variable.
 
         Parameters
         ----------
@@ -351,7 +357,8 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
     def generate_xy8_random_freq(self, name='xy8_random_freq', freq_start=0.1e6, freq_step=0.01e6,
                                  num_of_points=50, xy8_order=4, alternating=True):
         """
-        Generates an XY8 sequence, with frequency as the controlled variable.
+        Generates an XY8 sequence with random phase in each block,
+        where the frequency, half of the inverse pulse spacing tau, is the controlled variable.
 
         Parameters
         ----------
@@ -432,7 +439,8 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
     def generate_xy8_random_tau_corr(self, name='xy8_rp_taucorr', tau_start=50e-9, tau_step=2e-9,
                                    num_of_points=50, xy8_order_xcorr=12, correlation_factor=2, alternating=True):
         """
-        Generates an XY8 sequence, where the pulse spacing tau is the controlled variable.
+        Generates an XY8 sequence with random phase in each block correlated every correlation_factor blocks,
+        where the pulse spacing tau is the controlled variable.
 
         Parameters
         ----------
@@ -464,7 +472,6 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
 
         # Get tau array for measurement ticks
         tau_array = tau_start + np.arange(num_of_points) * tau_step
-        # Calculate "real" start length of tau due to finite pi-pulse length
 
         # Create the XY8 elements using the helper function
         xy8_elements = self._get_xy8_elements(xy8_order=xy8_order_xcorr, tau_start=tau_start, tau_step=tau_step,
@@ -515,7 +522,8 @@ class DDPredefinedGenerator(PredefinedGeneratorBase):
     def generate_xy8_random_freq_corr(self, name='xy8_rp_freqcorr', freq_start=0.1e6, freq_step=0.01e6,
                                       num_of_points=50, xy8_order_xcorr=12, correlation_factor=2, alternating=True):
         """
-        Generates an XY8 sequence, where the pulse spacing tau is the controlled variable.
+        Generates an XY8 sequence with random phase in each block correlated every correlation_factor blocks,
+        where the frequency, half of the inverse pulse spacing tau, is the controlled variable.
 
         Parameters
         ----------
