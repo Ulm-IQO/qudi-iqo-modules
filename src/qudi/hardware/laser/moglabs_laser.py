@@ -14,32 +14,23 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import socket
-import queue
 import struct
 import time
 from typing import Union, Optional, Tuple, Sequence
 
 from PySide2 import QtCore
-from PySide2.QtGui import QGuiApplication
 
 import serial
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-# from qudi.interface.scanning_laser_interface import ScanningLaserInterface, ScanningState, ScanningLaserReturnError
 from qudi.interface.data_instream_interface import DataInStreamInterface, DataInStreamConstraints, SampleTiming, StreamingMode, ScalarConstraint
 from qudi.interface.process_control_interface import ProcessControlConstraints, ProcessControlInterface
 from qudi.interface.autoscan_interface import AutoScanInterface, AutoScanConstraints
 from qudi.interface.switch_interface import SwitchInterface
-from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface, FiniteSamplingInputConstraints
-from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanData, ScannerChannel, ScannerAxis, ScanConstraints
 from qudi.util.mutex import Mutex
-from qudi.core.connector import Connector
 from qudi.util.overload import OverloadedAttribute
-from qudi.util.helpers import in_range
-from qudi.util.enums import SamplingOutputMode
 
 from qudi.hardware.laser.moglabs_helper import MOGLABSDeviceFinder
 
