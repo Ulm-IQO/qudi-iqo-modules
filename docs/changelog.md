@@ -79,6 +79,7 @@ In future releases, `python 3.8` support will be dropped to be able to upgrade t
 - Added DMC output mode for Keysight M8195A AWG
 - Updated workflows to follow new 'pyproject.toml' release workflow
 - Altered tektronix_awg70k hardware file to allow the use of the newer, B-series of Tektronix AWGs
+- Added ruff configuration to `pyproject.toml` to standardize formatting
 - Added Windfreak synthHD documentation
 - Added cursor position in `Scan2DWidget` of the scanning toolchain
 - Added scanning settings to scanning toolchain
