@@ -5,12 +5,13 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import traceback
 from uncertainties import ufloat
+from dataclasses import asdict
 
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.util.datastorage import TextDataStorage
+from qudi.util.tomldatastorage import TOMLHeaderDataStorage
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
 from qudi.util.mutex import Mutex
 
@@ -210,7 +211,7 @@ class ScanningExcitationLogic(LogicBase):
             header.append(f"{colname} ({colunit})")
         file_label = 'spectrum' + name_tag
         # save the date to file
-        ds = TextDataStorage(root_dir=self.module_default_data_dir if root_dir is None else root_dir,
+        ds = TOMLHeaderDataStorage(root_dir=self.module_default_data_dir if root_dir is None else root_dir,
                              include_global_metadata=True)
 
         file_path, _, _ = ds.save_data(np.array(data).T,

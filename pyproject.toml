@@ -67,6 +67,8 @@ dependencies = [
     'scipy>=1.10.1',
     'zaber_motion>=7.2.3',
     "sirah-matisse-commander",
+    "tomli-w>=1.2.0",
+    "tomli>=2.2.1",
 ]
 
 [project.urls]
