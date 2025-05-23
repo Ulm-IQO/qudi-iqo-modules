@@ -75,13 +75,13 @@ class ScanningExcitationLogic(LogicBase):
         self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
         self.fit_region = self._fit_region
 
-        display_channel_is_correct = self._display_channel_column_number in self._scanner().data_column_number
+        display_channel_is_correct = self._display_channel_column_number in self._scanner().data_format.data_column_number
         if not display_channel_is_correct:
-            self._display_channel_column_number = self._scanner().data_column_number[0]
-        spectrum_shape_is_correct = len(self._spectrum) == len(self._scanner().data_column_names)
+            self._display_channel_column_number = self._scanner().data_format.data_column_number[0]
+        spectrum_shape_is_correct = len(self._spectrum) == len(self._scanner().data_format.data_column_names)
         if not spectrum_shape_is_correct:
             self.log.info("resetting spectrum")
-            self._spectrum = [None for _ in range(len(self._scanner().data_column_names))]
+            self._spectrum = [None for _ in range(len(self._scanner().data_format.data_column_names))]
         self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.QueuedConnection)
         self._watchdog_timer.setSingleShot(True)
         self._watchdog_timer.timeout.connect(self._watchdog, QtCore.Qt.QueuedConnection)
@@ -102,7 +102,7 @@ class ScanningExcitationLogic(LogicBase):
     def get_spectrum(self, reset=True):
         self._stop_acquisition = False
         if reset:
-            ncols = len(self._scanner().data_column_names)
+            ncols = len(self._scanner().data_format.data_column_names)
             with self._lock:
                 self._spectrum = [None for _ in range(ncols)]
         self.sig_state_updated.emit()
@@ -148,23 +148,23 @@ class ScanningExcitationLogic(LogicBase):
     @property
     def frequency(self):
         with self._lock:
-            if self._spectrum[self._scanner().frequency_column_number] is None:
+            if self._spectrum[self._scanner().data_format.frequency_column_number] is None:
                 return None
-            return np.copy(self._spectrum[self._scanner().frequency_column_number])
+            return np.copy(self._spectrum[self._scanner().data_format.frequency_column_number])
 
     @property
     def step_number(self):
         with self._lock:
-            if self._spectrum[self._scanner().step_number_column_number] is None:
+            if self._spectrum[self._scanner().data_format.step_number_column_number] is None:
                 return None
-            return np.copy(self._spectrum[self._scanner().step_number_column_number])
+            return np.copy(self._spectrum[self._scanner().data_format.step_number_column_number])
 
     @property
     def time(self):
         with self._lock:
-            if self._spectrum[self._scanner().time_column_number] is None:
+            if self._spectrum[self._scanner().data_format.time_column_number] is None:
                 return None
-        return np.copy(self._spectrum[self._scanner().time_column_number])
+        return np.copy(self._spectrum[self._scanner().data_format.time_column_number])
 
     def save_spectrum_data(self, name_tag='', root_dir=None, parameter=None):
         """ Saves the current spectrum data to a file.
@@ -176,25 +176,28 @@ class ScanningExcitationLogic(LogicBase):
         timestamp = datetime.now()
 
         # write experimental parameters
-        parameters = {'repetitions': self.repetitions,
+        scan_variables = {'repetitions': self.repetitions,
                       'exposure' : self.exposure_time,
-                      'notes' : self._notes,
                       }
 
-        for (variable,d) in self._scanner().control_dict.items():
-            parameters[variable+"_limits"] = d['limits']
-            parameters[variable+"_unit"] = d['unit']
-            parameters[variable+"_value"] = d['value']
+        for (variable, value) in self._scanner().control_dict.items():
+            scan_variables[variable] = asdict(value)
+
+        parameters = {
+            'scan_setup': scan_variables
+        }
 
         if self.fit_method != 'No Fit' and self.fit_results is not None:
-            parameters['fit_method'] = self.fit_method
-            parameters['fit_results'] = self.fit_results.params
-            parameters['fit_region'] = self.fit_region
+            fit_setup = {}
+            fit_setup['method'] = self.fit_method
+            fit_setup['results'] = self.fit_results.params
+            fit_setup['region'] = self.fit_region
+            parameters['fit'] = fit_setup
 
         if parameter:
             parameters.update(parameter)
 
-        if self.frequency is None:
+        if self.frequency is None or self.spectrum is None or self.step_number is None:
             self.log.error('No data to save.')
             return
 
@@ -203,7 +206,7 @@ class ScanningExcitationLogic(LogicBase):
 
         data = []
         header = []
-        for (colname, colunit, col) in zip(self._scanner().data_column_names, self._scanner().data_column_unit, self._spectrum):
+        for (colname, colunit, col) in zip(self._scanner().data_format.data_column_names, self._scanner().data_format.data_column_unit, self._spectrum):
             if col is None:
                 self.log.error('No spectrum to save.')
                 return
@@ -219,6 +222,7 @@ class ScanningExcitationLogic(LogicBase):
                                        metadata=parameters,
                                        nametag=file_label,
                                        timestamp=timestamp,
+                                       notes=self._notes,
                                        column_dtypes=[float] * len(header))
 
         # save the figure into a file
@@ -316,8 +320,8 @@ class ScanningExcitationLogic(LogicBase):
         self.sig_scanner_variables_updated.emit()
 
     def available_channels(self):
-        indices = self._scanner().data_column_number
-        return [self._scanner().data_column_names[i] for i in indices]
+        indices = self._scanner().data_format.data_column_number
+        return [self._scanner().data_format.data_column_names[i] for i in indices]
 
     @property
     def display_channel_column_number(self):
@@ -327,12 +331,12 @@ class ScanningExcitationLogic(LogicBase):
         self._display_channel_column_number = v
         self.sig_data_updated.emit()
     def set_display_channel_from_name(self, name):
-        self.display_channel_column_number = self._scanner().data_column_names.index(name)
+        self.display_channel_column_number = self._scanner().data_format.data_column_names.index(name)
 
     def _watchdog(self):
         try:
             with self._lock:
-                ncols = len(self._scanner().data_column_names)
+                ncols = len(self._scanner().data_format.data_column_names)
                 data = self._scanner().get_current_data()
                 if len(data) > 0:
                     self._spectrum = [data[:,i] for i in range(ncols)]

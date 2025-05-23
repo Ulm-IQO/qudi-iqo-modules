@@ -1,44 +1,63 @@
 from abc import abstractmethod
 from collections import OrderedDict
-from typing import Iterable, Union, Tuple, Dict, Type
+from typing import Iterable, Union, Tuple, Type
+from collections import OrderedDict
 import numpy as np
+from dataclasses import InitVar, dataclass, field
 
 from qudi.core.module import Base
 _Variable_Type = Union[int, float, bool]
 
+
+@dataclass(frozen=True)
+class ExcitationScanDataFormat:
+    time_column_number: int
+    step_number_column_number: int
+    frequency_column_number: int
+    data_column_number: Iterable[int]
+    data_column_unit: Iterable[str]
+    data_column_names: Iterable[str]
+
+@dataclass
+class ExcitationScanControlValue:
+    name: str
+    value: _Variable_Type
+    limits: Tuple[_Variable_Type, _Variable_Type]
+    type: Type[_Variable_Type]
+    unit: str = ''
+
+@dataclass
+class ExcitationScanControlVariable:
+    name: str
+    limits: Tuple[_Variable_Type, _Variable_Type]
+    type: Type[_Variable_Type]
+    unit: str = ''
+
+@dataclass
 class ExcitationScannerConstraints:
-    def __init__(self, exposure_limits:Tuple[float,float], 
-                 repeat_limits:Tuple[int,int], 
-                 idle_value_limits:Tuple[float,float], 
-                 control_variables:Iterable[str], 
-                 control_variable_limits:Iterable[Tuple[_Variable_Type,_Variable_Type]], 
-                 control_variable_units:Iterable[str], 
-                 control_variable_types:Iterable[Type[_Variable_Type]]):
-        self.exposure_limits=exposure_limits
-        self.repeat_limits=repeat_limits
-        self.idle_value_limits=idle_value_limits
-        self.control_variables:list[str]=list(control_variables)
-        self.control_variable_limits:list[Tuple[_Variable_Type,_Variable_Type]]=list(control_variable_limits)
-        self.control_variable_types:list[Type[_Variable_Type]]=list(control_variable_types)
-        self.control_variable_units=control_variable_units
-        self._control_variables_dict = {
-            name:dict(name=name, limits=limits, type=t, unit=unit) for (name,limits,t,unit) in zip(self.control_variables, self.control_variable_limits, self.control_variable_types, self.control_variable_units)
-        }
-    def get_control_variables(self):
-        return self._control_variables_dict
+    exposure_limits: Tuple[float, float]
+    repeat_limits: Tuple[int, int]
+    idle_value_limits: Tuple[float, float]
+    control_variables_list: InitVar[Iterable[ExcitationScanControlVariable]]
+    control_variables: OrderedDict[str, ExcitationScanControlVariable] = field(init=False)
+    def __post_init__(self, control_variables_list):
+        self.control_variables = OrderedDict([
+            (cv.name, cv)
+            for cv in control_variables_list
+        ])
     def variable_in_range(self, name:str,value:_Variable_Type):
         if name not in self.control_variables:
             return False
-        i = self.control_variables.index(name)
-        if self.control_variable_types[i] == bool:
+        cv = self.control_variables[name]
+        if cv.type == bool:
             return True
-        mini,maxi=self.control_variable_limits[i]
+        mini,maxi = cv.limits
         return mini <= value <= maxi
     def set_limits(self, name:str,mini:_Variable_Type,maxi:_Variable_Type):
         if name not in self.control_variables:
             raise KeyError(f"Unknown variable {name}")
-        i = self.control_variables.index(name)
-        self.control_variable_limits[i] = mini,maxi
+        cv = self.control_variables[name]
+        cv.limits = mini,maxi
     def exposure_in_range(self, value):
         mini,maxi = self.exposure_limits
         return mini <= value <= maxi
@@ -83,16 +102,17 @@ class ExcitationScannerInterface(Base):
         "Get a control variable value."
         pass
     @property 
-    def control_dict(self):
+    def control_dict(self) -> OrderedDict[str, ExcitationScanControlValue]:
         "Get a dict with all the control variables."
-        c = self.constraints.get_control_variables()
-        return OrderedDict([(k,
-                             dict(name=k, 
-                                  limits=c[k]['limits'], 
-                                  type=c[k]['type'], 
-                                  unit=c[k]['unit'], 
-                                  value=self.get_control(k))
-                             ) for k in self.constraints.control_variables])
+        return OrderedDict([
+            (k,
+             ExcitationScanControlValue(name=k, 
+                                        limits=cv.limits, 
+                                        type=cv.type, 
+                                        unit=cv.unit, 
+                                        value=self.get_control(k))
+             ) for (k,cv) in self.constraints.control_variables.items()
+        ])
 
     @abstractmethod
     def get_current_data(self) -> np.ndarray:
@@ -128,36 +148,19 @@ class ExcitationScannerInterface(Base):
         pass
     @property
     @abstractmethod
-    def data_column_names(self) -> Iterable[str]:
-        "Return an iterable of the columns names for the return value of `get_current_data`."
+    def data_format(self) -> ExcitationScanDataFormat:
+        "Return the data format used in this implementation of the interface."
         pass
     @property
-    @abstractmethod
-    def data_column_unit(self) -> Iterable[str]:
-        "Return an iterable of the columns units for the return value of `get_current_data`."
-        pass
-    @property
-    @abstractmethod
-    def data_column_number(self) -> Iterable[int]:
-        "Return an iterable of column numbers for adressing the data returned by `get_current_data`."
-        pass
-    @property
-    @abstractmethod
     def frequency_column_number(self) -> int:
-        "Return the column number for the frequency in the data returned by `get_current_data`."
-        pass
+        "Shortcut for `self.data_format.frequency_column_number`."
+        return self.data_format.frequency_column_number
     @property
-    @abstractmethod
     def step_number_column_number(self) -> int:
-        "Return the column number for the step number in the data returned by `get_current_data`."
-        pass
+        "Shortcut for `self.data_format.step_number_column_number`."
+        return self.data_format.step_number_column_number
     @property
-    @abstractmethod
     def time_column_number(self) -> int:
-        "Return the column number for the time in the data returned by `get_current_data`."
-        pass
-
-
-class ExcitationScanData:
-    pass
+        "Shortcut for `self.data_format.time_column_number`."
+        return self.data_format.time_column_number
 

@@ -1,8 +1,7 @@
 import time
 import numpy as np
-from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints
-from qudi.interface.sampled_finite_state_interface import SampledFiniteStateInterface, transition_to, transition_from, state
-from typing import Iterable, Union, Tuple, Dict, Type, Callable
+from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints, ExcitationScanControlVariable, ExcitationScanDataFormat
+from qudi.interface.sampled_finite_state_interface import SampledFiniteStateInterface, transition_to, transition_from, state, initial
 
 class ExcitationScannerDummy(ExcitationScannerInterface, SampledFiniteStateInterface):
     """
@@ -15,11 +14,12 @@ class ExcitationScannerDummy(ExcitationScannerInterface, SampledFiniteStateInter
     ```
 
     """
-    _initial_state = "idle"
     
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._constraints = ExcitationScannerConstraints((0,1),(1,1),(-1e9,1e9),["dummy variable"],[(0,100)],["potatoe"],[int])
+        self._constraints = ExcitationScannerConstraints((1e-4,1),(1,1000),(0.0,1.0),[
+            ExcitationScanControlVariable("dummy variable", (0.0, 10.0), float, "potatoes")
+        ])
         self._exposure_time = 0.001
         self._timer_start = time.perf_counter()
         self._scan_stop_time = time.perf_counter() + self._exposure_time*2000
@@ -78,26 +78,20 @@ class ExcitationScannerDummy(ExcitationScannerInterface, SampledFiniteStateInter
         "Get idle value."
         return 0.0
     @property
-    def data_column_names(self) -> Iterable[str]:
-        return ["Frequency", "Step number", "Time", "Count"]
-    @property
-    def data_column_unit(self) -> Iterable[str]:
-        return ["Hz", "", "s", "c"]
-    @property
-    def data_column_number(self) -> Iterable[int]:
-        return [3]
-    @property
-    def frequency_column_number(self) -> int:
-        return 0
-    @property
-    def step_number_column_number(self) -> int:
-        return 1
-    @property
-    def time_column_number(self) -> int:
-        return 2
+    def data_format(self) -> ExcitationScanDataFormat:
+        "Return the data format used in this implementation of the interface."
+        return ExcitationScanDataFormat(
+                frequency_column_number=0,
+                step_number_column_number=1,
+                time_column_number=2,
+                data_column_number=[3],
+                data_column_unit=["Hz", "", "s", "c"],
+                data_column_names=["Frequency", "Step number", "Time", "Count"] 
+            )
 
     # SampledFiniteStateInterface
     @state
+    @initial
     @transition_to(("start_idle", "idle"))
     @transition_from(("interrupt_scan", ["prepare_scan", "prepare_step", "wait_ready", "record_scan_step"]))
     def prepare_idle(self):

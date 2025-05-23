@@ -110,11 +110,11 @@ class ScanningExcitationControlWidget(QtWidgets.QWidget):
             getattr(widget, _signal_mapping[type(widget)]).disconnect()
         self._variables_widgets = {}
         for variable in variables_dict.values():
-            name = variable["name"]
-            limits = variable["limits"]
-            t = variable["type"]
-            unit = variable["unit"]
-            value = variable["value"]
+            name = variable.name
+            limits = variable.limits
+            t = variable.type
+            unit = variable.unit
+            value = variable.value
             widget = _widget_mapping[t]()
             if t==bool:
                 widget.setChecked(value)
@@ -130,11 +130,11 @@ class ScanningExcitationControlWidget(QtWidgets.QWidget):
 
     def update_variable_widgets(self, variables_dict):
         for variable in variables_dict.values():
-            name = variable["name"]
-            limits = variable["limits"]
-            t = variable["type"]
-            unit = variable["unit"]
-            value = variable["value"]
+            name = variable.name
+            limits = variable.limits
+            t = variable.type
+            unit = variable.unit
+            value = variable.value
             widget = self._variables_widgets[name]
             if widget.hasFocus():
                 continue

@@ -5,7 +5,7 @@ from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import Mutex
 from qudi.util.enums import SamplingOutputMode
-from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints
+from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints, ExcitationScanControlVariable, ExcitationScanDataFormat
 from qudi.interface.sampled_finite_state_interface import SampledFiniteStateInterface, transition_to, transition_from, state, initial
 
 import numpy as np
@@ -57,10 +57,12 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         super().__init__(*args, **kwargs)
         self._scanning_states = {"prepare_scan", "prepare_step", "wait_ready", "record_scan_step"}
         self._data_lock = Mutex()
-        self._constraints = ExcitationScannerConstraints((0,0),(0,0),(0,0),[],[],[],[])
+        self._constraints = ExcitationScannerConstraints((0,0),(0,0),(0,0),{})
         self._waiting_start = time.perf_counter()
         self._repeat_no = 0
         self._data_row_index = 0
+        self._scan_start_time = 0
+        self._step_start_time = 0
 
     # Internal utilities
     @property 
@@ -75,11 +77,19 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
             exposure_limits=(1e-4,1),
             repeat_limits=(1,100),
             idle_value_limits=(self._minimum_tension*self._conversion_factor, self._maximum_tension*self._conversion_factor),
-            control_variables=("Conversion factor", "Minimum tension", "Maximum tension", "Tension step", "Minimum frequency", "Maximum frequency", "Frequency step", "Sleep before scan", "Idle tension", "Idle frequency"),
-            control_variable_limits=((0.0, 1e11), (self._minimum_tension, self._maximum_tension), (self._minimum_tension, self._maximum_tension), (self._minimum_tension_step,self._maximum_tension-self._minimum_tension), (-10e12, 10e12), (-10e12, 10e12), (0.0, 10e12), (0.0, 10.0), (self._minimum_tension, self._maximum_tension), (-10e12, 10e12)),
-            control_variable_types=(float, float, float, float, float, float, float, float, float, float),
-            control_variable_units=("Hz/V", "V", "V", "V", "Hz", "Hz", "Hz", "s", "V", "Hz")
-        )
+            control_variables_list=[
+                ExcitationScanControlVariable("Conversion factor", (0.0, 1e11), float, "Hz/V"),
+                ExcitationScanControlVariable("Minimum tension", (self._minimum_tension, self._maximum_tension), float, "V"),
+                ExcitationScanControlVariable("Maximum tension", (self._minimum_tension, self._maximum_tension), float, "V"),
+                ExcitationScanControlVariable("Tension step", (self._minimum_tension_step,self._maximum_tension-self._minimum_tension), float, "V"),
+                ExcitationScanControlVariable("Minimum frequency", (-10e12, 10e12), float, "Hz"),
+                ExcitationScanControlVariable("Maximum frequency", (-10e12, 10e12), float, "Hz"),
+                ExcitationScanControlVariable("Frequency step", (0.0, 10e12), float, "Hz"),
+                ExcitationScanControlVariable("Sleep before scan", (0.0, 60.0), float, "s"),
+                ExcitationScanControlVariable("Idle tension", (self._minimum_tension, self._maximum_tension), float, "V"),
+                ExcitationScanControlVariable("Idle frequency", (-10e12, 10e12), float, "Hz"),
+
+        ])
         self.enable_watchdog()
         self.start_watchdog()
 
@@ -115,9 +125,9 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         n = self._number_of_samples_per_frame
         self.log.debug(f"Preparing scan from {self._scan_mini} to {self._scan_maxi} with {n} points.")
         with self._data_lock:
-            self._scan_data = np.zeros((n*self._n_repeat, 3))
-            self._scan_data[:,0] = np.tile(np.linspace(start=self._scan_mini, stop=self._scan_maxi, num=n), self._n_repeat)*self._conversion_factor
-            self._scan_data[:,2] = np.repeat(range(self._n_repeat), n)
+            self._scan_data = np.zeros((n*self._n_repeat, 4))
+            self._scan_data[:,self.frequency_column_number] = np.tile(np.linspace(start=self._scan_mini, stop=self._scan_maxi, num=n), self._n_repeat)*self._conversion_factor
+            self._scan_data[:,self.step_number_column_number] = np.repeat(range(self._n_repeat), n)
         self._repeat_no = 0
         self._data_row_index = 0
         self._finite_sampling_io().set_sample_rate(1/self._exposure_time)
@@ -127,6 +137,7 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         )
         self._finite_sampling_io().set_output_mode(SamplingOutputMode.JUMP_LIST)
         self._finite_sampling_io().set_frame_data({self._output_channel:np.linspace(start=self._scan_mini, stop=self._scan_maxi, num=n)})
+        self._scan_start_time = time.perf_counter()
         self.log.debug("Scan prepared.")
         self.watchdog_event("next")
     @state
@@ -156,6 +167,7 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
             self.log.debug("Ready.")
             self._ao().set_activity_state(self._output_channel, False)
             self._finite_sampling_io().start_buffered_frame()
+            self._step_start_time = time.perf_counter()
             self.watchdog_event("next")
     @state
     @transition_to(("next", "prepare_step"))
@@ -165,6 +177,9 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         """
         samples_missing = self._number_of_samples_per_frame * (self._repeat_no+1) - self._data_row_index
         if samples_missing <= 0:
+            n = self._number_of_samples_per_frame
+            offset = n * self._repeat_no
+            self._scan_data[offset:(offset+n),self.time_column_number] = (self._step_start_time - self._scan_start_time) + np.arange(n)*self._exposure_time
             self._repeat_no += 1
             self.log.debug("Step done.")
             self.watchdog_event("next")
@@ -290,9 +305,21 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         return self._n_repeat
     def get_idle_value(self) -> float:
         return self._idle_value * self._conversion_factor
-    def set_idle_value(self, v):
-        tension = v / self._conversion_factor
+    def set_idle_value(self, n):
+        tension = n / self._conversion_factor
         if not self.constraints.idle_value_in_range(tension):
-            raise ValueError(f"Unable to set idle value to {v}")
+            raise ValueError(f"Unable to set idle value to {n}")
         self._idle_value = tension
+    @property
+    def data_format(self) -> ExcitationScanDataFormat:
+        "Return the data format used in this implementation of the interface."
+        units = self._finite_sampling_io().constraints.input_channel_units
+        return ExcitationScanDataFormat(
+                frequency_column_number=0,
+                step_number_column_number=2,
+                time_column_number=3,
+                data_column_number=[1],
+                data_column_unit=["Hz", units[self._input_channel], "s", "c"],
+                data_column_names=["Frequency", self._input_channel, "Step number", "Time"] 
+            )
 

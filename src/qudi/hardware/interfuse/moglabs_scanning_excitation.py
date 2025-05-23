@@ -4,7 +4,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import Mutex
-from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints
+from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints, ExcitationScanControlVariable, ExcitationScanDataFormat
 from qudi.interface.sampled_finite_state_interface import SampledFiniteStateInterface, transition_to, transition_from, state, initial
 
 import numpy as np
@@ -57,7 +57,7 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         super().__init__(*args, **kwargs)
         self._scanning_states = {"prepare_scan", "prepare_step", "record_scan_step", "wait_ready"}
         self._data_lock = Mutex()
-        self._constraints = ExcitationScannerConstraints((0,0),(0,0),(0,0),[],[],[],[])
+        self._constraints = ExcitationScannerConstraints((0,0),(0,0),(0,0),{})
         self._waiting_start = time.perf_counter()
         self._idle_scan_start = time.perf_counter()
         self._repeat_no = 0
@@ -65,6 +65,8 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         self._frequency_row_index = 0
         self._scan_data = np.zeros((0, 3))
         self._measurement_time = np.zeros(0)
+        self._scan_start_time = 0
+        self._step_start_time = 0
     # Internal utilities
     @property 
     def _number_of_samples_per_frame(self):
@@ -109,14 +111,18 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         ldd_limits = ldd_constraints.channel_limits
         ldd_units = ldd_constraints.channel_units
         fzw_constraints = self._fzw_sampling().constraints
+        cv_list = [ExcitationScanControlVariable("grating", cem_limits["grating"], int, cem_units["grating"])]
+        for cv in ["current", "offset", "span", "bias", "frequency", "duty"]:
+            cv_list.append(ExcitationScanControlVariable(cv, ldd_limits[cv], float, ldd_units[cv]))
+        cv_list.append(ExcitationScanControlVariable("fzw probe rate", fzw_constraints.sample_rate_limits, float, "Hz"))
+        cv_list.append(ExcitationScanControlVariable("delay_start_acquitition", (0.0, 60), float, "s"))
+        cv_list.append(ExcitationScanControlVariable("interpolate_frequencies", (False, True), bool, ""))
+        cv_list.append(ExcitationScanControlVariable("idle_scan", (False, True), bool, ""))
         self._constraints = ExcitationScannerConstraints(
             exposure_limits=(1e-4,1),
             repeat_limits=(1,2**32-1),
             idle_value_limits=(0.0, 400e12),
-            control_variables=("grating", "current", "offset", "span", "bias", "frequency", "duty", "fzw probe rate", "delay_start_acquitition", "interpolate_frequencies", "idle_scan"),
-            control_variable_limits=(cem_limits["grating"], ldd_limits["current"], ldd_limits["offset"], ldd_limits["span"], ldd_limits["bias"], ldd_limits["frequency"], ldd_limits["duty"], fzw_constraints.sample_rate_limits, (0.0, 60), (False, True), (False, True)),
-            control_variable_types=(int, float, float, float, float, float, float, float, float, bool, bool),
-            control_variable_units=(cem_units["grating"], ldd_units["current"], ldd_units["offset"], ldd_units["span"], ldd_units["bias"], ldd_units["frequency"], ldd_units["duty"], "Hz", "s", None, None)
+            control_variables_list=cv_list
         )
         self._ldd_control().set_setpoint("frequency", self._frequency)
         self._ldd_control().set_setpoint("duty", self._duty)
@@ -169,7 +175,7 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
     def prepare_scan(self):
         n = self._number_of_samples_per_frame
         with self._data_lock:
-            self._scan_data = np.zeros((n*self._n_repeat, 3))
+            self._scan_data = np.zeros((n*self._n_repeat, 4))
             self._scan_data[:,2] = np.repeat(range(self._n_repeat), n)
             self._measurement_time = np.zeros(n*self._n_repeat)
             self._frequency_buffer = np.zeros(self._number_of_frequencies_per_frame*self._n_repeat)
@@ -178,6 +184,7 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         self._frequency_row_index = 0
         self._prepare_ramp()
         self._stop_ramp()
+        self._scan_start_time = time.perf_counter()
         self.log.debug("Scan prepared.")
         self.watchdog_event("next")
     @state
@@ -190,7 +197,7 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
                 n = self._scan_data.shape[0]
                 measurements_times = np.linspace(start=0, stop=(n-1)*self._exposure_time, num=n)
                 frequency_times = np.linspace(start=0, stop=(n-1)*self._exposure_time, num=self._frequency_buffer.shape[0])
-                self._scan_data[:,0] = np.interp(measurements_times, 
+                self._scan_data[:,self.frequency_column_number] = np.interp(measurements_times, 
                         frequency_times, 
                         self._frequency_buffer
                     )
@@ -218,6 +225,7 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
             self._stop_ramp()
             self._start_acquisition()
             self.log.debug("Ready to start acquisition.")
+            self._step_start_time = time.perf_counter()
             self.watchdog_event("next")
     @state
     @transition_to(("next", "prepare_step"))
@@ -226,6 +234,9 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         samples_missing_frequency = self._number_of_frequencies_per_frame * (self._repeat_no+1) - self._frequency_row_index
         if samples_missing_data <= 0 and samples_missing_frequency <= 0:
             self._stop_acquisition()
+            n = self._number_of_samples_per_frame
+            offset = n * self._repeat_no
+            self._scan_data[offset:(offset+n),self.time_column_number] = (self._step_start_time - self._scan_start_time) + np.arange(n)*self._exposure_time
             self._repeat_no += 1
             self.log.debug("Step done.")
             self.watchdog_event("next")
@@ -308,7 +319,6 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
         elif variable == "delay_start_acquitition":
             self._delay_start_acquitition = value
 
-
     def get_control(self, variable: str):
         "Get a control variable value."
         if variable == "grating":
@@ -378,28 +388,15 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
                                                   num=len(frequencies)
                                       ))
     @property
-    def data_column_names(self) -> Iterable[str]:
-        "Return an iterable of the columns names for the return value of `get_current_data`."
-        return ["Frequency", self._input_channel, "Step number", "Time"]
-    @property
-    def data_column_unit(self) -> Iterable[str]:
-        "Return an iterable of the columns units for the return value of `get_current_data`."
+    def data_format(self) -> ExcitationScanDataFormat:
+        "Return the data format used in this implementation of the interface."
         units = self._finite_sampling_input().constraints.channel_units
-        return ["Hz", units[self._input_channel], "", "s"]
-    @property
-    def frequency_column_number(self) -> int:
-        "Return the column number for the frequency in the data returned by `get_current_data`."
-        return 0
-    @property
-    def step_number_column_number(self) -> int:
-        "Return the column number for the step number in the data returned by `get_current_data`."
-        return 2
-    @property
-    def time_column_number(self) -> int:
-        "Return the column number for the time in the data returned by `get_current_data`."
-        return 3
-    @property
-    def data_column_number(self) -> Iterable[int]:
-        "Return an iterable of column numbers for adressing the data returned by `get_current_data`."
-        return [1]
+        return ExcitationScanDataFormat(
+                frequency_column_number=0,
+                step_number_column_number=2,
+                time_column_number=3,
+                data_column_number=[1],
+                data_column_unit=["Hz", units[self._input_channel], "s", "c"],
+                data_column_names=["Frequency", self._input_channel, "Step number", "Time"] 
+            )
 

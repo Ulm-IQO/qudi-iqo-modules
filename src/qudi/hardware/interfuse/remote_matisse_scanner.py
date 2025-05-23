@@ -5,8 +5,7 @@ from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import Mutex
-from qudi.util.enums import SamplingOutputMode
-from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints
+from qudi.interface.excitation_scanner_interface import ExcitationScannerInterface, ExcitationScannerConstraints, ExcitationScanControlVariable, ExcitationScanDataFormat
 from qudi.interface.sampled_finite_state_interface import SampledFiniteStateInterface, transition_to, transition_from, state
 from qudi.util.network import netobtain
 
@@ -28,7 +27,7 @@ class MatisseScanMode(Enum):
 
 class RemoteMatisseScanner(ExcitationScannerInterface, SampledFiniteStateInterface):
     """
-    A, ExcitationScannerInterface implementation to use a Matisse laser.
+    A ExcitationScannerInterface implementation to use a Matisse laser.
 
     Copy and paste example configuration:
     ```yaml
@@ -81,7 +80,7 @@ class RemoteMatisseScanner(ExcitationScannerInterface, SampledFiniteStateInterfa
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._data_lock = Mutex()
-        self._constraints = ExcitationScannerConstraints((0,0),(0,0),(0,0),[],[],[],[])
+        self._constraints = ExcitationScannerConstraints((0,0),(0,0),(0,0),{})
         self._waiting_start = time.perf_counter()
         self._repeat_no = 0
         self._data_row_index = 0
@@ -317,11 +316,21 @@ class RemoteMatisseScanner(ExcitationScannerInterface, SampledFiniteStateInterfa
             exposure_limits=(1e-4,1),
             repeat_limits=(1,1000),
             idle_value_limits=(0.0, 0.7),
-            control_variables=("Conversion factor", "Conversion offset", "Minimum scan", "Maximum scan", "Minimum frequency", "Maximum frequency", "Frequency step", "Sleep before scan", "Idle active", "Idle value", "Idle frequency"),
-            control_variable_limits=((0.0, 1e17), (0.0, 1e17), scan_limits, scan_limits, (0.0, 1e17), (0, 1e17), (0.0, 1e17), (0.0, 3000.0), (False, True), scan_limits, (-1e17, 1e17)),
-            control_variable_types=(float, float, float, float, float, float, float, float, bool, float, float),
-            control_variable_units=("Hz", "Hz", "", "", "Hz", "Hz", "Hz", "s", "", "", "Hz")
+            control_variables_list=[
+                ExcitationScanControlVariable("Conversion factor", (0.0, 1e17), float, "Hz"),
+                ExcitationScanControlVariable("Conversion offset", (0.0, 1e17), float, "Hz"),
+                ExcitationScanControlVariable("Minimum scan", scan_limits, float, ""),
+                ExcitationScanControlVariable("Maximum scan", scan_limits, float, ""),
+                ExcitationScanControlVariable("Minimum frequency", (0.0, 1e17), float, "Hz"),
+                ExcitationScanControlVariable("Maximum frequency", (0.0, 1e17), float, "Hz"),
+                ExcitationScanControlVariable("Frequency step", (0.0, 1e17), float, "Hz"),
+                ExcitationScanControlVariable("Sleep before scan", (0.0, 3000.0), float, "s"),
+                ExcitationScanControlVariable("Idle active", (False, True), bool, ""),
+                ExcitationScanControlVariable("Idle value", scan_limits, float, ""),
+                ExcitationScanControlVariable("Idle frequency", scan_limits, float, "Hz"),
+            ]
         )
+
         self.enable_watchdog()
         self.start_watchdog()
         self._wavemeter().start_stream()
@@ -429,25 +438,6 @@ class RemoteMatisseScanner(ExcitationScannerInterface, SampledFiniteStateInterfa
     def get_current_data(self) -> np.ndarray:
         "Return current scan data."
         return self._scan_data
-    @property
-    def data_column_names(self):
-        return ["Frequency", "Step number", "Time"] + list(self._input_channels)
-    @property
-    def data_column_unit(self):
-        units = self._finite_sampling_input().constraints.channel_units
-        return ["Hz", "", "s"] + [units[ch] for ch in self._input_channels]
-    @property
-    def data_column_number(self):
-        return [i+3 for i in range(len(self._input_channels))]
-    @property
-    def frequency_column_number(self):
-        return 0
-    @property
-    def step_number_column_number(self):
-        return 1
-    @property
-    def time_column_number(self):
-        return 2
     def set_exposure_time(self, time:float) -> None:
         "Set exposure time for one data point."
         if not self.constraints.exposure_in_range(time):
@@ -467,9 +457,22 @@ class RemoteMatisseScanner(ExcitationScannerInterface, SampledFiniteStateInterfa
         return self._n_repeat
     def get_idle_value(self) -> float:
         return self._idle_value * self._conversion_factor + self._conversion_offset
-    def set_idle_value(self, v):
-        tension = (v-self._conversion_offset) / self._conversion_factor
+    def set_idle_value(self, n):
+        tension = (n-self._conversion_offset) / self._conversion_factor
         if not self.constraints.idle_value_in_range(tension):
             tension=0.0
         self._idle_value = tension
+    @property
+    def data_format(self) -> ExcitationScanDataFormat:
+        "Return the data format used in this implementation of the interface."
+        units = self._finite_sampling_input().constraints.channel_units
+        return ExcitationScanDataFormat(
+                frequency_column_number=0,
+                step_number_column_number=1,
+                time_column_number=2,
+                data_column_number=[i+3 for i in range(len(self._input_channels))],
+                data_column_unit=["Hz", "", "s"] + [units[ch] for ch in self._input_channels],
+                data_column_names=["Frequency", "Step number", "Time"] + list(self._input_channels)
+            )
+
 
