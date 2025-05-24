@@ -80,60 +80,85 @@ class HighFinessePID(PIDControllerInterface):
         pass
 
     def get_kp(self):
-        """ 
+        """
         Get the coefficient associated with the proportional term
-        @return (float): The current kp coefficient associated with the proportional term
+        
+        Returns
+        -------
+        (float)
+            The current kp coefficient associated with the proportional term
         """
         proxy: HighFinesseProxy = self._proxy()
         kp, _ = proxy.get_pid_setting(self._output_port, high_finesse_constants.cmiPID_P)
         return kp
 
     def set_kp(self, kp: float) -> None:
-        """ 
+        """
         Set the coefficient associated with the proportional term
-        @param (float) kp: The new kp coefficient associated with the proportional term
+        Parameters
+        ----------
+        kp : (float)
+            The new kp coefficient associated with the proportional term
         """
         proxy: HighFinesseProxy = self._proxy()
         proxy.set_pid_setting(self._output_port, high_finesse_constants.cmiPID_P, kp)
 
     def get_ki(self) -> float:
-        """ 
+        """
         Get the coefficient associated with the integral term
-        @return (float): The current ki coefficient associated with the integral term
+        
+        Returns
+        -------
+        (float)
+            The current ki coefficient associated with the integral term
         """
         proxy: HighFinesseProxy = self._proxy()
         ki, _ = proxy.get_pid_setting(self._output_port, high_finesse_constants.cmiPID_I)
         return ki
 
     def set_ki(self, ki: float) -> None:
-        """ 
+        """
         Set the coefficient associated with the integral term
-        @param (float) ki: The new ki coefficient associated with the integral term
+        Parameters
+        ----------
+        ki : (float)
+            The new ki coefficient associated with the integral term
         """
         proxy: HighFinesseProxy = self._proxy()
         proxy.set_pid_setting(self._output_port, high_finesse_constants.cmiPID_I, ki)
 
     def get_kd(self) -> float:
-        """ 
+        """
         Get the coefficient associated with the derivative term
-        @return (float): The current kd coefficient associated with the derivative term
+        
+        Returns
+        -------
+        (float)
+            The current kd coefficient associated with the derivative term
         """
         proxy: HighFinesseProxy = self._proxy()
         kd, _ = proxy.get_pid_setting(self._output_port, high_finesse_constants.cmiPID_D)
         return kd
 
     def set_kd(self, kd: float) -> None:
-        """ 
+        """
         Set the coefficient associated with the derivative term
-        @param (float) kd: The new kd coefficient associated with the derivative term
+        Parameters
+        ----------
+        kd : (float)
+            The new kd coefficient associated with the derivative term
         """
         proxy: HighFinesseProxy = self._proxy()
         proxy.set_pid_setting(self._output_port, high_finesse_constants.cmiPID_D, kd)
 
     def get_setpoint(self) -> float:
-        """ 
+        """
         Get the setpoint value of the hardware device
-        @return (float): The current setpoint value
+        
+        Returns
+        -------
+        (float)
+            The current setpoint value
         """
         proxy: HighFinesseProxy = self._proxy()
         setpoint = proxy.get_setpoint(self._output_port)
@@ -145,9 +170,12 @@ class HighFinessePID(PIDControllerInterface):
             return 1e12 * setpoint
 
     def set_setpoint(self, setpoint: float):
-        """ 
+        """
         Set the setpoint value of the hardware device
-        @param (float) setpoint: The new setpoint value
+        Parameters
+        ----------
+        setpoint : (float)
+            The new setpoint value
         """
         proxy: HighFinesseProxy = self._proxy()
         if self._input_unit == 'm':
@@ -159,16 +187,24 @@ class HighFinessePID(PIDControllerInterface):
         proxy.set_setpoint(self._output_port, setpoint)
 
     def get_manual_value(self) -> float:
-        """ 
+        """
         Get the manual value, used if the device is disabled
-        @return (float): The current manual value
+        
+        Returns
+        -------
+        (float)
+            The current manual value
         """
         return self._manual_value
 
     def set_manual_value(self, manual_value: float) -> None:
-        """ 
+        """
         Set the manual value, used if the device is disabled
-        @param (float) manual_value: The new manual value
+
+        Parameters
+        ----------
+        manual_value : (float)
+            The new manual value
         """
         self._manual_value = manual_value
         if not self.get_enabled():
@@ -180,17 +216,25 @@ class HighFinessePID(PIDControllerInterface):
         proxy.set_manual_value(self._output_port, self._manual_value)
 
     def get_enabled(self) -> bool:
-        """ 
+        """
         Get if the PID is enabled (True) or if it is disabled (False) and the manual value is used
-        @return (bool): True if enabled, False otherwise
+        
+        Returns
+        -------
+        (bool)
+            True if enabled, False otherwise
         """
         proxy: HighFinesseProxy = self._proxy()
         return proxy.get_pid_enabled()
 
     def set_enabled(self, enabled: bool) -> None:
-        """ 
+        """
         Set if the PID is enabled (True) or if it is disabled (False) and the manual value is used
-        @param (bool) enabled: True if enabled, False otherwise
+        
+        Parameters
+        ----------
+        enabled : (bool)
+            True if enabled, False otherwise
         """
         # TODO: is there a way to toggle PID only for a single channel?
         proxy: HighFinesseProxy = self._proxy()
@@ -199,9 +243,13 @@ class HighFinessePID(PIDControllerInterface):
             self._apply_manual_value()
 
     def get_control_limits(self) -> Tuple[float, float]:
-        """ 
+        """
         Get the current limits of the control value as a tuple
-        @return (tuple(float, float)): The current control limits
+        
+        Returns
+        -------
+        (tuple(float, float))
+            The current control limits
         """
         proxy: HighFinesseProxy = self._proxy()
         lower, _ = proxy.get_pid_setting(self._output_port, high_finesse_constants.cmiDeviationBoundsMin)
@@ -209,9 +257,13 @@ class HighFinessePID(PIDControllerInterface):
         return lower, upper
 
     def set_control_limits(self, limits: Tuple[float, float]) -> None:
-        """ 
+        """
         Set the current limits of the control value as a tuple
-        @param (tuple(float, float)) limits: The new control limits
+        
+        Parameters
+        ----------
+        limits : (tuple(float, float))
+            The new control limits
         """
         proxy: HighFinesseProxy = self._proxy()
         lower, upper = limits
@@ -223,9 +275,13 @@ class HighFinessePID(PIDControllerInterface):
         proxy.set_pid_setting(self._output_port, high_finesse_constants.cmiDeviationBoundsMax, upper)
 
     def get_process_value(self) -> float:
-        """ 
+        """
         Get the current process value read
-        @return (float): The current process value
+        
+        Returns
+        -------
+        (float)
+            The current process value
         """
         proxy: HighFinesseProxy = self._proxy()
         wavelength = proxy.get_wavelength(self._input_channel)
@@ -239,9 +295,13 @@ class HighFinessePID(PIDControllerInterface):
         return self._input_unit
 
     def get_control_value(self) -> float:
-        """ 
+        """
         Get the current control value read
-        @return (float): The current control value
+        
+        Returns
+        -------
+        (float)
+            The current control value
         """
         proxy: HighFinesseProxy = self._proxy()
         return proxy.get_control_value(self._output_port)
@@ -251,9 +311,13 @@ class HighFinessePID(PIDControllerInterface):
         return 'V'
 
     def get_extra(self) -> Dict[str, float]:
-        """ 
+        """
         Get the P, I and D terms computed by the hardware if available
-        @return dict(): A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
+        
+        Returns
+        -------
+        dict()
+            A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
         """
         # live readout of regulation parameters not supported by this hardware
         return {}

@@ -855,9 +855,16 @@ class NIXSeriesInStreamer(DataInStreamInterface):
         Helper function to extract the bare terminal name from a string and strip it of the device
         name and dashes.
         Will return the terminal name in lower case.
-
-        @param str term_str: The str to extract the terminal name from
-        @return str: The terminal name in lower case
+        
+        Parameters
+        ----------
+        term_str : str
+            The str to extract the terminal name from
+        
+        Returns
+        -------
+        str
+            The terminal name in lower case
         """
         term = term_str.strip('/').lower()
         if 'dev' in term:

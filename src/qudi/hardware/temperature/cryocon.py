@@ -162,10 +162,15 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
 # PID controller interface
 
     def get_kp(self, channel=None):
-        """ Get the coefficient associated with the proportional term
-
-         @return (float): The current kp coefficient associated with the proportional term
-         """
+        """
+        Get the coefficient associated with the proportional term
+        
+        
+        Returns
+        -------
+        (float)
+            The current kp coefficient associated with the proportional term
+        """
         channel = channel if channel is not None else self._main_channel
         loop = 1 if channel == 'A' else 2
         try:
@@ -176,17 +181,26 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
         return value
 
     def set_kp(self, kp):
-        """ Set the coefficient associated with the proportional term
-
-         @param (float) kp: The new kp coefficient associated with the proportional term
-         """
+        """
+        Set the coefficient associated with the proportional term
+        
+        Parameters
+        ----------
+        kp : (float)
+            The new kp coefficient associated with the proportional term
+        """
         pass  # Not implemented
 
     def get_ki(self, channel=None):
-        """ Get the coefficient associated with the integral term
-
-         @return (float): The current ki coefficient associated with the integral term
-         """
+        """
+        Get the coefficient associated with the integral term
+        
+        
+        Returns
+        -------
+        (float)
+            The current ki coefficient associated with the integral term
+        """
         channel = channel if channel is not None else self._main_channel
         loop = 1 if channel == 'A' else 2
         try:
@@ -197,17 +211,26 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
         return value
 
     def set_ki(self, ki):
-        """ Set the coefficient associated with the integral term
-
-         @param (float) ki: The new ki coefficient associated with the integral term
-         """
+        """
+        Set the coefficient associated with the integral term
+        
+        Parameters
+        ----------
+        ki : (float)
+            The new ki coefficient associated with the integral term
+        """
         pass  # Not implemented
 
     def get_kd(self, channel=None):
-        """ Get the coefficient associated with the derivative term
-
-         @return (float): The current kd coefficient associated with the derivative term
-         """
+        """
+        Get the coefficient associated with the derivative term
+        
+        
+        Returns
+        -------
+        (float)
+            The current kd coefficient associated with the derivative term
+        """
         channel = channel if channel is not None else self._main_channel
         loop = 1 if channel == 'A' else 2
         try:
@@ -218,51 +241,82 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
         return value
 
     def set_kd(self, kd):
-        """ Set the coefficient associated with the derivative term
-
-         @param (float) kd: The new kd coefficient associated with the derivative term
-         """
+        """
+        Set the coefficient associated with the derivative term
+        
+        Parameters
+        ----------
+        kd : (float)
+            The new kd coefficient associated with the derivative term
+        """
         pass  # Not implemented
 
     def get_setpoint(self):
-        """ Get the setpoint value of the hardware device
-
-         @return (float): The current setpoint value
-         """
+        """
+        Get the setpoint value of the hardware device
+        
+        
+        Returns
+        -------
+        (float)
+            The current setpoint value
+        """
         return self.get_setpoint_temperature()
 
     def set_setpoint(self, setpoint):
-        """ Set the setpoint value of the hardware device
-
-        @param (float) setpoint: The new setpoint value
+        """
+        Set the setpoint value of the hardware device
+        
+        Parameters
+        ----------
+        setpoint : (float)
+            The new setpoint value
         """
         self.set_temperature(setpoint)
 
     def get_manual_value(self):
-        """ Get the manual value, used if the device is disabled
-
-        @return (float): The current manual value
+        """
+        Get the manual value, used if the device is disabled
+        
+        
+        Returns
+        -------
+        (float)
+            The current manual value
         """
         pass  # Not implemented
 
     def set_manual_value(self, manualvalue):
-        """ Set the manual value, used if the device is disabled
-
-        @param (float) manualvalue: The new manual value
+        """
+        Set the manual value, used if the device is disabled
+        
+        Parameters
+        ----------
+        manualvalue : (float)
+            The new manual value
         """
         pass  # Not implemented
 
     def get_enabled(self):
-        """ Get if the PID is enabled (True) or if it is disabled (False) and the manual value is used
-
-        @return (bool): True if enabled, False otherwise
+        """
+        Get if the PID is enabled (True) or if it is disabled (False) and the manual value is used
+        
+        
+        Returns
+        -------
+        (bool)
+            True if enabled, False otherwise
         """
         return self._query('control?')[:-2] == 'ON'  # 'ON \r'
 
     def set_enabled(self, enabled):
-        """ Set if the PID is enabled (True) or if it is disabled (False) and the manual value is used
-
-        @param (bool) enabled: True to enabled, False otherwise
+        """
+        Set if the PID is enabled (True) or if it is disabled (False) and the manual value is used
+        
+        Parameters
+        ----------
+        enabled : (bool)
+            True to enabled, False otherwise
         """
         if enabled:
             self.control()
@@ -270,25 +324,39 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
             self.stop()
 
     def get_control_limits(self):
-        """ Get the current limits of the control value as a tuple
-
-        @return (tuple(float, float)): The current control limits
+        """
+        Get the current limits of the control value as a tuple
+        
+        
+        Returns
+        -------
+        (tuple(float, float))
+            The current control limits
         """
         pass
 
     def set_control_limits(self, limits):
-        """ Set the current limits of the control value as a tuple
-
-        @param (tuple(float, float)) limits: The new control limits
-
+        """
+        Set the current limits of the control value as a tuple
+        
+        Parameters
+        ----------
+        limits : (tuple(float, float))
+            The new control limits
+        
         The hardware should check if these limits are within the maximum limits set by a config option.
         """
         pass
 
     def get_control_value(self, channel=None):
-        """ Get the current control value read
-
-        @return (float): The current control value
+        """
+        Get the current control value read
+        
+        
+        Returns
+        -------
+        (float)
+            The current control value
         """
         channel = channel if channel is not None else self._main_channel
         loop = 1 if channel == 'A' else 2
@@ -308,22 +376,36 @@ class Cryocon(Base, ProcessInterface, PIDControllerInterface):
         pass
 
     def get_extra(self):
-        """ Get the P, I and D terms computed bu the hardware if available
-
-        @return dict(): A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
+        """
+        Get the P, I and D terms computed bu the hardware if available
+        
+        
+        Returns
+        -------
+        dict()
+            A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
         """
         pass
 
     # Script helper methods
 
     def wait_for_temperature(self, temperature, delta=0.1, timeout=60*60):
-        """ Set the temperature and wait until the setpoint temperature is reached
-
-        @param temperature: The new setpoint
-        @param delta: The error margin between the measured value and the setpoint to stop
-        @param timeout: The maximum time to wait
-        @return (bool): True if successful, False if timeout
-
+        """
+        Set the temperature and wait until the setpoint temperature is reached
+        
+        Parameters
+        ----------
+        temperature :
+            The new setpoint
+        delta :
+            The error margin between the measured value and the setpoint to stop
+        timeout :
+            The maximum time to wait
+        Returns
+        -------
+        (bool)
+            True if successful, False if timeout
+        
         Warning, this pausing function can be usefull but can also cause Qudi to not respond if executed from the
         manager.
         """

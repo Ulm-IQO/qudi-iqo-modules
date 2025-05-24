@@ -362,25 +362,37 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     @property
     def constraints(self):
         """
-        @return Finite sampling constraints
+        Returns
+        -------
+        Finite sampling constraints
         """
         return self._constraints
 
     @property
     def active_channels(self):
-        """ Names of all currently active input and output channels.
-
-        @return (frozenset, frozenset): active input channels, active output channels
+        """
+        Names of all currently active input and output channels.
+        
+        
+        Returns
+        -------
+        (frozenset, frozenset)
+            active input channels, active output channels
         """
         return self.__active_channels['di_channels'].union(self.__active_channels['ai_channels']), \
                self.__active_channels['do_channels'].union(self.__active_channels['ao_channels'])
 
     def set_active_channels(self, input_channels: Iterable[str], output_channels: Iterable[str]) -> None:
-        """ Will set the currently active input and output channels.
+        """
+        Will set the currently active input and output channels.
         All other channels will be deactivated.
-
-        @param iterable(str) input_channels: Iterable of input channel names to set active
-        @param iterable(str) output_channels: Iterable of output channel names to set active
+        
+        Parameters
+        ----------
+        input_channels : iterable(str)
+            Iterable of input channel names to set active
+        output_channels : iterable(str)
+            Iterable of output channel names to set active
         """
 
         assert hasattr(input_channels, '__iter__') and not isinstance(input_channels, str), \
@@ -416,16 +428,25 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
     @property
     def sample_rate(self):
-        """ The sample rate (in Hz) at which the samples will be emitted.
-
-        @return float: The current sample rate in Hz
+        """
+        The sample rate (in Hz) at which the samples will be emitted.
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate in Hz
         """
         return self.__sample_rate
 
     def set_sample_rate(self, rate):
-        """ Sets the sample rate to a new value.
-
-        @param float rate: The sample rate to set
+        """
+        Sets the sample rate to a new value.
+        
+        Parameters
+        ----------
+        rate : float
+            The sample rate to set
         """
         assert not self.is_running, \
             'Unable to set sample rate while IO is running. New settings ignored.'
@@ -440,9 +461,13 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             self.__sample_rate = float(rate_val)
 
     def set_output_mode(self, mode):
-        """ Setter for the current output mode.
-
-        @param SamplingOutputMode mode: The output mode to set as SamplingOutputMode Enum
+        """
+        Setter for the current output mode.
+        
+        Parameters
+        ----------
+        mode : SamplingOutputMode
+            The output mode to set as SamplingOutputMode Enum
         """
         assert not self.is_running, \
             'Unable to set output mode while IO is running. New settings ignored.'
@@ -453,17 +478,27 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
     @property
     def output_mode(self):
-        """ Currently set output mode.
-
-        @return SamplingOutputMode: Enum representing the currently active output mode
+        """
+        Currently set output mode.
+        
+        
+        Returns
+        -------
+        SamplingOutputMode
+            Enum representing the currently active output mode
         """
         return self.__output_mode
 
     @property
     def samples_in_buffer(self):
-        """ Current number of acquired but unread samples per channel in the input buffer.
-
-        @return int: Unread samples in input buffer
+        """
+        Current number of acquired but unread samples per channel in the input buffer.
+        
+        
+        Returns
+        -------
+        int
+            Unread samples in input buffer
         """
         if not self.is_running:
             return self._number_of_pending_samples
@@ -478,9 +513,14 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
     @property
     def frame_size(self):
-        """ Currently set number of samples per channel to emit for each data frame.
-
-        @return int: Number of samples per frame
+        """
+        Currently set number of samples per channel to emit for each data frame.
+        
+        
+        Returns
+        -------
+        int
+            Number of samples per frame
         """
         return self.__frame_size
 
@@ -494,7 +534,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             self.__frame_buffer = None
 
     def set_frame_data(self, data):
-        """ Fills the frame buffer for the next data frame to be emitted. Data must be a dict
+        """
+        Fills the frame buffer for the next data frame to be emitted. Data must be a dict
         containing exactly all active channels as keys with corresponding sample data as values.
 
         If <output_mode> is SamplingOutputMode.JUMP_LIST, the values must be 1D numpy.ndarrays
@@ -504,8 +545,11 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         i.e. (start, stop, steps).
 
         Calling this method will alter read-only property <frame_size>
-
-        @param dict data: The frame data (values) to be set for all active output channels (keys)
+        
+        Parameters
+        ----------
+        data : dict
+            The frame data (values) to be set for all active output channels (keys)
         """
         assert data is None or isinstance(data, dict), f'Wrong arguments passed to set_frame_data,' \
                                                        f'expected dict and got {type(data)}'
@@ -698,7 +742,8 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
             self.module_state.unlock()
 
     def get_buffered_samples(self, number_of_samples=None):
-        """ Returns a chunk of the current data frame for all active input channels read from the
+        """
+        Returns a chunk of the current data frame for all active input channels read from the
         input frame buffer.
         If parameter <number_of_samples> is omitted, this method will return the currently
         available samples within the input frame buffer (i.e. the value of property
@@ -715,10 +760,17 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
 
         If the data acquisition has been stopped before the frame has been acquired completely,
         this method must still return all available samples already read into buffer.
-
-        @param int number_of_samples: optional, the number of samples to read from buffer
-
-        @return dict: Sample arrays (values) for each active input channel (keys)
+        
+        Parameters
+        ----------
+        number_of_samples : int
+            optional, the number of samples to read from buffer
+        
+        
+        Returns
+        -------
+        dict
+            Sample arrays (values) for each active input channel (keys)
         """
 
         with self._thread_lock:
@@ -793,14 +845,22 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
                 return data
 
     def get_frame(self, data=None):
-        """ Performs io for a single data frame for all active channels.
+        """
+        Performs io for a single data frame for all active channels.
         This method call is blocking until the entire data frame has been emitted.
 
         See <start_buffered_output>, <stop_buffered_output> and <set_frame_data> for more details.
-
-        @param dict data: The frame data (values) to be emitted for all active channels (keys)
-
-        @return dict: Frame data (values) for all active input channels (keys)
+        
+        Parameters
+        ----------
+        data : dict
+            The frame data (values) to be emitted for all active channels (keys)
+        
+        
+        Returns
+        -------
+        dict
+            Frame data (values) for all active input channels (keys)
         """
         with self._thread_lock:
             if data is not None:
@@ -815,8 +875,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     def is_running(self):
         """
         Read-only flag indicating if the data acquisition is running.
-
-        @return bool: Finite IO is running (True) or not (False)
+        
+        
+        Returns
+        -------
+        bool
+            Finite IO is running (True) or not (False)
         """
         assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
         if self.module_state() == 'locked':
@@ -829,8 +893,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         """
         Configures a counter to provide the sample clock for all
         channels. # TODO external sample clock?
-
-        @return int: error code (0: OK, -1: Error)
+        
+        
+        Returns
+        -------
+        int
+            error code (0: OK, -1: Error)
         """
         # # Return if sample clock is externally supplied
         # if self._external_sample_clock_source is not None:
@@ -902,8 +970,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     def _init_digital_in_tasks(self):
         """
         Set up tasks for digital event counting.
-
-        @return int: error code (0:OK, -1:error)
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         digital_input_channels = self.__active_channels['di_channels']
         if not digital_input_channels:
@@ -1028,8 +1100,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     def _init_analog_in_task(self):
         """
         Set up task for analog voltage measurement.
-
-        @return int: error code (0:OK, -1:error)
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         analog_channels = self.__active_channels['ai_channels']
         if not analog_channels:
@@ -1268,8 +1344,12 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     def reset_hardware(self):
         """
         Resets the NI hardware, so the connection is lost and other programs can access it.
-
-        @return int: error code (0:OK, -1:error)
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         try:
             self._device_handle.reset_device()
@@ -1351,9 +1431,16 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
         Helper function to extract the bare terminal name from a string and strip it of the device
         name and dashes.
         Will return the terminal name in lower case.
-
-        @param str term_str: The str to extract the terminal name from
-        @return str: The terminal name in lower case
+        
+        Parameters
+        ----------
+        term_str : str
+            The str to extract the terminal name from
+        
+        Returns
+        -------
+        str
+            The terminal name in lower case
         """
         term = term_str.strip('/').lower()
         if 'dev' in term:
@@ -1363,8 +1450,11 @@ class NIXSeriesFiniteSamplingIO(FiniteSamplingIOInterface):
     def _extract_ai_di_from_input_channels(self, input_channels):
         """
         Takes an iterable with output channels and returns the split up ai and di channels
-
-        @return tuple(di_channels), tuple(ai_channels))
+        
+        
+        Returns
+        -------
+        tuple(di_channels), tuple(ai_channels))
         """
         input_channels = tuple(self._extract_terminal(src) for src in input_channels)
 

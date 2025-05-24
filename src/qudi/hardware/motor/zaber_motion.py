@@ -151,13 +151,18 @@ class ZaberStage(MotorInterface):
                 self.log.exception(f"Failed to close serial connection {self._serial_port}: ")
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
-
-        @return dict: dict with constraints for the motor stage hardware. These
-                      constraints will be passed via the logic to the GUI so
-                      that proper display elements with boundary conditions
-                      can be made.
-
+        """
+        Retrieve the hardware constrains from the motor device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with constraints for the motor stage hardware. These
+            constraints will be passed via the logic to the GUI so
+            that proper display elements with boundary conditions
+            can be made.
+        
         Provides all the constraints for each axis of a motorized stage
         (like total travel distance, velocity, ...)
         Each axis has its own dictionary, where the label is used as the
@@ -183,21 +188,25 @@ class ZaberStage(MotorInterface):
         return constraints
 
     def move_rel(self,  param_dict, wait_until_done=False):
-        """ Moves stage in given direction (relative movement)
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed.
-                                With get_constraints() you can obtain all
-                                possible parameters of that stage. According to
-                                this parameter set you have to pass a dictionary
-                                with keys that are called like the parameters
-                                from get_constraints() and assign a SI value to
-                                that. For a movement in x the dict should e.g.
-                                have the form:
-                                    dict = { 'x' : 23 }
-                                where the label 'x' corresponds to the chosen
-                                axis label.
-
+        """
+        Moves stage in given direction (relative movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed.
+            With get_constraints() you can obtain all
+            possible parameters of that stage. According to
+            this parameter set you have to pass a dictionary
+            with keys that are called like the parameters
+            from get_constraints() and assign a SI value to
+            that. For a movement in x the dict should e.g.
+            have the form:
+                dict = { 'x' : 23 }
+            where the label 'x' corresponds to the chosen
+            axis label.
+        
         A smart idea would be to ask the position after the movement.
         """
         curr_pos_dict = self.get_pos()
@@ -216,13 +225,17 @@ class ZaberStage(MotorInterface):
                 axis.wait_until_idle()
 
     def move_abs(self, param_dict, wait_until_done=False):
-        """ Moves stage to absolute position (absolute movement)
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <a-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
+        """
+        Moves stage to absolute position (absolute movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <a-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
         """
 
         for label_axis in self._axis_dict:
@@ -246,16 +259,20 @@ class ZaberStage(MotorInterface):
         self.log.warning('Movement of all the axis aborted! Stage stopped.')
 
     def get_pos(self, param_list=None):
-        """ Gets current position of the stage arms
-
-        @param list param_list:
+        """
+        Gets current position of the stage arms
+        
+        Parameters
+        ----------
+        param_list : list
             optional, if a specific position of an axis
             is desired, then the labels of the needed
             axis should be passed as the param_list.
             If nothing is passed, then from each axis the
             position is asked.
-
-        @return
+        
+        Returns
+        -------
             dict with keys being the axis labels and item the current
             position.
         """
@@ -272,15 +289,17 @@ class ZaberStage(MotorInterface):
         return pos
 
     def get_status(self, param_list=None):
-        """ Get the status of the position
-
-        @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                status is asked.
-
-
+        """
+        Get the status of the position
+        
+        Parameters
+        ----------
+        param_list : list
+            optional, if a specific status of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            status is asked.
         """
 
         status = {}
@@ -295,15 +314,19 @@ class ZaberStage(MotorInterface):
         return status
 
     def calibrate(self, param_list=None):
-        """ Calibrates the stage.
-
-        @param dict param_list: param_list: optional, if a specific calibration
-                                of an axis is desired, then the labels of the
-                                needed axis should be passed in the param_list.
-                                If nothing is passed, then all connected axis
-                                will be calibrated.
-
-
+        """
+        Calibrates the stage.
+        
+        Parameters
+        ----------
+        param_list : dict
+            param_list: optional, if a specific calibration
+            of an axis is desired, then the labels of the
+            needed axis should be passed in the param_list.
+            If nothing is passed, then all connected axis
+            will be calibrated.
+        
+        
         After calibration the stage moves to home position which will be the
         zero point for the passed axis. The calibration procedure will be
         different for each stage.
@@ -343,15 +366,23 @@ class ZaberStage(MotorInterface):
         return hw_conf_dict
 
     def get_velocity(self, param_list=None):
-        """ Gets the current velocity for all connected axes.
-
-        @param dict param_list: optional, if a specific velocity of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed as the param_list.
-                                If nothing is passed, then from each axis the
-                                velocity is asked.
-
-        @return dict : with the axis label as key and the velocity as item.
+        """
+        Gets the current velocity for all connected axes.
+        
+        Parameters
+        ----------
+        param_list : dict
+            optional, if a specific velocity of an axis
+            is desired, then the labels of the needed
+            axis should be passed as the param_list.
+            If nothing is passed, then from each axis the
+            velocity is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with the axis label as key and the velocity as item.
         """
 
         vel = {}
@@ -366,13 +397,17 @@ class ZaberStage(MotorInterface):
         return vel
 
     def set_velocity(self, param_dict):
-        """ Write new value for velocity.
-
-        @param dict param_dict: dictionary, which passes all the relevant
-                                parameters, which should be changed. Usage:
-                                 {'axis_label': <the-velocity-value>}.
-                                 'axis_label' must correspond to a label given
-                                 to one of the axis.
+        """
+        Write new value for velocity.
+        
+        Parameters
+        ----------
+        param_dict : dict
+            dictionary, which passes all the relevant
+            parameters, which should be changed. Usage:
+            {'axis_label': <the-velocity-value>}.
+            'axis_label' must correspond to a label given
+            to one of the axis.
         """
 
         for label_axis in param_dict:
@@ -383,15 +418,23 @@ class ZaberStage(MotorInterface):
                     self._axis_dict[label_axis].set_velocity(desired_vel)
 
     def get_acceleration(self, param_list=None):
-        """ Gets the current acceleration for all connected axes.
-
-        @param dict param_list: optional, if a specific velocity of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed as the param_list.
-                                If nothing is passed, then from each axis the
-                                velocity is asked.
-
-        @return dict : with the axis label as key and the velocity as item.
+        """
+        Gets the current acceleration for all connected axes.
+        
+        Parameters
+        ----------
+        param_list : dict
+            optional, if a specific velocity of an axis
+            is desired, then the labels of the needed
+            axis should be passed as the param_list.
+            If nothing is passed, then from each axis the
+            velocity is asked.
+        
+        
+        Returns
+        -------
+        dict
+            with the axis label as key and the velocity as item.
         """
 
         vel = {}
@@ -522,10 +565,14 @@ class ZaberAxis():
         return self._axis.settings.get("accel",  Units.ACCELERATION_METRES_PER_SECOND_SQUARED)
 
     def set_velocity(self, velocity):
-        """ Set the maximal velocity (of the velocity profile) for the motor movement.
+        """
+        Set the maximal velocity (of the velocity profile) for the motor movement.
         Raises if value is out of device range.
-
-        @param float maxVel: maximal velocity of the stage in m/s.
+        
+        Parameters
+        ----------
+        maxVel : float
+            maximal velocity of the stage in m/s.
         """
         self._axis.settings.set("maxspeed", velocity, Units.VELOCITY_METRES_PER_SECOND)
 
@@ -544,20 +591,29 @@ class ZaberAxis():
         raise NotImplementedError
 
     def get_pos(self):
-        """ Obtain the current absolute position of the stage.
-
-        @return float: the value of the axis either in m.
+        """
+        Obtain the current absolute position of the stage.
+        
+        
+        Returns
+        -------
+        float
+            the value of the axis either in m.
         """
 
         return self._axis.get_position(Units.LENGTH_METRES)
 
     def move_rel(self, distance, wait_until_done=False, force_no_backslash_corr=False):
-        """ Moves the motor a relative distance specified.
+        """
+        Moves the motor a relative distance specified.
         If backlash correction is activated, movements in negative direction are over-shot
         and the target position is approached (always) in positive direction.
-
-
-        @param float relDistance: Relative position desired, in m.
+        
+        
+        Parameters
+        ----------
+        relDistance : float
+            Relative position desired, in m.
         """
 
         wait_until_done = self.get_wait_until_done(wait_until_done)
@@ -581,11 +637,15 @@ class ZaberAxis():
                                          wait_until_idle=wait_until_done)
 
     def move_abs(self, position, wait_until_done=None, force_no_backslash_corr=False):
-        """ Moves the motor to the absolute position specified.
+        """
+        Moves the motor to the absolute position specified.
         If backlash correction is activated, movements in negative direction are over-shot
         and the target position is approached (always) in positive direction.
-
-        @param float position: absolute Position desired, in m.
+        
+        Parameters
+        ----------
+        position : float
+            absolute Position desired, in m.
         """
 
         wait_until_done = self.get_wait_until_done(wait_until_done)

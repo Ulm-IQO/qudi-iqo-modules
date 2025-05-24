@@ -110,10 +110,15 @@ class MotorRotationZaber(MotorInterface):
 
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
-
-        @return dict: dict with constraints for the sequence generation and GUI
-
+        """
+        Retrieve the hardware constrains from the motor device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with constraints for the sequence generation and GUI
+        
         Provides all the constraints for the xyz stage  and rot stage (like total
         movement, velocity, ...)
         Each constraint is a tuple of the form
@@ -140,11 +145,19 @@ class MotorRotationZaber(MotorInterface):
         return constraints
 
     def move_rel(self, param_dict):
-        """Moves stage by a given angle (relative movement)
-
-        @param dict param_dict: Dictionary with axis name and relative movement in deg
-
-        @return dict velocity: Dictionary with axis name and final position in deg
+        """
+        Moves stage by a given angle (relative movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            Dictionary with axis name and relative movement in deg
+        
+        
+        Returns
+        -------
+        dict velocity
+            Dictionary with axis name and final position in deg
         """
         pos={}
         try:
@@ -165,11 +178,19 @@ class MotorRotationZaber(MotorInterface):
 
 
     def move_abs(self, param_dict):
-        """Moves stage to an absolute angle (absolute movement)
-
-        @param dict param_dict: Dictionary with axis name and target position in deg
-
-        @return dict velocity: Dictionary with axis name and final position in deg
+        """
+        Moves stage to an absolute angle (absolute movement)
+        
+        Parameters
+        ----------
+        param_dict : dict
+            Dictionary with axis name and target position in deg
+        
+        
+        Returns
+        -------
+        dict velocity
+            Dictionary with axis name and final position in deg
         """
         pos = {}
         try:
@@ -186,9 +207,14 @@ class MotorRotationZaber(MotorInterface):
 
 
     def abort(self):
-        """Stops movement of the stage
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Stops movement of the stage
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         try:
             self._write_rot([1, 23, 0])
@@ -201,11 +227,20 @@ class MotorRotationZaber(MotorInterface):
 
 
     def get_pos(self,param_list=None):
-        """ Gets current position of the rotation stage
-
-        @param list param_list: List with axis name
-
-        @return dict pos: Dictionary with axis name and pos in deg    """
+        """
+        Gets current position of the rotation stage
+        
+        Parameters
+        ----------
+        param_list : list
+            List with axis name
+        
+        
+        Returns
+        -------
+        dict pos
+            Dictionary with axis name and pos in deg 
+        """
         constraints = self.get_constraints()
         try:
             pos = {}
@@ -228,21 +263,23 @@ class MotorRotationZaber(MotorInterface):
 
     def get_status(self,param_list=None):
         """ Get the status of the position
-
-        @param list param_list: optional, if a specific status of an axis
-                                is desired, then the labels of the needed
-                                axis should be passed in the param_list.
-                                If nothing is passed, then from each axis the
-                                status is asked.
-
-        @return dict status:   · 0 - idle, not currently executing any instructions
-                        · 1 - executing a home instruction
-                        · 10 - executing a manual move (i.e. the manual control knob is turned)
-                        · 20 - executing a move absolute instruction
-                        · 21 - executing a move relative instruction
-                        · 22 - executing a move at constant speed instruction
-                        · 23 - executing a stop instruction (i.e. decelerating)
-                                """
+        
+        param_list : list
+            optional, if a specific status of an axis
+            is desired, then the labels of the needed
+            axis should be passed in the param_list.
+            If nothing is passed, then from each axis the
+            status is asked.
+        
+        dict status
+            · 0 - idle, not currently executing any instructions
+            · 1 - executing a home instruction
+            · 10 - executing a manual move (i.e. the manual control knob is turned)
+            · 20 - executing a move absolute instruction
+            · 21 - executing a move relative instruction
+            · 22 - executing a move at constant speed instruction
+            · 23 - executing a stop instruction (i.e. decelerating)
+        """
         constraints = self.get_constraints()
         status = {}
         try:
@@ -263,11 +300,19 @@ class MotorRotationZaber(MotorInterface):
 
 
     def calibrate(self, param_list=None):
-        """ Calibrates the rotation motor
-
-        @param list param_list: Dictionary with axis name
-
-        @return dict pos: Dictionary with axis name and pos in deg
+        """
+        Calibrates the rotation motor
+        
+        Parameters
+        ----------
+        param_list : list
+            Dictionary with axis name
+        
+        
+        Returns
+        -------
+        dict pos
+            Dictionary with axis name and pos in deg
         """
         constraints = self.get_constraints()
         pos = {}
@@ -287,11 +332,19 @@ class MotorRotationZaber(MotorInterface):
 
 
     def get_velocity(self, param_list=None):
-        """ Asks current value for velocity.
-
-        @param list param_list: Dictionary with axis name
-
-        @return dict velocity: Dictionary with axis name and velocity in deg/s
+        """
+        Asks current value for velocity.
+        
+        Parameters
+        ----------
+        param_list : list
+            Dictionary with axis name
+        
+        
+        Returns
+        -------
+        dict velocity
+            Dictionary with axis name and velocity in deg/s
         """
         constraints = self.get_constraints()
         velocity = {}
@@ -312,11 +365,19 @@ class MotorRotationZaber(MotorInterface):
 
 
     def set_velocity(self, param_dict):
-        """ Write new value for velocity.
-
-        @param dict param_dict: Dictionary with axis name and target velocity in deg/s
-
-        @return dict velocity: Dictionary with axis name and target velocity in deg/s
+        """
+        Write new value for velocity.
+        
+        Parameters
+        ----------
+        param_dict : dict
+            Dictionary with axis name and target velocity in deg/s
+        
+        
+        Returns
+        -------
+        dict velocity
+            Dictionary with axis name and target velocity in deg/s
         """
         velocity = {}
         try:
@@ -341,13 +402,19 @@ class MotorRotationZaber(MotorInterface):
 
 
     def _write_rot(self, command_list):
-        """ sending a command encode in a list to the rotation stage,
+        """
+        sending a command encode in a list to the rotation stage,
         requires [1, commandnumber, value]
-
-        @param list command_list: command in a list form
-
-        @return errorcode"""
-
+        
+        Parameters
+        ----------
+        command_list : list
+            command in a list form
+        
+        Returns
+        -------
+        errorcode
+        """
         try:
             xx = command_list[0]
             yy = command_list[1]
@@ -396,8 +463,12 @@ class MotorRotationZaber(MotorInterface):
         """this method reads the answer from the motor!
         return 6 bytes from the receive buffer
         there must be 6 bytes to receive (no error checking)
-
-        @return answer float: answer of motor coded in a single float
+        
+        
+        Returns
+        -------
+        answer float
+            answer of motor coded in a single float
         """
 
 
@@ -418,10 +489,18 @@ class MotorRotationZaber(MotorInterface):
 
 
     def _ask_rot(self, command_list):
-        """this method combines writing a command and reading the answer
-        @param list command_list: list encoded command
-
-        @return answer float: answer of motor coded in a single float
+        """
+        this method combines writing a command and reading the answer
+        Parameters
+        ----------
+        command_list : list
+            list encoded command
+        
+        
+        Returns
+        -------
+        answer float
+            answer of motor coded in a single float
         """
         self._write_rot(command_list)
         time.sleep(0.1)
@@ -430,7 +509,12 @@ class MotorRotationZaber(MotorInterface):
 
     def _motor_stopped(self):
         """checks if the rotation stage is still moving
-        @return: bool stopped: True if motor is not moving, False otherwise"""
+
+        Returns
+        -------
+        bool 
+            stopped: True if motor is not moving, False otherwise
+        """
 
         stopped=True
         status = self.get_status()
@@ -441,9 +525,16 @@ class MotorRotationZaber(MotorInterface):
     def _map_angle(self, init_angle):
         """maps the angle if larger or lower than 360° to inbetween 0° and 360°
 
-        @params init_angle: initial angle, possible not element of {0°,360°}
+        Parameters
+        ----------
+        init_angle : 
+            initial angle, possible not element of {0°,360°}
 
-        @return: float angle: Angle between 0° and 360°"""
+        Returns
+        -------
+        float
+            angle: Angle between 0° and 360°
+        """
 
         angle = init_angle%360
 

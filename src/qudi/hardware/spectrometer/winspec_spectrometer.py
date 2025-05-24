@@ -117,9 +117,14 @@ class WinSpec32(SpectrometerInterface):
         self.check_status(f'exposure_time setting to {value}')
 
     def record_spectrum(self):
-        """ Record spectrum from WinSpec32 software.
-
-            @return []: spectrum data
+        """
+        Record spectrum from WinSpec32 software.
+        
+        
+        Returns
+        -------
+        []
+            spectrum data
         """
         w32c.pythoncom.CoInitialize()
         # get some data structures from COM that we need later
@@ -171,10 +176,15 @@ class WinSpec32(SpectrometerInterface):
             return None
 
     def save_spectrum(self, path, postfix=''):
-        """ Save spectrum from WinSpec32 software.
-
-            @param str path: path to save origial spectrum
-            @param str postfix: file posfix
+        """
+        Save spectrum from WinSpec32 software.
+        
+        Parameters
+        ----------
+        path : str
+            path to save origial spectrum
+        postfix : str
+            file posfix
         """
         w32c.pythoncom.CoInitialize()
         current_spectrum = w32c.Dispatch("WinX32.DocFile")

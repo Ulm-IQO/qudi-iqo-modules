@@ -73,9 +73,13 @@ class SpectrometerLogic(LogicBase):
     sig_fit_updated = QtCore.Signal(str, object)
 
     def __init__(self, **kwargs):
-        """ Create SpectrometerLogic object with connectors.
-
-          @param dict kwargs: optional parameters
+        """
+        Create SpectrometerLogic object with connectors.
+        
+        Parameters
+        ----------
+        kwargs : dict
+            optional parameters
         """
         super().__init__(**kwargs)
         self.refractive_index_air = 1.00028823
@@ -296,12 +300,19 @@ class SpectrometerLogic(LogicBase):
         self.sig_state_updated.emit()
 
     def save_spectrum_data(self, background=False, name_tag='', root_dir=None, parameter=None):
-        """ Saves the current spectrum data to a file.
-
-        @param bool background: Whether this is a background spectrum (dark field) or not.
-        @param string name_tag: postfix name tag for saved filename.
-        @param string root_dir: overwrite the file position in necessary
-        @param dict parameter: additional parameters to add to the saved file
+        """
+        Saves the current spectrum data to a file.
+        
+        Parameters
+        ----------
+        background : bool
+            Whether this is a background spectrum (dark field) or not.
+        name_tag : string
+            postfix name tag for saved filename.
+        root_dir : string
+            overwrite the file position in necessary
+        parameter : dict
+            additional parameters to add to the saved file
         """
 
         timestamp = datetime.now()

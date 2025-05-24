@@ -268,9 +268,13 @@ class OdmrLogic(LogicBase):
 
     @QtCore.Slot(int)
     def set_scans_to_average(self, number_of_scans):
-        """ Sets the number of scans to average for the sum of the data
-
-        @param int number_of_scans: desired number of scans to average (0 means all)
+        """
+        Sets the number of scans to average for the sum of the data
+        
+        Parameters
+        ----------
+        number_of_scans : int
+            desired number of scans to average (0 means all)
         """
         with self._threadlock:
             scans_to_average = int(number_of_scans)
@@ -290,9 +294,13 @@ class OdmrLogic(LogicBase):
 
     @QtCore.Slot(object)
     def set_runtime(self, runtime):
-        """ Sets the runtime for ODMR measurement
-
-        @param float runtime: desired runtime in seconds
+        """
+        Sets the runtime for ODMR measurement
+        
+        Parameters
+        ----------
+        runtime : float
+            desired runtime in seconds
         """
         with self._threadlock:
             try:
@@ -311,9 +319,13 @@ class OdmrLogic(LogicBase):
 
     @QtCore.Slot(object)
     def set_scan_power(self, scan_power):
-        """ Sets the runtime for ODMR measurement
-
-        @param float scan_power: desired power for scans in dBm
+        """
+        Sets the runtime for ODMR measurement
+        
+        Parameters
+        ----------
+        scan_power : float
+            desired power for scans in dBm
         """
         with self._threadlock:
             try:
@@ -388,7 +400,10 @@ class OdmrLogic(LogicBase):
     @QtCore.Slot(object)
     def set_data_rate(self, rate):
         """
-        @param float rate: desired data rate in Hz
+        Parameters
+        ----------
+        rate : float
+            desired data rate in Hz
         """
         self.set_sample_rate(data_rate=rate)
 
@@ -446,10 +461,15 @@ class OdmrLogic(LogicBase):
 
     @QtCore.Slot(object, object)
     def set_cw_parameters(self, frequency, power):
-        """ Set the desired new cw mode parameters.
-
-        @param float frequency: frequency to set in Hz
-        @param float power: power to set in dBm
+        """
+        Set the desired new cw mode parameters.
+        
+        Parameters
+        ----------
+        frequency : float
+            frequency to set in Hz
+        power : float
+            power to set in dBm
         """
         with self._threadlock:
             try:
@@ -564,9 +584,14 @@ class OdmrLogic(LogicBase):
 
     @QtCore.Slot()
     def continue_odmr_scan(self):
-        """ Continue ODMR scan.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Continue ODMR scan.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         with self._threadlock:
             if self.module_state() == 'locked':
@@ -583,9 +608,14 @@ class OdmrLogic(LogicBase):
 
     @QtCore.Slot()
     def stop_odmr_scan(self):
-        """ Stop the ODMR scan.
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Stop the ODMR scan.
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         with self._threadlock:
             if self.module_state() == 'locked':
@@ -724,10 +754,14 @@ class OdmrLogic(LogicBase):
         return tuple(column_headers)
 
     def _join_channel_raw_data(self, channel):
-        """ join raw data for one channel with corresponding frequency data into a single numpy
+        """
+        join raw data for one channel with corresponding frequency data into a single numpy
         array for saving.
-
-        @param str channel: The channel name for which to join the raw data
+        
+        Parameters
+        ----------
+        channel : str
+            The channel name for which to join the raw data
         """
         channel_data = self._raw_data[channel]
         # Filter raw data to get rid of invalid values (nan or inf)
@@ -795,12 +829,21 @@ class OdmrLogic(LogicBase):
                                    column_dtypes=[float] * len(column_headers))
 
     def _draw_figure(self, channel, range_index):
-        """ Draw the summary figure to save with the data.
-
-        @param str channel: The data channel name to plot data for.
-        @param int range_index: The index for chosen channel data scan range
-
-        @return matplotlib.figure.Figure: a matplotlib figure object to be saved to file.
+        """
+        Draw the summary figure to save with the data.
+        
+        Parameters
+        ----------
+        channel : str
+            The data channel name to plot data for.
+        range_index : int
+            The index for chosen channel data scan range
+        
+        
+        Returns
+        -------
+        matplotlib.figure.Figure
+            a matplotlib figure object to be saved to file.
         """
         freq_data = self._frequency_data[range_index]
         signal_data = self._signal_data[channel][range_index]
