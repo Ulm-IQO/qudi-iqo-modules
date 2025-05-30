@@ -108,7 +108,7 @@ class FiniteSamplingScanningExcitationInterfuse(ExcitationScannerInterface, Samp
             self._finite_sampling_io().stop_buffered_frame()
             self._ao().set_activity_state(self._output_channel, True)
             self._ao().set_setpoint(self._output_channel, self._idle_value)
-            self.watchdog_event("start_idle")
+        self.watchdog_event("start_idle")
     @state
     @transition_to(("start", "prepare_scan"))
     def idle(self):
