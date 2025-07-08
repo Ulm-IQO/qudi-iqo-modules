@@ -67,6 +67,7 @@ class ScanningOptimizeLogic(LogicBase):
     _back_scan_resolution: Dict[str, int] = StatusVar(name='back_scan_resolution', default=dict())
     _scan_frequency: Dict[str, float] = StatusVar(name='scan_frequency', default=dict())
     _back_scan_frequency: Dict[str, float] = StatusVar(name='back_scan_frequency', default=dict())
+    _optimization_method_1d: str = StatusVar(name='optimization_method_1d', default="gaussian")
 
     # signals
     sigOptimizeStateChanged = QtCore.Signal(bool, dict, object)
@@ -87,6 +88,11 @@ class ScanningOptimizeLogic(LogicBase):
         self._last_fits = list()
         self._avail_axes = tuple()
         self._stashed_settings = None
+
+        self._optimizer_methods_mapper_1d = {
+            "gaussian": self._get_pos_from_1d_gauss_fit,
+            "maximum": self._get_pos_from_max,
+        }
 
     def on_activate(self):
         """Initialisation performed during activation of the module."""
@@ -338,7 +344,7 @@ class ScanningOptimizeLogic(LogicBase):
                 try:
                     if data.settings.scan_dimension == 1:
                         x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
-                        opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(x, data.data[self._data_channel])
+                        opt_pos, fit_data, fit_res = self._optimizer_methods_mapper_1d[self._optimization_method_1d](x, data.data[self._data_channel])
                     else:
                         x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
                         y = np.linspace(*data.settings.range[1], data.settings.resolution[1])
@@ -434,6 +440,33 @@ class ScanningOptimizeLogic(LogicBase):
             return (middle,), None, None
 
         return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
+
+    def _get_pos_from_max(self, x, data):
+        """
+        Method to get the optimal position from the maximum of the data set.
+        """
+        max_index = np.argmax(data)
+        _, _, fit_result = self._get_pos_from_1d_gauss_fit(x, data)
+        fit_result.message = "No fit performed - maximum search only"
+        fit_result.success = False
+        fit_result.best_fit = np.zeros(len(x))
+        fit_result.params["sigma"].value = np.inf
+        fit_result.params["sigma"].stderr = np.inf
+        fit_result.params["center"].value = x[max_index]
+        fit_result.params["center"].stderr = np.inf
+        return (x[max_index],), fit_result.best_fit, fit_result
+
+    @property
+    def optimizer_methods(self) -> dict[str, list]:
+        return {"1d": list(self._optimizer_methods_mapper_1d.keys()), "2d": []}
+
+    @property
+    def optimization_method_1d(self) -> str:
+        return self._optimization_method_1d
+
+    @optimization_method_1d.setter
+    def optimization_method_1d(self, method: str) -> None:
+        self._optimization_method_1d = method
 
     def _check_scan_settings(self):
         """Basic check of scan settings for all axes."""
