@@ -345,7 +345,7 @@ class QdyneLogic(LogicBase):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.measure: qudi.logic.qdyne.qdyne_measurement.QdyneMeasurement = None
+        self.measure: "qudi.logic.qdyne.qdyne_measurement.QdyneMeasurement" = None
         self.estimator: StateEstimatorMain = None
         self.analyzer: TimeTraceAnalyzerMain = None
         self.settings: QdyneSettings = None

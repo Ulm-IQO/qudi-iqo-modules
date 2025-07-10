@@ -65,7 +65,7 @@ class QdyneMeasurement(QtCore.QObject):
 
         self.__lock = RecursiveMutex()
 
-        self.qdyne_logic: qudi.logic.qdyne.qdyne_logic.QdyneLogic = qdyne_logic
+        self.qdyne_logic: "qudi.logic.qdyne.qdyne_logic.QdyneLogic" = qdyne_logic
         self.data: MainDataClass = self.qdyne_logic.data
         self.new_data: MainDataClass = self.qdyne_logic.new_data
         self.estimator: StateEstimatorMain = self.qdyne_logic.estimator
