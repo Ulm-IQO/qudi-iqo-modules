@@ -562,15 +562,20 @@ class InStreamDummy(DataInStreamInterface):
             return data_buffer, timestamp_buffer
 
     def read_single_point(self):
-        """ This method will initiate a single sample read on each configured data channel.
+        """
+        This method will initiate a single sample read on each configured data channel.
         In general this sample may not be acquired simultaneous for all channels and timing in
         general can not be assured. Us this method if you want to have a non-timing-critical
         snapshot of your current data channel input.
         May not be available for all devices.
         The returned 1D numpy array will contain one sample for each channel.
-
-        @return numpy.ndarray: 1D array containing one sample for each channel. Empty array
-                               indicates error.
+        
+        
+        Returns
+        -------
+        numpy.ndarray
+            1D array containing one sample for each channel. Empty array
+            indicates error.
         """
         with self._thread_lock:
             if self.module_state() != 'locked':

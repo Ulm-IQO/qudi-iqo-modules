@@ -465,9 +465,13 @@ class ScanningProbeLogic(LogicBase):
         """
         Configure the tilt correction with a set of support vector that define the tilted plane
         that should be horizontal after the correction
-
-        @param list support_vecs: list of dicts. Each dict contains the scan axis as keys.
-        @param dict shift_vec: Vector that defines the origin of rotation.
+        
+        Parameters
+        ----------
+        support_vecs : list
+            list of dicts. Each dict contains the scan axis as keys.
+        shift_vec : dict
+            Vector that defines the origin of rotation.
         """
 
         if support_vecs is None:
@@ -536,10 +540,18 @@ class ScanningProbeLogic(LogicBase):
     def tilt_vector_dict_2_array(self, vector, reduced_dim=False):
         """
         Convert vectors given as dict (with axes keys) to arrays and ensure correct order.
-
-        @param dict vector: (single coord or arrays per key) or list of dicts
-        @param bool reduced_dim: The vector given has been reduced to 3 dims (from n-dim for arbitrary vectors)
-        @return np.array or list of np.array: vector(s) as array
+        
+        Parameters
+        ----------
+        vector : dict
+            (single coord or arrays per key) or list of dicts
+        reduced_dim : bool
+            The vector given has been reduced to 3 dims (from n-dim for arbitrary vectors)
+        
+        Returns
+        -------
+        np.array or list of np.array
+            vector(s) as array
         """
 
         axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
@@ -667,7 +679,9 @@ class ScanningProbeLogic(LogicBase):
         """
         Offload __scan_poll_timer.start() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
@@ -678,7 +692,9 @@ class ScanningProbeLogic(LogicBase):
         """
         Offload __scan_poll_timer.stop() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
@@ -689,9 +705,11 @@ class ScanningProbeLogic(LogicBase):
         """
         Takes a coordinate as dict (with axes keys) and applies the tilt correction transformation.
         To this end, reduce dimensionality to 3d on the axes configured for the tilt transformation.
-        :param coord: dict of the coordinate. Keys are configured scanner axes.
-        :param inverse:
-        :return:
+        Parameters
+        ----------
+        coord :
+            dict of the coordinate. Keys are configured scanner axes.
+            
         """
 
         coord_reduced = {key: val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}

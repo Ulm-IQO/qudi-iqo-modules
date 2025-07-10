@@ -236,10 +236,14 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             return None
 
     def configure_scan(self, settings: ScanSettings) -> None:
-        """ Configure the hardware with all parameters needed for a 1D or 2D scan.
+        """
+        Configure the hardware with all parameters needed for a 1D or 2D scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
-
-        @param ScanSettings settings: ScanSettings instance holding all parameters
+        
+        Parameters
+        ----------
+        settings : ScanSettings
+            ScanSettings instance holding all parameters
         """
         if self.is_scan_running:
             raise RuntimeError('Unable to configure scan parameters while scan is running. '
@@ -287,10 +291,14 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         self._ni_finite_sampling_io().set_frame_data(ni_scan_dict)
 
     def configure_back_scan(self, settings: ScanSettings) -> None:
-        """ Configure the hardware with all parameters of the backwards scan.
+        """
+        Configure the hardware with all parameters of the backwards scan.
         Raise an exception if the settings are invalid and do not comply with the hardware constraints.
-
-        @param ScanSettings settings: ScanSettings instance holding all parameters for the back scan
+        
+        Parameters
+        ----------
+        settings : ScanSettings
+            ScanSettings instance holding all parameters for the back scan
         """
         if self.is_scan_running:
             raise RuntimeError('Unable to configure scan parameters while scan is running. '
@@ -369,10 +377,15 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         return end_pos
 
     def get_target(self):
-        """ Get the current target position of the scanner hardware
+        """
+        Get the current target position of the scanner hardware
         (i.e. the "theoretical" position).
-
-        @return dict: current target position per axis.
+        
+        
+        Returns
+        -------
+        dict
+            current target position per axis.
         """
         if self.is_scan_running:
             return self._stored_target_pos
@@ -380,13 +393,18 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             return self._target_pos
 
     def get_position(self):
-        """ Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
+        """
+        Get a snapshot of the actual scanner position (i.e. from position feedback sensors).
         For the same target this value can fluctuate according to the scanners positioning accuracy.
 
         For scanning devices that do not have position feedback sensors, simply return the target
         position (see also: ScanningProbeInterface.get_target).
-
-        @return dict: current position per axis.
+        
+        
+        Returns
+        -------
+        dict
+            current position per axis.
         """
         with self._thread_lock_cursor:
             if not self._ao_setpoint_channels_active:
@@ -396,12 +414,15 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             return pos
 
     def start_scan(self):
-        """Start a scan as configured beforehand.
+        """
+        Start a scan as configured beforehand.
         Log an error if something fails or a 1D/2D scan is in progress.
 
         Offload self._start_scan() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
 
         try:
@@ -444,12 +465,15 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             self.log.exception("Starting scan failed.", exc_info=e)
 
     def stop_scan(self):
-        """Stop the currently running scan.
+        """
+        Stop the currently running scan.
         Log an error if something fails or no 1D/2D scan is in progress.
 
         Offload self._stop_scan() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
 
         if self.thread() is not QtCore.QThread.currentThread():
@@ -500,8 +524,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
     def emergency_stop(self):
         """
-
-        @return:
+        
         """
         # TODO: Implement. Yet not used in logic till yet? Maybe sth like this:
         # self._ni_finite_sampling_io().terminate_all_tasks()
@@ -512,8 +535,12 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     def is_scan_running(self):
         """
         Read-only flag indicating the module state.
-
-        @return bool: scanning probe is running (True) or not (False)
+        
+        
+        Returns
+        -------
+        bool
+            scanning probe is running (True) or not (False)
         """
         # module state used to indicate hw timed scan running
         #self.log.debug(f"Module in state: {self.module_state()}")
@@ -573,12 +600,20 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
     def _position_to_voltage(self, axis, positions):
         """
-        @param str axis: scanner axis name for which the position is to be converted to voltages
-        @param np.array/single value position(s): Position (value(s)) to convert to voltage(s) of corresponding
-        ni_channel derived from axis string
-
-        @return np.array/single value: Position(s) converted to voltage(s) (value(s)) [single value & 1D np.array depending on input]
-                      for corresponding ni_channel (keys)
+        Parameters
+        ----------
+        axis : str
+            scanner axis name for which the position is to be converted to voltages
+        position(s) : np.array/single value
+            Position (value(s)) to convert to voltage(s) of corresponding
+            ni_channel derived from axis string
+        
+        
+        Returns
+        -------
+        np.array/single value
+            Position(s) converted to voltage(s) (value(s)) [single value & 1D np.array depending on input]
+            for corresponding ni_channel (keys)
         """
 
         ni_channel = self._ni_channel_mapping[axis]
@@ -613,10 +648,17 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
     def _voltage_dict_to_position_dict(self, voltages):
         """
-        @param dict voltages: Voltages (value(s)) to convert to position(s) of corresponding scanner axis (keys)
-
-        @return dict: Voltage(s) converted to position(s) (value(s)) [single value & 1D np.array depending on input] for
-                      for corresponding axis (keys)
+        Parameters
+        ----------
+        voltages : dict
+            Voltages (value(s)) to convert to position(s) of corresponding scanner axis (keys)
+        
+        
+        Returns
+        -------
+        dict
+            Voltage(s) converted to position(s) (value(s)) [single value & 1D np.array depending on input] for
+            for corresponding axis (keys)
         """
 
         reverse_routing = {val.lower(): key for key, val in self._ni_channel_mapping.items()}
@@ -755,9 +797,16 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     def _init_ni_scan_arrays(self, settings: ScanSettings, back_settings: ScanSettings)\
             -> Dict[str, np.ndarray]:
         """
-        @param ScanSettings settings: scan parameters
-
-        @return dict: NI channel name to voltage 1D numpy array mapping for all axes
+        Parameters
+        ----------
+        settings : ScanSettings
+            scan parameters
+        
+        
+        Returns
+        -------
+        dict
+            NI channel name to voltage 1D numpy array mapping for all axes
         """
         # TODO maybe need to clip to voltage range in case of float precision error in conversion?
         scan_coords = self._init_scan_grid(settings, back_settings)
@@ -911,7 +960,9 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
         """
         Offload self.__ni_ao_write_timer.start() from the caller to the module's thread.
         ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
-        :return:
+        
+        Returns
+        -------
         """
 
         try:

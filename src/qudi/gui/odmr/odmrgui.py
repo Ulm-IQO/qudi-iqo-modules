@@ -328,9 +328,12 @@ class OdmrGui(GuiBase):
 
     @QtCore.Slot(bool)
     def _update_scan_state(self, running=None):
-        """ Update the display for a change in the microwave status (mode and output).
-
-        @param bool running:
+        """
+        Update the display for a change in the microwave status (mode and output).
+        
+        Parameters
+        ----------
+        running : bool
         """
         if running is None:
             running = self._odmr_logic().module_state() != 'idle'
@@ -346,8 +349,10 @@ class OdmrGui(GuiBase):
     def _update_cw_state(self, running=None):
         """
         Update the display for a change in the microwave status (mode and output).
-
-        @param bool running:
+        
+        Parameters
+        ----------
+        running : bool
         """
         # ToDo: Get running state if running is None
         if running is None:
@@ -380,11 +385,10 @@ class OdmrGui(GuiBase):
         )
 
     def _update_scan_parameters(self, param_dict=None):
-        """ Update the scan parameetrs in the GUI
-
-        @param param_dict:
-        @return:
-
+        """
+        Update the scan parameetrs in the GUI
+        
+        
         Any change event from the logic should call this update function.
         The update will block the GUI signals from emitting a change back to the
         logic.

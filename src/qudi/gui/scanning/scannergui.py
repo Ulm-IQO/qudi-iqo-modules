@@ -287,9 +287,14 @@ class ScannerGui(GuiBase):
         return
 
     def on_deactivate(self):
-        """Reverse steps of activation
-
-        @return int: error code (0:OK, -1:error)
+        """
+        Reverse steps of activation
+        
+        
+        Returns
+        -------
+        int
+            error code (0:OK, -1:error)
         """
         # Remember window position and geometry and close window
         self._save_window_geometry(self._mw)
@@ -555,7 +560,10 @@ class ScannerGui(GuiBase):
     def save_scan_data(self, scan_axes: Union[None, Tuple[str], Tuple[str, str]]):
         """
         Save data for a given scan axis.
-        @param tuple scan_axes: Axis to save, leave None for all axes where data is available.
+        Parameters
+        ----------
+        scan_axes : tuple
+            Axis to save, leave None for all axes where data is available.
         """
         self.sigShowSaveDialog.emit(True)
         if scan_axes is None:
@@ -714,8 +722,10 @@ class ScannerGui(GuiBase):
     def set_scanner_target_position(self, target_pos):
         """
         Issues new target to logic and updates gui.
-
-        @param dict target_pos:
+        
+        Parameters
+        ----------
+        target_pos : dict
         """
         self.sigScannerTargetChanged.emit(target_pos, self.module_uuid)
         # update gui with target, not actual logic values
@@ -725,10 +735,14 @@ class ScannerGui(GuiBase):
     def scanner_target_updated(self, pos_dict=None, caller_id=None):
         """
         Updates the scanner target and set widgets accordingly.
-
-        @param dict pos_dict: The scanner position dict to update each axis position.
-                              If None (default) read the scanner position from logic and update.
-        @param int caller_id: The qudi module object id responsible for triggering this update
+        
+        Parameters
+        ----------
+        pos_dict : dict
+            The scanner position dict to update each axis position.
+            If None (default) read the scanner position from logic and update.
+        caller_id : int
+            The qudi module object id responsible for triggering this update
         """
 
         # If this update has been issued by this module, do not update display.
@@ -908,7 +922,9 @@ class ScannerGui(GuiBase):
     @QtCore.Slot(ScanData, ScanData)
     def _update_scan_data(self, scan_data: ScanData, back_scan_data: Optional[ScanData]):
         """
-        @param ScanData scan_data:
+        Parameters
+        ----------
+        scan_data : ScanData
         """
         settings = scan_data.settings
         try:
@@ -1098,9 +1114,11 @@ class ScannerGui(GuiBase):
     def tilt_corr_support_vector_updated(self, settings):
         """
         Signal new vectors from logic and update gui accordingly.
-
-        @param dict settings: scanning probe logic settings dict
-        @return:
+        
+        Parameters
+        ----------
+        settings : dict
+            scanning probe logic settings dict
         """
 
         tilt_widget = self.tilt_correction_dockwidget

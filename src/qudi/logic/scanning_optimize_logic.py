@@ -158,7 +158,10 @@ class ScanningOptimizeLogic(LogicBase):
     @scan_sequence.setter
     def scan_sequence(self, sequence: Tuple[Tuple[str, ...]]):
         """
-        @param sequence: list or tuple of string tuples giving the scan order, e.g. [('x','y'), ('z')]
+        Parameters
+        ----------
+        sequence : 
+            list or tuple of string tuples giving the scan order, e.g. [('x','y'), ('z')]
         """
         occurring_axes = set([axis for step in sequence for axis in step])
         available_axes = [ax.name for ax in self._avail_axes]

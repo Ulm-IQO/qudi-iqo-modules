@@ -163,7 +163,9 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
     @property
     def frequency(self) -> Dict[str, Tuple[float, float]]:
         """
-        :return: dict with
+        Returns
+        -------
+        dict with
         """
         return {
             ax: (widgets['forward_freq_spinbox'].value(), widgets['backward_freq_spinbox'].value())

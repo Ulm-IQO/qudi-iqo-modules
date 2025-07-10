@@ -43,67 +43,101 @@ class FiniteSamplingOutputInterface(Base):
     @property
     @abstractmethod
     def active_channels(self):
-        """ Names of all currently active channels.
-
-        @return frozenset: The active channel name strings as set
+        """
+        Names of all currently active channels.
+        
+        
+        Returns
+        -------
+        frozenset
+            The active channel name strings as set
         """
         pass
 
     @property
     @abstractmethod
     def sample_rate(self):
-        """ The sample rate (in Hz) at which the samples will be emitted.
-
-        @return float: The current sample rate in Hz
+        """
+        The sample rate (in Hz) at which the samples will be emitted.
+        
+        
+        Returns
+        -------
+        float
+            The current sample rate in Hz
         """
         pass
 
     @property
     @abstractmethod
     def frame_size(self):
-        """ Currently set number of samples per channel to emit for each data frame.
-
-        @return int: Number of samples per frame
+        """
+        Currently set number of samples per channel to emit for each data frame.
+        
+        
+        Returns
+        -------
+        int
+            Number of samples per frame
         """
         pass
 
     @property
     @abstractmethod
     def output_mode(self):
-        """ Currently set output mode.
-
-        @return SamplingOutputMode: Enum representing the currently active output mode
+        """
+        Currently set output mode.
+        
+        
+        Returns
+        -------
+        SamplingOutputMode
+            Enum representing the currently active output mode
         """
         pass
 
     @property
     @abstractmethod
     def samples_in_buffer(self):
-        """ Current number of samples per channel still pending to be emitted.
-
-        @return int: Number of pending samples to be emitted
+        """
+        Current number of samples per channel still pending to be emitted.
+        
+        
+        Returns
+        -------
+        int
+            Number of pending samples to be emitted
         """
         pass
 
     @abstractmethod
     def set_sample_rate(self, rate):
-        """ Will set the sample rate to a new value.
-
-        @param float rate: The sample rate to set
+        """
+        Will set the sample rate to a new value.
+        
+        Parameters
+        ----------
+        rate : float
+            The sample rate to set
         """
         pass
 
     @abstractmethod
     def set_active_channels(self, channels):
-        """ Will set the currently active channels. All other channels will be deactivated.
-
-        @param iterable(str) channels: Iterable of channel names to set active.
+        """
+        Will set the currently active channels. All other channels will be deactivated.
+        
+        Parameters
+        ----------
+        channels : iterable(str)
+            Iterable of channel names to set active.
         """
         pass
 
     @abstractmethod
     def set_frame_data(self, data):
-        """ Fills the frame buffer for the next data frame to be emitted. Data must be a dict
+        """
+        Fills the frame buffer for the next data frame to be emitted. Data must be a dict
         containing exactly all active channels as keys with corresponding sample data as values.
 
         If <output_mode> is SamplingOutputMode.JUMP_LIST, the values must be 1D numpy.ndarrays
@@ -113,16 +147,23 @@ class FiniteSamplingOutputInterface(Base):
         i.e. (start, stop, frame_size).
 
         This method will also set the property <frame_size>.
-
-        @param dict data: The frame data (values) to be set for all active channels (keys)
+        
+        Parameters
+        ----------
+        data : dict
+            The frame data (values) to be set for all active channels (keys)
         """
         pass
 
     @abstractmethod
     def set_output_mode(self, mode):
-        """ Setter for the current output mode.
-
-        @param SamplingOutputMode mode: The output mode to set as SamplingOutputMode Enum
+        """
+        Setter for the current output mode.
+        
+        Parameters
+        ----------
+        mode : SamplingOutputMode
+            The output mode to set as SamplingOutputMode Enum
         """
         pass
 
@@ -150,14 +191,18 @@ class FiniteSamplingOutputInterface(Base):
 
     @abstractmethod
     def emit_samples(self, data):
-        """ Emit a single data frame for all active channels.
+        """
+        Emit a single data frame for all active channels.
         This method call is blocking until the entire data frame has been emitted.
 
         Will not overwrite the property <frame_size>.
 
         See <start_buffered_output>, <stop_buffered_output> and <set_frame_data> for more details.
-
-        @param dict data: The frame data (values) to be emitted for all active channels (keys)
+        
+        Parameters
+        ----------
+        data : dict
+            The frame data (values) to be emitted for all active channels (keys)
         """
         pass
 

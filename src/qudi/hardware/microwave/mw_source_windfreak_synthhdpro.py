@@ -109,80 +109,120 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
 
     @property
     def is_scanning(self):
-        """Read-Only boolean flag indicating if a scan is running at the moment. Can be used together with
+        """
+        Read-Only boolean flag indicating if a scan is running at the moment. Can be used together with
         module_state() to determine if the currently running microwave output is a scan or CW.
         Should return False if module_state() is 'idle'.
-
-        @return bool: Flag indicating if a scan is running (True) or not (False)
+        
+        
+        Returns
+        -------
+        bool
+            Flag indicating if a scan is running (True) or not (False)
         """
         with self._thread_lock:
             return (self.module_state() != 'idle') and not self._in_cw_mode
 
     @property
     def cw_power(self):
-        """The CW microwave power in dBm. Must implement setter as well.
-
-        @return float: The currently set CW microwave power in dBm.
+        """
+        The CW microwave power in dBm. Must implement setter as well.
+        
+        
+        Returns
+        -------
+        float
+            The currently set CW microwave power in dBm.
         """
         with self._thread_lock:
             return float(self._device.query('W?'))
 
     @property
     def cw_frequency(self):
-        """The CW microwave frequency in Hz. Must implement setter as well.
-
-        @return float: The currently set CW microwave frequency in Hz.
+        """
+        The CW microwave frequency in Hz. Must implement setter as well.
+        
+        
+        Returns
+        -------
+        float
+            The currently set CW microwave frequency in Hz.
         """
         with self._thread_lock:
             return float(self._device.query('f?')) * 1e6
 
     @property
     def scan_power(self):
-        """The microwave power in dBm used for scanning. Must implement setter as well.
-
-        @return float: The currently set scanning microwave power in dBm
+        """
+        The microwave power in dBm used for scanning. Must implement setter as well.
+        
+        
+        Returns
+        -------
+        float
+            The currently set scanning microwave power in dBm
         """
         with self._thread_lock:
             return self._scan_power
 
     @property
     def scan_frequencies(self):
-        """The microwave frequencies used for scanning. Must implement setter as well.
-
+        """
+        The microwave frequencies used for scanning. Must implement setter as well.
+        
         In case of scan_mode == SamplingOutputMode.JUMP_LIST, this will be a 1D numpy array.
         In case of scan_mode == SamplingOutputMode.EQUIDISTANT_SWEEP, this will be a tuple
         containing 3 values (freq_begin, freq_end, number_of_samples).
         If no frequency scan has been specified, return None.
-
-        @return float[]: The currently set scanning frequencies. None if not set.
+        
+        
+        Returns
+        -------
+        float[]
+            The currently set scanning frequencies. None if not set.
         """
         with self._thread_lock:
             return self._scan_frequencies
 
     @property
     def scan_mode(self):
-        """Scan mode Enum. Must implement setter as well.
-
-        @return SamplingOutputMode: The currently set scan mode Enum
+        """
+        Scan mode Enum. Must implement setter as well.
+        
+        
+        Returns
+        -------
+        SamplingOutputMode
+            The currently set scan mode Enum
         """
         with self._thread_lock:
             return SamplingOutputMode.EQUIDISTANT_SWEEP
 
     @property
     def scan_sample_rate(self):
-        """Read-only property returning the currently configured scan sample rate in Hz.
-
-        @return float: The currently set scan sample rate in Hz
+        """
+        Read-only property returning the currently configured scan sample rate in Hz.
+        
+        
+        Returns
+        -------
+        float
+            The currently set scan sample rate in Hz
         """
         with self._thread_lock:
             return self._scan_sample_rate
 
     def set_cw(self, frequency, power):
-        """Configure the CW microwave output. Does not start physical signal output, see also
+        """
+        Configure the CW microwave output. Does not start physical signal output, see also
         "cw_on".
-
-        @param float frequency: frequency to set in Hz
-        @param float power: power to set in dBm
+        
+        Parameters
+        ----------
+        frequency : float
+            frequency to set in Hz
+        power : float
+            power to set in dBm
         """
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -317,25 +357,40 @@ class MicrowaveSynthHDPro(MicrowaveInterface):
         self._device.write(f']{self._scan_power:2.3f}')
 
     def _off(self):
-        """ Turn the current channel off.
-
-        @return tuple: see _stat()
+        """
+        Turn the current channel off.
+        
+        
+        Returns
+        -------
+        tuple
+            see _stat()
         """
         self._device.write('E0r0h0')
         return self._stat()
 
     def _on(self):
-        """ Turn on the current channel.
-
-        @return tuple(bool): see _stat()
+        """
+        Turn on the current channel.
+        
+        
+        Returns
+        -------
+        tuple(bool)
+            see _stat()
         """
         self._device.write('E1r1h1')
         return self._stat()
 
     def _stat(self):
-        """ Return status of PLL, power amplifier and output power muting for current channel.
-
-        @return tuple(bool): PLL on, power amplifier on, output power muting on
+        """
+        Return status of PLL, power amplifier and output power muting for current channel.
+        
+        
+        Returns
+        -------
+        tuple(bool)
+            PLL on, power amplifier on, output power muting on
         """
         # PLL status
         E = int(self._device.query('E?'))

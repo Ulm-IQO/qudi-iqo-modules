@@ -130,13 +130,21 @@ class HydraHarp400(FastCounterInterface):
         return
 
     def check(self, func_val):
-        """ Check routine for the received error codes.
-
-        @param int func_val: return error code of the called function.
-
-        @return int: pass the error code further so that other functions have
-                     the possibility to use it.
-
+        """
+        Check routine for the received error codes.
+        
+        Parameters
+        ----------
+        func_val : int
+            return error code of the called function.
+        
+        
+        Returns
+        -------
+        int
+            pass the error code further so that other functions have
+            the possibility to use it.
+        
         Each called function in the dll has an 32-bit return integer, which
         indicates, whether the function was called and finished successfully
         (then func_val = 0) or if any error has occured (func_val < 0). The
@@ -151,11 +159,16 @@ class HydraHarp400(FastCounterInterface):
 
 
     def get_constraints(self):
-        """ Retrieve the hardware constrains from the Fast counting device.
-
-        @return dict: dict with keys being the constraint names as string and
-                      items are the definition for the constaints.
-
+        """
+        Retrieve the hardware constrains from the Fast counting device.
+        
+        
+        Returns
+        -------
+        dict
+            dict with keys being the constraint names as string and
+            items are the definition for the constaints.
+        
          The keys of the returned dictionary are the str name for the constraints
         (which are set in this method).
 
@@ -197,18 +210,27 @@ class HydraHarp400(FastCounterInterface):
 
 
     def configure(self, bin_width_s, record_length_s, number_of_gates=None):
-            """ Configuration of the fast counter.
-            @param float bin_width_s: Length of a single time bin in the time trace
-                                      histogram in seconds.
-            @param float record_length_s: Total length of the timetrace/each single
-                                          gate in seconds.
-            @param int number_of_gates: optional, number of gates in the pulse
-                                        sequence. Ignore for not gated counter.
-            @return tuple(binwidth_s, record_length_s, number_of_gates):
-                        binwidth_s: float the actual set binwidth in seconds
-                        gate_length_s: the actual record length in seconds
-                        number_of_gates: the number of gated, which are accepted,
-                        None if not-gated
+            """
+            Configuration of the fast counter.
+            Parameters
+            ----------
+            bin_width_s : float
+                Length of a single time bin in the time trace
+                histogram in seconds.
+            record_length_s : float
+                Total length of the timetrace/each single
+                gate in seconds.
+            number_of_gates : int
+                optional, number of gates in the pulse
+                sequence. Ignore for not gated counter.
+            
+            Returns
+            -------
+            tuple(binwidth_s, record_length_s, number_of_gates)
+                binwidth_s: float the actual set binwidth in seconds
+                gate_length_s: the actual record length in seconds
+                number_of_gates: the number of gated, which are accepted,
+                None if not-gated
             """
 
             # when not gated, record length = total sequence length, when gated, record length = laser length.
@@ -251,17 +273,27 @@ class HydraHarp400(FastCounterInterface):
         return status
 
     def is_gated(self):
-        """ Check the gated counting possibility.
-
-        @return bool: Boolean value indicates if the fast counter is a gated
-                      counter (TRUE) or not (FALSE).
+        """
+        Check the gated counting possibility.
+        
+        
+        Returns
+        -------
+        bool
+            Boolean value indicates if the fast counter is a gated
+            counter (TRUE) or not (FALSE).
         """
         return self.gated
 
     def get_length(self):
-        """ Get the length of the current measurement.
-
-          @return int: length of the current measurement in bins
+        """
+        Get the length of the current measurement.
+        
+        
+        Returns
+        -------
+        int
+            length of the current measurement in bins
         """
         if self.bins_num == 0:
             self.log.warn('Fastcounter: bin number has not been set. Returning 0.')
@@ -277,7 +309,11 @@ class HydraHarp400(FastCounterInterface):
             returnarray[timebin_index].
           - If the counter is gated it will return a 2D-numpy-array with
             returnarray[gate_index, timebin_index]
-        @return arrray: Time trace.
+        
+        Returns
+        -------
+        arrray
+            Time trace.
         """
         py_counts = np.empty((self.bins_num,), dtype=np.uint32)
         pointer = ctypes.POINTER(ctypes.c_uint32)
@@ -302,7 +338,8 @@ class HydraHarp400(FastCounterInterface):
         return t.value/1000 # return in second
 
     def _set_constants(self):
-        """ Set the constants (max and min values) for the Hydraharp400 device.
+        """
+        Set the constants (max and min values) for the Hydraharp400 device.
         These setting are taken from hhdefin.h """
 
         self.MODE_HIST = 0
@@ -341,18 +378,27 @@ class HydraHarp400(FastCounterInterface):
     def get_version(self):
         """ Get the software/library version of the device.
 
-        @return string: string representation of the
-                        Version number of the current library."""
+
+        Returns
+        -------
+        string
+            string representation of the
+            Version number of the current library.
+        """
         buf = ctypes.create_string_buffer(8)   # at least 8 byte
         self.check(self.dll.HH_GetLibraryVersion(ctypes.byref(buf)))
         return buf.value # .decode() converts byte to string
-
+        
     def get_error_string(self, errcode):
         """ Get the string error code from the Hydraharp Device.
 
-        @param int errcode: errorcode from 0 and below.
+        Parameters
+        ----------
+        errcode : int
+            errorcode from 0 and below.
 
-        @return byte: byte representation of the string error code.
+        byte
+            byte representation of the string error code.
 
         The stringcode for the error is the same as it is extracted from the
         errorcodes.h header file. Note that errcode should have the value 0
@@ -368,9 +414,14 @@ class HydraHarp400(FastCounterInterface):
     # =========================================================================
 
     def get_hardware_info(self):
-        """ Retrieve the device hardware information.
-
-        @return string tuple(3): (Model, Partnum, Version)
+        """
+        Retrieve the device hardware information.
+        
+        
+        Returns
+        -------
+        string tuple(3)
+            (Model, Partnum, Version)
         """
 
         model = ctypes.create_string_buffer(32)     # at least 16 byte
@@ -383,9 +434,14 @@ class HydraHarp400(FastCounterInterface):
         return model.value.decode(), partnum.value.decode(), version.value.decode()
 
     def get_serial_number(self):
-        """ Retrieve the serial number of the device.
-
-        @return string: serial number of the device
+        """
+        Retrieve the serial number of the device.
+        
+        
+        Returns
+        -------
+        string
+            serial number of the device
         """
 
         serialnum = ctypes.create_string_buffer(16)   # at least 8 byte
@@ -393,9 +449,14 @@ class HydraHarp400(FastCounterInterface):
         return serialnum.value.decode() # .decode() converts byte to string
 
     def get_base_resolution(self):
-        """ Retrieve the base resolution of the device.
-
-        @return double: the base resolution of the device
+        """
+        Retrieve the base resolution of the device.
+        
+        
+        Returns
+        -------
+        double
+            the base resolution of the device
         """
 
         res = ctypes.c_double()
@@ -403,11 +464,17 @@ class HydraHarp400(FastCounterInterface):
         return res.value
 
     def set_input_CFD(self, channel, level, zerocross):
-        """ Set the Constant Fraction Discriminators for the HydraHarp400.
-
-        @param int channel: number (0 or 1) of the input channel
-        @param int level: CFD discriminator level in millivolts
-        @param int zerocross: CFD zero cross in millivolts
+        """
+        Set the Constant Fraction Discriminators for the HydraHarp400.
+        
+        Parameters
+        ----------
+        channel : int
+            number (0 or 1) of the input channel
+        level : int
+            CFD discriminator level in millivolts
+        zerocross : int
+            CFD zero cross in millivolts
         """
         channel = int(channel)
         level = int(level)
@@ -432,11 +499,15 @@ class HydraHarp400(FastCounterInterface):
         self.check(self.dll.HH_SetInputCFD(self._deviceID, channel, level, zerocross))
 
     def set_offset(self, offset):
-        """ Set an offset time.
-
-        @param int offset: offset in ps (only possible for histogramming and T3
-                           mode!). Value must be within [OFFSETMIN,OFFSETMAX].
-
+        """
+        Set an offset time.
+        
+        Parameters
+        ----------
+        offset : int
+            offset in ps (only possible for histogramming and T3
+            mode!). Value must be within [OFFSETMIN,OFFSETMAX].
+        
         The true offset is an approximation fo the desired offset by the
         nearest multiple of the base resolution. This offset only acts on the
         difference between ch1 and ch0 in hitogramming and T3 mode. Do not
@@ -450,19 +521,29 @@ class HydraHarp400(FastCounterInterface):
             self.check(self.dll.HH_SetOffset(self._deviceID, offset))
 
     def _get_status(self):
-        """ Check the status of the device.
-
-        @return int:  = 0: acquisition time still running
-                      > 0: acquisition time has ended, measurement finished.
+        """
+        Check the status of the device.
+        
+        
+        Returns
+        -------
+        int
+            = 0: acquisition time still running
+            > 0: acquisition time has ended, measurement finished.
         """
         ctcstatus = ctypes.c_int32()
         self.check(self.dll.HH_CTCStatus(self._deviceID, ctypes.byref(ctcstatus)))
         return ctcstatus.value
 
     def get_resolution(self):
-        """ Retrieve the current resolution of the picohard.
-
-        @return double: resolution at current binning.
+        """
+        Retrieve the current resolution of the picohard.
+        
+        
+        Returns
+        -------
+        double
+            resolution at current binning.
         """
 
         resolution = ctypes.c_double()
@@ -489,8 +570,13 @@ class HydraHarp400(FastCounterInterface):
                 return 1
 
     def get_binwidth(self):
-        """ Returns the width of a single timebin in the timetrace in seconds.
-        @return float: current length of a single bin in seconds (seconds/bin)
+        """
+        Returns the width of a single timebin in the timetrace in seconds.
+        
+        Returns
+        -------
+        float
+            current length of a single bin in seconds (seconds/bin)
         """
         resolution = ctypes.c_double()
         self.tryfunc(self.dll.HH_GetResolution(self._deviceID, ctypes.byref(resolution)), "GetResolution")
@@ -498,11 +584,19 @@ class HydraHarp400(FastCounterInterface):
         return resolution.value * 1e-12
 
     def set_length(self, length_bins):
-        """ Sets the length of the length of the actual measurement.
-
-        @param int length_bins: Length of the measurement in bins
-
-        @return float: Red out length of measurement
+        """
+        Sets the length of the length of the actual measurement.
+        
+        Parameters
+        ----------
+        length_bins : int
+            Length of the measurement in bins
+        
+        
+        Returns
+        -------
+        float
+            Red out length of measurement
         """
         # First check if no constraint is
         constraints = self.get_constraints()
@@ -530,20 +624,24 @@ class HydraHarp400(FastCounterInterface):
             return -1
 
     def set_binning(self, binning):
-        """ Set the base resolution of the measurement.
-        @param int binning: binning code
-                                minimum = 0 (smallest, i.e. base resolution)
-                                maximum = (BINSTEPSMAX-1) (largest)
-        The binning code corresponds to a power of 2, i.e.
-            0 =      base resolution,     => 2^0 =    1ps
-            1 =   2x base resolution,     => 2^1 =    2ps
-            2 =   4x base resolution,     => 2^2 =   4ps
-            3 =   8x base resolution      => 2^3 =   8ps
-            4 =  16x base resolution      => 2^4 =   16ps
-            5 =  32x base resolution      => 2^5 =  32ps
-            6 =  64x base resolution      => 2^6 =  64ps
-            7 = 128x base resolution      => 2^7 =  128ps
-            ...
+        """
+        Set the base resolution of the measurement.
+        Parameters
+        ----------
+        binning : int
+            binning code
+                minimum = 0 (smallest, i.e. base resolution)
+                maximum = (BINSTEPSMAX-1) (largest)
+            The binning code corresponds to a power of 2, i.e.
+                0 =      base resolution,     => 2^0 =    1ps
+                1 =   2x base resolution,     => 2^1 =    2ps
+                2 =   4x base resolution,     => 2^2 =   4ps
+                3 =   8x base resolution      => 2^3 =   8ps
+                4 =  16x base resolution      => 2^4 =   16ps
+                5 =  32x base resolution      => 2^5 =  32ps
+                6 =  64x base resolution      => 2^6 =  64ps
+                7 = 128x base resolution      => 2^7 =  128ps
+                ...
         In histogram mode the internal
         buffer can store 65535 points (each a 32bit word).
         """
@@ -555,20 +653,35 @@ class HydraHarp400(FastCounterInterface):
             self.check(self.dll.HH_SetBinning(self._deviceID, binning))
 
     def set_binwidth(self, binwidth):
-        """ Set defined binwidth in Card.
-        @param float binwidth: the current binwidth in seconds
-        @return float: Red out bitshift converted to binwidth
-        The binwidth is converted into to an appropiate bitshift defined as
-        2**bitshift*minimal_binwidth.
+        """
+        Set defined binwidth in Card.
+        Parameters
+        ----------
+        binwidth : float
+            the current binwidth in seconds
+        
+        Returns
+        -------
+        float
+            Red out bitshift converted to binwidth
+            The binwidth is converted into to an appropiate bitshift defined as
+            2**bitshift*minimal_binwidth.
         """
         bitshift = int(np.log2(binwidth/self.minimal_binwidth))
         resolution=self.set_bitshift(bitshift)
         return resolution
 
     def set_bitshift(self, bitshift):
-        """ Sets the bitshift properly for this card.
-        @param int bitshift:
-        @return int: asks the actual bitshift and returns the red out value
+        """
+        Sets the bitshift properly for this card.
+        Parameters
+        ----------
+        bitshift : int
+        
+        Returns
+        -------
+        int
+            asks the actual bitshift and returns the red out value
         """
 
         self.set_binning(bitshift)

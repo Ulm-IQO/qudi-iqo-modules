@@ -250,9 +250,10 @@ class RegionOfInterest:
 
     def set_scan_image(self, image_arr, image_extent, scan_image_meta=None):
         """
-
-        @param scalar[][] image_arr:
-        @param float[2][2] image_extent:
+        Parameters
+        ----------
+        image_arr : scalar[][]
+        image_extent : float[2][2]
         """
         if image_arr is None:
             self._scan_image = None
@@ -269,9 +270,12 @@ class RegionOfInterest:
     def add_history_entry(self, new_pos):
         """
         Add a new entry to the ROI position history and tag it with the current time.
-
-        @param float[3] new_pos: Position coordinate (x,y,z) of the ROI
-                                 (relative to initial position)
+        
+        Parameters
+        ----------
+        new_pos : float[3]
+            Position coordinate (x,y,z) of the ROI
+            (relative to initial position)
         """
         if len(new_pos) != 3:
             raise ValueError('ROI history position to set must be iterable of length 3 (X, Y, Z).')
@@ -282,8 +286,11 @@ class RegionOfInterest:
     def delete_history_entry(self, history_index=-1):
         """
         Delete an entry in the ROI position history. Deletes the last position by default.
-
-        @param int|slice history_index: List index of history entry to delete
+        
+        Parameters
+        ----------
+        history_index : int|slice
+            List index of history entry to delete
         """
         try:
             del self._pos_history[history_index]
@@ -654,13 +661,18 @@ class PoiManagerLogic(LogicBase):
         """
         Creates a new POI and adds it to the current ROI.
         POI can be optionally initialized with position and name.
-
-        @param str name: Name for the POI (must be unique within ROI).
-                         None (default) will create generic name.
-        @param scalar[3] position: Iterable of length 3 representing the (x, y, z) position with
-                                   respect to the ROI origin. None (default) causes the current
-                                   scanner crosshair position to be used.
-        @param bool emit_change: Flag indicating if the changed POI set should be signaled.
+        
+        Parameters
+        ----------
+        name : str
+            Name for the POI (must be unique within ROI).
+            None (default) will create generic name.
+        position : scalar[3]
+            Iterable of length 3 representing the (x, y, z) position with
+            respect to the ROI origin. None (default) causes the current
+            scanner crosshair position to be used.
+        emit_change : bool
+            Flag indicating if the changed POI set should be signaled.
         """
         with self._thread_lock:
             # Get current scanner position from  if no position is provided.
@@ -687,8 +699,11 @@ class PoiManagerLogic(LogicBase):
     def delete_poi(self, name=None):
         """
         Deletes the given poi from the ROI.
-
-        @param str name: Name of the POI to delete. If None (default) delete active POI.
+        
+        Parameters
+        ----------
+        name : str
+            Name of the POI to delete. If None (default) delete active POI.
         """
         with self._thread_lock:
             if len(self.poi_names) == 0:
@@ -725,9 +740,10 @@ class PoiManagerLogic(LogicBase):
     @QtCore.Slot(str, str)
     def rename_poi(self, new_name, name=None):
         """
-
-        @param str name:
-        @param str new_name:
+        Parameters
+        ----------
+        name : str
+        new_name : str
         """
         with self._thread_lock:
             if not isinstance(new_name, str) or not new_name:
@@ -753,7 +769,6 @@ class PoiManagerLogic(LogicBase):
     def set_active_poi(self, name=None):
         """
         Set the name of the currently active POI
-        @param name:
         """
         with self._thread_lock:
             if not isinstance(name, str) and name is not None:
@@ -771,10 +786,17 @@ class PoiManagerLogic(LogicBase):
     def get_poi_position(self, name=None):
         """
         Returns the POI position of the specified POI or the active POI if none is given.
-
-        @param str name: Name of the POI to return the position for.
-                             If None (default) the active POI position is returned.
-        @return float[3]: Coordinates of the desired POI (x,y,z)
+        
+        Parameters
+        ----------
+        name : str
+            Name of the POI to return the position for.
+            If None (default) the active POI position is returned.
+        
+        Returns
+        -------
+        float[3]
+            Coordinates of the desired POI (x,y,z)
         """
         with self._thread_lock:
             if name is None:
@@ -785,10 +807,17 @@ class PoiManagerLogic(LogicBase):
         """
         Returns the POI anchor position (excluding sample movement) of the specified POI or the
         active POI if none is given.
-
-        @param str name: Name of the POI to return the position for.
-                         If None (default) the active POI position is returned.
-        @return float[3]: Coordinates of the desired POI anchor (x,y,z)
+        
+        Parameters
+        ----------
+        name : str
+            Name of the POI to return the position for.
+            If None (default) the active POI position is returned.
+        
+        Returns
+        -------
+        float[3]
+            Coordinates of the desired POI anchor (x,y,z)
         """
         with self._thread_lock:
             if name is None:
@@ -869,8 +898,11 @@ class PoiManagerLogic(LogicBase):
     def delete_history_entry(self, history_index=-1):
         """
         Delete an entry in the ROI history. Deletes the last position by default.
-
-        @param int|slice history_index: List index for history entry
+        
+        Parameters
+        ----------
+        history_index : int|slice
+            List index for history entry
         """
         with self._thread_lock:
             old_roi_origin = self.roi_origin
@@ -888,8 +920,11 @@ class PoiManagerLogic(LogicBase):
     def go_to_poi(self, name=None):
         """
         Move crosshair to the given poi.
-
-        @param str name: the name of the POI
+        
+        Parameters
+        ----------
+        name : str
+            the name of the POI
         """
         with self._thread_lock:
             if name is None:
@@ -949,10 +984,14 @@ class PoiManagerLogic(LogicBase):
 
     @QtCore.Slot(float)
     def set_refocus_period(self, period):
-        """ Change the duration of the periodic optimise timer during active
+        """
+        Change the duration of the periodic optimise timer during active
         periodic refocusing.
-
-        @param float period: The time between optimisation procedures.
+        
+        Parameters
+        ----------
+        period : float
+            The time between optimisation procedures.
         """
         with self._thread_lock:
             if period < 0:
@@ -987,9 +1026,12 @@ class PoiManagerLogic(LogicBase):
     def start_periodic_refocus(self, name=None):
         """
         Starts periodic refocusing of the POI <name>.
-
-        @param str name: The name of the POI to be refocused periodically.
-        If None (default) perform periodic refocus on active POI.
+        
+        Parameters
+        ----------
+        name : str
+            The name of the POI to be refocused periodically.
+            If None (default) perform periodic refocus on active POI.
         """
         if name is None:
             if self.active_poi is None:
@@ -1033,8 +1075,7 @@ class PoiManagerLogic(LogicBase):
     @QtCore.Slot(bool)
     def toggle_periodic_refocus(self, switch_on):
         """
-
-        @param switch_on:
+        
         """
         with self._thread_lock:
             if switch_on:
@@ -1066,9 +1107,13 @@ class PoiManagerLogic(LogicBase):
         The difference between old and new position can be used to update the ROI position.
         This function will return immediately. The function "_optimisation_callback" will handle
         the aftermath of the optimisation.
-
-        @param str name: Name of the POI for which to optimise the position.
-        @param bool update_roi_position: Flag indicating if the ROI should be shifted accordingly.
+        
+        Parameters
+        ----------
+        name : str
+            Name of the POI for which to optimise the position.
+        update_roi_position : bool
+            Flag indicating if the ROI should be shifted accordingly.
         """
         if name is None:
             if self.active_poi is None:
@@ -1097,10 +1142,6 @@ class PoiManagerLogic(LogicBase):
         Callback function for a position optimisation.
         If desired the relative shift of the optimised POI can be used to update the ROI position.
         The scanner is moved to the optimised POI if desired.
-
-        @param is_running:
-        @param optimal_position:
-        @param fit_data:
         """
         with self._thread_lock:
             # If the refocus was initiated by poimanager, update POI and ROI position

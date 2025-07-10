@@ -121,42 +121,61 @@ class DigitalSwitchNI(SwitchInterface):
 
     @property
     def name(self):
-        """ Name of the hardware as string.
-
+        """
+        Name of the hardware as string.
+        
         The name can either be defined as ConfigOption (name) or it defaults to the name of the hardware module.
-
-        @return str: The name of the hardware
+        
+        
+        Returns
+        -------
+        str
+            The name of the hardware
         """
         return self._hardware_name
 
     @property
     def available_states(self):
-        """ Names of the states as a dict of tuples.
-
+        """
+        Names of the states as a dict of tuples.
+        
         The keys contain the names for each of the switches. The values are tuples of strings
         representing the ordered names of available states for each switch.
-
-        @return dict: Available states per switch in the form {"switch": ("state1", "state2")}
+        
+        
+        Returns
+        -------
+        dict
+            Available states per switch in the form {"switch": ("state1", "state2")}
         """
         return self._switches.copy()
 
     @property
     def states(self):
-        """ The current states the hardware is in as state dictionary with switch names as keys and
+        """
+        The current states the hardware is in as state dictionary with switch names as keys and
         state names as values.
-
-        @return dict: All the current states of the switches in the form {"switch": "state"}
+        
+        
+        Returns
+        -------
+        dict
+            All the current states of the switches in the form {"switch": "state"}
         """
         return self._states.copy()
 
     @states.setter
     def states(self, state_dict):
-        """ The setter for the states of the hardware.
-
+        """
+        The setter for the states of the hardware.
+        
         The states of the system can be set by specifying a dict that has the switch names as keys
         and the names of the states as values.
-
-        @param dict state_dict: state dict of the form {"switch": "state"}
+        
+        Parameters
+        ----------
+        state_dict : dict
+            state dict of the form {"switch": "state"}
         """
         avail_states = self.available_states
         assert isinstance(state_dict,
@@ -183,27 +202,46 @@ class DigitalSwitchNI(SwitchInterface):
                     self._states = new_states
 
     def get_state(self, switch):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to query the state for
-        @return str: The current switch state
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to query the state for
+        
+        Returns
+        -------
+        str
+            The current switch state
         """
         assert switch in self._states, f'Invalid switch name: "{switch}"'
         return self._states[switch]
 
     def set_state(self, switch, state):
-        """ Query state of single switch by name
-
-        @param str switch: name of the switch to change
-        @param str state: name of the state to set
+        """
+        Query state of single switch by name
+        
+        Parameters
+        ----------
+        switch : str
+            name of the switch to change
+        state : str
+            name of the state to set
         """
         self.states = {switch: state}
 
     def _chk_refine_available_switches(self, switch_dict):
-        """ See SwitchInterface class for details
-
-        @param dict switch_dict:
-        @return dict:
+        """
+        See SwitchInterface class for details
+        
+        Parameters
+        ----------
+        switch_dict : dict
+        
+        Returns
+        -------
+        dict
         """
         refined = super()._chk_refine_available_switches(switch_dict)
         num = len(self._channels)

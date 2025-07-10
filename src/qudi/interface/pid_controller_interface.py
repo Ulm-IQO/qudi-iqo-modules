@@ -40,123 +40,191 @@ class PIDControllerInterface(Base):
 
     @abstractmethod
     def get_kp(self):
-        """ Get the coefficient associated with the proportional term
-
-         @return (float): The current kp coefficient associated with the proportional term
-         """
+        """
+        Get the coefficient associated with the proportional term
+        
+        
+        Returns
+        -------
+        (float)
+            The current kp coefficient associated with the proportional term
+        """
         pass
 
     @abstractmethod
     def set_kp(self, kp):
-        """ Set the coefficient associated with the proportional term
-
-         @param (float) kp: The new kp coefficient associated with the proportional term
-         """
+        """
+        Set the coefficient associated with the proportional term
+        
+        Parameters
+        ----------
+        kp : (float)
+            The new kp coefficient associated with the proportional term
+        """
         pass
 
     @abstractmethod
     def get_ki(self):
-        """ Get the coefficient associated with the integral term
-
-         @return (float): The current ki coefficient associated with the integral term
-         """
+        """
+        Get the coefficient associated with the integral term
+        
+        
+        Returns
+        -------
+        (float)
+            The current ki coefficient associated with the integral term
+        """
         pass
 
     @abstractmethod
     def set_ki(self, ki):
-        """ Set the coefficient associated with the integral term
-
-         @param (float) ki: The new ki coefficient associated with the integral term
-         """
+        """
+        Set the coefficient associated with the integral term
+        
+        Parameters
+        ----------
+        ki : (float)
+            The new ki coefficient associated with the integral term
+        """
         pass
 
     @abstractmethod
     def get_kd(self):
-        """ Get the coefficient associated with the derivative term
-
-         @return (float): The current kd coefficient associated with the derivative term
-         """
+        """
+        Get the coefficient associated with the derivative term
+        
+        
+        Returns
+        -------
+        (float)
+            The current kd coefficient associated with the derivative term
+        """
         pass
 
     @abstractmethod
     def set_kd(self, kd):
-        """ Set the coefficient associated with the derivative term
-
-         @param (float) kd: The new kd coefficient associated with the derivative term
-         """
+        """
+        Set the coefficient associated with the derivative term
+        
+        Parameters
+        ----------
+        kd : (float)
+            The new kd coefficient associated with the derivative term
+        """
         pass
 
     @abstractmethod
     def get_setpoint(self):
-        """ Get the setpoint value of the hardware device
-
-         @return (float): The current setpoint value
-         """
+        """
+        Get the setpoint value of the hardware device
+        
+        
+        Returns
+        -------
+        (float)
+            The current setpoint value
+        """
         pass
 
     @abstractmethod
     def set_setpoint(self, setpoint):
-        """ Set the setpoint value of the hardware device
-
-        @param (float) setpoint: The new setpoint value
+        """
+        Set the setpoint value of the hardware device
+        
+        Parameters
+        ----------
+        setpoint : (float)
+            The new setpoint value
         """
         pass
 
     @abstractmethod
     def get_manual_value(self):
-        """ Get the manual value, used if the device is disabled
-
-        @return (float): The current manual value
+        """
+        Get the manual value, used if the device is disabled
+        
+        
+        Returns
+        -------
+        (float)
+            The current manual value
         """
         pass
 
     @abstractmethod
     def set_manual_value(self, manual_value):
-        """ Set the manual value, used if the device is disabled
-
-        @param (float) manual_value: The new manual value
+        """
+        Set the manual value, used if the device is disabled
+        
+        Parameters
+        ----------
+        manual_value : (float)
+            The new manual value
         """
         pass
 
     @abstractmethod
     def get_enabled(self):
-        """ Get if the PID is enabled (True) or if it is disabled (False) and the manual value is used
-
-        @return (bool): True if enabled, False otherwise
+        """
+        Get if the PID is enabled (True) or if it is disabled (False) and the manual value is used
+        
+        
+        Returns
+        -------
+        (bool)
+            True if enabled, False otherwise
         """
         pass
 
     @abstractmethod
     def set_enabled(self, enabled):
-        """ Set if the PID is enabled (True) or if it is disabled (False) and the manual value is used
-
-        @param (bool) enabled: True if enabled, False otherwise
+        """
+        Set if the PID is enabled (True) or if it is disabled (False) and the manual value is used
+        
+        Parameters
+        ----------
+        enabled : (bool)
+            True if enabled, False otherwise
         """
         pass
 
     @abstractmethod
     def get_control_limits(self):
-        """ Get the current limits of the control value as a tuple
-
-        @return (tuple(float, float)): The current control limits
+        """
+        Get the current limits of the control value as a tuple
+        
+        
+        Returns
+        -------
+        (tuple(float, float))
+            The current control limits
         """
         pass
 
     @abstractmethod
     def set_control_limits(self, limits):
-        """ Set the current limits of the control value as a tuple
-
-        @param (tuple(float, float)) limits: The new control limits
-
+        """
+        Set the current limits of the control value as a tuple
+        
+        Parameters
+        ----------
+        limits : (tuple(float, float))
+            The new control limits
+        
         The hardware should check if these limits are within the maximum limits set by a config option.
         """
         pass
 
     @abstractmethod
     def get_process_value(self):
-        """ Get the current process value read
-
-        @return (float): The current process value
+        """
+        Get the current process value read
+        
+        
+        Returns
+        -------
+        (float)
+            The current process value
         """
         pass
 
@@ -169,9 +237,14 @@ class PIDControllerInterface(Base):
 
     @abstractmethod
     def get_control_value(self):
-        """ Get the current control value read
-
-        @return (float): The current control value
+        """
+        Get the current control value read
+        
+        
+        Returns
+        -------
+        (float)
+            The current control value
         """
         pass
 
@@ -184,8 +257,13 @@ class PIDControllerInterface(Base):
 
     @abstractmethod
     def get_extra(self):
-        """ Get the P, I and D terms computed by the hardware if available
-
-         @return dict(): A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
-         """
+        """
+        Get the P, I and D terms computed by the hardware if available
+        
+        
+        Returns
+        -------
+        dict()
+            A dict with keys 'P', 'I', 'D' if available, an empty dict otherwise
+        """
         pass
