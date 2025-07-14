@@ -258,7 +258,7 @@ class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
         self._parameters = param_dict
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value}))"
+        return f"{self.__class__.__module__}.{self.__class__.__name__}.{self.value}"
 
 
 
