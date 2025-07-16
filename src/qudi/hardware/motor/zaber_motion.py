@@ -19,19 +19,17 @@ Copyright (c) the Qudi Developers. See the COPYRIGHT.txt file at the
 top-level directory of this distribution and at <https://github.com/Ulm-IQO/qudi/>
 """
 
-
 from collections import OrderedDict
 
-from qudi.interface.motor_interface import MotorInterface
-from qudi.core.configoption import ConfigOption, MissingOption
-
-from zaber_motion import Library as zlib
 from zaber_motion.ascii import Connection as zcon
+
+from qudi.core.configoption import ConfigOption, MissingOption
+from qudi.interface.motor_interface import MotorInterface
+from zaber_motion import Library as zlib
 from zaber_motion import Units
 
 
 class ZaberStage(MotorInterface):
-
     """ Control class for an arbitrary collection of ZaberMotor axes.
 
     The required config file entries are based around a few key ideas:
@@ -176,13 +174,12 @@ class ZaberStage(MotorInterface):
         config = self._axes_configs
 
         for axis_label in config.keys():
-
             this_axis = self._axis_dict[axis_label].get_constrains()
             constraints[axis_label] = this_axis
 
         return constraints
 
-    def move_rel(self,  param_dict, wait_until_done=False):
+    def move_rel(self, param_dict, wait_until_done=False):
         """ Moves stage in given direction (relative movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
@@ -213,7 +210,7 @@ class ZaberStage(MotorInterface):
 
         if wait_until_done:
             for label, axis in self._axis_dict.items():
-                axis.wait_until_idle()
+                axis._wait_until_idle()
 
     def move_abs(self, param_dict, wait_until_done=False):
         """ Moves stage to absolute position (absolute movement)
@@ -235,7 +232,7 @@ class ZaberStage(MotorInterface):
 
         if wait_until_done:
             for label, axis in self._axis_dict.items():
-                axis.wait_until_idle()
+                axis._wait_until_idle()  # todo private call
 
     def abort(self):
         """ Stops movement of the stage. """
@@ -291,6 +288,12 @@ class ZaberStage(MotorInterface):
         else:
             for label_axis in self._axis_dict:
                 status[label_axis] = self._axis_dict[label_axis].get_status()
+
+        # todo: more elegant way of satisfying new magnetInterface
+        is_not_busy = all([not d['busy'] for d in status.values()])
+        is_not_parked = all([not d['parked'] for d in status.values()])
+        if is_not_busy and is_not_parked:
+            status.update({0: 'idle'})
 
         return status
 
@@ -451,7 +454,7 @@ class ZaberStage(MotorInterface):
         c_max = constr_range[1]
 
         constraints[c_min] = -float("inf") if constraints[c_min] is None else constraints[c_min]
-        constraints[c_max] = float("inf")  if constraints[c_max] is None else constraints[c_max]
+        constraints[c_max] = float("inf") if constraints[c_max] is None else constraints[c_max]
 
         if value < constraints[c_min] or value > constraints[c_max]:
             raise ValueError(f"Value check failed on axis {axis_label}. {value} is outside of "
@@ -460,7 +463,7 @@ class ZaberStage(MotorInterface):
         return True
 
 
-class ZaberAxis():
+class ZaberAxis:
 
     def __init__(self, axis_handle, device_parent, label=''):
         """
@@ -478,9 +481,10 @@ class ZaberAxis():
 
     def get_constrains(self):
         default_constr = {
-            'unit': 'm',            # for compatibility with magnet_gui
-            'pos_step': 1e-9,       # for compatibility with magnet_gui
-            'vel_step': 1e-9,       # for compatibility with magnet_gui
+            'unit': 'm',  # for compatibility with magnet_gui
+            'pos_step': 1e-9,
+            'pos_accuracy': 3e-6,  # x-lrq-de "repeatability". todo: make configoption.
+            'vel_step': 1e-9,  # for compatibility with magnet_gui
             'pos_min': None,
             'pos_max': None,
             'vel_min': None,
@@ -519,7 +523,7 @@ class ZaberAxis():
 
     def get_acceleration(self):
 
-        return self._axis.settings.get("accel",  Units.ACCELERATION_METRES_PER_SECOND_SQUARED)
+        return self._axis.settings.get("accel", Units.ACCELERATION_METRES_PER_SECOND_SQUARED)
 
     def set_velocity(self, velocity):
         """ Set the maximal velocity (of the velocity profile) for the motor movement.
@@ -645,3 +649,12 @@ class ZaberAxis():
 
         self._axis.home(wait_until_idle=wait_until_done)
 
+    def is_ready(self) -> bool:
+        """ Queries if the motor is ready to accept a command
+
+        @return bool: True if ready False otherwise
+        """
+        status = self.get_status()
+        is_not_busy = all(not axis_status.is_busy for axis_status in status.values())
+        is_not_parked = all(not axis_status.is_parked for axis_status in status.values())
+        return is_not_busy and is_not_parked
