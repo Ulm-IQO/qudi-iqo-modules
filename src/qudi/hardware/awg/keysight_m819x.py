@@ -2528,12 +2528,13 @@ class AWGM8195A(AWGM819X):
 
         return self._sequence_names[0]
 
-    def _get_sequence_control_bin(self, sequence_parameters, idx_step):
+    def _get_sequence_control_bin(self, sequence_parameters: list[tuple[tuple,dict]], idx_step: int):
         """
         Control bytes as defined in 8195a manual table 35: control
         """
         index = idx_step
         num_steps = len(sequence_parameters)
+        wfm_tuple, seq_step_dict = sequence_parameters[index]
 
         if self.awg_mode in ['MARK', 'DCM']:
             control = 2 << 23  # enable markers
@@ -2547,6 +2548,10 @@ class AWGM8195A(AWGM819X):
             control += 2 << 27  # set start sequence
         if index + 1 == num_steps:
             control += 2 << 29  # set end sequence
+
+        if 'segment_advance_mode' in seq_step_dict:
+            if seq_step_dict['segment_advance_mode'] == 'conditional':
+                control += 1 << 16
 
         return control
 
