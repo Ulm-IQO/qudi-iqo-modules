@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from typing import Optional
 import numpy as np
 import os
 import pickle
@@ -845,7 +846,7 @@ class SequenceGeneratorLogic(LogicBase):
         self.sigEnsembleDictUpdated.emit(self.saved_pulse_block_ensembles)
         return
 
-    def get_ensemble(self, name):
+    def get_ensemble(self, name: str):
         """
 
         @param name:
@@ -960,7 +961,7 @@ class SequenceGeneratorLogic(LogicBase):
         self.sigSequenceDictUpdated.emit(self.saved_pulse_sequences)
         return
 
-    def get_sequence(self, name):
+    def get_sequence(self, name: str):
         """
 
         @param name:
@@ -1395,7 +1396,7 @@ class SequenceGeneratorLogic(LogicBase):
         return_dict['laser_falling_bins'] = laser_falling_bins
         return return_dict
 
-    def analyze_sequence(self, sequence):
+    def analyze_sequence(self, sequence: str | PulseSequence):
         """
         This helper method runs through each step of a PulseSequence object and extracts
         important information about the Sequence that can be created out of this object.
@@ -1657,7 +1658,7 @@ class SequenceGeneratorLogic(LogicBase):
         return -1 if ensembles_missing else 0
 
     @QtCore.Slot(str)
-    def sample_pulse_block_ensemble(self, ensemble, offset_bin=0, name_tag=None):
+    def sample_pulse_block_ensemble(self, ensemble: str | PulseBlockEnsemble, offset_bin: int = 0, name_tag: Optional[str] = None):
         """ General sampling of a PulseBlockEnsemble object, which serves as the construction plan.
 
         @param str|PulseBlockEnsemble ensemble: PulseBlockEnsemble instance or name of a saved
@@ -1967,7 +1968,7 @@ class SequenceGeneratorLogic(LogicBase):
         return offset_bin, natural_sort(written_waveforms), ensemble_info
 
     @QtCore.Slot(str)
-    def sample_pulse_sequence(self, sequence):
+    def sample_pulse_sequence(self, sequence: str | PulseSequence):
         """ Samples the PulseSequence object, which serves as the construction plan.
 
         @param str|PulseSequence sequence: Name or instance of the PulseSequence to be sampled.
