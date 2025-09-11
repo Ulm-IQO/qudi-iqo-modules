@@ -1985,132 +1985,141 @@ class SequenceGeneratorLogic(LogicBase):
 
         More sophisticated sequence sampling method can be implemented here.
         """
-        # Get PulseSequence from saved sequences if string has been passed as argument
-        if isinstance(sequence, str):
-            sequence = self.get_sequence(sequence)
-            if not sequence:
-                self.log.error('Unable to sample PulseSequence. Not found in saved sequences.')
-                self.sigSampleSequenceComplete.emit(None)
-                return
-
-        # Perform sanity checks on sequence and corresponding ensembles
-        if self._sampling_sequence_sanity_check(sequence) < 0:
-            self.sigSampleSequenceComplete.emit(None)
-            return
-
-        # lock module and set sequence-generation-in-progress flag
-        if self.module_state() == 'idle':
-            self.__sequence_generation_in_progress = True
-            self.module_state.lock()
-        else:
-            self.log.error('Cannot sample sequence "{0}" because the SequenceGeneratorLogic is '
-                           'still busy (locked).\nFunction call ignored.'.format(sequence.name))
-            self.sigSampleSequenceComplete.emit(None)
-            return
-
-        self._saved_pulse_sequences[sequence.name] = sequence
-
-        # delete already written sequences on the device memory.
-        if sequence.name in self.sampled_sequences:
-            self.pulsegenerator().delete_sequence(sequence.name)
-
-        # Make sure the PulseSequence is contained in the saved sequences dict
-        sequence.sampling_information = dict()
-        self.save_sequence(sequence)
-
-        # Take current time
-        start_time = time.time()
-
-        # Produce a set of created waveforms
-        written_waveforms = set()
-        # Keep track of generated PulseBlockEnsembles and their corresponding ensemble_info dict
-        generated_ensembles = dict()
-
-        # Create a list in the process with each element holding the created waveform names as a
-        # tuple and the corresponding sequence parameters as defined in the PulseSequence object
-        # Example: [(('waveform1', 'waveform2'), seq_param_dict1),
-        #           (('waveform3', 'waveform4'), seq_param_dict2)]
-        sequence_param_dict_list = list()
-
-        # if all the Pulse_Block_Ensembles should be in the rotating frame, then each ensemble
-        # will be created in general with a different offset_bin. Therefore, in order to keep track
-        # of the sampled Pulse_Block_Ensembles one has to introduce a running number as an
-        # additional name tag, so keep the sampled files separate.
-        offset_bin = 0  # that will be used for phase preservation
-        for step_index, seq_step in enumerate(sequence):
-            if sequence.rotating_frame:
-                # to make something like 001
-                name_tag = seq_step.ensemble + '_' + str(step_index).zfill(3)
-            else:
-                name_tag = seq_step.ensemble
-                offset_bin = 0  # Keep the offset at 0
-
-            # Only sample ensembles if they have not already been sampled
-            if sequence.rotating_frame or \
-                    not self.get_ensemble(name_tag).sampling_information or \
-                    self.get_ensemble(name_tag).sampling_information['pulse_generator_settings'] != self.pulse_generator_settings:
-
-                offset_bin, waveform_list, ensemble_info = self.sample_pulse_block_ensemble(
-                    ensemble=seq_step.ensemble,
-                    offset_bin=offset_bin,
-                    name_tag=name_tag)
-
-                if len(waveform_list) == 0:
-                    self.log.error('Sampling of PulseBlockEnsemble "{0}" failed during sampling of '
-                                   'PulseSequence "{1}".\nFailed to create waveforms on device.'
-                                   ''.format(seq_step.ensemble, sequence.name))
-                    self.module_state.unlock()
-                    self.__sequence_generation_in_progress = False
+        try:
+            # Get PulseSequence from saved sequences if string has been passed as argument
+            if isinstance(sequence, str):
+                sequence = self.get_sequence(sequence)
+                if not sequence:
+                    self.log.error('Unable to sample PulseSequence. Not found in saved sequences.')
                     self.sigSampleSequenceComplete.emit(None)
                     return
 
-                # Add to generated ensembles
-                ensemble_info['waveforms'] = waveform_list
-                generated_ensembles[name_tag] = ensemble_info
+            # Perform sanity checks on sequence and corresponding ensembles
+            if self._sampling_sequence_sanity_check(sequence) < 0:
+                self.sigSampleSequenceComplete.emit(None)
+                return
 
-                # Add created waveform names to the set
-                written_waveforms.update(waveform_list)
+            # lock module and set sequence-generation-in-progress flag
+            if self.module_state() == 'idle':
+                self.__sequence_generation_in_progress = True
+                self.module_state.lock()
             else:
-                self.log.debug('Waveform already sampled: {0}'.format(name_tag))
-                ensemble_info = self.get_ensemble(name_tag).sampling_information.copy()
-                del(ensemble_info['pulse_generator_settings'])
-                generated_ensembles[name_tag] = ensemble_info
+                self.log.error('Cannot sample sequence "{0}" because the SequenceGeneratorLogic is '
+                            'still busy (locked).\nFunction call ignored.'.format(sequence.name))
+                self.sigSampleSequenceComplete.emit(None)
+                return
 
-                # Add created waveform names to the set
-                written_waveforms.update(ensemble_info['waveforms'])
+            self._saved_pulse_sequences[sequence.name] = sequence
 
-            # Append written sequence step to sequence_param_dict_list
-            sequence_param_dict_list.append(
-                (tuple(generated_ensembles[name_tag]['waveforms']), seq_step))
+            # delete already written sequences on the device memory.
+            if sequence.name in self.sampled_sequences:
+                self.pulsegenerator().delete_sequence(sequence.name)
 
-        # pass the whole information to the sequence creation method:
-        steps_written = self.pulsegenerator().write_sequence(sequence.name,
-                                                             sequence_param_dict_list)
-        if steps_written != len(sequence_param_dict_list):
-            self.log.error('Writing PulseSequence "{0}" to the device memory failed.\n'
-                           'Returned number of sequence steps ({1:d}) does not match desired '
-                           'number of steps ({2:d}).'.format(sequence.name,
-                                                             steps_written,
-                                                             len(sequence_param_dict_list)))
+            # Make sure the PulseSequence is contained in the saved sequences dict
+            sequence.sampling_information = dict()
+            self.save_sequence(sequence)
 
-        # get important parameters from the sequence and save them to the sequence object
-        sequence.sampling_information.update(self.analyze_sequence(sequence))
-        sequence.sampling_information['ensemble_info'] = generated_ensembles
-        sequence.sampling_information['pulse_generator_settings'] = self.pulse_generator_settings
-        sequence.sampling_information['waveforms'] = natural_sort(written_waveforms)
-        sequence.sampling_information['step_waveform_list'] = [step[0] for step in
-                                                               sequence_param_dict_list]
-        self.save_sequence(sequence)
+            # Take current time
+            start_time = time.time()
 
-        self.log.info('Time needed for sampling and writing PulseSequence {0} to device: {1} sec.'
-                      ''.format(sequence.name, int(np.rint(time.time() - start_time))))
+            # Produce a set of created waveforms
+            written_waveforms = set()
+            # Keep track of generated PulseBlockEnsembles and their corresponding ensemble_info dict
+            generated_ensembles = dict()
 
-        # unlock module
-        self.module_state.unlock()
-        self.__sequence_generation_in_progress = False
-        self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
-        self.sigSampleSequenceComplete.emit(sequence)
-        return
+            # Create a list in the process with each element holding the created waveform names as a
+            # tuple and the corresponding sequence parameters as defined in the PulseSequence object
+            # Example: [(('waveform1', 'waveform2'), seq_param_dict1),
+            #           (('waveform3', 'waveform4'), seq_param_dict2)]
+            sequence_param_dict_list = list()
+
+            # if all the Pulse_Block_Ensembles should be in the rotating frame, then each ensemble
+            # will be created in general with a different offset_bin. Therefore, in order to keep track
+            # of the sampled Pulse_Block_Ensembles one has to introduce a running number as an
+            # additional name tag, so keep the sampled files separate.
+            offset_bin = 0  # that will be used for phase preservation
+            for step_index, seq_step in enumerate(sequence):
+                if sequence.rotating_frame:
+                    # to make something like 001
+                    name_tag = seq_step.ensemble + '_' + str(step_index).zfill(3)
+                else:
+                    name_tag = seq_step.ensemble
+                    offset_bin = 0  # Keep the offset at 0
+
+                # Only sample ensembles if they have not already been sampled
+                if sequence.rotating_frame or \
+                        not self.get_ensemble(name_tag).sampling_information or \
+                        self.get_ensemble(name_tag).sampling_information['pulse_generator_settings'] != self.pulse_generator_settings:
+
+                    offset_bin, waveform_list, ensemble_info = self.sample_pulse_block_ensemble(
+                        ensemble=seq_step.ensemble,
+                        offset_bin=offset_bin,
+                        name_tag=name_tag)
+
+                    if len(waveform_list) == 0:
+                        self.log.error('Sampling of PulseBlockEnsemble "{0}" failed during sampling of '
+                                    'PulseSequence "{1}".\nFailed to create waveforms on device.'
+                                    ''.format(seq_step.ensemble, sequence.name))
+                        self.module_state.unlock()
+                        self.__sequence_generation_in_progress = False
+                        self.sigSampleSequenceComplete.emit(None)
+                        return
+
+                    # Add to generated ensembles
+                    ensemble_info['waveforms'] = waveform_list
+                    generated_ensembles[name_tag] = ensemble_info
+
+                    # Add created waveform names to the set
+                    written_waveforms.update(waveform_list)
+                else:
+                    self.log.debug('Waveform already sampled: {0}'.format(name_tag))
+                    ensemble_info = self.get_ensemble(name_tag).sampling_information.copy()
+                    del(ensemble_info['pulse_generator_settings'])
+                    generated_ensembles[name_tag] = ensemble_info
+
+                    # Add created waveform names to the set
+                    written_waveforms.update(ensemble_info['waveforms'])
+
+                # Append written sequence step to sequence_param_dict_list
+                sequence_param_dict_list.append(
+                    (tuple(generated_ensembles[name_tag]['waveforms']), seq_step))
+
+            # pass the whole information to the sequence creation method:
+            steps_written = self.pulsegenerator().write_sequence(sequence.name,
+                                                                sequence_param_dict_list)
+            if steps_written != len(sequence_param_dict_list):
+                self.log.error('Writing PulseSequence "{0}" to the device memory failed.\n'
+                            'Returned number of sequence steps ({1:d}) does not match desired '
+                            'number of steps ({2:d}).'.format(sequence.name,
+                                                                steps_written,
+                                                                len(sequence_param_dict_list)))
+
+            # get important parameters from the sequence and save them to the sequence object
+            sequence.sampling_information.update(self.analyze_sequence(sequence))
+            sequence.sampling_information['ensemble_info'] = generated_ensembles
+            sequence.sampling_information['pulse_generator_settings'] = self.pulse_generator_settings
+            sequence.sampling_information['waveforms'] = natural_sort(written_waveforms)
+            sequence.sampling_information['step_waveform_list'] = [step[0] for step in
+                                                                sequence_param_dict_list]
+            self.save_sequence(sequence)
+
+            self.log.info('Time needed for sampling and writing PulseSequence {0} to device: {1} sec.'
+                        ''.format(sequence.name, int(np.rint(time.time() - start_time))))
+
+            # unlock module
+            self.module_state.unlock()
+            self.__sequence_generation_in_progress = False
+            self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
+            self.sigSampleSequenceComplete.emit(sequence)
+            return
+
+        except Exception as e:
+            self.log.exception(f'Sampling of PulseSequence "{sequence.name}" failed due to :\n{e}')
+            self.module_state.unlock()
+            self.__sequence_generation_in_progress = False
+            self.sigSampleSequenceComplete.emit(None)
+            return -1, list(), dict()
+
 
     def _delete_waveform(self, names):
         if isinstance(names, str):
