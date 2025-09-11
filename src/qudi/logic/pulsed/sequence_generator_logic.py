@@ -1819,7 +1819,7 @@ class SequenceGeneratorLogic(LogicBase):
                     self.module_state.unlock()
                 self.sigSampleEnsembleComplete.emit(None)
                 return -1, list(), dict()
-            
+
             t_est_upload = self._benchmark_write.estimate_time(ensemble_info['number_of_samples'])
             if t_est_upload > self._info_on_estimated_upload_time:
                 now = datetime.datetime.now()
@@ -1959,11 +1959,11 @@ class SequenceGeneratorLogic(LogicBase):
             self.sigSampleEnsembleComplete.emit(ensemble)
 
         except Exception as e:
-                self.log.error(f'Sampling of PulseBlockEnsemble "{ensemble.name}" failed due to :{e}')
-                if not self.__sequence_generation_in_progress:
-                    self.module_state.unlock()
-                self.sigSampleEnsembleComplete.emit(None)
-                return -1, list(), dict()
+            self.log.exception(f'Sampling of PulseBlockEnsemble "{ensemble.name}" failed due to :\n{e}')
+            if not self.__sequence_generation_in_progress:
+                self.module_state.unlock()
+            self.sigSampleEnsembleComplete.emit(None)
+            return -1, list(), dict()
         return offset_bin, natural_sort(written_waveforms), ensemble_info
 
     @QtCore.Slot(str)
@@ -2144,7 +2144,7 @@ class SequenceGeneratorLogic(LogicBase):
                 self.pulsegenerator().delete_sequence(seq)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         return
-    
+
     @staticmethod
     def _strip_ch_extension(wave_name):
         """
