@@ -1960,9 +1960,14 @@ class SequenceGeneratorLogic(LogicBase):
             self.sigSampleEnsembleComplete.emit(ensemble)
 
         except Exception as e:
-            self.log.exception(f'Sampling of PulseBlockEnsemble "{ensemble.name}" failed due to :\n{e}')
+            if isinstance(ensemble, PulseBlockEnsemble):
+                ensemble = ensemble.name
+            self.log.exception(f'Sampling of PulseBlockEnsemble "{ensemble}" failed due to :\n{e}')
             if not self.__sequence_generation_in_progress:
-                self.module_state.unlock()
+                try:
+                    self.module_state.unlock()
+                except:
+                    pass
             self.sigSampleEnsembleComplete.emit(None)
             return -1, list(), dict()
         return offset_bin, natural_sort(written_waveforms), ensemble_info
@@ -2114,8 +2119,13 @@ class SequenceGeneratorLogic(LogicBase):
             return
 
         except Exception as e:
-            self.log.exception(f'Sampling of PulseSequence "{sequence.name}" failed due to :\n{e}')
-            self.module_state.unlock()
+            if isinstance(sequence, PulseSequence):
+                sequence = sequence.name
+            self.log.exception(f'Sampling of PulseSequence "{sequence}" failed due to :\n{e}')
+            try:
+                self.module_state.unlock()
+            except:
+                pass
             self.__sequence_generation_in_progress = False
             self.sigSampleSequenceComplete.emit(None)
             return -1, list(), dict()
