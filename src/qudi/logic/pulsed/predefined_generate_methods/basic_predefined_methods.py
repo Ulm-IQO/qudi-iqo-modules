@@ -1049,75 +1049,6 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_4A2_lifetime(self, name='4A2 lifetime', tau_start=12.5e-9, tau_step=10.0e-9, num_of_points=50,
-                              init_length=300e-9, green_delay=0.0, check_length=1e-6, red_delay=0.0):
-        """
-
-        """
-        created_blocks = list()
-        created_ensembles = list()
-        created_sequences = list()
-
-        # get tau array for measurement ticks
-        tau_array = tau_start + np.arange(num_of_points) * tau_step
-
-        # create the laser elements
-        init_laser_element = self._get_trigger_element(length=init_length, increment=0, channels='d_ch1')
-
-        green_delay_element = self._get_idle_element(length=green_delay, increment=0)
-
-        waiting_element = self._get_idle_element(length=self.wait_time, increment=0)
-
-        check_laser_element = self._get_trigger_element(length=check_length, increment=0, channels='d_ch2')
-
-        red_delay_element = self._get_idle_element(length=red_delay, increment=0)
-
-        ionisation_laser_element = self._get_trigger_element(length=1e-9, increment=0, channels='a_ch1')
-
-        tau_element = self._get_idle_element(length=tau_start, increment=tau_step)
-
-        probe_laser_element = self._get_trigger_element(length=1e-9, increment=0, channels='a_ch1')
-
-        final_waiting_element = self._get_idle_element(length=2*self.wait_time, increment=0)
-
-
-
-
-        # Create block and append to created_blocks list
-        lifetime_block = PulseBlock(name=name)
-        lifetime_block.append(init_laser_element)
-        lifetime_block.append(green_delay_element)
-        lifetime_block.append(waiting_element)
-        lifetime_block.append(check_laser_element)
-        lifetime_block.append(red_delay_element)
-        lifetime_block.append(ionisation_laser_element)
-        lifetime_block.append(tau_element)
-        lifetime_block.append(probe_laser_element)
-        lifetime_block.append(final_waiting_element)
-
-        created_blocks.append(lifetime_block)
-
-        # Create block ensemble
-        block_ensemble = PulseBlockEnsemble(name=name, rotating_frame=False)
-        block_ensemble.append((lifetime_block.name, num_of_points - 1))
-
-        # Create and append sync trigger block if needed
-        self._add_trigger(created_blocks=created_blocks, block_ensemble=block_ensemble)
-
-        # add metadata to invoke settings later on
-        block_ensemble.measurement_information['alternating'] = False
-        block_ensemble.measurement_information['laser_ignore_list'] = list()
-        block_ensemble.measurement_information['controlled_variable'] = tau_array
-        block_ensemble.measurement_information['units'] = ('s', '')
-        block_ensemble.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
-        block_ensemble.measurement_information['number_of_lasers'] = num_of_points
-        block_ensemble.measurement_information['counting_length'] = self._get_ensemble_count_length(
-            ensemble=block_ensemble, created_blocks=created_blocks)
-
-        # Append ensemble to created_ensembles list
-        created_ensembles.append(block_ensemble)
-        return created_blocks, created_ensembles, created_sequences
-
     def generate_charge_probe(self, name='charge_probe', tau_start=0.0, tau_step=1e-3, num_of_points=10,
                               init_length=300e-9, green_delay=40e-9, check_length=5e-3, wait_length=1e-6):
         """
@@ -1190,14 +1121,14 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         if pico_on:
             on_channels.append('a_ch1')
 
-        laser_element = self._get_trigger_element(length=2500e-9, increment=0, channels=on_channels)
+        laser_element = self._get_trigger_element(length=10e-6, increment=0, channels=on_channels)
 
         idle_element = self._get_idle_element(length=3e-9, increment=0)
 
         # Create block and append to created_blocks list
         laser_on_block = PulseBlock(name=name)
         laser_on_block.append(laser_element)
-        laser_on_block.append(idle_element)
+        #laser_on_block.append(idle_element)
 
         created_blocks.append(laser_on_block)
 
@@ -1287,7 +1218,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles.append(block_ensemble)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_charge_init_test(self, name='charge_init_test', init_time=10e-6, waiting_time=1000e-9,
+    def generate_charge_init_test(self, name='charge_init_test', init_time=3e-6, waiting_time=1000e-9,
                                     tau_time=300e-9, probe_time=1e-3):
 
         created_blocks = list()
@@ -1807,7 +1738,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_sequences.append(charge_probe_sequence)
         return created_blocks, created_ensembles, created_sequences
 
-    def generate_charge_probe_sequence_singletime(self, name='charge probe sequence', init_time=10e-6, waiting_time=1e-6,
+    def generate_charge_probe_sequence_singletime(self, name='charge probe sequence', init_time=3e-6, waiting_time=1e-6,
                                        charge_probe_time=500e-6):
         """
 
@@ -1816,7 +1747,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         created_ensembles = list()
         created_sequences = list()
 
-        base_probe_time = 500e-6
+        base_probe_time = 5e-6
         if charge_probe_time >= base_probe_time:
             num_base_times = int(charge_probe_time/base_probe_time - 1)
         else:
@@ -1849,14 +1780,11 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         charge_probe_sequence = PulseSequence(name=name, rotating_frame=False)
         count_length = 0.0
-        charge_probe_sequence.append(init_ensemble.name)
+        charge_probe_sequence.append((init_ensemble.name, {"flag_high": ["A"]}))
         count_length += self._get_ensemble_count_length(ensemble=init_ensemble,
                                                     created_blocks=created_blocks)
-        charge_probe_sequence.append(probe_ensemble.name)
-        charge_probe_sequence[-1].repetitions = num_base_times
-
-        # Cause the end of the sequence to wrap around back to the start
-        charge_probe_sequence[-1].go_to = 1
+        charge_probe_sequence.append((probe_ensemble.name, {"flag_high": ["A", "B"], "repetitions":num_base_times,"go_to":1}))
+        #charge_probe_sequence[-1].repetitions = num_base_times
 
         # Trigger the calculation of parameters in the PulseSequence instance
         charge_probe_sequence.refresh_parameters()
@@ -1870,4 +1798,101 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
 
         # Append PulseSequence to created_sequences list
         created_sequences.append(charge_probe_sequence)
+        return created_blocks, created_ensembles, created_sequences
+
+    def generate_4A2_lifetime_jump_sequence(self, name='4A2_lifetime_jump_sequence', init_time=1e-6, waiting_time=1e-6, reset_time = 3e-6,
+                                       charge_probe_time=50e-6, pico_pulse_time = 10e-9, lifetime_start = 12e-9, lifetime_stop = 1e-6, num_points = 10):
+        """
+
+        """
+        created_blocks = list()
+        created_ensembles = list()
+        created_sequences = list()
+
+        base_probe_time = 5e-6
+        if charge_probe_time >= base_probe_time:
+            num_base_times = int(charge_probe_time/base_probe_time - 1)
+        else:
+            num_base_times = 1
+
+        time_step = ( lifetime_stop - lifetime_start ) / num_points
+        lifetime_array = [lifetime_start + time_step * n for n in range(num_points)]
+
+        ## Initialisation ensemble
+        init_element = self._get_trigger_element(length=init_time, increment=0, channels='d_ch1')
+        idle_element = self._get_idle_element(length=waiting_time, increment=0)
+        # Create block and append to created_blocks list
+        init_block = PulseBlock(name='init block')
+        init_block.append(idle_element)
+        init_block.append(init_element)
+        init_block.append(idle_element)
+        created_blocks.append(init_block)
+        # Create block ensemble
+        init_ensemble = PulseBlockEnsemble(name='init ens', rotating_frame=False)
+        init_ensemble.append((init_block.name, 0))
+        created_ensembles.append(init_ensemble)
+
+        ## Reset ensemble
+        #reset_element = self._get_idle_element(length=reset_time, increment=0)
+        #reset_block = PulseBlock(name='reset block')
+        #reset_block.append(reset_element)
+        #created_blocks.append(reset_block)
+        # Create block ensemble
+        #reset_ensemble = PulseBlockEnsemble(name='reset ens', rotating_frame=False)
+        #reset_ensemble.append((reset_block.name, 0))
+        #created_ensembles.append(reset_ensemble)
+
+        ## Probe ensemble
+        probe_element = self._get_trigger_element(length=base_probe_time, increment=0, channels='d_ch2')
+        probe_block = PulseBlock(name='probe block')
+        probe_block.append(probe_element)
+        created_blocks.append(probe_block)
+        probe_ensemble = PulseBlockEnsemble(name='probe_ens',
+                                               rotating_frame=False)
+        probe_ensemble.append((probe_block.name, 0))
+        created_ensembles.append(probe_ensemble)
+
+        ## Ionise ensembles
+        pico_pulse_element = self._get_trigger_element(length=pico_pulse_time, increment=0, channels='a_ch1')
+        for (i,lifetime) in enumerate(lifetime_array):
+            lifetime_idle_element = self._get_idle_element(length=lifetime, increment=0)
+            # Create block and append to created_blocks list
+            ionise_block = PulseBlock(name=f'ion block {i}')
+            ionise_block.append(idle_element)
+            ionise_block.append(pico_pulse_element)
+            ionise_block.append(lifetime_idle_element)
+            ionise_block.append(pico_pulse_element)
+            ionise_block.append(idle_element)
+            created_blocks.append(ionise_block)
+            # Create block ensemble
+            ionise_ensemble = PulseBlockEnsemble(name=f'ion ens {i}', rotating_frame=False)
+            ionise_ensemble.append((ionise_block.name, 0))
+            created_ensembles.append(ionise_ensemble)
+
+        ensemble_list = []
+        for i in range(num_points):
+            ensemble_list.append((init_ensemble.name, {"flag_high": ["A"]}))
+            #ensemble_list.append((reset_ensemble.name, {"flag_high": ["A"]}))
+            ensemble_list.append((probe_ensemble.name, {"go_to": i*3 + 1, "event_trigger": "A", "event_jump_to": i*3 + 3, "repetitions": num_base_times}))
+
+            if i == num_points - 1:
+                ensemble_list.append((f"ion ens {i}", {"go_to": 1, "flag_high":["A"], "flag_trigger": ["B"]}))
+            else:
+                ensemble_list.append((f"ion ens {i}", {"go_to": i * 3 + 4,"flag_high":["A"], "flag_trigger": ["B"]}))
+
+        ## Create the sequence
+        lifetime_sequence = PulseSequence(name=name, rotating_frame=False, ensemble_list=ensemble_list)
+
+        # Trigger the calculation of parameters in the PulseSequence instance
+        lifetime_sequence.refresh_parameters()
+
+        # add metadata to invoke settings later on
+        lifetime_sequence.measurement_information['alternating'] = False
+        lifetime_sequence.measurement_information['laser_ignore_list'] = list()
+        lifetime_sequence.measurement_information['controlled_variable'] = list()
+        lifetime_sequence.measurement_information['units'] = ('s', '')
+        lifetime_sequence.measurement_information['counting_length'] = None
+
+        # Append PulseSequence to created_sequences list
+        created_sequences.append(lifetime_sequence)
         return created_blocks, created_ensembles, created_sequences
