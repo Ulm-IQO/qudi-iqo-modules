@@ -40,7 +40,7 @@ from qudi.core.module import LogicBase
 from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElement
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
-from qudi.interface.pulser_interface import SequenceOption
+from qudi.interface.pulser_interface import PulserInterface, SequenceOption
 from qudi.util.benchmark import BenchmarkTool
 
 
@@ -71,7 +71,7 @@ class SequenceGeneratorLogic(LogicBase):
     """
 
     # declare connectors
-    pulsegenerator = Connector(interface='PulserInterface')
+    pulsegenerator = Connector(interface=PulserInterface)
 
     # configuration options
     _assets_storage_dir = ConfigOption(name='assets_storage_path',
@@ -2134,7 +2134,7 @@ class SequenceGeneratorLogic(LogicBase):
                 self.pulsegenerator().delete_sequence(seq)
         self.sigAvailableSequencesUpdated.emit(self.sampled_sequences)
         return
-    
+
     @staticmethod
     def _strip_ch_extension(wave_name):
         """
