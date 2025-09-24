@@ -69,7 +69,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
     # declare signals
     sigNewWavelength = QtCore.Signal(object)
 
-    _proxy: HighFinesseProxy = Connector(name='proxy', interface='HighFinesseProxy')
+    _proxy = Connector(name='proxy', interface=HighFinesseProxy)
 
     # config options
     _wavemeter_ch_config: Dict[str, Dict[str, Any]] = ConfigOption(
