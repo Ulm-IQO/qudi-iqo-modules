@@ -280,6 +280,7 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
 
     # Constraints and settings
     @property
+    def constraints(self) -> ScanConstraints:
         """Build scan constraints from motion and data sources.
         
         This is critical - scanner GUI expects to find "fluorescence" channel here
@@ -583,3 +584,61 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         data.finish_scan()
         if self._back_data is not None:
             self._back_data.finish_scan()
+
+    def _generate_simulation_data(self, pos: Dict[str, float], dwell_s: float, samples_per_pixel: int) -> List[float]:
+        """Generate synthetic fluorescence data for simulation mode."""
+        counts = []
+        for ch_idx, logical_name in enumerate(self._present_channels):
+            unit = self._input_channel_units.get(logical_name, 'c/s')
+            
+            if unit == 'c/s':
+                # Simulate fluorescence with position-dependent intensity
+                # Create a gaussian-like pattern with some noise
+                center_x, center_y = 0.003, 0.003  # Center of scan range
+                x_pos = pos.get('x', center_x)
+                y_pos = pos.get('y', center_y)
+                
+                # Distance from center
+                dx = (x_pos - center_x) * 1e6  # Convert to micrometers for calculation
+                dy = (y_pos - center_y) * 1e6
+                distance = np.sqrt(dx**2 + dy**2)
+                
+                # Gaussian profile with some background
+                peak_counts = 10000  # counts/s at center
+                background = 1000    # background counts/s
+                sigma = 50           # width in micrometers
+                
+                intensity = background + peak_counts * np.exp(-(distance**2) / (2 * sigma**2))
+                
+                # Add some noise (Poisson-like)
+                noise_factor = 0.1
+                noise = np.random.normal(0, intensity * noise_factor)
+                intensity = max(0, intensity + noise)
+                
+                # Convert to total counts for the dwell time
+                counts.append(intensity * dwell_s)
+            else:
+                # For non-count channels, just return a small value
+                counts.append(0.1)
+                
+        return counts
+
+    def _process_ni_data(self, buffer: np.ndarray, samples_per_pixel: int, dwell_s: float, data: ScanData) -> List[float]:
+        """Process acquired NI data into channel counts."""
+        counts: List[float] = []
+        
+        for ch_idx, alias in enumerate(self._present_channels):
+            # Slice this channel's samples from interleaved buffer
+            ch_slice = buffer[ch_idx * samples_per_pixel:(ch_idx + 1) * samples_per_pixel]
+            unit = data.channels[alias].unit if alias in data.channels else self._input_channel_units.get(alias, '')
+            
+            if unit == 'c/s':
+                # For count rate channels: mean rate × dwell time = total counts
+                val = float(np.mean(ch_slice)) * dwell_s
+            else:
+                # For other channels: sum the samples
+                val = float(np.sum(ch_slice))
+                
+            counts.append(val)
+            
+        return counts
