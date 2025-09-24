@@ -32,6 +32,8 @@ from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
+from qudi.interface.spectrometer_interface import SpectrometerInterface
+from qudi.interface.modulation_interface import ModulationInterface
 
 
 class SpectrometerLogic(LogicBase):
@@ -47,8 +49,8 @@ class SpectrometerLogic(LogicBase):
     """
 
     # declare connectors
-    spectrometer = Connector(interface='SpectrometerInterface')
-    modulation_device = Connector(interface='ModulationInterface', optional=True)
+    spectrometer = Connector(interface=SpectrometerInterface)
+    modulation_device = Connector(interface=ModulationInterface, optional=True)
 
     # declare status variables
     _spectrum = StatusVar(name='spectrum', default=[None, None])
