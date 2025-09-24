@@ -37,6 +37,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraints, BackScanCapability, ScanData
 from qudi.util.linear_transform import find_changing_axes, LinearTransformation3D
 from qudi.util.linear_transform import compute_rotation_matrix_to_plane, compute_reduced_vectors
+from qudi.interface.scanning_probe_interface import ScanningProbeInterface
 
 
 class ScanningProbeLogic(LogicBase):
@@ -59,7 +60,7 @@ class ScanningProbeLogic(LogicBase):
     """
 
     # declare connectors
-    _scanner = Connector(name='scanner', interface='ScanningProbeInterface')
+    _scanner = Connector(name='scanner', interface=ScanningProbeInterface)
 
     # status vars
     _scan_ranges = StatusVar(name='scan_ranges', default=dict())
@@ -67,7 +68,7 @@ class ScanningProbeLogic(LogicBase):
     _back_scan_resolution = StatusVar(name='back_scan_resolution', default=dict())
     _scan_frequency = StatusVar(name='scan_frequency', default=dict())
     _back_scan_frequency = StatusVar(name='back_scan_frequency', default=dict())
-    _use_back_scan_settings: bool = StatusVar(name='use_back_scan_settings', default=False)
+    _use_back_scan_settings = StatusVar(name='use_back_scan_settings', default=False)
     _tilt_corr_settings = StatusVar(name='tilt_corr_settings', default={})
 
     # config options
@@ -86,7 +87,7 @@ class ScanningProbeLogic(LogicBase):
         self._thread_lock = RecursiveMutex()
 
         # others
-        self.__scan_poll_timer = None
+        self.__scan_poll_timer: Optional[QtCore.QTimer] = None
         self.__scan_poll_interval = 0
         self.__scan_stop_requested = True
         self._curr_caller_id = self.module_uuid
