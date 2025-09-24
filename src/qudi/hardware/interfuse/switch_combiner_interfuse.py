@@ -45,8 +45,8 @@ class SwitchCombinerInterfuse(SwitchInterface):
     """
 
     # connectors for the switches to be combined
-    switch1 = Connector(interface='SwitchInterface')
-    switch2 = Connector(interface='SwitchInterface')
+    switch1 = Connector(interface=SwitchInterface)
+    switch2 = Connector(interface=SwitchInterface)
 
     # optional name of the combined hardware
     _hardware_name = ConfigOption(name='name', default=None, missing='nothing')
