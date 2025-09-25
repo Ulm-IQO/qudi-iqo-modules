@@ -27,7 +27,6 @@ hardware:
         module.Class: 'attocube.AMC300_stepper.AMC300_stepper'
         options:
             ip_address: '192.168.1.1'
-            port: 9090
             axis_map: { x: 0, y: 1, z: 2 }
             step_size_m: { x: 2e-7, y: 2e-7, z: 2e-7 }   # meters per step
             position_ranges:
@@ -77,7 +76,6 @@ class AMC300_stepper(ScanningProbeInterface):
 
     # Connection/config
     _ip_address: str = ConfigOption('ip_address', default='127.0.0.1', missing='error')
-    _port: int = ConfigOption('port', default=9090, missing='warn')
 
     # Axis mapping and step sizes
     _axis_map: Dict[str, int] = ConfigOption('axis_map', default={'x': 0, 'y': 1, 'z': 2}, missing='warn')

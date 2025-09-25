@@ -452,7 +452,14 @@ class ScanningOptimizeLogic(LogicBase):
         if self._back_scan_frequency and (BackScanCapability.FREQUENCY_CONFIGURABLE not in capability):
             raise AssertionError('Back scan frequency cannot be configured for this scanner hardware.')
         for name, ax in scan_logic.scanner_axes.items():
-            ax.position.check(self.scan_range[name])
+            # 1) Validate scan_range as a span (not an absolute position)
+            rng = self.scan_range[name]
+            span = abs(ax.position.maximum - ax.position.minimum)
+            if not (0 < rng <= span):
+                raise ValueError(f"Scan range for axis '{name}' must be in (0, {span}] m, received {rng} m")
+
+            # 2) Validate resolutions and frequencies against constraints
+            #ax.position.check(self.scan_range[name]) #removed since relative optimizer scan_range was compared to absolut scan range of scanner
             ax.resolution.check(self.scan_resolution[name])
             ax.resolution.check(self.back_scan_resolution[name])
             ax.frequency.check(self.scan_frequency[name])
