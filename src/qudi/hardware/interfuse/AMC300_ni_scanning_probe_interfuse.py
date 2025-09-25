@@ -125,6 +125,19 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
             square_px_only=False,
         )
 
+        # Re-emit position updates from motion so logic/GUI listening to THIS scanner get live cursor updates
+        try:
+            self._motion().sigPositionChanged.connect(self.sigPositionChanged.emit, QtCore.Qt.QueuedConnection)
+        except Exception:
+            pass
+
+        # Emit current position once so the cursor/target snap to the actual position on activation (no motion)
+        try:
+            curr = self._motion().get_position()
+            self.sigPositionChanged.emit(curr)
+        except Exception:
+            pass
+
     def on_deactivate(self):
         # Attempt to stop everything
         try:

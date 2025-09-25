@@ -103,12 +103,47 @@ class AMC300_stepper(ScanningProbeInterface):
     # Lifecycle
     def on_activate(self):
 
-        # Sanity check
-        # TODO check that config values within fsio range?
+        # Sanity check: require matching axes across ranges
         assert set(self._position_ranges) == set(self._frequency_ranges) == set(self._resolution_ranges), \
             f'Channels in position ranges, frequency ranges and resolution ranges do not coincide'
 
-        #contraints
+        # Connect to AMC before building constraints so we can seed defaults with actual position
+        try:
+            from qudi.hardware.attocube.AMC_API import AMC  # import AMC  # Provided by Attocube
+        except Exception as exc:
+            raise RuntimeError('AMC300_stepper: Could not import AMC Python package') from exc
+
+        with self._thread_lock:
+            self._dev = AMC.Device(self._ip_address)
+            self._dev.connect()
+
+            # Optionally enable drives
+            if self._drive_enable_on_activate:
+                for ax, ch in self._axis_map.items():
+                    try:
+                        self._dev.control.setControlOutput(ch, True)
+                    except Exception:
+                        # Some axes or configs may fail here; log but continue
+                        self.log.warning(f'AMC: setControlOutput failed for axis {ax}')
+
+            # Read current physical position for each axis (no movement)
+            current_pos: Dict[str, float] = {}
+            for ax, ch in self._axis_map.items():
+                try:
+                    pos_nm = float(self._dev.move.getPosition(ch))
+                    pos_m = pos_nm * 1e-9
+                except Exception:
+                    # Fallback to lower bound if reading fails
+                    pos_m = float(self._position_ranges[ax][0])
+                # Clip to configured bounds
+                rng = self._position_ranges[ax]
+                pos_m = min(max(pos_m, float(rng[0])), float(rng[1]))
+                current_pos[ax] = pos_m
+
+            # Set the internal target to the measured current position (no movement)
+            self._target_m = dict(current_pos)
+
+        # Build constraints AFTER we know the current position to use as default
         axes = list()
         for axis in self._position_ranges:
             position_range = tuple(self._position_ranges[axis])
@@ -122,7 +157,10 @@ class AMC300_stepper(ScanningProbeInterface):
                 freq_default = frequency_range[0]
             max_step = abs(position_range[1] - position_range[0])
 
-            position = ScalarConstraint(default=min(position_range), bounds=position_range)
+            # Use the measured current position as the default
+            pos_default = float(self._target_m.get(axis, position_range[0]))
+
+            position = ScalarConstraint(default=pos_default, bounds=position_range)
             resolution = ScalarConstraint(default=res_default, bounds=resolution_range, enforce_int=True)
             frequency = ScalarConstraint(default=freq_default, bounds=frequency_range)
             step = ScalarConstraint(default=0, bounds=(0, max_step))
@@ -132,8 +170,9 @@ class AMC300_stepper(ScanningProbeInterface):
                                     position=position,
                                     step=step,
                                     resolution=resolution,
-                                    frequency=frequency, )
+                                    frequency=frequency)
                         )
+
         channels = list()
         for channel, unit in self._input_channel_units.items():
             channels.append(ScannerChannel(name=channel,
@@ -141,29 +180,17 @@ class AMC300_stepper(ScanningProbeInterface):
                                            dtype='float64'))
 
         back_scan_capability = BackScanCapability.AVAILABLE | BackScanCapability.RESOLUTION_CONFIGURABLE
-        # cap = BackScanCapability.AVAILABLE if self._back_scan_available else BackScanCapability.NOT_AVAILABLE
         self._constraints = ScanConstraints(axis_objects=tuple(axes),
                                             channel_objects=tuple(channels),
                                             back_scan_capability=back_scan_capability,
                                             has_position_feedback=False,
                                             square_px_only=False)
 
+        # Notify listeners about the current position/target so GUIs can place the cursor immediately
         try:
-            from qudi.hardware.attocube.AMC_API import AMC  #import AMC  # Provided by Attocube
-        except Exception as exc:
-            raise RuntimeError('AMC300_stepper: Could not import AMC Python package') from exc
-
-        with self._thread_lock:
-            self._dev = AMC.Device(self._ip_address)
-            self._dev.connect()
-            # Optionally enable drives
-            if self._drive_enable_on_activate:
-                for ax, ch in self._axis_map.items():
-                    try:
-                        self._dev.control.setControlOutput(ch, True)
-                    except Exception:
-                        # Some axes or configs may fail here; log but continue
-                        self.log.warning(f'AMC: setControlOutput failed for axis {ax}')
+            self.sigPositionChanged.emit(dict(self._target_m))
+        except Exception:
+            pass
 
     def on_deactivate(self):
         with self._thread_lock:
