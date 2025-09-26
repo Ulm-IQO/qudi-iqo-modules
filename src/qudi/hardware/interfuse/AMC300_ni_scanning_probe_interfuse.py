@@ -3,30 +3,22 @@
 """
 Interfuse: AMC300 motion (stepping) + NI FiniteSamplingInput (APD) as a ScanningProbeInterface.
 
-- Motion is executed stepwise via a connected AMC300_stepper (ScanningProbeInterface).
-- APD data is acquired via NIXSeriesFiniteSamplingInput (DataInStreamInterface).
-- Scans are software-stepped: for each pixel, move->settle->read NI samples->aggregate->store.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-This mirrors the structure of NiScanningProbeInterfuseBare, but without NI AO output.
+This file is part of qudi.
 
-Example config:
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-hardware:
-    amc300_ni_scanner:
-        module.Class: 'interfuse.AMC300_ni_scanning_probe_interfuse.AMC300NIScanningProbeInterfuse'
-        connect:
-            motion: 'amc300_stepper'
-            data_instream: 'nicard_6343_instreamer'
-        options:
-            channel_aliases:
-                fluorescence: 'PFI8'
-            input_channel_units:
-                fluorescence: 'c/s'
-            apd_channel_names: ['PFI8']     # map to NI input channels
-            default_dwell_time_s: 0.5e-3    # optional if not deriving from frequency
-            ni_sample_rate_hz: 50e3         # choose ≥ 1/dwell resolution you need
-            settle_time_s: 0.001
-            back_scan_available: false
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
+
 """
 
 from __future__ import annotations
@@ -34,6 +26,7 @@ from __future__ import annotations
 import time
 import numpy as np
 from typing import Dict, List, Optional, Tuple
+from dataclasses import asdict
 
 from PySide2 import QtCore
 
@@ -52,10 +45,36 @@ from qudi.interface.scanning_probe_interface import (
 )
 
 from qudi.interface.data_instream_interface import DataInStreamInterface, SampleTiming
-from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputInterface
 
 
 class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
+    """
+    - Motion is executed stepwise via a connected AMC300_stepper (ScanningProbeInterface).
+    - APD data is acquired via NIXSeriesFiniteSamplingInput (DataInStreamInterface).
+    - Scans are software-stepped: for each pixel, move->settle->read NI samples->aggregate->store.
+
+    This mirrors the structure of NiScanningProbeInterfuseBare, but without NI AO output.
+
+    Example config:
+
+    hardware:
+        amc300_ni_scanner:
+            module.Class: 'interfuse.AMC300_ni_scanning_probe_interfuse.AMC300NIScanningProbeInterfuse'
+            connect:
+                motion: 'amc300_stepper'
+                ni_input: 'ni_finite_sampling_input'
+            options:
+                ni_channel_mapping:
+                    fluorescence: 'PFI8'
+                input_channel_units:
+                    fluorescence: 'c/s'
+                default_dwell_time_s: 0.5e-3    # optional if not deriving from frequency
+                ni_sample_rate_hz: 50e3         # choose ≥ 1/dwell resolution you need
+                settle_time_s: 0.001
+                back_scan_available: true
+                simulation: true
+    """
+
     _threaded = True
 
     # Connectors
@@ -72,6 +91,7 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
     _settle_time_s: float = ConfigOption('settle_time_s', default=0.001, missing='warn')
 
     _back_scan_available: bool = ConfigOption('back_scan_available', default=False, missing='warn')
+    __default_backward_resolution: int = ConfigOption(name='default_backward_resolution', default=50)
 
     # Internal state
     sigPositionChanged = QtCore.Signal(dict)
@@ -94,7 +114,6 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
 
 
         self._thread_lock_data = Mutex()
-
         self.scanning_interfuse = AMC300NIScanningProbeInterfuse
 
     # Lifecycle
@@ -235,7 +254,6 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         # check settings - will raise appropriate exceptions if something is not right
         self.constraints.check_back_scan_settings(settings, forward_settings)
         self.log.debug('Back scan settings fulfill constraints.')
-        print("debug lol")
         with self._thread_lock_data:
             self._back_scan_data = ScanData.from_constraints(settings, self._constraints)
             self.log.debug(f'New back scan data created.')
@@ -322,10 +340,10 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
             # todo: scanning_probe_logic exits when scanner not locked right away
             # should rather ignore/wait until real hw timed scanning starts
             self.module_state.lock()
-            #??
-            first_scan_position = {ax: pos[0] for ax, pos
-                                   in zip(self.scan_settings.axes, self.scan_settings.range)}
-            self._move_to_and_start_scan(first_scan_position)
+
+            #first_scan_position = {ax: pos[0] for ax, pos
+            #                       in zip(self.scan_settings.axes, self.scan_settings.range)}
+            #self._move_to_and_start_scan(first_scan_position)
 
         except Exception as e:
             self.module_state.unlock()
@@ -352,14 +370,6 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
             self.log.error('No scan in progress. Cannot stop scan.')
 
         # self.log.debug("Stopping scan...")
-        self._start_scan_after_cursor = False  # Ensure Scan HW is not started after movement
-        #if self._ao_setpoint_channels_active:
-        #    self._abort_cursor_movement()
-            # self.log.debug("Move aborted")
-
-        #if self._ni_finite_sampling_io().is_running:
-        #    self._ni_finite_sampling_io().stop_buffered_frame()
-            # self.log.debug("Frame stopped")
 
         self.module_state.unlock()
         # self.log.debug("Module unlocked")
@@ -381,6 +391,7 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         if self.module_state() != 'idle':
             self.module_state.unlock()
 
+    @property
     def is_scan_running(self):
         """
         Read-only flag indicating the module state.
@@ -390,6 +401,7 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         # module state used to indicate hw timed scan running
         #self.log.debug(f"Module in state: {self.module_state()}")
         #assert self.module_state() in ('locked', 'idle')  # TODO what about other module states?
+
         if self.module_state() == 'locked':
             return True
         else:
@@ -403,6 +415,7 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         else:
             with self._thread_lock_data:
                 return self._scan_data.copy()
+
     def get_back_scan_data(self) -> Optional[ScanData]:
         """ Retrieve the ScanData instance used in the backwards scan.
         """
@@ -412,73 +425,118 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
             with self._thread_lock_data:
                 return self._back_scan_data.copy()
 
-    # Worker
-    def _run_scan_worker(self):
-        settings = self._scan_settings
-        data = self._scan_data
-        if settings is None or data is None:
-            raise RuntimeError('Scan not configured')
+    def _get_scan_lines(self, settings: ScanSettings, back_settings: ScanSettings) -> Dict[str, np.ndarray]:
+        if settings.scan_dimension == 1:
+            axis = settings.axes[0]
 
-        # Axis vectors from settings (tuple API)
-        axes_names = list(settings.axes)
-        axis_values: List[np.ndarray] = []
-        for i, ax in enumerate(axes_names):
-            mn, mx = settings.range[i]
-            n = int(settings.resolution[i])
-            axis_values.append(np.linspace(float(mn), float(mx), n))
+            horizontal = np.linspace(settings.range[0][0], settings.range[0][1],
+                                     settings.resolution[0])
+            horizontal_return_line = np.linspace(settings.range[0][1], settings.range[0][0],
+                                                 back_settings.resolution[0])
 
-        # Pixel iterator (row-major in order of settings.axes)
-        mesh = np.meshgrid(*axis_values, indexing='ij')
-        coords_stack = np.stack([m.reshape(-1) for m in mesh], axis=1)  # shape (pixels, dims)
+            horizontal_single_line = np.concatenate((horizontal,
+                                                     horizontal_return_line))
 
-        # Dwell time per pixel: pixel frequency (Hz) -> seconds per pixel
-        dwell_s = 1.0 / float(settings.frequency) if settings.frequency > 0 else self._default_dwell_time_s
+            coord_dict = {axis: horizontal_single_line}
 
-        # NI sampling config
-        ni: DataInStreamInterface = self._ni_in()
-        sample_rate = float(self._ni_sample_rate_hz)
-        samples_per_pixel = max(1, int(round(sample_rate * dwell_s)))
-        channel_count = len(self._present_channels)
-        buffer = np.zeros(channel_count * samples_per_pixel, dtype=ni.constraints.data_type)
-        timestamps = None
-        if ni.constraints.sample_timing == SampleTiming.TIMESTAMP:
-            timestamps = np.zeros(samples_per_pixel, dtype=np.float64)
+        elif settings.scan_dimension == 2:
+            horizontal_resolution = settings.resolution[0]
+            horizontal_back_resolution = back_settings.resolution[0]
+            vertical_resolution = settings.resolution[1]
 
-        # Iterate pixels
-        motion: ScanningProbeInterface = self._motion()
-        for pix_idx, coord in enumerate(coords_stack):
-            if self._stop_requested:
-                break
+            # horizontal scan array / "fast axis"
+            horizontal_axis = settings.axes[0]
+            horizontal = np.linspace(settings.range[0][0], settings.range[0][1],
+                                     horizontal_resolution)
 
-            # Move to pixel
-            pos = {ax: float(coord[i]) for i, ax in enumerate(axes_names)}
-            motion.move_absolute(pos, blocking=True)
-            time.sleep(self._settle_time_s)
+            horizontal_return_line = np.linspace(settings.range[0][1],
+                                                 settings.range[0][0],
+                                                 horizontal_back_resolution)
+            # a single back and forth line
+            horizontal_single_line = np.concatenate((horizontal, horizontal_return_line))
+            # need as much lines as we have in the vertical directions
+            horizontal_scan_array = np.tile(horizontal_single_line, vertical_resolution)
 
-            # Read NI samples for the dwell window
-            if timestamps is None:
-                ni.read_data_into_buffer(buffer, samples_per_channel=samples_per_pixel)
-            else:
-                ni.read_data_into_buffer(buffer, samples_per_channel=samples_per_pixel, timestamp_buffer=timestamps)
+            # vertical scan array / "slow axis"
+            vertical_axis = settings.axes[1]
+            vertical = np.linspace(settings.range[1][0], settings.range[1][1],
+                                   vertical_resolution)
 
-            # Aggregate per channel in presented alias order
-            counts: List[float] = []
-            for ch_idx, alias in enumerate(self._present_channels):
-                # Slice this channel’s samples
-                ch_slice = buffer[ch_idx * samples_per_pixel:(ch_idx + 1) * samples_per_pixel]
-                unit = data.channels[alias].unit if alias in data.channels else self._input_channel_units.get(alias, '')
-                if unit == 'c/s':
-                    val = float(np.mean(ch_slice)) * dwell_s  # counts per second -> counts in dwell
-                else:
-                    val = float(np.sum(ch_slice))
-                counts.append(val)
+            # during horizontal line, the vertical line keeps its value
+            vertical_lines = np.repeat(vertical.reshape(vertical_resolution, 1), horizontal_resolution, axis=1)
+            # during backscan of horizontal, the vertical axis increases its value by "one index"
+            vertical_return_lines = np.linspace(vertical[:-1], vertical[1:], horizontal_back_resolution).T
+            # need to extend the vertical lines at the end, as we reach it earlier then for the horizontal axes
+            vertical_return_lines = np.concatenate((vertical_return_lines,
+                                                    np.ones((1, horizontal_back_resolution)) * vertical[-1]
+                                                    ))
 
-            data.write_pixel(pix_idx, counts)
+            vertical_scan_array = np.concatenate((vertical_lines, vertical_return_lines), axis=1).ravel()
 
-        # Mark completion
-        data.finish_scan()
-        if self._back_data is not None:
-            self._back_data.finish_scan()
+            # TODO We could drop the last return line in the initialization, as it is not read in anyways till yet.
+
+            coord_dict = {horizontal_axis: horizontal_scan_array,
+                          vertical_axis: vertical_scan_array
+            }
+
+        else:
+            raise ValueError(f"Not supported scan dimension: {settings.scan_dimension}")
+
+        return self._expand_coordinate(coord_dict)
+
+    def _init_scan_grid(self, settings: ScanSettings, back_settings: ScanSettings) -> Dict[str, np.ndarray]:
+        scan_coords = self._get_scan_lines(settings, back_settings)
+        return scan_coords
+
+    def _check_scan_grid(self, scan_coords):
+        for ax, coords in scan_coords.items():
+            position_min = self.constraints.axes[ax].position.minimum
+            position_max = self.constraints.axes[ax].position.maximum
+            out_of_range = any(coords < position_min) or any(coords > position_max)
+
+            if out_of_range:
+                raise ValueError(f"Scan axis {ax} out of range [{position_min}, {position_max}]")
+
+    def _clip_ranges(self, settings: ScanSettings):
+        valid_scan_grid = False
+        i_trial, n_max_trials = 0, 25
+
+        while not valid_scan_grid and i_trial < n_max_trials:
+            ranges = settings.range
+            if i_trial > 0:
+                ranges = self._shrink_scan_ranges(ranges)
+            settings_dict = asdict(settings)
+            settings_dict['range'] = ranges
+            settings = ScanSettings.from_dict(settings_dict)
+
+            try:
+                self._init_scan_arrays(settings, settings)
+                valid_scan_grid = True
+            except ValueError:
+                valid_scan_grid = False
+
+            i_trial += 1
+
+        if not valid_scan_grid:
+            raise ValueError("Couldn't create scan grid. ")
+
+        if i_trial > 1:
+            self.log.warning(f"Adapted out-of-bounds scan range to {ranges}")
+        return settings
+
+    def _init_scan_arrays(self, settings: ScanSettings, back_settings: ScanSettings)\
+            -> Dict[str, np.ndarray]:
+        """
+        @param ScanSettings settings: scan parameters
+
+        @return dict: NI channel name to voltage 1D numpy array mapping for all axes
+        """
+        # TODO maybe need to clip to voltage range in case of float precision error in conversion?
+        scan_coords = self._init_scan_grid(settings, back_settings)
+        self._check_scan_grid(scan_coords)
+
+        #scan_voltages = {self._ni_channel_mapping[ax]: self._position_to_voltage(ax, val) for ax, val in scan_coords.items()}
+        return scan_coords
 
 class RawDataContainer:
     def __init__(self, channel_keys, number_of_scan_lines: int,

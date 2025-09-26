@@ -1,51 +1,24 @@
 # -*- coding: utf-8 -*-
+
 """
 Attocube AMC300 stepper-based scanning probe hardware for Qudi.
 
-Implements ScanningProbeInterface for motion only (stepping; no analog fine output).
-Units:
-- Qudi external API uses meters.
-- AMC300 API uses nanometers for linear axes. We convert m <-> nm.
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
-Key Python API calls (from AMC Interface Manual):
-    import AMC
-    dev = AMC.Device(ip)
-    dev.connect()
-    dev.close()
+This file is part of qudi.
 
-    # Motion
-    dev.move.setNSteps(axis, backward, step)
-    dev.move.setSingleStep(axis, backward)
-    dev.move.getPosition(axis) -> position_nm
-    dev.status.getStatusMoving(axis) -> 0 idle, 1 moving, 2 pending
-    dev.control.setControlOutput(axis, enable)
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
 
-Example config:
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
 
-hardware:
-    amc300_stepper:
-        module.Class: 'attocube.AMC300_stepper.AMC300_stepper'
-        options:
-            ip_address: '192.168.1.1'
-            axis_map: { x: 0, y: 1, z: 2 }
-            step_size_m: { x: 2e-7, y: 2e-7, z: 2e-7 }   # meters per step
-            position_ranges:
-                x: [1.5e-3, 4.5e-3]
-                y: [1.5e-3, 4.5e-3]
-                z: [1.5e-3, 4.5e-3]
-            frequency_ranges:
-                x: [1, 500]
-                y: [1, 500]
-                z: [1, 100]
-            resolution_ranges:
-                x: [1, 100000]
-                y: [1, 100000]
-                z: [1, 100000]
-            input_channel_units:
-                APD2: 'c/s'
-            drive_enable_on_activate: false
-            settle_time_s: 0.001
-            max_move_timeout_s: 5.0
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
+
 """
 
 from __future__ import annotations
@@ -72,6 +45,55 @@ from qudi.util.constraints import ScalarConstraint
 #from AMC_API import AMC
 
 class AMC300_stepper(ScanningProbeInterface):
+    """
+    Implements ScanningProbeInterface for motion only (stepping; no analog fine output).
+    Units:
+    - Qudi external API uses meters.
+    - AMC300 API uses nanometers for linear axes. We convert m <-> nm.
+
+    Key Python API calls (from AMC Interface Manual):
+        import AMC
+        dev = AMC.Device(ip)
+        dev.connect()
+        dev.close()
+
+        # Motion
+        dev.move.setNSteps(axis, backward, step)
+        dev.move.setSingleStep(axis, backward)
+        dev.move.getPosition(axis) -> position_nm
+        dev.status.getStatusMoving(axis) -> 0 idle, 1 moving, 2 pending
+        dev.control.setControlOutput(axis, enable)
+
+    Example Config:
+
+    amc300_stepper:
+        module.Class: 'attocube.AMC300_stepper.AMC300_stepper'
+        options:
+            ip_address: '192.168.1.1'
+            axis_map: { x: 0, y: 1, z: 2 }
+            step_size_m: { x: 2e-7, y: 2e-7, z: 2e-7 }   # meters per step
+            position_ranges:
+                x: [1.5e-3, 4.5e-3]
+                y: [1.5e-3, 4.5e-3]
+                z: [1.5e-3, 4.5e-3]
+            frequency_ranges:
+                x: [1, 500]
+                y: [1, 500]
+                z: [1, 100]
+            resolution_ranges:
+                x: [1, 100000]
+                y: [1, 100000]
+                z: [1, 100000]
+            input_channel_units:
+                APD: 'c/s'
+            drive_enable_on_activate: false
+            settle_time_s: 0.001
+            max_move_timeout_s: 5.0
+            simulation: true
+
+    """
+
+
     _threaded = True
 
     # Connection/config
