@@ -92,9 +92,14 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
 
     _back_scan_available: bool = ConfigOption('back_scan_available', default=False, missing='warn')
     __default_backward_resolution: int = ConfigOption(name='default_backward_resolution', default=50)
+    # Defered movement
+    _defer_cursor_moves: bool = ConfigOption('defer_cursor_moves', default=True, missing='nothing')
+    _cursor_move_debounce_ms: int = ConfigOption('cursor_move_debounce_ms', default=250, missing='nothing')
 
     # Internal state
     sigPositionChanged = QtCore.Signal(dict)
+    _sigDeferredMoveRequested = QtCore.Signal(dict)
+    _sigCancelDeferredMove = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -107,13 +112,14 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         self.raw_data_container: Optional[RawDataContainer] = None
         self._constraints: Optional[ScanConstraints] = None
 
-        # Channel name mappings: presented alias -> NI physical channel
-        self._present_channels: List[str] = []
-        self._present_to_ni: Dict[str, str] = {}
-        self._ni_channels_in_order: List[str] = []
-
-
         self._thread_lock_data = Mutex()
+
+        #Defered Movement
+        self._scan_active: bool = False  # if not already present
+        self._move_debounce_timer: Optional[QtCore.QTimer] = None
+        self._pending_move_target: Optional[Dict[str, float]] = None
+        self._ui_target: Dict[str, float] = {}
+
         self.scanning_interfuse = AMC300NIScanningProbeInterfuse
 
     # Lifecycle
@@ -157,6 +163,21 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         except Exception:
             pass
 
+        #Defered Movement
+        self._move_debounce_timer = QtCore.QTimer(self)
+        self._move_debounce_timer.setSingleShot(True)
+        self._move_debounce_timer.timeout.connect(self._perform_deferred_move, QtCore.Qt.QueuedConnection)
+
+        self._sigDeferredMoveRequested.connect(self._on_deferred_move_requested, QtCore.Qt.QueuedConnection)
+        self._sigCancelDeferredMove.connect(self._on_cancel_deferred_move, QtCore.Qt.QueuedConnection)
+        # Initialize and publish current position as UI target so cursor matches hardware initially
+        try:
+            curr = self._motion().get_position()
+            self._ui_target = dict(curr)
+            self.sigPositionChanged.emit(curr)
+        except Exception:
+            pass
+
     def on_deactivate(self):
         # Attempt to stop everything
         try:
@@ -164,6 +185,7 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
                 self.stop_scan()
         except Exception:
             pass
+
 
     # Constraints and settings
     @property
@@ -275,14 +297,25 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
 
         # assert not self.is_running, 'Cannot move the scanner while, scan is running'
         if self.is_scan_running:
-            self.log.error('Cannot move the scanner while, scan is running')
-            return self.bare_scanner.get_target(self)
+            self.log.error('Cannot move the scanner while scan is running')
+            return self._motion().get_target()
 
         if not set(position).issubset(self.constraints.axes):
             self.log.error('Invalid axes name in position')
-            return self.bare_scanner.get_target(self)
+            return self._motion().get_target()
 
-        return self._motion().move_absolute(position, velocity=velocity, blocking=blocking)
+        # For interactive GUI drags (non-blocking), defer the actual hardware move
+        if self._defer_cursor_moves and not blocking:
+            try:
+                # hand off to module thread; will update shadow target and start debounce
+                self._sigDeferredMoveRequested.emit(dict(position))
+            except Exception:
+                # if anything goes wrong, fall back to immediate move
+                return self._motion().move_absolute(position, velocity=velocity, blocking=blocking)
+            # Return the requested target so GUI/logic won’t snap back while we defer the hardware move
+            return dict(position)
+
+        return self._motion().move_absolute(position, velocity=velocity, blocking= blocking)
 
     def move_relative(self, distance: Dict[str, float], velocity: Optional[float] = None,
                       blocking: bool = False) -> Dict[str, float]:
@@ -292,13 +325,67 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
                 Log error and return current target position if something fails or a 1D/2D scan is in
                 progress.
                 """
-        return self._motion().move_relative(distance, velocity=velocity, blocking=blocking)
+        if self.is_scan_running():
+            self.log.error('Cannot move the scanner while, scan is running')
+            return self._motion().get_target()
+
+            # Convert to absolute based on current target, then reuse move_absolute (will defer if configured)
+        curr = self.get_target()
+        absolute = {ax: curr.get(ax, 0.0) + float(d) for ax, d in distance.items()}
+        return self.move_absolute(absolute, velocity=velocity, blocking=blocking)
+
 
     def get_target(self) -> Dict[str, float]:
+        if self._defer_cursor_moves and self._ui_target:
+            return dict(self._ui_target)
         return self._motion().get_target()
 
     def get_position(self) -> Dict[str, float]:
         return self._motion().get_position()
+
+    @QtCore.Slot(dict)
+    def _on_deferred_move_requested(self, position: Dict[str, float]):
+
+        # Update shadow target immediately for smooth UI; clip to axes present
+        if not self._ui_target:
+            self._ui_target = dict(self._motion().get_target())
+        for ax, val in position.items():
+            self._ui_target[ax] = float(val)
+        try:
+            self.sigPositionChanged.emit(dict(self._ui_target))
+        except Exception:
+            pass
+
+        # Coalesce pending move; restart debounce
+        self._pending_move_target = dict(self._ui_target)
+        if self._move_debounce_timer is not None:
+            self._move_debounce_timer.start(int(self._cursor_move_debounce_ms))
+
+    @QtCore.Slot()
+    def _on_cancel_deferred_move(self):
+        self._pending_move_target = None
+        if self._move_debounce_timer is not None:
+            self._move_debounce_timer.stop()
+
+    @QtCore.Slot()
+    def _perform_deferred_move(self):
+
+        if self._pending_move_target is None:
+            return
+        # Do not interfere with scans
+        #if self.is_scan_running():
+        #    self._pending_move_target = None
+        #    return
+        pos = self._pending_move_target
+        self._pending_move_target = None
+        try:
+            # Single consolidated move; blocking for cleanliness
+            final_target = self._motion().move_absolute(pos, velocity=None, blocking=True)
+            # Sync shadow target to hardware and notify UI
+            self._ui_target = dict(final_target)
+            self.sigPositionChanged.emit(dict(self._ui_target))
+        except Exception:
+            self.log.exception('Deferred move failed')
 
     # Scan lifecycle
     def start_scan(self):
@@ -369,7 +456,11 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         if not self.is_scan_running:
             self.log.error('No scan in progress. Cannot stop scan.')
 
-        # self.log.debug("Stopping scan...")
+        try:
+            self._move_debounce_timer.stop()
+            self._pending_move_target = None
+        except Exception:
+            pass
 
         self.module_state.unlock()
         # self.log.debug("Module unlocked")
@@ -388,8 +479,17 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
             self._ni_in().stop_stream()
         except Exception:
             pass
-        if self.module_state() != 'idle':
-            self.module_state.unlock()
+        try:
+            if self.module_state() != 'idle':
+                self.module_state.unlock()
+        except Exception:
+            pass
+        self._sigCancelDeferredMove.emit()
+        try:
+            self._ui_target = self._motion().get_target()
+            self.sigPositionChanged.emit(dict(self._ui_target))
+        except Exception:
+            pass
 
     @property
     def is_scan_running(self):

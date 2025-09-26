@@ -215,13 +215,14 @@ class AMC300_stepper(ScanningProbeInterface):
             pass
 
     def on_deactivate(self):
+        """
         with self._thread_lock:
             try:
                 if self._dev is not None:
                     # Try to stop outputs gracefully (optional)
                     for ax, ch in self._axis_map.items():
                         try:
-                            self._dev.control.setControlOutput(ch, False)
+                            self._dev.control.setControlOutput(ch, True)
                         except Exception:
                             pass
             finally:
@@ -231,6 +232,7 @@ class AMC300_stepper(ScanningProbeInterface):
                 except Exception:
                     pass
                 self._dev = None
+        """
 
     # ScanningProbeInterface: constraints and configuration
     @property
