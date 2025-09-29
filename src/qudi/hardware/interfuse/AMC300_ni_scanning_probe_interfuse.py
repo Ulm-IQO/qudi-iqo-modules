@@ -72,7 +72,10 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
                 ni_sample_rate_hz: 50e3         # choose ≥ 1/dwell resolution you need
                 settle_time_s: 0.001
                 back_scan_available: true
-                simulation: true
+                _use_closed_loop_for_deferred: true
+                _closed_loop_window_nm: 300
+                _closed_loop_timeout_s: 1.5
+                _closed_loop_disable_after: true
     """
 
     _threaded = True
@@ -95,6 +98,12 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
     # Defered movement
     _defer_cursor_moves: bool = ConfigOption('defer_cursor_moves', default=True, missing='nothing')
     _cursor_move_debounce_ms: int = ConfigOption('cursor_move_debounce_ms', default=250, missing='nothing')
+    # Use controller closed-loop for the one deferred move (single window parameter, nm)
+    _use_closed_loop_for_deferred: bool = ConfigOption('use_closed_loop_for_deferred', default=True, missing='nothing')
+    _closed_loop_window_nm: int = ConfigOption('closed_loop_window_nm', default=200,
+                                               missing='nothing')  # ±200 nm window
+    _closed_loop_timeout_s: float = ConfigOption('closed_loop_timeout_s', default=1.5, missing='nothing')
+    _closed_loop_disable_after: bool = ConfigOption('closed_loop_disable_after', default=True, missing='nothing')
 
     # Internal state
     sigPositionChanged = QtCore.Signal(dict)
@@ -373,14 +382,24 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         if self._pending_move_target is None:
             return
         # Do not interfere with scans
-        #if self.is_scan_running():
-        #    self._pending_move_target = None
-        #    return
+        if self.is_scan_running:
+            self._pending_move_target = None
+            return
         pos = self._pending_move_target
         self._pending_move_target = None
         try:
-            # Single consolidated move; blocking for cleanliness
-            final_target = self._motion().move_absolute(pos, velocity=None, blocking=True)
+            # NEW: use controller closed-loop move for the consolidated cursor move (single window)
+            if self._use_closed_loop_for_deferred and hasattr(self._motion(), 'move_absolute_closed_loop'):
+                final_target = getattr(self._motion(), 'move_absolute_closed_loop')(
+                    pos,
+                    window_nm=int(self._closed_loop_window_nm),
+                    timeout_s=float(self._closed_loop_timeout_s),
+                    disable_after=bool(self._closed_loop_disable_after),
+                )
+            else:
+                # Fallback: single consolidated move; blocking for cleanliness
+                final_target = self._motion().move_absolute(pos, velocity=None, blocking=True)
+
             # Sync shadow target to hardware and notify UI
             self._ui_target = dict(final_target)
             self.sigPositionChanged.emit(dict(self._ui_target))

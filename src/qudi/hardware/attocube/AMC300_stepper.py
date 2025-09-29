@@ -328,6 +328,107 @@ class AMC300_stepper(ScanningProbeInterface):
                     pos[ax] = self._target_m.get(ax, 0.0)
             return pos
 
+    # Controller closed-loop move with a single window parameter in nm
+    def move_absolute_closed_loop(
+            self,
+            position: Dict[str, float],
+            *,
+            window_nm: int,
+            timeout_s: float = 1.5,
+            disable_after: bool = True,
+            enable_output: bool = True,
+            poll_interval_s: float = 0.02,
+    ) -> Dict[str, float]:
+        """
+        Use AMC controller closed-loop to move to target(s) and stop when within window_nm.
+        - window_nm is used for BOTH:
+          • control.setControlTargetRange(axis, window_nm)        [in-target flag window]
+          • control.setMotionControlThreshold(axis, window_nm*1e3)[pm threshold]
+        - Will wait until status.getStatusTargetRange(axis) is true or timeout_s elapses.
+        - Optionally disables closed-loop afterwards.
+
+        Returns the updated target dictionary in meters.
+        """
+        with self._thread_lock:
+            dev = self._require_dev()
+            # Pre-configure each requested axis and command target
+            for ax, tgt_m in position.items():
+                ch = self._axis_to_channel(ax)
+
+                # Enable output (relay) if requested
+                if enable_output:
+                    try:
+                        dev.control.setControlOutput(ch, True)
+                    except Exception:
+                        self.log.warning(f'AMC: setControlOutput failed for axis {ax}')
+
+                # Set controller windows (range in nm; threshold in pm)
+                try:
+                    dev.control.setControlTargetRange(ch, int(window_nm))
+                except Exception:
+                    self.log.warning(f'AMC: setControlTargetRange failed for axis {ax}')
+                try:
+                    dev.control.setMotionControlThreshold(ch, int(window_nm) * 1000)
+                except Exception:
+                    self.log.warning(f'AMC: setMotionControlThreshold failed for axis {ax}')
+
+                # Enable closed-loop approach
+                try:
+                    dev.control.setControlMove(ch, True)
+                except Exception:
+                    self.log.warning(f'AMC: setControlMove(True) failed for axis {ax}')
+
+                # Command absolute target in nm
+                tgt_m = self._clip(ax, float(tgt_m))
+                tgt_nm = float(tgt_m * 1e9)
+                try:
+                    dev.move.setControlTargetPosition(ch, tgt_nm)
+                except Exception as exc:
+                    raise RuntimeError(f'AMC: setControlTargetPosition failed for axis {ax}') from exc
+
+                # Update local target immediately (avoid UI snap-back)
+                self._target_m[ax] = tgt_m
+
+        # Wait for all axes to be in target range or timeout
+        t0 = time.time()
+        axes = list(position.keys())
+        while True:
+            all_in = True
+            with self._thread_lock:
+                try:
+                    for ax in axes:
+                        ch = self._axis_to_channel(ax)
+                        in_range = bool(self._dev.status.getStatusTargetRange(ch))  # type: ignore
+                        if not in_range:
+                            all_in = False
+                            break
+                except Exception:
+                    # If status is unavailable, break on timeout using settle time as fallback
+                    pass
+            if all_in:
+                break
+            if time.time() - t0 > float(timeout_s):
+                self.log.debug('AMC closed-loop move: timeout waiting for target range.')
+                break
+            time.sleep(float(poll_interval_s))
+
+        # Optionally disable controller closed-loop
+        if disable_after:
+            with self._thread_lock:
+                for ax in axes:
+                    ch = self._axis_to_channel(ax)
+                    try:
+                        self._dev.control.setControlMove(ch, False)  # type: ignore
+                    except Exception:
+                        pass
+
+        # Notify listeners and return
+        try:
+            self.sigPositionChanged.emit(dict(self._target_m))
+        except Exception:
+            pass
+        return dict(self._target_m)
+
     # Scan lifecycle (not used here)
     def start_scan(self) -> None:
         raise RuntimeError('AMC300_stepper does not implement scanning.')
