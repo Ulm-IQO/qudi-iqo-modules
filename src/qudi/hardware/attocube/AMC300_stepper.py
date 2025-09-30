@@ -24,7 +24,6 @@ If not, see <https://www.gnu.org/licenses/>.
 from __future__ import annotations
 
 import time
-import math
 from typing import Dict, List, Optional
 
 from PySide2 import QtCore
@@ -89,7 +88,6 @@ class AMC300_stepper(ScanningProbeInterface):
             drive_enable_on_activate: false
             settle_time_s: 0.001
             max_move_timeout_s: 5.0
-            simulation: true
 
     """
 
@@ -216,6 +214,7 @@ class AMC300_stepper(ScanningProbeInterface):
 
     def on_deactivate(self):
         """
+        #Possible to disable channels
         with self._thread_lock:
             try:
                 if self._dev is not None:
@@ -233,6 +232,7 @@ class AMC300_stepper(ScanningProbeInterface):
                     pass
                 self._dev = None
         """
+        return
 
     # ScanningProbeInterface: constraints and configuration
     @property
@@ -336,7 +336,7 @@ class AMC300_stepper(ScanningProbeInterface):
             window_nm: int,
             timeout_s: float = 1.5,
             disable_after: bool = True,
-            enable_output: bool = True,
+            enable_output: bool = False,
             poll_interval_s: float = 0.02,
     ) -> Dict[str, float]:
         """
