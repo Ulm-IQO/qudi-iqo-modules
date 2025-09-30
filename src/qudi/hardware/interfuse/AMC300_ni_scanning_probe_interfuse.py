@@ -91,15 +91,13 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
     _default_dwell_time_s: float = ConfigOption('default_dwell_time_s', default=0.0005, missing='warn')
     _ni_sample_rate_hz: float = ConfigOption('ni_sample_rate_hz', default=50000.0, missing='warn')
     _settle_time_s: float = ConfigOption('settle_time_s', default=0.001, missing='warn')
-
     __default_backward_resolution: int = ConfigOption(name='default_backward_resolution', default=50)
-    # Defered movement
+
+    # Defered movement when cursor are slider is moved: Use controller closed-loop for the one deferred move (single window parameter, nm)
     _defer_cursor_moves: bool = ConfigOption('defer_cursor_moves', default=True, missing='nothing')
     _cursor_move_debounce_ms: int = ConfigOption('cursor_move_debounce_ms', default=250, missing='nothing')
-    # Use controller closed-loop for the one deferred move (single window parameter, nm)
     _use_closed_loop_for_deferred: bool = ConfigOption('use_closed_loop_for_deferred', default=True, missing='nothing')
-    _closed_loop_window_nm: int = ConfigOption('closed_loop_window_nm', default=200,
-                                               missing='nothing')  # ±200 nm window
+    _closed_loop_window_nm: int = ConfigOption('closed_loop_window_nm', default=200, missing='nothing')
     _closed_loop_timeout_s: float = ConfigOption('closed_loop_timeout_s', default=1.5, missing='nothing')
     _closed_loop_disable_after: bool = ConfigOption('closed_loop_disable_after', default=True, missing='nothing')
 
@@ -123,18 +121,20 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
         self._constraints: Optional[ScanConstraints] = None
 
         self._thread_lock_data = Mutex()
+
         # NI presentation/mapping
         self._present_channels: List[str] = []  # e.g. ['fluorescence']
         self._present_to_ni: Dict[str, str] = {}  # e.g. {'fluorescence': 'PFI8'}
         self._ni_channels_in_order: List[str] = []  # fixed order for readout
 
-        #Defered Movement
+        #Defered Movement when cursor are slider is moved
         self._scan_active: bool = False  # if not already present
         self._move_debounce_timer: Optional[QtCore.QTimer] = None
         self._pending_move_target: Optional[Dict[str, float]] = None
         self._ui_target: Dict[str, float] = {}
         self._scan_intent: bool = False
 
+        # Thread for scanner and target before scan
         self._worker_thread: Optional[threading.Thread] = None
         self._stored_target_pos: Dict[str, float] = {}
 
@@ -370,7 +370,9 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
 
     @QtCore.Slot(dict)
     def _on_deferred_move_requested(self, position: Dict[str, float]):
-
+        """For change of cursor or silder, the target position is updated and stored as pending target.
+            The timer is reseted.
+            """
         # Update shadow target immediately for smooth UI; clip to axes present
         if not self._ui_target:
             self._ui_target = dict(self._motion().get_target())
@@ -388,13 +390,16 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
 
     @QtCore.Slot()
     def _on_cancel_deferred_move(self):
+        """Cancel deferred movement and stops timer
+            """
         self._pending_move_target = None
         if self._move_debounce_timer is not None:
             self._move_debounce_timer.stop()
 
     @QtCore.Slot()
     def _perform_deferred_move(self):
-
+        """ As soon as the timer finishes, the attocubes move to pending target position.
+            """
         if self._pending_move_target is None:
             return
         # Do not interfere with scans
@@ -606,6 +611,8 @@ class AMC300NIScanningProbeInterfuse(ScanningProbeInterface):
 
     # Worker: software-stepped scan
     def _run_scan_worker(self):
+        """Worker during the step-scan.
+            Each pixel is approached with a closed loop movement."""
         try:
             settings = self._scan_data.settings if self._scan_data else None
             data = self._scan_data
