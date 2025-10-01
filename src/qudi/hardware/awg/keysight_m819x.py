@@ -417,6 +417,7 @@ class AWGM819X(PulserInterface):
 
         self.write_all_ch(':TRAC{}:DEL:ALL', all_by_one={'m8195a': True})
         self._flag_segment_table_req_update = True
+        self.log.debug("Cleared Waveforms from AWG")
 
         return
 
@@ -885,6 +886,8 @@ class AWGM819X(PulserInterface):
                 self.log.error('Failed to create sequence "{0}" due to waveforms "{1}" not '
                                'present in memory. Try to load them again.'.format(name, waveform_tuple))
                 return -1
+
+        self.clear_all()
 
         num_steps = len(sequence_parameters)
 
