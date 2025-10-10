@@ -3,6 +3,21 @@
 ## Pre-Release
 
 ### Breaking Changes
+
+- Dropped `Python 3.8` support
+
+### Bugfixes
+
+### New Features
+
+### Other
+
+## Version 0.6.0
+
+**⚠ DEPRECATION WARNING**
+In future releases, `python 3.8` support will be dropped to be able to upgrade to `numpy > 1.24` package versions.
+
+### Breaking Changes
 - Refactoring of data classes in `qudi.interface.scanning_probe_interface`. Will break custom modules
   implementing this interface.
 - Add back scan data and back scan settings getter and setter methods
@@ -31,6 +46,15 @@
 - Fixed potential `scanning_optimize_logic` deadlock when starting the optimizer
 - Fixed loading of most recent target when starting scanning GUI
 - added `waiting_element` to `generate_t1_sequencing` method
+- Fixed example config typo in `tektronix_awg70k.py`
+- Fixed issue when using same pfi channel on two different ni cards for NI instreamer
+- Fixed POI manager auto-find
+- Fixed overwriting of file in scanner GUI when using custom nametag
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used
+- Fixed StatusVar initialization in POI manager
+- Fixed checker for optimizer plot dimensions in scanning toolchain
+- Disconnect GUI widgets on deactivation of laser `LaserGui`
+- Fix failure of saving plots in `QDPlotLogic` when fiting is used.
 
 
 ### New Features
@@ -55,10 +79,18 @@
 - Added DMC output mode for Keysight M8195A AWG
 - Updated workflows to follow new 'pyproject.toml' release workflow
 - Altered tektronix_awg70k hardware file to allow the use of the newer, B-series of Tektronix AWGs
+- Added ruff configuration to `pyproject.toml` to standardize formatting
+- Added Windfreak synthHD documentation
+- Added cursor position in `Scan2DWidget` of the scanning toolchain
+- Added scanning settings to scanning toolchain
+- Updated Documentation in `basic_predefined_methods`
 
 ### Other
 - Remove the (non-functional) wavemeter dummy based on the already removed wavemeter interface.
 - Removed `setup.py` and moved fully to `pyproject.toml` instead.
+- Updated .gitignore to better exclude unwanted files
+- Fix typos in repo management documentation
+- Added documentation on testing of `test.pypi.org` release
 - Added some integration tests that run automatically via Github Actions on PRs and commits to main.
 
 ## Version 0.5.1

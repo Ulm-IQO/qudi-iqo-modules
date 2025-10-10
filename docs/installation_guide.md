@@ -28,7 +28,7 @@ Now you qudi-core installation will know about the measurement modules and it's 
   If you encounter bugs, especially ones that relate to dependency packages, you can roll back to the latest stable release by:
 
         cd C:/Software/qudi-iqo-modules
-        git checkout tags/v0.5.1
+        git checkout tags/v0.6.0
         python -m pip install -e .
 
 - In rare cases and mostly with old versions of qudi-core, qudi-iqo-modules can be incompatible with qudi-core. If you encounter errors related to this, try to update manually to the latest qudi-core github release via `python -m pip install git+https://github.com/Ulm-IQO/qudi-core.git@main`.
@@ -134,3 +134,10 @@ corresponding ipython process is done via rpyc.
 Not python built in objects need to be 
 copied via netobtain(). We plan to have indepth documentation 
 in the new core. 
+
+## Ruff Autoformatting
+To ensure a consistent code style across the project, we've included a configuration for [Ruff](https://github.com/astral-sh/ruff), a fast Python linter and formatter.
+
+Before submitting a pull request, please format your code using Ruff. You can run it as a standalone tool or integrate it with your IDE for automatic formatting.
+
+For installation and setup instructions, refer to the [official Ruff documentation](https://docs.astral.sh/ruff/installation/).
