@@ -82,8 +82,6 @@ class TimeSeriesGui(GuiBase):
 
         self._channels_per_axis = [set(), set()]
 
-        self._single_axis = True
-
     def on_activate(self):
         """ Initialisation of the GUI """
         self._mw = TimeSeriesGuiMainWindow()
@@ -207,6 +205,7 @@ class TimeSeriesGui(GuiBase):
     def show(self):
         """Make window visible and put it above all other windows.
         """
+        self._restore_window_geometry(self._mw)
         self._mw.show()
         self._mw.raise_()
         self._mw.activateWindow()
@@ -236,6 +235,7 @@ class TimeSeriesGui(GuiBase):
         logic.sigTraceSettingsChanged.disconnect(self.update_trace_settings)
         logic.sigChannelSettingsChanged.disconnect(self.update_channel_settings)
         logic.sigStatusChanged.disconnect(self.update_status)
+        self._save_window_geometry(self._mw)
         self._mw.close()
 
     @property
@@ -336,15 +336,15 @@ class TimeSeriesGui(GuiBase):
             self._mw.trace_plot_widget.hideAxis('right')
             self._channels_per_axis = [tuple(enabled), tuple()]
             self._mw.trace_plot_widget.setLabel('left', 'Signal', units='')
-        # elif len(enabled) == 2:
-        #     self._mw.trace_plot_widget.hideAxis('right')
-        #     self._channels_per_axis = [(enabled[0],), (enabled[1],)]
-        #     self._mw.trace_plot_widget.setLabel('left',
-        #                                         enabled[0],
-        #                                         units=channel_units[enabled[0]])
-        #     self._mw.trace_plot_widget.setLabel('right',
-        #                                         enabled[1],
-        #                                         units=channel_units[enabled[1]])
+        elif len(enabled) == 2:
+            self._mw.trace_plot_widget.hideAxis('right')
+            self._channels_per_axis = [(enabled[0],), (enabled[1],)]
+            self._mw.trace_plot_widget.setLabel('left',
+                                                enabled[0],
+                                                units=channel_units[enabled[0]])
+            self._mw.trace_plot_widget.setLabel('right',
+                                                enabled[1],
+                                                units=channel_units[enabled[1]])
         elif len(enabled) > 2:
             self._mw.trace_plot_widget.hideAxis('right')
             self._channels_per_axis = [tuple(enabled), tuple()]
