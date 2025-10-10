@@ -207,7 +207,6 @@ class TimeSeriesGui(GuiBase):
     def show(self):
         """Make window visible and put it above all other windows.
         """
-        self._restore_window_geometry(self._mw)
         self._mw.show()
         self._mw.raise_()
         self._mw.activateWindow()
@@ -237,7 +236,6 @@ class TimeSeriesGui(GuiBase):
         logic.sigTraceSettingsChanged.disconnect(self.update_trace_settings)
         logic.sigChannelSettingsChanged.disconnect(self.update_channel_settings)
         logic.sigStatusChanged.disconnect(self.update_status)
-        self._save_window_geometry(self._mw)
         self._mw.close()
 
     @property
