@@ -342,7 +342,7 @@ class SpectrumInstrumentation(FastCounterInterface):
 
         If the hardware does not support these features, the values should be None
         """
-        with self._threadlock:
+        with self.commander.threadlock:
             avg_data = self.data.avg.pulse_array[0:self.data.avg.num_pulse, :] if self.ms.gated else self.data.avg.data
             #tentative workaround:
             avg_num = self.data.avg.num_rep
