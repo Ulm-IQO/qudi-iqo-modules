@@ -1662,7 +1662,7 @@ class PulseObjectGenerator(PredefinedGeneratorBase):
         @return bool: True if obj is a valid generator class, False otherwise
         """
         if inspect.isclass(obj):
-            return PredefinedGeneratorBase in obj.__bases__# and len(obj.__bases__) == 1
+            return PredefinedGeneratorBase in obj.mro()
         return False
 
     def activate_plugins(self):
