@@ -37,6 +37,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraints, BackScanCapability, ScanData
 from qudi.util.linear_transform import find_changing_axes, LinearTransformation3D
 from qudi.util.linear_transform import compute_rotation_matrix_to_plane, compute_reduced_vectors
+from qudi.interface.scanning_probe_interface import ScanningProbeInterface
 
 
 class ScanningProbeLogic(LogicBase):
@@ -59,7 +60,7 @@ class ScanningProbeLogic(LogicBase):
     """
 
     # declare connectors
-    _scanner = Connector(name='scanner', interface='ScanningProbeInterface')
+    _scanner = Connector(name='scanner', interface=ScanningProbeInterface)
 
     # status vars
     _scan_ranges = StatusVar(name='scan_ranges', default=dict())
