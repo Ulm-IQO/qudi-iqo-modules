@@ -40,7 +40,7 @@ from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.colordefs import QudiPalette
 from qudi.gui.qdplot.main_window import QDPlotMainWindow
 from qudi.gui.qdplot.plot_widget import QDPlotDockWidget
-from qudi.logic.qdplot_logic import QDPlotConfig
+from qudi.logic.qdplot_logic import QDPlotConfig, QDPlotLogic
 
 
 class PlotAlignment(Enum):
@@ -71,7 +71,7 @@ class QDPlotterGui(GuiBase):
     sigSaveData = QtCore.Signal(int, str)                 # plot index, postfix_string
 
     # declare connectors
-    _qdplot_logic = Connector(interface='QDPlotLogic', name='qdplot_logic')
+    _qdplot_logic = Connector(interface=QDPlotLogic, name='qdplot_logic')
 
     # declare config options
     _default_pen_color_list = ConfigOption(name='pen_color_list', default=None)

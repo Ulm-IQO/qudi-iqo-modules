@@ -36,6 +36,8 @@ from PySide2 import QtCore, QtGui, QtWidgets
 from qudi.util import uic
 from qudi.util.widgets.plotting.image_widget import MouseTrackingImageWidget
 
+from qudi.logic.poi_manager_logic import PoiManagerLogic
+
 
 class PoiMarker(pg.EllipseROI):
     """
@@ -257,7 +259,7 @@ class PoiManagerGui(GuiBase):
     """
 
     # declare connectors
-    _poi_manager_logic = Connector(name='poi_manager_logic', interface='PoiManagerLogic')
+    _poi_manager_logic = Connector(name='poi_manager_logic', interface=PoiManagerLogic)
 
     # config options
     _data_scan_axes = ConfigOption(name='data_scan_axes',

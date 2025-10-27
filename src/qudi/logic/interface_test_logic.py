@@ -21,12 +21,13 @@ If not, see <https://www.gnu.org/licenses/>.
 
 from qudi.core.connector import Connector
 from qudi.core.module import LogicBase
+from qudi.interface.test_interface import FirstTestInterface, SecondTestInterface
 
 
 class InterfaceTestLogic(LogicBase):
 
-    _first_hardware = Connector(name='first_hardware', interface='FirstTestInterface')
-    _second_hardware = Connector(name='second_hardware', interface='SecondTestInterface')
+    _first_hardware = Connector(name='first_hardware', interface=FirstTestInterface)
+    _second_hardware = Connector(name='second_hardware', interface=SecondTestInterface)
 
     def on_activate(self):
         self._first_hardware().herp()

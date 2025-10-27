@@ -33,7 +33,7 @@ from qudi.core.module import LogicBase
 from qudi.util.mutex import Mutex
 from qudi.util.helpers import is_integer_type
 from qudi.util.network import netobtain
-from qudi.interface.data_instream_interface import StreamingMode, SampleTiming
+from qudi.interface.data_instream_interface import DataInStreamInterface, StreamingMode, SampleTiming
 from qudi.interface.data_instream_interface import DataInStreamConstraints
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.units import ScaledFloat
@@ -63,7 +63,7 @@ class TimeSeriesReaderLogic(LogicBase):
     _sigNextDataFrame = QtCore.Signal()  # internal signal
 
     # declare connectors
-    _streamer = Connector(name='streamer', interface='DataInStreamInterface')
+    _streamer = Connector(name='streamer', interface=DataInStreamInterface)
 
     # config options
     _max_frame_rate = ConfigOption('max_frame_rate', default=20, missing='warn')
