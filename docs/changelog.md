@@ -9,6 +9,7 @@
 ### Bugfixes
 
 ### New Features
+- Added Spectrum Instrumentation AD converter as fast counter hardware file
 
 ### Other
 
