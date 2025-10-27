@@ -29,6 +29,8 @@ from qudi.util.mutex import Mutex
 from qudi.core.module import Base
 from qtpy import QtCore
 
+from qudi.interface.pid_controller_interface import PIDControllerInterface
+
 
 class PIDLogic(Base):
     """ Logic module to monitor and control a PID process
@@ -46,7 +48,7 @@ class PIDLogic(Base):
     """
 
     # declare connectors
-    controller = Connector(interface='PIDControllerInterface')
+    controller = Connector(interface=PIDControllerInterface)
 
     # status vars
     buffer_length = StatusVar('buffer_length', 1000)

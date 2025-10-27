@@ -7,6 +7,7 @@
 - Dropped `Python 3.8` support
 
 ### Bugfixes
+- Fixed code suggestions for `Connector` objects
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
