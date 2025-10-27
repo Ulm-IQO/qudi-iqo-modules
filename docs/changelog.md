@@ -9,6 +9,7 @@
 ### Bugfixes
 
 ### New Features
+- Added workflows for verifying that new versions of dependencies do not break qudi
 
 ### Other
 
