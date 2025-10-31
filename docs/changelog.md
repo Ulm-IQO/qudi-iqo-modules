@@ -11,6 +11,7 @@
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
+- Added Spectrum Instrumentation AD converter as fast counter hardware file
 
 ### Other
 
