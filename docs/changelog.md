@@ -8,6 +8,7 @@
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
+- Fixed ``laser_logic`` to work with remote laser hardware
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
