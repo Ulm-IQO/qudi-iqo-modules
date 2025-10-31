@@ -15,6 +15,7 @@
 - Added workflows for verifying that new versions of dependencies do not break qudi
 
 ### Other
+- Removed deprecated python 3.8 version for the PR testing
 
 ## Version 0.6.0
 
