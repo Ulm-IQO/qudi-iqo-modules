@@ -15,6 +15,8 @@
 - Added workflows for verifying that new versions of dependencies do not break qudi
 
 ### Other
+- Fixed testing workflow by removing deprecated `python 3.8`
+- Configured Github Action bot as author for the testing branch commits
 
 ## Version 0.6.0
 
