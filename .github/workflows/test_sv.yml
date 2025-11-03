@@ -88,8 +88,8 @@ jobs:
 
     - name: Configure git
       run: |
-        git config --global user.name "astropiuu"
-        git config --global user.email "mohit.shah@uni-ulm.de"
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
     - name: Pip freeze on test success and commit latest deps
       if: success()
