@@ -29,6 +29,8 @@ from qudi.core.module import GuiBase
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
 from qudi.util.paths import get_artwork_dir
 
+from qudi.logic.laser_logic import LaserLogic
+
 from .laser_control_dockwidget import LaserControlDockWidget
 from .laser_plot_dockwidgets import LaserOutputDockWidget, LaserTemperatureDockWidget
 
@@ -152,7 +154,7 @@ class LaserGui(GuiBase):
     """
 
     # declare connectors
-    _laser_logic = Connector(name='laser_logic', interface='LaserLogic')
+    _laser_logic = Connector(name='laser_logic', interface=LaserLogic)
 
     sigLaserToggled = QtCore.Signal(bool)
     sigShutterToggled = QtCore.Signal(bool)

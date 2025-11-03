@@ -1,0 +1,106 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions and send a warning mail if any change in status variables breaks the tests
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Testing
+
+on:
+  push:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 0 * * 1'
+
+permissions:
+  contents: write
+
+concurrency:
+  group:  ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ['3.10']
+
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+          fetch-depth: 0
+          ref: ${{github.event.pull_request.head.ref}}
+          repository: ${{github.event.pull_request.head.repo.full_name}}
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: "pip"
+        cache-dependency-path: pyproject.toml
+
+    - name: Checkout qudi core
+      run: |
+        cd ..
+        git clone https://github.com/Ulm-IQO/qudi-core.git
+        cd qudi-core
+        python -m pip install --upgrade pip
+        pip install -e .
+        qudi-install-kernel
+        cd ../qudi-iqo-modules
+
+    - name: Install dependencies for iqo modules
+      run: |
+        pip install -e ".[dev-test]"
+
+    - name: Test with pytest
+      run: |
+         pytest tests\test_reset_status_var.py
+
+    - name: Switch to test branch
+      if: always()
+      run: |
+        git checkout workflow_save
+
+    - name: Compare status variables
+      if: always()
+      working-directory: workflow_utils
+      run: |
+       python compare_status_vars.py
+
+    - name: Upload status vars diff
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: status_vars_diff
+        path: workflow_utils/status_var_changes.txt
+
+    - name: send email in case of failure
+      if: failure()
+      working-directory: workflow_utils
+      run: |
+        python failure_email_sv.py -f -d status_var_changes.txt
+
+    - name: send email in case of changes but successful run
+      if: success()
+      working-directory: workflow_utils
+      run: |
+        python failure_email_sv.py -d status_var_changes.txt
+
+    - name: Configure git
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+    - name: Pip freeze on test success and commit latest deps
+      if: success()
+      run: |
+        cd workflow_utils
+        python save_status_vars.py
+        rm status_var_changes.txt
+        cd ..
+        git add *
+        git commit -m "updated saved sv to latest successful run"
+        git pull --rebase
+        git push --force-with-lease origin HEAD:workflow_save
+      env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

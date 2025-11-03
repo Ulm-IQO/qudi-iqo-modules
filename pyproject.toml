@@ -78,4 +78,20 @@ Changelog = "https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/docs/changelo
 version = {file = "VERSION"}
 
 [project.optional-dependencies]
-dev-test = ["pytest", "pytest-qt", "coverage"]
+dev-test = ["pytest", "pytest-qt==4.4.0", "coverage"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.format]
+quote-style = "preserve"
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint]
+ignore = [
+    "ERA001",  # Commented-out code
+    "SLF001",  # Private member accessed
+    "N803",  # Argument name should be lowercase
+    "N806",  # Variable in function should be lowercase
+    "C901",  # Init method too complex
+]

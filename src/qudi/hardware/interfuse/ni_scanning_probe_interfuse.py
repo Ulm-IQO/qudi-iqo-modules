@@ -29,6 +29,8 @@ from dataclasses import asdict
 from PySide2 import QtCore
 from PySide2.QtGui import QGuiApplication
 
+from qudi.interface.finite_sampling_io_interface import FiniteSamplingIOInterface
+from qudi.interface.process_control_interface import ProcessSetpointInterface
 from qudi.interface.scanning_probe_interface import ScanningProbeInterface, ScanConstraints, \
     ScannerAxis, ScannerChannel, ScanData, ScanSettings, CoordinateTransformMixin, BackScanCapability
 from qudi.core.configoption import ConfigOption
@@ -81,8 +83,8 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
             move_velocity: 400e-6 #m/s; This speed is used for scanner movements and avoids jumps from position to position.
             default_backward_resolution: 50
     """
-    _ni_finite_sampling_io = Connector(name='scan_hardware', interface='FiniteSamplingIOInterface')
-    _ni_ao = Connector(name='analog_output', interface='ProcessSetpointInterface')
+    _ni_finite_sampling_io = Connector(name='scan_hardware', interface=FiniteSamplingIOInterface)
+    _ni_ao = Connector(name='analog_output', interface=ProcessSetpointInterface)
 
     _ni_channel_mapping: Dict[str, str] = ConfigOption(name='ni_channel_mapping', missing='error')
     _position_ranges: Dict[str, List[float]] = ConfigOption(name='position_ranges', missing='error')
@@ -722,7 +724,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
     def _clip_ranges(self, settings: ScanSettings):
         valid_scan_grid = False
         i_trial, n_max_trials = 0, 25
-        
+
         while not valid_scan_grid and i_trial < n_max_trials:
             ranges = settings.range
             if i_trial > 0:
