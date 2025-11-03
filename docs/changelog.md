@@ -16,6 +16,8 @@
 
 ### Other
 - Removed deprecated python 3.8 version for the PR testing
+- Fixed testing workflow by removing deprecated `python 3.8`
+- Configured Github Action bot as author for the testing branch commits
 
 ## Version 0.6.0
 
