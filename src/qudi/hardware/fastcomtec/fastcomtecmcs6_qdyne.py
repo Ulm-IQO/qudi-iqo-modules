@@ -115,7 +115,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         super().__init__(*args, **kwargs)
 
         self._thread_lock = Mutex()
-        self._active_channels = tuple()
         self._binwidth = 3.2e-9
         # Todo: handle buffer size
         self._buffer_size = int(1e9)  # None
@@ -133,8 +132,10 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     def on_activate(self):
         self.dll = ctypes.windll.LoadLibrary(self._dll_path)
         #self.dll = self.pulsed_fastcounter().dll
-        if self._gated.value:
-            self.log.error("Gated mode is not yet implemented!")
+        if self.gated:
+            self.change_sweep_mode(gated=True)
+        else:
+            self.change_sweep_mode(gated=False)
 
         # Create constraints
         self._constraints = QdyneCounterConstraints(
@@ -168,11 +169,6 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
     def constraints(self) -> QdyneCounterConstraints:
         """Read-only property returning the constraints on the settings for this data streamer."""
         return self._constraints
-
-    @property
-    def active_channels(self) -> List[str]:
-        """Read-only property returning the currently configured active channel names"""
-        return list(self._active_channels)
 
     @property
     def counter_type(self) -> CounterType:
@@ -210,33 +206,44 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
 
     def configure(
             self,
-            active_channels: Sequence[str],
             bin_width: float,
             record_length: float,
             gate_mode: GateMode,
             data_type: type
     ) -> None:
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""
+        number_of_gates = 1
         with self._thread_lock:
             if self.module_state() == "locked":
                 raise RuntimeError(
                     "Unable to configure data stream while it is already running"
                 )
 
+            self.set_binwidth(bin_width)
+
+            if self.gated:
+                self.configure_gated_counter(bin_width, record_length,
+                                            cycles=number_of_gates, preset=1)
+            else:
+                no_of_bins = int((record_length - self._trigger_safety) / bin_width)
+                self.change_sweep_mode(False, cycles=None, preset=None)
+                self.set_length(no_of_bins)
+
+            self.set_cycles(number_of_gates)
+
+            return self.get_binwidth(), self.get_length() * self.get_binwidth(), number_of_gates
+
             # Cache current values to restore them if configuration fails
-            old_channels = self.active_channels
             old_binwidth = self.binwidth
             old_record_length = self.record_length
             old_gate_mode = self.gate_mode
             self.log.warning(['settings:', bin_width, record_length])
             try:
-                self._set_active_channels(active_channels)
                 self._binwidth = self.set_binwidth(bin_width)
                 self.change_sweep_mode(gated=False, cycles=None, preset=None)
                 no_of_bins = int((record_length - self._trigger_safety) / self.binwidth)
                 self._record_length = self.set_length(no_of_bins) * self._binwidth + self._trigger_safety
             except Exception as err:
-                self._set_active_channels(old_channels)
                 self._binwidth = self.set_binwidth(old_binwidth)
                 self.change_sweep_mode(old_gate_mode)
                 old_no_of_bins = int((old_record_length - self._trigger_safety) / self.binwidth)
@@ -245,17 +252,7 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
                     "Error while trying to configure data in-streamer"
                 ) from err
 
-        return self._active_channels, self._binwidth, self._record_length, self._gated, self._data_type
-
-    def _set_active_channels(self, channels: Sequence[str]) -> None:
-        if self._is_not_settable("active channels"):
-            return
-        if any(ch not in self._constraints.channel_units for ch in channels):
-            raise ValueError(
-                f"Invalid channel to stream from encountered {tuple(channels)}. \n"
-                f"Valid channels are: {tuple(self._constraints.channel_units)}"
-            )
-        self._active_channels = tuple(channels)
+        return self._binwidth, self._record_length, self._gated, self._data_type
 
     def _set_cycle_mode(self) -> None:
         if self._is_not_settable("streaming mode"):
@@ -363,6 +360,16 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
             "elapsed_time": None,
         }  # TODO : implement that according to hardware capabilities
         return new_data, info_dict
+
+    def get_binwidth(self):
+        """ Returns the width of a single timebin in the timetrace in seconds.
+
+        @return float: current length of a single bin in seconds (seconds/bin)
+
+        The red out bitshift will be converted to binwidth. The binwidth is
+        defined as 2**bitshift*minimal_binwidth.
+        """
+        return self._minimal_binwidth*(2**int(self.get_bitshift()))
 
     def get_bitshift(self):
         """Get bitshift from Fastcomtec.
@@ -553,6 +560,36 @@ class FastComtecQdyneCounter(QdyneCounterInterface):
         cmd = "swpreset={0}".format(preset)
         self.dll.RunCmd(0, bytes(cmd, "ascii"))
         return preset
+
+    def configure_gated_counter(self, bin_width_s, record_length_s, preset=None, cycles=None, sequences=None):
+        """ Configuration of the gated counter.
+
+        @param float bin_width_s: Length of a single time bin in the time trace
+                                  histogram in seconds.
+        @param float record_length_s: Total length of the timetrace/each single
+                                      gate in seconds.
+        @param int preset: optional, number of preset
+        @param int cycles: optional, number of cycles
+        @param int sequences: optional, number of sequences.
+
+        @return tuple(binwidth_s, no_of_bins, cycles, preset, sequences):
+                    binwidth_s: float the actual set binwidth in seconds
+                    no_of_bins: Length in bins
+                    cycles: Number of Cycles
+                    preset: Number of preset
+                    sequences: Number of sequences
+        """
+
+        self.set_binwidth(bin_width_s)
+        # Change to gated sweep mode
+        self.change_sweep_mode(True, cycles, preset)
+
+        no_of_bins = int((record_length_s + self.aom_delay) / bin_width_s)
+        self.set_length(no_of_bins)
+        if sequences is not None:
+            self.set_sequences(sequences)
+
+        return self.get_binwidth(), no_of_bins, self.get_cycles(), self.get_preset(), self.get_sequences()
 
     ################################ Methods for saving ################################
 
