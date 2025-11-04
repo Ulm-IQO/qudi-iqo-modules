@@ -61,7 +61,6 @@ class QdyneCounterDummy(QdyneCounterInterface):
         self._binwidth = 0.1
         self._block_size = 10
         self._record_length = 10
-        self._active_channels = ["channel_1"]
         self._gate_mode = GateMode(0)
         self._number_of_gates = 0
         self._constraints = QdyneCounterConstraints(
@@ -93,11 +92,6 @@ class QdyneCounterDummy(QdyneCounterInterface):
         """
         return self._constraints
 
-    @property
-    def active_channels(self) -> Sequence[str]:
-        """Read-only property returning the currently configured active channel names"""
-        return self._active_channels
-
     def counter_type(self) -> CounterType:
         """Read-only property returning the CounterType Enum"""
         return self._counter_type
@@ -124,7 +118,6 @@ class QdyneCounterDummy(QdyneCounterInterface):
 
     def configure(
         self,
-        active_channels: Sequence[str],
         bin_width: float,
         record_length: float,
         gate_mode: GateMode,
@@ -133,7 +126,6 @@ class QdyneCounterDummy(QdyneCounterInterface):
         """Configure a Qdyne counter. See read-only properties for information on each parameter."""
         self._binwidth = bin_width
         self._record_length = record_length
-        self._active_channels = active_channels
         if gate_mode != GateMode.UNGATED:
             self.log.error(
                 f"Cannot set gate mode {gate_mode}. "
@@ -144,7 +136,7 @@ class QdyneCounterDummy(QdyneCounterInterface):
             self._data_type = data_type
         else:
             self.log.error(f"Data type {data_type} is not a valid data type.")
-        return self._active_channels, self._binwidth, self._record_length, self._gate_mode, self._data_type
+        return self._binwidth, self._record_length, self._gate_mode, self._data_type
 
     def get_status(self) -> int:
         """Receives the current status of the hardware and outputs it as return value.

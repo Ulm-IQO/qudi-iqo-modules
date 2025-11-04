@@ -121,12 +121,6 @@ class QdyneCounterInterface(Base):
 
     @property
     @abstractmethod
-    def active_channels(self) -> List[str]:
-        """Read-only property returning the currently configured active channel names"""
-        pass
-
-    @property
-    @abstractmethod
     def counter_type(self) -> CounterType:
         """Read-only property returning the CounterType Enum"""
         pass
@@ -158,7 +152,6 @@ class QdyneCounterInterface(Base):
     @abstractmethod
     def configure(
         self,
-        active_channels: Sequence[str],
         bin_width: float,
         record_length: float,
         gate_mode: GateMode,

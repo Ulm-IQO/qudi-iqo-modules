@@ -58,7 +58,6 @@ class MeasurementGenerator:
 
         self._invoke_settings = False
 
-        self.__active_channels = self._data_streamer().active_channels
         self.__binwidth = self._data_streamer().binwidth
         self.__record_length = self._data_streamer().record_length
         self.__gate_mode = self._data_streamer().gate_mode
@@ -124,8 +123,6 @@ class MeasurementGenerator:
         if "record_length" in settings_dict:
             self.__record_length = float(settings_dict["record_length"])
             self._qdyne_logic.log.debug(['set count sett: rec len', self.__record_length])
-        if "active_channels" in settings_dict:
-            self.__active_channels = settings_dict["active_channels"]
         if "is_gated" in settings_dict:
             self.__gate_mode = GateMode(int(settings_dict["is_gated"]))
         if "data_type" in settings_dict:
@@ -138,12 +135,10 @@ class MeasurementGenerator:
             "number_of_gates": 0,
         }
 
-        (self.__active_channels,
-        self.__binwidth,
+        (self.__binwidth,
         self.__record_length,
         self.__gate_mode,
         self.__data_type) = self._data_streamer().configure(
-            self.__active_channels,
             self.__binwidth,
             self.__record_length,
             self.__gate_mode,
