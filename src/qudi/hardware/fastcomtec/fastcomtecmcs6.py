@@ -169,14 +169,12 @@ class FastComtec(FastCounterInterface):
         options:
             gated: False
             trigger_safety: 400e-9
-            aom_delay: 390e-9
             minimal_binwidth: 0.2e-9
 
     """
 
     gated = ConfigOption('gated', False, missing='warn')
     trigger_safety = ConfigOption('trigger_safety', 400e-9, missing='warn')
-    aom_delay = ConfigOption('aom_delay', 390e-9, missing='warn')
     minimal_binwidth = ConfigOption('minimal_binwidth', 0.2e-9, missing='warn')
     max_num_sequences = ConfigOption('max_num_sequences', int(2e9), missing='nothing')
 
@@ -627,7 +625,7 @@ class FastComtec(FastCounterInterface):
         # Change to gated sweep mode
         self.change_sweep_mode(True, cycles, preset)
 
-        no_of_bins = int((record_length_s + self.aom_delay) / bin_width_s)
+        no_of_bins = int(record_length_s / bin_width_s)
         self.set_length(no_of_bins)
         if sequences is not None:
             self.set_sequences(sequences)
