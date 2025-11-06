@@ -13,6 +13,7 @@
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
 - Added Spectrum Instrumentation AD converter as fast counter hardware file
 - Added workflows for verifying that new versions of dependencies do not break qudi
+- Added possibility to set sequences in the `FastComtecMCS6A` hardware file
 
 ### Other
 - Fixed testing workflow by removing deprecated `python 3.8`
