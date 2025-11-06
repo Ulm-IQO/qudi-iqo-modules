@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 - Dropped `Python 3.8` support
+- Removed unnecessary `aom_delay` `ConfigOption` from the `FastComtecMCS6A` hardware file
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
