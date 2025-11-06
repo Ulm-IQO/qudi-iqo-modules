@@ -2303,15 +2303,15 @@ class AWGM8195A(AWGM819X):
         if self._MODEL == 'M8195A':
             awg_mode = self.awg_mode
             if awg_mode == 'MARK':
-                activation_config['all'] = frozenset({'a_ch1', 'd_ch1', 'd_ch2'})
+                activation_config['all'] = set({'a_ch1', 'd_ch1', 'd_ch2'})
             elif awg_mode == 'SING':
-                activation_config['all'] = frozenset({'a_ch1'})
+                activation_config['all'] = set({'a_ch1'})
             elif awg_mode == 'DUAL':
-                activation_config['all'] = frozenset({'a_ch1', 'a_ch2'})
+                activation_config['all'] = set({'a_ch1', 'a_ch2'})
             elif awg_mode == 'FOUR':
-                activation_config['all'] = frozenset({'a_ch1', 'a_ch2', 'a_ch3', 'a_ch4'})
+                activation_config['all'] = set({'a_ch1', 'a_ch2', 'a_ch3', 'a_ch4'})
             elif awg_mode == 'DCM':
-                activation_config['all'] = frozenset({'a_ch1', 'a_ch2', 'd_ch1', 'd_ch2'})
+                activation_config['all'] = set({'a_ch1', 'a_ch2', 'd_ch1', 'd_ch2'})
 
         constraints.activation_config = activation_config
 
