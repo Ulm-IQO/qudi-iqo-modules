@@ -8,6 +8,7 @@
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
+- Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
