@@ -1334,8 +1334,8 @@ class AWGM819X(PulserInterface):
             self.write(':ROSC:SOUR INT')
         else:
             self._ext_ref_clock_freq = int(self._ext_ref_clock_freq)
-            self.write(':ROSC:SOUR EXT')
             self.write(f':ROSC:FREQ {self._ext_ref_clock_freq:d}')
+            self.write(':ROSC:SOUR EXT')
             self.log.debug(f"Setting to external ref clock with f= {self._ext_ref_clock_freq / 1e6} MHz")
 
     def send_trigger_event(self):
