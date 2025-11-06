@@ -178,6 +178,7 @@ class FastComtec(FastCounterInterface):
     trigger_safety = ConfigOption('trigger_safety', 400e-9, missing='warn')
     aom_delay = ConfigOption('aom_delay', 390e-9, missing='warn')
     minimal_binwidth = ConfigOption('minimal_binwidth', 0.2e-9, missing='warn')
+    max_num_sequences = ConfigOption('max_num_sequences', 2e9, missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -271,7 +272,7 @@ class FastComtec(FastCounterInterface):
         if self.gated:
             # sequential acquisition, new line on every "sync" trigger
             self.configure_gated_counter(bin_width_s, record_length_s,
-                                         cycles=number_of_gates, preset=1)
+                                         cycles=number_of_gates, preset=1, sequences=self.max_num_sequences)
         else:
             # one acquisition for all taus, one sync trigger per acquisition
             # subtract time to make sure no sequence trigger is missed
@@ -765,9 +766,13 @@ class FastComtec(FastCounterInterface):
         @return int mode: current cycles
         """
         # Check that no constraint is violated
-        cmd = 'sequences={0}'.format(sequences)
+        self.log.debug(f"set_sequences, {sequences=}")
+        cmd = 'sequences={0}'.format(int(sequences))
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
-        return sequences
+        actual_sequences = self.get_sequences()
+        if int(sequences) != actual_sequences:
+            self.log.error(f"Requested {int(sequences)} sequences but only {actual_sequences} were set. Try lowering the requested number of sequences.")
+        return actual_sequences
 
     def get_sequences(self):
         """ Gets the cycles
