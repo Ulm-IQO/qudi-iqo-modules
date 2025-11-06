@@ -178,7 +178,7 @@ class FastComtec(FastCounterInterface):
     trigger_safety = ConfigOption('trigger_safety', 400e-9, missing='warn')
     aom_delay = ConfigOption('aom_delay', 390e-9, missing='warn')
     minimal_binwidth = ConfigOption('minimal_binwidth', 0.2e-9, missing='warn')
-    max_num_sequences = ConfigOption('max_num_sequences', 2e9, missing='nothing')
+    max_num_sequences = ConfigOption('max_num_sequences', int(2e9), missing='nothing')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
