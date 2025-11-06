@@ -766,7 +766,6 @@ class FastComtec(FastCounterInterface):
         @return int mode: current cycles
         """
         # Check that no constraint is violated
-        self.log.debug(f"set_sequences, {sequences=}")
         cmd = 'sequences={0}'.format(int(sequences))
         self.dll.RunCmd(0, bytes(cmd, 'ascii'))
         actual_sequences = self.get_sequences()
