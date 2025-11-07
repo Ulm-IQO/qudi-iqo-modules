@@ -2,7 +2,7 @@ anyio==4.11.0
 argon2-cffi==25.1.0
 argon2-cffi-bindings==25.1.0
 arrow==1.4.0
-asteval==1.0.6
+asteval==1.0.7
 asttokens==3.0.0
 async-lru==2.0.5
 attrs==25.4.0
@@ -112,7 +112,7 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@5fd042a05bab09cb80971977069329ceda88fe39#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@ff90b854ecd6aab87c10d537fe14d9b3acbd3c1b#egg=qudi_iqo_modules
 reactivex==4.0.4
 referencing==0.37.0
 requests==2.32.5
