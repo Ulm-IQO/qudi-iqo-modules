@@ -9,7 +9,7 @@ attrs==25.4.0
 babel==2.17.0
 beautifulsoup4==4.14.2
 bleach==6.3.0
-certifi==2025.10.5
+certifi==2025.11.12
 cffi==2.0.0
 charset-normalizer==3.4.4
 click==8.3.0
@@ -99,7 +99,7 @@ Pygments==2.19.2
 pyparsing==3.2.5
 pyqtgraph==0.13.7
 PySide2==5.15.2.1
-pytest==9.0.0
+pytest==9.0.1
 pytest-qt==4.4.0
 python-dateutil==2.9.0.post0
 python-decouple==3.8
@@ -112,7 +112,7 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@69497569a8f8e84b74ce46c150742daea0586ac2#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@adaa883063ce74cc2d1512292240add0e5812f56#egg=qudi_iqo_modules
 reactivex==4.0.4
 referencing==0.37.0
 requests==2.32.5
