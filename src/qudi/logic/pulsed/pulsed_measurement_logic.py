@@ -1223,49 +1223,52 @@ class PulsedMeasurementLogic(LogicBase):
             calculates fluorescence signal and creates plots.
         """
         with self._threadlock:
-            if self.module_state() == 'locked':
-                # Update elapsed time
+            try:
+                if self.module_state() == 'locked':
+                    # Update elapsed time
 
-                self._extract_laser_pulses()
+                    self._extract_laser_pulses()
 
-                tmp_signal, tmp_error = self._analyze_laser_pulses()
+                    tmp_signal, tmp_error = self._analyze_laser_pulses()
 
-                # exclude laser pulses to ignore
-                if len(self._laser_ignore_list) > 0:
-                    # Convert relative negative indices into absolute positive indices
-                    while self._laser_ignore_list[0] < 0:
-                        neg_index = self._laser_ignore_list[0]
-                        self._laser_ignore_list[0] = len(tmp_signal) + neg_index
-                        self._laser_ignore_list.sort()
+                    # exclude laser pulses to ignore
+                    if len(self._laser_ignore_list) > 0:
+                        # Convert relative negative indices into absolute positive indices
+                        while self._laser_ignore_list[0] < 0:
+                            neg_index = self._laser_ignore_list[0]
+                            self._laser_ignore_list[0] = len(tmp_signal) + neg_index
+                            self._laser_ignore_list.sort()
 
-                    tmp_signal = np.delete(tmp_signal, self._laser_ignore_list)
-                    tmp_error = np.delete(tmp_error, self._laser_ignore_list)
+                        tmp_signal = np.delete(tmp_signal, self._laser_ignore_list)
+                        tmp_error = np.delete(tmp_error, self._laser_ignore_list)
 
-                # order data according to alternating flag
-                if self._alternating:
-                    if len(self.signal_data[0]) != len(tmp_signal[::2]):
-                        self.log.error('Length of controlled variable ({0}) does not match length of number of readout '
-                                       'pulses ({1}).'.format(len(self.signal_data[0]), len(tmp_signal[::2])))
-                        return
-                    self.signal_data[1] = tmp_signal[::2]
-                    self.signal_data[2] = tmp_signal[1::2]
-                    self.measurement_error[1] = tmp_error[::2]
-                    self.measurement_error[2] = tmp_error[1::2]
-                else:
-                    if len(self.signal_data[0]) != len(tmp_signal):
-                        self.log.error('Length of controlled variable ({0}) does not match length of number of readout '
-                                       'pulses ({1}).'.format(len(self.signal_data[0]), len(tmp_signal)))
-                        return
-                    self.signal_data[1] = tmp_signal
-                    self.measurement_error[1] = tmp_error
+                    # order data according to alternating flag
+                    if self._alternating:
+                        if len(self.signal_data[0]) != len(tmp_signal[::2]):
+                            self.log.error('Length of controlled variable ({0}) does not match length of number of readout '
+                                        'pulses ({1}).'.format(len(self.signal_data[0]), len(tmp_signal[::2])))
+                            return
+                        self.signal_data[1] = tmp_signal[::2]
+                        self.signal_data[2] = tmp_signal[1::2]
+                        self.measurement_error[1] = tmp_error[::2]
+                        self.measurement_error[2] = tmp_error[1::2]
+                    else:
+                        if len(self.signal_data[0]) != len(tmp_signal):
+                            self.log.error('Length of controlled variable ({0}) does not match length of number of readout '
+                                        'pulses ({1}).'.format(len(self.signal_data[0]), len(tmp_signal)))
+                            return
+                        self.signal_data[1] = tmp_signal
+                        self.measurement_error[1] = tmp_error
 
-                # Compute alternative data array from signal
-                self._compute_alt_data()
+                    # Compute alternative data array from signal
+                    self._compute_alt_data()
 
-            # emit signals
-            self.sigTimerUpdated.emit(self.__elapsed_time, self.__elapsed_sweeps,
-                                      self.__timer_interval)
-            self.sigMeasurementDataUpdated.emit()
+                # emit signals
+                self.sigTimerUpdated.emit(self.__elapsed_time, self.__elapsed_sweeps,
+                                        self.__timer_interval)
+                self.sigMeasurementDataUpdated.emit()
+            except Exception as e:
+                self.log.exception(e)
             return
 
     def _extract_laser_pulses(self):
