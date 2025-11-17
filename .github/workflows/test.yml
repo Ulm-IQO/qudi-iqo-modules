@@ -14,12 +14,25 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  make-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Python matrix from pyproject.toml
+        id: build
+        run: |
+          python .github/scripts/fetch_python_versions.py | jq .
+        shell: bash
+
   test:
+    needs: make-matrix
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.9", "3.10"]
+        python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
 
     steps:
     - uses: actions/checkout@v4
