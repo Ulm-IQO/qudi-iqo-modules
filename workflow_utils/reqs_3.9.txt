@@ -116,7 +116,7 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@2fcf2d3b3e8970783bbd1131f72b3971571814e7#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@4d2d2d19a0408235b86665ac5c67eaedbf8f59df#egg=qudi_iqo_modules
 reactivex==4.0.4
 referencing==0.36.2
 requests==2.32.5
@@ -126,7 +126,7 @@ rfc3987-syntax==1.1.0
 rpds-py==0.27.1
 rpyc==5.3.1
 ruamel.yaml==0.18.16
-ruamel.yaml.clib==0.2.14
+ruamel.yaml.clib==0.2.15
 scipy==1.13.1
 Send2Trash==1.8.3
 shiboken2==5.15.2.1
