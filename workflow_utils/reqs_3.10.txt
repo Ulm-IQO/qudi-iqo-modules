@@ -97,7 +97,7 @@ pure_eval==0.2.3
 pycparser==2.23
 Pygments==2.19.2
 pyparsing==3.2.5
-pyqtgraph==0.13.7
+pyqtgraph==0.14.0
 PySide2==5.15.2.1
 pytest==9.0.1
 pytest-qt==4.4.0
@@ -112,17 +112,17 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@cb2e2f934cd9ee4557f98f0d960014ae0f023ce4#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@22fcd2357c777b094c4243be146492361430d828#egg=qudi_iqo_modules
 reactivex==4.0.4
 referencing==0.37.0
 requests==2.32.5
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rfc3987-syntax==1.1.0
-rpds-py==0.28.0
+rpds-py==0.29.0
 rpyc==5.3.1
 ruamel.yaml==0.18.16
-ruamel.yaml.clib==0.2.14
+ruamel.yaml.clib==0.2.15
 scipy==1.15.3
 Send2Trash==1.8.3
 shiboken2==5.15.2.1
