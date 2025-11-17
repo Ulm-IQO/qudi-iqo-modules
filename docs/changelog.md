@@ -9,6 +9,8 @@
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
+- Fixed `FastComtecMCS6A` continue measurement
+- Fixed `FastComtecMCS6A.get_data_trace` after continuing a pulsed measurement by removing `timetrace_tmp`
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
@@ -19,6 +21,7 @@
 ### Other
 - Fixed testing workflow by removing deprecated `python 3.8`
 - Configured Github Action bot as author for the testing branch commits
+- Added try-except statement in `pulsed_measurement_logic._pulsed_analysis_loop` to notify user if errors occurred
 
 ## Version 0.6.0
 
