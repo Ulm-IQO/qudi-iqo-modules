@@ -343,12 +343,9 @@ class FastComtec(FastCounterInterface):
 
     def continue_measure(self):
         """Continue a paused measurement. """
-        if self.gated:
-            status = self.start_measure()
-        else:
-            status = self.dll.Continue(0)
-            while self.get_status() != 2:
-                time.sleep(0.05)
+        status = self.dll.Continue(0)
+        while self.get_status() != 2:
+            time.sleep(0.05)
         return status
 
 
