@@ -999,6 +999,11 @@ class PulsedMeasurementLogic(LogicBase):
         """
         Pauses the measurement
         """
+        try:
+            self._pulsed_analysis_loop()
+        except:
+            pass
+
         with self._threadlock:
             if self.module_state() == 'locked':
                 # pausing the timer
