@@ -4,13 +4,13 @@ argon2-cffi==25.1.0
 argon2-cffi-bindings==25.1.0
 arrow==1.4.0
 asteval==1.0.6
-asttokens==3.0.0
+asttokens==3.0.1
 async-lru==2.0.5
 attrs==25.4.0
 babel==2.17.0
 beautifulsoup4==4.14.2
 bleach==6.2.0
-certifi==2025.10.5
+certifi==2025.11.12
 cffi==2.0.0
 charset-normalizer==3.4.4
 click==8.1.8
@@ -116,7 +116,7 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@e27448ee80b31a07d7d197e7e2639c8667622ddd#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@4d2d2d19a0408235b86665ac5c67eaedbf8f59df#egg=qudi_iqo_modules
 reactivex==4.0.4
 referencing==0.36.2
 requests==2.32.5
@@ -126,7 +126,7 @@ rfc3987-syntax==1.1.0
 rpds-py==0.27.1
 rpyc==5.3.1
 ruamel.yaml==0.18.16
-ruamel.yaml.clib==0.2.14
+ruamel.yaml.clib==0.2.15
 scipy==1.13.1
 Send2Trash==1.8.3
 shiboken2==5.15.2.1
