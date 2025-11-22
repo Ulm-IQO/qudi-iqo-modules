@@ -152,6 +152,10 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
     def configure_backward_scan(self) -> bool:
         return self.configure_backward_scan_checkbox.isChecked()
 
+    @configure_backward_scan.setter
+    def configure_backward_scan(self, backward_on):
+        self.configure_backward_scan_checkbox.setChecked(backward_on)
+
     @property
     def axes(self):
         return tuple(self.axes_widgets)

@@ -1,0 +1,48 @@
+# This workflow will install Python dependencies, run tests and lint with a variety of Python versions
+# For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
+
+name: Testing
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10"]
+
+    steps:
+    - uses: actions/checkout@v4
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python-version }}
+        cache: "pip"
+        cache-dependency-path: pyproject.toml
+
+    - name: Checkout qudi core
+      run: |
+        cd ..
+        git clone https://github.com/Ulm-IQO/qudi-core.git
+        cd qudi-core
+        python -m pip install --upgrade pip
+        pip install -e ".[dev-test]"
+        cd ../qudi-iqo-modules
+
+    - name: Install dependencies iqo modules
+      run: |
+        pip install -e ".[dev-test]"
+    - name: Test with pytest
+      run: |
+        pytest -s
+ 

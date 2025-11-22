@@ -32,6 +32,8 @@ from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.paths import get_artwork_dir
 
+from qudi.logic.odmr_logic import OdmrLogic
+
 from .odmr_control_dockwidget import OdmrScanControlDockWidget, OdmrCwControlDockWidget
 from .odmr_fit_dockwidget import OdmrFitDockWidget
 from .odmr_main_window import OdmrMainWindow
@@ -51,7 +53,7 @@ class OdmrGui(GuiBase):
     """
 
     # declare connectors
-    _odmr_logic = Connector(name='odmr_logic', interface='OdmrLogic')
+    _odmr_logic = Connector(name='odmr_logic', interface=OdmrLogic)
 
     # declare status variables
     _max_shown_scans = StatusVar(name='max_shown_scans', default=50)
@@ -138,10 +140,12 @@ class OdmrGui(GuiBase):
         # Close dialogs and windows
         self._odmr_settings_dialog.close()
         self._fit_config_dialog.close()
+        self._save_window_geometry(self._mw)
         self._mw.close()
 
     def show(self):
         """Make window visible and put it above all other windows. """
+        self._restore_window_geometry(self._mw)
         self._mw.show()
         self._mw.activateWindow()
         self._mw.raise_()

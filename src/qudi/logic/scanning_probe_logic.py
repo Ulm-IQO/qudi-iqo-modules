@@ -19,6 +19,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
+
 from itertools import combinations
 from typing import Tuple, Sequence, Dict, Optional
 from uuid import UUID
@@ -36,6 +37,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.interface.scanning_probe_interface import ScanSettings, ScanConstraints, BackScanCapability, ScanData
 from qudi.util.linear_transform import find_changing_axes, LinearTransformation3D
 from qudi.util.linear_transform import compute_rotation_matrix_to_plane, compute_reduced_vectors
+from qudi.interface.scanning_probe_interface import ScanningProbeInterface
 
 
 class ScanningProbeLogic(LogicBase):
@@ -58,7 +60,7 @@ class ScanningProbeLogic(LogicBase):
     """
 
     # declare connectors
-    _scanner = Connector(name='scanner', interface='ScanningProbeInterface')
+    _scanner = Connector(name='scanner', interface=ScanningProbeInterface)
 
     # status vars
     _scan_ranges = StatusVar(name='scan_ranges', default=dict())
@@ -76,6 +78,7 @@ class ScanningProbeLogic(LogicBase):
     sigScanStateChanged = QtCore.Signal(bool, ScanData, ScanData, UUID)
     sigNewScanDataForHistory = QtCore.Signal(ScanData, ScanData)
     sigScannerTargetChanged = QtCore.Signal(dict, object)
+    sigScanSettingsChanged = QtCore.Signal()
     sigTiltCorrSettingsChanged = QtCore.Signal(dict)
 
     def __init__(self, *args, **kwargs):
@@ -93,8 +96,7 @@ class ScanningProbeLogic(LogicBase):
         self._tilt_corr_axes = []
 
     def on_activate(self):
-        """ Initialisation performed during activation of the module.
-        """
+        """Initialisation performed during activation of the module."""
         self._save_to_hist = True
 
         # check if scan settings in status variables are valid
@@ -124,8 +126,7 @@ class ScanningProbeLogic(LogicBase):
         self._scan_axes = OrderedDict(sorted(self._scanner().constraints.axes.items()))
 
     def on_deactivate(self):
-        """ Reverse steps of activation
-        """
+        """Reverse steps of activation"""
         self.__scan_poll_timer.stop()
         self.__scan_poll_timer.timeout.disconnect()
         if self.module_state() != 'idle':
@@ -182,7 +183,7 @@ class ScanningProbeLogic(LogicBase):
         """Resolution for the backwards scan of the fast axis."""
         with self._thread_lock:
             # use value of forward scan if not configured otherwise (merge dictionaries)
-            return {**self._scan_resolution, **self._back_scan_resolution}
+            return {**self._scan_resolution.copy(), **self._back_scan_resolution.copy()}
 
     @property
     def scan_frequency(self) -> Dict[str, float]:
@@ -193,7 +194,7 @@ class ScanningProbeLogic(LogicBase):
     def back_scan_frequency(self) -> Dict[str, float]:
         with self._thread_lock:
             # use value of forward scan if not configured otherwise (merge dictionaries)
-            return {**self._scan_frequency, **self._back_scan_frequency}
+            return {**self._scan_frequency.copy(), **self._back_scan_frequency.copy()}
 
     @property
     def use_back_scan_settings(self) -> bool:
@@ -203,6 +204,8 @@ class ScanningProbeLogic(LogicBase):
     def set_use_back_scan_settings(self, use: bool) -> None:
         with self._thread_lock:
             self._use_back_scan_settings = use
+
+            self.sigScanSettingsChanged.emit()
 
     @property
     def save_to_history(self) -> bool:
@@ -242,8 +245,56 @@ class ScanningProbeLogic(LogicBase):
                 frequency=self.back_scan_frequency[scan_axes[0]],
             )
 
+    def get_scan_settings_per_ax(self) -> Sequence[Tuple[ScanSettings, ScanSettings]]:
+        all_settings = []
+        for axes in self.scanner_axes:
+            settings = self.create_scan_settings(axes)
+            back_settings = self.create_back_scan_settings(axes)
+            all_settings.append((settings, back_settings))
+
+        return all_settings
+
+    def set_scan_settings(self, setting: ScanSettings) -> None:
+        """
+        Set scan settings for an axis all at once through object.
+        """
+
+        if len(setting.axes) != 1:
+            raise ValueError(f"Can only configure single axes, not {setting.axes}")
+
+        axis = setting.axes[0]
+
+        self.set_scan_range(axis, setting.range[0])
+        self.set_scan_resolution(axis, setting.resolution[0])
+        self.set_scan_frequency(axis, setting.frequency)
+
+    def set_back_scan_settings(self, setting: ScanSettings) -> None:
+        """
+        Set back scan settings for an axis all at once through object.
+        """
+
+        if len(setting.axes) != 1:
+            raise ValueError(f"Can only configure single axes, not {setting.axes}")
+
+        axis = setting.axes[0]
+
+        if not self.use_back_scan_settings:
+            self.set_use_back_scan_settings(True)
+            self.log.info(f"Tried to set a back scan setting without back scans turned on."
+                          f" Now use_back_scan_settings= {self.use_back_scan_settings}")
+
+        self.set_back_scan_resolution(axis, setting.resolution[0])
+        self.set_back_scan_frequency(axis, setting.frequency)
+
     def check_scan_settings(self):
         """Validate current scan settings for all possible 1D and 2D scans."""
+        for stg in [self.scan_ranges, self.scan_resolution, self.scan_frequency]:
+            axs = stg.keys()
+            for ax in axs:
+                if ax not in self.scanner_axes.keys():
+                    self.log.debug(f"Axis {ax} from scan settings not available on scanner" )
+                    raise ValueError
+
         for dim in [1, 2]:
             for axes in combinations(self.scanner_axes, dim):
                 settings = self.create_scan_settings(axes)
@@ -266,6 +317,8 @@ class ScanningProbeLogic(LogicBase):
                     self.log.error("Invalid scan range or axis name.", exc_info=e)
                     self._scan_ranges = old_scan_ranges
 
+                self.sigScanSettingsChanged.emit()
+
     def set_scan_resolution(self, axis: str, resolution: int) -> None:
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -280,6 +333,8 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid scan resolution or axis name.", exc_info=e)
                     self._scan_resolution = old_scan_resolution
+
+                self.sigScanSettingsChanged.emit()
 
     def set_back_scan_resolution(self, axis: str, resolution: int) -> None:
         with self._thread_lock:
@@ -301,6 +356,8 @@ class ScanningProbeLogic(LogicBase):
                     self.log.error("Invalid back scan resolution setting.", exc_info=e)
                     self._back_scan_resolution = old_back_scan_resolution
 
+                self.sigScanSettingsChanged.emit()
+
     def set_scan_frequency(self, axis: str, frequency: float) -> None:
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -315,6 +372,8 @@ class ScanningProbeLogic(LogicBase):
                 except Exception as e:
                     self.log.error("Invalid scan frequency or axis name.", exc_info=e)
                     self._scan_frequency = old_scan_frequency
+
+                self.sigScanSettingsChanged.emit()
 
     def set_back_scan_frequency(self, axis: str, frequency: float) -> None:
         with self._thread_lock:
@@ -336,6 +395,8 @@ class ScanningProbeLogic(LogicBase):
                     self.log.error("Invalid back scan frequency setting.", exc_info=e)
                     self._back_scan_frequency = old_back_scan_frequency
 
+                self.sigScanSettingsChanged.emit()
+
     def set_target_position(self, pos_dict, caller_id=None, move_blocking=False):
         with self._thread_lock:
             if self.module_state() != 'idle':
@@ -344,10 +405,10 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScannerTargetChanged.emit(new_pos, self.module_uuid)
                 return new_pos
 
-            #self.log.debug(f"Requested Set pos to= {pos_dict}")
+            # self.log.debug(f"Requested Set pos to= {pos_dict}")
             ax_constr = self.scanner_constraints.axes
             pos_dict = self._scanner()._expand_coordinate(cp.copy(pos_dict))
-            #self.log.debug(f"Expand to= {pos_dict}")
+            # self.log.debug(f"Expand to= {pos_dict}")
 
             pos_dict = self._scanner().coordinate_transform(pos_dict)
 
@@ -360,30 +421,29 @@ class ScanningProbeLogic(LogicBase):
 
                 pos_dict[ax] = ax_constr[ax].position.clip(pos)
                 if pos != pos_dict[ax]:
-                    self.log.warning(f'Scanner position target value {pos:.3e} out of bounds for axis "{ax}". '
-                                     f'Clipping value to {pos_dict[ax]:.3e}.')
+                    self.log.warning(
+                        f'Scanner position target value {pos:.3e} out of bounds for axis "{ax}". '
+                        f'Clipping value to {pos_dict[ax]:.3e}.'
+                    )
 
             # move_absolute expects untransformed coordinatess, so invert clipped pos
             pos_dict = self._scanner().coordinate_transform(pos_dict, inverse=True)
-            #self.log.debug(f"In front of hw.move_abs {pos_dict}")
+            # self.log.debug(f"In front of hw.move_abs {pos_dict}")
             new_pos = self._scanner().move_absolute(pos_dict, blocking=move_blocking)
-            #self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
+            # self.log.debug(f"Set pos to= {pos_dict} => new pos {new_pos}. Bare {self._scanner()._get_position_bare()}")
             if any(pos != new_pos[ax] for ax, pos in pos_dict.items()):
                 caller_id = None
-            #self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
-            self.sigScannerTargetChanged.emit(new_pos,
-                self.module_uuid if caller_id is None else caller_id)
+            # self.log.debug(f"Logic set target with id {caller_id} to new: {new_pos}")
+            self.sigScannerTargetChanged.emit(new_pos, self.module_uuid if caller_id is None else caller_id)
             return new_pos
 
     def toggle_scan(self, start, scan_axes, caller_id=None):
-        with self._thread_lock:
-            if start:
-                self.start_scan(scan_axes, caller_id)
-            else:
-                self.stop_scan()
+        if start:
+            self.start_scan(scan_axes, caller_id)
+        else:
+            self.stop_scan()
 
     def toggle_tilt_correction(self, enable=True):
-
         target_pos = self._scanner().get_target()
         is_enabled = self._scanner().coordinate_transform_enabled
 
@@ -431,15 +491,17 @@ class ScanningProbeLogic(LogicBase):
         else:
             red_support_vecs = np.vstack([support_vecs_arr, shift_vec_arr])
             red_vecs = compute_reduced_vectors(red_support_vecs)
-            red_support_vecs = red_vecs[:-1,:]
-            shift_vec_arr = red_vecs[-1,:]
+            red_support_vecs = red_vecs[:-1, :]
+            shift_vec_arr = red_vecs[-1, :]
 
         tilt_axes = find_changing_axes(support_vecs_arr)
 
-        if red_support_vecs.shape != (3,3) or shift_vec_arr.shape[0] != 3:
+        if red_support_vecs.shape != (3, 3) or shift_vec_arr.shape[0] != 3:
             n_dim = support_vecs_arr.shape[1]
-            raise ValueError(f"Can't calculate tilt in >3 dimensions. "
-                             f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. ")
+            raise ValueError(
+                f"Can't calculate tilt in >3 dimensions. "
+                f"Given support vectors (dim= {n_dim}) must be constant in exactly {n_dim-3} dims. "
+            )
 
         rot_mat = compute_rotation_matrix_to_plane(red_support_vecs[0], red_support_vecs[1], red_support_vecs[2])
         shift = shift_vec_arr
@@ -447,7 +509,7 @@ class ScanningProbeLogic(LogicBase):
         # shift coord system to origin, rotate and shift shift back according to LT(x) = (R+s)*x - R*s
         lin_transform = LinearTransformation3D()
         shift_vec_transform = LinearTransformation3D()
-        
+
         lin_transform.add_rotation(rot_mat)
         lin_transform.translate(shift[0], shift[1], shift[2])
 
@@ -458,15 +520,17 @@ class ScanningProbeLogic(LogicBase):
 
         self._tilt_corr_transform = lin_transform
         self._tilt_corr_axes = [el for idx, el in enumerate(self._scan_axes) if tilt_axes[idx]]
-        self._tilt_corr_settings = {'auto_origin': auto_origin,
-                                    'vec_1': support_vecs[0],
-                                    'vec_2': support_vecs[1],
-                                    'vec_3': support_vecs[2],
-                                    'vec_shift': shift_vec}
+        self._tilt_corr_settings = {
+            'auto_origin': auto_origin,
+            'vec_1': support_vecs[0],
+            'vec_2': support_vecs[1],
+            'vec_3': support_vecs[2],
+            'vec_shift': shift_vec,
+        }
 
-        #self.log.debug(f"Shift vec {shift}, shift back {shift_back}")
-        #self.log.debug(f"Matrix: {lin_transform.matrix}")
-        #self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
+        # self.log.debug(f"Shift vec {shift}, shift back {shift_back}")
+        # self.log.debug(f"Matrix: {lin_transform.matrix}")
+        # self.log.debug(f"Configured tilt corr: {support_vecs}, {shift_vec}")
 
         self.sigTiltCorrSettingsChanged.emit(self._tilt_corr_settings)
 
@@ -529,13 +593,14 @@ class ScanningProbeLogic(LogicBase):
                 self.sigScanStateChanged.emit(False, None, None, self._curr_caller_id)
                 self.log.error('Could not set scan settings on scanning probe hardware.', exc_info=e)
                 return
-            self.log.debug('Successfully configured scanner.')
 
             # Calculate poll time to check for scan completion. Use line scan time estimate.
             line_points = self._scan_resolution[scan_axes[0]] if len(scan_axes) > 1 else 1
-            self.__scan_poll_interval = max(self._min_poll_interval,
-                                            line_points / self._scan_frequency[scan_axes[0]])
-            self.__scan_poll_timer.setInterval(int(round(self.__scan_poll_interval * 1000)))
+            self.__scan_poll_interval = max(self._min_poll_interval, line_points / self._scan_frequency[scan_axes[0]])
+            t_poll_ms = max(1, int(round(self.__scan_poll_interval * 1000)))
+
+            self.log.debug(f'Successfully configured scanner and logic scan poll timer: {t_poll_ms} ms')
+            self.__scan_poll_timer.setInterval(t_poll_ms)
 
             try:
                 self._scanner().start_scan()
@@ -545,8 +610,9 @@ class ScanningProbeLogic(LogicBase):
                 self.log.error("Couldn't start scan.", exc_info=e)
 
             self.sigScanStateChanged.emit(True, self.scan_data, self.back_scan_data, self._curr_caller_id)
-            self.__start_timer()
-            return
+
+        self.__start_timer()
+
 
     def stop_scan(self):
         with self._thread_lock:
@@ -599,18 +665,24 @@ class ScanningProbeLogic(LogicBase):
         return self.scan_ranges
 
     def __start_timer(self):
+        """
+        Offload __scan_poll_timer.start() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
-                                            'start',
-                                            QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.start()
 
     def __stop_timer(self):
+        """
+        Offload __scan_poll_timer.stop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer,
-                                            'stop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.stop()
 
@@ -623,7 +695,7 @@ class ScanningProbeLogic(LogicBase):
         :return:
         """
 
-        coord_reduced = {key:val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}
+        coord_reduced = {key: val for key, val in list(coord.items())[:3] if key in self._tilt_corr_axes}
         coord_reduced = OrderedDict(sorted(coord_reduced.items()))
 
         # convert from coordinate dict to plain vector

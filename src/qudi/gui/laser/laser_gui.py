@@ -29,6 +29,8 @@ from qudi.core.module import GuiBase
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
 from qudi.util.paths import get_artwork_dir
 
+from qudi.logic.laser_logic import LaserLogic
+
 from .laser_control_dockwidget import LaserControlDockWidget
 from .laser_plot_dockwidgets import LaserOutputDockWidget, LaserTemperatureDockWidget
 
@@ -152,7 +154,7 @@ class LaserGui(GuiBase):
     """
 
     # declare connectors
-    _laser_logic = Connector(name='laser_logic', interface='LaserLogic')
+    _laser_logic = Connector(name='laser_logic', interface=LaserLogic)
 
     sigLaserToggled = QtCore.Signal(bool)
     sigShutterToggled = QtCore.Signal(bool)
@@ -279,6 +281,11 @@ class LaserGui(GuiBase):
         """ Deactivate the module properly.
         """
         self._mw.close()
+        self.output_graph_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_output_graph.triggered[bool].disconnect()
+        self.temperature_graph_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_temperature_graph.triggered[bool].disconnect()
+
         # disconnect all signals
         logic = self._laser_logic()
         logic.sigPowerSetpointChanged.disconnect(self._power_setpoint_updated)
@@ -287,6 +294,9 @@ class LaserGui(GuiBase):
         logic.sigLaserStateChanged.disconnect(self._laser_state_updated)
         logic.sigShutterStateChanged.disconnect(self._shutter_state_updated)
         logic.sigDataChanged.disconnect(self._data_updated)
+
+        self.control_dock_widget.visibilityChanged.disconnect()
+        self._mw.action_view_controls.triggered.disconnect()
         self.control_dock_widget.laser_button.clicked[bool].disconnect()
         self.control_dock_widget.shutter_button.clicked[bool].disconnect()
         self.control_dock_widget.sigControlModeChanged.disconnect()

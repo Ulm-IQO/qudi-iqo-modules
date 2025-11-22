@@ -28,7 +28,7 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
-from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState
+from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState, SimpleLaserInterface
 
 
 class LaserLogic(LogicBase):
@@ -42,7 +42,7 @@ class LaserLogic(LogicBase):
             laser: laser_hardware
     """
 
-    _laser = Connector(name='laser', interface='SimpleLaserInterface')
+    _laser = Connector(name='laser', interface=SimpleLaserInterface)
 
     # waiting time between queries im seconds
     _query_interval = ConfigOption(name='query_interval', default=0.2)
@@ -263,7 +263,11 @@ class LaserLogic(LogicBase):
 
     @QtCore.Slot()
     def start_query_loop(self):
-        """ Start the readout loop. """
+        """ Start the readout loop.
+        Offload self.start_query_loop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'start_query_loop',
@@ -277,7 +281,11 @@ class LaserLogic(LogicBase):
 
     @QtCore.Slot()
     def stop_query_loop(self):
-        """ Stop the readout loop. """
+        """ Stop the readout loop.
+        Offload self.stop_query_loop() from the caller to the module's thread.
+        ATTENTION: Do not call this from within thread lock protected code to avoid deadlock (PR #178).
+        :return:
+        """
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'stop_query_loop',
