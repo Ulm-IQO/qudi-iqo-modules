@@ -51,7 +51,7 @@ classifiers = [
 
     "Topic :: Scientific/Engineering",
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 # Dependencies with omitted version numbers get a fixed version from qudi-core
 dependencies = [
     'qudi-core>=1.6.0',
