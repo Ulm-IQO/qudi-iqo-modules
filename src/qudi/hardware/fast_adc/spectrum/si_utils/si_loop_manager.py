@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import time
 from qudi.util.mutex import Mutex
-from PySide2.QtCore import QThread
+from PySide6.QtCore import QThread
 
 
 class LoopManager(QThread):
