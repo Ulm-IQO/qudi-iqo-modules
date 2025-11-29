@@ -1,7 +1,7 @@
 # This workflow will check for updates in Python dependencies, run tests and lint with a variety of Python versions and send a warning mail if something breaks
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: Testing
+name: Testing Dependencies
 
 on:
   push:
@@ -17,10 +17,26 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  make-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Python matrix from pyproject.toml
+        id: build
+        run: |
+          python .github/scripts/fetch_python_versions.py | jq .
+        shell: bash
+
   check-package-updates:
+    needs: make-matrix
     runs-on: ubuntu-latest
     outputs:
       updates-available: ${{ steps.check-updates.outputs.updates-available }}
+    strategy:
+      matrix:
+        python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
     steps:
     - uses: actions/checkout@v4
       with:
@@ -30,7 +46,7 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
-          python-version: '3.10'
+          python-version: ${{ matrix.python-version }}
 
     - name: Install script dependencies
       run:
@@ -41,16 +57,17 @@ jobs:
       id: check-updates
       run: |
         git checkout workflow_save
-        python workflow_utils/check_updates.py
+        python workflow_utils/check_updates.py -v ${{ matrix.python-version }}
+
   test:
-    needs: check-package-updates
+    needs: [make-matrix, check-package-updates]
     if: ${{ needs.check-package-updates.outputs.updates-available == 'true' }}
     runs-on: windows-latest
     strategy:
       fail-fast: false
       max-parallel: 1
       matrix:
-        python-version: ['3.9', '3.10']
+        python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
 
 
     steps:
@@ -62,7 +79,7 @@ jobs:
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v5
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version:  ${{ matrix.python-version }}
         cache: "pip"
         cache-dependency-path: pyproject.toml
 
