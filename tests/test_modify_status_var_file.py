@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This test modifies all status variables via file and then runs all the modules through a remote connection
+This test modifies all status variables via file and then runs all the modules 
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -30,11 +30,11 @@ from qudi.util.paths import get_module_app_data_path
 
 
 @pytest.fixture
-def module_manager(remote_instance):
+def module_manager(qudi_client):
     """ 
-    Fixture for module manager of qudi remote instance 
+    Fixture for module manager of qudi instance 
     """
-    return remote_instance.module_manager
+    return qudi_client.module_manager
 
 def generate_random_value(var):
     """
