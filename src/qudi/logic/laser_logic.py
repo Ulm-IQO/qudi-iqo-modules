@@ -271,7 +271,7 @@ class LaserLogic(LogicBase):
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'start_query_loop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+                                            QtCore.Qt.ConnectionType.BlockingQueuedConnection)
             return
 
         with self._thread_lock:
@@ -289,7 +289,7 @@ class LaserLogic(LogicBase):
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'stop_query_loop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+                                            QtCore.Qt.ConnectionType.BlockingQueuedConnection)
             return
 
         with self._thread_lock:

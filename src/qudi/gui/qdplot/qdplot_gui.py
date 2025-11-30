@@ -142,7 +142,7 @@ class QDPlotterGui(GuiBase):
         self.sigAutoRangeClicked.connect(logic.set_auto_limits, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigDoFit.connect(logic.do_fit, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigRemovePlotClicked.connect(logic.remove_plot, QtCore.Qt.ConnectionType.QueuedConnection)
-        self.sigSaveData.connect(logic.save_data, QtCore.Qt.BlockingQueuedConnection)
+        self.sigSaveData.connect(logic.save_data, QtCore.Qt.ConnectionType.BlockingQueuedConnection)
 
         # Connect signals from logic
         logic.sigPlotDataChanged.connect(self._update_data, QtCore.Qt.ConnectionType.QueuedConnection)
@@ -255,7 +255,7 @@ class QDPlotterGui(GuiBase):
             widget.toggle_editor(False)
             dockwidget.show()
             dockwidget.setFloating(False)
-            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+            self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, dockwidget)
         self._mw.resizeDocks(self._plot_dockwidgets,
                              [1] * len(self._plot_dockwidgets),
                              QtCore.Qt.Orientation.Horizontal)
@@ -272,15 +272,15 @@ class QDPlotterGui(GuiBase):
             dockwidget.setFloating(False)
             mod = ii % 3
             if mod == 0:
-                self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+                self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, dockwidget)
                 if ii > 2:
                     self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
             elif mod == 1:
-                self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dockwidget)
+                self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, dockwidget)
                 if ii > 2:
                     self._mw.tabifyDockWidget(self._plot_dockwidgets[1], dockwidget)
             elif mod == 2:
-                self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dockwidget)
+                self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, dockwidget)
                 if ii > 2:
                     self._mw.tabifyDockWidget(self._plot_dockwidgets[2], dockwidget)
         try:
@@ -300,7 +300,7 @@ class QDPlotterGui(GuiBase):
             widget.toggle_editor(False)
             dockwidget.show()
             dockwidget.setFloating(False)
-            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+            self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, dockwidget)
             if ii > 0:
                 self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
         try:

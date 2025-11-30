@@ -60,7 +60,7 @@ class CameraMainWindow(QtWidgets.QMainWindow):
 
         # Create toolbar
         toolbar = QtWidgets.QToolBar()
-        toolbar.setAllowedAreas(QtCore.Qt.AllToolBarAreas)
+        toolbar.setAllowedAreas(QtCore.Qt.ToolBarArea.AllToolBarAreas)
         self.action_start_video = QtGui.QAction('Start Video')
         self.action_start_video.setCheckable(True)
         toolbar.addAction(self.action_start_video)

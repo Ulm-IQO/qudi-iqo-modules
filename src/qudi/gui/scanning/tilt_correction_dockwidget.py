@@ -70,7 +70,7 @@ class TiltCorrectionDockWidget(QDockWidget):
         self.auto_origin_switch = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
         self.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.auto_origin_changed,
                                                                     QtCore.Qt.ConnectionType.QueuedConnection)
-        self.auto_origin_switch.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+        self.auto_origin_switch.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
         self.auto_origin_switch.setToolTip("Automatically determine the rotation origin to be"
                                            " in the plane of the support vectors. If turned off, set manually.")
         dock_widget_layout.addWidget(self.auto_origin_switch, 4, 1)

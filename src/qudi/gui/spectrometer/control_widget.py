@@ -54,8 +54,8 @@ class SpectrometerControlWidget(QtWidgets.QWidget):
         self.save_spectrum_button.setToolButtonStyle(
             QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon
         )
-        self.save_spectrum_button.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
-                                                QtWidgets.QSizePolicy.Fixed)
+        self.save_spectrum_button.setSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum,
+                                                QtWidgets.QSizePolicy.Policy.Fixed)
         main_layout.addWidget(self.save_spectrum_button, 0, 2)
 
         self.background_button = QtWidgets.QPushButton('Acquire Background')
@@ -66,8 +66,8 @@ class SpectrometerControlWidget(QtWidgets.QWidget):
         self.save_background_button.setToolButtonStyle(
             QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon
         )
-        self.save_background_button.setSizePolicy(QtWidgets.QSizePolicy.Minimum,
-                                                  QtWidgets.QSizePolicy.Fixed)
+        self.save_background_button.setSizePolicy(QtWidgets.QSizePolicy.Policy.Minimum,
+                                                  QtWidgets.QSizePolicy.Policy.Fixed)
         main_layout.addWidget(self.save_background_button, 1, 2)
 
         self.progress_bar = QtWidgets.QProgressBar()
@@ -77,7 +77,7 @@ class SpectrometerControlWidget(QtWidgets.QWidget):
 
         # Add separator
         separator = QtWidgets.QFrame()
-        separator.setFrameShape(QtWidgets.QFrame.VLine)
+        separator.setFrameShape(QtWidgets.QFrame.Shape.VLine)
         separator.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         main_layout.addWidget(separator, 0, 3, 3, 1)
 

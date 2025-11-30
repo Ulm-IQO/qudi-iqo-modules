@@ -73,7 +73,7 @@ class SpectrometerDataWidget(QtWidgets.QWidget):
         target_layout.addWidget(self.target_x, 0, 1)
         self.target_y = ScienDSpinBox()
         self.target_y.setReadOnly(True)
-        self.target_y.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+        self.target_y.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.target_y.setDecimals(6, dynamic_precision=False)
         self.target_y.setMinimumWidth(100)
         target_layout.addWidget(self.target_y, 1, 1)

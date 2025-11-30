@@ -52,7 +52,7 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         # self.setStyleSheet('border: 1px solid #f00;')  # debugging help for the gui
         self.setWindowTitle('qudi: Spectrometer')
         self.setDockNestingEnabled(True)
-        self.setTabPosition(QtCore.Qt.AllDockWidgetAreas, QtWidgets.QTabWidget.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.AllDockWidgetAreas, QtWidgets.QTabWidget.TabPosition.North)
         icon_path = os.path.join(get_artwork_dir(), 'icons')
 
         # Create control central widget
@@ -142,4 +142,4 @@ class SpectrometerMainWindow(QtWidgets.QMainWindow):
         if not self.action_show_data.isChecked():
             self.data_dockwidget.show()
         self.data_dockwidget.setFloating(False)
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.data_dockwidget)
+        self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.data_dockwidget)

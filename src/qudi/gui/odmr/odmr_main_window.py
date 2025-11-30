@@ -101,8 +101,8 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
 
         # Create QLineEdit for save tag
         self.save_nametag_lineedit = QtWidgets.QLineEdit()
-        self.save_nametag_lineedit.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                                 QtWidgets.QSizePolicy.Fixed)
+        self.save_nametag_lineedit.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                                 QtWidgets.QSizePolicy.Policy.Fixed)
         self.save_nametag_lineedit.setMinimumWidth(
             QtGui.QFontMetrics(ScienDSpinBox().font()).width(75 * ' ')  # roughly 75 chars shown
         )
@@ -118,7 +118,7 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         toolbar.addSeparator()
         tool_button = QtWidgets.QToolButton()
         tool_button.setDefaultAction(self.action_toggle_cw)
-        tool_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        tool_button.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         toolbar.addWidget(tool_button)
         self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, toolbar)
 
@@ -174,16 +174,16 @@ class OdmrStatusBar(QtWidgets.QStatusBar):
         self.elapsed_sweeps_spinbox.setSpecialValueText('NaN')
         self.elapsed_sweeps_spinbox.setValue(-1)
         self.elapsed_sweeps_spinbox.setReadOnly(True)
-        self.elapsed_sweeps_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-        self.elapsed_sweeps_spinbox.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.elapsed_sweeps_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.elapsed_sweeps_spinbox.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         layout.addWidget(self.elapsed_sweeps_spinbox)
         label = QtWidgets.QLabel('Elapsed Time:')
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label)
         self.elapsed_time_lineedit = QtWidgets.QLineEdit('0:00:00')
-        self.elapsed_time_lineedit.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
+        self.elapsed_time_lineedit.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.elapsed_time_lineedit.setReadOnly(True)
         self.elapsed_time_lineedit.setMinimumWidth(min_widget_width)
-        self.elapsed_time_lineedit.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.elapsed_time_lineedit.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         layout.addWidget(self.elapsed_time_lineedit)
         self.addPermanentWidget(widget, 1)

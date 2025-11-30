@@ -136,7 +136,7 @@ class NVCalculatorGui(GuiBase):
         return
 
     def update_source(self, index):
-        self._mw.fit_source_comboBox.itemData(index, QtCore.Qt.UserRole)
+        self._mw.fit_source_comboBox.itemData(index, QtCore.Qt.ItemDataRole.UserRole)
         self.calculator.set_data_source(index)
         return
 

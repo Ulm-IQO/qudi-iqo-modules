@@ -36,10 +36,10 @@ class QDPlotMainWindow(QtWidgets.QMainWindow):
 
         self.setWindowTitle('qudi: QD Plotter')
 
-        self.setTabPosition(QtCore.Qt.TopDockWidgetArea, QtWidgets.QTabWidget.North)
-        self.setTabPosition(QtCore.Qt.BottomDockWidgetArea, QtWidgets.QTabWidget.North)
-        self.setTabPosition(QtCore.Qt.LeftDockWidgetArea, QtWidgets.QTabWidget.North)
-        self.setTabPosition(QtCore.Qt.RightDockWidgetArea, QtWidgets.QTabWidget.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, QtWidgets.QTabWidget.TabPosition.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, QtWidgets.QTabWidget.TabPosition.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, QtWidgets.QTabWidget.TabPosition.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, QtWidgets.QTabWidget.TabPosition.North)
 
         # Create QActions
         icon_path = os.path.join(get_artwork_dir(), 'icons')

@@ -792,7 +792,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'start', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self.__update_timer.start()
 
@@ -803,7 +803,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
 

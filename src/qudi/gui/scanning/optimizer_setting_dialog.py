@@ -63,7 +63,7 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.settings_widget)
         layout.addWidget(self.button_box)
-        layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
+        layout.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetFixedSize)
         self.setLayout(layout)
 
     @property
@@ -189,11 +189,11 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
 
         # scan settings
         label_opt_seq = QtWidgets.QLabel('Sequence:')
-        label_opt_seq.setAlignment(QtCore.Qt.AlignLeft)
+        label_opt_seq.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         label_opt_seq.setFont(font)
 
         label_opt_seq_dim = QtWidgets.QLabel('Sequence Dimension:')
-        label_opt_seq_dim.setAlignment(QtCore.Qt.AlignLeft)
+        label_opt_seq_dim.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
         label_opt_seq_dim.setFont(font)
 
         self.axes_widget = OptimizerAxesWidget(scanner_axes=scanner_axes, back_scan_capability=back_scan_capability)
@@ -316,7 +316,7 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
         ):
             label = QtWidgets.QLabel(label_text)
             label.setFont(font)
-            label.setAlignment(QtCore.Qt.AlignCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(label, 0, i + 1)
             if (
                 '=' in label_text or 'Back' in label_text
@@ -356,8 +356,8 @@ class OptimizerAxesWidget(QtWidgets.QWidget):
 
             # same for every spinbox
             for spinbox in self.axes_widgets[ax_name].values():
-                spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-                spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+                spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+                spinbox.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)
 
             # checkbox for having back settings equal to forward settings
             for setting in ['res', 'freq']:

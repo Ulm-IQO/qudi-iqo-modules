@@ -39,18 +39,18 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
     sigColumnWidthChanged = QtCore.Signal(int, int)
 
     # User defined roles for model data access
-    lengthRole = QtCore.Qt.UserRole + 1
-    incrementRole = QtCore.Qt.UserRole + 2
-    laserRole = QtCore.Qt.UserRole + 3
-    digitalStateRole = QtCore.Qt.UserRole + 4
-    analogFunctionRole = QtCore.Qt.UserRole + 5
-    analogShapeRole = QtCore.Qt.UserRole + 6
-    analogParameterRole = QtCore.Qt.UserRole + 7
-    analogChannelSetRole = QtCore.Qt.UserRole + 8
-    digitalChannelSetRole = QtCore.Qt.UserRole + 9
-    channelSetRole = QtCore.Qt.UserRole + 10
-    blockElementRole = QtCore.Qt.UserRole + 11
-    pulseBlockRole = QtCore.Qt.UserRole + 12
+    lengthRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    incrementRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    laserRole = QtCore.Qt.ItemDataRole.UserRole + 3
+    digitalStateRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    analogFunctionRole = QtCore.Qt.ItemDataRole.UserRole + 5
+    analogShapeRole = QtCore.Qt.ItemDataRole.UserRole + 6
+    analogParameterRole = QtCore.Qt.ItemDataRole.UserRole + 7
+    analogChannelSetRole = QtCore.Qt.ItemDataRole.UserRole + 8
+    digitalChannelSetRole = QtCore.Qt.ItemDataRole.UserRole + 9
+    channelSetRole = QtCore.Qt.ItemDataRole.UserRole + 10
+    blockElementRole = QtCore.Qt.ItemDataRole.UserRole + 11
+    pulseBlockRole = QtCore.Qt.ItemDataRole.UserRole + 12
 
     def __init__(self):
         super().__init__()
@@ -350,7 +350,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
         if orientation == QtCore.Qt.Orientation.Horizontal:
             # if role == QtCore.Qt.BackgroundRole:
             #     return QVariant(QBrush(QColor(Qt::green), Qt::SolidPattern))
-            if role == QtCore.Qt.SizeHintRole:
+            if role == QtCore.Qt.ItemDataRole.SizeHintRole:
                 if section < len(self._col_widths):
                     return QtCore.QSize(self._col_widths[section], 40)
 
@@ -366,7 +366,7 @@ class BlockEditorTableModel(QtCore.QAbstractTableModel):
         return super().headerData(section, orientation, role)
 
     def flags(self, index):
-        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
+        return QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
 
     def insertRows(self, row, count, parent=None):
         """
@@ -452,16 +452,16 @@ class BlockEditor(QtWidgets.QTableView):
         self.model().sigColumnWidthChanged.connect(self.setColumnWidth)
 
         # Set header sizes
-        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Fixed)
         # self.horizontalHeader().setStyleSheet('QHeaderView { font-weight: 400; }')
-        self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.verticalHeader().setDefaultSectionSize(50)
 
         # Set item selection and editing behaviour
         self.setEditTriggers(
-            QtWidgets.QAbstractItemView.CurrentChanged | QtWidgets.QAbstractItemView.SelectedClicked)
-        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+            QtWidgets.QAbstractItemView.EditTrigger.CurrentChanged | QtWidgets.QAbstractItemView.EditTrigger.SelectedClicked)
+        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectItems)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
 
         # Set item delegates for all table columns
         self._set_item_delegates()
@@ -540,7 +540,7 @@ class BlockEditor(QtWidgets.QTableView):
         """
         super().setModel(model)
         for column in range(model.columnCount()):
-            width = model.headerData(column, QtCore.Qt.Orientation.Horizontal, QtCore.Qt.SizeHintRole).width()
+            width = model.headerData(column, QtCore.Qt.Orientation.Horizontal, QtCore.Qt.ItemDataRole.SizeHintRole).width()
             self.setColumnWidth(column, width)
         return
 
@@ -636,10 +636,10 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
 
     """
     # User defined roles for model data access
-    repetitionsRole = QtCore.Qt.UserRole + 1
-    blockNameRole = QtCore.Qt.UserRole + 2
-    blockEnsembleRole = QtCore.Qt.UserRole + 3
-    blockElementRole = QtCore.Qt.UserRole + 4
+    repetitionsRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    blockNameRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    blockEnsembleRole = QtCore.Qt.ItemDataRole.UserRole + 3
+    blockElementRole = QtCore.Qt.ItemDataRole.UserRole + 4
 
     def __init__(self):
         super().__init__()
@@ -754,7 +754,7 @@ class EnsembleEditorTableModel(QtCore.QAbstractTableModel):
         return super().headerData(section, orientation, role)
 
     def flags(self, index):
-        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
+        return QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
 
     def insertRows(self, row, count, parent=None):
         """
@@ -834,9 +834,9 @@ class EnsembleEditor(QtWidgets.QTableView):
 
         # Set item selection and editing behaviour
         self.setEditTriggers(
-            QtWidgets.QAbstractItemView.CurrentChanged | QtWidgets.QAbstractItemView.SelectedClicked)
-        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+            QtWidgets.QAbstractItemView.EditTrigger.CurrentChanged | QtWidgets.QAbstractItemView.EditTrigger.SelectedClicked)
+        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectItems)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
 
         # Set item delegate (ComboBox) for PulseBlock column
         self.setItemDelegateForColumn(0, ComboBoxItemDelegate(self, list(),
@@ -848,10 +848,10 @@ class EnsembleEditor(QtWidgets.QTableView):
                                                              self.model().repetitionsRole))
 
         # Set header sizes
-        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Fixed)
         # self.horizontalHeader().setDefaultSectionSize(100)
         # self.horizontalHeader().setStyleSheet('QHeaderView { font-weight: 400; }')
-        self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.verticalHeader().setDefaultSectionSize(50)
         for col in range(self.columnCount()):
             width = self.itemDelegateForColumn(col).sizeHint().width()
@@ -972,15 +972,15 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
 
     """
     # User defined roles for model data access
-    repetitionsRole = QtCore.Qt.UserRole + 1
-    ensembleNameRole = QtCore.Qt.UserRole + 2
-    goToRole = QtCore.Qt.UserRole + 4
-    eventJumpToRole = QtCore.Qt.UserRole + 5
-    eventTriggerRole = QtCore.Qt.UserRole + 6
-    waitForRole = QtCore.Qt.UserRole + 7
-    flagTriggerRole = QtCore.Qt.UserRole + 8
-    flagHighRole = QtCore.Qt.UserRole + 9
-    sequenceRole = QtCore.Qt.UserRole + 10
+    repetitionsRole = QtCore.Qt.ItemDataRole.UserRole + 1
+    ensembleNameRole = QtCore.Qt.ItemDataRole.UserRole + 2
+    goToRole = QtCore.Qt.ItemDataRole.UserRole + 4
+    eventJumpToRole = QtCore.Qt.ItemDataRole.UserRole + 5
+    eventTriggerRole = QtCore.Qt.ItemDataRole.UserRole + 6
+    waitForRole = QtCore.Qt.ItemDataRole.UserRole + 7
+    flagTriggerRole = QtCore.Qt.ItemDataRole.UserRole + 8
+    flagHighRole = QtCore.Qt.ItemDataRole.UserRole + 9
+    sequenceRole = QtCore.Qt.ItemDataRole.UserRole + 10
 
     def __init__(self):
         super().__init__()
@@ -1158,7 +1158,7 @@ class SequenceEditorTableModel(QtCore.QAbstractTableModel):
         return super().headerData(section, orientation, role)
 
     def flags(self, index):
-        return QtCore.Qt.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
+        return QtCore.Qt.ItemFlag.ItemIsEditable | QtCore.Qt.ItemFlag.ItemIsSelectable | QtCore.Qt.ItemFlag.ItemIsEnabled
 
     def insertRows(self, row, count, parent=None):
         """
@@ -1238,9 +1238,9 @@ class SequenceEditor(QtWidgets.QTableView):
 
         # Set item selection and editing behaviour
         self.setEditTriggers(
-            QtWidgets.QAbstractItemView.CurrentChanged | QtWidgets.QAbstractItemView.SelectedClicked)
-        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectItems)
-        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+            QtWidgets.QAbstractItemView.EditTrigger.CurrentChanged | QtWidgets.QAbstractItemView.EditTrigger.SelectedClicked)
+        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectionBehavior.SelectItems)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SelectionMode.SingleSelection)
 
         # Set item delegate (ComboBox) for PulseBlockEnsemble column
         self.setItemDelegateForColumn(0, ComboBoxItemDelegate(self, list(),
@@ -1270,10 +1270,10 @@ class SequenceEditor(QtWidgets.QTableView):
         self.setItemDelegateForColumn(7, MultipleCheckboxItemDelegate(self, None, self.model().flagHighRole))
 
         # Set header sizes
-        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        self.horizontalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Fixed)
         # self.horizontalHeader().setDefaultSectionSize(100)
         # self.horizontalHeader().setStyleSheet('QHeaderView { font-weight: 400; }')
-        self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.Fixed)
+        self.verticalHeader().setSectionResizeMode(QtWidgets.QHeaderView.ResizeMode.Fixed)
         self.verticalHeader().setDefaultSectionSize(50)
 
         # automatically set the width for the columns

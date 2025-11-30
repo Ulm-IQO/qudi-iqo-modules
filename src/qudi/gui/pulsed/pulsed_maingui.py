@@ -1315,8 +1315,8 @@ class PulsedMeasurementGui(GuiBase):
             self._pm.global_param_gridLayout.addWidget(widget, row_count, col_count + 1)
             col_count += 2
         spacer = QtWidgets.QSpacerItem(20, 0,
-                                       QtWidgets.QSizePolicy.Expanding,
-                                       QtWidgets.QSizePolicy.Minimum)
+                                       QtWidgets.QSizePolicy.Policy.Expanding,
+                                       QtWidgets.QSizePolicy.Policy.Minimum)
         if row_count > 1:
             self._pm.global_param_gridLayout.addItem(spacer, 1, 6)
         else:
@@ -3082,7 +3082,7 @@ class PulsedMeasurementGui(GuiBase):
                                'Default parameter value is of invalid type.'.format(param_name))
                 continue
             widget.setObjectName('extract_param_' + param_name)
-            widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
+            widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 
             # Add label and widget to the main grid layout
             self._pe.extraction_param_gridLayout.addWidget(label, layout_row, 0)

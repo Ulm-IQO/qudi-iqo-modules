@@ -34,7 +34,7 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         self.setWindowTitle('qudi: Camera Settings')
 
         layout = QtWidgets.QGridLayout()
-        layout.setAlignment(QtCore.Qt.AlignCenter)
+        layout.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
 
         label = QtWidgets.QLabel('Exposure Time:')
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
@@ -65,5 +65,5 @@ class CameraSettingsDialog(QtWidgets.QDialog):
         self.button_box.rejected.connect(self.reject)
         layout.addWidget(self.button_box, 2, 0, 1, 2)
 
-        layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
+        layout.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetFixedSize)
         self.setLayout(layout)

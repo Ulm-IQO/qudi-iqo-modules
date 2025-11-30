@@ -252,7 +252,7 @@ class TimeSeriesGui(GuiBase):
         dialog = TraceViewDialog(current_settings.keys(), parent=self._mw)
         dialog.set_channel_states(current_settings)
         # Show modal dialog and update logic if necessary
-        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+        if dialog.exec_() == QtWidgets.QDialog.DialogCode.Accepted:
             self._apply_trace_view_settings(dialog.get_channel_states())
 
     def _exec_channel_settings_dialog(self):
@@ -263,7 +263,7 @@ class TimeSeriesGui(GuiBase):
         dialog = ChannelSettingsDialog(channels, parent=self._mw)
         dialog.set_channel_states(channel_states)
         # Show modal dialog and update logic if necessary
-        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+        if dialog.exec_() == QtWidgets.QDialog.DialogCode.Accepted:
             self._apply_channel_settings(dialog.get_channel_states())
 
     @QtCore.Slot()
@@ -465,7 +465,7 @@ class TimeSeriesGui(GuiBase):
         # Show hidden dock widget and re-dock
         self._mw.settings_dockwidget.show()
         self._mw.settings_dockwidget.setFloating(False)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.settings_dockwidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.settings_dockwidget)
         # Set the toolbar to its initial top area
         self._mw.toolbar.show()
         self._mw.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, self._mw.toolbar)

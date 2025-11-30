@@ -45,7 +45,7 @@ class OdmrPlotWidget(QtWidgets.QWidget):
         # Create data plot
         self._plot_widget = pg.PlotWidget()
         self._plot_widget.getPlotItem().setContentsMargins(0, 1, 5, 2)
-        self._data_item = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
+        self._data_item = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.PenStyle.DotLine),
                                           symbol='o',
                                           symbolPen=palette.c1,
                                           symbolBrush=palette.c1,
@@ -55,8 +55,8 @@ class OdmrPlotWidget(QtWidgets.QWidget):
         self._plot_widget.addItem(self._fit_data_item)
         self._plot_widget.setMinimumWidth(100)
         self._plot_widget.setMinimumHeight(100)
-        self._plot_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                        QtWidgets.QSizePolicy.Expanding)
+        self._plot_widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                                        QtWidgets.QSizePolicy.Policy.Expanding)
         self._plot_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self._plot_widget.setLabel('bottom', text='Frequency', units='Hz')
         self._plot_widget.setLabel('left', text='Signal')
@@ -70,8 +70,8 @@ class OdmrPlotWidget(QtWidgets.QWidget):
         self._image_widget.addItem(self._image_item)
         self._image_widget.setMinimumWidth(100)
         self._image_widget.setMinimumHeight(100)
-        self._image_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                         QtWidgets.QSizePolicy.Expanding)
+        self._image_widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                                         QtWidgets.QSizePolicy.Policy.Expanding)
         self._image_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         # self._image_widget.setAspectLocked(lock=True, ratio=1.0)
         self._image_widget.setLabel('bottom', text='Frequency', units='Hz')
@@ -81,7 +81,7 @@ class OdmrPlotWidget(QtWidgets.QWidget):
         # Create colorbar
         self._colorbar = ColorBarWidget()
         self._colorbar.set_label(text='Signal', unit='P')
-        self._colorbar.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
+        self._colorbar.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Expanding)
         if self._colorbar.mode is ColorBarWidget.ColorBarMode.PERCENTILE:
             self._image_item.set_percentiles(self._colorbar.percentiles)
         else:

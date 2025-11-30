@@ -74,7 +74,7 @@ class PoiMarker(pg.EllipseROI):
         self.label = pg.TextItem(text=self._poi_name,
                                  anchor=(0, 1),
                                  color=self.default_pen['color'])
-        self.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
+        self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton)
         self.sigClicked.connect(self._notify_clicked_poi_name)
         self.set_position(self._position)
         return
@@ -358,13 +358,13 @@ class PoiManagerGui(GuiBase):
         self._mw.poi_tracker_dockWidget.show()
         self._mw.sample_shift_dockWidget.show()
 
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._mw.roi_map_dockWidget)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.poi_editor_dockWidget)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.poi_tracker_dockWidget)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.auto_pois_dockWidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, self._mw.roi_map_dockWidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.poi_editor_dockWidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.poi_tracker_dockWidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.auto_pois_dockWidget)
         self._mw.splitDockWidget(
-            self._mw.poi_tracker_dockWidget, self._mw.auto_pois_dockWidget, QtCore.Qt.Vertical)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.sample_shift_dockWidget)
+            self._mw.poi_tracker_dockWidget, self._mw.auto_pois_dockWidget, QtCore.Qt.Orientation.Vertical)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.sample_shift_dockWidget)
 
         if not self._mw.roi_map_view_Action.isChecked():
             self._mw.roi_map_view_Action.trigger()
@@ -388,7 +388,7 @@ class PoiManagerGui(GuiBase):
         # Setting up display of sample shift plot
         self.x_shift_plot = pg.PlotDataItem(x=[0],
                                             y=[0],
-                                            pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
+                                            pen=pg.mkPen(palette.c1, style=QtCore.Qt.PenStyle.DotLine),
                                             symbol='o',
                                             symbolPen=palette.c1,
                                             symbolBrush=palette.c1,
@@ -396,7 +396,7 @@ class PoiManagerGui(GuiBase):
                                             name='x')
         self.y_shift_plot = pg.PlotDataItem(x=[0],
                                             y=[0],
-                                            pen=pg.mkPen(palette.c2, style=QtCore.Qt.DotLine),
+                                            pen=pg.mkPen(palette.c2, style=QtCore.Qt.PenStyle.DotLine),
                                             symbol='s',
                                             symbolPen=palette.c2,
                                             symbolBrush=palette.c2,
@@ -404,7 +404,7 @@ class PoiManagerGui(GuiBase):
                                             name='y')
         self.z_shift_plot = pg.PlotDataItem(x=[0],
                                             y=[0],
-                                            pen=pg.mkPen(palette.c3, style=QtCore.Qt.DotLine),
+                                            pen=pg.mkPen(palette.c3, style=QtCore.Qt.PenStyle.DotLine),
                                             symbol='t',
                                             symbolPen=palette.c3,
                                             symbolBrush=palette.c3,
@@ -591,10 +591,10 @@ class PoiManagerGui(GuiBase):
         if is_active != self.__poi_selector_active:
             if is_active:
                 self._mw.roi_image.sigMouseClicked.connect(self.create_poi_from_click)
-                self._mw.roi_image.setCursor(QtCore.Qt.CrossCursor)
+                self._mw.roi_image.setCursor(QtCore.Qt.CursorShape.CrossCursor)
             else:
                 self._mw.roi_image.sigMouseClicked.disconnect()
-                self._mw.roi_image.setCursor(QtCore.Qt.ArrowCursor)
+                self._mw.roi_image.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
         self.__poi_selector_active = is_active
         return
 
@@ -795,9 +795,9 @@ class PoiManagerGui(GuiBase):
     def delete_all_pois_clicked(self):
         result = QtWidgets.QMessageBox.question(self._mw, 'Qudi: Delete all POIs?',
                                                 'Are you sure to delete all POIs?',
-                                                QtWidgets.QMessageBox.Yes,
-                                                QtWidgets.QMessageBox.No)
-        if result == QtWidgets.QMessageBox.Yes:
+                                                QtWidgets.QMessageBox.StandardButton.Yes,
+                                                QtWidgets.QMessageBox.StandardButton.No)
+        if result == QtWidgets.QMessageBox.StandardButton.Yes:
             self._poi_manager_logic().delete_all_pois()
         return
 

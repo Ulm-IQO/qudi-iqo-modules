@@ -216,8 +216,8 @@ class SwitchGui(GuiBase):
                                                        scale_text_in_switch=True,
                                                        text_inside_switch=True)
                 self._widgets[switch] = (label, switch_widget)
-                switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding,
-                                            QtWidgets.QSizePolicy.Preferred)
+                switch_widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding,
+                                            QtWidgets.QSizePolicy.Policy.Preferred)
                 self._mw.main_layout.addWidget(self._widgets[switch][0], grid_pos[0], grid_pos[1])
                 self._mw.main_layout.addWidget(switch_widget, grid_pos[0], grid_pos[1] + 1)
                 self._mw.main_layout.setColumnStretch(grid_pos[1], 0)
@@ -237,7 +237,7 @@ class SwitchGui(GuiBase):
         font.setPointSize(11)
         label.setFont(font)
         label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
-        label.setSizePolicy(QtWidgets.QSizePolicy.Preferred, QtWidgets.QSizePolicy.Preferred)
+        label.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Preferred)
         return label
 
     def _delete_switches(self):

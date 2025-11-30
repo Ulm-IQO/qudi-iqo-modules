@@ -671,7 +671,7 @@ class ScanningProbeLogic(LogicBase):
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.start()
 
@@ -682,7 +682,7 @@ class ScanningProbeLogic(LogicBase):
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.stop()
 

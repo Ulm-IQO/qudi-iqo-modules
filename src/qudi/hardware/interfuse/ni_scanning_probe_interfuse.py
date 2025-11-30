@@ -408,7 +408,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         try:
             if self.thread() is not QtCore.QThread.currentThread():
-                QtCore.QMetaObject.invokeMethod(self, '_start_scan', QtCore.Qt.BlockingQueuedConnection)
+                QtCore.QMetaObject.invokeMethod(self, '_start_scan', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
             else:
                 self._start_scan()
 
@@ -456,7 +456,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
 
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self, '_stop_scan',
-                                            QtCore.Qt.BlockingQueuedConnection)
+                                            QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self._stop_scan()
 
@@ -921,7 +921,7 @@ class NiScanningProbeInterfuseBare(ScanningProbeInterface):
                 if self.thread() is not QtCore.QThread.currentThread():
                     QtCore.QMetaObject.invokeMethod(self.__ni_ao_write_timer,
                                                     'start',
-                                                    QtCore.Qt.BlockingQueuedConnection)
+                                                    QtCore.Qt.ConnectionType.BlockingQueuedConnection)
                 else:
                     self.__ni_ao_write_timer.start()
             else:

@@ -270,12 +270,12 @@ class OdmrGui(GuiBase):
         self._mw.action_show_cw_controls.setChecked(True)
         self._cw_control_dockwidget.setFloating(False)
         self._cw_control_dockwidget.setVisible(self.__cw_control_available)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._cw_control_dockwidget)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._scan_control_dockwidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, self._cw_control_dockwidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, self._scan_control_dockwidget)
         self._mw.splitDockWidget(self._cw_control_dockwidget,
                                  self._scan_control_dockwidget,
-                                 QtCore.Qt.Vertical)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._fit_dockwidget)
+                                 QtCore.Qt.Orientation.Vertical)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, self._fit_dockwidget)
 
     @QtCore.Slot(bool)
     def run_stop_odmr(self, is_checked):
