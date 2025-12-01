@@ -7,7 +7,7 @@ asttokens==3.0.1
 async-lru==2.0.5
 attrs==25.4.0
 babel==2.17.0
-beautifulsoup4==4.14.2
+beautifulsoup4==4.14.3
 bleach==6.3.0
 certifi==2025.11.12
 cffi==2.0.0
@@ -112,14 +112,14 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@2c0ed8f6e284e48d21f2bd92abbff7cfff67ab2a#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@8aec2a111116f95da323c2ed0369f71ca4c83d77#egg=qudi_iqo_modules
 reactivex==4.0.4
 referencing==0.37.0
 requests==2.32.5
 rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rfc3987-syntax==1.1.0
-rpds-py==0.29.0
+rpds-py==0.30.0
 rpyc==5.3.1
 ruamel.yaml==0.18.16
 ruamel.yaml.clib==0.2.15
