@@ -244,11 +244,15 @@ class TDC001Motor(APTMotor):
 
     """
     _stage = ConfigOption("stage", missing="error")
-    _axes_configs = {}
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(TDC001, *args, **kwargs)
 
     def on_activate(self) -> None:
-        self._axes_configs = {"x": {"bay": 0, "channel": 0, "stage": self._stage}}
+        # only one axis can be connected to the controller, if no axes_config is given set default
+        config = {"bay": 0, "channel": 0, "stage": self._stage}
+        if not self._axes_configs:
+            self._axes_configs = {"x": config}
+        else:
+            self._axes_configs = {list(self._axes_configs.keys())[0]: config}
         return super().on_activate()
 
