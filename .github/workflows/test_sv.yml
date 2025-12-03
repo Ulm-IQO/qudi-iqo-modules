@@ -54,14 +54,16 @@ jobs:
       run: |
          pytest tests\test_reset_status_var.py
 
-    - name: Switch to test branch
+    - name: Switch to save branch to fetch saved status variables from the previous run
       if: always()
       run: |
         git checkout workflow_save
-
+        cp -r workflow_utils/saved_status_vars ../
+        git checkout main
+        
     - name: Compare status variables
       if: always()
-      working-directory: workflow_utils
+      working-directory: .github/workflow_utils
       run: |
        python compare_status_vars.py
 
@@ -70,17 +72,17 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: status_vars_diff
-        path: workflow_utils/status_var_changes.txt
+        path: .github/workflow_utils/status_var_changes.txt
 
     - name: send email in case of failure
       if: failure()
-      working-directory: workflow_utils
+      working-directory: .github/workflow_utils
       run: |
         python failure_email_sv.py -f -d status_var_changes.txt
 
     - name: send email in case of changes but successful run
       if: success()
-      working-directory: workflow_utils
+      working-directory: .github/workflow_utils
       run: |
         python failure_email_sv.py -d status_var_changes.txt
 
@@ -91,11 +93,13 @@ jobs:
 
     - name: Pip freeze on test success and commit latest deps
       if: success()
+      working-directory: .github/workflow_utils
       run: |
-        cd workflow_utils
         python save_status_vars.py
         rm status_var_changes.txt
-        cd ..
+        cd ../../
+        git checkout workflow_save
+        xcopy ..\saved_status_vars workflow_utils\saved_status_vars\ /Y
         git add *
         git commit -m "updated saved sv to latest successful run"
         git pull --rebase
