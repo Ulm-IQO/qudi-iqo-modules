@@ -394,7 +394,7 @@ class PulsedMeasurementGui(GuiBase):
 
         self._pa.time_param_ana_periode_DoubleSpinBox.editingFinished.connect(self.measurement_timer_changed)
         self._pa.ana_param_errorbars_CheckBox.toggled.connect(self.toggle_error_bars)
-        self._pa.second_plot_ComboBox.currentIndexChanged[int].connect(self.second_plot_changed)
+        self._pa.second_plot_ComboBox.currentTextChanged.connect(self.second_plot_changed)
         return
 
     def _connect_extraction_tab_signals(self):
