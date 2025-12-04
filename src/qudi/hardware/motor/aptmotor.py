@@ -94,7 +94,7 @@ class APTMotorAxis:
 
     def move_rel(self, distance: float) -> None:
         self.log.debug(f"axis '{self.label}' moving relative by {distance}")
-        self.controller.move_relative(encoded, bay=self.bay, channel=self.channel)
+        self._blocking_relative_move(distance)
 
     def move_abs(self, position: float) -> None:
         self.log.debug(f"axis '{self.label}' moving absolute to {position}")
@@ -180,8 +180,8 @@ class APTMotorAxis:
                     f"The movement was started but did not complete within {self.poll_timeout} s. Current position is {self.position}"
                 )
 
-    def _blocking_relative_move(self, position: float):
-        abs_position = self.position + position
+    def _blocking_relative_move(self, distance: float):
+        abs_position = self.position + distance
         self._blocking_move(abs_position)
 
 
