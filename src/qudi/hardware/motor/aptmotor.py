@@ -33,6 +33,7 @@ which can be obtained directly from
 
 
 from logging import Logger
+import time
 from typing import Dict, List, Type, Union
 from qudi.core.meta import ConfigOption
 from qudi.interface.motor_interface import MotorInterface
@@ -58,14 +59,24 @@ class ConversionFactorPRM1Z8(ConversionFactor):
     acceleration_factor = 14.66
     time_factor = 2048 / (6e6)
 
+
 BRUSHED_DC_CONTROLLER_CONVERSION_FACTOR_REGISTRY: Dict[str, Type[ConversionFactor]] = {
-    "PRM1-Z8": ConversionFactorPRM1Z8,
+    "PRM1-Z8": ConversionFactorPRM1Z8
 }
 
 
 class APTMotorAxis:
     def __init__(
-        self, controller: APTDevice_Motor, label: str, bay: int, channel: int, conversion_factors: Type[ConversionFactor], logger: Logger
+        self,
+        controller: APTDevice_Motor,
+        label: str,
+        bay: int,
+        channel: int,
+        conversion_factors: Type[ConversionFactor],
+        logger: Logger,
+        poll_timer: float,
+        poll_timeout: float,
+        position_error: float,
     ) -> None:
         self.controller = controller
         self.label = label
@@ -73,23 +84,21 @@ class APTMotorAxis:
         self.channel = channel
         self.conversion_factors = conversion_factors
         self.log = logger
+        self.poll_timer = poll_timer
+        self.poll_timeout = poll_timeout
+        self.position_error = position_error
+        self.enable()
 
     def get_constraints(self) -> dict:
         raise NotImplementedError
 
     def move_rel(self, distance: float) -> None:
-        encoded = from_pos(distance, self.conversion_factors.encoder_factor)
-        self.log.debug(f"axis '{self.label}' moving relative by {distance} ({encoded})")
-        self.controller.move_relative(
-            encoded, bay=self.bay, channel=self.channel
-        )
+        self.log.debug(f"axis '{self.label}' moving relative by {distance}")
+        self.controller.move_relative(encoded, bay=self.bay, channel=self.channel)
 
     def move_abs(self, position: float) -> None:
-        encoded = from_pos(position, self.conversion_factors.encoder_factor)
-        self.log.debug(f"axis '{self.label}' moving absolute to {position} ({encoded})")
-        self.controller.move_absolute(
-            encoded, bay=self.bay, channel=self.channel
-        )
+        self.log.debug(f"axis '{self.label}' moving absolute to {position}")
+        self._blocking_move(position)
 
     def abort(self) -> None:
         self.log.debug(f"axis '{self.label}' stopping movement")
@@ -113,7 +122,11 @@ class APTMotorAxis:
 
     @property
     def velocity(self) -> float:
-        return to_vel(self.velocity_parameters["max_velocity"], self.conversion_factors.velocity_factor, self.conversion_factors.time_factor)
+        return to_vel(
+            self.velocity_parameters["max_velocity"],
+            self.conversion_factors.velocity_factor,
+            self.conversion_factors.time_factor,
+        )
 
     @velocity.setter
     def velocity(self, velocity: float) -> None:
@@ -140,16 +153,36 @@ class APTMotorAxis:
         return self.controller.velparams_[self.bay][self.channel]
 
     def _set_velocity_params(self, velocity: float, acceleration: float) -> None:
-        encoded_acc = from_acc(acceleration, self.conversion_factors.acceleration_factor, self.conversion_factors.time_factor)
+        encoded_acc = from_acc(
+            acceleration, self.conversion_factors.acceleration_factor, self.conversion_factors.time_factor
+        )
         encoded_vel = from_vel(velocity, self.conversion_factors.velocity_factor, self.conversion_factors.time_factor)
 
-        self.log.debug(f"axis '{self.label}' setting velocity parameters to velocity: {velocity} ({encoded_vel}), acceleration: {acceleration} ({encoded_acc})")
-        self.controller.set_velocity_params(
-            acceleration=encoded_acc,
-            max_velocity=encoded_vel,
-            bay=self.bay,
-            channel=self.channel,
+        self.log.debug(
+            f"axis '{self.label}' setting velocity parameters to velocity: {velocity} ({encoded_vel}), acceleration: {acceleration} ({encoded_acc})"
         )
+        self.controller.set_velocity_params(
+            acceleration=encoded_acc, max_velocity=encoded_vel, bay=self.bay, channel=self.channel
+        )
+
+    def _blocking_move(self, position: float):
+        encoded = from_pos(position, self.conversion_factors.encoder_factor)
+        self.controller.move_absolute(encoded, bay=self.bay, channel=self.channel)
+        start_time = time.time()
+        while True:
+            position_deviation = position - self.position
+            if position_deviation <= self.position_error:
+                self.log.debug(f"Move finished. Current position: {self.position}")
+                return
+            elapsed = time.time() - start_time
+            if elapsed >= self.poll_timeout:
+                raise TimeoutError(
+                    f"The movement was started but did not complete within {self.poll_timeout} s. Current position is {self.position}"
+                )
+
+    def _blocking_relative_move(self, position: float):
+        abs_position = self.position + position
+        self._blocking_move(abs_position)
 
 
 class APTMotor(MotorInterface):
@@ -171,9 +204,11 @@ class APTMotor(MotorInterface):
 
     """
 
-
     _serial_port = ConfigOption("serial_port", default="COM1", missing="warn")
     _axes_configs = ConfigOption(name='axes', default=dict(), missing='warn')
+    _poll_timer = ConfigOption(name="poll_timer", default=0.01, missing="nothing")
+    _poll_timeout = ConfigOption(name="poll_timeout", default=30, missing="nothing")
+    _position_error = ConfigOption(name="position_error", default=0.01, missing="nothing")
 
     def __init__(self, controller_class: APTDevice_Motor, *args, **kwargs) -> None:
         self._controller_class = controller_class
@@ -192,10 +227,10 @@ class APTMotor(MotorInterface):
         raise NotImplementedError
 
     def move_rel(self, param_dict):
-        return self._do_for_multiple_axes(param_dict, lambda ax, pos, : ax.move_rel(pos))
+        return self._do_for_multiple_axes(param_dict, lambda ax, pos,: ax.move_rel(pos))
 
     def move_abs(self, param_dict):
-        return self._do_for_multiple_axes(param_dict, lambda ax, pos, : ax.move_abs(pos))
+        return self._do_for_multiple_axes(param_dict, lambda ax, pos,: ax.move_abs(pos))
 
     def abort(self):
         return self._do_for_multiple_axes(None, lambda ax: ax.abort())
@@ -213,7 +248,7 @@ class APTMotor(MotorInterface):
         return self._do_for_multiple_axes(param_list, lambda ax: ax.velocity)
 
     def set_velocity(self, param_dict):
-        return self._do_for_multiple_axes(param_dict, lambda ax, vel, : setattr(ax, "velocity", vel))
+        return self._do_for_multiple_axes(param_dict, lambda ax, vel,: setattr(ax, "velocity", vel))
 
     def _do_for_multiple_axes(self, param_iterator: Union[List, Dict, None], method):
         if param_iterator is None:
@@ -226,10 +261,22 @@ class APTMotor(MotorInterface):
             for ax_name in param_iterator:
                 return method(self._axes[ax_name])
 
-
     def _connect(self) -> None:
         self._controller = self._controller_class(serial_port=self._serial_port, home=False)
-        self._axes = {ax: APTMotorAxis(self._controller, ax, self._axes_configs[ax]["bay"], self._axes_configs[ax]["channel"], BRUSHED_DC_CONTROLLER_CONVERSION_FACTOR_REGISTRY[self._axes_configs[ax]["stage"]], self.log) for ax in self._axes_configs}
+        self._axes = {
+            ax: APTMotorAxis(
+                self._controller,
+                ax,
+                self._axes_configs[ax]["bay"],
+                self._axes_configs[ax]["channel"],
+                BRUSHED_DC_CONTROLLER_CONVERSION_FACTOR_REGISTRY[self._axes_configs[ax]["stage"]],
+                self.log,
+                self._poll_timer,
+                self._poll_timeout,
+                self._position_error,
+            )
+            for ax in self._axes_configs
+        }
 
 
 class TDC001Motor(APTMotor):
@@ -243,7 +290,9 @@ class TDC001Motor(APTMotor):
             stage: "PRM1-Z8"
 
     """
+
     _stage = ConfigOption("stage", missing="error")
+
     def __init__(self, *args, **kwargs) -> None:
         super().__init__(TDC001, *args, **kwargs)
 
@@ -255,4 +304,3 @@ class TDC001Motor(APTMotor):
         else:
             self._axes_configs = {list(self._axes_configs.keys())[0]: config}
         return super().on_activate()
-
