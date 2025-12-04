@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This test shows how a single status variable can be updated via file and tested through a remote connection
+This test shows how a single status variable can be updated via file and tested 
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -31,11 +31,11 @@ VALUE = 10
 
 
 @pytest.fixture(scope='module')
-def logic_instance(remote_instance):
+def logic_instance(qudi_client):
     """ 
     This fixture returns Odmr logic instance
     """
-    module_manager = remote_instance.module_manager
+    module_manager = qudi_client.module_manager
     module_manager.activate_module(GUI_MODULE)
     logic_instance = module_manager._modules[LOGIC_MODULE].instance
     return logic_instance
