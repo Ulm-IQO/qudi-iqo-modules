@@ -170,7 +170,7 @@ class APTMotorAxis:
         self.controller.move_absolute(encoded, bay=self.bay, channel=self.channel)
         start_time = time.time()
         while True:
-            position_deviation = position - self.position
+            position_deviation = abs(position - self.position)
             if position_deviation <= self.position_error:
                 self.log.debug(f"Move finished. Current position: {self.position}")
                 return
@@ -203,6 +203,8 @@ class APTMotor(MotorInterface):
                     stage: "PRM1-Z8"
 
     """
+
+    _threaded = True
 
     _serial_port = ConfigOption("serial_port", default="COM1", missing="warn")
     _axes_configs = ConfigOption(name='axes', default=dict(), missing='warn')
