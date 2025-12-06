@@ -87,7 +87,7 @@ packaging==25.0
 pandocfilters==1.5.1
 parso==0.8.5
 pillow==12.0.0
-platformdirs==4.5.0
+platformdirs==4.5.1
 pluggy==1.6.0
 plumbum==1.10.0
 prometheus_client==0.23.1
@@ -112,7 +112,7 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@917a99beb615159c57b005bd8eef31295e66be8c#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@62d2cc25ee8395a07d0744e701388df011cfa3e1#egg=qudi_iqo_modules
 reactivex==4.0.4
 referencing==0.37.0
 requests==2.32.5
@@ -140,10 +140,10 @@ tzdata==2025.2
 tzlocal==5.3.1
 uncertainties==3.2.3
 uri-template==1.3.0
-urllib3==2.5.0
+urllib3==2.6.0
 wcwidth==0.2.14
 webcolors==25.10.0
 webencodings==0.5.1
 websocket-client==1.9.0
 widgetsnbextension==4.0.15
-zaber_motion==7.15.0
+zaber_motion==8.0.0
