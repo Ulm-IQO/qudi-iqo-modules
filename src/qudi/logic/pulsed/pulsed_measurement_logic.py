@@ -1433,6 +1433,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     def save_measurement_data(self, tag=None, notes=None, file_path=None, storage_cls=None,
                               with_error=True, save_laser_pulses=True, save_pulsed_measurement=True,
+                              save_sampling_information: bool = True,
                               save_figure=None):
         """ Prepare data to be saved and create a proper plot of the data
 
@@ -1525,6 +1526,19 @@ class PulsedMeasurementLogic(LogicBase):
                 notes=notes,
                 column_headers=self._get_signal_column_headers(with_error)
             )
+
+        if save_sampling_information:
+            save_filename, nametag = self._get_patched_filename_nametag(file_name, tag, '_sampling_information')
+            save_path, _, _ = data_storage.save_data(
+                data = [],
+                metadata=self.sampling_information,
+                nametag=nametag,
+                filename=save_filename,
+                timestamp=timestamp,
+                notes=notes,
+                column_headers=[],
+            )
+
 
             # save thumbnail figure if required
             if save_figure:
