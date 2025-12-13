@@ -95,3 +95,10 @@ ignore = [
     "N806",  # Variable in function should be lowercase
     "C901",  # Init method too complex
 ]
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+py-modules = ["sitecustomize"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
