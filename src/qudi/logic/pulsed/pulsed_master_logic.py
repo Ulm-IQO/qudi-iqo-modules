@@ -1110,8 +1110,8 @@ class PulsedMasterLogic(LogicBase):
         """
         return self.sequencegeneratorlogic().analyze_sequence(sequence=sequence)
 
-    def load_sampled_elements(self, element_list: list[dict]) -> PulseBlock:
-        block = self.sequencegeneratorlogic().load_sampled_elements(element_list)
+    def load_sampled_elements(self, location: str) -> PulseBlock:
+        block = self.sequencegeneratorlogic().load_sampled_elements(location)
         return block
 
     #######################################################################

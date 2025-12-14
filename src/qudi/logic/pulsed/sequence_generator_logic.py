@@ -43,6 +43,7 @@ from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElem
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
 from qudi.interface.pulser_interface import PulserInterface, SequenceOption
 from qudi.util.benchmark import BenchmarkTool
+from qudi.util.datastorage import TextDataStorage
 
 
 class SequenceGeneratorLogic(LogicBase):
@@ -2389,7 +2390,9 @@ class SequenceGeneratorLogic(LogicBase):
 
         return np.nan
 
-    def load_sampled_elements(self, element_list: list[dict]) -> PulseBlock:
-        elements = [PulseBlockElement.element_from_dict(el) for el in element_list]
+    def load_sampled_elements(self, location: str) -> PulseBlock:
+        storage = TextDataStorage(root_dir=self.module_default_data_dir)
+        _, metadata, _ = storage.load_data(location)
+        elements = [PulseBlockElement.element_from_dict(el) for el in metadata["written_elements"]]
         block = PulseBlock(name="loaded_sampled_elements", element_list=elements)
         return block
