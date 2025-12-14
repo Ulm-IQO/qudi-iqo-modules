@@ -2388,3 +2388,8 @@ class SequenceGeneratorLogic(LogicBase):
             return speed_combined
 
         return np.nan
+
+    def load_sampled_elements(self, element_list: list[dict]) -> PulseBlock:
+        elements = [PulseBlockElement.element_from_dict(el) for el in element_list]
+        block = PulseBlock(name="loaded_sampled_elements", element_list=elements)
+        return block

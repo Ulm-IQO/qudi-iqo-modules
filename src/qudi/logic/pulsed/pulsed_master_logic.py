@@ -25,6 +25,7 @@ from PySide2 import QtCore
 
 from qudi.core.connector import Connector
 from qudi.core.module import LogicBase
+from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockElement
 from qudi.logic.pulsed.pulsed_measurement_logic import PulsedMeasurementLogic
 from qudi.logic.pulsed.sequence_generator_logic import SequenceGeneratorLogic
 
@@ -1108,6 +1109,10 @@ class PulsedMasterLogic(LogicBase):
                                              channel.
         """
         return self.sequencegeneratorlogic().analyze_sequence(sequence=sequence)
+
+    def load_sampled_elements(self, element_list: list[dict]) -> PulseBlock:
+        block = self.sequencegeneratorlogic().load_sampled_elements(element_list)
+        return block
 
     #######################################################################
     ###             Helper  methods                                     ###
