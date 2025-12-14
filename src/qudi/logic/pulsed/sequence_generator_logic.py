@@ -1941,14 +1941,11 @@ class SequenceGeneratorLogic(LogicBase):
 
             # Save sampling related parameters to the sampling_information container within the
             # PulseBlockEnsemble.
-            # This step is only performed if the resulting waveforms are named by the PulseBlockEnsemble
-            # and not by a sequence nametag
-            if waveform_name == ensemble.name:
-                ensemble.sampling_information = dict()
-                ensemble.sampling_information.update(ensemble_info)
-                ensemble.sampling_information['pulse_generator_settings'] = self.pulse_generator_settings
-                ensemble.sampling_information['waveforms'] = natural_sort(written_waveforms)
-                self.save_ensemble(ensemble)
+            ensemble.sampling_information = dict()
+            ensemble.sampling_information.update(ensemble_info)
+            ensemble.sampling_information['pulse_generator_settings'] = self.pulse_generator_settings
+            ensemble.sampling_information['waveforms'] = natural_sort(written_waveforms)
+            self.save_ensemble(ensemble)
 
             self.log.info('Time needed for sampling and writing PulseBlockEnsemble {0} to device: {1} sec'
                         ''.format(ensemble.name, int(np.rint(time.time() - start_time))))
