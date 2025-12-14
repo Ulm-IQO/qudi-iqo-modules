@@ -39,6 +39,7 @@ from PySide2 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
+from qudi.gui.pulsed.pulse_editors import BlockEditor
 from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
 
 
@@ -141,6 +142,17 @@ class PredefinedMethodsConfigDialog(QtWidgets.QDialog):
 
         uic.loadUi(ui_file, self)
 
+class SampledElementsViewer(QtWidgets.QMainWindow):
+    def __init__(self, pulsed_master_logic: PulsedMasterLogic):
+        super().__init__()
+        self._pulsed_master_logic = pulsed_master_logic
+        self.editor = BlockEditor(self)
+        self.setCentralWidget(self.editor)
+
+    def load_sampled_elements(self, location: str) -> None:
+        block = self._pulsed_master_logic.load_sampled_elements(location)
+        self.editor.load_block(block)
+
 
 class PulsedMeasurementGui(GuiBase):
     """
@@ -195,6 +207,7 @@ class PulsedMeasurementGui(GuiBase):
             parent=self._mw,
             fit_config_model=self.pulsedmasterlogic().fit_config_model
         )
+        self._activate_sampled_elements_viewer()
 
         self._mw.tabWidget.addTab(self._pa, 'Analysis')
         self._mw.tabWidget.addTab(self._pe, 'Pulse Extraction')
@@ -252,6 +265,11 @@ class PulsedMeasurementGui(GuiBase):
                 self.run_pg_benchmark()
 
         return
+
+    def _activate_sampled_elements_viewer(self):
+        self._sampled_elements_viewer = SampledElementsViewer(self.pulsedmasterlogic())
+        self._sampled_elements_viewer.editor.set_activation_config(self.pulsedmasterlogic().pulse_generator_settings['activation_config'])
+        self._sampled_elements_viewer.show()
 
     def on_deactivate(self):
         """ Undo the Definition, configuration and initialisation of the pulsed
@@ -1552,6 +1570,7 @@ class PulsedMeasurementGui(GuiBase):
 
             # Set activation config in block editor
             self._pg.block_editor.set_activation_config(settings_dict['activation_config'][1])
+            self._sampled_elements_viewer.editor.set_activation_config(settings_dict["activation_config"][1])
         if 'analog_levels' in settings_dict:
             for chnl, pp_amp in settings_dict['analog_levels'][0].items():
                 self._analog_chnl_setting_widgets[chnl][1].setValue(pp_amp)
