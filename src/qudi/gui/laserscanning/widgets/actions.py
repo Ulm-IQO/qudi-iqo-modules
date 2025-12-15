@@ -41,6 +41,7 @@ class LaserScanningActions:
     action_show_histogram_region: QtWidgets.QAction
     action_restore_view: QtWidgets.QAction
     action_laser_only: QtWidgets.QAction
+    action_show_all_data: QtWidgets.QAction
     
     def __init__(self):
         super().__init__()
@@ -57,6 +58,7 @@ class LaserScanningActions:
         self.action_show_histogram_region = QtWidgets.QAction('Show histogram region')
         self.action_restore_view = QtWidgets.QAction('Restore default')
         self.action_laser_only = QtWidgets.QAction('Laser-Only Mode')
+        self.action_show_all_data = QtWidgets.QAction('Show all data')
         # Create and set icons
         icon_path = os.path.join(get_artwork_dir(), 'icons')
         exit_icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
@@ -68,6 +70,7 @@ class LaserScanningActions:
         record_icon.addFile(os.path.join(icon_path, 'stop-counter'), state=QtGui.QIcon.State.On)
         play_icon = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
         play_icon.addFile(os.path.join(icon_path, 'stop-counter'), state=QtGui.QIcon.State.On)
+        alldata_icon = QtGui.QIcon(os.path.join(icon_path, 'all-data'))
         self.action_close.setIcon(exit_icon)
         self.action_save.setIcon(save_icon)
         self.action_show_fit_configuration.setIcon(configure_icon)
@@ -75,6 +78,7 @@ class LaserScanningActions:
         self.action_start_stop_scan.setIcon(play_icon)
         self.action_clear_data.setIcon(clear_icon)
         self.action_autoscale_histogram.setIcon(scale_icon)
+        self.action_show_all_data.setIcon(alldata_icon)
         # Set tooltips
         self.action_close.setToolTip('Close window. Does NOT deactivate module.')
         self.action_save.setToolTip('Save all data')
@@ -93,6 +97,7 @@ class LaserScanningActions:
         self.action_show_histogram_region.setToolTip('Show visual overlay of the histogram span.')
         self.action_restore_view.setToolTip('Restores default view of the window')
         self.action_laser_only.setToolTip('If checked, the measurement will record laser data only')
+        self.action_show_all_data.setToolTip('Show all recorded data in the plot')
         # Configure checkable flags
         self.action_close.setCheckable(False)
         self.action_save.setCheckable(False)
@@ -105,3 +110,4 @@ class LaserScanningActions:
         self.action_show_histogram_region.setCheckable(True)
         self.action_restore_view.setCheckable(False)
         self.action_laser_only.setCheckable(True)
+        self.action_show_all_data.setCheckable(False)
