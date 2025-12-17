@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import datetime
+from PySide2.QtGui import QIcon
 import numpy as np
 import pyqtgraph as pg
 from enum import Enum
@@ -39,6 +40,8 @@ from qudi.util import uic
 from PySide2 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
+from importlib import resources
+import qudi.artwork.icons
 
 from qudi.gui.pulsed.pulse_editors import BlockEditor
 from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
@@ -146,22 +149,25 @@ class PredefinedMethodsConfigDialog(QtWidgets.QDialog):
 class SampledElementsViewer(QtWidgets.QMainWindow):
     def __init__(self, pulsed_master_logic: PulsedMasterLogic):
         super().__init__()
+
         self._pulsed_master_logic = pulsed_master_logic
         self.editor = BlockEditor(self)
+        self.setWindowTitle("Sampled Pulse Element Viewer")
         self.setCentralWidget(self.editor)
-        self.load_action = QtWidgets.QAction(text="Load")
+        self.resize(600, 600)
+        self.load_action = QtWidgets.QAction(QIcon(str(resources.files(qudi.artwork.icons) / "document-open.svgz")), "Load")
+        self.load_action.setToolTip("Load Sampling Information")
         toolbar = QtWidgets.QToolBar()
         toolbar.addAction(self.load_action)
         self.addToolBar(toolbar)
         self.file_dialog = QtWidgets.QFileDialog()
         self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
-        self.file_dialog.setOptions(QtWidgets.QFileDialog.ReadOnly | QtWidgets.QFileDialog.DontUseNativeDialog)
 
         path = Path(pulsed_master_logic.module_default_data_dir)
         while not path.exists():
             path = path.parent
-
         self.file_dialog.setDirectory(str(path))
+
         self.load_action.triggered[bool].connect(self.file_dialog.show)
         self.file_dialog.fileSelected.connect(self.load_sampled_elements)
 
@@ -285,7 +291,6 @@ class PulsedMeasurementGui(GuiBase):
     def _activate_sampled_elements_viewer(self):
         self._sampled_elements_viewer = SampledElementsViewer(self.pulsedmasterlogic())
         self._sampled_elements_viewer.editor.set_activation_config(self.pulsedmasterlogic().pulse_generator_settings['activation_config'])
-        self._sampled_elements_viewer.show()
 
     def on_deactivate(self):
         """ Undo the Definition, configuration and initialisation of the pulsed
@@ -337,6 +342,7 @@ class PulsedMeasurementGui(GuiBase):
         self._mw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
         self._mw.action_continue_pause.triggered.connect(self.measurement_continue_pause_clicked)
         self._mw.action_pull_data.triggered.connect(self.pull_data_clicked)
+        self._mw.action_load_sample_parameters.triggered.connect(self._sampled_elements_viewer.show)
         self._mw.action_save.triggered.connect(self.save_clicked)
         self._mw.action_save_as.triggered.connect(self.save_as_clicked)
         self._mw.action_Settings_Analysis.triggered.connect(self.show_analysis_settings)
