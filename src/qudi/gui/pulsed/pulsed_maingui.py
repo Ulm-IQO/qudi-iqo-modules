@@ -25,6 +25,7 @@ import datetime
 import numpy as np
 import pyqtgraph as pg
 from enum import Enum
+from pathlib import Path
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -148,6 +149,21 @@ class SampledElementsViewer(QtWidgets.QMainWindow):
         self._pulsed_master_logic = pulsed_master_logic
         self.editor = BlockEditor(self)
         self.setCentralWidget(self.editor)
+        self.load_action = QtWidgets.QAction(text="Load")
+        toolbar = QtWidgets.QToolBar()
+        toolbar.addAction(self.load_action)
+        self.addToolBar(toolbar)
+        self.file_dialog = QtWidgets.QFileDialog()
+        self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+        self.file_dialog.setOptions(QtWidgets.QFileDialog.ReadOnly | QtWidgets.QFileDialog.DontUseNativeDialog)
+
+        path = Path(pulsed_master_logic.module_default_data_dir)
+        while not path.exists():
+            path = path.parent
+
+        self.file_dialog.setDirectory(str(path))
+        self.load_action.triggered[bool].connect(self.file_dialog.show)
+        self.file_dialog.fileSelected.connect(self.load_sampled_elements)
 
     def load_sampled_elements(self, location: str) -> None:
         block = self._pulsed_master_logic.load_sampled_elements(location)
