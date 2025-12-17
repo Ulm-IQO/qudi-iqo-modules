@@ -1111,6 +1111,7 @@ class PulsedMasterLogic(LogicBase):
         return self.sequencegeneratorlogic().analyze_sequence(sequence=sequence)
 
     def load_sampled_elements(self, location: str) -> PulseBlock:
+        self.log.debug(f"Loading sampled elements from '{location}'")
         block = self.sequencegeneratorlogic().load_sampled_elements(location)
         return block
 
