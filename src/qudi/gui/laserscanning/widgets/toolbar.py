@@ -43,6 +43,7 @@ class LaserScanningToolBar(QtWidgets.QToolBar):
         self.addAction(actions.action_start_stop_scan)
         self.addAction(actions.action_clear_data)
         self.addAction(actions.action_autoscale_histogram)
+        self.addAction(actions.action_show_all_data)
         self.addSeparator()
         self.addAction(actions.action_save)
         self.addWidget(self.save_tag_line_edit)

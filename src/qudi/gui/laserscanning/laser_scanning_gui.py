@@ -123,7 +123,7 @@ class LaserScanningGui(GuiBase):
         self.sigClearData.connect(logic.clear_data, QtCore.Qt.QueuedConnection)
         self.sigAutoscaleHistogram.connect(logic.autoscale_histogram, QtCore.Qt.QueuedConnection)
         self.sigHistogramSettingsChanged.connect(logic.configure_histogram,
-                                                 QtCore.Qt.QueuedConnection)
+                                                 QtCore.Qt.QueuedConnection) 
         self.sigLaserTypeToggled.connect(logic.toggle_laser_type, QtCore.Qt.QueuedConnection)
         self.sigLaserScanSettingsChanged.connect(logic.configure_laser_scan,
                                                  QtCore.Qt.QueuedConnection)
@@ -180,6 +180,9 @@ class LaserScanningGui(GuiBase):
         self._mw.gui_actions.action_show_histogram_region.triggered.connect(
             self._show_region_clicked
         )
+        self._mw.gui_actions.action_show_all_data.triggered.connect(
+            self._show_all_data_clicked
+        )
 
     def __disconnect_actions(self) -> None:
         # File actions
@@ -191,6 +194,7 @@ class LaserScanningGui(GuiBase):
         self._mw.gui_actions.action_show_frequency.triggered.disconnect()
         self._mw.gui_actions.action_autoscale_histogram.triggered.disconnect()
         self._mw.gui_actions.action_show_histogram_region.triggered.disconnect()
+        self._mw.gui_actions.action_show_all_data.triggered.disconnect()
 
     def __connect_widgets(self) -> None:
         self._mw.histogram_settings.sigSettingsChanged.connect(
@@ -259,6 +263,17 @@ class LaserScanningGui(GuiBase):
         self._update_scan_data(timestamps=timestamps, laser_data=laser_data, data=scan_data)
         self._update_histogram_data(bins=bins, histogram=histogram, envelope=envelope)
 
+    @QtCore.Slot(object, object, object, object, object, object)
+    def _show_all_data(self,
+                     timestamps: np.ndarray,
+                     laser_data: np.ndarray,
+                     scan_data: np.ndarray,
+                     bins: np.ndarray,
+                     histogram: np.ndarray,
+                     envelope: np.ndarray) -> None:
+        self._show_all_scan_data(timestamps=timestamps, laser_data=laser_data, data=scan_data)
+        self._update_histogram_data(bins=bins, histogram=histogram, envelope=envelope)
+
     def _update_scan_data(self,
                           timestamps: np.ndarray,
                           laser_data: np.ndarray,
@@ -281,11 +296,35 @@ class LaserScanningGui(GuiBase):
                     data = data[:, 0]
                 self._mw.histogram_plot.update_data(x=laser_data,
                                                     y=data[-self._max_display_points:])
-
+                
+    # FIXME: Implement showing all data in the scatter plot
+    def _show_all_scan_data(self,
+                          timestamps: np.ndarray,
+                          laser_data: np.ndarray,
+                          data: np.ndarray) -> None:
+        """ Should create a scatter plot which shows all data points """
+        if laser_data.size == 0:
+            self._update_current_laser_value(0)
+            self._mw.histogram_plot.update_data(x=None, y=None)
+            self._mw.scatter_plot.update_data(x=None, y=None)
+        else:
+            # laser_data = laser_data[-self._max_display_points:]
+            # timestamps = timestamps[-self._max_display_points:]
+            # self._update_current_laser_value(laser_data[-1])
+            self._mw.scatter_plot.update_data(x=laser_data, y=timestamps - timestamps[0])
+            if data.size == 0:
+                self._mw.histogram_plot.update_data(x=None, y=None)
+            else:
+                # FIXME: Support multiple data channels. Ignore all additional channels for now.
+                if data.ndim > 1:
+                    data = data[:, 0]
+                self._mw.histogram_plot.update_data(x=laser_data, y=data)
+                
     def _update_histogram_data(self,
                                bins: np.ndarray,
                                histogram: np.ndarray,
                                envelope: np.ndarray) -> None:
+        """ TODO: Check if is for this always all data or only displayed data? """
         if histogram.size == 0:
             self._mw.histogram_plot.update_histogram(x=None, y=None)
             self._mw.histogram_plot.update_envelope(x=None, y=None)
@@ -296,6 +335,8 @@ class LaserScanningGui(GuiBase):
                 envelope = envelope[:, 0]
             self._mw.histogram_plot.update_histogram(x=bins, y=histogram)
             self._mw.histogram_plot.update_envelope(x=bins, y=envelope)
+
+    
 
     @QtCore.Slot(str, object, bool)
     def _update_fit_data(self,
@@ -327,6 +368,7 @@ class LaserScanningGui(GuiBase):
         self._mw.gui_actions.action_save.setEnabled(True)
         self._mw.gui_actions.action_autoscale_histogram.setEnabled(True)
         self._mw.gui_actions.action_show_histogram_region.setEnabled(True)
+        self._mw.gui_actions.action_show_all_data.setEnabled(not running)
         if self._mw.laser_scan_settings is not None:
             self._mw.laser_scan_settings.setEnabled(not running or data_only)
             self._mw.laser_stabilization.setEnabled(not running or data_only)
@@ -364,6 +406,10 @@ class LaserScanningGui(GuiBase):
             self._mw.histogram_plot.show_region_selections()
         else:
             self._mw.histogram_plot.hide_region_selections()
+
+    def _show_all_data_clicked(self) -> None:
+        logic = self._laser_scanning_logic()
+        self._show_all_data(*logic.scan_data, *logic.histogram_data)
 
     def _histogram_settings_edited(self, span: Tuple[float, float], bins: int) -> None:
         self.sigHistogramSettingsChanged.emit(span, bins)
@@ -407,6 +453,7 @@ class LaserScanningGui(GuiBase):
         self._mw.gui_actions.action_show_frequency.setEnabled(False)
         self._mw.gui_actions.action_save.setEnabled(False)
         self._mw.gui_actions.action_autoscale_histogram.setEnabled(False)
+        self._mw.gui_actions.action_show_all_data.setEnabled(False)
         self._mw.gui_actions.action_show_histogram_region.setEnabled(False)
         self._mw.gui_actions.action_laser_only.setEnabled(False)
         if start:
