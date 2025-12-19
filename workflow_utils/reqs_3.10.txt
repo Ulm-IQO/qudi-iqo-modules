@@ -104,7 +104,7 @@ pytest-qt==4.4.0
 python-dateutil==2.9.0.post0
 python-decouple==3.8
 python-json-logger==4.0.0
-PyVISA==1.15.0
+PyVISA==1.16.0
 pywin32==311
 pywinpty==3.0.2
 PyYAML==6.0.3
@@ -112,8 +112,8 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@7d9ab149242471f1d9ef76e11f5a44a4bcae33a2#egg=qudi_iqo_modules
-reactivex==4.0.4
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@c915f4deec28d3cdc855f8d56d9521f932f8ba72#egg=qudi_iqo_modules
+reactivex==4.1.0
 referencing==0.37.0
 requests==2.32.5
 rfc3339-validator==0.1.4
@@ -128,7 +128,7 @@ Send2Trash==1.8.3
 shiboken2==5.15.2.1
 six==1.17.0
 smmap==5.0.2
-soupsieve==2.8
+soupsieve==2.8.1
 stack-data==0.6.3
 terminado==0.18.1
 tinycss2==1.4.0
@@ -146,4 +146,4 @@ webcolors==25.10.0
 webencodings==0.5.1
 websocket-client==1.9.0
 widgetsnbextension==4.0.15
-zaber_motion==8.0.1
+zaber_motion==8.0.2
