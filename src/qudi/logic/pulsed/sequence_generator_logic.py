@@ -1511,7 +1511,8 @@ class SequenceGeneratorLogic(LogicBase):
             step_elements_length_bins.append(
                 [seq_step.repetitions, info_dict['elements_length_bins']])
 
-            written_elements.extend(info_dict["written_elements"])
+            written_step_repetitions = seq_step.repetitions if seq_step.repetitions > 0 else 1
+            written_elements.extend(info_dict["written_elements"]*written_step_repetitions)
 
             # Get the digital channel rising/falling bin positions and concatenate them according
             # to sequence step repetition count considering bin offsets.
@@ -2405,6 +2406,6 @@ class SequenceGeneratorLogic(LogicBase):
             if asset is None:
                 raise ValueError(f"Could not load requested asset '{asset_tuple}'")
 
-            elements = [PulseBlockElement.element_from_dict(value) for value in asset.sampling_information["written_elements"]]
+            elements = [PulseBlockElement.element_from_dict(copy.deepcopy(value)) for value in asset.sampling_information["written_elements"]]
         block = PulseBlock(name="loaded_sampled_elements", element_list=elements)
         return block
