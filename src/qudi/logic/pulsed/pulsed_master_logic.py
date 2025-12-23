@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from typing import Optional
 import numpy as np
 from PySide2 import QtCore
 
@@ -1110,7 +1111,7 @@ class PulsedMasterLogic(LogicBase):
         """
         return self.sequencegeneratorlogic().analyze_sequence(sequence=sequence)
 
-    def load_sampled_elements(self, location: str) -> PulseBlock:
+    def load_sampled_elements(self, location: Optional[str] = None) -> PulseBlock:
         self.log.debug(f"Loading sampled elements from '{location}'")
         block = self.sequencegeneratorlogic().load_sampled_elements(location)
         return block

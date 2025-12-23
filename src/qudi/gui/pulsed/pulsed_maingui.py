@@ -22,6 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import datetime
+from typing import Optional
 from PySide2.QtGui import QIcon
 import numpy as np
 import pyqtgraph as pg
@@ -160,7 +161,7 @@ class SampledElementsViewer(QtWidgets.QMainWindow):
 
         self.resize(600, 600)
         self.load_action = QtWidgets.QAction(QIcon(str(resources.files(qudi.artwork.icons) / "document-open.svgz")), "Load")
-        self.load_action.setToolTip("Load Sampling Information")
+        self.load_action.setToolTip("Load sampling information from file")
         toolbar = QtWidgets.QToolBar()
         toolbar.addAction(self.load_action)
         self.addToolBar(toolbar)
@@ -172,10 +173,18 @@ class SampledElementsViewer(QtWidgets.QMainWindow):
             path = path.parent
         self.file_dialog.setDirectory(str(path))
 
+        self.current_action = QtWidgets.QAction("Loaded Asset")
+        self.current_action.setToolTip("Load sampling information from currently loaded asset")
+        toolbar.addAction(self.current_action)
+
         self.load_action.triggered[bool].connect(self.file_dialog.show)
+        self.current_action.triggered.connect(self.load_currently_sampled_elements)
         self.file_dialog.fileSelected.connect(self.load_sampled_elements)
 
-    def load_sampled_elements(self, location: str) -> None:
+    def load_currently_sampled_elements(self) -> None:
+        self.load_sampled_elements()
+
+    def load_sampled_elements(self, location: Optional[str] = None) -> None:
         block = self._pulsed_master_logic.load_sampled_elements(location)
         self.editor.load_block(block)
 

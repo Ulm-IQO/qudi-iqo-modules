@@ -2390,9 +2390,21 @@ class SequenceGeneratorLogic(LogicBase):
 
         return np.nan
 
-    def load_sampled_elements(self, location: str) -> PulseBlock:
-        storage = TextDataStorage(root_dir=self.module_default_data_dir)
-        _, metadata, _ = storage.load_data(location)
-        elements = [PulseBlockElement.element_from_dict(el) for el in metadata["written_elements"]]
+    def load_sampled_elements(self, location: Optional[str] = None) -> PulseBlock:
+        if location is not None:
+            storage = TextDataStorage(root_dir=self.module_default_data_dir)
+            _, metadata, _ = storage.load_data(location)
+            elements = [PulseBlockElement.element_from_dict(el) for el in metadata["written_elements"]]
+        else:
+            asset_tuple = self.loaded_asset
+            if asset_tuple[0] == "":
+                raise ValueError("No Asset currently loaded")
+
+            asset = self.get_ensemble(asset_tuple[0]) if asset_tuple[1] == "PulseBlockEnsemble" else self.get_sequence(asset_tuple[0])
+
+            if asset is None:
+                raise ValueError(f"Could not load requested asset '{asset_tuple}'")
+
+            elements = [PulseBlockElement.element_from_dict(value) for value in asset.sampling_information["written_elements"]]
         block = PulseBlock(name="loaded_sampled_elements", element_list=elements)
         return block
