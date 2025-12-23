@@ -151,9 +151,13 @@ class SampledElementsViewer(QtWidgets.QMainWindow):
         super().__init__()
 
         self._pulsed_master_logic = pulsed_master_logic
+
         self.editor = BlockEditor(self)
+        self.editor.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
         self.setWindowTitle("Sampled Pulse Element Viewer")
         self.setCentralWidget(self.editor)
+
         self.resize(600, 600)
         self.load_action = QtWidgets.QAction(QIcon(str(resources.files(qudi.artwork.icons) / "document-open.svgz")), "Load")
         self.load_action.setToolTip("Load Sampling Information")
