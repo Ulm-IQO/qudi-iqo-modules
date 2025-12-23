@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 - Dropped `Python 3.8` support
+- Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
@@ -13,6 +14,7 @@
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
 - Added Spectrum Instrumentation AD converter as fast counter hardware file
 - Added workflows for verifying that new versions of dependencies do not break qudi
+- Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
 
 ### Other
 - Fixed testing workflow by removing deprecated `python 3.8`
