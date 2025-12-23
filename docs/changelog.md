@@ -9,6 +9,7 @@
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
+- Fixed Keysight AWG's from breaking when setting the external reference clock through the configuration file
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
