@@ -100,7 +100,7 @@ psutil==7.1.3
 pure_eval==0.2.3
 pycparser==2.23
 Pygments==2.19.2
-pyparsing==3.2.5
+pyparsing==3.3.0
 pyqtgraph==0.13.7
 PySide2==5.15.2.1
 pytest==8.4.2
@@ -116,7 +116,7 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@1b3e6de1975c4853bd00b6dd76eac4b8a9e47766#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@32fc183314c42f75b731ff8874607a3a25c6c176#egg=qudi_iqo_modules
 reactivex==4.1.0
 referencing==0.36.2
 requests==2.32.5
