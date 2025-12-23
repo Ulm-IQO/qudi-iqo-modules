@@ -1112,7 +1112,8 @@ class PulsedMasterLogic(LogicBase):
         return self.sequencegeneratorlogic().analyze_sequence(sequence=sequence)
 
     def load_sampled_elements(self, location: Optional[str] = None) -> PulseBlock:
-        self.log.debug(f"Loading sampled elements from '{location}'")
+        message = f"Loading sampled elements from '{location}'" if location is not None else "Loading sampled elements from currently loaded asset"
+        self.log.debug(message)
         block = self.sequencegeneratorlogic().load_sampled_elements(location)
         return block
 
