@@ -32,7 +32,7 @@ fonttools==4.60.2
 fqdn==1.5.1
 fysom==2.1.6
 gitdb==4.0.12
-GitPython==3.1.45
+GitPython==3.1.46
 h11==0.16.0
 hightime==1.0.0
 httpcore==1.0.9
@@ -48,7 +48,7 @@ ipywidgets==8.1.8
 isoduration==20.11.0
 jedi==0.19.2
 Jinja2==3.1.6
-json5==0.12.1
+json5==0.13.0
 jsonpointer==3.0.0
 jsonschema==4.25.1
 jsonschema-specifications==2025.9.1
@@ -116,7 +116,7 @@ pyzmq==27.1.0
 qtconsole==5.7.0
 QtPy==2.4.3
 -e git+https://github.com/Ulm-IQO/qudi-core.git@a074b79d2c83bcca9ffda468f082c061ba241df5#egg=qudi_core
--e git+https://github.com/Ulm-IQO/qudi-iqo-modules@3f15c156db08af23bd68720e774d0116e900acb7#egg=qudi_iqo_modules
+-e git+https://github.com/Ulm-IQO/qudi-iqo-modules@c4d6aaaf82d53e0f2242600fd8022a3e7a3b21e1#egg=qudi_iqo_modules
 reactivex==4.1.0
 referencing==0.36.2
 requests==2.32.5
