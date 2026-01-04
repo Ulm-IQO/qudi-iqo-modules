@@ -91,31 +91,33 @@ def main() -> int:
     full_py, minor_py = parse_args()
     constrained = get_constrained_dependencies()
 
-    reqs_path = f"../../../reqs_{minor_py}.txt"
+    reqs_path = f"reqs_{minor_py}.txt"
     if not os.path.exists(reqs_path):
-        raise SystemExit(f"Requirements file not found: {reqs_path}")
+        updates_available = True
 
-    updates_available = False
+    else:
+        updates_available = False
+        with open(reqs_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "==" not in line:
+                    continue
 
-    with open(reqs_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "==" not in line:
-                continue
+                pkg_name, current_version = line.split("==", 1)
+                pkg_name = pkg_name.strip()
+                if pkg_name in constrained:
+                    continue
 
-            pkg_name, current_version = line.split("==", 1)
-            pkg_name = pkg_name.strip()
-            if pkg_name in constrained:
-                continue
+                current_version = current_version.split("#")[0].strip()
 
-            current_version = current_version.split("#")[0].strip()
+                latest = get_compatible_latest_version(pkg_name, full_py)
+                if latest and pkg_version.parse(latest) > pkg_version.parse(current_version):
+                    print(f"Update available: {pkg_name} ({current_version} -> {latest})")
+                    updates_available = True
 
-            latest = get_compatible_latest_version(pkg_name, full_py)
-            if latest and pkg_version.parse(latest) > pkg_version.parse(current_version):
-                print(f"Update available: {pkg_name} ({current_version} -> {latest})")
-                updates_available = True
 
-    # Expose decision to later jobs (don’t crash if not on GHA)
+
+    # Expose decision to later jobs
     gha_out = os.environ.get("GITHUB_OUTPUT")
     if gha_out:
         with open(gha_out, "a", encoding="utf-8") as f:

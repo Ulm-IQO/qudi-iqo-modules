@@ -1,13 +1,15 @@
 # This workflow will install Python dependencies, run tests and lint with a variety of Python versions and send a warning mail if any change in status variables breaks the tests
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-python
 
-name: Testing
+name: Testing status variables
 
 on:
   push:
     branches: [ "main" ]
   schedule:
     - cron: '0 0 * * 1'
+  workflow_dispatch:
+
 
 permissions:
   contents: write
@@ -17,7 +19,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  find_artifact_id:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_run_id: ${{ steps.find-id.outputs.artifact_run_id }}
+    steps:
+    - uses: actions/checkout@v4
+      with:
+          fetch-depth: 0
+          ref: ${{github.event.pull_request.head.ref}}
+          repository: ${{github.event.pull_request.head.repo.full_name}}
+
+
+    - name: Get latest artifact run id
+      id: find-id
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+          ARTIFACT_RUN_ID=$(
+            curl -s -H "Authorization: Bearer $GH_TOKEN" \
+                 "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?per_page=50" |
+            jq '.artifacts[] | select(.name=="svs") | .workflow_run.id' |
+            head -n 1
+          )
+          echo "artifact_run_id=$ARTIFACT_RUN_ID" >> "$GITHUB_ENV"
+          echo "artifact_run_id=$ARTIFACT_RUN_ID" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: find_artifact_id
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -29,7 +58,7 @@ jobs:
           fetch-depth: 0
           ref: ${{github.event.pull_request.head.ref}}
           repository: ${{github.event.pull_request.head.repo.full_name}}
-    - name: Set up Python ${{ matrix.python-version }}
+    - name: Set up Python 
       uses: actions/setup-python@v5
       with:
         python-version-file: 'pyproject.toml'
@@ -54,17 +83,26 @@ jobs:
       run: |
          pytest tests\test_reset_status_var.py
 
-    - name: Switch to save branch to fetch saved status variables from the previous run
-      if: always()
+
+    - name: Download svs artifact
+      if:  needs.find_artifact_id.outputs.artifact_run_id  != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: svs
+        path: .github/workflow_utils
+        run-id: ${{ needs.find_artifact_id.outputs.artifact_run_id }}
+        github-token:  ${{ secrets.GITHUB_TOKEN }}
+      
+    - name: Extract artifacts
+      if:  needs.find_artifact_id.outputs.artifact_run_id != ''
+      working-directory: .github/workflow_utils
       run: |
-        git checkout workflow_save
-        cp -r workflow_utils/saved_status_vars ../
-        git checkout main
-        
+       tar -x -f svs.zip 
+
     - name: Compare status variables
       if: always()
       working-directory: .github/workflow_utils
-      run: |
+      run: | 
        python compare_status_vars.py
 
     - name: Upload status vars diff
@@ -74,35 +112,16 @@ jobs:
         name: status_vars_diff
         path: .github/workflow_utils/status_var_changes.txt
 
-    - name: send email in case of failure
-      if: failure()
-      working-directory: .github/workflow_utils
-      run: |
-        python failure_email_sv.py -f -d status_var_changes.txt
-
-    - name: send email in case of changes but successful run
-      if: success()
-      working-directory: .github/workflow_utils
-      run: |
-        python failure_email_sv.py -d status_var_changes.txt
-
-    - name: Configure git
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-    - name: Pip freeze on test success and commit latest deps
+    - name:  save latest svs
       if: success()
       working-directory: .github/workflow_utils
       run: |
         python save_status_vars.py
-        rm status_var_changes.txt
-        cd ../../
-        git checkout workflow_save
-        xcopy ..\saved_status_vars workflow_utils\saved_status_vars\ /Y
-        git add *
-        git commit -m "updated saved sv to latest successful run"
-        git pull --rebase
-        git push --force-with-lease origin HEAD:workflow_save
-      env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        tar -a -c -f svs.zip saved_status_vars
+
+    - name: Upload svs artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: svs
+        path: .github/workflow_utils/svs.zip

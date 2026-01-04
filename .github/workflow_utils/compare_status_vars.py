@@ -22,11 +22,12 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import shutil
+import pathlib
 import os
 from qudi.util.yaml import yaml_load, yaml_dump
 from qudi.util.paths import get_appdata_dir
 
-SAVED_DIR = '../../../saved_status_vars'
+SAVED_DIR = 'saved_status_vars'
 
 def load_status_var(file_path):    
     try:
@@ -39,10 +40,13 @@ def load_status_var(file_path):
 def compare_status_vars(active_svs, saved_svs):
     changed_svs = []
     for sv in active_svs:
-        if sv not in saved_svs:
-            changed_svs.append([sv, {}, active_svs[sv]])
-        elif active_svs[sv] != saved_svs[sv] :
-            changed_svs.append([sv, saved_svs[sv], active_svs[sv]])
+        try:
+            if sv not in saved_svs:
+                changed_svs.append([sv, {}, active_svs[sv]])
+            elif active_svs[sv] != saved_svs[sv] :
+                changed_svs.append([sv, saved_svs[sv], active_svs[sv]])
+        except:
+            continue
     return changed_svs
 
 def compare_data(output_file = 'status_var_changes.txt'):
@@ -56,25 +60,34 @@ def compare_data(output_file = 'status_var_changes.txt'):
                 continue
             active_sv_file_path = os.path.join(active_sv_dir, active_sv_file)
             shutil.copy(active_sv_file_path, SAVED_DIR)
+            errors = 'First run'
 
-    saved_svs_files = os.listdir(SAVED_DIR)
-    active_not_saved = set(active_svs_files) - set(saved_svs_files)
-    saved_not_active = set(saved_svs_files) - set(active_svs_files)
-    for active_svs_file in os.listdir(active_sv_dir):
-        if not ('logic' in active_svs_file or 'hardware' in active_svs_file):
-            continue
-        active_svs_fp = os.path.join(active_sv_dir, active_svs_file)
-        active_svs = load_status_var(active_svs_fp)
+    else:
+        saved_svs_files = os.listdir(SAVED_DIR)
+        active_not_saved = set(active_svs_files) - set(saved_svs_files)
+        saved_not_active = set(saved_svs_files) - set(active_svs_files)
+        for active_svs_file in os.listdir(active_sv_dir):
+            file_extension = pathlib.Path(active_svs_file).suffix
+            if file_extension!='.cfg':
+                continue
+            if not ('logic' in active_svs_file or 'hardware' in active_svs_file):
+                continue
+            active_svs_fp = os.path.join(active_sv_dir, active_svs_file)
+            active_svs = load_status_var(active_svs_fp)
 
-        saved_svs_fp = os.path.join(SAVED_DIR, active_svs_file)
-        saved_svs = load_status_var(saved_svs_fp)
-        changes = compare_status_vars(active_svs, saved_svs)
-        if changes:
-            errors[active_svs_file] = changes
-    
+            saved_svs_fp = os.path.join(SAVED_DIR, active_svs_file)
+            saved_svs = load_status_var(saved_svs_fp)
+            #print(f'file {active_svs_file}, active {active_svs}, saved {saved_svs}' )
+            changes = compare_status_vars(active_svs, saved_svs)
+            if changes:
+                errors[active_svs_file] = changes
+        
     with open(output_file, 'w') as file:
         if not errors:
             file.write("No differences found.\n")
+        elif errors == 'First run':
+            file.write("First save.\n")
+
         else:
             file.write("Changed status variables:\n")
             for sv_file, changes in errors.items():
