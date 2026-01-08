@@ -245,6 +245,7 @@ class LaserLogic(LogicBase):
                 curr_time = time.time()
             except:
                 self.log.exception('Exception in laser data query. Stopping laser polling.')
+                self.stop_query_loop()
             else:
                 self._data['time'] = np.roll(self._data['time'], -1)
                 self._data['time'][-1] = curr_time
