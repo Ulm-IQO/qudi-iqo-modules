@@ -22,6 +22,8 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 from PySide2 import QtCore, QtWidgets, QtGui
+from importlib import resources
+import qudi.artwork.icons
 
 from qudi.core.connector import Connector
 from qudi.util.colordefs import QudiPalettePale as palette
@@ -174,10 +176,7 @@ class LaserGui(GuiBase):
         """ Definition and initialisation of the GUI plus staring the measurement.
         """
         logic = self._laser_logic()
-        # initialize data and start the laser data query loop
-        logic._initialize_data()
-        logic.start_query_loop()
-        #####################
+
         # create main window
         self._mw = LaserMainWindow()
         self._mw.setDockNestingEnabled(True)
@@ -197,6 +196,7 @@ class LaserGui(GuiBase):
         self.control_dock_widget.current_setpoint_spinbox.setRange(*logic.current_range)
         self.control_dock_widget.current_setpoint_spinbox.setSuffix(logic.current_unit)
         self.control_dock_widget.current_spinbox.setSuffix(logic.current_unit)
+        self.control_dock_widget.polling_button.toggled.connect(self.polling_button_toggled)
 
         self.output_graph_dock_widget = LaserOutputDockWidget()
         self.output_graph_dock_widget.setFeatures(QtWidgets.QDockWidget.AllDockWidgetFeatures)
@@ -277,6 +277,10 @@ class LaserGui(GuiBase):
             self._shutter_state_updated, QtCore.Qt.QueuedConnection
         )
         logic.sigDataChanged.connect(self._data_updated, QtCore.Qt.QueuedConnection)
+        logic.sigPollingStatusChanged.connect(self.polling_toggled, QtCore.Qt.QueuedConnection)
+
+        logic._initialize_data()
+        logic.start_query_loop()
 
         self.show()
 
@@ -297,6 +301,7 @@ class LaserGui(GuiBase):
         logic.sigLaserStateChanged.disconnect(self._laser_state_updated)
         logic.sigShutterStateChanged.disconnect(self._shutter_state_updated)
         logic.sigDataChanged.disconnect(self._data_updated)
+        logic.sigPollingStatusChanged.disconnect(self.polling_toggled)
 
         self.control_dock_widget.visibilityChanged.disconnect()
         self._mw.action_view_controls.triggered.disconnect()
@@ -520,3 +525,24 @@ class LaserGui(GuiBase):
         self.control_dock_widget.current_spinbox.setValue(-1 if y is None else y[-1])
 
         self.temperature_graph_dock_widget.set_temperature_data(temp_dict=data, x=x)
+
+    @QtCore.Slot(bool)
+    def polling_button_toggled(self, toggle):
+        if toggle:
+            self._laser_logic().start_query_loop()
+        else:
+            self._laser_logic().stop_query_loop()
+
+    @QtCore.Slot(bool)
+    def polling_toggled(self, toggle):
+        self.control_dock_widget.polling_button.blockSignals(True)
+        if toggle:
+            self.control_dock_widget.polling_button.setChecked(True)
+            self.control_dock_widget.polling_button.setIcon(QtGui.QIcon(str(resources.files(qudi.artwork.icons) / "stop-counter.svg")))
+            self.control_dock_widget.polling_button.setText("Stop Laser Polling")
+        else:
+            self.control_dock_widget.polling_button.setChecked(False)
+            self.control_dock_widget.polling_button.setIcon(QtGui.QIcon(str(resources.files(qudi.artwork.icons) / "start-counter.svg")))
+            self.control_dock_widget.polling_button.setText("Start Laser Polling")
+        self.control_dock_widget.polling_button.blockSignals(False)
+
