@@ -50,6 +50,7 @@ class LaserLogic(LogicBase):
     _buffer_length = ConfigOption(name='buffer_length', default=100)
 
     sigPowerSetpointChanged = QtCore.Signal(float, object)
+    sigPollingStatusChanged = QtCore.Signal(bool)
     sigCurrentSetpointChanged = QtCore.Signal(float, object)
     sigControlModeChanged = QtCore.Signal(object)
     sigLaserStateChanged = QtCore.Signal(object)
@@ -279,6 +280,7 @@ class LaserLogic(LogicBase):
             if self.module_state() == 'idle':
                 self.module_state.lock()
                 self.__timer.start()
+                self.sigPollingStatusChanged.emit(True)
 
     @QtCore.Slot()
     def stop_query_loop(self):
@@ -297,6 +299,7 @@ class LaserLogic(LogicBase):
             if self.module_state() == 'locked':
                 self.__timer.stop()
                 self.module_state.unlock()
+                self.sigPollingStatusChanged.emit(False)
 
     @QtCore.Slot(object)
     def set_control_mode(self, mode):
