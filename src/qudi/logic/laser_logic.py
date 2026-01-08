@@ -62,7 +62,6 @@ class LaserLogic(LogicBase):
         self._thread_lock = RecursiveMutex()
 
         self.__timer = None
-        self._stop_requested = True
 
         # data buffer
         self._data = dict()
