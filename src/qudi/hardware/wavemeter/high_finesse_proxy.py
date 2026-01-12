@@ -54,18 +54,10 @@ class Watchdog(QObject):
         while not self._stop:
             if self._proxy.error_in_callback:
                 self.handle_error()
-            if self._proxy.module_state() == 'locked':
-                self.check_for_channel_activation_change()
             time.sleep(self._watch_interval)
 
     def stop_loop(self) -> None:
         self._stop = True
-
-    def check_for_channel_activation_change(self) -> None:
-        actual_active_channels = set(self._proxy.get_active_channels())
-        if self._proxy.get_connected_channels() != actual_active_channels:
-            self.log.warning('Channel was deactivated or activated through GUI.')
-            self._proxy.stop_everything()
 
     def handle_error(self) -> None:
         self.log.warning('Error in callback function.')
@@ -150,13 +142,10 @@ class HighFinesseProxy(Base):
         """
         if module not in self._connected_instream_modules:
             with self._lock:
-                # do channel activation in a lock to prevent the watchdog from stopping things
-                not_connected_yet = set(channels) - self.get_connected_channels()
-                for ch in not_connected_yet:
-                    self._activate_channel(ch)
+                # Track channels the client will receive (for filtering callbacks only)
                 self._connected_instream_modules[module] = set(channels)
             if self._callback_function is None:
-                self._activate_only_connected_channels()
+                # Start measurement/callback without touching channel activation
                 self._start_measurement()
                 self._start_callback()
         else:
