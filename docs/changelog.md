@@ -17,6 +17,8 @@
 - Added Spectrum Instrumentation AD converter as fast counter hardware file
 - Added workflows for verifying that new versions of dependencies do not break qudi
 - Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
+- Added the ability to save a full `PulseSequence` and `PulseBlockEnsemble` to a file to be able to reconstruct what `PulseBlockElement`'s have been uploaded in exactly what order
+- Added the ability to load an view a full `PulseSequence` and `PulseBlockEnsemble` with all its `PulseBlockElement`'s in one place
 
 ### Other
 - Fixed testing workflow by removing deprecated `python 3.8`
