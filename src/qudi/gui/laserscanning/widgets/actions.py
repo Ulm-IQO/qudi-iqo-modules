@@ -78,7 +78,6 @@ class LaserScanningActions:
         self.action_start_stop_scan.setIcon(play_icon)
         self.action_clear_data.setIcon(clear_icon)
         self.action_autoscale_histogram.setIcon(scale_icon)
-        self.action_show_all_data.setIcon(alldata_icon)
         # Set tooltips
         self.action_close.setToolTip('Close window. Does NOT deactivate module.')
         self.action_save.setToolTip('Save all data')

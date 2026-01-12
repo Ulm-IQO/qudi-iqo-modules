@@ -297,20 +297,16 @@ class LaserScanningGui(GuiBase):
                 self._mw.histogram_plot.update_data(x=laser_data,
                                                     y=data[-self._max_display_points:])
                 
-    # FIXME: Implement showing all data in the scatter plot
     def _show_all_scan_data(self,
                           timestamps: np.ndarray,
                           laser_data: np.ndarray,
                           data: np.ndarray) -> None:
-        """ Should create a scatter plot which shows all data points """
+        """ Should create a scatter plot which shows all data points in the histogram and in the scan plot"""
         if laser_data.size == 0:
             self._update_current_laser_value(0)
             self._mw.histogram_plot.update_data(x=None, y=None)
             self._mw.scatter_plot.update_data(x=None, y=None)
         else:
-            # laser_data = laser_data[-self._max_display_points:]
-            # timestamps = timestamps[-self._max_display_points:]
-            # self._update_current_laser_value(laser_data[-1])
             self._mw.scatter_plot.update_data(x=laser_data, y=timestamps - timestamps[0])
             if data.size == 0:
                 self._mw.histogram_plot.update_data(x=None, y=None)
