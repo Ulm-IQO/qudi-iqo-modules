@@ -28,6 +28,7 @@ from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.module import LogicBase
+from qudi.util.network import netobtain
 from qudi.interface.simple_laser_interface import ControlMode, ShutterState, LaserState, SimpleLaserInterface
 
 
@@ -84,11 +85,11 @@ class LaserLogic(LogicBase):
         laser = self._laser()
         allowed_modes = laser.allowed_control_modes()
         self._initialize_data()
-        self._last_shutter_state = laser.get_shutter_state()
-        self._last_laser_state = laser.get_laser_state()
-        self._last_power_setpoint = laser.get_power_setpoint()
-        self._last_current_setpoint = laser.get_current_setpoint()
-        self._last_control_mode = laser.get_control_mode()
+        self._last_shutter_state = netobtain(laser.get_shutter_state())
+        self._last_laser_state = netobtain(laser.get_laser_state())
+        self._last_power_setpoint = netobtain(laser.get_power_setpoint())
+        self._last_current_setpoint = netobtain(laser.get_current_setpoint())
+        self._last_control_mode = netobtain(laser.get_control_mode())
 
 
     def on_deactivate(self):
@@ -102,7 +103,7 @@ class LaserLogic(LogicBase):
     @property
     def allowed_control_modes(self):
         with self._thread_lock:
-            return self._laser().allowed_control_modes()
+            return netobtain(self._laser().allowed_control_modes())
 
     @property
     def extra_info(self):
@@ -136,7 +137,7 @@ class LaserLogic(LogicBase):
     @property
     def laser_state(self):
         with self._thread_lock:
-            self._last_laser_state = self._laser().get_laser_state()
+            self._last_laser_state = netobtain(self._laser().get_laser_state())
             return self._last_laser_state
 
     @laser_state.setter
@@ -146,7 +147,7 @@ class LaserLogic(LogicBase):
     @property
     def shutter_state(self):
         with self._thread_lock:
-            self._last_shutter_state = self._laser().get_shutter_state()
+            self._last_shutter_state = netobtain(self._laser().get_shutter_state())
             return self._last_shutter_state
 
     @shutter_state.setter
@@ -186,7 +187,7 @@ class LaserLogic(LogicBase):
     @property
     def control_mode(self):
         with self._thread_lock:
-            self._last_control_mode = self._laser().get_control_mode()
+            self._last_control_mode = netobtain(self._laser().get_control_mode())
             return self._last_control_mode
 
     @control_mode.setter
@@ -203,14 +204,14 @@ class LaserLogic(LogicBase):
             laser = self._laser()
             # Check if settings have changed by e.g. a device front panel
             try:
-                laser_state = laser.get_laser_state()
+                laser_state = netobtain(laser.get_laser_state())
                 if laser_state != self._last_laser_state:
                     self._last_laser_state = laser_state
                     self.sigLaserStateChanged.emit(self._last_laser_state)
             except:
                 pass
             try:
-                shutter_state = laser.get_shutter_state()
+                shutter_state = netobtain(laser.get_shutter_state())
                 if shutter_state != self._last_shutter_state:
                     self._last_shutter_state = shutter_state
                     self.sigShutterStateChanged.emit(self._last_shutter_state)
@@ -231,7 +232,7 @@ class LaserLogic(LogicBase):
             except:
                 pass
             try:
-                control_mode = laser.get_control_mode()
+                control_mode = netobtain(laser.get_control_mode())
                 if control_mode != self._last_control_mode:
                     self._last_control_mode = control_mode
                     self.sigControlModeChanged.emit(self._last_control_mode, None)
