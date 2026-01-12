@@ -1535,8 +1535,8 @@ class PredefinedGeneratorBase:
         else:
             ensembles = {ensemble.name: ensemble for ensemble in created_ensembles}
             length = 0.0
-            for ensemble_name, seq_param in sequence.ensemble_list:
-                length += self._get_ensemble_count_length(ensembles[ensemble_name], created_blocks) * (seq_param['repetitions'] + 1)
+            for seq_param in sequence.ensemble_list:
+                length += self._get_ensemble_count_length(ensembles[seq_param['ensemble']], created_blocks) * (seq_param['repetitions'] + 1)
         return length
 
 class PulseObjectGenerator(PredefinedGeneratorBase):
