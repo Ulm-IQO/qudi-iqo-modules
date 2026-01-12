@@ -37,13 +37,13 @@ class BufferKeepAlive(Base):
       - ModuleManager.activate_module(name) (queued to main thread when needed)
 
     Configuration:
-      instream_keepalive:
-        module.Class: 'interfuse.instream_keepalive.BufferKeepAlive'
-        options:
-          modules:
-            - 'wavemeter_buffer_1'
-            - 'wavemeter_buffer_2'
-          interval_ms: 1500
+        instream_keepalive:
+            module.Class: 'interfuse.instream_keepalive.BufferKeepAlive'
+            options:
+                modules:
+                    - 'wavemeter_buffer_1'
+                    - 'wavemeter_buffer_2'
+                interval_ms: 1500
 
     Behavior:
       - Polls ModuleManager for each listed module.

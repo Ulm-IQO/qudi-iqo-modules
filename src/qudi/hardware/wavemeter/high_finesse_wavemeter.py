@@ -101,7 +101,7 @@ class HighFinesseWavemeter(DataInStreamInterface):
 
         # channel activity
         self._hf_active_set: set[int] = set()
-        self._inactive_placeholder_value: float = 0.0
+        self._inactive_placeholder_value: float = 1.0
 
         # stored hardware constraints
         self._constraints: Optional[DataInStreamConstraints] = None
