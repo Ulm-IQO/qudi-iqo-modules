@@ -17,6 +17,7 @@
 - Added Spectrum Instrumentation AD converter as fast counter hardware file
 - Added workflows for verifying that new versions of dependencies do not break qudi
 - Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
+- Added the `PredefinedGeneratorBase._get_sequence_count_length` method to easily and correctly determine the count length of `PulseSequence` objects similar to `PredefinedGeneratorBase._get_ensemble_count_length`
 
 ### Other
 - Fixed testing workflow by removing deprecated `python 3.8`
