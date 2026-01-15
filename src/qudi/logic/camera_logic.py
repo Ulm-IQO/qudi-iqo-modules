@@ -30,6 +30,8 @@ from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.module import LogicBase
 
+from qudi.interface.camera_interface import CameraInterface
+
 
 class CameraLogic(LogicBase):
     """ Logic class for controlling a camera.
@@ -45,7 +47,7 @@ class CameraLogic(LogicBase):
     """
 
     # declare connectors
-    _camera = Connector(name='camera', interface='CameraInterface')
+    _camera = Connector(name='camera', interface=CameraInterface)
     # declare config options
     _minimum_exposure_time = ConfigOption(name='minimum_exposure_time',
                                           default=0.05,

@@ -25,6 +25,9 @@ from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
+from qudi.interface.switch_interface import SwitchInterface
+
+from qudi.interface.switch_interface import SwitchInterface
 
 
 class SwitchLogic(LogicBase):
@@ -43,7 +46,7 @@ class SwitchLogic(LogicBase):
     """
 
     # connector for one switch, if multiple switches are needed use the SwitchCombinerInterfuse
-    switch = Connector(interface='SwitchInterface')
+    switch = Connector(interface=SwitchInterface)
 
     _watchdog_interval = ConfigOption(name='watchdog_interval', default=1.0, missing='nothing')
     _autostart_watchdog = ConfigOption(name='autostart_watchdog', default=False, missing='nothing')
