@@ -6,6 +6,7 @@
 
 - Dropped `Python 3.8` support
 - Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
+- Improved pulse envelope handling by introducing the `PulseEnvelope` `dataclass`
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
