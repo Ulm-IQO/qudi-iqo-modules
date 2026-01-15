@@ -43,6 +43,7 @@ from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElem
 from qudi.logic.pulsed.sampling_functions import SamplingFunctions
 from qudi.interface.pulser_interface import PulserInterface, SequenceOption
 from qudi.util.benchmark import BenchmarkTool
+from qudi.util.datastorage import TextDataStorage
 
 
 class SequenceGeneratorLogic(LogicBase):
@@ -1323,6 +1324,8 @@ class SequenceGeneratorLogic(LogicBase):
         # they are occuring in the waveform later on.
         elements_length_bins = list()
 
+        written_elements = []
+
         # variables to keep track of the current timeframe
         current_end_time = 0.0
         current_start_bin = 0
@@ -1365,6 +1368,7 @@ class SequenceGeneratorLogic(LogicBase):
 
                     # advance bin offset for next element
                     current_start_bin = current_end_bin
+                    written_elements.append(element.get_dict_representation())
 
         elements_length_bins = np.array(elements_length_bins, dtype='int64')
 
@@ -1394,6 +1398,7 @@ class SequenceGeneratorLogic(LogicBase):
         return_dict['ideal_length'] = current_end_time
         return_dict['laser_rising_bins'] = laser_rising_bins
         return_dict['laser_falling_bins'] = laser_falling_bins
+        return_dict['written_elements'] = written_elements
         return return_dict
 
     def analyze_sequence(self, sequence: Union[str, PulseSequence]):
@@ -1478,6 +1483,8 @@ class SequenceGeneratorLogic(LogicBase):
         step_last_digital_state = last_digital_channel_state
         step_last_laser_on_state = last_laser_on_state
 
+        written_elements = []
+
         for step_no, seq_step in enumerate(sequence):
             is_finite = seq_step.repetitions >= 0
             # Get the PulseBlockEnsemble instance associated with this sequence step
@@ -1503,6 +1510,9 @@ class SequenceGeneratorLogic(LogicBase):
             ideal_step_length[step_no] = info_dict['ideal_length'] * reps if is_finite else np.inf
             step_elements_length_bins.append(
                 [seq_step.repetitions, info_dict['elements_length_bins']])
+
+            written_step_repetitions = seq_step.repetitions if seq_step.repetitions > 0 else 1
+            written_elements.extend(info_dict["written_elements"]*written_step_repetitions)
 
             # Get the digital channel rising/falling bin positions and concatenate them according
             # to sequence step repetition count considering bin offsets.
@@ -1610,6 +1620,7 @@ class SequenceGeneratorLogic(LogicBase):
         return_dict['ideal_length'] = np.sum(ideal_step_length)
         return_dict['laser_rising_bins'] = laser_rising_bins
         return_dict['laser_falling_bins'] = laser_falling_bins
+        return_dict['written_elements'] = written_elements
 
         return return_dict
 
@@ -1932,14 +1943,11 @@ class SequenceGeneratorLogic(LogicBase):
 
             # Save sampling related parameters to the sampling_information container within the
             # PulseBlockEnsemble.
-            # This step is only performed if the resulting waveforms are named by the PulseBlockEnsemble
-            # and not by a sequence nametag
-            if waveform_name == ensemble.name:
-                ensemble.sampling_information = dict()
-                ensemble.sampling_information.update(ensemble_info)
-                ensemble.sampling_information['pulse_generator_settings'] = self.pulse_generator_settings
-                ensemble.sampling_information['waveforms'] = natural_sort(written_waveforms)
-                self.save_ensemble(ensemble)
+            ensemble.sampling_information = dict()
+            ensemble.sampling_information.update(ensemble_info)
+            ensemble.sampling_information['pulse_generator_settings'] = self.pulse_generator_settings
+            ensemble.sampling_information['waveforms'] = natural_sort(written_waveforms)
+            self.save_ensemble(ensemble)
 
             self.log.info('Time needed for sampling and writing PulseBlockEnsemble {0} to device: {1} sec'
                         ''.format(ensemble.name, int(np.rint(time.time() - start_time))))
@@ -2382,3 +2390,22 @@ class SequenceGeneratorLogic(LogicBase):
             return speed_combined
 
         return np.nan
+
+    def load_sampled_elements(self, location: Optional[str] = None) -> PulseBlock:
+        if location is not None:
+            storage = TextDataStorage(root_dir=self.module_default_data_dir)
+            _, metadata, _ = storage.load_data(location)
+            elements = [PulseBlockElement.element_from_dict(el) for el in metadata["written_elements"]]
+        else:
+            asset_tuple = self.loaded_asset
+            if asset_tuple[0] == "":
+                raise ValueError("No Asset currently loaded")
+
+            asset = self.get_ensemble(asset_tuple[0]) if asset_tuple[1] == "PulseBlockEnsemble" else self.get_sequence(asset_tuple[0])
+
+            if asset is None:
+                raise ValueError(f"Could not load requested asset '{asset_tuple}'")
+
+            elements = [PulseBlockElement.element_from_dict(copy.deepcopy(value)) for value in asset.sampling_information["written_elements"]]
+        block = PulseBlock(name="loaded_sampled_elements", element_list=elements)
+        return block
