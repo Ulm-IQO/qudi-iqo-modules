@@ -26,11 +26,9 @@ from qudi.logic.pulsed.sampling_functions import PulseEnvelope
 def dataclass_representer(representer, data):
     tag = f'!{data.__class__.__name__}'
     mapping = {f.name: getattr(data, f.name) for f in fields(data)}
-    print(f"representing {tag} as {mapping}")
     return representer.represent_mapping(tag, mapping)
 
 
 def pulse_envelope_constructor(loader, node):
     data = loader.construct_mapping(node, deep=True)
-    print(f"Loaded {data}")
     return PulseEnvelope.from_dict(data)
