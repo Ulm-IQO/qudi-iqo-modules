@@ -24,6 +24,8 @@ from enum import Enum
 from PySide2 import QtCore, QtGui, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
+
 
 class MultipleCheckboxWidget(QtWidgets.QWidget):
     """
@@ -144,6 +146,15 @@ class AnalogParametersWidget(QtWidgets.QWidget):
                 widget.setFixedWidth(90)
                 # Forward editingFinished signal of child widget
                 widget.currentIndexChanged.connect(self.editingFinished)
+            elif self._parameters[param]['type'] == PulseEnvelope:
+                widget = QtWidgets.QComboBox()
+                for option in PulseEnvelopeType:
+                    widget.addItem(option.name, PulseEnvelope(option))
+                widget.setCurrentText(self._parameters[param]['init'].type.name)
+                # Set size constraints
+                widget.setFixedWidth(90)
+                # Forward editingFinished signal of child widget
+                widget.currentIndexChanged.connect(self.editingFinished)
             else:
                 widget = None
 
@@ -173,6 +184,8 @@ class AnalogParametersWidget(QtWidgets.QWidget):
                 widget.setChecked(data[param])
             elif issubclass(self._parameters[param]['type'], Enum):
                 widget.setCurrentText(data[param].name)
+            elif self._parameters[param]['type'] == PulseEnvelope:
+                widget.setCurrentText(data[param].type.name)
 
         self.editingFinished.emit()
         return
@@ -189,6 +202,8 @@ class AnalogParametersWidget(QtWidgets.QWidget):
             elif self._parameters[param]['type'] == bool:
                 analog_params[param] = widget.isChecked()
             elif issubclass(self._parameters[param]['type'], Enum):
+                analog_params[param] = widget.itemData(widget.currentIndex())
+            elif self._parameters[param]['type'] == PulseEnvelope:
                 analog_params[param] = widget.itemData(widget.currentIndex())
         return analog_params
 
