@@ -7,12 +7,15 @@
 - Dropped `Python 3.8` support
 - Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
 - Improved pulse envelope handling by introducing the `PulseEnvelope` `dataclass`
+- Improved representation of `DDMethods` to properly store it in measurement data
+- Improved representation of `PulseEnvelopeType` to properly store it in measurement data
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
 - Fixed Keysight AWG's from breaking when setting the external reference clock through the configuration file
 - Fixed ``laser_logic`` to work with remote laser hardware
-- Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating  
+- Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating
+- Fixed `sequence_generator_logic` configuration in `default.cfg`
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
