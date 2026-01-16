@@ -238,7 +238,7 @@ class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
     from_gen_settings = '_from_gen_settings'
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value}))"
+        return f"{self.__class__.__module__}.{self.__class__.__name__}.{self.value}"
 
 @dataclass
 class PulseEnvelope:
