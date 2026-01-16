@@ -260,13 +260,9 @@ class PulseEnvelope:
         return defaults[self.type.value]
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.type.value}, {self.parameters}))"
+        return f"{self.__class__.__module__}.{self.__class__.__name__}.{self.value}"
 
     @classmethod
     def from_dict(cls, parameters: dict) -> "PulseEnvelope":
         return PulseEnvelope(parameters["type"], parameters["parameters"])
-
-
-
-
 
