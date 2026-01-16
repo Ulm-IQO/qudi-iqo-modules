@@ -100,6 +100,10 @@ class DDMethods(Enum):
     def phases(self):
         return np.array(self._phases)
 
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.value})"
+
+
 class SamplingBase:
     """
     Base class for all sampling functions
