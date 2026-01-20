@@ -20,7 +20,6 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import time
 import pytest
 from qudi.util.yaml import yaml_load, yaml_dump
 from qudi.util.paths import get_module_app_data_path
@@ -31,15 +30,17 @@ STATUS_VAR = 'run_time'
 VALUE = 10
 
 
-@pytest.fixture(scope='module')
-def logic_instance(qudi_client):
-    """ 
-    This fixture returns Odmr logic instance
+@pytest.fixture(scope='function')
+def logic_instance(qudi_session_factory):
     """
-    module_manager = qudi_client.module_manager
-    module_manager.activate_module(GUI_MODULE)
-    logic_instance = module_manager._modules[LOGIC_MODULE].instance
-    return logic_instance
+    This fixture returns Odmr logic instance and keeps the
+    Qudi session alive for test.
+    """
+    with qudi_session_factory() as qudi:
+        module_manager = qudi.module_manager
+        module_manager.activate_module(GUI_MODULE)
+        logic_instance = module_manager._modules[LOGIC_MODULE].instance
+        yield logic_instance
 
 
 def get_status_var_file(instance):
@@ -130,12 +131,10 @@ def test_status_vars(logic_instance):
         logic instance
     """    
 
-
     status_var_file_path = get_status_var_file(logic_instance)
     status_vars = load_status_var(status_var_file_path)
     modified_vars = modify_status_var(status_vars, STATUS_VAR, VALUE)
     dump_status_variables(modified_vars, status_var_file_path)
-    time.sleep(5)
 
 def test_status_vars_changed(logic_instance):
     """
