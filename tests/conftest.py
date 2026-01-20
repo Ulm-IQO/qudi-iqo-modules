@@ -31,6 +31,8 @@ from PySide2 import QtWidgets
 from contextlib import contextmanager
 from qudi.core import application
 from qudi.util.yaml import yaml_load
+from qudi.core.qudikernel import QudiKernelClient
+
 
 
 
@@ -125,7 +127,6 @@ def qudi_gui():
 @pytest.fixture(scope="module")
 def qudi_client(qudi_gui):
     """Attach to the running GUI using qudikernel.QudiKernelClient."""
-    from qudi.core.qudikernel import QudiKernelClient
     client = QudiKernelClient()
     timeout = time.time() + 60
     last_err = None
