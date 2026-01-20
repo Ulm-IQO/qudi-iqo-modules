@@ -35,12 +35,12 @@ AXIS_IDX = {'x':0, 'y':1, 'z':2}
 
 
 @pytest.fixture(scope='module')
-def module(qudi_instance, qt_app):
+def module(qudi_client):
     """
     Fixture that returns scanning probe logic instance.
     """
-    module_manager = qudi_instance.module_manager
-    qudi_instance._configure_qudi()
+    module_manager = qudi_client.module_manager
+    #qudi_instance._configure_qudi()
     module_manager.activate_module(LOGIC_MODULE)
     return module_manager._modules[LOGIC_MODULE].instance
 
@@ -198,13 +198,14 @@ def test_configure_tilt_correction(module, qtbot):
         module.configure_tilt_correction(support_vecs=support)
 
         # collect transformed support vectors (flat virtual plane to real tilted plane)
-        T = module._tilt_corr_transform     
+        T = netobtain(module._tilt_corr_transform)   
+        print(T)
         # After the transform , the inverse transform should make all points have same z - coordinate, since the tranformation is supposed to transform the plane so that its normal aligns with z-axis
         flattened = np.vstack([T([v['x'], v['y'], v['z']], invert=True) for v in support])
         #  all z-coordinates must now be identical (plane horizontal) 
         assert np.allclose(flattened[:, 2], flattened[0, 2])
         #  all three spatial axes participate in the correction
-        assert module._tilt_corr_axes == ['x', 'y', 'z']
+        assert netobtain(module._tilt_corr_axes) == ['x', 'y', 'z']
         
         emitted_signal = blockers.args
     assert emitted_signal[0]['vec_1']  ==  {'x': 1, 'y': 0, 'z': 0}

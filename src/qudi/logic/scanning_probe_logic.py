@@ -29,6 +29,8 @@ from collections import OrderedDict
 from PySide2 import QtCore
 import numpy as np
 
+from qudi.util.network import netobtain
+
 from qudi.core.module import LogicBase
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
@@ -542,9 +544,8 @@ class ScanningProbeLogic(LogicBase):
         @param bool reduced_dim: The vector given has been reduced to 3 dims (from n-dim for arbitrary vectors)
         @return np.array or list of np.array: vector(s) as array
         """
-
         axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
-
+        vector = netobtain(vector)
         if type(vector) != list:
             vectors = [vector]
         else:
@@ -552,6 +553,7 @@ class ScanningProbeLogic(LogicBase):
 
         vecs_arr = []
         for vec in vectors:
+            vec = netobtain(vec)
             if not isinstance(vec, dict):
                 raise ValueError
 
@@ -565,6 +567,17 @@ class ScanningProbeLogic(LogicBase):
         if len(vecs_arr) == 1:
             return vecs_arr[0]
         return vecs_arr
+
+
+    def dummy_tilt(self, vector):
+        axes = self._scan_axes.keys()
+        if type(vector) != list:
+            vectors = [vector]
+        else:
+            vectors = vector
+
+                 
+        return vector[0]
 
     def tilt_vector_array_2_dict(self, array, reduced_dim=True):
         axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
