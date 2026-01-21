@@ -132,7 +132,6 @@ class FastCounterDummy(FastCounterInterface):
         self.statusvar = 1
         return actual_binwidth, actual_length, number_of_gates
 
-
     def get_status(self):
         """ Receives the current status of the Fast Counter and outputs it as
             return value.
