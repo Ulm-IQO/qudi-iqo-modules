@@ -12,6 +12,7 @@
 - Fixed Keysight AWG's from breaking when setting the external reference clock through the configuration file
 - Fixed ``laser_logic`` to work with remote laser hardware
 - Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating  
+- Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
