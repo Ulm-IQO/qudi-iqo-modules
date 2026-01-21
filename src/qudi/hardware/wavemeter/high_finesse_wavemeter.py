@@ -203,12 +203,16 @@ class HighFinesseWavemeter(DataInStreamInterface):
         """
         self._validate_buffers(data_buffer, timestamp_buffer)
 
-        # wait until requested number of samples is available
+        # wait until requested number of samples is available and raise TimeoutError after 3 seconds
+        start_time = time.time()
         while self.available_samples < samples_per_channel:
             if self.module_state() != 'locked':
                 break
             # wait for 10 ms
             time.sleep(0.01)
+            elapsed_time = time.time() - start_time
+            if elapsed_time > 3:
+                raise TimeoutError('Waiting for samples took longer than 3 seconds.')
 
         with self._lock:
             if self.module_state() != 'locked':
