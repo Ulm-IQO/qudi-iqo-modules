@@ -13,12 +13,14 @@
 - Fixed ``laser_logic`` to work with remote laser hardware
 - Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating  
 - Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
+- Fixed counting length for the `t1_sequencing` predefined generate method for a gated counter
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
 - Added Spectrum Instrumentation AD converter as fast counter hardware file
 - Added workflows for verifying that new versions of dependencies do not break qudi
 - Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
+- Added the `PredefinedGeneratorBase._get_sequence_count_length` method to easily and correctly determine the count length of `PulseSequence` objects similar to `PredefinedGeneratorBase._get_ensemble_count_length`
 
 ### Other
 - Fixed testing workflow by removing deprecated `python 3.8`
