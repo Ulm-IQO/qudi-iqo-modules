@@ -1315,6 +1315,7 @@ class SequenceGeneratorLogic(LogicBase):
         current_end_time = 0.0
         current_start_bin = 0
 
+        number_of_lasers = 0
         # Loop through all blocks in the ensemble
         for block_name, reps in ensemble:
             # Get the stored PulseBlock instance
@@ -1336,6 +1337,8 @@ class SequenceGeneratorLogic(LogicBase):
 
                     # advance bin offset for next element
                     current_start_bin = current_end_bin
+                    if element.laser_on:
+                        number_of_lasers += 1
 
         elements_length_bins = np.array(elements_length_bins, dtype='int64')
 
@@ -1348,6 +1351,7 @@ class SequenceGeneratorLogic(LogicBase):
         return_dict['channel_set'] = analog_channels.union(digital_channels)
         return_dict['generation_parameters'] = self.generation_parameters.copy()
         return_dict['ideal_length'] = current_end_time
+        return_dict['number_of_lasers'] = number_of_lasers if ensemble.measurement_information == {} else ensemble.measurement_information["number_of_lasers"]
         return return_dict
 
     def analyze_sequence(self, sequence: Union[str, PulseSequence]):
@@ -1469,6 +1473,7 @@ class SequenceGeneratorLogic(LogicBase):
         return_dict['elements_length_bins_per_step'] = step_elements_length_bins
         return_dict['ideal_length_per_step'] = ideal_step_length
         return_dict['ideal_length'] = np.sum(ideal_step_length)
+        return_dict['number_of_lasers'] = sequence.measurement_information['number_of_lasers']
 
         return return_dict
 
