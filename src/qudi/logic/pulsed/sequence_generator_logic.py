@@ -1324,7 +1324,11 @@ class SequenceGeneratorLogic(LogicBase):
         # they are occuring in the waveform later on.
         elements_length_bins = list()
 
-        written_elements = []
+        pulse_objects = {
+            'sequence': None,
+            'ensembles': {},
+            'blocks': {},
+        }
 
         # variables to keep track of the current timeframe
         current_end_time = 0.0
@@ -1334,6 +1338,7 @@ class SequenceGeneratorLogic(LogicBase):
         for block_name, reps in ensemble:
             # Get the stored PulseBlock instance
             block = self.get_block(block_name)
+            pulse_objects['blocks'][block_name] = block.get_dict_representation()
 
             # Iterate over all repetitions of the current block
             for rep_no in range(reps + 1):
@@ -1368,7 +1373,6 @@ class SequenceGeneratorLogic(LogicBase):
 
                     # advance bin offset for next element
                     current_start_bin = current_end_bin
-                    written_elements.append(element.get_dict_representation())
 
         elements_length_bins = np.array(elements_length_bins, dtype='int64')
 
@@ -1398,7 +1402,7 @@ class SequenceGeneratorLogic(LogicBase):
         return_dict['ideal_length'] = current_end_time
         return_dict['laser_rising_bins'] = laser_rising_bins
         return_dict['laser_falling_bins'] = laser_falling_bins
-        return_dict['written_elements'] = written_elements
+        return_dict['pulse_objects'] = pulse_objects
         return return_dict
 
     def analyze_sequence(self, sequence: Union[str, PulseSequence]):
@@ -1483,7 +1487,11 @@ class SequenceGeneratorLogic(LogicBase):
         step_last_digital_state = last_digital_channel_state
         step_last_laser_on_state = last_laser_on_state
 
-        written_elements = []
+        pulse_objects = {
+            'sequence': sequence.get_dict_representation(),
+            'ensembles': {},
+            'blocks': {},
+        }
 
         for step_no, seq_step in enumerate(sequence):
             is_finite = seq_step.repetitions >= 0
@@ -1511,8 +1519,8 @@ class SequenceGeneratorLogic(LogicBase):
             step_elements_length_bins.append(
                 [seq_step.repetitions, info_dict['elements_length_bins']])
 
-            written_step_repetitions = seq_step.repetitions if seq_step.repetitions > 0 else 1
-            written_elements.extend(info_dict["written_elements"]*written_step_repetitions)
+            pulse_objects['ensembles'].update(info_dict["pulse_objects"]["ensembles"])
+            pulse_objects['blocks'].update(info_dict["pulse_objects"]["blocks"])
 
             # Get the digital channel rising/falling bin positions and concatenate them according
             # to sequence step repetition count considering bin offsets.
@@ -1620,7 +1628,7 @@ class SequenceGeneratorLogic(LogicBase):
         return_dict['ideal_length'] = np.sum(ideal_step_length)
         return_dict['laser_rising_bins'] = laser_rising_bins
         return_dict['laser_falling_bins'] = laser_falling_bins
-        return_dict['written_elements'] = written_elements
+        return_dict['pulse_objects'] = pulse_objects
 
         return return_dict
 
