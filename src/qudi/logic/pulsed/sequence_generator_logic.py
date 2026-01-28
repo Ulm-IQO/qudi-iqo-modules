@@ -1326,7 +1326,7 @@ class SequenceGeneratorLogic(LogicBase):
 
         pulse_objects = {
             'sequence': None,
-            'ensembles': {},
+            'ensembles': {ensemble.name: ensemble.get_dict_representation()},
             'blocks': {},
         }
 
