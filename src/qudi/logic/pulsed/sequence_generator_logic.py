@@ -2399,21 +2399,43 @@ class SequenceGeneratorLogic(LogicBase):
 
         return np.nan
 
-    def load_sampled_elements(self, location: Optional[str] = None) -> PulseBlock:
+    def load_sampled_objects(self, location: Optional[str] = None) -> tuple[PulseSequence | None, dict[str, PulseBlockEnsemble], dict[str, PulseBlock]]:
         if location is not None:
             storage = TextDataStorage(root_dir=self.module_default_data_dir)
             _, metadata, _ = storage.load_data(location)
-            elements = [PulseBlockElement.element_from_dict(el) for el in metadata["written_elements"]]
+            blocks = {name: PulseBlock.block_from_dict(el) for name, el in metadata["pulse_objects"]["blocks"].items()}
+            ensembles = {name: PulseBlockEnsemble.ensemble_from_dict(el) for name, el in metadata["pulse_objects"]["ensembles"].items()}
+            sequence = PulseSequence.sequence_from_dict(metadata["pulse_objects"]["sequence"]) if metadata["pulse_objects"]["sequence"] is not None else None
         else:
             asset_tuple = self.loaded_asset
             if asset_tuple[0] == "":
                 raise ValueError("No Asset currently loaded")
 
-            asset = self.get_ensemble(asset_tuple[0]) if asset_tuple[1] == "PulseBlockEnsemble" else self.get_sequence(asset_tuple[0])
+            def create_ensembles_from_asset(asset: PulseSequence | PulseBlockEnsemble) -> dict[str, PulseBlockEnsemble]:
+                out = {}
+                for name, val in asset.sampling_information["pulse_objects"]["ensembles"].items():
+                    out[name] = PulseBlockEnsemble.ensemble_from_dict(val)
+
+                return out
+
+            def create_blocks_from_asset(asset: PulseSequence | PulseBlockEnsemble) -> dict[str, PulseBlock]:
+                out = {}
+                for name, val in asset.sampling_information["pulse_objects"]["blocks"].items():
+                    out[name] = PulseBlock.block_from_dict(val)
+
+                return out
+
+            if asset_tuple[1] == "PulseBlockEnsemble":
+                asset = self.get_ensemble(asset_tuple[0])
+            else:
+                asset = self.get_sequence(asset_tuple[0])
 
             if asset is None:
                 raise ValueError(f"Could not load requested asset '{asset_tuple}'")
 
-            elements = [PulseBlockElement.element_from_dict(copy.deepcopy(value)) for value in asset.sampling_information["written_elements"]]
-        block = PulseBlock(name="loaded_sampled_elements", element_list=elements)
-        return block
+
+            sequence = None if asset_tuple[1] == "PulseBlockEnsemble" else PulseSequence.sequence_from_dict(asset.sampling_information["pulse_objects"]["sequence"])
+            ensembles = create_ensembles_from_asset(asset)
+            blocks = create_blocks_from_asset(asset)
+
+        return sequence, ensembles, blocks
