@@ -45,6 +45,12 @@ from qudi.interface.fast_counter_interface import FastCounterInterface
 from qudi.interface.microwave_interface import MicrowaveInterface
 
 
+def _sampling_information_representer(sampling_information: dict) -> dict:
+    if "pulse_objects" in sampling_information.keys():
+        del sampling_information["pulse_objects"]
+    return sampling_information
+
+
 def _data_storage_from_cfg_option(cfg_str):
     cfg_str = cfg_str.lower()
     if cfg_str == 'text':
@@ -121,7 +127,7 @@ class PulsedMeasurementLogic(LogicBase):
     # Container to store measurement information about the currently loaded sequence
     _measurement_information = StatusVar(default=dict())
     # Container to store information about the sampled waveform/sequence currently loaded
-    _sampling_information = StatusVar(default=dict())
+    _sampling_information = StatusVar(default=dict(), representer=_sampling_information_representer)
     _generation_method_parameters = StatusVar(default=dict())
 
     # Data fitting
