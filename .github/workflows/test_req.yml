@@ -8,6 +8,8 @@ on:
     branches: [ "main" ]
   schedule:
     - cron: '30 0 * * *'
+  workflow_dispatch:
+
 
 permissions:
   contents: write
@@ -18,7 +20,7 @@ concurrency:
 
 jobs:
   make-matrix:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     outputs:
       matrix: ${{ steps.build.outputs.matrix }}
     steps:
@@ -26,7 +28,7 @@ jobs:
       - name: Build Python matrix from pyproject.toml
         id: build
         run: |
-          python .github/scripts/fetch_python_versions.py | jq .
+          python .github/workflow_utils/fetch_python_versions.py | jq .
         shell: bash
 
   check-package-updates:
@@ -34,6 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       updates-available: ${{ steps.check-updates.outputs.updates-available }}
+      artifact_run_id: ${{ steps.find-id.outputs.artifact_run_id }}
     strategy:
       matrix:
         python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
@@ -52,13 +55,41 @@ jobs:
       run:
         pip install requests packaging toml
 
+    - name: Checkout qudi core
+      run: |
+        cd ..
+        git clone https://github.com/Ulm-IQO/qudi-core.git
+
+    - name: Get latest artifact run id
+      id: find-id
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: |
+          ARTIFACT_RUN_ID=$(
+            curl -s -H "Authorization: Bearer $GH_TOKEN" \
+                 "https://api.github.com/repos/${{ github.repository }}/actions/artifacts?per_page=50" |
+            jq '.artifacts[] | select(.name=="reqs_${{ matrix.python-version }}") | .workflow_run.id' |
+            head -n 1
+          )
+          echo "artifact_run_id=$ARTIFACT_RUN_ID" >> "$GITHUB_ENV"
+          echo "artifact_run_id=$ARTIFACT_RUN_ID" >> "$GITHUB_OUTPUT"
+
+    - name: Download reqs artifact
+      if: env.artifact_run_id != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: reqs_${{ matrix.python-version }}
+        path: .github/workflow_utils
+        run-id: ${{ env.artifact_run_id }}
+        github-token:  ${{ secrets.GITHUB_TOKEN }}
+
 
     - name: Check for new package versions
       id: check-updates
+      working-directory: .github/workflow_utils
       run: |
-        git checkout workflow_save
-        python workflow_utils/check_updates.py -v ${{ matrix.python-version }}
-
+        python check_updates.py -v ${{ matrix.python-version }}
+  
   test:
     needs: [make-matrix, check-package-updates]
     if: ${{ needs.check-package-updates.outputs.updates-available == 'true' }}
@@ -91,9 +122,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -e .
         qudi-install-kernel
-        cp pyproject.toml ../pyproject_core.toml
         cd ../qudi-iqo-modules
-        cp pyproject.toml ../pyproject_iqo.toml
 
     - name: Install dependencies for iqo modules
       run: |
@@ -103,53 +132,40 @@ jobs:
       run: |
         pytest -s
 
-    - name: Switch to test branch
-      if: always()
-      run: |
-        git checkout workflow_save
 
     - name: Pip freeze
-      if: failure()
-      working-directory: workflow_utils
+      working-directory: .github/workflow_utils
       run: |
-        pip freeze | Out-File -Encoding UTF8 failed_reqs.txt
+        pip freeze | Out-File -Encoding UTF8 reqs_${{ matrix.python-version }}.txt
+      
+    - name: Download reqs artifact
+      if: needs.check-package-updates.outputs.artifact_run_id != ''
+      uses: actions/download-artifact@v4
+      with:
+        name: reqs_${{ matrix.python-version }}
+        path: .github/workflow_utils/prev
+        run-id:  ${{ needs.check-package-updates.outputs.artifact_run_id }}
+        github-token:  ${{ secrets.GITHUB_TOKEN }}
 
     - name: Compare pip freeze outputs
       if: failure()
-      working-directory: workflow_utils
+      working-directory: .github/workflow_utils
       run: |
-       python compare_pip_freeze.py failed_reqs.txt reqs_${{ matrix.python-version }}.txt pip_freeze_diff_${{ matrix.python-version }}.txt
+       python compare_pip_freeze.py reqs_${{ matrix.python-version }}.txt prev/reqs_${{ matrix.python-version }}.txt pip_freeze_diff_${{ matrix.python-version }}.txt
 
     - name: Upload pip freeze diff
       if: failure()
       uses: actions/upload-artifact@v4
       with:
         name: pip-freeze-diff-${{ matrix.python-version }}
-        path: workflow_utils/pip_freeze_diff_${{ matrix.python-version }}.txt
-
-    - name: send email in case of failure
-      if: failure()
-      working-directory: workflow_utils
-      run: |
-        python failure_email_req.py -p ${{ matrix.python-version }} -d pip_freeze_diff_${{ matrix.python-version }}.txt
+        path: .github/workflow_utils/pip_freeze_diff_${{ matrix.python-version }}.txt
 
 
-    - name: Configure git
-      run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-    - name: Pip freeze on test success and commit latest deps
+    - name: Upload reqs artifact
       if: success()
-      run: |
-        cd workflow_utils
-        cp ../../pyproject_core.toml .
-        cp ../../pyproject_iqo.toml .
 
-        pip freeze | Out-File -Encoding UTF8 reqs_${{ matrix.python-version }}.txt
-        git add --all
-        git commit -m "updated reqs.txt to latest successful run"
-        git pull --rebase
-        git push --force-with-lease origin HEAD:workflow_save
-      env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      uses: actions/upload-artifact@v4
+      with:
+        name: reqs_${{ matrix.python-version }}
+        path: .github/workflow_utils/reqs_${{ matrix.python-version }}.txt
+
