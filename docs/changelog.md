@@ -6,6 +6,9 @@
 
 - Dropped `Python 3.8` support
 - Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
+- Improved pulse envelope handling by introducing the `PulseEnvelope` `dataclass`
+- Improved representation of `DDMethods` to properly store it in measurement data
+- Improved representation of `PulseEnvelopeType` to properly store it in measurement data
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
@@ -14,6 +17,7 @@
 - Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating  
 - Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
 - Fixed counting length for the `t1_sequencing` predefined generate method for a gated counter
+- Fixed `sequence_generator_logic` configuration in `default.cfg`
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain

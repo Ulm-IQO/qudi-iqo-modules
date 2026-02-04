@@ -28,6 +28,7 @@ import copy
 import logging
 import numpy as np
 from enum import Enum, EnumMeta
+from dataclasses import dataclass, field
 
 from qudi.util.helpers import iter_modules_recursive
 
@@ -98,6 +99,10 @@ class DDMethods(Enum):
     @property
     def phases(self):
         return np.array(self._phases)
+
+    def __repr__(self):
+        return f"{self.__class__.__name__}({self.value})"
+
 
 class SamplingBase:
     """
@@ -236,29 +241,32 @@ class PulseEnvelopeType(Enum, metaclass=PulseEnvelopeTypeMeta):
     optimal = 'optimal'
     from_gen_settings = '_from_gen_settings'
 
-    def __init__(self, *args):
-        self._parameters = self.default_parameters
+    def __repr__(self):
+        return f"{self.__class__.__module__}.{self.__class__.__name__}.{self.value}"
+
+@dataclass
+class PulseEnvelope:
+    type: PulseEnvelopeType
+    parameters: dict = field(default_factory=dict)
+
+    def __post_init__(self):
+        if not self.parameters:
+            self.parameters = self.default_parameters
 
     @property
-    def default_parameters(self):
+    def default_parameters(self) -> dict:
         defaults = {'rectangle': {},
                     'parabola': {'order_P': 1},
                     'optimal': {},
                     'sin_n': {'order_n': 2},
                     '_from_gen_settings': {}}
 
-        return defaults[self.value]
-
-    @property
-    def parameters(self):
-        return self._parameters
-
-    @parameters.setter
-    def parameters(self, param_dict):
-        self._parameters = param_dict
+        return defaults[self.type.value]
 
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.value}))"
+        return f"{self.__class__.__module__}.{self.__class__.__name__}.{self.value}"
 
-
+    @classmethod
+    def from_dict(cls, parameters: dict) -> "PulseEnvelope":
+        return PulseEnvelope(parameters["type"], parameters["parameters"])
 
