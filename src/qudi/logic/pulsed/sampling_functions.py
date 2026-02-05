@@ -106,6 +106,11 @@ class SamplingBase:
     params = dict()
     log = logging.getLogger(__name__)
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params = dict()
+
+
     def __repr__(self):
         kwargs = []
         for param, def_dict in self.params.items():
