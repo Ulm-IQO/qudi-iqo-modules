@@ -110,7 +110,6 @@ class SamplingBase:
         super().__init__(*args, **kwargs)
         self.params = dict()
 
-
     def __repr__(self):
         kwargs = []
         for param, def_dict in self.params.items():
