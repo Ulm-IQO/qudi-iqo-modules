@@ -28,8 +28,8 @@ class Idle(SamplingBase):
     """
     Object representing an idle element (zero voltage)
     """
-    def __init__(self):
-        pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     @staticmethod
     def get_samples(time_array):
@@ -44,7 +44,9 @@ class DC(SamplingBase):
     params = dict()
     params['voltage'] = {'unit': 'V', 'init': 0.0, 'min': -np.inf, 'max': +np.inf, 'type': float}
 
-    def __init__(self, voltage=None):
+    def __init__(self, voltage=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(DC.params)
         if voltage is None:
             self.voltage = self.params['voltage']['init']
         else:
@@ -70,7 +72,9 @@ class Sin(SamplingBase):
     params['frequency'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
     params['phase'] = {'unit': '°', 'init': 0.0, 'min': -np.inf, 'max': np.inf, 'type': float}
 
-    def __init__(self, amplitude=None, frequency=None, phase=None):
+    def __init__(self, amplitude=None, frequency=None, phase=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(Sin.params)
         if amplitude is None:
             self.amplitude = self.params['amplitude']['init']
         else:
@@ -110,7 +114,9 @@ class DoubleSinSum(SamplingBase):
 
     def __init__(self,
                  amplitude_1=None, frequency_1=None, phase_1=None,
-                 amplitude_2=None, frequency_2=None, phase_2=None):
+                 amplitude_2=None, frequency_2=None, phase_2=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(DoubleSinSum.params)
         if amplitude_1 is None:
             self.amplitude_1 = self.params['amplitude_1']['init']
         else:
@@ -168,7 +174,9 @@ class DoubleSinProduct(SamplingBase):
 
     def __init__(self,
                  amplitude_1=None, frequency_1=None, phase_1=None,
-                 amplitude_2=None, frequency_2=None, phase_2=None):
+                 amplitude_2=None, frequency_2=None, phase_2=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(DoubleSinProduct.params)
         if amplitude_1 is None:
             self.amplitude_1 = self.params['amplitude_1']['init']
         else:
@@ -231,7 +239,9 @@ class TripleSinSum(SamplingBase):
     def __init__(self,
                  amplitude_1=None, frequency_1=None, phase_1=None,
                  amplitude_2=None, frequency_2=None, phase_2=None,
-                 amplitude_3=None, frequency_3=None, phase_3=None):
+                 amplitude_3=None, frequency_3=None, phase_3=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(TripleSinSum.params)
         if amplitude_1 is None:
             self.amplitude_1 = self.params['amplitude_1']['init']
         else:
@@ -311,7 +321,9 @@ class TripleSinProduct(SamplingBase):
     def __init__(self,
                  amplitude_1=None, frequency_1=None, phase_1=None,
                  amplitude_2=None, frequency_2=None, phase_2=None,
-                 amplitude_3=None, frequency_3=None, phase_3=None):
+                 amplitude_3=None, frequency_3=None, phase_3=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(TripleSinProduct.params)
         if amplitude_1 is None:
             self.amplitude_1 = self.params['amplitude_1']['init']
         else:
@@ -371,6 +383,272 @@ class TripleSinProduct(SamplingBase):
         samples_arr *= self._get_sine(time_array, self.amplitude_3, self.frequency_3, phase_rad)
         return samples_arr
 
+class QuintupleSinSum(SamplingBase):
+    """
+    Object representing a linear combination of five sines
+    (Superposition of five sine waves; NOT normalized)
+    """
+    params = dict()
+    params['amplitude_1'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_1'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_1'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_2'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_2'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_2'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_3'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_3'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_3'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_4'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_4'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_4'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_5'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_5'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_5'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+
+    def __init__(self,
+                 amplitude_1=None, frequency_1=None, phase_1=None,
+                 amplitude_2=None, frequency_2=None, phase_2=None,
+                 amplitude_3=None, frequency_3=None, phase_3=None,
+                 amplitude_4=None, frequency_4=None, phase_4=None,
+                 amplitude_5=None, frequency_5=None, phase_5=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(QuintupleSinSum.params)
+        if amplitude_1 is None:
+            self.amplitude_1 = self.params['amplitude_1']['init']
+        else:
+            self.amplitude_1 = amplitude_1
+        if frequency_1 is None:
+            self.frequency_1 = self.params['frequency_1']['init']
+        else:
+            self.frequency_1 = frequency_1
+        if phase_1 is None:
+            self.phase_1 = self.params['phase_1']['init']
+        else:
+            self.phase_1 = phase_1
+
+        if amplitude_2 is None:
+            self.amplitude_2 = self.params['amplitude_2']['init']
+        else:
+            self.amplitude_2 = amplitude_2
+        if frequency_2 is None:
+            self.frequency_2 = self.params['frequency_2']['init']
+        else:
+            self.frequency_2 = frequency_2
+        if phase_2 is None:
+            self.phase_2 = self.params['phase_2']['init']
+        else:
+            self.phase_2 = phase_2
+
+        if amplitude_3 is None:
+            self.amplitude_3 = self.params['amplitude_3']['init']
+        else:
+            self.amplitude_3 = amplitude_3
+        if frequency_3 is None:
+            self.frequency_3 = self.params['frequency_3']['init']
+        else:
+            self.frequency_3 = frequency_3
+        if phase_3 is None:
+            self.phase_3 = self.params['phase_3']['init']
+        else:
+            self.phase_3 = phase_3
+
+        if amplitude_4 is None:
+            self.amplitude_4 = self.params['amplitude_4']['init']
+        else:
+            self.amplitude_4 = amplitude_4
+        if frequency_4 is None:
+            self.frequency_4 = self.params['frequency_4']['init']
+        else:
+            self.frequency_4 = frequency_4
+        if phase_4 is None:
+            self.phase_4 = self.params['phase_4']['init']
+        else:
+            self.phase_4 = phase_4
+
+        if amplitude_5 is None:
+            self.amplitude_5 = self.params['amplitude_5']['init']
+        else:
+            self.amplitude_5 = amplitude_5
+        if frequency_5 is None:
+            self.frequency_5 = self.params['frequency_5']['init']
+        else:
+            self.frequency_5 = frequency_5
+        if phase_5 is None:
+            self.phase_5 = self.params['phase_5']['init']
+        else:
+            self.phase_5 = phase_5
+        return
+
+    @staticmethod
+    def _get_sine(time_array, amplitude, frequency, phase):
+        samples_arr = amplitude * np.sin(2 * np.pi * frequency * time_array + phase)
+        return samples_arr
+
+    def get_samples(self, time_array):
+        # First sine wave
+        phase_rad = np.pi * self.phase_1 / 180
+        samples_arr = self._get_sine(time_array, self.amplitude_1, self.frequency_1, phase_rad)
+
+        # Second sine wave (add on first sine)
+        phase_rad = np.pi * self.phase_2 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_2, self.frequency_2, phase_rad)
+
+        # Third sine wave (add on sum of first and second)
+        phase_rad = np.pi * self.phase_3 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_3, self.frequency_3, phase_rad)
+
+        # Fourth sine wave (add on sum of first three)
+        phase_rad = np.pi * self.phase_4 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_4, self.frequency_4, phase_rad)
+
+        # Fifth sine wave (add on sum of first four)
+        phase_rad = np.pi * self.phase_5 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_5, self.frequency_5, phase_rad)
+        return samples_arr
+
+class SextupleSinSum(SamplingBase):
+    """
+    Object representing a linear combination of six sines
+    (Superposition of six sine waves; NOT normalized)
+    """
+    params = dict()
+    params['amplitude_1'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_1'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_1'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_2'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_2'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_2'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_3'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_3'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_3'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_4'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_4'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_4'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_5'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_5'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_5'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_6'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_6'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_6'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+
+    def __init__(self,
+                 amplitude_1=None, frequency_1=None, phase_1=None,
+                 amplitude_2=None, frequency_2=None, phase_2=None,
+                 amplitude_3=None, frequency_3=None, phase_3=None,
+                 amplitude_4=None, frequency_4=None, phase_4=None,
+                 amplitude_5=None, frequency_5=None, phase_5=None,
+                 amplitude_6=None, frequency_6=None, phase_6=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(SextupleSinSum.params)
+        if amplitude_1 is None:
+            self.amplitude_1 = self.params['amplitude_1']['init']
+        else:
+            self.amplitude_1 = amplitude_1
+        if frequency_1 is None:
+            self.frequency_1 = self.params['frequency_1']['init']
+        else:
+            self.frequency_1 = frequency_1
+        if phase_1 is None:
+            self.phase_1 = self.params['phase_1']['init']
+        else:
+            self.phase_1 = phase_1
+
+        if amplitude_2 is None:
+            self.amplitude_2 = self.params['amplitude_2']['init']
+        else:
+            self.amplitude_2 = amplitude_2
+        if frequency_2 is None:
+            self.frequency_2 = self.params['frequency_2']['init']
+        else:
+            self.frequency_2 = frequency_2
+        if phase_2 is None:
+            self.phase_2 = self.params['phase_2']['init']
+        else:
+            self.phase_2 = phase_2
+
+        if amplitude_3 is None:
+            self.amplitude_3 = self.params['amplitude_3']['init']
+        else:
+            self.amplitude_3 = amplitude_3
+        if frequency_3 is None:
+            self.frequency_3 = self.params['frequency_3']['init']
+        else:
+            self.frequency_3 = frequency_3
+        if phase_3 is None:
+            self.phase_3 = self.params['phase_3']['init']
+        else:
+            self.phase_3 = phase_3
+
+        if amplitude_4 is None:
+            self.amplitude_4 = self.params['amplitude_4']['init']
+        else:
+            self.amplitude_4 = amplitude_4
+        if frequency_4 is None:
+            self.frequency_4 = self.params['frequency_4']['init']
+        else:
+            self.frequency_4 = frequency_4
+        if phase_4 is None:
+            self.phase_4 = self.params['phase_4']['init']
+        else:
+            self.phase_4 = phase_4
+
+        if amplitude_5 is None:
+            self.amplitude_5 = self.params['amplitude_5']['init']
+        else:
+            self.amplitude_5 = amplitude_5
+        if frequency_5 is None:
+            self.frequency_5 = self.params['frequency_5']['init']
+        else:
+            self.frequency_5 = frequency_5
+        if phase_5 is None:
+            self.phase_5 = self.params['phase_5']['init']
+        else:
+            self.phase_5 = phase_5
+
+        if amplitude_6 is None:
+            self.amplitude_6 = self.params['amplitude_6']['init']
+        else:
+            self.amplitude_6 = amplitude_6
+        if frequency_6 is None:
+            self.frequency_6 = self.params['frequency_6']['init']
+        else:
+            self.frequency_6 = frequency_6
+        if phase_6 is None:
+            self.phase_6 = self.params['phase_6']['init']
+        else:
+            self.phase_6 = phase_6
+        return
+
+    @staticmethod
+    def _get_sine(time_array, amplitude, frequency, phase):
+        samples_arr = amplitude * np.sin(2 * np.pi * frequency * time_array + phase)
+        return samples_arr
+
+    def get_samples(self, time_array):
+        # First sine wave
+        phase_rad = np.pi * self.phase_1 / 180
+        samples_arr = self._get_sine(time_array, self.amplitude_1, self.frequency_1, phase_rad)
+
+        # Second sine wave (add on first sine)
+        phase_rad = np.pi * self.phase_2 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_2, self.frequency_2, phase_rad)
+
+        # Third sine wave (add on sum of first and second)
+        phase_rad = np.pi * self.phase_3 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_3, self.frequency_3, phase_rad)
+
+        # Fourth sine wave (add on sum of first three)
+        phase_rad = np.pi * self.phase_4 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_4, self.frequency_4, phase_rad)
+
+        # Fifth sine wave (add on sum of first four)
+        phase_rad = np.pi * self.phase_5 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_5, self.frequency_5, phase_rad)
+
+        # Sixth sine wave (add on sum of first five)
+        phase_rad = np.pi * self.phase_6 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_6, self.frequency_6, phase_rad)
+        return samples_arr
 
 class Chirp(SamplingBase):
     """
@@ -385,7 +663,9 @@ class Chirp(SamplingBase):
     params['stop_freq'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf,
                                 'type': float}
 
-    def __init__(self, amplitude=None, phase=None, start_freq=None, stop_freq=None):
+    def __init__(self, amplitude=None, phase=None, start_freq=None, stop_freq=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(Chirp.params)
         if amplitude is None:
             self.amplitude = self.params['amplitude']['init']
         else:
@@ -433,7 +713,9 @@ class AllenEberlyChirp(SamplingBase):
     params['tau_pulse'] = {'unit': '', 'init': 0.1e-6, 'min': 0.0, 'max': np.inf,
                            'type': float}
 
-    def __init__(self, amplitude=None, phase=None, start_freq=None, stop_freq=None, tau_pulse=None):
+    def __init__(self, amplitude=None, phase=None, start_freq=None, stop_freq=None, tau_pulse=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(AllenEberlyChirp.params)
         if amplitude is None:
             self.amplitude = self.params['amplitude']['init']
         else:
