@@ -66,7 +66,7 @@ class Watchdog(QObject):
         deactivated_channels = self._proxy.get_connected_channels() - actual_active_channels
         for ch in deactivated_channels:
             self.log.warning(f'Reactivating channel {ch} as it is in use by an instreamer.')
-            self._proxy._activate_channel(ch)
+            self._proxy.activate_channel(ch)
 
     def handle_error(self) -> None:
         self.log.warning('Error in callback function.')
@@ -153,10 +153,10 @@ class HighFinesseProxy(Base):
             with self._lock:
                 not_connected_yet = set(channels) - self.get_connected_channels()
                 for ch in not_connected_yet:
-                    self._activate_channel(ch)
+                    self.activate_channel(ch)
                 self._connected_instream_modules[module] = set(channels)
             if self._callback_function is None:
-                self._start_measurement()
+                self.start_measurement()
                 self._start_callback()
         else:
             self.log.warning('Instream module is already connected.')
@@ -348,7 +348,7 @@ class HighFinesseProxy(Base):
         """Check if there already is a proxy running."""
         return THREAD_NAME_WATCHDOG in self._thread_manager.thread_names
 
-    def _activate_channel(self, ch: int) -> None:
+    def activate_channel(self, ch: int) -> None:
         """ Activate a channel on the multi-channel switch. """
         if not self._wm_has_switch:
             if ch == 1:
@@ -362,7 +362,7 @@ class HighFinesseProxy(Base):
                 f'Wavemeter error while activating channel {ch}: {high_finesse_constants.ResultError(err)}'
             )
 
-    def _deactivate_channel(self, ch: int) -> None:
+    def deactivate_channel(self, ch: int) -> None:
         """ Deactivate a channel on the multi-channel switch. """
         if not self._wm_has_switch:
             if ch == 1:
@@ -375,7 +375,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Wavemeter error while deactivating channel {ch}: '
                                f'{high_finesse_constants.ResultError(err)}')
 
-    def _start_measurement(self) -> None:
+    def start_measurement(self) -> None:
         if self._wm_has_switch:
             self._wavemeter_dll.SetSwitcherMode(True)
         err = self._wavemeter_dll.Operation(high_finesse_constants.cCtrlStartMeasurement)
