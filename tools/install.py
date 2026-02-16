@@ -6,11 +6,43 @@ import shutil
 from pathlib import Path
 
 INSTALL_DIR = Path.home() / "qudi"
+
 VENV_DIR = INSTALL_DIR / "qudi-env"
 
 CORE_REPO = "https://github.com/Ulm-IQO/qudi-core.git"
 IQO_REPO = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
 
+
+def choose_install_dir():
+    global INSTALL_DIR
+    print("Where do you want to install Qudi?")
+    print("1) Home directory")
+    print("2) Current directory")
+    print("3) Custom directory")
+
+    choice = input("Enter 1, 2, or 3 (default 1): ").strip()
+
+    if choice == "2":
+        INSTALL_DIR = Path.cwd()
+    elif choice == "3":
+        custom_path = input("Enter full path for installation: ").strip()
+        if not custom_path:
+            return
+        INSTALL_DIR = Path(custom_path).expanduser().resolve()
+
+def choose_venv_name():
+    global VENV_DIR
+    print("Use a custom virtual environment name?")
+    print("1) qudi-env")
+    print("2) Custom name")
+
+    choice = input("Enter 1, 2 (default 1): ").strip()
+
+    if choice == "2":
+        custom_name = input("Enter name: ").strip()
+        if not custom_name:
+            custom_name = "qudi-env"
+        VENV_DIR = INSTALL_DIR / custom_name
 
 def run(cmd, cwd=None):
     print(f"> {cmd}")
@@ -31,11 +63,21 @@ def check_git():
 
 
 def create_venv():
+    choose_venv_name()
     if not os.path.exists(VENV_DIR):
         print(f"Creating virtual environment in '{VENV_DIR}'...")
         venv.create(VENV_DIR, with_pip=True)
     else:
         print(f"Virtual environment '{VENV_DIR}' already exists.")
+
+        choice = input("Continuing will modify the existing virtual environment, do you want to continue? [y / N] ").strip()
+        if choice in ['y', 'Y']:
+            return
+        else:
+            print("Aborting Qudi installation")
+            sys.exit(1)
+
+
 
 
 def install_modules():
@@ -71,6 +113,8 @@ qudi
 def main():
     check_python()
     check_git()
+
+    choose_install_dir()
 
     INSTALL_DIR.mkdir(exist_ok=True)
     os.chdir(INSTALL_DIR)
