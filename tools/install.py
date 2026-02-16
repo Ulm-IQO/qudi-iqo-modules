@@ -38,11 +38,12 @@ def choose_venv_name():
 
     choice = input("Enter 1, 2 (default 1): ").strip()
 
+    custom_name = "qudi-env"
     if choice == "2":
-        custom_name = input("Enter name: ").strip()
-        if not custom_name:
-            custom_name = "qudi-env"
-        VENV_DIR = INSTALL_DIR / custom_name
+        choice = input("Enter name: ").strip()
+        if choice:
+            custom_name = choice
+    VENV_DIR = INSTALL_DIR / custom_name
 
 def run(cmd, cwd=None):
     print(f"> {cmd}")
@@ -89,6 +90,7 @@ def install_modules():
 
     run(f"{python_bin} -m pip install -e {INSTALL_DIR/'qudi-core'}")
     run(f"{python_bin} -m pip install -e {INSTALL_DIR/'qudi-iqo-modules'}")
+    run(f'{python_bin} -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
 
 
 def create_launcher():
