@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+import venv
 import shutil
 from pathlib import Path
 
@@ -30,16 +31,22 @@ def check_git():
 
 
 def create_venv():
-    run(f"{sys.executable} -m venv {VENV_DIR}")
+    if not os.path.exists(VENV_DIR):
+        print(f"Creating virtual environment in '{VENV_DIR}'...")
+        venv.create(VENV_DIR, with_pip=True)
+    else:
+        print(f"Virtual environment '{VENV_DIR}' already exists.")
 
 
 def install_modules():
-    pip = VENV_DIR / ("Scripts/pip" if os.name == "nt" else "bin/pip")
-    run(f"{pip} install --upgrade pip")
+    if os.name == "nt":
+        python_bin = os.path.join(VENV_DIR, "Scripts", "python.exe")
+    else:
+        python_bin = os.path.join(VENV_DIR, "bin", "python")
+    run(f"{python_bin} -m pip install --upgrade pip")
 
-    run(f"{pip} install -e {INSTALL_DIR/'qudi-core'}")
-    run(f"{pip} install -e {INSTALL_DIR/'qudi-iqo-modules'}")
-    run(f"qudi-install-kernel")
+    run(f"{python_bin} -m pip install -e {INSTALL_DIR/'qudi-core'}")
+    run(f"{python_bin} -m pip install -e {INSTALL_DIR/'qudi-iqo-modules'}")
 
 
 def create_launcher():
@@ -70,9 +77,13 @@ def main():
 
     if not (INSTALL_DIR / "qudi-core").exists():
         run(f"git clone {CORE_REPO}")
+    else:
+        print(f"{INSTALL_DIR / 'qudi-core'} already exists, doing nothing.")
 
     if not (INSTALL_DIR / "qudi-iqo-modules").exists():
         run(f"git clone {IQO_REPO}")
+    else:
+        print(f"{INSTALL_DIR / 'qudi-iqo-modules'} already exists, doing nothing.")
 
     create_venv()
     install_modules()
