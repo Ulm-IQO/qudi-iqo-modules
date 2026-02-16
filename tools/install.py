@@ -3,6 +3,7 @@ import subprocess
 import sys
 import shutil
 from pathlib import Path
+from tools import fetch_python_versions
 
 INSTALL_DIR = Path.home() / "qudi"
 VENV_DIR = INSTALL_DIR / "qudi-env"
@@ -17,8 +18,9 @@ def run(cmd, cwd=None):
 
 
 def check_python():
-    if sys.version_info < (3, 9):
-        print("Python 3.9+ required.")
+    versions = fetch_python_versions.main()
+    if f"{sys.version_info.major}.{sys.version_info.minor}" not in versions:
+        print(f"Could not detect correct Python version. Install one of the following versions: {versions}.")
         sys.exit(1)
 
 
