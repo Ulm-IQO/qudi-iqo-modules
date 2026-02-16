@@ -3,7 +3,7 @@ import subprocess
 import sys
 import shutil
 from pathlib import Path
-from tools import fetch_python_versions
+import fetch_python_versions
 
 INSTALL_DIR = Path.home() / "qudi"
 VENV_DIR = INSTALL_DIR / "qudi-env"
