@@ -99,10 +99,8 @@ def install_modules():
 def create_launcher():
     if os.name == "nt":
         launcher = INSTALL_DIR / "start_qudi.bat"
-        launcher.write_text(f"""
-@echo off
-call "{VENV_DIR}\\Scripts\\activate.bat"
-qudi
+        launcher.write_text(f"""@echo off
+call "{VENV_DIR}\\Scripts\\qudi"
 pause
 """)
     else:
@@ -123,12 +121,12 @@ def create_config_dir():
 
 
 def create_desktop_file():
-    iconfile = INSTALL_DIR / "/qudi-core/src/qudi/artwork/logo/logo-qudi.svg"
+    iconfile = INSTALL_DIR / "/qudi-core/src/qudi/artwork/logo/logo-qudi"
     if os.name == "nt":
         desktopfile = INSTALL_DIR / "qudi.url"
         desktopfile.write_text(f"""[InternetShortcut]
 URL=file:///{(INSTALL_DIR / "start_qudi.bat").as_posix()}
-IconFile={iconfile}
+IconFile={iconfile}.ico
 IconIndex=0
 """)
         #start_menu = Path(os.environ["APPDATA"]) / r"Microsoft\Windows\Start Menu\Programs"
@@ -148,7 +146,7 @@ Type=Application
 Name=Qudi
 Comment=Start Qudi Measurement Software
 Exec={INSTALL_DIR}/start_qudi.sh
-Icon={iconfile}
+Icon={iconfile}.svg
 Terminal=true
 Categories=Science;Education;
 StartupNotify=true
