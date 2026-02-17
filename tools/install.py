@@ -104,10 +104,9 @@ pause
 """)
     else:
         launcher = INSTALL_DIR / "start_qudi.sh"
-        launcher.write_text(f"""
-#!/bin/bash
-source "{VENV_DIR}/bin/activate"
-qudi
+        launcher.write_text(f"""#!/bin/bash
+cd {INSTALL_DIR}
+exec "{VENV_DIR}/bin/qudi"
 """)
         launcher.chmod(0o755)
 
