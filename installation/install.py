@@ -216,9 +216,9 @@ def desktop_shortcut():
 def installation_choice():
     global CORE_DIR, IQO_MODULES_DIR
     print("How to install Qudi?")
-    print("1) Latest, editable versions of qudi-core and qudi-iqo-modules")
-    print("2) Latest, editable version of qudi-iqo-modules, but stable qudi-core release")
-    print("3) Latest stable, uneditable versions of qudi-core and qudi-iqo-modules")
+    print("1) Latest, editable version of qudi-iqo-modules, but stable qudi-core release")
+    print("2) Latest, editable versions of qudi-core and qudi-iqo-modules")
+    print("3) Latest stable, uneditable release of qudi-core and qudi-iqo-modules")
 
     choice = input("Enter 1, 2, 3 (default 1): ").strip()
 
@@ -227,7 +227,7 @@ def installation_choice():
 
     IQO_MODULES_DIR = INSTALL_DIR / 'qudi-iqo-modules'
 
-    if choice == "2":
+    if choice != "2":
         return
 
     CORE_DIR = INSTALL_DIR / 'qudi-core'
