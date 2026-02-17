@@ -14,6 +14,15 @@ CORE_REPO = "https://github.com/Ulm-IQO/qudi-core.git"
 IQO_REPO = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
 
 
+def yes_no_choice(message: str) -> bool:
+    choice = input(f"{message} [y / N] ").strip()
+
+    if choice in ['y', 'Y']:
+        return True
+    else:
+        return False
+
+
 def choose_install_dir():
     global INSTALL_DIR
     print("Where do you want to install Qudi?")
@@ -55,9 +64,6 @@ def run(cmd, cwd=None):
 
 def check_python():
     pass
-    # if f"{sys.version_info.major}.{sys.version_info.minor}" not in versions:
-    #    print(f"Could not detect correct Python version. Install one of the following versions: {versions}.")
-    #    sys.exit(1)
 
 
 def check_git():
@@ -74,10 +80,7 @@ def create_venv():
     else:
         print(f"Virtual environment '{VENV_DIR}' already exists.")
 
-        choice = input(
-            "Continuing will modify the existing virtual environment, do you want to continue? [y / N] "
-        ).strip()
-        if choice in ['y', 'Y']:
+        if yes_no_choice("Continuing will modify the existing virtual environment, do you want to continue?"):
             return
         else:
             print("Aborting Qudi installation")
@@ -91,8 +94,8 @@ def install_modules():
         python_bin = os.path.join(VENV_DIR, "bin", "python")
     run(f"{python_bin} -m pip install --upgrade pip")
 
-    run(f"{python_bin} -m pip install -e {INSTALL_DIR / 'qudi-core'}")
-    run(f"{python_bin} -m pip install -e {INSTALL_DIR / 'qudi-iqo-modules'}")
+    run(f"{python_bin} -m pip install -e {CORE_DIR}")
+    run(f"{python_bin} -m pip install -e {IQO_MODULES_DIR}")
     run(f'{python_bin} -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
 
 
@@ -100,14 +103,19 @@ def create_launcher():
     if os.name == "nt":
         launcher = INSTALL_DIR / "start_qudi.bat"
         launcher.write_text(f"""@echo off
-call "{VENV_DIR}\\Scripts\\qudi"
+cd {INSTALL_DIR}
+call "{VENV_DIR}\\Scripts\\activate.bat"
+qudi
 pause
 """)
     else:
         launcher = INSTALL_DIR / "start_qudi.sh"
         launcher.write_text(f"""#!/bin/bash
 cd {INSTALL_DIR}
-exec "{VENV_DIR}/bin/qudi"
+source "{VENV_DIR}/bin/activate"
+qudi
+read -n 1 -s -r -p "Press any key to close..."
+echo
 """)
         launcher.chmod(0o755)
     print(f"Created launcher script at {launcher}")
@@ -121,46 +129,68 @@ def create_config_dir():
 
 
 def create_desktop_file():
-    iconfile = INSTALL_DIR / "/qudi-core/src/qudi/artwork/logo/logo-qudi"
+    global DESKTOP_FILE
+
+    iconfile = INSTALL_DIR / "qudi-core"/ "src" / "qudi" / "artwork" / "logo"
     if os.name == "nt":
-        desktopfile = INSTALL_DIR / "qudi.url"
-        desktopfile.write_text(f"""[InternetShortcut]
-URL=file:///{(INSTALL_DIR / "start_qudi.bat").as_posix()}
-IconFile={iconfile}.ico
-IconIndex=0
-""")
-        #start_menu = Path(os.environ["APPDATA"]) / r"Microsoft\Windows\Start Menu\Programs"
-        #desktopfile = start_menu / "qudi.lnk"
-        #shell = win32com.client.Dispatch("WScript.Shell")
-        #shortcut = shell.CreateShortcut(str(desktopfile))
-        #shortcut.TargetPath = str(INSTALL_DIR / "start_qudi.bat")
-        #shortcut.WorkingDirectory = str(INSTALL_DIR)
-        #shortcut.IconLocation = str(iconfile)
-        #shortcut.Save()
+        iconfile = iconfile / "logo_qudi.ico"
+        DESKTOP_FILE = INSTALL_DIR / "qudi.lnk"
+
+        ps_command = f"""
+$WshShell = New-Object -ComObject WScript.Shell
+$Shortcut = $WshShell.CreateShortcut("{DESKTOP_FILE}")
+$Shortcut.TargetPath = "{INSTALL_DIR / "start_qudi.bat"}"
+$Shortcut.WorkingDirectory = "{INSTALL_DIR}"
+$Shortcut.IconLocation = "{iconfile}"
+$Shortcut.Save()
+        """
+        subprocess.run(["powershell", "-Command", ps_command], check=True)
 
     else:
-        desktopfile = INSTALL_DIR / "qudi.desktop"
-        desktopfile.write_text(f"""[Desktop Entry]
+        iconfile = iconfile / "logo-qudi.svg"
+        DESKTOP_FILE = INSTALL_DIR / "qudi.desktop"
+        DESKTOP_FILE.write_text(f"""[Desktop Entry]
 Version=1.0
 Type=Application
 Name=Qudi
 Comment=Start Qudi Measurement Software
 Exec={INSTALL_DIR}/start_qudi.sh
-Icon={iconfile}.svg
+Icon={iconfile}
 Terminal=true
 Categories=Science;Education;
 StartupNotify=true
 """)
-        desktopfile.chmod(0o755)
-        applications_dir = Path.home() / ".local/share/applications"
-        applications_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(desktopfile, applications_dir / "qudi.desktop")
-        print(f"Registered desktop file at {applications_dir / 'qudi.desktop'}")
+        DESKTOP_FILE.chmod(0o755)
 
-    print(f"Created desktop file at {desktopfile}")
+    print(f"Created desktop file at {DESKTOP_FILE}")
+
+def start_menu_shortcut():
+    if not yes_no_choice("Create Start Menu shortcut?"):
+        return
+
+    if os.name == "nt":
+        start_menu = Path(os.environ["APPDATA"]) / "Microsoft" / "Windows" / "Start Menu" / "Programs"
+
+    else:
+        start_menu = Path.home() / ".local/share/applications"
+
+    destination = start_menu / DESKTOP_FILE.name
+    shutil.copy2(DESKTOP_FILE, destination)
+    print(f"Registered Start Menu shortcut at {destination}")
+
+
+def desktop_shortcut():
+    if not yes_no_choice("Create Desktop shortcut?"):
+        return
+
+    destination = Path.home() / "Desktop" / DESKTOP_FILE.name
+
+    shutil.copy2(DESKTOP_FILE, destination)
+    print(f"Created Desktop shortcut at {destination}")
 
 
 def main():
+    global CORE_DIR, IQO_MODULES_DIR
     check_python()
     check_git()
 
@@ -169,20 +199,27 @@ def main():
     INSTALL_DIR.mkdir(exist_ok=True)
     os.chdir(INSTALL_DIR)
 
+    CORE_DIR = INSTALL_DIR / 'qudi-core'
+    IQO_MODULES_DIR = INSTALL_DIR / 'qudi-iqo-modules'
+
     if not (INSTALL_DIR / "qudi-core").exists():
-        run(f"git clone {CORE_REPO}")
+        run(f"git clone {CORE_REPO} {CORE_DIR}")
     else:
         print(f"{INSTALL_DIR / 'qudi-core'} already exists, doing nothing.")
 
     if not (INSTALL_DIR / "qudi-iqo-modules").exists():
-        run(f"git clone {IQO_REPO}")
+        run(f"git clone {IQO_REPO} {IQO_MODULES_DIR}")
     else:
         print(f"{INSTALL_DIR / 'qudi-iqo-modules'} already exists, doing nothing.")
 
     create_venv()
     install_modules()
+
     create_launcher()
     create_desktop_file()
+
+    start_menu_shortcut()
+    desktop_shortcut()
 
     create_config_dir()
 
