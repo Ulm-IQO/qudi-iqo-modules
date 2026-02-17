@@ -4,7 +4,6 @@ import sys
 import venv
 import shutil
 from pathlib import Path
-#import win32com.client
 
 INSTALL_DIR = Path.home() / "qudi"
 
