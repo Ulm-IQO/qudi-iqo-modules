@@ -13,14 +13,16 @@ The script can also create Desktop and Start Menu shortcuts, making it easy to l
 This allows Qudi to be used with minimal command-line experience.
 
 There are two possible installation options:
-  1. Installing the latest development branch, allowing users to modify and extend the code for their own setups
-  2. Install the latest released package, allowing the use of Qudi as is, making updates simpler, but prohibiting the modification of code.
+  1. Install the latest released package of `qudi-core`, but the latest development branch of `qudi-iqo-modules`, allowing the users to modify and extend only the measurement modules `qudi-iqo-modules`, while prohibiting this for the base module `qudi-core`
+  2. Installing the latest development branches of `qudi-core` and `qudi-iqo-modules`, allowing users to modify and extend the code for their own setups freely
+  3. Install the latest released packages of `qudi-core` and `qudi-iqo-modules`, allowing the use of Qudi as is, making updates simpler, but prohibiting the modification of code.
 
 Installation requirements depend on the method being used:
-  1. `Git`, [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the README
-  2. [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the README
+  1. `Git`, [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the python badge of the README
+  2. `Git`, [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the python badge of the README
+  3. [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the python badge of the README
 
-Below, the manual installation instructions can be found, which allows for more control over what and where to install the packages.
+Below, the manual installation instructions can be found, which allow for more control over the installation process.
 
 ## Manual Installation
 ### Install qudi core
