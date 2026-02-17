@@ -30,6 +30,7 @@ def choose_install_dir():
             return
         INSTALL_DIR = Path(custom_path).expanduser().resolve()
 
+
 def choose_venv_name():
     global VENV_DIR
     print("Use a custom virtual environment name?")
@@ -45,6 +46,7 @@ def choose_venv_name():
             custom_name = choice
     VENV_DIR = INSTALL_DIR / custom_name
 
+
 def run(cmd, cwd=None):
     print(f"> {cmd}")
     subprocess.check_call(cmd, shell=True, cwd=cwd)
@@ -52,7 +54,7 @@ def run(cmd, cwd=None):
 
 def check_python():
     pass
-    #if f"{sys.version_info.major}.{sys.version_info.minor}" not in versions:
+    # if f"{sys.version_info.major}.{sys.version_info.minor}" not in versions:
     #    print(f"Could not detect correct Python version. Install one of the following versions: {versions}.")
     #    sys.exit(1)
 
@@ -71,14 +73,14 @@ def create_venv():
     else:
         print(f"Virtual environment '{VENV_DIR}' already exists.")
 
-        choice = input("Continuing will modify the existing virtual environment, do you want to continue? [y / N] ").strip()
+        choice = input(
+            "Continuing will modify the existing virtual environment, do you want to continue? [y / N] "
+        ).strip()
         if choice in ['y', 'Y']:
             return
         else:
             print("Aborting Qudi installation")
             sys.exit(1)
-
-
 
 
 def install_modules():
@@ -88,8 +90,8 @@ def install_modules():
         python_bin = os.path.join(VENV_DIR, "bin", "python")
     run(f"{python_bin} -m pip install --upgrade pip")
 
-    run(f"{python_bin} -m pip install -e {INSTALL_DIR/'qudi-core'}")
-    run(f"{python_bin} -m pip install -e {INSTALL_DIR/'qudi-iqo-modules'}")
+    run(f"{python_bin} -m pip install -e {INSTALL_DIR / 'qudi-core'}")
+    run(f"{python_bin} -m pip install -e {INSTALL_DIR / 'qudi-iqo-modules'}")
     run(f'{python_bin} -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
 
 
@@ -142,7 +144,6 @@ StartupNotify=true
         print(f"Registered desktop file at {applications_dir / 'qudi.desktop'}")
 
     print(f"Created desktop file at {desktopfile}")
-
 
 
 def main():
