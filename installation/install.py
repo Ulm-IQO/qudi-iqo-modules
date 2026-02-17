@@ -1,6 +1,7 @@
 import os
 import subprocess
 import sys
+from typing import Optional
 import venv
 import shutil
 from pathlib import Path
@@ -12,6 +13,9 @@ VENV_DIR = INSTALL_DIR / "qudi-env"
 CORE_REPO = "https://github.com/Ulm-IQO/qudi-core.git"
 IQO_REPO = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
 
+CORE_DIR: Optional[Path] = None
+IQO_MODULES_DIR: Optional[Path] = None
+
 
 def yes_no_choice(message: str) -> bool:
     choice = input(f"{message} [y / N] ").strip()
@@ -20,6 +24,13 @@ def yes_no_choice(message: str) -> bool:
         return True
     else:
         return False
+
+
+def clone_repo(repo: str, location: Path):
+    if not location.exists():
+        run(f"git clone {repo} {location}")
+    else:
+        print(f"{location} already exists, doing nothing.")
 
 
 def choose_install_dir():
@@ -87,14 +98,25 @@ def create_venv():
 
 
 def install_modules():
+    print(str(CORE_DIR), str(IQO_MODULES_DIR))
     if os.name == "nt":
         python_bin = os.path.join(VENV_DIR, "Scripts", "python.exe")
     else:
         python_bin = os.path.join(VENV_DIR, "bin", "python")
     run(f"{python_bin} -m pip install --upgrade pip")
 
-    run(f"{python_bin} -m pip install -e {CORE_DIR}")
-    run(f"{python_bin} -m pip install -e {IQO_MODULES_DIR}")
+    if CORE_DIR:
+        clone_repo(CORE_REPO, CORE_DIR)
+        run(f"{python_bin} -m pip install -e {CORE_DIR}")
+    else:
+        run(f"{python_bin} -m pip install qudi-core")
+
+    if IQO_MODULES_DIR:
+        clone_repo(IQO_REPO, IQO_MODULES_DIR)
+        run(f"{python_bin} -m pip install -e {IQO_MODULES_DIR}")
+    else:
+        run(f"{python_bin} -m pip install qudi-iqo-modules")
+
     run(f'{python_bin} -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
 
 
@@ -123,7 +145,10 @@ echo
 def create_config_dir():
     config_dir = INSTALL_DIR / "config/"
     config_dir.mkdir(exist_ok=True)
-    shutil.copy2(INSTALL_DIR / "qudi-iqo-modules/src/qudi/default.cfg", config_dir / "default.cfg")
+    if IQO_MODULES_DIR:
+        shutil.copy2(INSTALL_DIR / "qudi-iqo-modules/src/qudi/default.cfg", config_dir / "default.cfg")
+    else:
+        shutil.copy2(VENV_DIR / "lib/python3.10/site-packages/qudi/default.cfg", config_dir / "default.cfg")
     print(f"Created config directory in {config_dir} and copied default config into it")
 
 
@@ -188,6 +213,26 @@ def desktop_shortcut():
     print(f"Created Desktop shortcut at {destination}")
 
 
+def installation_choice():
+    global CORE_DIR, IQO_MODULES_DIR
+    print("How to install Qudi?")
+    print("1) Latest, editable versions of qudi-core and qudi-iqo-modules")
+    print("2) Latest, editable version of qudi-iqo-modules, but stable qudi-core release")
+    print("3) Latest stable, uneditable versions of qudi-core and qudi-iqo-modules")
+
+    choice = input("Enter 1, 2, 3 (default 1): ").strip()
+
+    if choice == "3":
+        return
+
+    IQO_MODULES_DIR = INSTALL_DIR / 'qudi-iqo-modules'
+
+    if choice == "2":
+        return
+
+    CORE_DIR = INSTALL_DIR / 'qudi-core'
+
+
 def main():
     global CORE_DIR, IQO_MODULES_DIR
     check_python()
@@ -198,20 +243,10 @@ def main():
     INSTALL_DIR.mkdir(exist_ok=True)
     os.chdir(INSTALL_DIR)
 
-    CORE_DIR = INSTALL_DIR / 'qudi-core'
-    IQO_MODULES_DIR = INSTALL_DIR / 'qudi-iqo-modules'
-
-    if not (INSTALL_DIR / "qudi-core").exists():
-        run(f"git clone {CORE_REPO} {CORE_DIR}")
-    else:
-        print(f"{INSTALL_DIR / 'qudi-core'} already exists, doing nothing.")
-
-    if not (INSTALL_DIR / "qudi-iqo-modules").exists():
-        run(f"git clone {IQO_REPO} {IQO_MODULES_DIR}")
-    else:
-        print(f"{INSTALL_DIR / 'qudi-iqo-modules'} already exists, doing nothing.")
-
     create_venv()
+
+    installation_choice()
+
     install_modules()
 
     create_launcher()
