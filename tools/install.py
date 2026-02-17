@@ -95,7 +95,7 @@ def install_modules():
 
 def create_launcher():
     if os.name == "nt":
-        launcher = INSTALL_DIR / "Start_Qudi.bat"
+        launcher = INSTALL_DIR / "start_qudi.bat"
         launcher.write_text(f"""
 @echo off
 call "{VENV_DIR}\\Scripts\\activate.bat"
@@ -109,6 +109,40 @@ cd {INSTALL_DIR}
 exec "{VENV_DIR}/bin/qudi"
 """)
         launcher.chmod(0o755)
+    print(f"Created launcher script at {launcher}")
+
+
+def create_config_dir():
+    config_dir = INSTALL_DIR / "config/"
+    config_dir.mkdir(exist_ok=True)
+    shutil.copy2(INSTALL_DIR / "qudi-iqo-modules/src/qudi/default.cfg", config_dir / "default.cfg")
+    print(f"Created config directory in {config_dir} and copied default config into it")
+
+
+def create_desktop_file():
+    if os.name == "nt":
+        pass
+    else:
+        desktopfile = INSTALL_DIR / "start_qudi.desktop"
+        desktopfile.write_text(f"""[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Qudi
+Comment=Start Qudi Measurement Software
+Exec={INSTALL_DIR}/start_qudi.sh
+Icon={INSTALL_DIR}/qudi-core/src/qudi/artwork/logo/logo-qudi.svg
+Terminal=true
+Categories=Science;Education;
+StartupNotify=true
+""")
+        desktopfile.chmod(0o755)
+        applications_dir = Path.home() / ".local/share/applications"
+        applications_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(desktopfile, applications_dir / "start_qudi.desktop")
+        print(f"Registered desktop file at {applications_dir / 'qudi.desktop'}")
+
+    print(f"Created desktop file at {desktopfile}")
+
 
 
 def main():
@@ -133,6 +167,9 @@ def main():
     create_venv()
     install_modules()
     create_launcher()
+    create_desktop_file()
+
+    create_config_dir()
 
     print("\nInstallation complete!")
     print(f"Location: {INSTALL_DIR}")
