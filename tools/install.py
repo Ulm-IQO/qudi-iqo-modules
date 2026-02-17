@@ -4,6 +4,7 @@ import sys
 import venv
 import shutil
 from pathlib import Path
+import win32com.client
 
 INSTALL_DIR = Path.home() / "qudi"
 
@@ -122,17 +123,26 @@ def create_config_dir():
 
 
 def create_desktop_file():
+    iconfile = INSTALL_DIR / "/qudi-core/src/qudi/artwork/logo/logo-qudi.svg"
     if os.name == "nt":
-        pass
+        start_menu = Path(os.environ["APPDATA"]) / r"Microsoft\Windows\Start Menu\Programs"
+        desktopfile = start_menu / "qudi.lnk"
+        shell = win32com.client.Dispatch("WScript.Shell")
+        shortcut = shell.CreateShortcut(str(desktopfile))
+        shortcut.TargetPath = str(INSTALL_DIR / "start_qudi.bat")
+        shortcut.WorkingDirectory = str(INSTALL_DIR)
+        shortcut.IconLocation = str(iconfile)
+        shortcut.Save()
+
     else:
-        desktopfile = INSTALL_DIR / "start_qudi.desktop"
+        desktopfile = INSTALL_DIR / "qudi.desktop"
         desktopfile.write_text(f"""[Desktop Entry]
 Version=1.0
 Type=Application
 Name=Qudi
 Comment=Start Qudi Measurement Software
 Exec={INSTALL_DIR}/start_qudi.sh
-Icon={INSTALL_DIR}/qudi-core/src/qudi/artwork/logo/logo-qudi.svg
+Icon={iconfile}
 Terminal=true
 Categories=Science;Education;
 StartupNotify=true
@@ -140,7 +150,7 @@ StartupNotify=true
         desktopfile.chmod(0o755)
         applications_dir = Path.home() / ".local/share/applications"
         applications_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(desktopfile, applications_dir / "start_qudi.desktop")
+        shutil.copy2(desktopfile, applications_dir / "qudi.desktop")
         print(f"Registered desktop file at {applications_dir / 'qudi.desktop'}")
 
     print(f"Created desktop file at {desktopfile}")
