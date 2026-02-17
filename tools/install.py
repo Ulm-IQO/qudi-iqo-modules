@@ -4,7 +4,7 @@ import sys
 import venv
 import shutil
 from pathlib import Path
-import win32com.client
+#import win32com.client
 
 INSTALL_DIR = Path.home() / "qudi"
 
@@ -125,14 +125,20 @@ def create_config_dir():
 def create_desktop_file():
     iconfile = INSTALL_DIR / "/qudi-core/src/qudi/artwork/logo/logo-qudi.svg"
     if os.name == "nt":
-        start_menu = Path(os.environ["APPDATA"]) / r"Microsoft\Windows\Start Menu\Programs"
-        desktopfile = start_menu / "qudi.lnk"
-        shell = win32com.client.Dispatch("WScript.Shell")
-        shortcut = shell.CreateShortcut(str(desktopfile))
-        shortcut.TargetPath = str(INSTALL_DIR / "start_qudi.bat")
-        shortcut.WorkingDirectory = str(INSTALL_DIR)
-        shortcut.IconLocation = str(iconfile)
-        shortcut.Save()
+        desktopfile = INSTALL_DIR / "qudi.url"
+        desktopfile.write_text(f"""[InternetShortcut]
+URL=file:///{(INSTALL_DIR / "start_qudi.bat").as_posix()}
+IconFile={iconfile}
+IconIndex=0
+""")
+        #start_menu = Path(os.environ["APPDATA"]) / r"Microsoft\Windows\Start Menu\Programs"
+        #desktopfile = start_menu / "qudi.lnk"
+        #shell = win32com.client.Dispatch("WScript.Shell")
+        #shortcut = shell.CreateShortcut(str(desktopfile))
+        #shortcut.TargetPath = str(INSTALL_DIR / "start_qudi.bat")
+        #shortcut.WorkingDirectory = str(INSTALL_DIR)
+        #shortcut.IconLocation = str(iconfile)
+        #shortcut.Save()
 
     else:
         desktopfile = INSTALL_DIR / "qudi.desktop"
