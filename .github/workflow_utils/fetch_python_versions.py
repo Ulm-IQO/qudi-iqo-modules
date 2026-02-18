@@ -103,8 +103,6 @@ def main():
         with open(gha, "a", encoding="utf-8") as f:
             f.write(f"matrix={out}\n")
 
-    return out
-
 
 if __name__ == "__main__":
     main()
