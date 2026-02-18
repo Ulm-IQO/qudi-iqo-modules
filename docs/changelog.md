@@ -11,7 +11,7 @@
 - Fixed code suggestions for `Connector` objects
 - Fixed Keysight AWG's from breaking when setting the external reference clock through the configuration file
 - Fixed ``laser_logic`` to work with remote laser hardware
-- Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating  
+- Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating
 - Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
 - Fixed counting length for the `t1_sequencing` predefined generate method for a gated counter
 
@@ -27,6 +27,8 @@
 - Configured Github Action bot as author for the testing branch commits
 - Workflows automatically fetch all possible python versions from the `pyproject.toml` for testing, tests that only use a singular Python version now use the latest possible Python version
 - Tests now use `QudiKernel` instead of a custom remote server
+- Added install script
+- Updated install documentation
 
 ## Version 0.6.0
 
