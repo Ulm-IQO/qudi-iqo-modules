@@ -22,9 +22,25 @@ Installation requirements depend on the method being used:
   2. `Git`, [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the python badge of the README
   3. [Valid `Python`](https://github.com/Ulm-IQO/qudi-iqo-modules/tree/main) as specified in the python badge of the README
 
-Below, the manual installation instructions can be found, which allow for more control over the installation process.
+### Run the installation script
+
+  1. Download the [installation script](https://github.com/Ulm-IQO/qudi-iqo-modules/blob/main/installation/install.py)
+  2. Install the requirements
+  3. Execute the installation script using Python
+    - Open a terminal
+    - Navigate to the downloaded `install.py` script, e.g. ``` cd ~/Downloads ``` if you downloaded it into your Downloads folder
+    - Execute the script using Python ``` python install.py ```
+    - Follow the installation script and chose your installation method and location, if unsure, just use the defaults
+      - A Qudi start script `start_qudi` will be created in the installation location along with a shortcut (![Qudi Logo](https://github.com/Ulm-IQO/qudi-core/blob/main/src/qudi/artwork/logo/logo-qudi.svg) `qudi`) to it, this is the easiest way to launch Qudi
+      - You can copy the shortcut to a desired location and double click it in order to start Qudi
+      - Do not move the installation folder or any file within this directory, except the shortcut, as it will break the Qudi installation
+    - Start Qudi using the `qudi` shortcut in the installation folder or, if created, the `qudi` desktop and start menu shortcuts
+
 
 ## Manual Installation
+
+Below, the manual installation instructions can be found, which allow for more control over the installation process.
+
 ### Install qudi core
 
 Follow the [qudi-core installation](https://ulm-iqo.github.io/qudi-core/setup/installation.html) instructions to setup your Python environment and the basic qudi installation. We recommend installing qudi-core from PyPI (non dev), as typical users shouldn't need to change core code too often. You can still change your measurements modules that are installed next.
