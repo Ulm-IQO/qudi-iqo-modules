@@ -251,7 +251,7 @@ def main():
 
     choose_install_dir()
 
-    INSTALL_DIR.mkdir(exist_ok=True)
+    INSTALL_DIR.mkdir(parents=True, exist_ok=True)
     os.chdir(INSTALL_DIR)
 
     create_venv()
