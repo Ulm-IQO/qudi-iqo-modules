@@ -28,7 +28,7 @@ Installation requirements depend on the method being used:
 2. Install the requirements
 3. Execute the installation script using Python
     - Open a terminal
-    - Navigate to the downloaded `install.py` script, e.g. `cd ~/Downloads` (if you downloaded it into your Downloads folder)
+    - Navigate to the downloaded `install.py` script, e.g. `cd Downloads` (if you downloaded it into your `Downloads` folder)
     - Execute the script using Python: `python install.py`
     - Follow the instructions of the installation script and choose your installation method and location. If unsure, just use the defaults.
         - A Qudi start script `start_qudi` will be created in the installation location along with a shortcut (named `qudi`, with this icon <img src="https://github.com/Ulm-IQO/qudi-core/blob/main/src/qudi/artwork/logo/logo-qudi.svg" alt="icon" style="height: 1em; vertical-align: bottom;">)
