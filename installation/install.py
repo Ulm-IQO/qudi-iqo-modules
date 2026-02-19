@@ -5,6 +5,7 @@ from typing import Optional
 import venv
 import shutil
 from pathlib import Path
+from urllib.request import urlopen
 
 INSTALL_DIR = Path.home() / "qudi"
 
@@ -15,6 +16,8 @@ IQO_REPO = "https://github.com/Ulm-IQO/qudi-iqo-modules.git"
 
 CORE_DIR: Optional[Path] = None
 IQO_MODULES_DIR: Optional[Path] = None
+
+ICON_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/refs/heads/main/src/qudi/artwork/logo/"
 
 
 def yes_no_choice(message: str) -> bool:
@@ -153,11 +156,13 @@ def create_config_dir():
 
 
 def create_desktop_file():
-    global DESKTOP_FILE
+    global DESKTOP_FILE, ICON_URL
 
-    iconfile = INSTALL_DIR / "qudi-core"/ "src" / "qudi" / "artwork" / "logo"
+    iconfile = INSTALL_DIR
     if os.name == "nt":
-        iconfile = iconfile / "logo_qudi.ico"
+        iconname = "logo_qudi.ico"
+        ICON_URL += iconname
+        iconfile = iconfile / iconname
         DESKTOP_FILE = INSTALL_DIR / "qudi.lnk"
 
         ps_command = f"""
@@ -171,7 +176,9 @@ $Shortcut.Save()
         subprocess.run(["powershell", "-Command", ps_command], check=True)
 
     else:
-        iconfile = iconfile / "logo-qudi.svg"
+        iconname = "logo-qudi.svg"
+        ICON_URL += iconname
+        iconfile = iconfile / iconname
         DESKTOP_FILE = INSTALL_DIR / "qudi.desktop"
         DESKTOP_FILE.write_text(f"""[Desktop Entry]
 Version=1.0
@@ -185,6 +192,10 @@ Categories=Science;Education;
 StartupNotify=true
 """)
         DESKTOP_FILE.chmod(0o755)
+
+    print(f"Downloading Qudi icon from {ICON_URL}")
+    with urlopen(ICON_URL) as response:
+        iconfile.write_bytes(response.read())
 
     print(f"Created desktop file at {DESKTOP_FILE}")
 
