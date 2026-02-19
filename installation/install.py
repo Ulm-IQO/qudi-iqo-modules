@@ -31,7 +31,7 @@ def yes_no_choice(message: str) -> bool:
 
 def clone_repo(repo: str, location: Path):
     if not location.exists():
-        run(f"git clone {repo} '{location}'")
+        run(f'git clone {repo} "{location}"')
     else:
         print(f"{location} already exists, doing nothing.")
 
