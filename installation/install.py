@@ -31,7 +31,7 @@ def yes_no_choice(message: str) -> bool:
 
 def clone_repo(repo: str, location: Path):
     if not location.exists():
-        run(f"git clone {repo} {location}")
+        run(f"git clone {repo} '{location}'")
     else:
         print(f"{location} already exists, doing nothing.")
 
@@ -48,9 +48,10 @@ def choose_install_dir():
     if choice == "2":
         INSTALL_DIR = Path.cwd()
     elif choice == "3":
-        custom_path = input("Enter full path for installation: ").strip()
+        custom_path = input("Enter full path for installation: ").strip().strip('"')
         if not custom_path:
             return
+        print(custom_path)
         INSTALL_DIR = Path(custom_path).expanduser().resolve()
 
 
@@ -93,41 +94,38 @@ def create_venv():
     else:
         print(f"Virtual environment '{VENV_DIR}' already exists.")
 
-        if yes_no_choice("Continuing will modify the existing virtual environment, do you want to continue?"):
-            return
-        else:
+        if not yes_no_choice("Continuing will modify the existing virtual environment, do you want to continue?"):
             print("Aborting Qudi installation")
             sys.exit(1)
 
 
 def install_modules():
-    print(str(CORE_DIR), str(IQO_MODULES_DIR))
     if os.name == "nt":
-        python_bin = os.path.join(VENV_DIR, "Scripts", "python.exe")
+        python_bin = VENV_DIR / "Scripts" / "python.exe"
     else:
-        python_bin = os.path.join(VENV_DIR, "bin", "python")
-    run(f"{python_bin} -m pip install --upgrade pip")
+        python_bin = VENV_DIR / "bin" / "python"
+    run(f'"{python_bin}" -m pip install --upgrade pip')
 
     if CORE_DIR:
         clone_repo(CORE_REPO, CORE_DIR)
-        run(f"{python_bin} -m pip install -e {CORE_DIR}")
+        run(f'"{python_bin}" -m pip install -e "{CORE_DIR}"')
     else:
-        run(f"{python_bin} -m pip install qudi-core")
+        run(f'"{python_bin}" -m pip install qudi-core')
 
     if IQO_MODULES_DIR:
         clone_repo(IQO_REPO, IQO_MODULES_DIR)
-        run(f"{python_bin} -m pip install -e {IQO_MODULES_DIR}")
+        run(f'"{python_bin}" -m pip install -e "{IQO_MODULES_DIR}"')
     else:
-        run(f"{python_bin} -m pip install qudi-iqo-modules")
+        run(f'"{python_bin}" -m pip install qudi-iqo-modules')
 
-    run(f'{python_bin} -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
+    run(f'"{python_bin}" -c "from qudi.core.qudikernel import install_kernel; install_kernel()"')
 
 
 def create_launcher():
     if os.name == "nt":
         launcher = INSTALL_DIR / "start_qudi.bat"
         launcher.write_text(f"""@echo off
-cd {INSTALL_DIR}
+cd "{INSTALL_DIR}"
 call "{VENV_DIR}\\Scripts\\activate.bat"
 qudi
 pause
@@ -135,7 +133,7 @@ pause
     else:
         launcher = INSTALL_DIR / "start_qudi.sh"
         launcher.write_text(f"""#!/bin/bash
-cd {INSTALL_DIR}
+cd "{INSTALL_DIR}"
 source "{VENV_DIR}/bin/activate"
 qudi
 read -n 1 -s -r -p "Press any key to close..."
@@ -185,8 +183,8 @@ Version=1.0
 Type=Application
 Name=Qudi
 Comment=Start Qudi Measurement Software
-Exec={INSTALL_DIR}/start_qudi.sh
-Icon={iconfile}
+Exec="{INSTALL_DIR}/start_qudi.sh"
+Icon="{iconfile}"
 Terminal=true
 Categories=Science;Education;
 StartupNotify=true
