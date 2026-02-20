@@ -89,7 +89,7 @@ jobs:
       working-directory: .github/workflow_utils
       run: |
         python check_updates.py -v ${{ matrix.python-version }}
-  
+
   test:
     needs: [make-matrix, check-package-updates]
     if: ${{ needs.check-package-updates.outputs.updates-available == 'true' }}
@@ -137,7 +137,7 @@ jobs:
       working-directory: .github/workflow_utils
       run: |
         pip freeze | Out-File -Encoding UTF8 reqs_${{ matrix.python-version }}.txt
-      
+
     - name: Download reqs artifact
       if: needs.check-package-updates.outputs.artifact_run_id != ''
       uses: actions/download-artifact@v4
