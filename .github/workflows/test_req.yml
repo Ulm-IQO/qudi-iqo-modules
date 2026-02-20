@@ -58,7 +58,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone https://github.com/Ulm-IQO/qudi-core.git
+        git clone https://github.com/Ulm-IQO/qudi-core.git@pyside6-dev
 
     - name: Get latest artifact run id
       id: find-id
@@ -89,7 +89,7 @@ jobs:
       working-directory: .github/workflow_utils
       run: |
         python check_updates.py -v ${{ matrix.python-version }}
-  
+
   test:
     needs: [make-matrix, check-package-updates]
     if: ${{ needs.check-package-updates.outputs.updates-available == 'true' }}
@@ -117,7 +117,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone https://github.com/Ulm-IQO/qudi-core.git
+        git clone https://github.com/Ulm-IQO/qudi-core.git@pyside6-dev
         cd qudi-core
         python -m pip install --upgrade pip
         pip install -e .
@@ -137,7 +137,7 @@ jobs:
       working-directory: .github/workflow_utils
       run: |
         pip freeze | Out-File -Encoding UTF8 reqs_${{ matrix.python-version }}.txt
-      
+
     - name: Download reqs artifact
       if: needs.check-package-updates.outputs.artifact_run_id != ''
       uses: actions/download-artifact@v4
