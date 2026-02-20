@@ -552,7 +552,6 @@ class ScanningProbeLogic(LogicBase):
 
         vecs_arr = []
         for vec in vectors:
-            vec = netobtain(vec)
             if not isinstance(vec, dict):
                 raise ValueError
 
@@ -566,17 +565,6 @@ class ScanningProbeLogic(LogicBase):
         if len(vecs_arr) == 1:
             return vecs_arr[0]
         return vecs_arr
-
-
-    def dummy_tilt(self, vector):
-        axes = self._scan_axes.keys()
-        if type(vector) != list:
-            vectors = [vector]
-        else:
-            vectors = vector
-
-                 
-        return vector[0]
 
     def tilt_vector_array_2_dict(self, array, reduced_dim=True):
         axes = self._tilt_corr_axes if reduced_dim else self._scan_axes.keys()
