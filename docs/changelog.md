@@ -6,12 +6,13 @@
 
 - Dropped `Python 3.8` support
 - Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
+- Dropped `Python 3.9` support
 
 ### Bugfixes
 - Fixed code suggestions for `Connector` objects
 - Fixed Keysight AWG's from breaking when setting the external reference clock through the configuration file
 - Fixed ``laser_logic`` to work with remote laser hardware
-- Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating  
+- Fixed typo in ``MicrowaveAnritsu.on_activate`` preventing the module from activating
 - Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
 - Fixed counting length for the `t1_sequencing` predefined generate method for a gated counter
 
