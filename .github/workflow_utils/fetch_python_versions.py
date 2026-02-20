@@ -1,12 +1,30 @@
-#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+
 """
-Build a matrix of Python *minor* versions from pyproject.toml.
+This is a utility module for the workflows
+It builds a matrix of Python *minor* versions from pyproject.toml.
 
 Output:
 - stdout: JSON array like ["3.10", "3.11", "3.12", "3.13"]
 - If $GITHUB_OUTPUT is set: writes 'matrix=<same JSON>' for workflows.
 
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
+distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
+
+This file is part of qudi.
+
+Qudi is free software: you can redistribute it and/or modify it under the terms of
+the GNU Lesser General Public License as published by the Free Software Foundation,
+either version 3 of the License, or (at your option) any later version.
+
+Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+See the GNU Lesser General Public License for more details.
+
+You should have received a copy of the GNU Lesser General Public License along with qudi.
+If not, see <https://www.gnu.org/licenses/>.
 """
+
 import json
 import os
 from urllib.request import urlopen
@@ -27,6 +45,7 @@ except ModuleNotFoundError:
 from packaging.version import Version
 from packaging.specifiers import SpecifierSet
 
+# Python minor versions support on Github Actions
 MANIFEST_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"
 
 

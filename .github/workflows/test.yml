@@ -8,6 +8,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch: 
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +24,7 @@ jobs:
       - name: Build Python matrix from pyproject.toml
         id: build
         run: |
-          python .github/scripts/fetch_python_versions.py | jq .
+          python .github/workflow_utils/fetch_python_versions.py | jq .
         shell: bash
 
   test:
