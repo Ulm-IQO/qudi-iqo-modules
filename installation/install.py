@@ -6,6 +6,9 @@ import venv
 import shutil
 from pathlib import Path
 from urllib.request import urlopen
+from urllib.error import URLError
+import json
+import re
 
 INSTALL_DIR = Path.home() / "qudi"
 
@@ -18,6 +21,78 @@ CORE_DIR: Optional[Path] = None
 IQO_MODULES_DIR: Optional[Path] = None
 
 ICON_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-core/refs/heads/main/src/qudi/artwork/logo/"
+MANIFEST_URL = "https://raw.githubusercontent.com/actions/python-versions/main/versions-manifest.json"
+PYPROJECT_URL = "https://raw.githubusercontent.com/Ulm-IQO/qudi-iqo-modules/refs/heads/main/pyproject.toml"
+
+
+def read_requires_python() -> str:
+    with urlopen(PYPROJECT_URL) as response:
+        content = response.read().decode("utf-8")
+
+    match = re.search(
+        r'requires-python\s*=\s*"([^"]+)"',
+        content,
+        re.DOTALL,
+    )
+
+    if match:
+        return str(match.group(1))
+
+    raise SystemExit("requires-python not found in pyproject.toml")
+
+
+def fetch_manifest(url: str = MANIFEST_URL) -> list[str]:
+    try:
+        with urlopen(url, timeout=30) as r:
+            manifest = json.load(r)
+            versions = set()
+            for entry in manifest:
+                ver = entry.get("version").split(".")
+                versions.add(f"{ver[0]}.{ver[1]}")
+        return sorted(versions, key=lambda s: tuple(map(int, s.split("."))))
+
+    except URLError as e:
+        raise ValueError(f"Failed to fetch versions-manifest.json: {e}")
+
+
+def parse_spec(spec: str):
+    """
+    Convert a comma-separated spec string into a list of check functions.
+    Supports: >=, <, !=, ^, exact versions
+    """
+    checks = []
+    for part in spec.split(","):
+        part = part.strip()
+        if part.startswith(">="):
+            ver = tuple(map(int, part[2:].split(".")))
+            checks.append(lambda v, ver=ver: v >= ver)
+        elif part.startswith("<"):
+            ver = tuple(map(int, part[1:].split(".")))
+            checks.append(lambda v, ver=ver: v < ver)
+        elif part.startswith("!="):
+            ver = tuple(map(int, part[2:].split(".")))
+            checks.append(lambda v, ver=ver: v != ver)
+        elif part.startswith("^"):
+            major, minor = map(int, part[1:].split("."))
+            min_ver = (major, minor)
+            max_ver = (major + 1, 0)
+            checks.append(lambda v, min_ver=min_ver, max_ver=max_ver: min_ver <= v < max_ver)
+        else:
+            # exact version like "3.10"
+            ver = tuple(map(int, part.split(".")))
+            checks.append(lambda v, ver=ver: v == ver)
+    return checks
+
+
+def is_allowed(version: str, checks: list):
+    major, minor = map(int, version.split("."))
+    v = (major, minor)
+    return all(check(v) for check in checks)
+
+
+def filter_versions(spec: str, available_versions: list[str]) -> list[str]:
+    checks = parse_spec(spec)
+    return [v for v in available_versions if is_allowed(v, checks)]
 
 
 def yes_no_choice(message: str) -> bool:
@@ -77,13 +152,19 @@ def run(cmd, cwd=None):
 
 
 def check_python():
-    pass
+    supported_versions = filter_versions(read_requires_python(), fetch_manifest())
+    version = f"{sys.version_info.major}.{sys.version_info.minor}"
+    if version not in supported_versions:
+        print(f"Detected Python version ({version}) is not in supported versions {supported_versions}. Please use a supported Python version.")
+        sys.exit(1)
+    print(f"Found Python version {version}")
 
 
 def check_git():
     if shutil.which("git") is None:
         print("Git not found. Please install Git.")
         sys.exit(1)
+    print("Found Git installation")
 
 
 def create_venv():
