@@ -9,6 +9,7 @@
 - Dropped `Python 3.9` support
 
 ### Bugfixes
+- Fixed scanning_probe_logic with netobtain so that the mdoule works with a remote server connection
 - Fixed code suggestions for `Connector` objects
 - Fixed Keysight AWG's from breaking when setting the external reference clock through the configuration file
 - Fixed ``laser_logic`` to work with remote laser hardware
