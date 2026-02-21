@@ -27,7 +27,7 @@ import pytest
 import sys
 import time
 import subprocess
-from PySide2 import QtWidgets
+from PySide6 import QtWidgets
 from qudi.core import application
 from qudi.util.yaml import yaml_load
 
@@ -130,7 +130,7 @@ def qudi_client(qudi_gui):
     last_err = None
     while time.time() < timeout:
         try:
-            client.connect()   
+            client.connect()
             ns = client.get_active_modules()
             qudi = ns.get('qudi')
             return qudi
