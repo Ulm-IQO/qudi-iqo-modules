@@ -28,9 +28,10 @@ import sys
 import time
 import subprocess
 from PySide6 import QtWidgets
+from contextlib import contextmanager
 from qudi.core import application
 from qudi.util.yaml import yaml_load
-
+from qudi.core.qudikernel import QudiKernelClient
 
 
 CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
@@ -124,7 +125,6 @@ def qudi_gui():
 @pytest.fixture(scope="module")
 def qudi_client(qudi_gui):
     """Attach to the running GUI using qudikernel.QudiKernelClient."""
-    from qudi.core.qudikernel import QudiKernelClient
     client = QudiKernelClient()
     timeout = time.time() + 60
     last_err = None
@@ -138,3 +138,73 @@ def qudi_client(qudi_gui):
             last_err = e
             time.sleep(0.5)
     raise RuntimeError(f"Could not connect to Qudi namespace server: {last_err}")
+
+@contextmanager
+def _qudi_session_cm():
+    """
+    Start a fresh Qudi GUI process + QudiKernelClient, yield the 'qudi' namespace,
+    then clean everything up when leaving the with-block.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "qudi.core", "--config", str(CONFIG)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    time.sleep(3)
+
+    client = QudiKernelClient()
+    timeout = time.time() + 60
+    last_err = None
+    qudi = None
+
+    while time.time() < timeout:
+        try:
+            client.connect()
+            ns = client.get_active_modules()
+            qudi = ns.get("qudi")
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(0.5)
+
+    if qudi is None:
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+        try:
+            proc.terminate()
+            proc.wait(timeout=8)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        raise RuntimeError(f"Could not connect to Qudi namespace server: {last_err}")
+
+    try:
+        yield qudi
+    finally:
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+        try:
+            proc.terminate()
+            proc.wait(timeout=8)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+@pytest.fixture
+def qudi_session_factory():
+    """
+    Factory fixture: each call to qudi_session_factory() gives you a context
+    manager that starts a fresh Qudi GUI + client.
+    """
+    return _qudi_session_cm

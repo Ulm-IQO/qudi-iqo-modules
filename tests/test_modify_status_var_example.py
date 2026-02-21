@@ -30,15 +30,17 @@ STATUS_VAR = 'run_time'
 VALUE = 10
 
 
-@pytest.fixture(scope='module')
-def logic_instance(qudi_client):
-    """ 
-    This fixture returns Odmr logic instance
+@pytest.fixture(scope='function')
+def logic_instance(qudi_session_factory):
     """
-    module_manager = qudi_client.module_manager
-    module_manager.activate_module(GUI_MODULE)
-    logic_instance = module_manager._modules[LOGIC_MODULE].instance
-    return logic_instance
+    This fixture returns Odmr logic instance and keeps the
+    Qudi session alive for test.
+    """
+    with qudi_session_factory() as qudi:
+        module_manager = qudi.module_manager
+        module_manager.activate_module(GUI_MODULE)
+        logic_instance = module_manager._modules[LOGIC_MODULE].instance
+        yield logic_instance
 
 
 def get_status_var_file(instance):
@@ -119,32 +121,22 @@ def dump_status_variables(vars, file_path):
         print("Failed to save status variables:", e)
 
 
-def test_status_vars(qudi_instance, qt_app):
+def test_status_vars(logic_instance):
     """ 
     Modifying a specific saved status variable for a specific module
 
     Parameters
     ----------
-    qudi_instance : fixture
-        Running qudi instance
-    qt_app : fixture
-        qt app instance
+    logic_instance : fixture
+        logic instance
     """    
-    module_manager = qudi_instance.module_manager
-    qudi_instance._configure_qudi()
-    try:
-        module_manager.modules[LOGIC_MODULE]._load()
-    except Exception as e:
-        print(f'cant load {LOGIC_MODULE} , {e}')
 
-    logic_instance = module_manager.modules[LOGIC_MODULE].instance
     status_var_file_path = get_status_var_file(logic_instance)
     status_vars = load_status_var(status_var_file_path)
-    #print(f'Status variables are {status_vars}')
     modified_vars = modify_status_var(status_vars, STATUS_VAR, VALUE)
     dump_status_variables(modified_vars, status_var_file_path)
 
-def test_status_vars_changed(logic_instance, qudi_instance):
+def test_status_vars_changed(logic_instance):
     """
     Test whether the status variable has changed
     
@@ -152,8 +144,6 @@ def test_status_vars_changed(logic_instance, qudi_instance):
     ----------
     logic_instance : fixture
         Remote logic instance
-    qudi_instance : fixture
-        So that Qudi objects don't go out of scope
     """    
     status_variable = '_' + STATUS_VAR
     assert getattr(logic_instance, status_variable) == VALUE
