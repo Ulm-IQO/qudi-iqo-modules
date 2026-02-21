@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('AxesControlDockWidget', 'AxesControlWidget')
 
 from typing import Tuple, Dict
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.widgets.slider import DoubleSlider
 from qudi.interface.scanning_probe_interface import ScannerAxis, BackScanCapability
@@ -75,39 +75,39 @@ class AxesControlWidget(QtWidgets.QWidget):
 
         label = QtWidgets.QLabel('Resolution')
         label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(label, 0, column, 1, 3)
 
         self._forward_backward_labels = []
         for label_text in ['Forward', '=', 'Backward']:
             label = QtWidgets.QLabel(label_text)
             label.setFont(font)
-            label.setAlignment(QtCore.Qt.AlignCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             layout.addWidget(label, 1, column)
             column += 1
             self._forward_backward_labels.append(label)
 
         vline = QtWidgets.QFrame()
-        vline.setFrameShape(QtWidgets.QFrame.VLine)
-        vline.setFrameShadow(QtWidgets.QFrame.Sunken)
+        vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         layout.addWidget(vline, 0, column, len(scanner_axes) + 2, 1)
         column += 1
 
         label = QtWidgets.QLabel('Scan Range')
         label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(label, 0, column, 1, 2)
         column += 2
 
         vline = QtWidgets.QFrame()
-        vline.setFrameShape(QtWidgets.QFrame.VLine)
-        vline.setFrameShadow(QtWidgets.QFrame.Sunken)
+        vline.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        vline.setFrameShadow(QtWidgets.QFrame.Shadow.Sunken)
         layout.addWidget(vline, 0, column, len(scanner_axes) + 2, 1)
         column += 2
 
         label = QtWidgets.QLabel('Current Target')
         label.setFont(font)
-        label.setAlignment(QtCore.Qt.AlignCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(label, 0, column, 1, 1)
 
         for index, axis in enumerate(scanner_axes, 2):
@@ -116,7 +116,7 @@ class AxesControlWidget(QtWidgets.QWidget):
             label = QtWidgets.QLabel('{0}-Axis:'.format(ax_name.title()))
             label.setObjectName('{0}_axis_label'.format(ax_name))
             label.setFont(font)
-            label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
             for direction in ['forward', 'backward']:
                 res_spinbox = QtWidgets.QSpinBox()
@@ -141,16 +141,16 @@ class AxesControlWidget(QtWidgets.QWidget):
 
             # same for every spinbox
             for widget in widgets.values():
-                widget.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-                widget.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                     QtWidgets.QSizePolicy.Preferred)
+                widget.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+                widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                     QtWidgets.QSizePolicy.Policy.Preferred)
 
             # checkbox for having back resolution equal to forward resolution
             check_box = QtWidgets.QCheckBox()
             widgets['eq_checkbox'] = check_box
 
             # slider for moving the scanner
-            slider = DoubleSlider(QtCore.Qt.Horizontal)
+            slider = DoubleSlider(QtCore.Qt.Orientation.Horizontal)
             slider.setObjectName('{0}_position_doubleSlider'.format(ax_name))
             slider.setRange(*axis.position.bounds)
             granularity = 2 ** 31 - 1
@@ -160,7 +160,7 @@ class AxesControlWidget(QtWidgets.QWidget):
             slider.set_granularity(granularity)
             slider.setValue(init_pos)
             slider.setMinimumSize(150, 0)
-            slider.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+            slider.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
             widgets['slider'] = slider
 
             # Add to layout

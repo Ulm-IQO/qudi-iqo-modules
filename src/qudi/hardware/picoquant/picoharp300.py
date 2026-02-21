@@ -148,8 +148,8 @@ class PicoHarp300(FastCounterInterface):
         # anything to pass through:
 
         self.sigStart.connect(self.start_measure)
-        self.sigReadoutPicoharp.connect(self.get_fresh_data_loop, QtCore.Qt.QueuedConnection) # ,QtCore.Qt.QueuedConnection
-        self.sigAnalyzeData.connect(self.analyze_received_data, QtCore.Qt.QueuedConnection)
+        self.sigReadoutPicoharp.connect(self.get_fresh_data_loop, QtCore.Qt.ConnectionType.QueuedConnection) # ,QtCore.Qt.ConnectionType.QueuedConnection
+        self.sigAnalyzeData.connect(self.analyze_received_data, QtCore.Qt.ConnectionType.QueuedConnection)
         self.result = []
 
 

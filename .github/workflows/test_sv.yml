@@ -58,7 +58,7 @@ jobs:
           fetch-depth: 0
           ref: ${{github.event.pull_request.head.ref}}
           repository: ${{github.event.pull_request.head.repo.full_name}}
-    - name: Set up Python 
+    - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version-file: 'pyproject.toml'
@@ -68,7 +68,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone https://github.com/Ulm-IQO/qudi-core.git
+        git clone -b pyside6-dev --single-branch https://github.com/Ulm-IQO/qudi-core.git
         cd qudi-core
         python -m pip install --upgrade pip
         pip install -e .
@@ -92,17 +92,17 @@ jobs:
         path: .github/workflow_utils
         run-id: ${{ needs.find_artifact_id.outputs.artifact_run_id }}
         github-token:  ${{ secrets.GITHUB_TOKEN }}
-      
+
     - name: Extract artifacts
       if:  needs.find_artifact_id.outputs.artifact_run_id != ''
       working-directory: .github/workflow_utils
       run: |
-       tar -x -f svs.zip 
+       tar -x -f svs.zip
 
     - name: Compare status variables
       if: always()
       working-directory: .github/workflow_utils
-      run: | 
+      run: |
        python compare_status_vars.py
 
     - name: Upload status vars diff

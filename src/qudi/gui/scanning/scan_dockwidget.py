@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ['ScanDockWidget']
 
-from PySide2 import QtWidgets
+from PySide6 import QtWidgets
 from typing import Optional, Tuple, Sequence, Union
 from qudi.gui.scanning.scan_widget import Scan2DWidget, Scan1DWidget
 from qudi.interface.scanning_probe_interface import ScannerAxis, ScannerChannel
