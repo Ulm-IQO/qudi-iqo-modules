@@ -818,7 +818,15 @@ class LaserScanningLogic(LogicBase):
 
     def __init_data_channels(self) -> None:
         streamer: DataInStreamInterface = self._streamer()
-        channels = [ch for ch in streamer.active_channels if ch != self._laser_channel]
+
+        laser_units = {'m', 'hz', '1/s'}
+
+        channels = [
+            ch for ch in streamer.active_channels
+            if ch != self._laser_channel and
+               streamer.constraints.channel_units.get(ch, '').lower() not in laser_units
+        ]
+
         self.__channel_units = {
             ch: u for ch, u in streamer.constraints.channel_units.items() if ch in channels
         }
