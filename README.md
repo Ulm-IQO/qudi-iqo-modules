@@ -1,6 +1,6 @@
 # qudi-iqo-modules
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
-[![Version](https://img.shields.io/pypi/pyversions/qudi-iqo-modules)](https://pypi.org/project/qudi-iqo-modules/)
+[![Version](https://img.shields.io/endpoint?url=https://ulm-iqo.github.io/qudi-iqo-modules/python-version-badge.json)
 
 ---
 A collection of qudi measurement modules originally developed for experiments on color centers in
