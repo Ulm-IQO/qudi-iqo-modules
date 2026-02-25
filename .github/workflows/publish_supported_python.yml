@@ -2,7 +2,7 @@ name: Publish Supported Python Versions
 
 on:
   push:
-    branches: [ "main", "python-version-link" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 permissions:
