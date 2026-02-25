@@ -6,6 +6,7 @@
 
 - Dropped `Python 3.8` support
 - Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
+- Dropped `Python 3.9` support
 
 ### Bugfixes
 - Fixed scanning_probe_logic with netobtain so that the mdoule works with a remote server connection

@@ -23,7 +23,7 @@ __all__ = ('OdmrMainWindow',)
 
 import os
 import datetime
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.paths import get_artwork_dir
@@ -49,19 +49,19 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'start-counter'))
         icon.addFile(os.path.join(icon_path, 'stop-counter'),
-                     state=QtGui.QIcon.On)
-        self.action_toggle_measurement = QtWidgets.QAction('Toggle Measurement')
+                     state=QtGui.QIcon.State.On)
+        self.action_toggle_measurement = QtGui.QAction('Toggle Measurement')
         self.action_toggle_measurement.setCheckable(True)
         self.action_toggle_measurement.setIcon(icon)
         self.action_toggle_measurement.setToolTip('Start/Stop ODMR scan measurement')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'restart-counter'))
-        self.action_resume_measurement = QtWidgets.QAction('Resume Measurement')
+        self.action_resume_measurement = QtGui.QAction('Resume Measurement')
         self.action_resume_measurement.setIcon(icon)
         self.action_resume_measurement.setToolTip('Resume ODMR scan measurement')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'document-save'))
-        self.action_save_measurement = QtWidgets.QAction('Save Measurement')
+        self.action_save_measurement = QtGui.QAction('Save Measurement')
         self.action_save_measurement.setIcon(icon)
         self.action_save_measurement.setToolTip(
             'Save ODMR scan measurement.\n'
@@ -69,31 +69,31 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         )
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'dialog-warning'))
-        self.action_toggle_cw = QtWidgets.QAction('Toggle CW')
+        self.action_toggle_cw = QtGui.QAction('Toggle CW')
         self.action_toggle_cw.setCheckable(True)
         self.action_toggle_cw.setIcon(icon)
         self.action_toggle_cw.setToolTip('Toggle continuous microwave output.\n'
                                          'WARNING: Ensure RF network can handle CW power.')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
-        self.action_close = QtWidgets.QAction('Close')
+        self.action_close = QtGui.QAction('Close')
         self.action_close.setIcon(icon)
 
-        self.action_show_cw_controls = QtWidgets.QAction('Show CW Controls')
+        self.action_show_cw_controls = QtGui.QAction('Show CW Controls')
         self.action_show_cw_controls.setCheckable(True)
         self.action_show_cw_controls.setChecked(True)
         self.action_show_cw_controls.setToolTip('Show/Hide CW controls')
 
-        self.action_restore_default_view = QtWidgets.QAction('Restore Default')
+        self.action_restore_default_view = QtGui.QAction('Restore Default')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
-        self.action_show_odmr_settings = QtWidgets.QAction('ODMR Settings')
+        self.action_show_odmr_settings = QtGui.QAction('ODMR Settings')
         self.action_show_odmr_settings.setToolTip(
             'Open a dialog to edit ODMR settings that are not very frequently used.'
         )
         self.action_show_odmr_settings.setIcon(icon)
 
-        self.action_show_fit_configuration = QtWidgets.QAction('Fit Configuration')
+        self.action_show_fit_configuration = QtGui.QAction('Fit Configuration')
         self.action_show_fit_configuration.setToolTip(
             'Open a dialog to edit data fitting configurations available to ODMR.'
         )
@@ -101,8 +101,8 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
 
         # Create QLineEdit for save tag
         self.save_nametag_lineedit = QtWidgets.QLineEdit()
-        self.save_nametag_lineedit.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                                 QtWidgets.QSizePolicy.Fixed)
+        self.save_nametag_lineedit.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                                 QtWidgets.QSizePolicy.Policy.Fixed)
         self.save_nametag_lineedit.setMinimumWidth(
             QtGui.QFontMetrics(ScienDSpinBox().font()).width(75 * ' ')  # roughly 75 chars shown
         )
@@ -118,9 +118,9 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
         toolbar.addSeparator()
         tool_button = QtWidgets.QToolButton()
         tool_button.setDefaultAction(self.action_toggle_cw)
-        tool_button.setToolButtonStyle(QtCore.Qt.ToolButtonTextBesideIcon)
+        tool_button.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         toolbar.addWidget(tool_button)
-        self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
+        self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, toolbar)
 
         # Create menu bar and add actions
         menu_bar = QtWidgets.QMenuBar()
@@ -166,7 +166,7 @@ class OdmrStatusBar(QtWidgets.QStatusBar):
         widget.setLayout(layout)
         layout.addStretch(1)
         label = QtWidgets.QLabel('Elapsed Sweeps:')
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label)
         self.elapsed_sweeps_spinbox = QtWidgets.QSpinBox()
         self.elapsed_sweeps_spinbox.setMinimumWidth(min_widget_width)
@@ -174,16 +174,16 @@ class OdmrStatusBar(QtWidgets.QStatusBar):
         self.elapsed_sweeps_spinbox.setSpecialValueText('NaN')
         self.elapsed_sweeps_spinbox.setValue(-1)
         self.elapsed_sweeps_spinbox.setReadOnly(True)
-        self.elapsed_sweeps_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
-        self.elapsed_sweeps_spinbox.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.elapsed_sweeps_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.elapsed_sweeps_spinbox.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         layout.addWidget(self.elapsed_sweeps_spinbox)
         label = QtWidgets.QLabel('Elapsed Time:')
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(label)
         self.elapsed_time_lineedit = QtWidgets.QLineEdit('0:00:00')
-        self.elapsed_time_lineedit.setAlignment(QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+        self.elapsed_time_lineedit.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.elapsed_time_lineedit.setReadOnly(True)
         self.elapsed_time_lineedit.setMinimumWidth(min_widget_width)
-        self.elapsed_time_lineedit.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.elapsed_time_lineedit.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         layout.addWidget(self.elapsed_time_lineedit)
         self.addPermanentWidget(widget, 1)

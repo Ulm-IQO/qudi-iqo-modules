@@ -24,8 +24,8 @@ __all__ = ('TiltCorrectionDockWidget')
 import numpy as np
 from collections import OrderedDict
 
-from PySide2 import QtCore, QtGui, QtWidgets
-from PySide2.QtWidgets import QDockWidget, QWidget,QGridLayout, QLabel, QPushButton,QTableWidget
+from PySide6 import QtCore, QtGui, QtWidgets
+from PySide6.QtWidgets import QDockWidget, QWidget,QGridLayout, QLabel, QPushButton,QTableWidget
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.gui.switch.switch_state_widgets import SwitchRadioButtonWidget, ToggleSwitchWidget
 
@@ -69,8 +69,8 @@ class TiltCorrectionDockWidget(QDockWidget):
         dock_widget_layout.addWidget(origin_switch_label, 4, 0)
         self.auto_origin_switch = ToggleSwitchWidget(switch_states=('OFF', 'ON'))
         self.auto_origin_switch.toggle_switch.sigStateChanged.connect(self.auto_origin_changed,
-                                                                    QtCore.Qt.QueuedConnection)
-        self.auto_origin_switch.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Fixed)
+                                                                    QtCore.Qt.ConnectionType.QueuedConnection)
+        self.auto_origin_switch.setSizePolicy(QtWidgets.QSizePolicy.Policy.Fixed, QtWidgets.QSizePolicy.Policy.Fixed)
         self.auto_origin_switch.setToolTip("Automatically determine the rotation origin to be"
                                            " in the plane of the support vectors. If turned off, set manually.")
         dock_widget_layout.addWidget(self.auto_origin_switch, 4, 1)

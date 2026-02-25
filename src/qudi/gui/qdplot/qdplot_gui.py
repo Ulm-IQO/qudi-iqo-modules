@@ -26,7 +26,7 @@ import numpy as np
 from enum import Enum
 from functools import partial
 from itertools import cycle
-from PySide2 import QtCore, QtGui
+from PySide6 import QtCore, QtGui
 from pyqtgraph import mkColor
 from typing import Optional, Mapping, Sequence, Union, Tuple, List
 from lmfit.model import ModelResult as _ModelResult
@@ -131,25 +131,25 @@ class QDPlotterGui(GuiBase):
         self._mw.action_restore_side_by_side_view.triggered.connect(self.restore_side_by_side_view)
         self._mw.action_restore_arced_view.triggered.connect(self.restore_arc_view)
         self._mw.action_save_all.triggered.connect(self._save_all_clicked)
-        self._mw.action_new_plot.triggered.connect(logic.add_plot, QtCore.Qt.QueuedConnection)
+        self._mw.action_new_plot.triggered.connect(logic.add_plot, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Initialize dock widgets
         self._plot_dockwidgets = list()
         self._color_cyclers = list()
 
         # Connect signal to logic
-        self.sigPlotConfigChanged.connect(logic.set_plot_config, QtCore.Qt.QueuedConnection)
-        self.sigAutoRangeClicked.connect(logic.set_auto_limits, QtCore.Qt.QueuedConnection)
-        self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
-        self.sigRemovePlotClicked.connect(logic.remove_plot, QtCore.Qt.QueuedConnection)
-        self.sigSaveData.connect(logic.save_data, QtCore.Qt.BlockingQueuedConnection)
+        self.sigPlotConfigChanged.connect(logic.set_plot_config, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigAutoRangeClicked.connect(logic.set_auto_limits, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigDoFit.connect(logic.do_fit, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigRemovePlotClicked.connect(logic.remove_plot, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigSaveData.connect(logic.save_data, QtCore.Qt.ConnectionType.BlockingQueuedConnection)
 
         # Connect signals from logic
-        logic.sigPlotDataChanged.connect(self._update_data, QtCore.Qt.QueuedConnection)
-        logic.sigPlotConfigChanged.connect(self._update_plot_config, QtCore.Qt.QueuedConnection)
-        logic.sigPlotAdded.connect(self._plot_added, QtCore.Qt.QueuedConnection)
-        logic.sigPlotRemoved.connect(self._plot_removed, QtCore.Qt.QueuedConnection)
-        logic.sigFitChanged.connect(self._update_fit_data, QtCore.Qt.QueuedConnection)
+        logic.sigPlotDataChanged.connect(self._update_data, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigPlotConfigChanged.connect(self._update_plot_config, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigPlotAdded.connect(self._plot_added, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigPlotRemoved.connect(self._plot_removed, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigFitChanged.connect(self._update_fit_data, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self._init_plots(logic.plot_count)
 
@@ -255,10 +255,10 @@ class QDPlotterGui(GuiBase):
             widget.toggle_editor(False)
             dockwidget.show()
             dockwidget.setFloating(False)
-            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+            self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, dockwidget)
         self._mw.resizeDocks(self._plot_dockwidgets,
                              [1] * len(self._plot_dockwidgets),
-                             QtCore.Qt.Horizontal)
+                             QtCore.Qt.Orientation.Horizontal)
 
     def restore_arc_view(self) -> None:
         """ Restore the arrangement of DockWidgets to the default """
@@ -272,15 +272,15 @@ class QDPlotterGui(GuiBase):
             dockwidget.setFloating(False)
             mod = ii % 3
             if mod == 0:
-                self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+                self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, dockwidget)
                 if ii > 2:
                     self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
             elif mod == 1:
-                self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dockwidget)
+                self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, dockwidget)
                 if ii > 2:
                     self._mw.tabifyDockWidget(self._plot_dockwidgets[1], dockwidget)
             elif mod == 2:
-                self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, dockwidget)
+                self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, dockwidget)
                 if ii > 2:
                     self._mw.tabifyDockWidget(self._plot_dockwidgets[2], dockwidget)
         try:
@@ -288,7 +288,7 @@ class QDPlotterGui(GuiBase):
         except IndexError:
             pass
         else:
-            self._mw.resizeDocks(resize_docks, [1, 1], QtCore.Qt.Horizontal)
+            self._mw.resizeDocks(resize_docks, [1, 1], QtCore.Qt.Orientation.Horizontal)
 
     def restore_tabbed_view(self) -> None:
         """ Restore the arrangement of DockWidgets to the default """
@@ -300,7 +300,7 @@ class QDPlotterGui(GuiBase):
             widget.toggle_editor(False)
             dockwidget.show()
             dockwidget.setFloating(False)
-            self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, dockwidget)
+            self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, dockwidget)
             if ii > 0:
                 self._mw.tabifyDockWidget(self._plot_dockwidgets[0], dockwidget)
         try:

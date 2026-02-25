@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from enum import Enum
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 
 
@@ -44,7 +44,7 @@ class MultipleCheckboxWidget(QtWidgets.QWidget):
             # Create QLabel and QCheckBox for each checkbox label given in init
             label = QtWidgets.QLabel(box_label)
             label.setFixedWidth(self._checkbox_width)
-            label.setAlignment(QtCore.Qt.AlignCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             widget = QtWidgets.QCheckBox()
             widget.setFixedWidth(19)
             widget.setChecked(False)
@@ -57,8 +57,8 @@ class MultipleCheckboxWidget(QtWidgets.QWidget):
             v_layout = QtWidgets.QVBoxLayout()
             v_layout.addWidget(label)
             v_layout.addWidget(widget)
-            v_layout.setAlignment(label, QtCore.Qt.AlignHCenter)
-            v_layout.setAlignment(widget, QtCore.Qt.AlignHCenter)
+            v_layout.setAlignment(label, QtCore.Qt.AlignmentFlag.AlignHCenter)
+            v_layout.setAlignment(widget, QtCore.Qt.AlignmentFlag.AlignHCenter)
             main_layout.addLayout(v_layout)
         main_layout.addStretch(1)
         main_layout.setSpacing(0)
@@ -99,7 +99,7 @@ class AnalogParametersWidget(QtWidgets.QWidget):
         main_layout = QtWidgets.QHBoxLayout()
         for param in self._parameters:
             label = QtWidgets.QLabel(param)
-            label.setAlignment(QtCore.Qt.AlignCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
             if self._parameters[param]['type'] == float:
                 widget = ScienDSpinBox()
                 widget.setMinimum(self._parameters[param]['min'])
@@ -152,8 +152,8 @@ class AnalogParametersWidget(QtWidgets.QWidget):
             v_layout = QtWidgets.QVBoxLayout()
             v_layout.addWidget(label)
             v_layout.addWidget(widget)
-            v_layout.setAlignment(label, QtCore.Qt.AlignHCenter)
-            v_layout.setAlignment(widget, QtCore.Qt.AlignHCenter)
+            v_layout.setAlignment(label, QtCore.Qt.AlignmentFlag.AlignHCenter)
+            v_layout.setAlignment(widget, QtCore.Qt.AlignmentFlag.AlignHCenter)
             main_layout.addLayout(v_layout)
 
         main_layout.addStretch(1)

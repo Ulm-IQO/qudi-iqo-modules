@@ -32,7 +32,7 @@ import numpy as np
 import time
 from datetime import datetime
 from collections import OrderedDict
-from PySide2 import QtCore
+from PySide6 import QtCore
 from matplotlib import pyplot as plt, patches
 from matplotlib.figure import Figure
 
@@ -479,12 +479,12 @@ class PoiManagerLogic(LogicBase):
 
         # Connect callback for a finished refocus
         self._optimizelogic().sigOptimizeStateChanged.connect(
-            self._optimisation_callback, QtCore.Qt.QueuedConnection)
+            self._optimisation_callback, QtCore.Qt.ConnectionType.QueuedConnection)
         # Connect internal start/stop signals to decouple QTimer from other threads
         self.__sigStartPeriodicRefocus.connect(
-            self.start_periodic_refocus, QtCore.Qt.QueuedConnection)
+            self.start_periodic_refocus, QtCore.Qt.ConnectionType.QueuedConnection)
         self.__sigStopPeriodicRefocus.connect(
-            self.stop_periodic_refocus, QtCore.Qt.QueuedConnection)
+            self.stop_periodic_refocus, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Initialise the ROI scan image (xy confocal image) if not present
         if self._roi.scan_image is None:

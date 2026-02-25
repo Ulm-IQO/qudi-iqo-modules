@@ -23,7 +23,7 @@ from logging import getLogger
 import time
 from typing import Optional, Dict, Tuple, Any, List
 import numpy as np
-from PySide2 import QtCore
+from PySide6 import QtCore
 from fysom import FysomError
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import RecursiveMutex
@@ -479,7 +479,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         self.__last_backward_pixel = 0
         self.__update_timer = QtCore.QTimer()
         self.__update_timer.setSingleShot(True)
-        self.__update_timer.timeout.connect(self._handle_timer, QtCore.Qt.QueuedConnection)
+        self.__update_timer.timeout.connect(self._handle_timer, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self):
         """Deactivate properly the confocal scanner dummy."""
@@ -792,7 +792,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'start', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self.__update_timer.start()
 
@@ -803,7 +803,7 @@ class ScanningProbeDummyBare(ScanningProbeInterface):
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__update_timer, 'stop', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self.__update_timer.stop()
 

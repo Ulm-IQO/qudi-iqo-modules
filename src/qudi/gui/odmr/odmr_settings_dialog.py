@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('OdmrSettingsDialog',)
 
 import numpy as np
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.units import ScaledFloat
 
@@ -54,14 +54,14 @@ class OdmrSettingsDialog(QtWidgets.QDialog):
         self.oversampling_spinbox.valueChanged.connect(self._sample_rate_changed)
         # label showing the resulting hardware sample rate (oversampling * data_rate)
         self.sample_rate_label = QtWidgets.QLabel('')
-        self.sample_rate_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignLeft)
+        self.sample_rate_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignLeft)
         self._sample_rate_changed()
 
         # Buttonbox for this QDialog
-        buttons = QtWidgets.QDialogButtonBox.Ok | \
-                  QtWidgets.QDialogButtonBox.Apply | \
-                  QtWidgets.QDialogButtonBox.Cancel
-        self.button_box = QtWidgets.QDialogButtonBox(buttons, QtCore.Qt.Horizontal)
+        buttons = QtWidgets.QDialogButtonBox.StandardButton.Ok | \
+                  QtWidgets.QDialogButtonBox.StandardButton.Apply | \
+                  QtWidgets.QDialogButtonBox.StandardButton.Cancel
+        self.button_box = QtWidgets.QDialogButtonBox(buttons, QtCore.Qt.Orientation.Horizontal)
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
 
@@ -69,22 +69,22 @@ class OdmrSettingsDialog(QtWidgets.QDialog):
         layout = QtWidgets.QGridLayout()
         self.setLayout(layout)
         label = QtWidgets.QLabel('Data Rate:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         layout.addWidget(label, 0, 0)
         layout.addWidget(self.data_rate_spinbox, 0, 1)
         label = QtWidgets.QLabel('Oversampling Factor:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         layout.addWidget(label, 1, 0)
         layout.addWidget(self.oversampling_spinbox, 1, 1)
         label = QtWidgets.QLabel('Resulting Sample Rate:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         layout.addWidget(label, 2, 0)
         layout.addWidget(self.sample_rate_label, 2, 1)
         hline = QtWidgets.QFrame()
-        hline.setFrameShape(QtWidgets.QFrame.HLine)
+        hline.setFrameShape(QtWidgets.QFrame.Shape.HLine)
         layout.addWidget(hline, 3, 0, 1, 2)
         label = QtWidgets.QLabel('Max. Displayed Number of Scans:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         layout.addWidget(label, 4, 0)
         layout.addWidget(self.max_scans_shown_spinbox, 4, 1)
         layout.addWidget(self.button_box, 5, 0, 1, 2)

@@ -24,7 +24,7 @@ __all__ = ['TimeSeriesGui']
 
 import pyqtgraph as pg
 import numpy as np
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from typing import Union, Dict, Tuple
 
 from qudi.core.statusvariable import StatusVar
@@ -152,7 +152,7 @@ class TimeSeriesGui(GuiBase):
         self._mw.toggle_trace_action.triggered[bool].connect(self._trace_toggled)
         self._mw.record_trace_action.triggered[bool].connect(self._record_toggled)
         self._mw.snapshot_trace_action.triggered.connect(logic.save_trace_snapshot,
-                                                         QtCore.Qt.QueuedConnection)
+                                                         QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.settings_dockwidget.trace_length_spinbox.editingFinished.connect(
             self._trace_settings_changed
         )
@@ -175,20 +175,20 @@ class TimeSeriesGui(GuiBase):
         self._mw.channel_settings_action.triggered.connect(self._exec_channel_settings_dialog)
 
         # Connect signals to/from logic
-        self.sigStartCounter.connect(logic.start_reading, QtCore.Qt.QueuedConnection)
-        self.sigStopCounter.connect(logic.stop_reading, QtCore.Qt.QueuedConnection)
-        self.sigStartRecording.connect(logic.start_recording, QtCore.Qt.QueuedConnection)
-        self.sigStopRecording.connect(logic.stop_recording, QtCore.Qt.QueuedConnection)
-        self.sigTraceSettingsChanged.connect(logic.set_trace_settings, QtCore.Qt.QueuedConnection)
+        self.sigStartCounter.connect(logic.start_reading, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStopCounter.connect(logic.stop_reading, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStartRecording.connect(logic.start_recording, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStopRecording.connect(logic.stop_recording, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigTraceSettingsChanged.connect(logic.set_trace_settings, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigChannelSettingsChanged.connect(logic.set_channel_settings,
-                                               QtCore.Qt.QueuedConnection)
+                                               QtCore.Qt.ConnectionType.QueuedConnection)
 
-        logic.sigDataChanged.connect(self.update_data, QtCore.Qt.QueuedConnection)
+        logic.sigDataChanged.connect(self.update_data, QtCore.Qt.ConnectionType.QueuedConnection)
         logic.sigTraceSettingsChanged.connect(self.update_trace_settings,
-                                              QtCore.Qt.QueuedConnection)
+                                              QtCore.Qt.ConnectionType.QueuedConnection)
         logic.sigChannelSettingsChanged.connect(self.update_channel_settings,
-                                                QtCore.Qt.QueuedConnection)
-        logic.sigStatusChanged.connect(self.update_status, QtCore.Qt.QueuedConnection)
+                                                QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigStatusChanged.connect(self.update_status, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self.update_status(running=logic.module_state() == 'locked',
                            recording=logic.data_recording_active)
@@ -252,7 +252,7 @@ class TimeSeriesGui(GuiBase):
         dialog = TraceViewDialog(current_settings.keys(), parent=self._mw)
         dialog.set_channel_states(current_settings)
         # Show modal dialog and update logic if necessary
-        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+        if dialog.exec_() == QtWidgets.QDialog.DialogCode.Accepted:
             self._apply_trace_view_settings(dialog.get_channel_states())
 
     def _exec_channel_settings_dialog(self):
@@ -263,7 +263,7 @@ class TimeSeriesGui(GuiBase):
         dialog = ChannelSettingsDialog(channels, parent=self._mw)
         dialog.set_channel_states(channel_states)
         # Show modal dialog and update logic if necessary
-        if dialog.exec_() == QtWidgets.QDialog.Accepted:
+        if dialog.exec_() == QtWidgets.QDialog.DialogCode.Accepted:
             self._apply_channel_settings(dialog.get_channel_states())
 
     @QtCore.Slot()
@@ -465,10 +465,10 @@ class TimeSeriesGui(GuiBase):
         # Show hidden dock widget and re-dock
         self._mw.settings_dockwidget.show()
         self._mw.settings_dockwidget.setFloating(False)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.settings_dockwidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.settings_dockwidget)
         # Set the toolbar to its initial top area
         self._mw.toolbar.show()
-        self._mw.addToolBar(QtCore.Qt.TopToolBarArea, self._mw.toolbar)
+        self._mw.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, self._mw.toolbar)
         # Restore status if something went wrong
         self.update_status(running=self._time_series_logic_con().module_state() == 'locked',
                            recording=self._time_series_logic_con().data_recording_active)

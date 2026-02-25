@@ -25,7 +25,7 @@ __all__ = ('ScannerSettingDialog', 'ScannerSettingsWidget')
 
 from typing import List, Dict, Tuple
 
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.interface.scanning_probe_interface import BackScanCapability, ScanConstraints, ScannerAxis
@@ -41,10 +41,10 @@ class ScannerSettingDialog(QtWidgets.QDialog):
 
         self.settings_widget = ScannerSettingsWidget(scanner_axes=scanner_axes,
                                                      scanner_constraints=scanner_constraints)
-        self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok |
-                                                     QtWidgets.QDialogButtonBox.Cancel |
-                                                     QtWidgets.QDialogButtonBox.Apply,
-                                                     QtCore.Qt.Horizontal,
+        self.button_box = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok |
+                                                     QtWidgets.QDialogButtonBox.StandardButton.Cancel |
+                                                     QtWidgets.QDialogButtonBox.StandardButton.Apply,
+                                                     QtCore.Qt.Orientation.Horizontal,
                                                      self)
         self.button_box.accepted.connect(self.accept)
         self.button_box.rejected.connect(self.reject)
@@ -52,7 +52,7 @@ class ScannerSettingDialog(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout()
         layout.addWidget(self.settings_widget)
         layout.addWidget(self.button_box)
-        layout.setSizeConstraint(QtWidgets.QLayout.SetFixedSize)
+        layout.setSizeConstraint(QtWidgets.QLayout.SizeConstraint.SetFixedSize)
         self.setLayout(layout)
 
 
@@ -71,12 +71,12 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
 
         forward_label = QtWidgets.QLabel('Forward')
         forward_label.setFont(font)
-        forward_label.setAlignment(QtCore.Qt.AlignCenter)
+        forward_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(forward_label, 0, 1)
 
         backward_label = QtWidgets.QLabel('Backward')
         backward_label.setFont(font)
-        backward_label.setAlignment(QtCore.Qt.AlignCenter)
+        backward_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(backward_label, 0, 2)
         self._forward_backward_labels = [forward_label, backward_label]
 
@@ -85,25 +85,25 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
             label = QtWidgets.QLabel('{0}-Axis:'.format(ax_name.title()))
             label.setObjectName('{0}_axis_label'.format(ax_name))
             label.setFont(font)
-            label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
 
             forward_spinbox = ScienDSpinBox()
             forward_spinbox.setObjectName('{0}_forward_scienDSpinBox'.format(ax_name))
             forward_spinbox.setRange(*axis.frequency.bounds)
             forward_spinbox.setSuffix('Hz')
-            forward_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+            forward_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
             forward_spinbox.setMinimumSize(75, 0)
-            forward_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                          QtWidgets.QSizePolicy.Preferred)
+            forward_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                          QtWidgets.QSizePolicy.Policy.Preferred)
 
             backward_spinbox = ScienDSpinBox()
             backward_spinbox.setObjectName('{0}_backward_scienDSpinBox'.format(ax_name))
             backward_spinbox.setRange(*axis.frequency.bounds)
             backward_spinbox.setSuffix('Hz')
-            backward_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+            backward_spinbox.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
             backward_spinbox.setMinimumSize(75, 0)
-            backward_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                           QtWidgets.QSizePolicy.Preferred)
+            backward_spinbox.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                           QtWidgets.QSizePolicy.Policy.Preferred)
             if BackScanCapability.FREQUENCY_CONFIGURABLE not in self._back_scan_capability:
                 backward_spinbox.setToolTip("Back frequency is not configurable.")
                 backward_spinbox.setEnabled(False)
@@ -133,7 +133,7 @@ class ScannerSettingsWidget(QtWidgets.QWidget):
         self.configure_backward_scan_checkbox.stateChanged.connect(self.set_backward_settings_visibility)
         h_layout.addWidget(self.configure_backward_scan_checkbox)
         label = QtWidgets.QLabel('Configure backward scan')
-        label.setAlignment(QtCore.Qt.AlignCenter)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
         h_layout.addWidget(label)
 
         general_groupbox = QtWidgets.QGroupBox('General')

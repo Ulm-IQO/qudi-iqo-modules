@@ -24,7 +24,7 @@ __all__ = ('LaserOutputDockWidget', 'LaserTemperatureDockWidget')
 
 import time
 import pyqtgraph as pg
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.widgets.advanced_dockwidget import AdvancedDockWidget
@@ -44,7 +44,7 @@ class LaserOutputDockWidget(AdvancedDockWidget):
         self.plot_widget.setMouseTracking(False)
         self.plot_widget.setMenuEnabled(False)
         self.plot_widget.hideButtons()
-        self.plot_widget.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.plot_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.plot_widget.setMinimumSize(200, 200)
         # Create second ViewBox to plot with two independent y-axes
         self.view_box2 = pg.ViewBox()
@@ -102,7 +102,7 @@ class LaserTemperatureDockWidget(AdvancedDockWidget):
         self.plot_widget.setMouseTracking(False)
         self.plot_widget.setMenuEnabled(False)
         self.plot_widget.hideButtons()
-        self.plot_widget.setFocusPolicy(QtCore.Qt.NoFocus)
+        self.plot_widget.setFocusPolicy(QtCore.Qt.FocusPolicy.NoFocus)
         self.plot_widget.setMinimumSize(200, 200)
         self.temperature_data_items = dict()
         for ii, name in enumerate(curve_names):

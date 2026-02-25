@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time
 import numpy as np
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.util.mutex import RecursiveMutex
 from qudi.core.connector import Connector
@@ -79,7 +79,7 @@ class LaserLogic(LogicBase):
         self.__timer = QtCore.QTimer()
         self.__timer.setInterval(1000 * self._query_interval)
         self.__timer.setSingleShot(True)
-        self.__timer.timeout.connect(self._query_loop_body, QtCore.Qt.QueuedConnection)
+        self.__timer.timeout.connect(self._query_loop_body, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # initialize data buffer
         laser = self._laser()
@@ -272,7 +272,7 @@ class LaserLogic(LogicBase):
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'start_query_loop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+                                            QtCore.Qt.ConnectionType.BlockingQueuedConnection)
             return
 
         with self._thread_lock:
@@ -290,7 +290,7 @@ class LaserLogic(LogicBase):
         if self.thread() is not QtCore.QThread.currentThread():
             QtCore.QMetaObject.invokeMethod(self,
                                             'stop_query_loop',
-                                            QtCore.Qt.BlockingQueuedConnection)
+                                            QtCore.Qt.ConnectionType.BlockingQueuedConnection)
             return
 
         with self._thread_lock:
