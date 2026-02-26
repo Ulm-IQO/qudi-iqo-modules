@@ -469,6 +469,73 @@ class CameraLogic(LogicBase):
             else:
                 self.log.error("Unable to set binning. Acquisition still in progress.")
 
+    def get_binning(self):
+        """Get the current binning value (NIntegFrames)
+
+        @return int: Current binning value
+        """
+        with self._thread_lock:
+            camera = self._camera()
+            try:
+                return camera.get_binning()
+            except Exception as e:
+                self.log.error(f"Error getting binning: {e}")
+                return 1
+
+    def get_default_save_directory(self):
+        """Get the default save directory from hardware config.
+
+        @return str: Default save directory path, or empty string if not configured.
+        """
+        with self._thread_lock:
+            camera = self._camera()
+            try:
+                return camera.get_default_save_directory()
+            except Exception:
+                return ""
+
+    def get_trigger_mode(self):
+        """Get the current trigger mode.
+
+        @return str: 'no_trigger', 'single_trigger', or 'multiple_trigger'
+        """
+        with self._thread_lock:
+            camera = self._camera()
+            try:
+                return camera.get_trigger_mode()
+            except Exception as e:
+                self.log.error(f"Error getting trigger mode: {e}")
+                return "no_trigger"
+
+    def get_trigger_frames_per_pulse(self):
+        """Get the number of frames per trigger pulse.
+
+        @return int: Frames per pulse (1-100)
+        """
+        with self._thread_lock:
+            camera = self._camera()
+            try:
+                return camera.get_trigger_frames_per_pulse()
+            except Exception as e:
+                self.log.error(f"Error getting trigger frames per pulse: {e}")
+                return 1
+
+    def set_trigger_mode(self, mode, frames_per_pulse=1):
+        """Set the trigger mode and apply it to hardware.
+
+        @param str mode: 'no_trigger', 'single_trigger', or 'multiple_trigger'
+        @param int frames_per_pulse: Frames per SYNC_IN pulse (1-100, only for multiple_trigger)
+        """
+        with self._thread_lock:
+            if self.module_state() == "locked":
+                self.log.error("Cannot change trigger mode while acquisition is running.")
+                return
+            camera = self._camera()
+            try:
+                camera.set_trigger_mode(mode, frames_per_pulse)
+            except Exception as e:
+                self.log.error(f"Error setting trigger mode: {e}")
+
     def load_acquisition_file(self, filepath):
         """Load a .spc3 acquisition file for viewing
 

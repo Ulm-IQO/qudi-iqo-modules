@@ -45,7 +45,7 @@ class SPC3_Qudi(CameraInterface):
         module.Class: 'camera.SPC3.spc3_qudi.SPC3_Qudi'
         options:
             dll_location: 'C:\\Users\\...\\qudi-iqo-modules\\src\\qudi\\hardware\\camera\\SPC3\\lib\\Win\\'
-            default_camera_mode: 'Normal'  # or 'Advanced'
+            camera_mode: 'Normal'  # or 'Advanced'
             default_hardware_integration: 5200  # in units of 10ns clock cycles (52 us)
             default_NFrames: 100  # frames per Snap acquisition
             default_NIntegFrames: 1000  # temporal binning (integrated frames per output)
@@ -53,6 +53,9 @@ class SPC3_Qudi(CameraInterface):
             default_Force8bit: 'Disabled'  # or 'Enabled' (Advanced mode only)
             default_Half_array: 'Disabled'  # or 'Enabled' (32x32 instead of 32x64)
             default_Signed_data: 'Disabled'  # or 'Enabled'
+            default_display_units: 'counts'  # or 'cps'
+            trigger_mode: 'no_trigger'  # 'no_trigger' | 'single_trigger' | 'multiple_trigger'
+            trigger_frames_per_pulse: 1  # frames per SYNC_IN pulse (only for 'multiple_trigger', 1-100)
 
     Unit Convention:
         - ALL public parameters use SECONDS for time values (exposure, integration)
@@ -78,7 +81,18 @@ class SPC3_Qudi(CameraInterface):
     )  # 'counts' or 'cps'
     _default_Half_array = ConfigOption("default_Half_array", 0)
     _default_Signed_data = ConfigOption("default_Signed_data", 0)
-    # _trigger_mode = ConfigOption("default_trigger_mode", 0)
+    # Trigger mode: 'no_trigger' | 'single_trigger' | 'multiple_trigger'
+    _trigger_mode = ConfigOption("trigger_mode", "no_trigger")
+    # Number of frames acquired per trigger pulse (only for 'multiple_trigger', valid range 1-100)
+    _trigger_frames_per_pulse = ConfigOption("trigger_frames_per_pulse", 1)
+    # Default directory for saving acquisition files (empty string = no default)
+    _default_save_directory = ConfigOption("default_save_directory", "")
+    # Coarse gate mode: 'off' | 'coarse'  (counter 1 only)
+    _gate_mode = ConfigOption("gate_mode", "off")
+    # Coarse gate start position in clock cycles (10 ns each). Range: 0 .. (HIT - 6)
+    _coarse_gate_start = ConfigOption("coarse_gate_start", 0)
+    # Coarse gate stop position in clock cycles (10 ns each). Range: (start+1) .. (HIT - 5)
+    _coarse_gate_stop = ConfigOption("coarse_gate_stop", 100)
 
     _HardwareIntegration = _default_hardware_integration
     _NFrames = _default_NFrames
@@ -172,14 +186,11 @@ class SPC3_Qudi(CameraInterface):
                 f"SPC3 initialized in Normal mode: HW integration = {hardware_time*1e6:.2f} µs (fixed)"
             )
 
-        ### TRIGGER MODE OPTIONS - SKIPPED FOR NOW ###
-        # if self._trigger_mode >= 0:
-        # self.spc3.SetSyncInState(
-        # SPC3.State.ENABLED, self._trigger_mode
-        # )  # enable triggering (1 per trigger pulse)
-        # self.spc3.SetTriggerOutState(
-        # SPC3.TriggerMode.FRAME
-        # )  # output trigger per frame
+        # Apply trigger settings
+        self._apply_trigger_settings()
+
+        # Apply gate settings
+        self._apply_gate_settings()
 
         self.spc3.ApplySettings()
         self._Ncols = self._Ncols >> half_array
@@ -189,6 +200,145 @@ class SPC3_Qudi(CameraInterface):
         self.log.info(
             f"Initial exposure: {self._exposure*1e3:.2f} ms ({self._NIntegFrames} frames × {hardware_time*1e6:.2f} µs)"
         )
+
+    def _apply_trigger_settings(self):
+        """Apply trigger mode settings to hardware.
+
+        Trigger modes:
+            'no_trigger'       - start acquisition immediately when commanded
+            'single_trigger'   - wait for one SYNC_IN pulse, then run to completion
+            'multiple_trigger' - acquire trigger_frames_per_pulse frames per SYNC_IN pulse
+        """
+        if self._trigger_mode == "no_trigger":
+            self.spc3.SetSyncInState(SPC3.State.DISABLED, 0)
+            self.log.info("Trigger: disabled (free-running)")
+
+        elif self._trigger_mode == "single_trigger":
+            # frames=0 → wait for one pulse then run to completion
+            self.spc3.SetSyncInState(SPC3.State.ENABLED, 0)
+            self.log.info("Trigger: single external trigger on SYNC_IN")
+
+        elif self._trigger_mode == "multiple_trigger":
+            frames = max(1, min(int(self._trigger_frames_per_pulse), 100))
+            self.spc3.SetSyncInState(SPC3.State.ENABLED, frames)
+            self.log.info(
+                f"Trigger: multiple external trigger on SYNC_IN, {frames} frames per pulse"
+            )
+
+        else:
+            self.log.warning(
+                f"Unknown trigger_mode '{self._trigger_mode}', defaulting to no_trigger"
+            )
+            self.spc3.SetSyncInState(SPC3.State.DISABLED, 0)
+
+    def get_trigger_mode(self):
+        """Get the current trigger mode.
+
+        @return str: 'no_trigger', 'single_trigger', or 'multiple_trigger'
+        """
+        return self._trigger_mode
+
+    def get_trigger_frames_per_pulse(self):
+        """Get the number of frames acquired per trigger pulse (multiple_trigger mode only).
+
+        @return int: Frames per trigger pulse (1-100)
+        """
+        return int(self._trigger_frames_per_pulse)
+
+    def set_trigger_mode(self, mode, frames_per_pulse=1):
+        """Set the trigger mode and apply it to hardware immediately.
+
+        @param str mode: 'no_trigger', 'single_trigger', or 'multiple_trigger'
+        @param int frames_per_pulse: Frames per SYNC_IN pulse (1-100, only for 'multiple_trigger')
+        """
+        valid_modes = ("no_trigger", "single_trigger", "multiple_trigger")
+        if mode not in valid_modes:
+            self.log.error(f"Invalid trigger mode '{mode}'. Must be one of {valid_modes}")
+            return
+        self._trigger_mode = mode
+        self._trigger_frames_per_pulse = max(1, min(int(frames_per_pulse), 100))
+        self._apply_trigger_settings()
+
+    def _apply_gate_settings(self):
+        """Apply coarse gate settings to hardware (counter 1 only).
+
+        Gate modes:
+            'off'    - counter 1 runs in continuous (ungated) mode
+            'coarse' - counter 1 counts only during the [start, stop] window within each
+                       hardware integration period.  Start and stop are in clock cycles
+                       (10 ns each).  Valid ranges per SDK:
+                           start: 0 .. (HIT - 6)
+                           stop : (start + 1) .. (HIT - 5)
+                       where HIT = hardware integration time in clock cycles.
+        """
+        if self._gate_mode == "off":
+            self.spc3.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
+            self.log.info("Gate: disabled (continuous mode) for counter 1")
+
+        elif self._gate_mode == "coarse":
+            hit = (
+                self._HardwareIntegration
+                if self._camera_mode == "Advanced"
+                else self._HardwareIntegration_Normal
+            )
+            start = int(self._coarse_gate_start)
+            stop = int(self._coarse_gate_stop)
+
+            # Clamp to valid SDK ranges
+            start = max(0, min(start, hit - 6))
+            stop = max(start + 1, min(stop, hit - 5))
+
+            if start != int(self._coarse_gate_start) or stop != int(self._coarse_gate_stop):
+                self.log.warning(
+                    f"Coarse gate values clamped to valid range: "
+                    f"start={start}, stop={stop} (HIT={hit} cycles)"
+                )
+
+            self._coarse_gate_start = start
+            self._coarse_gate_stop = stop
+
+            self.spc3.SetGateMode(1, SPC3.GateMode.COARSE)
+            self.spc3.SetCoarseGateValues(1, start, stop)
+            self.log.info(
+                f"Gate: coarse mode for counter 1 — "
+                f"start={start*10} ns, stop={stop*10} ns "
+                f"(cycles {start}–{stop} of {hit})"
+            )
+
+        else:
+            self.log.warning(
+                f"Unknown gate_mode '{self._gate_mode}', defaulting to off"
+            )
+            self.spc3.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
+
+    def get_gate_mode(self):
+        """Return the current gate mode string ('off' or 'coarse')."""
+        return self._gate_mode
+
+    def get_coarse_gate_values(self):
+        """Return (start, stop) coarse gate positions in clock cycles.
+
+        @return tuple(int, int): (start_cycles, stop_cycles)
+        """
+        return int(self._coarse_gate_start), int(self._coarse_gate_stop)
+
+    def set_coarse_gate(self, start_cycles, stop_cycles):
+        """Set coarse gate start/stop positions and apply to hardware immediately.
+
+        @param int start_cycles: Gate-on start position in clock cycles (10 ns each)
+        @param int stop_cycles:  Gate-on stop  position in clock cycles (10 ns each)
+        """
+        self._gate_mode = "coarse"
+        self._coarse_gate_start = int(start_cycles)
+        self._coarse_gate_stop = int(stop_cycles)
+        self._apply_gate_settings()
+        self.spc3.ApplySettings()
+
+    def disable_gate(self):
+        """Disable gating (set counter 1 back to continuous mode)."""
+        self._gate_mode = "off"
+        self._apply_gate_settings()
+        self.spc3.ApplySettings()
 
     def _apply_camera_settings(self):
         """Apply current camera parameters to hardware"""
@@ -282,7 +432,23 @@ class SPC3_Qudi(CameraInterface):
             # Step 1: Prepare camera for snap
             self.spc3.SnapPrepare()
 
-            # Step 2: Trigger acquisition (blocks until complete)
+            # Step 2: Wait for trigger (if trigger mode active) then acquire
+            # SnapAcquire() blocks until all frames are downloaded. In trigger mode
+            # the camera waits for a SYNC_IN pulse before capturing, so calling
+            # SnapAcquire() immediately causes the SDK to time out with COMMUNICATION_ERROR.
+            # Instead, poll IsTriggered() until the camera has received its trigger pulse
+            # and started acquiring, then call SnapAcquire() to download the frames.
+            if self._trigger_mode in ("single_trigger", "multiple_trigger"):
+                import time
+                self.log.info(
+                    f"Waiting for external trigger on SYNC_IN "
+                    f"(trigger_mode='{self._trigger_mode}')..."
+                )
+                while not self.spc3.IsTriggered():
+                    time.sleep(0.01)  # poll every 10 ms
+                self.log.info("Trigger received, downloading frames...")
+
+            # Step 3: Trigger acquisition (blocks until frames downloaded)
             self.spc3.SnapAcquire()
 
             # Step 3: Extract frames from SDK internal buffer by calling SDK directly
@@ -629,6 +795,17 @@ class SPC3_Qudi(CameraInterface):
         )
         self.spc3.ApplySettings()
         return True
+
+    def get_binning(self):
+        """Get the current temporal binning (NIntegFrames)
+
+        @return int: Current binning value
+        """
+        return self._NIntegFrames
+
+    def get_default_save_directory(self):
+        """Return the default save directory from config, or empty string if not set."""
+        return self._default_save_directory
 
     # not applicable for SPAD
     def set_gain(self, gain):

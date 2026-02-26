@@ -1087,7 +1087,10 @@ class SPC3(object):
         #  DllSDKExport HermesReturn HermesIsTriggered(Hermes_H Hermes, short* isTriggered);
         ec = f(self.c_handle, byref(isTriggered))
         self._checkError(ec)
-        return bool(c_short.value)
+        # BUG FIX: original code returned bool(c_short.value) which evaluates the ctypes
+        # class descriptor (always truthy) instead of the local instance. Changed to
+        # bool(isTriggered.value) to correctly read the SDK output value.
+        return bool(isTriggered.value)
 
     def GetVersion(self):
         """GetVersion - Get the SDK and camera firmware version

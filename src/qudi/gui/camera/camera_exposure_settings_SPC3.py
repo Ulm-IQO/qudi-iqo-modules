@@ -25,6 +25,7 @@ class CameraExposureDock(AdvancedDockWidget):
     sigIntegrationChanged = QtCore.Signal(float)  # Value in seconds
     sigBinningChanged = QtCore.Signal(int)
     sigDisplayUnitsChanged = QtCore.Signal(str)  # 'counts' or 'cps'
+    sigTriggerModeChanged = QtCore.Signal(str, int)  # (mode_str, frames_per_pulse)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -175,6 +176,43 @@ class CameraExposureDock(AdvancedDockWidget):
 
         main_layout.addWidget(units_group_box)
 
+        # Trigger Mode Group
+        trigger_group_box = QtWidgets.QGroupBox("Trigger Mode")
+        trigger_layout = QtWidgets.QVBoxLayout()
+        trigger_layout.setContentsMargins(10, 15, 10, 10)
+        trigger_layout.setSpacing(8)
+        trigger_group_box.setLayout(trigger_layout)
+
+        # Dropdown selector
+        self.trigger_mode_combo = QtWidgets.QComboBox()
+        self.trigger_mode_combo.addItem("No Trigger", userData="no_trigger")
+        self.trigger_mode_combo.addItem("Single Trigger", userData="single_trigger")
+        self.trigger_mode_combo.addItem("Multiple Trigger", userData="multiple_trigger")
+        self.trigger_mode_combo.currentIndexChanged.connect(self._on_trigger_mode_changed)
+        trigger_layout.addWidget(self.trigger_mode_combo)
+
+        # Frames per pulse row (only relevant for Multiple Trigger)
+        frames_row = QtWidgets.QHBoxLayout()
+        frames_row.setSpacing(6)
+        self.trigger_frames_label = QtWidgets.QLabel("Frames / pulse:")
+        self.trigger_frames_spinbox = QtWidgets.QSpinBox()
+        self.trigger_frames_spinbox.setMinimum(1)
+        self.trigger_frames_spinbox.setMaximum(100)
+        self.trigger_frames_spinbox.setValue(1)
+        self.trigger_frames_spinbox.setEnabled(False)  # disabled until Multiple Trigger selected
+        self.trigger_frames_spinbox.valueChanged.connect(self._on_trigger_frames_changed)
+        frames_row.addWidget(self.trigger_frames_label)
+        frames_row.addWidget(self.trigger_frames_spinbox)
+        frames_row.addStretch(1)
+        trigger_layout.addLayout(frames_row)
+
+        # Status indicator label
+        self.trigger_status_label = QtWidgets.QLabel("Active: No Trigger")
+        self.trigger_status_label.setStyleSheet("color: gray; font-style: italic;")
+        trigger_layout.addWidget(self.trigger_status_label)
+
+        main_layout.addWidget(trigger_group_box)
+
         # Add stretch to push everything to the top
         main_layout.addStretch(1)
 
@@ -304,6 +342,61 @@ class CameraExposureDock(AdvancedDockWidget):
         if index >= 0:
             self.units_combo.setCurrentIndex(index)
         self.units_combo.blockSignals(False)
+
+    def _on_trigger_mode_changed(self, index):
+        """Handle trigger mode combo box change"""
+        mode = self.trigger_mode_combo.itemData(index)
+        is_multiple = (mode == "multiple_trigger")
+        self.trigger_frames_spinbox.setEnabled(is_multiple)
+        self.trigger_frames_label.setEnabled(is_multiple)
+        frames = self.trigger_frames_spinbox.value() if is_multiple else 1
+        self.sigTriggerModeChanged.emit(mode, frames)
+
+    def _on_trigger_frames_changed(self, value):
+        """Handle frames per pulse spinbox change"""
+        mode = self.trigger_mode_combo.currentData()
+        if mode == "multiple_trigger":
+            self.sigTriggerModeChanged.emit(mode, value)
+
+    def set_trigger_mode(self, mode, frames_per_pulse=1):
+        """Set trigger mode from external source without emitting signal.
+
+        @param str mode: 'no_trigger', 'single_trigger', or 'multiple_trigger'
+        @param int frames_per_pulse: Frames per pulse (1-100)
+        """
+        self.trigger_mode_combo.blockSignals(True)
+        self.trigger_frames_spinbox.blockSignals(True)
+
+        index = self.trigger_mode_combo.findData(mode)
+        if index >= 0:
+            self.trigger_mode_combo.setCurrentIndex(index)
+
+        self.trigger_frames_spinbox.setValue(max(1, min(int(frames_per_pulse), 100)))
+        is_multiple = (mode == "multiple_trigger")
+        self.trigger_frames_spinbox.setEnabled(is_multiple)
+        self.trigger_frames_label.setEnabled(is_multiple)
+
+        self.trigger_mode_combo.blockSignals(False)
+        self.trigger_frames_spinbox.blockSignals(False)
+
+        self._update_trigger_status_label(mode, frames_per_pulse)
+
+    def _update_trigger_status_label(self, mode, frames_per_pulse=1):
+        """Update the status indicator label text and colour."""
+        if mode == "no_trigger":
+            text = "Active: No Trigger"
+            colour = "gray"
+        elif mode == "single_trigger":
+            text = "Active: Single Trigger"
+            colour = "#0a7abf"
+        elif mode == "multiple_trigger":
+            text = f"Active: Multiple Trigger ({frames_per_pulse} frames/pulse)"
+            colour = "#0a7abf"
+        else:
+            text = f"Active: {mode}"
+            colour = "gray"
+        self.trigger_status_label.setText(text)
+        self.trigger_status_label.setStyleSheet(f"color: {colour}; font-style: italic;")
 
     def get_integration_value_ns(self):
         """Get current integration value in nanoseconds (deprecated, use get_integration_value_seconds)"""

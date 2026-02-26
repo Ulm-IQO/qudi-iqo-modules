@@ -428,6 +428,7 @@ class CameraGui(GuiBase):
         self.control_dock_widget.sigDisplayUnitsChanged.connect(
             self._update_display_units
         )
+        self.control_dock_widget.sigTriggerModeChanged.connect(self._update_trigger_mode)
 
         # Fill in data from logic
         logic_busy = logic.module_state() == "locked"
@@ -436,6 +437,14 @@ class CameraGui(GuiBase):
         self._update_frame(logic.last_frame)
         self._keep_former_settings()
 
+        # Initialize default save directory from hardware config
+        try:
+            default_dir = logic.get_default_save_directory()
+            if default_dir:
+                self._continuous_acq_dialog.dir_line_edit.setText(default_dir)
+        except Exception as e:
+            self.log.warning(f"Could not initialize default save directory: {e}")
+
         # Initialize display units from hardware
         try:
             units = logic.get_display_units()
@@ -443,6 +452,14 @@ class CameraGui(GuiBase):
             self._update_colorbar_label(units)
         except Exception as e:
             self.log.warning(f"Could not initialize display units: {e}")
+
+        # Initialize trigger mode from hardware
+        try:
+            trigger_mode = logic.get_trigger_mode()
+            trigger_frames = logic.get_trigger_frames_per_pulse()
+            self.control_dock_widget.set_trigger_mode(trigger_mode, trigger_frames)
+        except Exception as e:
+            self.log.warning(f"Could not initialize trigger mode: {e}")
 
         # Initialize snap frames from hardware
         try:
@@ -470,12 +487,21 @@ class CameraGui(GuiBase):
                             camera._HardwareIntegration * 10
                         )  # 10ns per clock cycle
                         self.control_dock_widget.set_integration_value(integration_ns)
-                    # Update binning from hardware
-                    if hasattr(camera, "_NIntegFrames"):
-                        self.control_dock_widget.set_binning_value(camera._NIntegFrames)
+                    # Update binning from logic
+                    try:
+                        binning = logic.get_binning()
+                        self.control_dock_widget.set_binning_value(binning)
+                    except Exception as e:
+                        self.log.warning(f"Could not get initial binning: {e}")
                 else:
                     self.control_dock_widget.normal_mode_radio_button.setChecked(True)
                     self.control_dock_widget._set_normal_mode()
+                    # Update binning from logic (also available in Normal mode)
+                    try:
+                        binning = logic.get_binning()
+                        self.control_dock_widget.set_binning_value(binning)
+                    except Exception as e:
+                        self.log.warning(f"Could not get initial binning: {e}")
         except Exception as e:
             self.log.warning(f"Could not initialize camera mode display: {e}")
 
@@ -587,6 +613,16 @@ class CameraGui(GuiBase):
         if logic.set_display_units(units):
             self._update_colorbar_label(units)
 
+    def _update_trigger_mode(self, mode, frames_per_pulse):
+        """Apply trigger mode change from GUI to hardware and update status label."""
+        logic = self._camera_logic()
+        try:
+            logic.set_trigger_mode(mode, frames_per_pulse)
+            # Reflect the committed state back on the status label
+            self.control_dock_widget._update_trigger_status_label(mode, frames_per_pulse)
+        except Exception as e:
+            self.log.warning(f"Could not set trigger mode: {e}")
+
     def _update_snap_frames(self, num_frames):
         """Update number of frames for snap acquisition"""
         logic = self._camera_logic()
@@ -650,6 +686,24 @@ class CameraGui(GuiBase):
             self._mw.action_show_settings.setEnabled(True)
             self.sigContinuousAcquisitionToggled.emit(False, {})
 
+            # Offer to view the saved file
+            settings = getattr(self, "_continuous_acq_settings", {})
+            if settings.get("directory") and settings.get("filename_prefix"):
+                saved_path = os.path.join(
+                    settings["directory"],
+                    settings["filename_prefix"] + ".spc3",
+                )
+                if os.path.exists(saved_path):
+                    reply = QtWidgets.QMessageBox.question(
+                        self._mw,
+                        "View Acquisition",
+                        f"Acquisition stopped.\n\nWould you like to view the saved file?\n{saved_path}",
+                        QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No,
+                        QtWidgets.QMessageBox.Yes,
+                    )
+                    if reply == QtWidgets.QMessageBox.Yes:
+                        self._load_file_into_viewer(saved_path)
+
     def _acquisition_finished(self):
         self._mw.action_start_video.setChecked(False)
         self._mw.action_start_video.setEnabled(True)
@@ -671,6 +725,10 @@ class CameraGui(GuiBase):
         if not filepath:
             return  # User cancelled
 
+        self._load_file_into_viewer(filepath)
+
+    def _load_file_into_viewer(self, filepath):
+        """Load a .spc3 file and open the viewer dialog"""
         # Load the file in logic layer
         logic = self._camera_logic()
         success = logic.load_acquisition_file(filepath)
@@ -694,7 +752,7 @@ class CameraGui(GuiBase):
         # Update viewer dialog with file info
         self._viewer_dialog.set_file_info(filepath, frame_count)
 
-        # Connect slider to frame update (keep dialog's internal connection too)
+        # Connect slider to frame update
         try:
             self._viewer_dialog.frame_slider.valueChanged.disconnect(
                 self._on_viewer_frame_changed
