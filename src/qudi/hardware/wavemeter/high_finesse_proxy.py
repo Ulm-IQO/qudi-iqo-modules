@@ -55,17 +55,18 @@ class Watchdog(QObject):
             if self._proxy.error_in_callback:
                 self.handle_error()
             if self._proxy.module_state() == 'locked':
-                self.check_for_channel_activation_change()
+                self.check_for_channel_deactivation()
             time.sleep(self._watch_interval)
 
     def stop_loop(self) -> None:
         self._stop = True
 
-    def check_for_channel_activation_change(self) -> None:
+    def check_for_channel_deactivation(self) -> None:
         actual_active_channels = set(self._proxy.get_active_channels())
-        if self._proxy.get_connected_channels() != actual_active_channels:
-            self.log.warning('Channel was deactivated or activated through GUI.')
-            self._proxy.stop_everything()
+        deactivated_channels = self._proxy.get_connected_channels() - actual_active_channels
+        for ch in deactivated_channels:
+            self.log.warning(f'Reactivating channel {ch} as it is in use by an instreamer.')
+            self._proxy.activate_channel(ch)
 
     def handle_error(self) -> None:
         self.log.warning('Error in callback function.')
@@ -150,14 +151,12 @@ class HighFinesseProxy(Base):
         """
         if module not in self._connected_instream_modules:
             with self._lock:
-                # do channel activation in a lock to prevent the watchdog from stopping things
                 not_connected_yet = set(channels) - self.get_connected_channels()
                 for ch in not_connected_yet:
-                    self._activate_channel(ch)
+                    self.activate_channel(ch)
                 self._connected_instream_modules[module] = set(channels)
             if self._callback_function is None:
-                self._activate_only_connected_channels()
-                self._start_measurement()
+                self.start_measurement()
                 self._start_callback()
         else:
             self.log.warning('Instream module is already connected.')
@@ -170,10 +169,6 @@ class HighFinesseProxy(Base):
                 del self._connected_instream_modules[module]
                 if not self._connected_instream_modules:
                     self._stop_callback()
-                else:
-                    # deactivate channels that are not connected by other instreamers
-                    for ch in (channels_disconnecting_instreamer - self.get_connected_channels()):
-                        self._deactivate_channel(ch)
         else:
             self.log.warning('Instream module is not connected and can therefore not be disconnected.')
 
@@ -353,7 +348,7 @@ class HighFinesseProxy(Base):
         """Check if there already is a proxy running."""
         return THREAD_NAME_WATCHDOG in self._thread_manager.thread_names
 
-    def _activate_channel(self, ch: int) -> None:
+    def activate_channel(self, ch: int) -> None:
         """ Activate a channel on the multi-channel switch. """
         if not self._wm_has_switch:
             if ch == 1:
@@ -367,7 +362,7 @@ class HighFinesseProxy(Base):
                 f'Wavemeter error while activating channel {ch}: {high_finesse_constants.ResultError(err)}'
             )
 
-    def _deactivate_channel(self, ch: int) -> None:
+    def deactivate_channel(self, ch: int) -> None:
         """ Deactivate a channel on the multi-channel switch. """
         if not self._wm_has_switch:
             if ch == 1:
@@ -380,19 +375,7 @@ class HighFinesseProxy(Base):
             raise RuntimeError(f'Wavemeter error while deactivating channel {ch}: '
                                f'{high_finesse_constants.ResultError(err)}')
 
-    def _activate_only_connected_channels(self) -> None:
-        """Activate all channels active on a connected instreamer and disable all others."""
-        connected_channels = self.get_connected_channels()
-        if not connected_channels:
-            raise RuntimeError('Cannot deactivate all channels.')
-
-        for ch in connected_channels:
-            self._activate_channel(ch)
-        for ch in self.get_active_channels():
-            if ch not in connected_channels:
-                self._deactivate_channel(ch)
-
-    def _start_measurement(self) -> None:
+    def start_measurement(self) -> None:
         if self._wm_has_switch:
             self._wavemeter_dll.SetSwitcherMode(True)
         err = self._wavemeter_dll.Operation(high_finesse_constants.cCtrlStartMeasurement)
