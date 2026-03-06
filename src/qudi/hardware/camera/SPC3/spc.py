@@ -146,7 +146,13 @@ class SPC3(object):
         return self._num_counters
 
     def __del__(self):
-        self.Destr()
+        # Guard against double-free: if Destr() was already called explicitly
+        # (e.g. via on_deactivate or a test helper), the caller should have nulled
+        # c_handle afterwards (cam.c_handle = c_void_p()).  Without this check,
+        # Python GC would call Destr() a second time on the freed handle, causing
+        # a NULL_POINTER error or an access violation in the DLL.
+        if self.c_handle.value is not None:
+            self.Destr()
 
     def _checkError(self, ec):
         if ec != 0:
@@ -1692,17 +1698,17 @@ class SPC3(object):
         num_counters = header.N_counters
 
         # Debug: log what we read from file
-        print(f"ReadSPC3DataFile DEBUG:")
-        print(
-            f"  Header: N_rows={header.N_rows}, N_cols={header.N_cols}, N_frames={header.N_frames}, N_counters={header.N_counters}"
-        )
-        print(f"  Header: N_pix={header.N_pix}, bit_x_pix={header.bit_x_pix}")
-        print(f"  Calculated data_count={data_count}, dtype={dtype}")
-        print(f"  Read data.size={data.size}, data.dtype={data.dtype}")
-        print(f"  Using num_pixels={num_pixels}, num_counters={num_counters}")
-        print(
-            f"  Check: data.size % (num_pixels * num_counters) = {data.size % (num_pixels * num_counters)}"
-        )
+        #print(f"ReadSPC3DataFile DEBUG:")
+        #print(
+        #    f"  Header: N_rows={header.N_rows}, N_cols={header.N_cols}, N_frames={header.N_frames}, N_counters={header.N_counters}"
+        #)
+        #print(f"  Header: N_pix={header.N_pix}, bit_x_pix={header.bit_x_pix}")
+        #print(f"  Calculated data_count={data_count}, dtype={dtype}")
+        #print(f"  Read data.size={data.size}, data.dtype={data.dtype}")
+        #print(f"  Using num_pixels={num_pixels}, num_counters={num_counters}")
+        #print(
+        #    f"  Check: data.size % (num_pixels * num_counters) = {data.size % (num_pixels * num_counters)}"
+        #)
 
         frames = SPC3.BufferToFrames(data, num_pixels, num_counters)
 

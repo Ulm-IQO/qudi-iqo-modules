@@ -121,9 +121,13 @@ class SPC3_Qudi(CameraInterface):
     _live = False
     _acquiring = False
     _continuous = False
+    _current_cont_filename = None  # stores stem passed to ContAcqToFileStart
     _camera_name = "SPC3"
     _background_subtraction_enabled = (
         False  # Track software background subtraction state
+    )
+    _last_display_frame = (
+        None  # cached raw frame from last live tick; used as ContAcq preview
     )
 
     def _to_binary(self, value, name):
@@ -148,6 +152,7 @@ class SPC3_Qudi(CameraInterface):
         # Advanced Camera Mode
         if self._camera_mode == "Advanced":
             self.spc3 = SPC3(1, "", self._dll_location)
+            self.spc3.SetAdvancedMode(SPC3.State.ENABLED)
             self.spc3.SetCameraPar(
                 self._HardwareIntegration,
                 self._NFrames,
@@ -186,12 +191,18 @@ class SPC3_Qudi(CameraInterface):
                 f"SPC3 initialized in Normal mode: HW integration = {hardware_time*1e6:.2f} µs (fixed)"
             )
 
+        # Commit camera parameters to hardware first so that the HIT is
+        # established before gate values are validated by the SDK.
+        self.spc3.ApplySettings()
+
         # Apply trigger settings
         self._apply_trigger_settings()
 
-        # Apply gate settings
+        # Apply gate settings (must come after the first ApplySettings so the
+        # SDK knows the HIT when validating SetCoarseGateValues ranges)
         self._apply_gate_settings()
 
+        # Commit trigger + gate settings
         self.spc3.ApplySettings()
         self._Ncols = self._Ncols >> half_array
 
@@ -253,7 +264,9 @@ class SPC3_Qudi(CameraInterface):
         """
         valid_modes = ("no_trigger", "single_trigger", "multiple_trigger")
         if mode not in valid_modes:
-            self.log.error(f"Invalid trigger mode '{mode}'. Must be one of {valid_modes}")
+            self.log.error(
+                f"Invalid trigger mode '{mode}'. Must be one of {valid_modes}"
+            )
             return
         self._trigger_mode = mode
         self._trigger_frames_per_pulse = max(1, min(int(frames_per_pulse), 100))
@@ -271,6 +284,15 @@ class SPC3_Qudi(CameraInterface):
                            stop : (start + 1) .. (HIT - 5)
                        where HIT = hardware integration time in clock cycles.
         """
+        if self._gate_mode != "off" and self._camera_mode != "Advanced":
+            self.log.warning(
+                f"Gate mode '{self._gate_mode}' requested but camera is in Normal mode. "
+                "Coarse gating requires Advanced mode — gate will NOT be applied. "
+                "Set camera_mode: 'Advanced' in the config to enable gating."
+            )
+            self.spc3.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
+            return
+
         if self._gate_mode == "off":
             self.spc3.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
             self.log.info("Gate: disabled (continuous mode) for counter 1")
@@ -288,7 +310,9 @@ class SPC3_Qudi(CameraInterface):
             start = max(0, min(start, hit - 6))
             stop = max(start + 1, min(stop, hit - 5))
 
-            if start != int(self._coarse_gate_start) or stop != int(self._coarse_gate_stop):
+            if start != int(self._coarse_gate_start) or stop != int(
+                self._coarse_gate_stop
+            ):
                 self.log.warning(
                     f"Coarse gate values clamped to valid range: "
                     f"start={start}, stop={stop} (HIT={hit} cycles)"
@@ -310,6 +334,17 @@ class SPC3_Qudi(CameraInterface):
                 f"Unknown gate_mode '{self._gate_mode}', defaulting to off"
             )
             self.spc3.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
+
+    def _apply_settings(self):
+        """Re-queue gate settings then commit all pending settings to hardware.
+
+        This wrapper ensures gate configuration is always re-issued before
+        ApplySettings(), preventing SetCameraPar() calls from wiping the gate.
+        Use this instead of calling spc3.ApplySettings() directly in any
+        method that also calls SetCameraPar().
+        """
+        self._apply_gate_settings()
+        self.spc3.ApplySettings()
 
     def get_gate_mode(self):
         """Return the current gate mode string ('off' or 'coarse')."""
@@ -366,7 +401,7 @@ class SPC3_Qudi(CameraInterface):
                 half_array,
                 signed_data,
             )
-        self.spc3.ApplySettings()
+        self._apply_settings()
 
     def on_deactivate(self):
         """Deinitialisation performed during deactivation of the module."""
@@ -379,6 +414,9 @@ class SPC3_Qudi(CameraInterface):
         if self._continuous:
             self._continuous = False
             self.spc3.ContAcqToFileStop()
+            if self._current_cont_filename is not None:
+                self._patch_gate_header(self._current_cont_filename + ".spc3")
+                self._current_cont_filename = None
         self.spc3.Destr()
 
     def get_name(self):
@@ -440,6 +478,7 @@ class SPC3_Qudi(CameraInterface):
             # and started acquiring, then call SnapAcquire() to download the frames.
             if self._trigger_mode in ("single_trigger", "multiple_trigger"):
                 import time
+
                 self.log.info(
                     f"Waiting for external trigger on SYNC_IN "
                     f"(trigger_mode='{self._trigger_mode}')..."
@@ -498,8 +537,15 @@ class SPC3_Qudi(CameraInterface):
             # Stack into final array: (counters, frames, cols, rows)
             frames = np.array(frames_list)
 
+            # Apply background subtraction (if enabled) to every frame
+            for ci in range(frames.shape[0]):
+                for fi in range(frames.shape[1]):
+                    frames[ci, fi] = self.apply_background_subtraction(frames[ci, fi])
+
             self._acquiring = False
-            self.log.info(f"Snap acquisition complete: shape={frames.shape}, dtype={frames.dtype}")
+            self.log.info(
+                f"Snap acquisition complete: shape={frames.shape}, dtype={frames.dtype}"
+            )
             return frames
 
         except Exception as e:
@@ -510,6 +556,96 @@ class SPC3_Qudi(CameraInterface):
             self.log.error(f"Traceback: {traceback.format_exc()}")
             return None
 
+    def _save_background_sidecar(self, spc3_filepath):
+        """Save the current background image as a sidecar .bg.npy file.
+
+        The sidecar is placed next to the .spc3 file with the same stem:
+            mydata.spc3  →  mydata.bg.npy
+
+        The background is saved as a float32 2-D array (rows × cols) so that
+        it can be directly subtracted from any frame loaded from the .spc3
+        file during offline analysis:
+
+            import numpy as np
+            frames, header = ...  # load via spc.ReadSPC3DataFile or similar
+            bg = np.load('mydata.bg.npy')          # shape (rows, cols)
+            corrected = np.maximum(frames[0] - bg, 0).astype(np.uint16)
+
+        The .spc3 header byte at metadata offset +112 (file byte 120) is also
+        patched to 1 so that the SDK / ImageJ plugin can indicate that a
+        background was captured at acquisition time.
+
+        Does nothing if no background image has been captured.
+        """
+        if not hasattr(self, "_background_image") or self._background_image is None:
+            if self._background_subtraction_enabled:
+                self.log.warning(
+                    "Background subtraction is ENABLED but no background image has been "
+                    "captured — sidecar will NOT be saved. "
+                    "Click 'Capture Background' before starting acquisition."
+                )
+            else:
+                self.log.info("No background image captured — skipping sidecar save.")
+            return
+
+        import os
+        import struct
+
+        # Derive sidecar path:  strip .spc3 if present, append .bg.npy
+        stem = spc3_filepath
+        if stem.lower().endswith(".spc3"):
+            stem = stem[:-5]
+        sidecar_path = stem + ".bg.npy"
+
+        # Reshape to 2-D (rows × cols) for convenient analysis
+        bg_2d = self._background_image.reshape(self._Nrows, self._Ncols).astype(
+            np.float32
+        )
+        np.save(sidecar_path, bg_2d)
+        self.log.info(f"Background sidecar saved: {sidecar_path}")
+
+        # Patch the .spc3 header byte 112 (background subtraction enabled flag).
+        # The metadata section starts at file byte 8, so the flag is at byte 120.
+        if os.path.exists(spc3_filepath):
+            try:
+                with open(spc3_filepath, "r+b") as fh:
+                    fh.seek(8 + 112)
+                    fh.write(struct.pack("<B", 1))
+            except Exception as exc:
+                self.log.warning(
+                    f"Could not patch background flag in {spc3_filepath}: {exc}"
+                )
+
+    def _patch_gate_header(self, filepath):
+        """Write coarse gate settings directly into the .spc3 file header.
+
+        The SDK does not persist coarse gate settings to the file header when
+        using ContAcqToFileStart/Stop.  After the file is closed by
+        ContAcqToFileStop we inject the values that were configured in the
+        module settings.  Offsets within the file (metadata section begins at
+        file byte 8):
+
+            file byte 240  (meta +232)  CoarseGate_C1_ON    uint8
+            file byte 241  (meta +233)  CoarseGate_C1_Start uint16 LE
+            file byte 243  (meta +235)  CoarseGate_C1_Stop  uint16 LE
+        """
+        if self._gate_mode != "coarse":
+            return
+        import struct
+
+        try:
+            with open(filepath, "r+b") as fh:
+                fh.seek(8 + 232)  # gate ON flag
+                fh.write(struct.pack("<B", 1))
+                fh.write(struct.pack("<H", self._coarse_gate_start))  # start
+                fh.write(struct.pack("<H", self._coarse_gate_stop))  # stop
+            self.log.info(
+                f"Gate header patched: {filepath}  "
+                f"start={self._coarse_gate_start} stop={self._coarse_gate_stop}"
+            )
+        except Exception as exc:
+            self.log.warning(f"Failed to patch gate header in {filepath}: {exc}")
+
     def continuous_acquisition(self, filename):
         """Start a continuous acquisition to file
 
@@ -519,7 +655,13 @@ class SPC3_Qudi(CameraInterface):
             return False
         else:
             self._continuous = True
+            self._current_cont_filename = filename
             self.spc3.ContAcqToFileStart(filename)
+            # Note: ContAcqToFileStart does NOT reset trigger or HIT settings —
+            # those configured during on_activate / set_trigger_mode remain in
+            # effect.  It DOES zero the gate header bytes in the file, which is
+            # why gate values are patched back in stop_continuous_acquisition()
+            # after ContAcqToFileStop() closes the file.
         return True
 
     def stop_continuous_acquisition(self):
@@ -529,6 +671,11 @@ class SPC3_Qudi(CameraInterface):
         """
         if self._continuous:
             self.spc3.ContAcqToFileStop()
+            if self._current_cont_filename is not None:
+                spc3_path = self._current_cont_filename + ".spc3"
+                self._patch_gate_header(spc3_path)
+                self._save_background_sidecar(spc3_path)
+                self._current_cont_filename = None
             self._continuous = False
         return True
 
@@ -565,51 +712,33 @@ class SPC3_Qudi(CameraInterface):
         image_array = np.zeros(self._Nrows * self._Ncols)
         if self._live:
             image_array = self.spc3.LiveGetImg()
+            # Keep a rolling cache of the last raw live frame.  This is used as
+            # a static preview during continuous acquisition (where the SDK
+            # streams directly to file and LiveGetImg() cannot be called).
+            self._last_display_frame = image_array[0].copy()
 
-        # Extract counter 1 frame
-        counter1_frame = image_array[0]
+        # During continuous acquisition Live and ContAcq are mutually exclusive
+        # in the SDK — fall back to whatever the last live frame was.
+        if self._continuous and not self._live:
+            raw = (
+                self._last_display_frame.copy()
+                if self._last_display_frame is not None
+                else np.zeros((self._Nrows, self._Ncols), dtype=np.uint16)
+            )
+        else:
+            raw = image_array[0]
 
-        # Apply software background subtraction if enabled
-        if self._background_subtraction_enabled:
-            if not hasattr(self, "_background_image") or self._background_image is None:
-                return counter1_frame
-
-            try:
-                # Store original frame shape and flatten both to 1D for pixel-by-pixel subtraction
-                original_shape = counter1_frame.shape
-                frame_flat = counter1_frame.flatten()
-
-                # Ensure background image matches size
-                if self._background_image.size != frame_flat.size:
-                    self.log.warning(
-                        f"Background image size mismatch: frame={frame_flat.size}, background={self._background_image.size}"
-                    )
-                    return counter1_frame
-
-                # Subtract background pixel-by-pixel (both 1D arrays)
-                subtracted_flat = np.maximum(
-                    frame_flat.astype(np.float32)
-                    - self._background_image.astype(np.float32),
-                    0,
-                )
-
-                # Reshape back to original shape
-                counter1_frame = subtracted_flat.astype(counter1_frame.dtype).reshape(
-                    original_shape
-                )
-            except Exception as e:
-                self.log.error(f"Error applying background subtraction: {e}")
-                import traceback
-
-                self.log.error(traceback.format_exc())
-                return image_array[0]  # Return unsubtracted frame
+        # Apply background subtraction, CPS scaling, and reshape, then return
+        counter1_frame = self.apply_background_subtraction(raw)
 
         # Scale to counts per second if enabled
         if self._display_units == "cps":
-            # exposure_time = HardwareIntegration_cycles * 10ns * NIntegFrames
-            exposure_time_seconds = (
-                self._HardwareIntegration * 10e-9 * self._NIntegFrames
+            hardware_integration = (
+                self._HardwareIntegration
+                if self._camera_mode == "Advanced"
+                else self._HardwareIntegration_Normal
             )
+            exposure_time_seconds = hardware_integration * 10e-9 * self._NIntegFrames
             counter1_frame = (
                 counter1_frame.astype(np.float32) / exposure_time_seconds
             ).astype(counter1_frame.dtype)
@@ -677,7 +806,7 @@ class SPC3_Qudi(CameraInterface):
             half_array,
             signed_data,
         )
-        self.spc3.ApplySettings()
+        self._apply_settings()
         return True
 
     def get_exposure(self):
@@ -755,7 +884,7 @@ class SPC3_Qudi(CameraInterface):
             half_array,
             signed_data,
         )
-        self.spc3.ApplySettings()
+        self._apply_settings()
         return True
 
     def set_binning(self, binning):
@@ -793,7 +922,7 @@ class SPC3_Qudi(CameraInterface):
             half_array,
             signed_data,
         )
-        self.spc3.ApplySettings()
+        self._apply_settings()
         return True
 
     def get_binning(self):
@@ -910,6 +1039,37 @@ class SPC3_Qudi(CameraInterface):
             self.log.error(f"Traceback: {traceback.format_exc()}")
             return False
 
+    def apply_background_subtraction(self, frame):
+        """Apply stored background image to *frame* if subtraction is enabled.
+
+        This is a pure, mode-independent helper.  It can be called on any
+        2-D or 1-D frame array — from live, snap, or loaded-file display.
+
+        @param numpy.ndarray frame: Raw pixel data (any shape)
+        @return numpy.ndarray: Subtracted frame (same shape and dtype), or the
+                               original frame unchanged if subtraction is off /
+                               no background has been captured yet.
+        """
+        if not self._background_subtraction_enabled:
+            return frame
+        if not hasattr(self, "_background_image") or self._background_image is None:
+            return frame
+
+        original_shape = frame.shape
+        frame_flat = frame.flatten().astype(np.float32)
+
+        if self._background_image.size != frame_flat.size:
+            self.log.warning(
+                f"Background size mismatch: frame={frame_flat.size}, "
+                f"background={self._background_image.size} — subtraction skipped"
+            )
+            return frame
+
+        subtracted = np.maximum(
+            frame_flat - self._background_image.astype(np.float32), 0
+        )
+        return subtracted.astype(frame.dtype).reshape(original_shape)
+
     def enable_background_subtraction(self):
         """Enable software background subtraction.
 
@@ -986,6 +1146,7 @@ class SPC3_Qudi(CameraInterface):
             # SDK adds .spc3 extension automatically
             expected_file = filepath + ".spc3"
             if os.path.exists(expected_file):
+                self._save_background_sidecar(expected_file)
                 return True
             else:
                 self.log.error(
@@ -1026,7 +1187,23 @@ class SPC3_Qudi(CameraInterface):
             self._loaded_filepath = filepath
 
             num_counters, num_frames, rows, cols = self._loaded_frames.shape
-            self.log.info(f"Loaded {num_frames} frames ({rows}×{cols}) from {filepath}")
+            self.log.info(
+                f"Loaded {num_frames} frames ({rows}\u00d7{cols}) from {filepath}"
+            )
+
+            # Auto-load background sidecar if present
+            import os
+
+            stem = os.path.splitext(filepath)[0]
+            sidecar = stem + ".bg.npy"
+            if os.path.exists(sidecar):
+                self._loaded_background = np.load(
+                    sidecar
+                )  # float32, shape (rows, cols)
+                self.log.info(f"Background sidecar loaded: {sidecar}")
+            else:
+                self._loaded_background = None
+
             return True
         except Exception as e:
             self.log.error(f"Failed to load file {filepath}: {e}")
@@ -1102,6 +1279,19 @@ class SPC3_Qudi(CameraInterface):
         """
         if hasattr(self, "_loaded_filepath"):
             return self._loaded_filepath
+        return None
+
+    def get_loaded_background(self):
+        """Return the background image associated with the currently loaded file.
+
+        Automatically populated by load_acquisition_file() when a .bg.npy
+        sidecar is found next to the .spc3 file.
+
+        @return numpy.ndarray or None: float32 array of shape (rows, cols),
+                                       or None if no sidecar was found.
+        """
+        if hasattr(self, "_loaded_background"):
+            return self._loaded_background
         return None
 
     def load_frames_from_memory(self, frames):

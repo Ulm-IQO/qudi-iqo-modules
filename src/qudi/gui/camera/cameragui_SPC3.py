@@ -32,6 +32,24 @@ from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
 from .camera_exposure_settings_SPC3 import CameraExposureDock
 
 
+class _SnapWorker(QtCore.QObject):
+    """Worker that runs the blocking snap acquisition off the GUI thread."""
+
+    sigFinished = QtCore.Signal(object)  # emits the frames array (or None)
+
+    def __init__(self, logic):
+        super().__init__()
+        self._logic = logic
+
+    @QtCore.Slot()
+    def run(self):
+        try:
+            frames = self._logic.start_single_acquisition()
+        except Exception:
+            frames = None
+        self.sigFinished.emit(frames)
+
+
 class CameraMainWindow(QtWidgets.QMainWindow):
     """QMainWindow object for qudi CameraGui module"""
 
@@ -428,7 +446,9 @@ class CameraGui(GuiBase):
         self.control_dock_widget.sigDisplayUnitsChanged.connect(
             self._update_display_units
         )
-        self.control_dock_widget.sigTriggerModeChanged.connect(self._update_trigger_mode)
+        self.control_dock_widget.sigTriggerModeChanged.connect(
+            self._update_trigger_mode
+        )
 
         # Fill in data from logic
         logic_busy = logic.module_state() == "locked"
@@ -619,7 +639,9 @@ class CameraGui(GuiBase):
         try:
             logic.set_trigger_mode(mode, frames_per_pulse)
             # Reflect the committed state back on the status label
-            self.control_dock_widget._update_trigger_status_label(mode, frames_per_pulse)
+            self.control_dock_widget._update_trigger_status_label(
+                mode, frames_per_pulse
+            )
         except Exception as e:
             self.log.warning(f"Could not set trigger mode: {e}")
 
@@ -781,6 +803,9 @@ class CameraGui(GuiBase):
             self._viewer_dialog._update_frame_counter()
             self._viewer_dialog._update_button_states()
 
+            # Apply background subtraction if enabled (same as live/continuous display)
+            frame = logic.apply_background_subtraction(frame)
+
             # Update the main image display with the selected frame
             self._mw.image_widget.set_image(frame)
 
@@ -838,17 +863,42 @@ class CameraGui(GuiBase):
         self._viewer_dialog._update_frame_counter()
         self._viewer_dialog._update_button_states()
 
+        # Apply background subtraction if enabled (same as live/continuous display)
+        frame = self._camera_logic().apply_background_subtraction(frame)
+
         # Display the frame
         self._mw.image_widget.set_image(frame)
 
     def _snap_clicked(self):
-        """Handle snap button click - acquire first, then optionally save"""
+        """Handle snap button click — start acquisition in a background thread."""
+        # Disable controls while acquiring
+        self._mw.action_snap.setEnabled(False)
+        self._mw.action_start_video.setEnabled(False)
+        self._mw.action_continuous_acquisition.setEnabled(False)
+        self._mw.statusBar().showMessage("Snap acquisition in progress…")
+
+        logic = self._camera_logic()
+
+        # Spin up a worker thread so the GUI stays responsive
+        self._snap_thread = QtCore.QThread()
+        self._snap_worker = _SnapWorker(logic)
+        self._snap_worker.moveToThread(self._snap_thread)
+        self._snap_thread.started.connect(self._snap_worker.run)
+        self._snap_worker.sigFinished.connect(self._snap_finished)
+        self._snap_worker.sigFinished.connect(self._snap_thread.quit)
+        self._snap_thread.start()
+
+    @QtCore.Slot(object)
+    def _snap_finished(self, frames):
+        """Called on the GUI thread when the background snap is done."""
+        # Re-enable controls
+        self._mw.action_snap.setEnabled(True)
+        self._mw.action_start_video.setEnabled(True)
+        self._mw.action_continuous_acquisition.setEnabled(True)
+        self._mw.statusBar().clearMessage()
+
         logic = self._camera_logic()
         camera = logic._camera()
-        camera = logic._camera()
-
-        # Step 1: Acquire frames
-        frames = logic.start_single_acquisition()
 
         if frames is None:
             QtWidgets.QMessageBox.critical(
@@ -864,7 +914,7 @@ class CameraGui(GuiBase):
         # Crop to requested frames and store in memory
         self._snap_frames = frames[:, :num_frames, :, :]
 
-        # Step 2: Ask if user wants to save
+        # Ask if user wants to save
         reply = QtWidgets.QMessageBox.question(
             self._mw,
             "Snap Complete",
@@ -875,31 +925,25 @@ class CameraGui(GuiBase):
 
         filepath = None
         if reply == QtWidgets.QMessageBox.Yes:
-            # Prompt for save location
             filepath, _ = QtWidgets.QFileDialog.getSaveFileName(
                 self._mw,
                 "Save Snap Acquisition",
                 os.path.expanduser("~"),
                 "SPC3 Files (*.spc3);;All Files (*.*)",
             )
-
             if filepath:
-                # Ensure .spc3 extension
                 if not filepath.lower().endswith(".spc3"):
                     filepath += ".spc3"
-
-                # Save frames to file
                 success = logic.save_frames_to_file(self._snap_frames, filepath)
-
                 if not success:
                     QtWidgets.QMessageBox.warning(
                         self._mw,
                         "Save Error",
                         "Failed to save frames to file.\n\nCheck log for details.",
                     )
-                    filepath = None  # Clear filepath since save failed
+                    filepath = None
 
-        # Step 3: Ask if user wants to view frames
+        # Ask if user wants to view frames
         view_reply = QtWidgets.QMessageBox.question(
             self._mw,
             "View Frames",
@@ -909,59 +953,40 @@ class CameraGui(GuiBase):
         )
 
         if view_reply == QtWidgets.QMessageBox.Yes:
-            # If we saved to file, load from file (for consistency)
-            # Otherwise, load frames directly from memory
             if filepath:
                 if logic.load_acquisition_file(filepath):
                     frame_count = logic.get_loaded_frame_count()
                     self._viewer_dialog.set_file_info(filepath, frame_count)
-
-                    # Connect slider if not already connected
                     try:
                         self._viewer_dialog.frame_slider.valueChanged.disconnect(
                             self._on_viewer_frame_changed
                         )
-                    except:
+                    except Exception:
                         pass
-
                     self._viewer_dialog.frame_slider.valueChanged.connect(
                         self._on_viewer_frame_changed
                     )
-
-                    # Show first frame
                     self._on_viewer_frame_changed(0)
-
-                    # Show viewer dialog
                     self._viewer_dialog.exec_()
             else:
-                # No file saved, load frames directly from memory
                 if logic.load_frames_from_memory(frames):
                     frame_count = num_frames
                     filepath_display = logic.get_loaded_filepath()
                     self._viewer_dialog.set_file_info(filepath_display, frame_count)
-                    
-                    # Connect slider if not already connected
                     try:
                         self._viewer_dialog.frame_slider.valueChanged.disconnect(
                             self._on_viewer_frame_changed
                         )
-                    except:
+                    except Exception:
                         pass
-                    
                     self._viewer_dialog.frame_slider.valueChanged.connect(
                         self._on_viewer_frame_changed
                     )
-                    
-                    # Show first frame
                     self._on_viewer_frame_changed(0)
-                    
-                    # Show viewer dialog
                     self._viewer_dialog.exec_()
                 else:
                     QtWidgets.QMessageBox.warning(
-                        self._mw,
-                        "View Error",
-                        "Failed to load frames for viewing."
+                        self._mw, "View Error", "Failed to load frames for viewing."
                     )
 
     def _start_video_clicked(self, checked):

@@ -354,6 +354,19 @@ class CameraLogic(LogicBase):
                 self.log.error(f"Error disabling background subtraction: {e}")
                 return False
 
+    def apply_background_subtraction(self, frame):
+        """Apply background subtraction to a frame if enabled.
+
+        Mode-independent: works on frames from live, snap, or loaded files.
+
+        @param numpy.ndarray frame: Raw pixel data
+        @return numpy.ndarray: Subtracted frame, or original if disabled / no background
+        """
+        camera = self._camera()
+        if hasattr(camera, "apply_background_subtraction"):
+            return camera.apply_background_subtraction(frame)
+        return frame
+
     def toggle_background_subtraction(self, start):
         """Toggle software background subtraction (if available)
 
@@ -390,6 +403,11 @@ class CameraLogic(LogicBase):
         with self._thread_lock:
             camera = self._camera()
             self.total_bytes = self.total_bytes + camera.get_continuous_memory()
+            # Emit the last cached live frame (with background subtraction applied)
+            # so the GUI preview stays responsive during continuous acquisition
+            frame = camera.get_acquired_data()
+            self._last_frame = frame
+            self.sigFrameChanged.emit(frame)
             if self.module_state() == "locked":
                 self.__timer_continuous.start(
                     1
@@ -528,7 +546,9 @@ class CameraLogic(LogicBase):
         """
         with self._thread_lock:
             if self.module_state() == "locked":
-                self.log.error("Cannot change trigger mode while acquisition is running.")
+                self.log.error(
+                    "Cannot change trigger mode while acquisition is running."
+                )
                 return
             camera = self._camera()
             try:
@@ -606,6 +626,22 @@ class CameraLogic(LogicBase):
                 return camera.get_loaded_filepath()
             except Exception as e:
                 self.log.error(f"Error getting loaded filepath: {e}")
+                return None
+
+    def get_loaded_background(self):
+        """Return the background image associated with the currently loaded file.
+
+        Populated automatically when a .bg.npy sidecar exists alongside the
+        loaded .spc3 file.
+
+        @return numpy.ndarray or None: float32 (rows, cols), or None if absent
+        """
+        with self._thread_lock:
+            camera = self._camera()
+            try:
+                return camera.get_loaded_background()
+            except Exception as e:
+                self.log.error(f"Error getting loaded background: {e}")
                 return None
 
     def load_frames_from_memory(self, frames):

@@ -30,6 +30,7 @@ import itertools
 
 from qudi.core.module import LogicBase
 from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability
+from qudi.interface.camera_interface import CameraInterface
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 from qudi.logic.spad_probe_logic import SpadProbeLogic
 from qudi.util.mutex import RecursiveMutex, Mutex
@@ -41,8 +42,15 @@ from qudi.core.configoption import ConfigOption
 
 class SpadOptimizeLogic(LogicBase):
     """
-    This logic module makes use of the scanning probe logic to perform a sequence of
-    1D and 2D spatial signal optimization steps.
+    SPAD position sweep logic.
+
+    Steps through a sequence of 1D/2D position grids (defined by the optimizer
+    settings in the scanner_spad_gui), snapping a single SPC3 frame at each
+    position.  All frames are stored and available via the ``spad_scan_data``
+    property after the sweep completes.
+
+    No fitting or optimal-position finding is performed — frames are collected
+    for post-hoc analysis in a notebook.
 
     Example config for copy-paste:
 
@@ -50,24 +58,34 @@ class SpadOptimizeLogic(LogicBase):
         module.Class: 'spad_optimize_logic.SpadOptimizeLogic'
         connect:
             spad_logic: spad_probe_logic
+            camera: camera_SPC3
 
     """
 
     # declare connectors
-    _scan_logic = Connector(name='spad_logic', interface=SpadProbeLogic)
+    _scan_logic = Connector(name="spad_logic", interface=SpadProbeLogic)
+    _camera = Connector(name="camera", interface=CameraInterface)
 
     # status variables
     # not configuring the back scan parameters is represented by empty dictionaries
 
     # for all optimizer sub widgets, (2= xy, 1=z)
-    _optimizer_sequence_dimensions: Tuple[int] = StatusVar(name='optimizer_sequence_dimensions', default=[2, 1])
-    _scan_sequence: Tuple[Tuple[str, ...]] = StatusVar(name='scan_sequence', default=tuple())
-    _data_channel = StatusVar(name='data_channel', default=None)
-    _scan_range: Dict[str, float] = StatusVar(name='scan_range', default=dict())
-    _scan_resolution: Dict[str, int] = StatusVar(name='scan_resolution', default=dict())
-    _back_scan_resolution: Dict[str, int] = StatusVar(name='back_scan_resolution', default=dict())
-    _scan_frequency: Dict[str, float] = StatusVar(name='scan_frequency', default=dict())
-    _back_scan_frequency: Dict[str, float] = StatusVar(name='back_scan_frequency', default=dict())
+    _optimizer_sequence_dimensions: Tuple[int] = StatusVar(
+        name="optimizer_sequence_dimensions", default=[2, 1]
+    )
+    _scan_sequence: Tuple[Tuple[str, ...]] = StatusVar(
+        name="scan_sequence", default=tuple()
+    )
+    _data_channel = StatusVar(name="data_channel", default=None)
+    _scan_range: Dict[str, float] = StatusVar(name="scan_range", default=dict())
+    _scan_resolution: Dict[str, int] = StatusVar(name="scan_resolution", default=dict())
+    _back_scan_resolution: Dict[str, int] = StatusVar(
+        name="back_scan_resolution", default=dict()
+    )
+    _scan_frequency: Dict[str, float] = StatusVar(name="scan_frequency", default=dict())
+    _back_scan_frequency: Dict[str, float] = StatusVar(
+        name="back_scan_frequency", default=dict()
+    )
 
     # signals
     sigOptimizeStateChanged = QtCore.Signal(bool, dict, object)
@@ -75,6 +93,7 @@ class SpadOptimizeLogic(LogicBase):
     sigOptimizeSequenceDimensionsChanged = QtCore.Signal()
 
     _sigNextSequenceStep = QtCore.Signal()
+    _sigNextPosition = QtCore.Signal()
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -89,6 +108,17 @@ class SpadOptimizeLogic(LogicBase):
         self._avail_axes = tuple()
         self._stashed_settings = None
 
+        # SPAD sweep state
+        self._spad_scan_data = []  # collected data per sequence step
+        self._position_grids = {}  # {axis_name: np.ndarray}
+        self._sweep_center = {}  # scanner position at sweep start
+        self._current_step_axes = ()
+        self._current_positions = []  # flat list of position dicts
+        self._current_position_idx = 0
+        self._current_step_frames = []
+        self._stashed_camera_trigger = None
+        self._snap_nframes = 1  # frames to average per position
+
     def on_activate(self):
         """Initialisation performed during activation of the module."""
         scan_logic: ScanningProbeLogic = self._scan_logic()
@@ -100,7 +130,10 @@ class SpadOptimizeLogic(LogicBase):
         try:
             self._check_scan_settings()
         except Exception as e:
-            self.log.warning("Scan settings in Status Variable empty or invalid, using defaults.", exc_info=e)
+            self.log.warning(
+                "Scan settings in Status Variable empty or invalid, using defaults.",
+                exc_info=e,
+            )
             self._set_default_scan_settings()
 
         self._avail_axes = tuple(axes.values())
@@ -114,13 +147,19 @@ class SpadOptimizeLogic(LogicBase):
         self._last_scans = list()
         self._last_fits = list()
 
-        self._sigNextSequenceStep.connect(self._next_sequence_step, QtCore.Qt.QueuedConnection)
-        self._scan_logic().sigScanStateChanged.connect(self._scan_state_changed, QtCore.Qt.QueuedConnection)
-        self.sigOptimizeSequenceDimensionsChanged.connect(self._set_default_scan_sequence, QtCore.Qt.QueuedConnection)
+        self._sigNextSequenceStep.connect(
+            self._next_sequence_step, QtCore.Qt.QueuedConnection
+        )
+        self._sigNextPosition.connect(
+            self._step_to_next_position, QtCore.Qt.QueuedConnection
+        )
+        self.sigOptimizeSequenceDimensionsChanged.connect(
+            self._set_default_scan_sequence, QtCore.Qt.QueuedConnection
+        )
 
     def on_deactivate(self):
         """Reverse steps of activation"""
-        self._scan_logic().sigScanStateChanged.disconnect(self._scan_state_changed)
+        self._sigNextPosition.disconnect()
         self._sigNextSequenceStep.disconnect()
         self.stop_optimize()
         return
@@ -164,7 +203,10 @@ class SpadOptimizeLogic(LogicBase):
         occurring_axes = set([axis for step in sequence for axis in step])
         available_axes = [ax.name for ax in self._avail_axes]
         if not occurring_axes.issubset(available_axes):
-            self.log.error(f"Optimizer sequence {sequence} must contain only" f" available axes ({available_axes}).")
+            self.log.error(
+                f"Optimizer sequence {sequence} must contain only"
+                f" available axes ({available_axes})."
+            )
         else:
             self._scan_sequence = sequence
 
@@ -182,8 +224,12 @@ class SpadOptimizeLogic(LogicBase):
     def _allowed_sequences(self, sequence_dimension: List[int]) -> List[Tuple[tuple]]:
         axes_names = [ax.name for ax in self._avail_axes]
         # figure out sensible optimization sequences for user selection
-        possible_optimizations_per_plot = [itertools.combinations(axes_names, n) for n in sequence_dimension]
-        optimization_sequences = list(itertools.product(*possible_optimizations_per_plot))
+        possible_optimizations_per_plot = [
+            itertools.combinations(axes_names, n) for n in sequence_dimension
+        ]
+        optimization_sequences = list(
+            itertools.product(*possible_optimizations_per_plot)
+        )
         sequences_no_axis_twice = []
         if sum(sequence_dimension) > len(axes_names):
             raise NotImplementedError(
@@ -206,7 +252,9 @@ class SpadOptimizeLogic(LogicBase):
 
     @optimizer_sequence_dimensions.setter
     def optimizer_sequence_dimensions(self, dimensions: tuple) -> None:
-        self._optimizer_sequence_dimensions = self.sequence_dimension_constructor(dimensions)
+        self._optimizer_sequence_dimensions = self.sequence_dimension_constructor(
+            dimensions
+        )
         self.sigOptimizeSequenceDimensionsChanged.emit()
 
     @property
@@ -218,13 +266,15 @@ class SpadOptimizeLogic(LogicBase):
         # Iterate over all possible lengths from 1 to the max number of axes
         for length in range(1, max_value // min(allowed_values) + 1):
             all_combinations = itertools.product(allowed_values, repeat=length)
-            valid_combinations += [comb for comb in all_combinations if sum(comb) <= max_value]
+            valid_combinations += [
+                comb for comb in all_combinations if sum(comb) <= max_value
+            ]
 
         return valid_combinations
 
     @property
     def optimizer_running(self):
-        return self.module_state() != 'idle'
+        return self.module_state() != "idle"
 
     def set_optimize_settings(
         self,
@@ -243,8 +293,8 @@ class SpadOptimizeLogic(LogicBase):
         if back_frequency is None:
             back_frequency = dict()
         with self._thread_lock:
-            if self.module_state() != 'idle':
-                self.log.error('Cannot change optimize settings when module is locked.')
+            if self.module_state() != "idle":
+                self.log.error("Cannot change optimize settings when module is locked.")
             else:
                 self._data_channel = data_channel
                 self.optimizer_sequence_dimensions = scan_dimension
@@ -275,132 +325,238 @@ class SpadOptimizeLogic(LogicBase):
         else:
             self.stop_optimize()
 
+    @property
+    def spad_scan_data(self):
+        """Collected frame data from the last optimize sweep.
+
+        Returns a list of dicts, one per sequence step::
+
+            [
+                {
+                    'axes':   ('x', 'y'),                 # swept axes
+                    'grids':  {'x': np.ndarray, 'y': ...}, # 1-D position vectors
+                    'frames': np.ndarray,                  # shape (nx, ny, cols, rows)
+                    'center': {'x': float, 'y': float},   # centre of sweep
+                },
+                {
+                    'axes':   ('z',),
+                    'grids':  {'z': np.ndarray},
+                    'frames': np.ndarray,                  # shape (nz, cols, rows)
+                    'center': {'z': float},
+                },
+            ]
+        """
+        with self._result_lock:
+            return self._spad_scan_data.copy()
+
     def start_optimize(self):
         with self._thread_lock:
-            scan_logic: ScanningProbeLogic = self._scan_logic()
+            scan_logic = self._scan_logic()
+            camera = self._camera()
 
-            if self.module_state() != 'idle' or scan_logic.module_state() != 'idle':
+            if self.module_state() != "idle" or scan_logic.module_state() != "idle":
                 self.sigOptimizeStateChanged.emit(True, dict(), None)
+                return
+
+            # Ensure camera is not in live mode (snap requires it)
+            if hasattr(camera, "_live") and camera._live:
+                self.log.error(
+                    "Cannot start SPAD sweep: camera is in live mode. "
+                    "Stop the live view first."
+                )
+                self.sigOptimizeStateChanged.emit(False, dict(), None)
                 return
 
             self.module_state.lock()
 
-            self._stashed_settings = scan_logic.get_scan_settings_per_ax()
-
-            curr_pos = scan_logic.scanner_target
+            # ---- build position grids centred on the current scanner target ----
+            self._sweep_center = scan_logic.scanner_target.copy()
             constraints = scan_logic.scanner_constraints
+            self._position_grids = {}
             for ax, rel_rng in self.scan_range.items():
-                rng_start = curr_pos[ax] - rel_rng / 2
-                rng_stop = curr_pos[ax] + rel_rng / 2
-                # range needs to be clipped if optimizing at the very edge
-                rng_start = constraints.axes[ax].position.clip(rng_start)
-                rng_stop = constraints.axes[ax].position.clip(rng_stop)
-                scan_logic.set_scan_range(ax, (rng_start, rng_stop))
+                center = self._sweep_center[ax]
+                rng_start = constraints.axes[ax].position.clip(center - rel_rng / 2)
+                rng_stop = constraints.axes[ax].position.clip(center + rel_rng / 2)
+                res = self.scan_resolution[ax]
+                self._position_grids[ax] = np.linspace(rng_start, rng_stop, res)
 
-            for ax, res in self.scan_resolution.items():
-                scan_logic.set_scan_resolution(ax, res)
-            for ax, res in self.back_scan_resolution.items():
-                scan_logic.set_back_scan_resolution(ax, res)
-            for ax, res in self.scan_frequency.items():
-                scan_logic.set_scan_frequency(ax, res)
-            for ax, res in self.back_scan_frequency.items():
-                scan_logic.set_back_scan_frequency(ax, res)
+            # ---- save camera trigger mode, set to no_trigger for snap ----
+            self._stashed_camera_trigger = getattr(camera, "_trigger_mode", None)
+            self._snap_nframes = getattr(camera, "_NFrames", 1)
+            try:
+                camera.set_trigger_mode("no_trigger")
+                camera._apply_camera_settings()
+            except Exception:
+                self.log.exception("Failed to configure camera for sweep")
+                self.module_state.unlock()
+                self.sigOptimizeStateChanged.emit(False, dict(), None)
+                return
 
-            # optimizer scans always explicitly configure the backwards scan settings
-            scan_logic.set_use_back_scan_settings(True)
+            self.log.info(
+                f"SPAD sweep starting from {self._sweep_center}  "
+                f"(averaging {self._snap_nframes} frame(s) per position)"
+            )
+            for ax, grid in self._position_grids.items():
+                self.log.info(
+                    f"  {ax}: {grid[0]*1e6:.1f} – {grid[-1]*1e6:.1f} µm, "
+                    f"{len(grid)} points"
+                )
 
             with self._result_lock:
+                self._spad_scan_data = []
                 self._last_scans = list()
                 self._last_fits = list()
-            self._scan_logic().save_to_history = False  # optimizer scans not saved
             self._sequence_index = 0
             self._optimal_position = dict()
             self.sigOptimizeStateChanged.emit(True, self.optimal_position, None)
             self._sigNextSequenceStep.emit()
 
+    # -----------------------------------------------------------------
+    #  Position-stepping sweep  (replaces scan-based flow)
+    # -----------------------------------------------------------------
+
     def _next_sequence_step(self):
+        """Build a flat position list for the current sequence step and start stepping."""
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state() == "idle":
                 return
-            self._scan_logic().toggle_scan(True, self._scan_sequence[self._sequence_index], self.module_uuid)
 
-    def _scan_state_changed(self, is_running: bool,
-                            data: Optional[ScanData], back_scan_data: Optional[ScanData],
-                            caller_id: UUID):
-        with self._thread_lock:
-            if is_running or self.module_state() == 'idle' or caller_id != self.module_uuid:
-                return
-            elif not is_running and data is None:
-                # scan could not be started due to some error
-                self.stop_optimize()
-            elif data is not None:
-                # self.log.debug(f"Trying to fit on data after scan of dim {data.scan_dimension}")
+            step_axes = self._scan_sequence[self._sequence_index]
 
-                try:
-                    if data.settings.scan_dimension == 1:
-                        x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
-                        opt_pos, fit_data, fit_res = self._get_pos_from_1d_gauss_fit(x, data.data[self._data_channel])
-                    else:
-                        x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
-                        y = np.linspace(*data.settings.range[1], data.settings.resolution[1])
-                        xy = np.meshgrid(x, y, indexing='ij')
-                        opt_pos, fit_data, fit_res = self._get_pos_from_2d_gauss_fit(
-                            xy, data.data[self._data_channel].ravel()
-                        )
-
-                    position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.settings.axes)}
-                    # self.log.debug(f"Optimizer issuing position update: {position_update}")
-                    if fit_data is not None:
-                        new_pos = self._scan_logic().set_target_position(position_update, move_blocking=True)
-                        for ax in tuple(position_update):
-                            position_update[ax] = new_pos[ax]
-
-                        fit_data = {'fit_data': fit_data, 'full_fit_res': fit_res}
-
-                    self._optimal_position.update(position_update)
-                    with self._result_lock:
-                        self._last_scans.append(cp.copy(data))
-                        self._last_fits.append(fit_res)
-                    self.sigOptimizeStateChanged.emit(True, position_update, fit_data)
-
-                    # Abort optimize if fit failed
-                    if fit_data is None:
-                        self.log.warning("Stopping optimization due to failed fit.")
-                        self.stop_optimize()
-                        return
-
-                except:
-                    self.log.exception("")
-
-            self._sequence_index += 1
-
-            # Terminate optimize sequence if finished; continue with next sequence step otherwise
-            if self._sequence_index >= len(self._scan_sequence):
-                self.stop_optimize()
+            # Build flat list of position dicts (outer axis iterates slowest)
+            if len(step_axes) == 1:
+                ax = step_axes[0]
+                positions = [{ax: p} for p in self._position_grids[ax]]
+            elif len(step_axes) == 2:
+                ax0, ax1 = step_axes
+                positions = [
+                    {ax0: p0, ax1: p1}
+                    for p0 in self._position_grids[ax0]
+                    for p1 in self._position_grids[ax1]
+                ]
             else:
-                self._sigNextSequenceStep.emit()
-            return
+                self.log.error(f"Unsupported step dimension: {len(step_axes)}")
+                self.stop_optimize()
+                return
+
+            self._current_step_axes = step_axes
+            self._current_positions = positions
+            self._current_position_idx = 0
+            self._current_step_frames = []
+
+            self.log.info(
+                f"Sweep step {self._sequence_index + 1}/{len(self._scan_sequence)}: "
+                f"axes={step_axes}, {len(positions)} positions"
+            )
+            self._sigNextPosition.emit()
+
+    def _step_to_next_position(self):
+        """Move to the next grid position, snap one SPC3 frame, and continue."""
+        with self._thread_lock:
+            if self.module_state() == "idle":
+                return
+
+            # Current step complete?
+            if self._current_position_idx >= len(self._current_positions):
+                self._finalize_step()
+                return
+
+            pos = self._current_positions[self._current_position_idx]
+            idx = self._current_position_idx
+            total = len(self._current_positions)
+
+            try:
+                # Move scanner (blocking)
+                self._scan_logic().set_target_position(pos, move_blocking=True)
+
+                # Snap configured number of frames and average
+                raw_frames = self._camera().start_single_acquisition()
+                if raw_frames is not None:
+                    # raw_frames shape: (counters, frames, cols, rows)
+                    # Background subtraction already applied by hardware
+                    avg_frame = raw_frames[0].mean(axis=0)  # (cols, rows)
+                    self._current_step_frames.append(avg_frame)
+                else:
+                    self.log.warning(f"Snap failed at position {idx + 1}/{total}")
+                    self._current_step_frames.append(None)
+
+                if (idx + 1) % max(1, total // 10) == 0 or idx + 1 == total:
+                    self.log.info(f"  Position {idx + 1}/{total}")
+
+            except Exception:
+                self.log.exception(f"Error at position {idx + 1}/{total}")
+                self._current_step_frames.append(None)
+
+            self._current_position_idx += 1
+            self.sigOptimizeStateChanged.emit(True, pos, None)
+            self._sigNextPosition.emit()
+
+    def _finalize_step(self):
+        """Store collected frames for the completed step and advance."""
+        step_axes = self._current_step_axes
+        grids = {ax: self._position_grids[ax].copy() for ax in step_axes}
+
+        # Reshape flat frame list to match grid dimensions
+        valid_frames = [f for f in self._current_step_frames if f is not None]
+        if valid_frames:
+            frame_shape = valid_frames[0].shape
+            if len(step_axes) == 1:
+                frames_array = np.array(self._current_step_frames)
+            elif len(step_axes) == 2:
+                ax0, ax1 = step_axes
+                n0 = len(self._position_grids[ax0])
+                n1 = len(self._position_grids[ax1])
+                frames_array = np.array(self._current_step_frames).reshape(
+                    n0, n1, *frame_shape
+                )
+            else:
+                frames_array = np.array(self._current_step_frames)
+        else:
+            frames_array = np.array([])
+
+        step_data = {
+            "axes": step_axes,
+            "grids": grids,
+            "frames": frames_array,
+            "center": {ax: self._sweep_center[ax] for ax in step_axes},
+        }
+        with self._result_lock:
+            self._spad_scan_data.append(step_data)
+
+        self.log.info(
+            f"Step {self._sequence_index + 1} complete: "
+            f"axes={step_axes}, frames shape={frames_array.shape}"
+        )
+
+        self._sequence_index += 1
+        if self._sequence_index >= len(self._scan_sequence):
+            self.log.info("SPAD optimize sweep finished.")
+            self.stop_optimize()
+        else:
+            self._sigNextSequenceStep.emit()
 
     def stop_optimize(self):
         with self._thread_lock:
-            if self.module_state() == 'idle':
+            if self.module_state() == "idle":
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
                 return
 
             try:
-                if self._scan_logic().module_state() != 'idle':
-                    # optimizer scans are never saved in scanning history
-                    self._scan_logic().stop_scan()
+                # Restore camera trigger mode
+                camera = self._camera()
+                if self._stashed_camera_trigger is not None:
+                    camera.set_trigger_mode(self._stashed_camera_trigger)
+                    camera._apply_camera_settings()
+                    self._stashed_camera_trigger = None
+
+                # Move scanner back to sweep centre
+                if self._sweep_center:
+                    self._scan_logic().set_target_position(
+                        self._sweep_center, move_blocking=True
+                    )
+            except Exception:
+                self.log.exception("Error during SPAD sweep cleanup")
             finally:
-
-                for setting, back_setting in self._stashed_settings:
-                    # self.log.debug(f"Recovering scan settings: {setting}")
-                    self._scan_logic().set_scan_settings(setting)
-                    self._scan_logic().set_back_scan_settings(back_setting)
-
-                self._stashed_settings = None
-
-                self._scan_logic().save_to_history = True
                 self.module_state.unlock()
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
 
@@ -414,11 +570,11 @@ class SpadOptimizeLogic(LogicBase):
             y_min, y_max = xy[1].min(), xy[1].max()
             x_middle = (x_max - x_min) / 2 + x_min
             y_middle = (y_max - y_min) / 2 + y_min
-            self.log.exception('2D Gaussian fit unsuccessful.')
+            self.log.exception("2D Gaussian fit unsuccessful.")
             return (x_middle, y_middle), None, None
 
         return (
-            (fit_result.best_values['center_x'], fit_result.best_values['center_y']),
+            (fit_result.best_values["center_x"], fit_result.best_values["center_y"]),
             fit_result.best_fit.reshape(xy[0].shape),
             fit_result,
         )
@@ -431,10 +587,10 @@ class SpadOptimizeLogic(LogicBase):
         except:
             x_min, x_max = x.min(), x.max()
             middle = (x_max - x_min) / 2 + x_min
-            self.log.exception('1D Gaussian fit unsuccessful.')
+            self.log.exception("1D Gaussian fit unsuccessful.")
             return (middle,), None, None
 
-        return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
+        return (fit_result.best_values["center"],), fit_result.best_fit, fit_result
 
     def _check_scan_settings(self):
         """Basic check of scan settings for all axes."""
@@ -444,14 +600,24 @@ class SpadOptimizeLogic(LogicBase):
             axs = stg.keys()
             for ax in axs:
                 if ax not in scan_logic.scanner_axes.keys():
-                    self.log.debug(f"Axis {ax} from optimizer scan settings not available on scanner" )
+                    self.log.debug(
+                        f"Axis {ax} from optimizer scan settings not available on scanner"
+                    )
                     raise ValueError
 
         capability = scan_logic.back_scan_capability
-        if self._back_scan_resolution and (BackScanCapability.RESOLUTION_CONFIGURABLE not in capability):
-            raise AssertionError('Back scan resolution cannot be configured for this scanner hardware.')
-        if self._back_scan_frequency and (BackScanCapability.FREQUENCY_CONFIGURABLE not in capability):
-            raise AssertionError('Back scan frequency cannot be configured for this scanner hardware.')
+        if self._back_scan_resolution and (
+            BackScanCapability.RESOLUTION_CONFIGURABLE not in capability
+        ):
+            raise AssertionError(
+                "Back scan resolution cannot be configured for this scanner hardware."
+            )
+        if self._back_scan_frequency and (
+            BackScanCapability.FREQUENCY_CONFIGURABLE not in capability
+        ):
+            raise AssertionError(
+                "Back scan frequency cannot be configured for this scanner hardware."
+            )
         for name, ax in scan_logic.scanner_axes.items():
             ax.position.check(self.scan_range[name])
             ax.resolution.check(self.scan_resolution[name])
@@ -463,28 +629,48 @@ class SpadOptimizeLogic(LogicBase):
         """Set range, resolution and frequency to default values."""
         scan_logic: ScanningProbeLogic = self._scan_logic()
         axes = scan_logic.scanner_axes
-        self._scan_range = {ax.name: abs(ax.position.maximum - ax.position.minimum) / 100 for ax in axes.values()}
-        self._scan_resolution = {ax.name: max(16, ax.resolution.minimum) for ax in axes.values()}
-        self._scan_frequency = {ax.name: max(ax.frequency.minimum, ax.frequency.maximum / 100) for ax in axes.values()}
+        self._scan_range = {
+            ax.name: abs(ax.position.maximum - ax.position.minimum) / 100
+            for ax in axes.values()
+        }
+        self._scan_resolution = {
+            ax.name: max(16, ax.resolution.minimum) for ax in axes.values()
+        }
+        self._scan_frequency = {
+            ax.name: max(ax.frequency.minimum, ax.frequency.maximum / 100)
+            for ax in axes.values()
+        }
         self._back_scan_resolution = {}
         self._back_scan_frequency = {}
 
     def _set_default_scan_sequence(self):
 
-        if self._optimizer_sequence_dimensions not in self.allowed_optimizer_sequence_dimensions:
+        if (
+            self._optimizer_sequence_dimensions
+            not in self.allowed_optimizer_sequence_dimensions
+        ):
             fallback_dimension = self.allowed_optimizer_sequence_dimensions[0]
-            self.log.info(f"Selected optimization dimensions ({self._optimizer_sequence_dimensions}) "
-                          f"are not in the allowed optimizer dimensions ({self.allowed_optimizer_sequence_dimensions}),"
-                          f" choosing fallback dimension {fallback_dimension}. ")
+            self.log.info(
+                f"Selected optimization dimensions ({self._optimizer_sequence_dimensions}) "
+                f"are not in the allowed optimizer dimensions ({self.allowed_optimizer_sequence_dimensions}),"
+                f" choosing fallback dimension {fallback_dimension}. "
+            )
             self._optimizer_sequence_dimensions = fallback_dimension
 
-        possible_scan_sequences = self._allowed_sequences(self._optimizer_sequence_dimensions)
+        possible_scan_sequences = self._allowed_sequences(
+            self._optimizer_sequence_dimensions
+        )
 
-        if self._scan_sequence is None or self._scan_sequence not in possible_scan_sequences:
+        if (
+            self._scan_sequence is None
+            or self._scan_sequence not in possible_scan_sequences
+        ):
 
             fallback_scan_sequence = possible_scan_sequences[0]
-            self.log.info(f"No valid scan sequence existing ({self._scan_sequence=}),"
-                          f" setting scan sequence to {fallback_scan_sequence}.")
+            self.log.info(
+                f"No valid scan sequence existing ({self._scan_sequence=}),"
+                f" setting scan sequence to {fallback_scan_sequence}."
+            )
 
             self._scan_sequence = fallback_scan_sequence
 
