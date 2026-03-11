@@ -25,7 +25,6 @@
 # information.
 
 
-
 import os
 import sys
 import platform
@@ -43,35 +42,36 @@ SPC3Return = c_int
 
 class SPC3Error(Exception):
     _err_dict = {
-        - 1: 'USB_DEVICE_NOT_RECOGNIZED',
-        - 3: 'CAMERA_NOT_POWERING_UP',
-        - 5: 'COMMUNICATION_ERROR',
-        - 6: 'OUT_OF_BOUND',
-        - 7: 'MISSING_DLL',
-        - 8: 'EMPTY_BUFFER',
-        - 9: 'NOT_EN_MEMORY',
-        - 10: 'NULL_POINTER',
-        - 11: 'INVALID_OP',
-        - 12: 'UNABLE_CREATE_FILE',
-        - 13: 'UNABLE_READ_FILE',
-        - 14: 'FIRMWARE_NOT_COMPATIBLE',
-        - 15: 'POWER_SUPPLY_ERROR',
-        - 16: 'TOO_MUCH_LIGHT',
-        - 17: 'INVALID_NIMG_CORRELATION',
-        - 18: 'SPC3_MEMORY_FULL'}
+        -1: "USB_DEVICE_NOT_RECOGNIZED",
+        -3: "CAMERA_NOT_POWERING_UP",
+        -5: "COMMUNICATION_ERROR",
+        -6: "OUT_OF_BOUND",
+        -7: "MISSING_DLL",
+        -8: "EMPTY_BUFFER",
+        -9: "NOT_EN_MEMORY",
+        -10: "NULL_POINTER",
+        -11: "INVALID_OP",
+        -12: "UNABLE_CREATE_FILE",
+        -13: "UNABLE_READ_FILE",
+        -14: "FIRMWARE_NOT_COMPATIBLE",
+        -15: "POWER_SUPPLY_ERROR",
+        -16: "TOO_MUCH_LIGHT",
+        -17: "INVALID_NIMG_CORRELATION",
+        -18: "SPC3_MEMORY_FULL",
+    }
 
     def __init__(self, ec):
         if ec in self._err_dict.keys():
             message = self._err_dict[ec]
         else:
-            message = 'UNEXPECTED ERROR (error code is {})'.format(str(ec))
+            message = "UNEXPECTED ERROR (error code is {})".format(str(ec))
         super().__init__(message)
 
 
 class SPC3(object):
-    lib_alias = 'SPC3_SDK'
-    lib_root_dir = 'lib/'
-    c_success_code = 'OK'
+    lib_alias = "SPC3_SDK"
+    lib_root_dir = "lib/"
+    c_success_code = "OK"
     py_class_version = 1.0
 
     # enums
@@ -101,24 +101,26 @@ class SPC3(object):
         LINEAR = 0
         MULTITAU = 1
 
-    def __init__(self, mode, Device_ID=''):
+    def __init__(self, mode, Device_ID="", dll_location=""):
 
-        if platform.system() == 'Linux' and platform.uname().machine == 'x86_64':
-            lib_path = os.path.join(self.lib_root_dir, 'Linux64/', 'libHermes.so')
-            self.dll = cdll.LoadLibrary(lib_path)
+        # if platform.system() == "Linux" and platform.uname().machine == "x86_64":
+        #     lib_path = os.path.join(self.lib_root_dir, "Linux64/", "libHermes.so")
+        #     self.dll = cdll.LoadLibrary(lib_path)
 
-        elif platform.system() == 'Windows' and platform.uname().machine == 'AMD64':
+        if platform.system() == "Windows" and platform.uname().machine == "AMD64":
 
-            lib_dir = os.path.join(self.lib_root_dir, 'Win/')
-            lib_path = os.path.join(lib_dir, '{}.dll'.format(self.lib_alias))
-            
-            if sys.version_info.minor < 8:
-                os.environ['PATH'] = lib_dir + os.pathsep + os.environ['PATH']
+            # lib_dir = os.path.join(self.lib_root_dir, "Win/")
+            # lib_path = os.path.join(lib_dir, "{}.dll".format(self.lib_alias))
+            # lib_path = 'C:\Users\SPUD1\Documents\qudi_workspace_202401\qudi-iqo-modules\src\qudi\hardware\camera\SPC3\lib\Win'
+            lib_path = dll_location
+            lib_path = os.path.join(lib_path, "{}.dll".format(self.lib_alias))
+            # if sys.version_info.minor < 8:
+            #     os.environ["PATH"] = lib_dir + os.pathsep + os.environ["PATH"]
 
             self.dll = WinDLL(lib_path)
 
         else:
-            raise NotImplementedError('Unsupported platform')
+            raise NotImplementedError("Unsupported platform")
 
         self.c_handle = SPC3_H()
 
@@ -144,7 +146,13 @@ class SPC3(object):
         return self._num_counters
 
     def __del__(self):
-        self.Destr()
+        # Guard against double-free: if Destr() was already called explicitly
+        # (e.g. via on_deactivate or a test helper), the caller should have nulled
+        # c_handle afterwards (cam.c_handle = c_void_p()).  Without this check,
+        # Python GC would call Destr() a second time on the freed handle, causing
+        # a NULL_POINTER error or an access violation in the DLL.
+        if self.c_handle.value is not None:
+            self.Destr()
 
     def _checkError(self, ec):
         if ec != 0:
@@ -169,7 +177,7 @@ class SPC3(object):
         f.argtypes = [POINTER(SPC3_H), c_int, c_char_p]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesConstr(Hermes_H* Hermes_in, CameraMode m, char* Device_ID);
-        ec = f(byref(self.c_handle), mode, Device_ID.encode('utf-8'))
+        ec = f(byref(self.c_handle), mode, Device_ID.encode("utf-8"))
         self._checkError(ec)
         return
 
@@ -191,7 +199,16 @@ class SPC3(object):
         self._checkError(ec)
         return
 
-    def SetCameraPar(self, Exposure, NFrames, NIntegFrames, NCounters, Force8bit, Half_array, Signed_data):
+    def SetCameraPar(
+        self,
+        Exposure,
+        NFrames,
+        NIntegFrames,
+        NCounters,
+        Force8bit,
+        Half_array,
+        Signed_data,
+    ):
         """SetCameraPar - Set the acquisition parameters for the camera.
         This function behaves differently depending on the operating mode setting. In case of Normal working mode, the exposure time is fixed to 10.40 microseconds.
         Therefore, the parameter Exposure is not considered. Longer exposures can be obtained by summing multiple frames (i.e. by setting NIntegFrames).
@@ -213,15 +230,41 @@ class SPC3(object):
             OUT_OF_BOUND Exposure, NFrames and NIntegFrames must be all greater than zero and smaller than 65535
         """
         f = self.dll.SPC3_Set_Camera_Par
-        f.argtypes = [SPC3_H, c_uint16, c_uint32, c_uint16, c_uint16, c_int, c_int, c_int]
+        f.argtypes = [
+            SPC3_H,
+            c_uint16,
+            c_uint32,
+            c_uint16,
+            c_uint16,
+            c_int,
+            c_int,
+            c_int,
+        ]
         f.restype = SPC3Return
+
+        Exposure = c_uint16(int(Exposure))
+        NFrames = c_uint32(int(NFrames))
+        NIntegFrames = c_uint16(int(NIntegFrames))
+        NCounters = c_uint16(int(NCounters))
+        Force8bit = c_int(int(Force8bit))
+        Half_array = c_int(int(Half_array))
+        Signed_data = c_int(int(Signed_data))
         #  DllSDKExport HermesReturn HermesSetCameraPar(Hermes_H Hermes, uint16_t Exposure, uint32_t NFrames, uint16_t NIntegFrames, uint16_t NCounters, State Force8bit, State Half_array, State Signed_data);
-        ec = f(self.c_handle, Exposure, NFrames, NIntegFrames, NCounters, Force8bit, Half_array, Signed_data)
+        ec = f(
+            self.c_handle,
+            Exposure,
+            NFrames,
+            NIntegFrames,
+            NCounters,
+            Force8bit,
+            Half_array,
+            Signed_data,
+        )
         self._checkError(ec)
 
         # keep record of settings
-        self._snap_num_frames = NFrames
-        self._num_counters = NCounters
+        self._snap_num_frames = NFrames.value
+        self._num_counters = NCounters.value
         self._data_is_signed = bool(Signed_data)
 
         if Half_array:
@@ -268,9 +311,9 @@ class SPC3(object):
         # keep record of settings
         self._snap_num_frames = NFrames
         self._num_counters = 1
-        #self._data_is_signed = bool(Signed_data)
+        # self._data_is_signed = bool(Signed_data)
 
-        self._num_pixels = Npixels
+        self._num_pixels = int(Npixels)
 
         return
 
@@ -340,8 +383,10 @@ class SPC3(object):
             INVALID_OP Unable to set the background image when the live-mode is ON
         """
         f = self.dll.SPC3_Set_Background_Img
-        f.argtypes = [SPC3_H,
-                      np.ctypeslib.ndpointer(dtype=np.uint16, ndim=1, flags='C_CONTIGUOUS')]
+        f.argtypes = [
+            SPC3_H,
+            np.ctypeslib.ndpointer(dtype=np.uint16, ndim=1, flags="C_CONTIGUOUS"),
+        ]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSetBackgroundImg(Hermes_H Hermes, uint16_t* Img);
         data = Img.flatten().astype(np.uint16)
@@ -405,7 +450,9 @@ class SPC3(object):
         self._checkError(ec)
         return
 
-    def SetDualGate(self, DualGate_State, StartShift, FirstGateWidth, SecondGateWidth, Gap):
+    def SetDualGate(
+        self, DualGate_State, StartShift, FirstGateWidth, SecondGateWidth, Gap
+    ):
         """SetDualGate - Set parameters for DualGate mode.
         In this mode two counters are used, both in gated mode. Position and width of Gate 1 and width of Gate 2 can be set by user, whereas position of Gate 2
         is automatically set at the end of Gate 1 plus a gap selected by the user, but not smaller than 2ns. Total duration of Gate 1 and Gate 2 plus gap can not exceed 90% of the gate period of 20ns.
@@ -425,11 +472,27 @@ class SPC3(object):
         f.argtypes = [SPC3_H, c_int, c_int, c_int, c_int, c_int]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSetDualGate(Hermes_H Hermes, State DualGate_State, int StartShift, int FirstGateWidth, int SecondGateWidth, int Gap);
-        ec = f(self.c_handle, DualGate_State, StartShift, FirstGateWidth, SecondGateWidth, Gap)
+        ec = f(
+            self.c_handle,
+            DualGate_State,
+            StartShift,
+            FirstGateWidth,
+            SecondGateWidth,
+            Gap,
+        )
         self._checkError(ec)
         return
 
-    def SetTripleGate(self, TripleGate_State, StartShift, FirstGateWidth, SecondGateWidth, ThirdGateWidth, Gap1, Gap2):
+    def SetTripleGate(
+        self,
+        TripleGate_State,
+        StartShift,
+        FirstGateWidth,
+        SecondGateWidth,
+        ThirdGateWidth,
+        Gap1,
+        Gap2,
+    ):
         """SetTripleGate - Set parameters for TripleGate mode.
         In this mode three counters are used, all in gated mode. The three gates cannot overlap (even over different periods), and they have to follow the order: Gate1, Gate 3, Gate2.
         Position and width of Gate 1, and width of Gate 3 and 2 can be set by user, whereas position of Gate 3 and Gate 2 are automatically set by the function depending on the Gap1 and Gap2 values
@@ -452,7 +515,16 @@ class SPC3(object):
         f.argtypes = [SPC3_H, c_int, c_int, c_int, c_int, c_int, c_int, c_int]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSetTripleGate(Hermes_H Hermes, State TripleGate_State, int StartShift, int FirstGateWidth, int SecondGateWidth, int ThirdGateWidth, int Gap1, int Gap2);
-        ec = f(self.c_handle, TripleGate_State, StartShift, FirstGateWidth, SecondGateWidth, ThirdGateWidth, Gap1, Gap2)
+        ec = f(
+            self.c_handle,
+            TripleGate_State,
+            StartShift,
+            FirstGateWidth,
+            SecondGateWidth,
+            ThirdGateWidth,
+            Gap1,
+            Gap2,
+        )
         self._checkError(ec)
         return
 
@@ -575,7 +647,14 @@ class SPC3(object):
         f.restype = SPC3Return
         FLIM_frame_time = c_int(0)
         #  DllSDKExport HermesReturn HermesSetFlimPar(Hermes_H Hermes, uint16_t FLIM_steps, uint16_t FLIM_shift, int16_t FLIM_start, uint16_t Length, int* FLIM_frame_time);
-        ec = f(self.c_handle, FLIM_steps, FLIM_shift, FLIM_start, Length, byref(FLIM_frame_time))
+        ec = f(
+            self.c_handle,
+            FLIM_steps,
+            FLIM_shift,
+            FLIM_start,
+            Length,
+            byref(FLIM_frame_time),
+        )
         self._checkError(ec)
 
         # keep record of settings
@@ -640,16 +719,18 @@ class SPC3(object):
             INVALID_OP The live-mode has not been started yet
         """
         f = self.dll.SPC3_Get_Live_Img
-        f.argtypes = [SPC3_H,
-                      np.ctypeslib.ndpointer(dtype=np.uint16, ndim=1, flags='C_CONTIGUOUS')
-                      ]
+        f.argtypes = [
+            SPC3_H,
+            np.ctypeslib.ndpointer(dtype=np.uint16, ndim=1, flags="C_CONTIGUOUS"),
+        ]
         f.restype = SPC3Return
 
-        data = np.zeros(self.row_size * self._num_rows * self._num_counters, dtype=np.uint16)
+        data = np.zeros(
+            self.row_size * self._num_rows * int(self._num_counters), dtype=np.uint16
+        )
         #  DllSDKExport HermesReturn HermesLiveGetImg(Hermes_H Hermes, uint16_t* Img);
         ec = f(self.c_handle, data)
         self._checkError(ec)
-
         frames = self.BufferToFrames(data, self._num_pixels, self._num_counters)
         return frames[0]  # we always have data of only frame [0] for all counters
 
@@ -705,29 +786,36 @@ class SPC3(object):
         Error codes:
             NULL_POINTER The provided Hermes_H or BUFFER_H point to an empty memory location
         """
-        size = self._snap_num_frames * self._data_bits // 8 * self._num_pixels * self._num_counters
+        size = (
+            self._snap_num_frames
+            * self._data_bits
+            // 8
+            * self._num_pixels
+            * self._num_counters
+        )
         buf = POINTER(c_uint8)()
         DataDepth = c_int(0)
 
         f = self.dll.SPC3_Get_Image_Buffer
-        f.argtypes = [SPC3_H,
-                      POINTER(POINTER(c_uint8)),
-                      POINTER(c_int)]
+        f.argtypes = [SPC3_H, POINTER(POINTER(c_uint8)), POINTER(c_int)]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSnapGetImageBuffer(Hermes_H Hermes, BUFFER_H* buffer, int* DataDepth);
-        ec = f(self.c_handle,
-               byref(buf),
-               byref(DataDepth))
+        ec = f(self.c_handle, byref(buf), byref(DataDepth))
         self._checkError(ec)
 
         # if required, cast the buffer pointer from uint8_t* to uint16_t*
-        assert self._data_bits == DataDepth.value
+        # Update _data_bits if SDK returns different depth than configured
+        if self._data_bits != DataDepth.value:
+            self._data_bits = DataDepth.value
+
         if DataDepth.value == 16:
             buf = cast(buf, POINTER(c_uint16))
             count = size // 2
         else:
             count = size
-        data = np.ctypeslib.as_array(buf, shape=(count,))  # automatically deduces dtype from c_types POINTER(c_xyz)
+        data = np.ctypeslib.as_array(
+            buf, shape=(count,)
+        )  # automatically deduces dtype from c_types POINTER(c_xyz)
 
         frames = self.BufferToFrames(data, self._num_pixels, self._num_counters)
         return frames
@@ -747,16 +835,20 @@ class SPC3(object):
         data = np.zeros(self.row_size * self._num_rows, dtype=np.float64)
 
         f = self.dll.SPC3_Get_Img_Position
-        f.argtypes = [SPC3_H,
-                      np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags='C_CONTIGUOUS'),
-                      c_uint32,
-                      c_uint16]
+        f.argtypes = [
+            SPC3_H,
+            np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags="C_CONTIGUOUS"),
+            c_uint32,
+            c_uint16,
+        ]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSnapGetImgPosition(Hermes_H Hermes, uint16_t* Img, uint32_t Position, uint16_t counter);
         ec = f(self.c_handle, data, Position, counter)
         self._checkError(ec)
 
-        frames = self.BufferToFrames(data, self._num_pixels, 1)  # expect data of just one counter!
+        frames = self.BufferToFrames(
+            data, self._num_pixels, 1
+        )  # expect data of just one counter!
         return frames[0]  # strip away dimension of frame index
 
     def ContAcqToFileStart(self, filename):
@@ -774,7 +866,7 @@ class SPC3(object):
         f.argtypes = [SPC3_H, c_char_p]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesContAcqToFileStart(Hermes_H Hermes, char* filename);
-        ec = f(self.c_handle, filename.encode('utf-8'))
+        ec = f(self.c_handle, filename.encode("utf-8"))
         self._checkError(ec)
         return
 
@@ -855,9 +947,7 @@ class SPC3(object):
         total_bytes = c_double()
 
         f = self.dll.SPC3_Get_Memory_Buffer
-        f.argtypes = [SPC3_H,
-                      POINTER(c_double),
-                      POINTER(POINTER(c_uint8))]
+        f.argtypes = [SPC3_H, POINTER(c_double), POINTER(POINTER(c_uint8))]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesContAcqToMemoryGetBuffer(Hermes_H Hermes, double* total_bytes, BUFFER_H* buffer);
         ec = f(self.c_handle, byref(total_bytes), byref(buf))
@@ -869,7 +959,9 @@ class SPC3(object):
             count = size // 2
         else:
             count = size
-        data = np.ctypeslib.as_array(buf, shape=(count,))  # automatically deduces dtype from c_types POINTER(c_xyz)
+        data = np.ctypeslib.as_array(
+            buf, shape=(count,)
+        )  # automatically deduces dtype from c_types POINTER(c_xyz)
 
         return data
 
@@ -1001,7 +1093,10 @@ class SPC3(object):
         #  DllSDKExport HermesReturn HermesIsTriggered(Hermes_H Hermes, short* isTriggered);
         ec = f(self.c_handle, byref(isTriggered))
         self._checkError(ec)
-        return bool(c_short.value)
+        # BUG FIX: original code returned bool(c_short.value) which evaluates the ctypes
+        # class descriptor (always truthy) instead of the local instance. Changed to
+        # bool(isTriggered.value) to correctly read the SDK output value.
+        return bool(isTriggered.value)
 
     def GetVersion(self):
         """GetVersion - Get the SDK and camera firmware version
@@ -1023,9 +1118,18 @@ class SPC3(object):
         Software_Version = c_double(0)
         Custom_version = c_char(0)
         #  DllSDKExport HermesReturn HermesGetVersion(Hermes_H Hermes, double* Firmware_Version, double* Software_Version, char* Custom_version);
-        ec = f(self.c_handle, byref(Firmware_Version), byref(Software_Version), byref(Custom_version))
+        ec = f(
+            self.c_handle,
+            byref(Firmware_Version),
+            byref(Software_Version),
+            byref(Custom_version),
+        )
         self._checkError(ec)
-        return Firmware_Version.value, Software_Version.value, Custom_version.value.decode('utf-8')
+        return (
+            Firmware_Version.value,
+            Software_Version.value,
+            Custom_version.value.decode("utf-8"),
+        )
 
     def GetSerial(self):
         """GetSerial - Get the camera serial number and ID
@@ -1047,7 +1151,7 @@ class SPC3(object):
         #  DllSDKExport HermesReturn HermesGetSerial(Hermes_H Hermes, char* Camera_ID, char* Camera_serial);
         ec = f(self.c_handle, Camera_ID, Camera_serial)
         self._checkError(ec)
-        return Camera_ID.value.decode('utf-8'), Camera_serial.value.decode('utf-8')
+        return Camera_ID.value.decode("utf-8"), Camera_serial.value.decode("utf-8")
 
     # def DeviceInfo(self, Device_ID):
     #             """DeviceInfo - Get device info.
@@ -1163,7 +1267,7 @@ class SPC3(object):
         f.argtypes = [SPC3_H, c_uint32, c_uint32, c_char_p, c_int]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSaveImgDisk(Hermes_H Hermes, uint32_t Start_Img, uint32_t End_Img, char* filename, OutFileFormat mode);
-        ec = f(self.c_handle, Start_Img, End_Img, filename.encode('utf-8'), mode)
+        ec = f(self.c_handle, Start_Img, End_Img, filename.encode("utf-8"), mode)
         self._checkError(ec)
         return
 
@@ -1185,7 +1289,7 @@ class SPC3(object):
         f.argtypes = [SPC3_H, c_uint16, c_char_p, c_int, c_short]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSaveAveragedImgDisk(Hermes_H Hermes, uint16_t counter, char* filename, OutFileFormat mode, short isDouble);
-        ec = f(self.c_handle, counter, filename.encode('utf-8'), mode, is_double)
+        ec = f(self.c_handle, counter, filename.encode("utf-8"), mode, is_double)
         self._checkError(ec)
         return
 
@@ -1213,7 +1317,7 @@ class SPC3(object):
         f.argtypes = [SPC3_H, c_char_p, c_int]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSaveFlimDisk(Hermes_H Hermes, char* filename, OutFileFormat mode);
-        ec = f(self.c_handle, filename.encode('utf-8'), mode)
+        ec = f(self.c_handle, filename.encode("utf-8"), mode)
         self._checkError(ec)
         return
 
@@ -1234,20 +1338,22 @@ class SPC3(object):
             NULL_POINTER The provided provided handle or pointers point to an empty memory location.
         """
         f = self.dll.SPC3_ReadSPC3FileFormatImage
-        f.argtypes = [c_char_p,
-                      c_uint32,
-                      c_uint16,
-                      np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags='C_CONTIGUOUS'),
-                      c_char_p]
+        f.argtypes = [
+            c_char_p,
+            c_uint32,
+            c_uint16,
+            np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags="C_CONTIGUOUS"),
+            c_char_p,
+        ]
         f.restype = SPC3Return
 
         Img = np.zeros(self.row_size * self._num_rows, dtype=np.uint16)
         header = create_string_buffer(1024)
         #  DllSDKExport HermesReturn HermesReadHermesFileFormatImage(char* filename, uint32_t ImgIdx, uint16_t counter, uint16_t* Img, char header[1024]);
-        ec = f(filename.encode('utf-8'), ImgIdx, counter, Img, header)
+        ec = f(filename.encode("utf-8"), ImgIdx, counter, Img, header)
         self._checkError(ec)
 
-        return Img, header.decode('utf-8')
+        return Img, header.decode("utf-8")
 
     def AverageImg(self, counter):
         """AverageImg - Gets the average image.
@@ -1264,9 +1370,11 @@ class SPC3(object):
         """
 
         f = self.dll.SPC3_Average_Img
-        f.argtypes = [SPC3_H,
-                      np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags='C_CONTIGUOUS'),
-                      c_uint16]
+        f.argtypes = [
+            SPC3_H,
+            np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags="C_CONTIGUOUS"),
+            c_uint16,
+        ]
         f.restype = SPC3Return
 
         data = np.zeros(self.row_size * self._num_rows, dtype=np.float64)
@@ -1274,7 +1382,9 @@ class SPC3(object):
         ec = f(self.c_handle, data, counter)
         self._checkError(ec)
 
-        frames = self.BufferToFrames(data, self._num_pixels, 1)  # expect data of just one counter!
+        frames = self.BufferToFrames(
+            data, self._num_pixels, 1
+        )  # expect data of just one counter!
         return frames[0][0]  # strip away dimensions of frame index and counter index
 
     def StDevImg(self, counter):
@@ -1291,9 +1401,11 @@ class SPC3(object):
             INVALID_OP No images were acquired
         """
         f = self.dll.SPC3_StDev_Img
-        f.argtypes = [SPC3_H,
-                      np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags='C_CONTIGUOUS'),
-                      c_uint16]
+        f.argtypes = [
+            SPC3_H,
+            np.ctypeslib.ndpointer(dtype=np.float64, ndim=1, flags="C_CONTIGUOUS"),
+            c_uint16,
+        ]
         f.restype = SPC3Return
 
         data = np.zeros(self.row_size * self._num_rows, dtype=np.float64)
@@ -1301,7 +1413,9 @@ class SPC3(object):
         ec = f(self.c_handle, data, counter)
         self._checkError(ec)
 
-        frames = self.BufferToFrames(data, self._num_pixels, 1)  # expect data of just one counter!
+        frames = self.BufferToFrames(
+            data, self._num_pixels, 1
+        )  # expect data of just one counter!
         return frames[0][0]  # strip away dimensions of frame index and counter index
 
     def SetCorrelationMode(self, CM, NCorrChannels, s):
@@ -1398,7 +1512,7 @@ class SPC3(object):
         f.argtypes = [SPC3_H, c_char_p]
         f.restype = SPC3Return
         #  DllSDKExport HermesReturn HermesSaveCorrelationImg(Hermes_H Hermes, char* filename);
-        ec = f(self.c_handle, filename.encode('utf-8'))
+        ec = f(self.c_handle, filename.encode("utf-8"))
         self._checkError(ec)
         return
 
@@ -1423,21 +1537,23 @@ class SPC3(object):
 
     @staticmethod
     def BufferToFrames(data, num_pixels, num_counters):
-        """BufferToFrames - Converts a plain flat Hermes data array such as data from ContAcqToMemoryGetBuffer()
-        or "raw" data read from hermes data files to a more structured data set containing multiple frames
+        """BufferToFrames - Converts a plain flat SPC3 data array such as data from ContAcqToMemoryGetBuffer()
+        or "raw" data read from spc3 data files to a more structured data set containing multiple frames
 
         Parameters
-            data: 1-d array containing Hermes pixel data such as data returned by SnapGetImageBuffer(), ContAcqToMemoryGetBuffer()
+            data: 1-d array containing SPC3 pixel data such as data returned by SnapGetImageBuffer(), ContAcqToMemoryGetBuffer()
             num_pixels: number of active pixels
             num_counters: number of active counters
         Returns:
             Data reshaped as frames.
         """
         if not isinstance(data, np.ndarray):
-            raise ValueError('Expected numpy-ndarray, got {}'.format(type(data)))
+            raise ValueError("Expected numpy-ndarray, got {}".format(type(data)))
 
         if data.size % (num_pixels * num_counters) != 0:
-            raise ValueError('The number of elements of data must be a multiple of (num_pixels * num_counters)')
+            raise ValueError(
+                "The number of elements of data must be a multiple of (num_pixels * num_counters)"
+            )
 
         row_size = 32
 
@@ -1447,15 +1563,23 @@ class SPC3(object):
         all_flat_frames = data.reshape((data.size // num_pixels, num_pixels))
 
         # number of frames per counter
-        num_frames = len(all_flat_frames) // num_counters  # number of frames per counter
+        num_frames = (
+            len(all_flat_frames) // num_counters
+        )  # number of frames per counter
 
         if num_pixels % row_size == 0:
-            frames = all_flat_frames.reshape((num_frames, num_counters, num_full_rows, row_size))
+            frames = all_flat_frames.reshape(
+                (num_frames, num_counters, num_full_rows, row_size)
+            )
         else:
             # pad frames so that the number of pixels is a multiple of 32 pixels (i.e. one row)
             num_pad_pixels = row_size * num_full_rows - num_pixels
-            all_flat_frames_padded = np.pad(all_flat_frames, ((0, 0), (0, num_pad_pixels)))
-            frames = all_flat_frames_padded.reshape((num_frames, num_counters, num_full_rows, row_size))
+            all_flat_frames_padded = np.pad(
+                all_flat_frames, ((0, 0), (0, num_pad_pixels))
+            )
+            frames = all_flat_frames_padded.reshape(
+                (num_frames, num_counters, num_full_rows, row_size)
+            )
 
         # swap frame indexes and counter dimensions
         frames = np.swapaxes(frames, 0, 1)
@@ -1465,124 +1589,16 @@ class SPC3(object):
         return frames
 
     @staticmethod
-    def ReadHermesDataFile(path):
-        """ReadHermesDataFile - reads .hrm acquisition files
-        or "raw" data read from hermes data files to a more structured data set containing multiple frames
-
-        Parameters
-            path: path to the .hrm data file
-        Returns:
-            data file header and frames
-        """
-        def readfield(inf, count, c_type):
-            if c_type is None:
-                inf.read(count)
-                return
-            bs = bytearray(inf.read(count * sizeof(c_type)))
-            if count > 1:
-                return (c_type * count).from_buffer_copy(bs).value
-            else:
-                return c_type.from_buffer_copy(bs).value
-
-        inf = open(path, 'rb')
-
-        file_meta_stuff = readfield(inf, 8, c_char)
-
-        class HermesFileHeader():
-            pass
-
-        header = HermesFileHeader
-
-        header.camera_id = readfield(inf, 10, c_char).decode('utf-8')
-
-        header.SN = readfield(inf, 32, c_char).decode('utf-8')
-
-        header.FW_VER = readfield(inf, 1, c_uint16) / 100
-        header.custom_ver = chr(readfield(inf, 1, c_uint8) + ord('A'))  # 0 = A, 1 = B, etc
-        header.date_time = readfield(inf, 20, c_char).decode('utf-8')
-
-        readfield(inf, 35, None)
-
-        header.N_rows = readfield(inf, 1, c_uint8)
-        header.N_cols = readfield(inf, 1, c_uint8)
-        header.bit_x_pix = readfield(inf, 1, c_uint8)
-        header.N_counters = readfield(inf, 1, c_uint8)
-        header.HwIntTime = readfield(inf, 1, c_uint16) * 10e-9
-        header.SummedFrames = readfield(inf, 1, c_uint16)
-        header.DeadTimeCorrectionON = readfield(inf, 1, c_uint8) != 0
-        header.GateDuty_C1 = readfield(inf, 1, c_uint8)
-        header.HoldOff = readfield(inf, 1, c_uint16) * 1e-9
-        header.BKGsubON = readfield(inf, 1, c_uint8) != 0
-        header.C1_2_signed = readfield(inf, 1, c_uint8) != 0
-        header.N_frames = readfield(inf, 1, c_uint32)
-        header.ImgAveraged = readfield(inf, 1, c_uint8) != 0
-        header.Caveraged = readfield(inf, 1, c_uint8)
-        header.N_ave = readfield(inf, 1, c_uint16)
-        header.GateDuty_C2 = readfield(inf, 1, c_uint8)
-        header.GateDuty_C3 = readfield(inf, 1, c_uint8)
-        header.Frames_x_syncIn = readfield(inf, 1, c_uint16)
-        header.N_pix = readfield(inf, 1, c_uint16)
-        readfield(inf, 72, None)
-
-        header.FLIM_ON = readfield(inf, 1, c_uint8) != 0
-        header.FLIM_shift_pct = readfield(inf, 1, c_uint16)
-        header.FLIM_steps = readfield(inf, 1, c_uint16)
-        header.FLIM_frameLen = readfield(inf, 1, c_uint32) * 10e-9
-        header.FLIM_binWidth = readfield(inf, 1, c_uint16) * 1e-15
-        readfield(inf, 9, None)
-
-        header.MultiGate_mode = readfield(inf, 1, c_uint8)
-        header.MultiGate_start_pos = readfield(inf, 1, c_int16)
-        header.MultiGate_widthC1 = readfield(inf, 1, c_uint8)
-        header.MultiGate_widthC2 = readfield(inf, 1, c_uint8)
-        header.MultiGate_widthC3 = readfield(inf, 1, c_uint8)
-        header.MultiGate_gapC1_2 = readfield(inf, 1, c_uint16)
-        header.MultiGate_gapC2_3 = readfield(inf, 1, c_uint16)
-        header.MultiGate_binWidth = readfield(inf, 1, c_uint16) * 1e-15
-
-        header.CoarseGate_C1_ON = readfield(inf, 1, c_uint8) != 0
-        header.CoarseGate_C1_startPos = readfield(inf, 1, c_uint16) * 10e-9
-        header.CoarseGate_C1_stopPos = readfield(inf, 1, c_uint16) * 10e-9
-        header.CoarseGate_C2_ON = readfield(inf, 1, c_uint8) != 0
-        header.CoarseGate_C2_startPos = readfield(inf, 1, c_uint16) * 10e-9
-        header.CoarseGate_C2_stopPos = readfield(inf, 1, c_uint16) * 10e-9
-        header.CoarseGate_C3_ON = readfield(inf, 1, c_uint8) != 0
-        header.CoarseGate_C3_startPos = readfield(inf, 1, c_uint16) * 10e-9
-        header.CoarseGate_C3_stopPos = readfield(inf, 1, c_uint16) * 10e-9
-        readfield(inf, 53, None)
-
-        header.PDE_ON = readfield(inf, 1, c_uint8) != 0
-        header.PDE_startWave = readfield(inf, 1, c_uint16) * 1e-9
-        header.PDE_stopWave = readfield(inf, 1, c_uint16) * 1e-9
-        header.PDE_step = readfield(inf, 1, c_uint16) * 1e-9
-
-        data_count = header.N_cols * header.N_rows * header.N_frames * header.N_counters
-
-        if header.bit_x_pix == 16:
-            dtype = np.uint16
-        elif header.bit_x_pix == 8:
-            dtype = np.uint8
-        else:
-            raise ValueError('invalid bit width, got {}'.format(str(header.bit_x_pix)))
-        inf.seek(0)
-        data = np.fromfile(inf, offset=1024 + 8, count=data_count, dtype=dtype)
-
-        num_pixels = header.N_pix
-        num_counters = header.N_counters
-        frames = SPC3.BufferToFrames(data, num_pixels, num_counters)
-
-        return frames, header
-
-    @staticmethod
     def ReadSPC3DataFile(path):
-        """ReadSPC3DataFile - reads .spc3 acquisition files
-        or "raw" data read from hermes data files to a more structured data set containing multiple frames
+        """ReadSPC3DataFile - reads .spc acquisition files
+        or "raw" data read from spc data files to a more structured data set containing multiple frames
 
         Parameters
             path: path to the .spc3 data file
         Returns:
             data file header and frames
         """
+
         def readfield(inf, count, c_type):
             if c_type is None:
                 inf.read(count)
@@ -1593,22 +1609,24 @@ class SPC3(object):
             else:
                 return c_type.from_buffer_copy(bs).value
 
-        inf = open(path, 'rb')
+        inf = open(path, "rb")
 
         file_meta_stuff = readfield(inf, 8, c_char)
 
-        class HermesFileHeader():
+        class SPC3FileHeader:
             pass
 
-        header = HermesFileHeader
+        header = SPC3FileHeader
 
-        header.camera_id = readfield(inf, 10, c_char).decode('utf-8')
+        header.camera_id = readfield(inf, 10, c_char).decode("utf-8")
 
-        header.SN = readfield(inf, 32, c_char).decode('utf-8')
+        header.SN = readfield(inf, 32, c_char).decode("utf-8")
 
         header.FW_VER = readfield(inf, 1, c_uint16) / 100
-        header.custom_ver = chr(readfield(inf, 1, c_uint8) + ord('A'))  # 0 = A, 1 = B, etc
-        header.date_time = readfield(inf, 20, c_char).decode('utf-8')
+        header.custom_ver = chr(
+            readfield(inf, 1, c_uint8) + ord("A")
+        )  # 0 = A, 1 = B, etc
+        header.date_time = readfield(inf, 20, c_char).decode("utf-8")
 
         readfield(inf, 35, None)
 
@@ -1672,33 +1690,48 @@ class SPC3(object):
         elif header.bit_x_pix == 8:
             dtype = np.uint8
         else:
-            raise ValueError('invalid bit width, got {}'.format(str(header.bit_x_pix)))
+            raise ValueError("invalid bit width, got {}".format(str(header.bit_x_pix)))
         inf.seek(0)
         data = np.fromfile(inf, offset=1024 + 8, count=data_count, dtype=dtype)
 
         num_pixels = header.N_pix
         num_counters = header.N_counters
+
+        # Debug: log what we read from file
+        #print(f"ReadSPC3DataFile DEBUG:")
+        #print(
+        #    f"  Header: N_rows={header.N_rows}, N_cols={header.N_cols}, N_frames={header.N_frames}, N_counters={header.N_counters}"
+        #)
+        #print(f"  Header: N_pix={header.N_pix}, bit_x_pix={header.bit_x_pix}")
+        #print(f"  Calculated data_count={data_count}, dtype={dtype}")
+        #print(f"  Read data.size={data.size}, data.dtype={data.dtype}")
+        #print(f"  Using num_pixels={num_pixels}, num_counters={num_counters}")
+        #print(
+        #    f"  Check: data.size % (num_pixels * num_counters) = {data.size % (num_pixels * num_counters)}"
+        #)
+
         frames = SPC3.BufferToFrames(data, num_pixels, num_counters)
 
         return frames, header
 
+
 # if __name__ == "__main__":
-    # plt.close('all')
-    # s = SPC3(SPC3.CameraMode.NORMAL)
-    # num_counters = 2
-    # s.SetCameraPar(100, 1, 1000, num_counters, SPC3.State.DISABLED, SPC3.State.DISABLED, SPC3.State.DISABLED)
-    # s.ApplySettings()
-    # s.LiveSetModeON()
+# plt.close('all')
+# s = SPC3(SPC3.CameraMode.NORMAL)
+# num_counters = 2
+# s.SetCameraPar(100, 1, 1000, num_counters, SPC3.State.DISABLED, SPC3.State.DISABLED, SPC3.State.DISABLED)
+# s.ApplySettings()
+# s.LiveSetModeON()
 
-    # plot_img = plt.imshow(np.zeros((32, 64)))
-    # plt.set_cmap('gray')
+# plot_img = plt.imshow(np.zeros((32, 64)))
+# plt.set_cmap('gray')
 
-    # for k in range(1000):
-    #     live_frames = s.LiveGetImg()
-    #     counter1_frame = live_frames[0]
-    #     # frames[0] contains live image for counter 1 (shown below)
-    #     # frames[1] contains live image for counter 2
-    #     plt.clim(np.min(counter1_frame), np.max(counter1_frame))
-    #     plt.title('frame {}'.format(k))
-    #     plot_img.set_data(counter1_frame)
-    #     plt.pause(0.010)
+# for k in range(1000):
+#     live_frames = s.LiveGetImg()
+#     counter1_frame = live_frames[0]
+#     # frames[0] contains live image for counter 1 (shown below)
+#     # frames[1] contains live image for counter 2
+#     plt.clim(np.min(counter1_frame), np.max(counter1_frame))
+#     plt.title('frame {}'.format(k))
+#     plot_img.set_data(counter1_frame)
+#     plt.pause(0.010)

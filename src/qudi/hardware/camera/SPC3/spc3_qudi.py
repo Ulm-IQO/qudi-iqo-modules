@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 
-# FIXME: This module is obviously taken from someone else and altered without attribution.
 """
-This hardware module implement the camera spectrometer interface to use an Andor Camera.
-It use a dll to interface with instruments via USB (only available physical interface)
-This module does aim at replacing Solis.
+Qudi hardware module for the MPD SPC3 SPAD camera.
+
+Wraps the vendor-provided SPC3 Python SDK (spc.py) and exposes it through the
+qudi CameraInterface.  spc.py must NOT be modified — all adaptation happens here.
 
 ---
 
-Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
-distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
+Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level
+directory of this distribution and on
+<https://github.com/Ulm-IQO/qudi-iqo-modules/>
 
 This file is part of qudi.
 
@@ -18,1071 +19,546 @@ the GNU Lesser General Public License as published by the Free Software Foundati
 either version 3 of the License, or (at your option) any later version.
 
 Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See the GNU Lesser General Public License for more details.
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
+PURPOSE.  See the GNU Lesser General Public License for more details.
 
-You should have received a copy of the GNU Lesser General Public License along with qudi.
-If not, see <https://www.gnu.org/licenses/>.
+You should have received a copy of the GNU Lesser General Public License along with
+qudi.  If not, see <https://www.gnu.org/licenses/>.
 """
 
-from enum import Enum
-from ctypes import *
-from ctypes import c_uint32, c_uint16
+import os
+import time
+import struct
 import numpy as np
 
 from qudi.core.configoption import ConfigOption
 from qudi.interface.camera_interface import CameraInterface
-
-from qudi.hardware.camera.SPC3.spc import SPC3, SPC3_H, SPC3Return
+from qudi.hardware.camera.SPC3.spc import SPC3
 
 
 class SPC3_Qudi(CameraInterface):
-    """Hardware class for SPC3 SPAD Camera
+    """Qudi hardware module for the MPD SPC3 SPAD camera.
 
-    Example config for copy-paste:
+    Example config for copy-paste (matches SPUD202603.cfg):
 
     camera_SPC3:
         module.Class: 'camera.SPC3.spc3_qudi.SPC3_Qudi'
         options:
-            dll_location: 'C:\\Users\\...\\qudi-iqo-modules\\src\\qudi\\hardware\\camera\\SPC3\\lib\\Win\\'
-            camera_mode: 'Normal'  # or 'Advanced'
-            default_hardware_integration: 5200  # in units of 10ns clock cycles (52 us)
-            default_NFrames: 100  # frames per Snap acquisition
-            default_NIntegFrames: 1000  # temporal binning (integrated frames per output)
-            default_NCounters: 1  # number of counters per pixel (1-3)
-            default_Force8bit: 'Disabled'  # or 'Enabled' (Advanced mode only)
-            default_Half_array: 'Disabled'  # or 'Enabled' (32x32 instead of 32x64)
-            default_Signed_data: 'Disabled'  # or 'Enabled'
-            default_display_units: 'counts'  # or 'cps'
-            trigger_mode: 'no_trigger'  # 'no_trigger' | 'single_trigger' | 'multiple_trigger'
-            trigger_frames_per_pulse: 1  # frames per SYNC_IN pulse (only for 'multiple_trigger', 1-100)
+            camera_mode: 'Advanced'    # 'Normal' or 'Advanced'
+            exposure: 1040             # HIT in clock cycles (10 ns each)
+            nframes: 1                 # Frames per snap acquisition (1-65534)
+            nintegframes: 1            # Temporal binning: integrated frames per output (1-65534)
+            ncounters: 1               # Counters per pixel (1-3)
+            force8bit: 'Disabled'      # 'Enabled' or 'Disabled' (Advanced mode only)
+            half_array: 'Enabled'      # 'Enabled' (32x32) or 'Disabled' (32x64)
+            signed_data: 'Disabled'    # 'Enabled' or 'Disabled'
+            trigger_mode: 'no_trigger'       # 'no_trigger' | 'single_trigger' | 'multiple_trigger'
+            trigger_frames_per_pulse: 1      # Frames per SYNC_IN pulse (1-100, multiple_trigger only)
+            gate_mode: 'off'                 # 'off' | 'coarse' (counter 1 only, Advanced mode)
+            coarse_gate_start: 0             # Gate ON start in clock cycles (10 ns each)
+            coarse_gate_stop: 100            # Gate ON stop in clock cycles (10 ns each)
 
-    Unit Convention:
-        - ALL public parameters use SECONDS for time values (exposure, integration)
-        - Binning is integer frame count (no units)
-        - CRITICAL: SetCameraPar hardware integration parameter uses CLOCK CYCLES (each cycle = 10ns)
+    Additional optional config keys (not required, sensible defaults apply):
+            display_units: 'counts'          # 'counts' or 'cps'
+            save_directory: ''               # Pre-populated save directory in GUI
 
-    Note on exposure time:
-        - Normal mode: Hardware integration fixed at 10.4 µs (1040 clock cycles)
-        - Advanced mode: Hardware integration configurable (1-65534 clock cycles)
-        - Actual exposure = NIntegFrames × HardwareIntegration × 10ns
-
+    Unit convention
+    ---------------
+    - ALL public time values (exposure, integration) are in **seconds**.
+    - The config ``exposure`` parameter is in **clock cycles** (10 ns each).
+    - Internally ``SetCameraPar`` uses clock cycles for the HIT parameter.
+    - ``exposure_seconds = NIntegFrames × HIT_cycles × 10 ns``
     """
 
-    _camera_mode = ConfigOption("camera_mode", missing="error")
-    _dll_location = ConfigOption("dll_location", missing="error")
-    _default_hardware_integration = ConfigOption("default_hardware_integration", 5200)
-    _default_NFrames = ConfigOption("default_NFrames", 1)
-    _default_NIntegFrames = ConfigOption("default_NIntegFrames", 1000)
-    _default_NCounters = ConfigOption("default_NCounters", 1)
-    _default_Force8bit = ConfigOption("default_Force8bit", 0)
-    _default_display_units = ConfigOption(
-        "default_display_units", "counts"
-    )  # 'counts' or 'cps'
-    _default_Half_array = ConfigOption("default_Half_array", 0)
-    _default_Signed_data = ConfigOption("default_Signed_data", 0)
-    # Trigger mode: 'no_trigger' | 'single_trigger' | 'multiple_trigger'
-    _trigger_mode = ConfigOption("trigger_mode", "no_trigger")
-    # Number of frames acquired per trigger pulse (only for 'multiple_trigger', valid range 1-100)
-    _trigger_frames_per_pulse = ConfigOption("trigger_frames_per_pulse", 1)
-    # Default directory for saving acquisition files (empty string = no default)
-    _default_save_directory = ConfigOption("default_save_directory", "")
-    # Coarse gate mode: 'off' | 'coarse'  (counter 1 only)
-    _gate_mode = ConfigOption("gate_mode", "off")
-    # Coarse gate start position in clock cycles (10 ns each). Range: 0 .. (HIT - 6)
-    _coarse_gate_start = ConfigOption("coarse_gate_start", 0)
-    # Coarse gate stop position in clock cycles (10 ns each). Range: (start+1) .. (HIT - 5)
-    _coarse_gate_stop = ConfigOption("coarse_gate_stop", 100)
+    # ── Config options ─────────────────────────────────────────────────
+    _camera_mode = ConfigOption("camera_mode", "Advanced")
+    _cfg_exposure = ConfigOption("exposure", 1040)  # clock cycles
+    _cfg_nframes = ConfigOption("nframes", 1)
+    _cfg_nintegframes = ConfigOption("nintegframes", 1)
+    _cfg_ncounters = ConfigOption("ncounters", 1)
+    _cfg_force8bit = ConfigOption("force8bit", "Disabled")
+    _cfg_half_array = ConfigOption("half_array", "Enabled")
+    _cfg_signed_data = ConfigOption("signed_data", "Disabled")
+    _cfg_display_units = ConfigOption("display_units", "counts")
+    _cfg_trigger_mode = ConfigOption("trigger_mode")  # required
+    _cfg_trigger_frames_per_pulse = ConfigOption("trigger_frames_per_pulse")  # required
+    _cfg_save_directory = ConfigOption("save_directory", "")
+    _cfg_gate_mode = ConfigOption("gate_mode")  # required
+    _cfg_coarse_gate_start = ConfigOption("coarse_gate_start")  # required
+    _cfg_coarse_gate_stop = ConfigOption("coarse_gate_stop")  # required
 
-    _HardwareIntegration = _default_hardware_integration
-    _NFrames = _default_NFrames
-    _NIntegFrames = _default_NIntegFrames
-    _NCounters = _default_NCounters
-    _Force8bit = _default_Force8bit
-    _display_units = _default_display_units  # 'counts' or 'cps'
-    _Half_array = _default_Half_array
-    _Signed_data = _default_Signed_data
+    # ── Constants ──────────────────────────────────────────────────────
+    _HIT_NORMAL = 1040  # Fixed HIT for Normal mode (clock cycles)
+    _CLOCK_PERIOD = 10e-9  # 10 ns per clock cycle
+    _NROWS = 32  # Pixel array is always 32 rows
 
-    _HardwareIntegration_Normal = (
-        1040  # fixed to 10.4 us in Normal mode (in units of 10ns clock cycles)
-    )
-    _Nrows = 32
-    _Ncols = 64
-    _exposure = 0.02  # in seconds (for GUI display, calculated from NIntegFrames * HardwareIntegration * 10ns)
-
-    # Valid parameter ranges from spc.py documentation
-    _MIN_HARDWARE_INTEGRATION = 1  # clock cycles
-    _MAX_HARDWARE_INTEGRATION = 65534  # clock cycles
-    _MIN_FRAMES = 1
-    _MAX_FRAMES = 65534
-    _MIN_INTEG_FRAMES = 1
-    _MAX_INTEG_FRAMES = 65534
-
-    _live = False
-    _acquiring = False
-    _continuous = False
-    _current_cont_filename = None  # stores stem passed to ContAcqToFileStart
-    _camera_name = "SPC3"
-    _background_subtraction_enabled = (
-        False  # Track software background subtraction state
-    )
-    _last_display_frame = (
-        None  # cached raw frame from last live tick; used as ContAcq preview
-    )
-
-    def _to_binary(self, value, name):
-        """Normalize binary config options to 0/1.
-
-        Accepts 0/1, True/False, and 'Enabled'/'Disabled' variants.
-        """
-        if value in (1, True, "Enabled", "enabled", "ENABLED"):
-            return 1
-        if value in (0, False, "Disabled", "disabled", "DISABLED"):
-            return 0
-        raise ValueError(f"{name} config option must be 0/1 or Disabled/Enabled")
+    # ══════════════════════════════════════════════════════════════════
+    #  Module lifecycle
+    # ══════════════════════════════════════════════════════════════════
 
     def on_activate(self):
         """Initialisation performed during activation of the module."""
 
-        # Normalize binary options using configured values
-        force8bit = self._to_binary(self._Force8bit, "Force8bit")
-        half_array = self._to_binary(self._Half_array, "Half_array")
-        signed_data = self._to_binary(self._Signed_data, "Signed_data")
+        # ── Resolve DLL path ───────────────────────────────────────────
+        # spc.py locates the DLL via the class attribute ``lib_root_dir``.
+        # Override it so the path is absolute and independent of the
+        # working directory qudi happens to run from.
+        SPC3.lib_root_dir = os.path.join(os.path.dirname(__file__), "lib")
 
-        # Advanced Camera Mode
-        if self._camera_mode == "Advanced":
-            self.spc3 = SPC3(1, "", self._dll_location)
-            self.spc3.SetAdvancedMode(SPC3.State.ENABLED)
-            self.spc3.SetCameraPar(
-                self._HardwareIntegration,
-                self._NFrames,
-                self._NIntegFrames,
-                self._NCounters,
-                force8bit,
-                half_array,
-                signed_data,
-            )
-            hardware_time = self._HardwareIntegration * 10e-9
-            self.log.info(
-                f"SPC3 initialized in Advanced mode: HW integration = {hardware_time*1e6:.2f} µs"
-            )
+        # ── Parse binary config options ────────────────────────────────
+        self._force8bit = self._to_state(self._cfg_force8bit, "force8bit")
+        self._half_array = self._to_state(self._cfg_half_array, "half_array")
+        self._signed_data = self._to_state(self._cfg_signed_data, "signed_data")
 
-        ### GATING OPTIONS FOR ADVANCED MODE ###
-        # SetGateMode(self, counter, Mode)
-        # SetGateValues(self, Shift, Length)
-        # SetDualGate(self, DualGate_State, StartShift, FirstGateWidth, SecondGateWidth, Gap)
-        # SetTripleGate(self,TripleGate_State,StartShift,FirstGateWidth,SecondGateWidth,ThirdGateWidth,Gap1,Gap2)
-        # SetCoarseGateValues(self, Counter, Start, Stop)
+        # ── Derived geometry ───────────────────────────────────────────
+        self._ncols = 32 if self._half_array else 64
 
-        # Normal Camera Mode
-        else:
-            self.spc3 = SPC3(0, "", self._dll_location)
-            self.spc3.SetCameraPar(
-                self._HardwareIntegration_Normal,
-                self._NFrames,
-                self._NIntegFrames,
-                self._NCounters,
-                force8bit,
-                half_array,
-                signed_data,
-            )
-            hardware_time = self._HardwareIntegration_Normal * 10e-9
-            self.log.info(
-                f"SPC3 initialized in Normal mode: HW integration = {hardware_time*1e6:.2f} µs (fixed)"
-            )
-
-        # Commit camera parameters to hardware first so that the HIT is
-        # established before gate values are validated by the SDK.
-        self.spc3.ApplySettings()
-
-        # Apply trigger settings
-        self._apply_trigger_settings()
-
-        # Apply gate settings (must come after the first ApplySettings so the
-        # SDK knows the HIT when validating SetCoarseGateValues ranges)
-        self._apply_gate_settings()
-
-        # Commit trigger + gate settings
-        self.spc3.ApplySettings()
-        self._Ncols = self._Ncols >> half_array
-
-        # Calculate and log initial exposure time
-        self._exposure = self._NIntegFrames * hardware_time
-        self.log.info(
-            f"Initial exposure: {self._exposure*1e3:.2f} ms ({self._NIntegFrames} frames × {hardware_time*1e6:.2f} µs)"
+        # ── Internal state from config ─────────────────────────────────
+        self._hit = int(self._cfg_exposure)  # HIT in clock cycles
+        self._NFrames = int(self._cfg_nframes)
+        self._NIntegFrames = int(self._cfg_nintegframes)
+        self._NCounters = int(self._cfg_ncounters)
+        self._display_units = str(self._cfg_display_units)
+        self._trigger_mode = str(self._cfg_trigger_mode)
+        self._trigger_frames_per_pulse = max(
+            1, min(int(self._cfg_trigger_frames_per_pulse), 100)
         )
+        self._gate_mode = str(self._cfg_gate_mode)
+        self._coarse_gate_start = int(self._cfg_coarse_gate_start)
+        self._coarse_gate_stop = int(self._cfg_coarse_gate_stop)
 
-    def _apply_trigger_settings(self):
-        """Apply trigger mode settings to hardware.
+        # ── Acquisition state flags ────────────────────────────────────
+        self._live = False
+        self._acquiring = False
+        self._continuous = False
+        self._cont_filename = None
 
-        Trigger modes:
-            'no_trigger'       - start acquisition immediately when commanded
-            'single_trigger'   - wait for one SYNC_IN pulse, then run to completion
-            'multiple_trigger' - acquire trigger_frames_per_pulse frames per SYNC_IN pulse
-        """
-        if self._trigger_mode == "no_trigger":
-            self.spc3.SetSyncInState(SPC3.State.DISABLED, 0)
-            self.log.info("Trigger: disabled (free-running)")
+        # ── Background subtraction ─────────────────────────────────────
+        self._background_image = None
+        self._background_subtraction_enabled = False
+        self._last_live_frame = None  # cached for continuous-acq preview
 
-        elif self._trigger_mode == "single_trigger":
-            # frames=0 → wait for one pulse then run to completion
-            self.spc3.SetSyncInState(SPC3.State.ENABLED, 0)
-            self.log.info("Trigger: single external trigger on SYNC_IN")
+        # ── Loaded-file viewer state ───────────────────────────────────
+        self._loaded_frames = None
+        self._loaded_header = None
+        self._loaded_filepath = None
+        self._loaded_background = None
+        self._current_frame_index = 0
 
-        elif self._trigger_mode == "multiple_trigger":
-            frames = max(1, min(int(self._trigger_frames_per_pulse), 100))
-            self.spc3.SetSyncInState(SPC3.State.ENABLED, frames)
-            self.log.info(
-                f"Trigger: multiple external trigger on SYNC_IN, {frames} frames per pulse"
-            )
-
-        else:
-            self.log.warning(
-                f"Unknown trigger_mode '{self._trigger_mode}', defaulting to no_trigger"
-            )
-            self.spc3.SetSyncInState(SPC3.State.DISABLED, 0)
-
-    def get_trigger_mode(self):
-        """Get the current trigger mode.
-
-        @return str: 'no_trigger', 'single_trigger', or 'multiple_trigger'
-        """
-        return self._trigger_mode
-
-    def get_trigger_frames_per_pulse(self):
-        """Get the number of frames acquired per trigger pulse (multiple_trigger mode only).
-
-        @return int: Frames per trigger pulse (1-100)
-        """
-        return int(self._trigger_frames_per_pulse)
-
-    def set_trigger_mode(self, mode, frames_per_pulse=1):
-        """Set the trigger mode and apply it to hardware immediately.
-
-        @param str mode: 'no_trigger', 'single_trigger', or 'multiple_trigger'
-        @param int frames_per_pulse: Frames per SYNC_IN pulse (1-100, only for 'multiple_trigger')
-        """
-        valid_modes = ("no_trigger", "single_trigger", "multiple_trigger")
-        if mode not in valid_modes:
-            self.log.error(
-                f"Invalid trigger mode '{mode}'. Must be one of {valid_modes}"
-            )
+        # ── Construct SPC3 SDK object ──────────────────────────────────
+        mode = (
+            SPC3.CameraMode.ADVANCED
+            if self._camera_mode == "Advanced"
+            else SPC3.CameraMode.NORMAL
+        )
+        try:
+            self._spc = SPC3(mode)
+        except Exception as e:
+            self.log.error(f"Failed to initialise SPC3 camera: {e}")
             return
-        self._trigger_mode = mode
-        self._trigger_frames_per_pulse = max(1, min(int(frames_per_pulse), 100))
-        self._apply_trigger_settings()
-
-    def _apply_gate_settings(self):
-        """Apply coarse gate settings to hardware (counter 1 only).
-
-        Gate modes:
-            'off'    - counter 1 runs in continuous (ungated) mode
-            'coarse' - counter 1 counts only during the [start, stop] window within each
-                       hardware integration period.  Start and stop are in clock cycles
-                       (10 ns each).  Valid ranges per SDK:
-                           start: 0 .. (HIT - 6)
-                           stop : (start + 1) .. (HIT - 5)
-                       where HIT = hardware integration time in clock cycles.
-        """
-        if self._gate_mode != "off" and self._camera_mode != "Advanced":
-            self.log.warning(
-                f"Gate mode '{self._gate_mode}' requested but camera is in Normal mode. "
-                "Coarse gating requires Advanced mode — gate will NOT be applied. "
-                "Set camera_mode: 'Advanced' in the config to enable gating."
-            )
-            self.spc3.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
-            return
-
-        if self._gate_mode == "off":
-            self.spc3.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
-            self.log.info("Gate: disabled (continuous mode) for counter 1")
-
-        elif self._gate_mode == "coarse":
-            hit = (
-                self._HardwareIntegration
-                if self._camera_mode == "Advanced"
-                else self._HardwareIntegration_Normal
-            )
-            start = int(self._coarse_gate_start)
-            stop = int(self._coarse_gate_stop)
-
-            # Clamp to valid SDK ranges
-            start = max(0, min(start, hit - 6))
-            stop = max(start + 1, min(stop, hit - 5))
-
-            if start != int(self._coarse_gate_start) or stop != int(
-                self._coarse_gate_stop
-            ):
-                self.log.warning(
-                    f"Coarse gate values clamped to valid range: "
-                    f"start={start}, stop={stop} (HIT={hit} cycles)"
-                )
-
-            self._coarse_gate_start = start
-            self._coarse_gate_stop = stop
-
-            self.spc3.SetGateMode(1, SPC3.GateMode.COARSE)
-            self.spc3.SetCoarseGateValues(1, start, stop)
-            self.log.info(
-                f"Gate: coarse mode for counter 1 — "
-                f"start={start*10} ns, stop={stop*10} ns "
-                f"(cycles {start}–{stop} of {hit})"
-            )
-
-        else:
-            self.log.warning(
-                f"Unknown gate_mode '{self._gate_mode}', defaulting to off"
-            )
-            self.spc3.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
-
-    def _apply_settings(self):
-        """Re-queue gate settings then commit all pending settings to hardware.
-
-        This wrapper ensures gate configuration is always re-issued before
-        ApplySettings(), preventing SetCameraPar() calls from wiping the gate.
-        Use this instead of calling spc3.ApplySettings() directly in any
-        method that also calls SetCameraPar().
-        """
-        self._apply_gate_settings()
-        self.spc3.ApplySettings()
-
-    def get_gate_mode(self):
-        """Return the current gate mode string ('off' or 'coarse')."""
-        return self._gate_mode
-
-    def get_coarse_gate_values(self):
-        """Return (start, stop) coarse gate positions in clock cycles.
-
-        @return tuple(int, int): (start_cycles, stop_cycles)
-        """
-        return int(self._coarse_gate_start), int(self._coarse_gate_stop)
-
-    def set_coarse_gate(self, start_cycles, stop_cycles):
-        """Set coarse gate start/stop positions and apply to hardware immediately.
-
-        @param int start_cycles: Gate-on start position in clock cycles (10 ns each)
-        @param int stop_cycles:  Gate-on stop  position in clock cycles (10 ns each)
-        """
-        self._gate_mode = "coarse"
-        self._coarse_gate_start = int(start_cycles)
-        self._coarse_gate_stop = int(stop_cycles)
-        self._apply_gate_settings()
-        self.spc3.ApplySettings()
-
-    def disable_gate(self):
-        """Disable gating (set counter 1 back to continuous mode)."""
-        self._gate_mode = "off"
-        self._apply_gate_settings()
-        self.spc3.ApplySettings()
-
-    def _apply_camera_settings(self):
-        """Apply current camera parameters to hardware"""
-        force8bit = self._to_binary(self._Force8bit, "Force8bit")
-        half_array = self._to_binary(self._Half_array, "Half_array")
-        signed_data = self._to_binary(self._Signed_data, "Signed_data")
 
         if self._camera_mode == "Advanced":
-            self.spc3.SetCameraPar(
-                self._HardwareIntegration,
-                self._NFrames,
-                self._NIntegFrames,
-                self._NCounters,
-                force8bit,
-                half_array,
-                signed_data,
-            )
-        else:
-            self.spc3.SetCameraPar(
-                self._HardwareIntegration_Normal,
-                self._NFrames,
-                self._NIntegFrames,
-                self._NCounters,
-                force8bit,
-                half_array,
-                signed_data,
-            )
-        self._apply_settings()
+            self._spc.SetAdvancedMode(SPC3.State.ENABLED)
+
+        # Step 1: Send camera parameters and commit so that HIT is
+        # established before the SDK validates gate ranges.
+        self._spc.SetCameraPar(
+            self._effective_hit(),
+            self._NFrames,
+            self._NIntegFrames,
+            self._NCounters,
+            self._force8bit,
+            self._half_array,
+            self._signed_data,
+        )
+        self._spc.ApplySettings()
+
+        # Step 2: Apply trigger and gate settings, then commit again.
+        self._apply_trigger_settings()
+        self._apply_gate_settings()
+        self._spc.ApplySettings()
+
+        # ── Log summary ───────────────────────────────────────────────
+        exp_s = self._get_exposure_seconds()
+        hit_us = self._effective_hit() * self._CLOCK_PERIOD * 1e6
+        self.log.info(
+            f"SPC3 activated ({self._camera_mode} mode): "
+            f"HIT={self._effective_hit()} cycles ({hit_us:.2f} µs), "
+            f"NInteg={self._NIntegFrames}, exposure={exp_s * 1e3:.2f} ms, "
+            f"array={self._NROWS}×{self._ncols}, "
+            f"trigger={self._trigger_mode} (fps={self._trigger_frames_per_pulse}), "
+            f"gate={self._gate_mode}"
+        )
 
     def on_deactivate(self):
         """Deinitialisation performed during deactivation of the module."""
-        # self._spc3.ContAcqToMemoryStop()
         if self._live:
-            self.spc3.LiveSetModeOFF()
+            try:
+                self._spc.LiveSetModeOFF()
+            except Exception:
+                pass
             self._live = False
-        if self._acquiring:
-            self._acquiring = False
+
         if self._continuous:
+            try:
+                self._spc.ContAcqToFileStop()
+                self._patch_and_save_sidecars()
+            except Exception:
+                pass
             self._continuous = False
-            self.spc3.ContAcqToFileStop()
-            if self._current_cont_filename is not None:
-                self._patch_gate_header(self._current_cont_filename + ".spc3")
-                self._current_cont_filename = None
-        self.spc3.Destr()
+
+        self._acquiring = False
+
+        try:
+            self._spc.Destr()
+        except Exception:
+            pass
+
+    # ══════════════════════════════════════════════════════════════════
+    #  CameraInterface — required abstract methods
+    # ══════════════════════════════════════════════════════════════════
 
     def get_name(self):
-        """Retrieve an identifier of the camera that the GUI can print
-
-        @return string: name for the camera
-        """
-        return self.spc3.GetSerial()
+        """Return an identifier for the camera."""
+        try:
+            cam_id, serial = self._spc.GetSerial()
+            return f"SPC3 {serial}"
+        except Exception:
+            return "SPC3"
 
     def get_size(self):
-        """Retrieve size of the image in pixel
-
-        @return tuple: Size (width, height)
-        """
-        # Return (height, width) to match numpy array shape convention
-        # _Ncols is adjusted based on Half_array setting during activation
-        return self._Nrows, self._Ncols
+        """Return image size as (rows, cols)."""
+        return self._NROWS, self._ncols
 
     def support_live_acquisition(self):
-        """Return whether or not the camera can take care of live acquisition
-
-        @return bool: True if supported, False if not
-        """
+        """SPC3 supports free-running live mode."""
         return True
 
     def start_live_acquisition(self):
-        """Start a continuous acquisition
-
-        @return bool: Success ?
-        """
-        self._live = True
-        self._acquiring = False
-        self.spc3.LiveSetModeON()
-
-        return True
+        """Start free-running live acquisition."""
+        if self._acquiring or self._continuous:
+            self.log.error("Cannot start live: acquisition already in progress")
+            return False
+        try:
+            self._spc.LiveSetModeON()
+            self._live = True
+            return True
+        except Exception as e:
+            self.log.error(f"Failed to start live acquisition: {e}")
+            return False
 
     def start_single_acquisition(self):
-        """Perform snap acquisition using proper SDK sequence
+        """Perform a snap acquisition.
 
-        Executes: SnapPrepare → SnapAcquire → Extract frames using SnapGetImgPosition
-        Returns frames array built from SDK's internal buffer (same source as SaveImgDisk).
+        Executes: SnapPrepare → (wait for trigger) → SnapAcquire → extract buffer.
 
-        @return numpy array: Acquired frames, or None if failed
+        @return numpy.ndarray: Frames with shape (counters, frames, rows, cols),
+                               or None on failure.
         """
         if self._live:
             self.log.error("Cannot snap: live mode is active")
             return None
+        if self._acquiring:
+            self.log.error("Cannot snap: acquisition already in progress")
+            return None
 
         try:
             self._acquiring = True
-            # Step 1: Prepare camera for snap
-            self.spc3.SnapPrepare()
 
-            # Step 2: Wait for trigger (if trigger mode active) then acquire
-            # SnapAcquire() blocks until all frames are downloaded. In trigger mode
-            # the camera waits for a SYNC_IN pulse before capturing, so calling
-            # SnapAcquire() immediately causes the SDK to time out with COMMUNICATION_ERROR.
-            # Instead, poll IsTriggered() until the camera has received its trigger pulse
-            # and started acquiring, then call SnapAcquire() to download the frames.
+            # Ensure all settings (gate, trigger) are committed
+            self._commit_settings()
+
+            # Prepare camera for snap
+            self._spc.SnapPrepare()
+
+            # Wait for external trigger if configured
             if self._trigger_mode in ("single_trigger", "multiple_trigger"):
-                import time
+                self.log.info(f"Waiting for external trigger ({self._trigger_mode})...")
+                while not self._spc.IsTriggered():
+                    time.sleep(0.01)
+                self.log.info("Trigger received")
 
-                self.log.info(
-                    f"Waiting for external trigger on SYNC_IN "
-                    f"(trigger_mode='{self._trigger_mode}')..."
-                )
-                while not self.spc3.IsTriggered():
-                    time.sleep(0.01)  # poll every 10 ms
-                self.log.info("Trigger received, downloading frames...")
+            # Acquire (blocks until all frames are downloaded)
+            self._spc.SnapAcquire()
 
-            # Step 3: Trigger acquisition (blocks until frames downloaded)
-            self.spc3.SnapAcquire()
+            # Extract frames from SDK internal buffer
+            frames = self._spc.SnapGetImageBuffer()
+            frames = frames.copy()  # detach from SDK-owned buffer
 
-            # Step 3: Extract frames from SDK internal buffer by calling SDK directly
-            # This uses the SAME internal buffer that SaveImgDisk uses, ensuring consistent data
-            # We bypass spc.py's buggy SnapGetImgPosition wrapper and call the SDK directly
-            num_frames = self._NFrames
-            num_counters = self._NCounters
-
-            # Determine correct dtype based on bit depth
-            data_bits = self.spc3._data_bits
-            if data_bits == 16:
-                dtype = np.uint16
-            else:
-                dtype = np.uint8
-
-            # Setup SDK function call
-            f = self.spc3.dll.SPC3_Get_Img_Position
-            f.argtypes = [
-                SPC3_H,
-                np.ctypeslib.ndpointer(dtype=dtype, ndim=1, flags="C_CONTIGUOUS"),
-                c_uint32,
-                c_uint16,
-            ]
-            f.restype = SPC3Return
-
-            # Extract frames
-            frames_list = []
-            for counter_idx in range(1, num_counters + 1):  # SDK uses 1-based indexing
-                counter_frames = []
-                for frame_idx in range(1, num_frames + 1):  # SDK uses 1-based indexing
-                    # Allocate buffer for single frame
-                    data = np.zeros(
-                        self.spc3.row_size * self.spc3._num_rows, dtype=dtype
-                    )
-
-                    # Call SDK to get frame
-                    ec = f(self.spc3.c_handle, data, frame_idx, counter_idx)
-                    self.spc3._checkError(ec)
-
-                    # Transform using BufferToFrames
-                    frame = self.spc3.BufferToFrames(data, self.spc3._num_pixels, 1)
-                    # Remove counter and frame dimensions to get (cols, rows)
-                    frame = frame[0, 0, :, :]
-                    counter_frames.append(frame)
-                frames_list.append(counter_frames)
-
-            # Stack into final array: (counters, frames, cols, rows)
-            frames = np.array(frames_list)
-
-            # Apply background subtraction (if enabled) to every frame
-            for ci in range(frames.shape[0]):
-                for fi in range(frames.shape[1]):
-                    frames[ci, fi] = self.apply_background_subtraction(frames[ci, fi])
+            # Apply background subtraction to every frame if enabled
+            if (
+                self._background_subtraction_enabled
+                and self._background_image is not None
+            ):
+                for ci in range(frames.shape[0]):
+                    for fi in range(frames.shape[1]):
+                        frames[ci, fi] = self.apply_background_subtraction(
+                            frames[ci, fi]
+                        )
 
             self._acquiring = False
-            self.log.info(
-                f"Snap acquisition complete: shape={frames.shape}, dtype={frames.dtype}"
-            )
+            self.log.info(f"Snap complete: shape={frames.shape}, dtype={frames.dtype}")
             return frames
 
         except Exception as e:
             self._acquiring = False
             self.log.error(f"Snap acquisition failed: {e}")
-            import traceback
-
-            self.log.error(f"Traceback: {traceback.format_exc()}")
             return None
 
-    def _save_background_sidecar(self, spc3_filepath):
-        """Save the current background image as a sidecar .bg.npy file.
-
-        The sidecar is placed next to the .spc3 file with the same stem:
-            mydata.spc3  →  mydata.bg.npy
-
-        The background is saved as a float32 2-D array (rows × cols) so that
-        it can be directly subtracted from any frame loaded from the .spc3
-        file during offline analysis:
-
-            import numpy as np
-            frames, header = ...  # load via spc.ReadSPC3DataFile or similar
-            bg = np.load('mydata.bg.npy')          # shape (rows, cols)
-            corrected = np.maximum(frames[0] - bg, 0).astype(np.uint16)
-
-        The .spc3 header byte at metadata offset +112 (file byte 120) is also
-        patched to 1 so that the SDK / ImageJ plugin can indicate that a
-        background was captured at acquisition time.
-
-        Does nothing if no background image has been captured.
-        """
-        if not hasattr(self, "_background_image") or self._background_image is None:
-            if self._background_subtraction_enabled:
-                self.log.warning(
-                    "Background subtraction is ENABLED but no background image has been "
-                    "captured — sidecar will NOT be saved. "
-                    "Click 'Capture Background' before starting acquisition."
-                )
-            else:
-                self.log.info("No background image captured — skipping sidecar save.")
-            return
-
-        import os
-        import struct
-
-        # Derive sidecar path:  strip .spc3 if present, append .bg.npy
-        stem = spc3_filepath
-        if stem.lower().endswith(".spc3"):
-            stem = stem[:-5]
-        sidecar_path = stem + ".bg.npy"
-
-        # Reshape to 2-D (rows × cols) for convenient analysis
-        bg_2d = self._background_image.reshape(self._Nrows, self._Ncols).astype(
-            np.float32
-        )
-        np.save(sidecar_path, bg_2d)
-        self.log.info(f"Background sidecar saved: {sidecar_path}")
-
-        # Patch the .spc3 header byte 112 (background subtraction enabled flag).
-        # The metadata section starts at file byte 8, so the flag is at byte 120.
-        if os.path.exists(spc3_filepath):
-            try:
-                with open(spc3_filepath, "r+b") as fh:
-                    fh.seek(8 + 112)
-                    fh.write(struct.pack("<B", 1))
-            except Exception as exc:
-                self.log.warning(
-                    f"Could not patch background flag in {spc3_filepath}: {exc}"
-                )
-
-    def _patch_gate_header(self, filepath):
-        """Write coarse gate settings directly into the .spc3 file header.
-
-        The SDK does not persist coarse gate settings to the file header when
-        using ContAcqToFileStart/Stop.  After the file is closed by
-        ContAcqToFileStop we inject the values that were configured in the
-        module settings.  Offsets within the file (metadata section begins at
-        file byte 8):
-
-            file byte 240  (meta +232)  CoarseGate_C1_ON    uint8
-            file byte 241  (meta +233)  CoarseGate_C1_Start uint16 LE
-            file byte 243  (meta +235)  CoarseGate_C1_Stop  uint16 LE
-        """
-        if self._gate_mode != "coarse":
-            return
-        import struct
-
-        try:
-            with open(filepath, "r+b") as fh:
-                fh.seek(8 + 232)  # gate ON flag
-                fh.write(struct.pack("<B", 1))
-                fh.write(struct.pack("<H", self._coarse_gate_start))  # start
-                fh.write(struct.pack("<H", self._coarse_gate_stop))  # stop
-            self.log.info(
-                f"Gate header patched: {filepath}  "
-                f"start={self._coarse_gate_start} stop={self._coarse_gate_stop}"
-            )
-        except Exception as exc:
-            self.log.warning(f"Failed to patch gate header in {filepath}: {exc}")
-
-    def continuous_acquisition(self, filename):
-        """Start a continuous acquisition to file
-
-        @return bool: Success ?
-        """
-        if self._live or self._acquiring:
-            return False
-        else:
-            self._continuous = True
-            self._current_cont_filename = filename
-            self.spc3.ContAcqToFileStart(filename)
-            # Note: ContAcqToFileStart does NOT reset trigger or HIT settings —
-            # those configured during on_activate / set_trigger_mode remain in
-            # effect.  It DOES zero the gate header bytes in the file, which is
-            # why gate values are patched back in stop_continuous_acquisition()
-            # after ContAcqToFileStop() closes the file.
-        return True
-
-    def stop_continuous_acquisition(self):
-        """Stop continuous acquisition
-
-        @return bool: Success ?
-        """
-        if self._continuous:
-            self.spc3.ContAcqToFileStop()
-            if self._current_cont_filename is not None:
-                spc3_path = self._current_cont_filename + ".spc3"
-                self._patch_gate_header(spc3_path)
-                self._save_background_sidecar(spc3_path)
-                self._current_cont_filename = None
-            self._continuous = False
-        return True
-
-    def get_continuous_memory(self):
-        """Get continuous acquisition memory data
-
-        @return int: Total number of bytes read
-        """
-        if self._continuous:
-            return self.spc3.ContAcqToFileGetMemory()
-        else:
-            return 0
-
     def stop_acquisition(self):
-        """Stop/abort live or single acquisition
-
-        @return bool: Success ?
-        """
+        """Stop live or single acquisition."""
         if self._live:
-            self.spc3.LiveSetModeOFF()
+            try:
+                self._spc.LiveSetModeOFF()
+            except Exception as e:
+                self.log.error(f"Failed to stop live acquisition: {e}")
         self._live = False
         self._acquiring = False
+        return True
 
     def get_acquired_data(self):
-        """Return current live mode frame.
+        """Return the current live frame (counter 1) for GUI display.
 
-        This method is ONLY for live mode video display in the GUI.
-        For snap mode, use start_single_acquisition() which returns frames directly.
-        For continuous mode, data streams directly to file.
-
-        @return numpy array: Live frame data with background subtraction and scaling applied
+        During continuous acquisition the last cached live frame is returned as
+        a static preview.
         """
-
-        image_array = np.zeros(self._Nrows * self._Ncols)
         if self._live:
-            image_array = self.spc3.LiveGetImg()
-            # Keep a rolling cache of the last raw live frame.  This is used as
-            # a static preview during continuous acquisition (where the SDK
-            # streams directly to file and LiveGetImg() cannot be called).
-            self._last_display_frame = image_array[0].copy()
-
-        # During continuous acquisition Live and ContAcq are mutually exclusive
-        # in the SDK — fall back to whatever the last live frame was.
-        if self._continuous and not self._live:
-            raw = (
-                self._last_display_frame.copy()
-                if self._last_display_frame is not None
-                else np.zeros((self._Nrows, self._Ncols), dtype=np.uint16)
-            )
+            try:
+                all_counters = self._spc.LiveGetImg()  # (counters, rows, cols)
+                raw = all_counters[0]
+                self._last_live_frame = raw.copy()
+            except Exception as e:
+                self.log.error(f"LiveGetImg failed: {e}")
+                raw = np.zeros((self._NROWS, self._ncols), dtype=np.uint16)
+        elif self._continuous and self._last_live_frame is not None:
+            raw = self._last_live_frame.copy()
         else:
-            raw = image_array[0]
+            raw = np.zeros((self._NROWS, self._ncols), dtype=np.uint16)
 
-        # Apply background subtraction, CPS scaling, and reshape, then return
-        counter1_frame = self.apply_background_subtraction(raw)
+        # Apply background subtraction
+        frame = self.apply_background_subtraction(raw)
 
-        # Scale to counts per second if enabled
+        # Scale to counts per second if requested
         if self._display_units == "cps":
-            hardware_integration = (
-                self._HardwareIntegration
-                if self._camera_mode == "Advanced"
-                else self._HardwareIntegration_Normal
-            )
-            exposure_time_seconds = hardware_integration * 10e-9 * self._NIntegFrames
-            counter1_frame = (
-                counter1_frame.astype(np.float32) / exposure_time_seconds
-            ).astype(counter1_frame.dtype)
+            exp_s = self._get_exposure_seconds()
+            if exp_s > 0:
+                frame = (frame.astype(np.float64) / exp_s).astype(frame.dtype)
 
-        # Ensure 2D shape for GUI display (rows, cols)
-        if counter1_frame.ndim == 1:
-            counter1_frame = counter1_frame.reshape(self._Nrows, self._Ncols)
+        # Ensure 2-D for GUI display
+        if frame.ndim == 1:
+            frame = frame.reshape(self._NROWS, self._ncols)
 
-        return counter1_frame
+        return frame
 
     def set_exposure(self, exposure):
-        """Set the exposure time in seconds
+        """Set exposure time in seconds.
 
-        @param float exposure: desired new exposure time in seconds
+        Adjusts NIntegFrames to achieve the requested exposure while keeping
+        the hardware integration time (HIT) unchanged.
 
-        @return bool: Success?
+            exposure = NIntegFrames × HIT_cycles × 10 ns
 
-        FORMULA: exposure_seconds = NIntegFrames × HardwareIntegration_cycles × 10ns_per_cycle
-        Note: HardwareIntegration is in CLOCK CYCLES where each cycle = 10ns
+        @param float exposure: desired exposure in seconds
+        @return float: actual achieved exposure in seconds
         """
-        # Calculate NIntegFrames needed to achieve desired exposure time
-        # Actual exposure = NIntegFrames * HardwareIntegration_cycles * 10ns
-        # IMPORTANT: HardwareIntegration is in CLOCK CYCLES (each cycle = 10ns)
-        # For Normal mode: HardwareIntegration fixed at 1040 cycles (1040 × 10ns = 10.4 µs)
-        # For Advanced mode: use configured _HardwareIntegration (in cycles)
-
-        if self._camera_mode == "Advanced":
-            hardware_time = self._HardwareIntegration * 10e-9  # convert to seconds
-        else:
-            hardware_time = (
-                self._HardwareIntegration_Normal * 10e-9
-            )  # convert to seconds
-
-        # Calculate required NIntegFrames
-        n_integ_frames = int(round(exposure / hardware_time))
-
-        # Clamp to valid range
-        n_integ_frames = max(
-            self._MIN_INTEG_FRAMES, min(n_integ_frames, self._MAX_INTEG_FRAMES)
-        )
-
-        if n_integ_frames != int(round(exposure / hardware_time)):
-            self.log.warning(
-                f"Requested exposure {exposure}s clamped to {n_integ_frames} frames"
-            )
-
-        self._NIntegFrames = n_integ_frames
-        self._exposure = n_integ_frames * hardware_time  # actual achieved exposure
-
-        # Normalize binary options for safe re-application
-        force8bit = self._to_binary(self._Force8bit, "Force8bit")
-        half_array = self._to_binary(self._Half_array, "Half_array")
-        signed_data = self._to_binary(self._Signed_data, "Signed_data")
-
-        self.spc3.SetCameraPar(
-            (
-                self._HardwareIntegration
-                if self._camera_mode == "Advanced"
-                else self._HardwareIntegration_Normal
-            ),
-            self._NFrames,
-            self._NIntegFrames,
-            self._NCounters,
-            force8bit,
-            half_array,
-            signed_data,
-        )
-        self._apply_settings()
-        return True
+        hit_s = self._effective_hit() * self._CLOCK_PERIOD
+        n = max(1, min(int(round(exposure / hit_s)), 65534))
+        self._NIntegFrames = n
+        self._apply_camera_settings()
+        return self._get_exposure_seconds()
 
     def get_exposure(self):
-        """Get the exposure time in seconds
+        """Return exposure time in seconds."""
+        return self._get_exposure_seconds()
 
-        @return float exposure time
-
-        FORMULA: exposure = NIntegFrames × HardwareIntegration_cycles × 10ns_per_cycle
-        Each clock cycle = 10ns = 10e-9 seconds
-        """
-        # Calculate actual exposure time: NIntegFrames * HardwareIntegration_cycles * 10ns
-        # HardwareIntegration is in clock cycles (10ns per cycle)
-        if self._camera_mode == "Advanced":
-            hardware_time = (
-                self._HardwareIntegration * 10e-9
-            )  # cycles × 10ns/cycle = seconds
-        else:
-            hardware_time = (
-                self._HardwareIntegration_Normal * 10e-9
-            )  # cycles × 10ns/cycle = seconds
-
-        self._exposure = self._NIntegFrames * hardware_time
-        return self._exposure
-
-    # def get_actual_exposure(self):
-    # """Get the actual exposure time in seconds
-
-    # @return float exposure time
-    # """
-    # return self._NIntegFrames * (self._HardwareIntegration_Normal / 100) / 1000
-
-    def set_hardware_integration(self, integration_seconds):
-        """Set hardware integration time (only for Advanced mode)
-
-        SetCameraPar first parameter uses CLOCK CYCLES (each cycle = 10ns).
-        This method accepts SECONDS and converts to clock cycles.
-
-        @param float integration_seconds: Hardware integration time in SECONDS
-        @return bool: Success?
-
-        Conversion formula: seconds × 1e9 ns/s ÷ 10 ns/cycle = clock_cycles
-        """
-        if self._camera_mode != "Advanced":
-            self.log.warning(
-                "Hardware integration time is fixed in Normal mode (10.4 us)"
-            )
-            return False
-
-        # STEP 1: Convert SECONDS to NANOSECONDS (multiply by 1e9)
-        integration_ns = integration_seconds * 1e9
-        # STEP 2: Convert NANOSECONDS to CLOCK CYCLES (divide by 10, since each cycle = 10ns)
-        integration_cycles = int(round(integration_ns / 10.0))
-
-        # Clamp to valid range
-        integration_cycles = max(
-            self._MIN_HARDWARE_INTEGRATION,
-            min(integration_cycles, self._MAX_HARDWARE_INTEGRATION),
-        )
-
-        self._HardwareIntegration = integration_cycles
-
-        # Update exposure time calculation
-        self._exposure = self._NIntegFrames * integration_cycles * 10e-9
-
-        force8bit = self._to_binary(self._Force8bit, "Force8bit")
-        half_array = self._to_binary(self._Half_array, "Half_array")
-        signed_data = self._to_binary(self._Signed_data, "Signed_data")
-
-        self.spc3.SetCameraPar(
-            integration_cycles,
-            self._NFrames,
-            self._NIntegFrames,
-            self._NCounters,
-            force8bit,
-            half_array,
-            signed_data,
-        )
-        self._apply_settings()
-        return True
-
-    def set_binning(self, binning):
-        """Set temporal binning (NIntegFrames)
-
-        @param int binning: Number of frames to integrate
-        @return bool: Success?
-        """
-        # Clamp to valid range
-        binning = max(self._MIN_INTEG_FRAMES, min(binning, self._MAX_INTEG_FRAMES))
-
-        self._NIntegFrames = binning
-
-        # Update exposure time
-        if self._camera_mode == "Advanced":
-            hardware_time = self._HardwareIntegration * 10e-9
-        else:
-            hardware_time = self._HardwareIntegration_Normal * 10e-9
-        self._exposure = binning * hardware_time
-
-        force8bit = self._to_binary(self._Force8bit, "Force8bit")
-        half_array = self._to_binary(self._Half_array, "Half_array")
-        signed_data = self._to_binary(self._Signed_data, "Signed_data")
-
-        self.spc3.SetCameraPar(
-            (
-                self._HardwareIntegration
-                if self._camera_mode == "Advanced"
-                else self._HardwareIntegration_Normal
-            ),
-            self._NFrames,
-            self._NIntegFrames,
-            self._NCounters,
-            force8bit,
-            half_array,
-            signed_data,
-        )
-        self._apply_settings()
-        return True
-
-    def get_binning(self):
-        """Get the current temporal binning (NIntegFrames)
-
-        @return int: Current binning value
-        """
-        return self._NIntegFrames
-
-    def get_default_save_directory(self):
-        """Return the default save directory from config, or empty string if not set."""
-        return self._default_save_directory
-
-    # not applicable for SPAD
     def set_gain(self, gain):
-        """Set the gain
-
-        @param float gain: desired new gain
-
-        @return float: new exposure gain
-        """
+        """Not applicable for SPAD camera."""
         return 0
 
-    def get_display_units(self):
-        """Get the display units setting
+    def get_gain(self):
+        """Not applicable for SPAD camera."""
+        return 0
 
-        @return str: 'counts' or 'cps'
-        """
+    def get_ready_state(self):
+        """Return True when camera is idle and ready for a new acquisition."""
+        return not (self._live or self._acquiring or self._continuous)
+
+    # ══════════════════════════════════════════════════════════════════
+    #  SPC3‑specific public methods (called by camera_logic_SPC3)
+    # ══════════════════════════════════════════════════════════════════
+
+    # ── Display units ──────────────────────────────────────────────────
+
+    def get_display_units(self):
+        """Return 'counts' or 'cps'."""
         return self._display_units
 
     def set_display_units(self, units):
-        """Set the display units
+        """Set display scaling mode.
 
         @param str units: 'counts' or 'cps'
-        @return bool: Success?
+        @return bool: Success
         """
-        if units not in ["counts", "cps"]:
-            self.log.error(f"Invalid display units: {units}. Must be 'counts' or 'cps'")
+        if units not in ("counts", "cps"):
+            self.log.error(f"Invalid display units '{units}'. Use 'counts' or 'cps'")
             return False
         self._display_units = units
         self.log.info(f"Display units set to: {units}")
         return True
 
-    def get_gain(self):
-        """Get the gain
+    # ── Hardware integration time ──────────────────────────────────────
 
-        @return float: exposure gain
+    def set_hardware_integration(self, seconds):
+        """Set HIT in seconds (Advanced mode only).
+
+        Internally converts to clock cycles for SetCameraPar.
+
+        @param float seconds: HIT in seconds
+        @return bool: Success
         """
+        if self._camera_mode != "Advanced":
+            self.log.warning("HIT is fixed in Normal mode (10.4 µs)")
+            return False
+
+        cycles = max(1, min(int(round(seconds / self._CLOCK_PERIOD)), 65534))
+        self._hit = cycles
+        self._apply_camera_settings()
+        self.log.info(
+            f"HIT set to {cycles} cycles ({cycles * self._CLOCK_PERIOD * 1e6:.2f} µs)"
+        )
+        return True
+
+    # ── Temporal binning ───────────────────────────────────────────────
+
+    def set_binning(self, binning):
+        """Set temporal binning (NIntegFrames).
+
+        @param int binning: number of frames to integrate (1-65534)
+        @return bool: Success
+        """
+        self._NIntegFrames = max(1, min(int(binning), 65534))
+        self._apply_camera_settings()
+        return True
+
+    def get_binning(self):
+        """Return current NIntegFrames value."""
+        return self._NIntegFrames
+
+    # ── Save directory ─────────────────────────────────────────────────
+
+    def get_default_save_directory(self):
+        """Return the default save directory from config, or empty string."""
+        return self._cfg_save_directory
+
+    # ── Trigger ────────────────────────────────────────────────────────
+
+    def get_trigger_mode(self):
+        """Return 'no_trigger', 'single_trigger', or 'multiple_trigger'."""
+        return self._trigger_mode
+
+    def get_trigger_frames_per_pulse(self):
+        """Return frames per SYNC_IN pulse (1-100)."""
+        return self._trigger_frames_per_pulse
+
+    def set_trigger_mode(self, mode, frames_per_pulse=1):
+        """Set trigger mode and apply immediately.
+
+        @param str mode: 'no_trigger' | 'single_trigger' | 'multiple_trigger'
+        @param int frames_per_pulse: 1-100 (multiple_trigger only)
+        """
+        valid = ("no_trigger", "single_trigger", "multiple_trigger")
+        if mode not in valid:
+            self.log.error(f"Invalid trigger mode '{mode}'. Must be one of {valid}")
+            return
+        self._trigger_mode = mode
+        self._trigger_frames_per_pulse = max(1, min(int(frames_per_pulse), 100))
+        self._apply_trigger_settings()
+        self._commit_settings()
+
+    # ── Continuous acquisition ─────────────────────────────────────────
+
+    def continuous_acquisition(self, filename):
+        """Start streaming acquisition data to file.
+
+        Settings must already be committed (on_activate or via set_* methods).
+        Do NOT call ApplySettings() here — calling it immediately before
+        ContAcqToFileStart can reset the camera into an idle state that
+        prevents data generation.
+
+        @param str filename: path stem (SDK appends .spc3)
+        @return bool: Success
+        """
+        if self._live or self._acquiring:
+            self.log.error("Cannot start continuous: another acquisition is active")
+            return False
+        self._continuous = True
+        self._cont_filename = filename
+        self._spc.ContAcqToFileStart(filename)
+        self.log.info(f"ContAcqToFileStart -> {filename}")
+        return True
+
+    def stop_continuous_acquisition(self):
+        """Stop streaming and close the output file."""
+        if self._continuous:
+            self._spc.ContAcqToFileStop()
+            self._patch_and_save_sidecars()
+            self._continuous = False
+        return True
+
+    def get_continuous_memory(self):
+        """Dump camera memory to disk during continuous acquisition.
+
+        @return int: bytes read in this call
+        """
+        if self._continuous:
+            return self._spc.ContAcqToFileGetMemory()
         return 0
 
-    def get_ready_state(self):
-        """Is the camera ready for an acquisition ?
-
-        @return bool: ready ?
-        """
-        if self._live:
-            return False
-        else:
-            return True
+    # ── Background subtraction ─────────────────────────────────────────
 
     def capture_background_image(self):
-        """Capture a background image for background subtraction.
+        """Capture a background image by averaging live frames.
 
-        Uses live mode to capture multiple frames and averages them.
-        This ensures the same NIntegFrames settings as normal live acquisition.
-        Camera can be in live or idle mode.
+        Uses NFrames from config to determine how many frames to average.
 
-        @return bool: Success ?
+        @return bool: Success
         """
         try:
-            # Determine if we need to start/stop live mode
             was_live = self._live
             if not was_live:
                 self.start_live_acquisition()
-                import time
+                time.sleep(0.5)  # let hardware stabilise
 
-                time.sleep(0.5)  # Give hardware time to stabilize
+            n_avg = max(1, self._NFrames)
+            frames = []
+            for _ in range(n_avg):
+                img = self._spc.LiveGetImg()
+                frames.append(img[0])  # counter 1
 
-            # Capture multiple live frames using NFrames from config
-            num_frames_to_average = self._NFrames
-            self.log.info(
-                f"Capturing background: averaging {num_frames_to_average} frames"
-            )
-            frames_list = []
-
-            for i in range(num_frames_to_average):
-                image_array = self.spc3.LiveGetImg()
-                counter0_frame = image_array[0]  # Shape: (rows, cols)
-                frames_list.append(counter0_frame)
-
-            # Stop live if we started it
             if not was_live:
                 self.stop_acquisition()
 
-            # Stack and average all frames
-            frames_stack = np.stack(
-                frames_list, axis=0
-            )  # Shape: (num_frames, rows, cols)
-            background_2d = np.mean(frames_stack, axis=0).astype(
-                np.uint16
-            )  # Shape: (rows, cols)
-
-            # Flatten to 1D for storage
-            self._background_image = background_2d.flatten()
-
-            self.log.info(
-                f"Background image captured: averaged {num_frames_to_average} frames"
+            stacked = np.stack(frames, axis=0)
+            self._background_image = (
+                np.mean(stacked, axis=0).astype(np.uint16).flatten()
             )
+            self.log.info(f"Background captured: averaged {n_avg} frames")
             return True
+
         except Exception as e:
-            import traceback
-
-            self.log.error(f"Failed to capture background image: {e}")
-            self.log.error(f"Traceback: {traceback.format_exc()}")
+            self.log.error(f"Failed to capture background: {e}")
             return False
-
-    def apply_background_subtraction(self, frame):
-        """Apply stored background image to *frame* if subtraction is enabled.
-
-        This is a pure, mode-independent helper.  It can be called on any
-        2-D or 1-D frame array — from live, snap, or loaded-file display.
-
-        @param numpy.ndarray frame: Raw pixel data (any shape)
-        @return numpy.ndarray: Subtracted frame (same shape and dtype), or the
-                               original frame unchanged if subtraction is off /
-                               no background has been captured yet.
-        """
-        if not self._background_subtraction_enabled:
-            return frame
-        if not hasattr(self, "_background_image") or self._background_image is None:
-            return frame
-
-        original_shape = frame.shape
-        frame_flat = frame.flatten().astype(np.float32)
-
-        if self._background_image.size != frame_flat.size:
-            self.log.warning(
-                f"Background size mismatch: frame={frame_flat.size}, "
-                f"background={self._background_image.size} — subtraction skipped"
-            )
-            return frame
-
-        subtracted = np.maximum(
-            frame_flat - self._background_image.astype(np.float32), 0
-        )
-        return subtracted.astype(frame.dtype).reshape(original_shape)
 
     def enable_background_subtraction(self):
         """Enable software background subtraction.
 
-        The background image must be captured first using capture_background_image().
+        A background image must be captured first via capture_background_image().
 
-        @return bool: Success ?
+        @return bool: Success
         """
-        if not hasattr(self, "_background_image") or self._background_image is None:
-            self.log.warning(
-                "No background image captured. Call capture_background_image() first."
-            )
+        if self._background_image is None:
+            self.log.warning("No background image captured")
             return False
-
         self._background_subtraction_enabled = True
         self.log.info("Background subtraction enabled")
         return True
@@ -1090,230 +566,321 @@ class SPC3_Qudi(CameraInterface):
     def disable_background_subtraction(self):
         """Disable software background subtraction.
 
-        @return bool: Success ?
+        @return bool: Success
         """
         self._background_subtraction_enabled = False
-        self.log.info("Software background subtraction disabled")
+        self.log.info("Background subtraction disabled")
         return True
 
-    def read_spc3_file(self, path):
-        """Read a .spc3 data file and return frames array and header
+    def apply_background_subtraction(self, frame):
+        """Subtract stored background from *frame* if subtraction is enabled.
 
-        @param str path: Path to .spc3 file
-        @return tuple: (frames array, header dict)
+        Mode-independent helper — works on any frame (live, snap, loaded).
+
+        @param numpy.ndarray frame: raw pixel data (any shape)
+        @return numpy.ndarray: corrected frame (same shape and dtype)
         """
-        frames, header = self.spc3.ReadSPC3DataFile(path)
-        return frames, header
+        if not self._background_subtraction_enabled or self._background_image is None:
+            return frame
+
+        shape = frame.shape
+        flat = frame.flatten().astype(np.float32)
+        if flat.size != self._background_image.size:
+            self.log.warning(
+                f"Background size mismatch: frame={flat.size}, "
+                f"background={self._background_image.size} — skipping"
+            )
+            return frame
+
+        result = np.maximum(flat - self._background_image.astype(np.float32), 0)
+        return result.astype(frame.dtype).reshape(shape)
+
+    # ── File I/O ───────────────────────────────────────────────────────
 
     def save_frames_to_file(self, frames, filepath):
-        """Save acquired snap frames to .spc3 file using SDK
+        """Save snap frames to .spc3 via SDK SaveImgDisk.
 
-        Uses SDK's SaveImgDisk to write directly from internal buffer.
-        SDK may add .spc3 extension automatically.
-
-        @param numpy array frames: Frames array (to get actual frame count)
-        @param str filepath: Path to save file
-        @return bool: Success?
+        @param numpy.ndarray frames: shape (counters, frames, rows, cols)
+        @param str filepath: output path (.spc3 extension optional)
+        @return bool: Success
         """
         try:
-            import os
-
-            # Normalize path to Windows format (handles spaces in directory names)
             filepath = os.path.normpath(filepath)
-
-            # Remove .spc3 extension if present (SDK adds it automatically)
             if filepath.endswith(".spc3"):
                 filepath = filepath[:-5]
-
-            # Ensure directory exists
             directory = os.path.dirname(filepath)
-            if directory and not os.path.exists(directory):
+            if directory:
                 os.makedirs(directory, exist_ok=True)
-                self.log.info(f"Created directory: {directory}")
 
-            # Get actual number of frames from the frames array
-            # Shape is (num_counters, num_frames, rows, cols)
-            actual_num_frames = frames.shape[1]
-
-            self.log.info(f"Saving {actual_num_frames} frames to '{filepath}'")
-
-            # SaveImgDisk(Start_Img, End_Img, filename, mode)
-            # Note: SDK uses 1-based indexing, so 1 to actual_num_frames saves all frames
-            self.spc3.SaveImgDisk(
-                1, actual_num_frames, filepath, SPC3.OutFileFormat.SPC3_FILEFORMAT
+            n_frames = frames.shape[1]
+            self._spc.SaveImgDisk(
+                1, n_frames, filepath, SPC3.OutFileFormat.SPC3_FILEFORMAT
             )
 
-            # SDK adds .spc3 extension automatically
-            expected_file = filepath + ".spc3"
-            if os.path.exists(expected_file):
-                self._save_background_sidecar(expected_file)
+            expected = filepath + ".spc3"
+            if os.path.exists(expected):
+                self._patch_gate_header(expected)
+                self._save_background_sidecar(expected)
                 return True
-            else:
-                self.log.error(
-                    f"SaveImgDisk completed but file not found at {expected_file}"
-                )
-                return False
+
+            self.log.error(f"SaveImgDisk completed but file not found: {expected}")
+            return False
+
         except Exception as e:
             self.log.error(f"Failed to save frames: {e}")
-            import traceback
-
-            self.log.error(f"Traceback: {traceback.format_exc()}")
             return False
 
     def load_acquisition_file(self, filepath):
-        """Load acquisition file for viewing
+        """Load a .spc3 or .npy file for frame-by-frame viewing.
 
-        Loads .npy files (from snap) or .spc3 files (from continuous acquisitions).
-        Works with any image dimensions stored in the file.
-
-        @param str filepath: Path to .npy or .spc3 file
-        @return bool: Success?
+        @param str filepath: path to file
+        @return bool: Success
         """
         try:
-            import os
-
-            # Normalize path to Windows format (handles spaces in directory names)
             filepath = os.path.normpath(filepath)
-
-            # Load based on file extension
             if filepath.endswith(".npy"):
-                # Numpy format (snap acquisitions)
                 self._loaded_frames = np.load(filepath)
-                self._loaded_header = {}  # No header in numpy files
+                self._loaded_header = {}
             else:
-                # SPC3 format (continuous acquisitions)
-                self._loaded_frames, self._loaded_header = self.read_spc3_file(filepath)
+                self._loaded_frames, self._loaded_header = SPC3.ReadSPC3DataFile(
+                    filepath
+                )
+
             self._current_frame_index = 0
             self._loaded_filepath = filepath
 
-            num_counters, num_frames, rows, cols = self._loaded_frames.shape
-            self.log.info(
-                f"Loaded {num_frames} frames ({rows}\u00d7{cols}) from {filepath}"
-            )
-
             # Auto-load background sidecar if present
-            import os
-
             stem = os.path.splitext(filepath)[0]
             sidecar = stem + ".bg.npy"
-            if os.path.exists(sidecar):
-                self._loaded_background = np.load(
-                    sidecar
-                )  # float32, shape (rows, cols)
-                self.log.info(f"Background sidecar loaded: {sidecar}")
-            else:
-                self._loaded_background = None
-
-            return True
-        except Exception as e:
-            self.log.error(f"Failed to load file {filepath}: {e}")
-            import traceback
-
-            self.log.error(f"Traceback: {traceback.format_exc()}")
-            return False
-
-    def convert_spc3_to_numpy(self, spc3_filepath, numpy_filepath):
-        """Convert SPC3 format file to numpy format
-
-        @param str spc3_filepath: Path to input .spc3 file
-        @param str numpy_filepath: Path to output .npy file
-        @return bool: Success?
-        """
-        try:
-            frames, header = self.read_spc3_file(spc3_filepath)
-            np.save(numpy_filepath, frames)
-            self.log.info(
-                f"Converted {spc3_filepath} to numpy format: {numpy_filepath}"
+            self._loaded_background = (
+                np.load(sidecar) if os.path.exists(sidecar) else None
             )
+
+            n_c, n_f, n_r, n_col = self._loaded_frames.shape
+            self.log.info(f"Loaded {n_f} frames ({n_r}×{n_col}) from {filepath}")
             return True
+
         except Exception as e:
-            self.log.error(f"Failed to convert SPC3 to numpy: {e}")
+            self.log.error(f"Failed to load {filepath}: {e}")
             return False
 
     def get_loaded_frame_count(self):
-        """Get number of frames in loaded file
-
-        @return int: Number of frames, or 0 if no file loaded
-        """
-        if hasattr(self, "_loaded_frames") and self._loaded_frames is not None:
-            # frames shape is (num_counters, num_frames, rows, cols)
+        """Return number of frames in loaded file, or 0."""
+        if self._loaded_frames is not None:
             return self._loaded_frames.shape[1]
         return 0
 
     def get_loaded_frame(self, frame_index):
-        """Get a specific frame from loaded file
-
-        @param int frame_index: Frame index (0-based)
-        @return numpy array: Frame data, or None if invalid
-        """
-        if not hasattr(self, "_loaded_frames") or self._loaded_frames is None:
-            self.log.warning("No file loaded")
+        """Return counter-0 frame at *frame_index* (0-based), or None."""
+        if self._loaded_frames is None:
             return None
-
-        num_frames = self._loaded_frames.shape[1]
-        if frame_index < 0 or frame_index >= num_frames:
-            self.log.warning(
-                f"Frame index {frame_index} out of range [0, {num_frames-1}]"
-            )
+        n = self._loaded_frames.shape[1]
+        if not 0 <= frame_index < n:
             return None
-
-        # Extract counter 0, frame at index
-        # Shape: (num_counters, num_frames, rows, cols) after BufferToFrames
-        frame = self._loaded_frames[0, frame_index, :, :]  # Returns (rows, cols)
         self._current_frame_index = frame_index
-        return frame
+        return self._loaded_frames[0, frame_index]
 
     def get_current_frame_index(self):
-        """Get current frame index in loaded file
-
-        @return int: Current frame index
-        """
-        if hasattr(self, "_current_frame_index"):
-            return self._current_frame_index
-        return 0
+        """Return current frame index in loaded file."""
+        return self._current_frame_index
 
     def get_loaded_filepath(self):
-        """Get path of currently loaded file
-
-        @return str: Filepath, or None if no file loaded
-        """
-        if hasattr(self, "_loaded_filepath"):
-            return self._loaded_filepath
-        return None
+        """Return path of loaded file, or None."""
+        return self._loaded_filepath
 
     def get_loaded_background(self):
-        """Return the background image associated with the currently loaded file.
-
-        Automatically populated by load_acquisition_file() when a .bg.npy
-        sidecar is found next to the .spc3 file.
-
-        @return numpy.ndarray or None: float32 array of shape (rows, cols),
-                                       or None if no sidecar was found.
-        """
-        if hasattr(self, "_loaded_background"):
-            return self._loaded_background
-        return None
+        """Return loaded background sidecar array, or None."""
+        return self._loaded_background
 
     def load_frames_from_memory(self, frames):
-        """Load frames directly from memory for viewing
+        """Load frames directly from memory for viewing.
 
-        @param numpy.ndarray frames: Frames array to load (counters, frames, rows, cols)
-        @return bool: Success?
+        @param numpy.ndarray frames: shape (counters, frames, rows, cols)
+        @return bool: Success
         """
         try:
             self._loaded_frames = frames
-            self._loaded_header = {}  # No header for memory frames
+            self._loaded_header = {}
             self._current_frame_index = 0
             self._loaded_filepath = "(unsaved snap acquisition)"
-
-            num_counters, num_frames, rows, cols = frames.shape
-            self.log.info(
-                f"Loaded {num_frames} frames ({rows}×{cols}) from memory (counters: {num_counters})"
-            )
+            n_c, n_f, n_r, n_col = frames.shape
+            self.log.info(f"Loaded {n_f} frames ({n_r}×{n_col}) from memory")
             return True
         except Exception as e:
             self.log.error(f"Failed to load frames from memory: {e}")
-            import traceback
-
-            self.log.error(f"Traceback: {traceback.format_exc()}")
             return False
+
+    # ── Gate control ───────────────────────────────────────────────────
+
+    def get_gate_mode(self):
+        """Return 'off' or 'coarse'."""
+        return self._gate_mode
+
+    def get_coarse_gate_values(self):
+        """Return (start, stop) in clock cycles."""
+        return self._coarse_gate_start, self._coarse_gate_stop
+
+    def set_coarse_gate(self, start_cycles, stop_cycles):
+        """Set coarse gate window and apply immediately.
+
+        @param int start_cycles: gate ON start (clock cycles)
+        @param int stop_cycles: gate ON stop (clock cycles)
+        """
+        self._gate_mode = "coarse"
+        self._coarse_gate_start = int(start_cycles)
+        self._coarse_gate_stop = int(stop_cycles)
+        self._apply_gate_settings()
+        self._spc.ApplySettings()
+
+    def disable_gate(self):
+        """Set counter 1 back to continuous (ungated) mode."""
+        self._gate_mode = "off"
+        self._apply_gate_settings()
+        self._spc.ApplySettings()
+
+    # ══════════════════════════════════════════════════════════════════
+    #  Private helpers
+    # ══════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    def _to_state(value, name=""):
+        """Convert config string/bool/int to SPC3 State enum (0 or 1)."""
+        if value in (1, True, "Enabled", "enabled", "ENABLED"):
+            return SPC3.State.ENABLED
+        if value in (0, False, "Disabled", "disabled", "DISABLED"):
+            return SPC3.State.DISABLED
+        raise ValueError(f"{name}: expected Enabled/Disabled, got {value!r}")
+
+    def _effective_hit(self):
+        """Return active HIT in clock cycles."""
+        if self._camera_mode == "Advanced":
+            return self._hit
+        return self._HIT_NORMAL
+
+    def _get_exposure_seconds(self):
+        """Calculate exposure: NIntegFrames × HIT × 10 ns."""
+        return self._NIntegFrames * self._effective_hit() * self._CLOCK_PERIOD
+
+    def _apply_camera_settings(self):
+        """Send current camera parameters to hardware and commit."""
+        self._spc.SetCameraPar(
+            self._effective_hit(),
+            self._NFrames,
+            self._NIntegFrames,
+            self._NCounters,
+            self._force8bit,
+            self._half_array,
+            self._signed_data,
+        )
+        self._commit_settings()
+
+    def _apply_trigger_settings(self):
+        """Configure the SYNC_IN trigger on the camera."""
+        if self._trigger_mode == "no_trigger":
+            self._spc.SetSyncInState(SPC3.State.DISABLED, 0)
+        elif self._trigger_mode == "single_trigger":
+            self._spc.SetSyncInState(SPC3.State.ENABLED, 0)
+        elif self._trigger_mode == "multiple_trigger":
+            self._spc.SetSyncInState(SPC3.State.ENABLED, self._trigger_frames_per_pulse)
+        else:
+            self.log.warning(f"Unknown trigger_mode '{self._trigger_mode}', disabling")
+            self._spc.SetSyncInState(SPC3.State.DISABLED, 0)
+
+    def _apply_gate_settings(self):
+        """Configure coarse gating on counter 1."""
+        if self._gate_mode != "off" and self._camera_mode != "Advanced":
+            self.log.warning(
+                "Coarse gating requires Advanced mode — gate will NOT be applied"
+            )
+            self._spc.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
+            return
+
+        if self._gate_mode == "coarse":
+            hit = self._effective_hit()
+            start = max(0, min(self._coarse_gate_start, hit - 6))
+            stop = max(start + 1, min(self._coarse_gate_stop, hit - 5))
+            if start != self._coarse_gate_start or stop != self._coarse_gate_stop:
+                self.log.warning(
+                    f"Gate values clamped: start={start}, stop={stop} (HIT={hit})"
+                )
+            self._coarse_gate_start = start
+            self._coarse_gate_stop = stop
+            self._spc.SetGateMode(1, SPC3.GateMode.COARSE)
+            self._spc.SetCoarseGateValues(1, start, stop)
+            self.log.info(
+                f"Gate: coarse counter 1 — "
+                f"start={start * 10} ns, stop={stop * 10} ns "
+                f"(cycles {start}–{stop} of {hit})"
+            )
+        else:
+            self._spc.SetGateMode(1, SPC3.GateMode.CONTINUOUS)
+
+    def _commit_settings(self):
+        """Re-apply gate settings then commit everything to hardware.
+
+        SetCameraPar resets the SDK pending-settings queue, so the gate
+        configuration must be re-issued before every ApplySettings() call.
+        """
+        self._apply_gate_settings()
+        self._spc.ApplySettings()
+
+    # ── File header patching ───────────────────────────────────────────
+
+    def _patch_gate_header(self, filepath):
+        """Write coarse gate settings into the .spc3 file header.
+
+        The SDK does not persist coarse gate values when saving files.
+        Offsets within the file (metadata section starts at byte 8):
+
+            byte 240  (meta+232)  CoarseGate_C1_ON   uint8
+            byte 241  (meta+233)  CoarseGate_C1_Start uint16 LE
+            byte 243  (meta+235)  CoarseGate_C1_Stop  uint16 LE
+        """
+        if self._gate_mode != "coarse":
+            return
+        try:
+            with open(filepath, "r+b") as fh:
+                fh.seek(8 + 232)
+                fh.write(struct.pack("<B", 1))
+                fh.write(struct.pack("<H", self._coarse_gate_start))
+                fh.write(struct.pack("<H", self._coarse_gate_stop))
+            self.log.debug(
+                f"Gate header patched: {filepath} "
+                f"start={self._coarse_gate_start} stop={self._coarse_gate_stop}"
+            )
+        except Exception as e:
+            self.log.warning(f"Gate header patch failed for {filepath}: {e}")
+
+    def _save_background_sidecar(self, spc3_filepath):
+        """Save background as .bg.npy sidecar alongside the .spc3 file.
+
+        Also patches the background-subtraction flag in the file header
+        (metadata offset +112 → file byte 120).
+        """
+        if self._background_image is None:
+            return
+        stem = spc3_filepath
+        if stem.lower().endswith(".spc3"):
+            stem = stem[:-5]
+        sidecar = stem + ".bg.npy"
+
+        bg_2d = self._background_image.reshape(self._NROWS, self._ncols).astype(
+            np.float32
+        )
+        np.save(sidecar, bg_2d)
+        self.log.info(f"Background sidecar saved: {sidecar}")
+
+        try:
+            with open(spc3_filepath, "r+b") as fh:
+                fh.seek(8 + 112)
+                fh.write(struct.pack("<B", 1))
+        except Exception:
+            pass
+
+    def _patch_and_save_sidecars(self):
+        """Patch gate header and save background for the current continuous file."""
+        if self._cont_filename is not None:
+            path = self._cont_filename + ".spc3"
+            self._patch_gate_header(path)
+            self._save_background_sidecar(path)
+            self._cont_filename = None
