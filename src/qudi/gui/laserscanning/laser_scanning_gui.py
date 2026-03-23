@@ -44,8 +44,10 @@ class LaserScanningGui(GuiBase):
             max_display_points: 1000  # optional, Maximum number of simultaneously displayed data points
     """
 
-    sigStartScan = QtCore.Signal(bool, bool)  # laser_only, data_only
-    sigStopScan = QtCore.Signal()
+    sigStartLaserScan = QtCore.Signal()
+    sigStopLaserScan = QtCore.Signal()
+    sigStartDataAcquisition = QtCore.Signal(bool)  # laser_only
+    sigStopDataAcquisition = QtCore.Signal()
     sigDoFit = QtCore.Signal(str, bool)  # fit_config_name, fit_envelope
     sigSaveData = QtCore.Signal(str)  # save_tag
     sigClearData = QtCore.Signal()
@@ -54,6 +56,8 @@ class LaserScanningGui(GuiBase):
     sigLaserTypeToggled = QtCore.Signal(bool)  # is_frequency
     sigLaserScanSettingsChanged = QtCore.Signal(object)  # ScannableLaserSettings
     sigStabilizeLaser = QtCore.Signal(object)  # target laser value
+    sigBoundarySourceChanged = QtCore.Signal(bool)  # True: wavelength bounds, False: device bounds
+    sigWavelengthBoundsChanged = QtCore.Signal(tuple)  # (min_wavelength, max_wavelength)
 
     # declare connectors
     _laser_scanning_logic = Connector(name='laser_scanning_logic', interface='LaserScanningLogic')
@@ -116,18 +120,23 @@ class LaserScanningGui(GuiBase):
     def __connect_logic(self) -> None:
         logic = self._laser_scanning_logic()
         # To logic
-        self.sigStartScan.connect(logic.start_scan, QtCore.Qt.QueuedConnection)
-        self.sigStopScan.connect(logic.stop_scan, QtCore.Qt.QueuedConnection)
+        self.sigStartLaserScan.connect(logic.start_laser_scan, QtCore.Qt.QueuedConnection)
+        self.sigStopLaserScan.connect(logic.stop_laser_scan, QtCore.Qt.QueuedConnection)
+        self.sigStartDataAcquisition.connect(logic.start_data_acquisition, QtCore.Qt.QueuedConnection)
+        self.sigStopDataAcquisition.connect(logic.stop_data_acquisition, QtCore.Qt.QueuedConnection)
         self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
         self.sigSaveData.connect(logic.save_data, QtCore.Qt.BlockingQueuedConnection)
         self.sigClearData.connect(logic.clear_data, QtCore.Qt.QueuedConnection)
         self.sigAutoscaleHistogram.connect(logic.autoscale_histogram, QtCore.Qt.QueuedConnection)
         self.sigHistogramSettingsChanged.connect(logic.configure_histogram,
-                                                 QtCore.Qt.QueuedConnection) 
+                                                 QtCore.Qt.QueuedConnection)
         self.sigLaserTypeToggled.connect(logic.toggle_laser_type, QtCore.Qt.QueuedConnection)
         self.sigLaserScanSettingsChanged.connect(logic.configure_laser_scan,
                                                  QtCore.Qt.QueuedConnection)
         self.sigStabilizeLaser.connect(logic.stabilize_laser, QtCore.Qt.QueuedConnection)
+        self.sigBoundarySourceChanged.connect(logic.set_boundary_source, QtCore.Qt.QueuedConnection)
+        self.sigWavelengthBoundsChanged.connect(logic.configure_wavelength_scan_bounds, QtCore.Qt.QueuedConnection)
+
         # From logic
         logic.sigDataChanged.connect(self._update_data, QtCore.Qt.QueuedConnection)
         logic.sigStatusChanged.connect(self._update_status, QtCore.Qt.QueuedConnection)
@@ -139,12 +148,16 @@ class LaserScanningGui(GuiBase):
                                                   QtCore.Qt.QueuedConnection)
         logic.sigStabilizationTargetChanged.connect(self._update_stabilization_target,
                                                     QtCore.Qt.QueuedConnection)
+        logic.sigBoundarySourceChanged.connect(self._update_boundary_source, QtCore.Qt.QueuedConnection)
+        logic.sigWavelengthBoundsChanged.connect(self._update_wavelength_bounds, QtCore.Qt.QueuedConnection)
 
     def __disconnect_logic(self) -> None:
         logic = self._laser_scanning_logic()
         # To logic
-        self.sigStartScan.disconnect()
-        self.sigStopScan.disconnect()
+        self.sigStartLaserScan.disconnect()
+        self.sigStopLaserScan.disconnect()
+        self.sigStartDataAcquisition.disconnect()
+        self.sigStopDataAcquisition.disconnect()
         self.sigDoFit.disconnect()
         self.sigSaveData.disconnect()
         self.sigClearData.disconnect()
@@ -153,6 +166,8 @@ class LaserScanningGui(GuiBase):
         self.sigLaserTypeToggled.disconnect()
         self.sigLaserScanSettingsChanged.disconnect()
         self.sigStabilizeLaser.disconnect()
+        self.sigBoundarySourceChanged.disconnect()
+        self.sigWavelengthBoundsChanged.disconnect()
         # From logic
         logic.sigDataChanged.disconnect(self._update_data)
         logic.sigStatusChanged.disconnect(self._update_status)
@@ -161,6 +176,8 @@ class LaserScanningGui(GuiBase):
         logic.sigLaserTypeChanged.disconnect(self._update_laser_type)
         logic.sigLaserScanSettingsChanged.disconnect(self._update_laser_scan_settings)
         logic.sigStabilizationTargetChanged.disconnect(self._update_stabilization_target)
+        logic.sigBoundarySourceChanged.disconnect(self._update_boundary_source)
+        logic.sigWavelengthBoundsChanged.disconnect(self._update_wavelength_bounds)
 
     def __connect_actions(self) -> None:
         # File actions
@@ -205,16 +222,34 @@ class LaserScanningGui(GuiBase):
             self._mw.laser_scan_settings.sigSettingsChanged.connect(
                 self._laser_scan_settings_edited
             )
+            self._mw.laser_scan_settings.sigBoundarySourceChanged.connect(
+                self._boundary_source_changed
+            )
+            self._mw.laser_scan_settings.sigWavelengthBoundsChanged.connect(
+                self._wavelength_bounds_changed
+            )
         if self._mw.laser_stabilization is not None:
             self._mw.laser_stabilization.sigStabilizeLaser.connect(self._stabilize_clicked)
 
     def __disconnect_widgets(self) -> None:
-        self._mw.histogram_settings.sigSettingsChanged.disconnect()
-        self._mw.fit_control.sigDoFit.disconnect()
+        def safe_disconnect(signal, handler):
+            try:
+                signal.disconnect(handler)
+            except RuntimeError:
+                pass
+
+        safe_disconnect(self._mw.histogram_settings.sigSettingsChanged, self._histogram_settings_edited)
+        safe_disconnect(self._mw.fit_control.sigDoFit, self._fit_clicked)
         if self._mw.laser_scan_settings is not None:
-            self._mw.laser_scan_settings.sigSettingsChanged.disconnect()
+            safe_disconnect(self._mw.laser_scan_settings.sigSettingsChanged,
+                            self._laser_scan_settings_edited)
+            safe_disconnect(self._mw.laser_scan_settings.sigBoundarySourceChanged,
+                            self._boundary_source_changed)
+            safe_disconnect(self._mw.laser_scan_settings.sigWavelengthBoundsChanged,
+                            self._wavelength_bounds_changed)
         if self._mw.laser_stabilization is not None:
-            self._mw.laser_stabilization.sigStabilizeLaser.disconnect()
+            safe_disconnect(self._mw.laser_stabilization.sigStabilizeLaser,
+                            self._stabilize_clicked)
 
     def _update_current_laser_value(self, value: float) -> None:
         """ """
@@ -296,7 +331,7 @@ class LaserScanningGui(GuiBase):
                     data = data[:, 0]
                 self._mw.histogram_plot.update_data(x=laser_data,
                                                     y=data[-self._max_display_points:])
-                
+
     def _show_all_scan_data(self,
                           timestamps: np.ndarray,
                           laser_data: np.ndarray,
@@ -315,7 +350,7 @@ class LaserScanningGui(GuiBase):
                 if data.ndim > 1:
                     data = data[:, 0]
                 self._mw.histogram_plot.update_data(x=laser_data, y=data)
-                
+
     def _update_histogram_data(self,
                                bins: np.ndarray,
                                histogram: np.ndarray,
@@ -332,8 +367,6 @@ class LaserScanningGui(GuiBase):
             self._mw.histogram_plot.update_histogram(x=bins, y=histogram)
             self._mw.histogram_plot.update_envelope(x=bins, y=envelope)
 
-    
-
     @QtCore.Slot(str, object, bool)
     def _update_fit_data(self,
                          fit_config: str,
@@ -348,29 +381,40 @@ class LaserScanningGui(GuiBase):
             self._mw.histogram_plot.update_fit(x=fit_data[0], y=fit_data[1])
 
     @QtCore.Slot(bool, bool, bool)
-    def _update_status(self, running: bool, laser_only: bool, data_only: bool) -> None:
+    def _update_status(self, laser_scanning: bool, data_acquiring: bool, laser_only_mode: bool) -> None:
         """ Function to ensure that the GUI displays the current measurement status """
+        # Determine combined running state
+        running = laser_scanning or data_acquiring
+
         # Update checked states
-        self._mw.gui_actions.action_start_stop_scan.setChecked(running and not data_only)
-        self._mw.gui_actions.action_start_stop_record.setChecked(running and data_only)
-        # Re-Enable actions and widgets
+        self._mw.gui_actions.action_start_stop_scan.setChecked(laser_scanning)
+        self._mw.gui_actions.action_start_stop_record.setChecked(data_acquiring and not laser_scanning)
+
+        # Re-enable common controls
         self._mw.fit_control.setEnabled(True)
         self._mw.histogram_settings.setEnabled(True)
-        self._mw.gui_actions.action_start_stop_scan.setEnabled(not running or not data_only)
-        self._mw.gui_actions.action_start_stop_record.setEnabled(not running or data_only)
-        self._mw.gui_actions.action_laser_only.setEnabled(not running)
         self._mw.gui_actions.action_clear_data.setEnabled(True)
         self._mw.gui_actions.action_show_frequency.setEnabled(True)
         self._mw.gui_actions.action_save.setEnabled(True)
         self._mw.gui_actions.action_autoscale_histogram.setEnabled(True)
         self._mw.gui_actions.action_show_histogram_region.setEnabled(True)
         self._mw.gui_actions.action_show_all_data.setEnabled(not running)
+
+        # Enable/disable start/stop actions
+        self._mw.gui_actions.action_start_stop_scan.setEnabled(True)
+        self._mw.gui_actions.action_start_stop_record.setEnabled(True)
+
+        # Laser-only selection only allowed when nothing is running
+        self._mw.gui_actions.action_laser_only.setEnabled(not running)
+
+        # Laser scan settings disabled while laser is scanning
         if self._mw.laser_scan_settings is not None:
-            self._mw.laser_scan_settings.setEnabled(not running or data_only)
-            self._mw.laser_stabilization.setEnabled(not running or data_only)
-        # Show/Hide laser marker and enable/disable histogram
-        self._mw.histogram_plot.setEnabled(not laser_only or not running)
-        if laser_only:
+            self._mw.laser_scan_settings.setEnabled(not laser_scanning)
+            self._mw.laser_stabilization.setEnabled(not laser_scanning)
+
+        # Histogram enable logic
+        self._mw.histogram_plot.setEnabled(not laser_only_mode or not running)
+        if laser_only_mode:
             self._mw.histogram_plot.hide_marker_selections()
         else:
             self._mw.histogram_plot.show_marker_selections()
@@ -383,6 +427,22 @@ class LaserScanningGui(GuiBase):
             widget.update_settings(settings)
             widget.blockSignals(False)
 
+    @QtCore.Slot(bool)
+    def _update_boundary_source(self, use_wavelength_bounds: bool) -> None:
+        widget = self._mw.laser_scan_settings
+        if widget is not None:
+            widget.blockSignals(True)
+            widget.set_boundary_source(use_wavelength_bounds)
+            widget.blockSignals(False)
+
+    @QtCore.Slot(tuple)
+    def _update_wavelength_bounds(self, span: Tuple[float, float]) -> None:
+        widget = self._mw.laser_scan_settings
+        if widget is not None:
+            widget.blockSignals(True)
+            widget.update_wavelength_bounds(span)
+            widget.blockSignals(False)
+
     @QtCore.Slot(object)
     def _update_stabilization_target(self, value: float) -> None:
         widget = self._mw.laser_stabilization
@@ -391,11 +451,74 @@ class LaserScanningGui(GuiBase):
 
     def _start_stop_scan_clicked(self):
         start = self._mw.gui_actions.action_start_stop_scan.isChecked()
-        self.__start_stop(start, data_only=False)
+        if start:
+            # If wavelength bounds are selected, recording must already run
+            # We can infer boundary mode from the widget state
+            if (
+                    self._mw.laser_scan_settings is not None) and self._mw.laser_scan_settings.wavelength_bounds_radio.isChecked():
+                # ask logic state (authoritative)
+                laser_scanning, data_acquiring, _ = self._laser_scanning_logic().scan_state
+                if not data_acquiring:
+                    # revert the toggle and do nothing
+                    self._mw.gui_actions.action_start_stop_scan.blockSignals(True)
+                    self._mw.gui_actions.action_start_stop_scan.setChecked(False)
+                    self._mw.gui_actions.action_start_stop_scan.blockSignals(False)
+                    self.log.warning('Start recording before scanning with wavelength bounds.')
+                    return
+
+        # Disable UI during transition (keep your existing disabling code)
+        self._mw.fit_control.setEnabled(False)
+        self._mw.histogram_settings.setEnabled(False)
+        self._mw.gui_actions.action_start_stop_scan.setEnabled(False)
+        self._mw.gui_actions.action_start_stop_record.setEnabled(False)
+        self._mw.gui_actions.action_clear_data.setEnabled(False)
+        self._mw.gui_actions.action_show_frequency.setEnabled(False)
+        self._mw.gui_actions.action_save.setEnabled(False)
+        self._mw.gui_actions.action_autoscale_histogram.setEnabled(False)
+        self._mw.gui_actions.action_show_all_data.setEnabled(False)
+        self._mw.gui_actions.action_show_histogram_region.setEnabled(False)
+        self._mw.gui_actions.action_laser_only.setEnabled(False)
+        if self._mw.laser_scan_settings is not None:
+            self._mw.laser_scan_settings.setEnabled(False)
+            self._mw.laser_stabilization.setEnabled(False)
+
+        if start:
+            # Keep logic boundary-source in sync with GUI selection
+            if self._mw.laser_scan_settings is not None:
+                self.sigBoundarySourceChanged.emit(
+                    self._mw.laser_scan_settings.wavelength_bounds_radio.isChecked()
+                )
+
+            # Emit scan settings before starting laser scan
+            self._laser_scan_settings_edited()
+            self.sigStartLaserScan.emit()
+        else:
+            self.sigStopLaserScan.emit()
 
     def _start_stop_record_clicked(self):
         start = self._mw.gui_actions.action_start_stop_record.isChecked()
-        self.__start_stop(start, data_only=True)
+
+        # Disable UI during transition (same as before)
+        self._mw.fit_control.setEnabled(False)
+        self._mw.histogram_settings.setEnabled(False)
+        self._mw.gui_actions.action_start_stop_scan.setEnabled(False)
+        self._mw.gui_actions.action_start_stop_record.setEnabled(False)
+        self._mw.gui_actions.action_clear_data.setEnabled(False)
+        self._mw.gui_actions.action_show_frequency.setEnabled(False)
+        self._mw.gui_actions.action_save.setEnabled(False)
+        self._mw.gui_actions.action_autoscale_histogram.setEnabled(False)
+        self._mw.gui_actions.action_show_all_data.setEnabled(False)
+        self._mw.gui_actions.action_show_histogram_region.setEnabled(False)
+        self._mw.gui_actions.action_laser_only.setEnabled(False)
+        if self._mw.laser_scan_settings is not None:
+            self._mw.laser_scan_settings.setEnabled(False)
+            self._mw.laser_stabilization.setEnabled(False)
+
+        if start:
+            laser_only = self._mw.gui_actions.action_laser_only.isChecked()
+            self.sigStartDataAcquisition.emit(laser_only)
+        else:
+            self.sigStopDataAcquisition.emit()
 
     def _show_region_clicked(self) -> None:
         if self._mw.gui_actions.action_show_histogram_region.isChecked():
@@ -413,6 +536,12 @@ class LaserScanningGui(GuiBase):
     def _laser_scan_settings_edited(self) -> None:
         if self._mw.laser_scan_settings is not None:
             self.sigLaserScanSettingsChanged.emit(self._mw.laser_scan_settings.get_settings())
+
+    def _boundary_source_changed(self, use_wavelength_bounds: bool) -> None:
+        self.sigBoundarySourceChanged.emit(use_wavelength_bounds)
+
+    def _wavelength_bounds_changed(self, span: Tuple[float, float]) -> None:
+        self.sigWavelengthBoundsChanged.emit(span)
 
     def _clear_data_clicked(self):
         self.sigClearData.emit()
@@ -433,26 +562,3 @@ class LaserScanningGui(GuiBase):
         # Emit laser scan settings before starting
         self._laser_scan_settings_edited()
         self.sigStabilizeLaser.emit(target)
-
-    def __start_stop(self, start: bool, data_only: bool) -> None:
-        if (not data_only) and (self._mw.laser_scan_settings is not None):
-            # Emit laser scan settings before starting
-            if start:
-                self._laser_scan_settings_edited()
-            self._mw.laser_scan_settings.setEnabled(False)
-            self._mw.laser_stabilization.setEnabled(False)
-        self._mw.fit_control.setEnabled(False)
-        self._mw.histogram_settings.setEnabled(False)
-        self._mw.gui_actions.action_start_stop_scan.setEnabled(False)
-        self._mw.gui_actions.action_start_stop_record.setEnabled(False)
-        self._mw.gui_actions.action_clear_data.setEnabled(False)
-        self._mw.gui_actions.action_show_frequency.setEnabled(False)
-        self._mw.gui_actions.action_save.setEnabled(False)
-        self._mw.gui_actions.action_autoscale_histogram.setEnabled(False)
-        self._mw.gui_actions.action_show_all_data.setEnabled(False)
-        self._mw.gui_actions.action_show_histogram_region.setEnabled(False)
-        self._mw.gui_actions.action_laser_only.setEnabled(False)
-        if start:
-            self.sigStartScan.emit(self._mw.gui_actions.action_laser_only.isChecked(), data_only)
-        else:
-            self.sigStopScan.emit()

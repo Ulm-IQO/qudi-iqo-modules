@@ -39,8 +39,12 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.interface.data_instream_interface import DataInStreamConstraints, DataInStreamInterface
-from qudi.interface.scannable_laser_interface import ScannableLaserConstraints
-from qudi.interface.scannable_laser_interface import ScannableLaserSettings, ScannableLaserInterface
+from qudi.interface.scannable_laser_interface import (
+    ScannableLaserConstraints,
+    ScannableLaserSettings,
+    ScannableLaserInterface,
+    LaserScanDirection
+)
 from qudi.util.mutex import Mutex
 from qudi.util.network import netobtain
 from qudi.util.datastorage import TextDataStorage
@@ -263,6 +267,9 @@ class LaserScanningLogic(LogicBase):
     sigHistogramSettingsChanged = QtCore.Signal(tuple, int)  # span, bins
     sigLaserScanSettingsChanged = QtCore.Signal(object)  # laser_scan_settings
     sigStabilizationTargetChanged = QtCore.Signal(object)  # laser target value
+    sigBoundarySourceChanged = QtCore.Signal(bool)  # True: wavelength bounds, False: device bounds
+    sigWavelengthBoundsChanged = QtCore.Signal(tuple)  # (min_wavelength, max_wavelength)
+
     _sigNextDataFrame = QtCore.Signal()  # internal signal
 
     # connectors
@@ -281,6 +288,10 @@ class LaserScanningLogic(LogicBase):
                                                      default=(500.0e-9, 750.0e-9))
     _histogram_bins: int = StatusVar(name='histogram_bins', default=200)
     _current_laser_is_frequency: bool = StatusVar(name='current_laser_is_frequency', default=False)
+    # new supervision-related status
+    _use_wavelength_bounds: bool = StatusVar(name='use_wavelength_bounds', default=False)
+    _wavelength_scan_span: Tuple[float, float] = StatusVar(name='wavelength_scan_span',
+                                                           default=(500.0e-9, 750.0e-9))
 
     @staticmethod
     @_histogram_span.constructor
@@ -336,6 +347,14 @@ class LaserScanningLogic(LogicBase):
         self._frequency_histogram: LaserDataHistogram = LaserDataHistogram(span=(0, 1),
                                                                            bins=3,
                                                                            channel_count=1)
+        self.__laser_scanning: bool = False
+        self.__data_acquiring: bool = False
+        # laser scan supervision
+        self._laser_supervisor_timer = QtCore.QTimer(self)
+        self._laser_supervisor_timer.setSingleShot(False)
+        self._laser_supervisor_timer.setInterval(200)  # ms, same default as hardware used
+        self._laser_supervisor_timer.timeout.connect(self._supervise_laser, QtCore.Qt.QueuedConnection)
+        self._current_direction: LaserScanDirection = LaserScanDirection.UP
 
     def on_activate(self):
         if self._laser_channel not in self.streamer_constraints.channel_units:
@@ -358,6 +377,10 @@ class LaserScanningLogic(LogicBase):
         # Connect signals
         self._sigNextDataFrame.connect(self._measurement_loop_body, QtCore.Qt.QueuedConnection)
 
+        # Emit boundary settings to GUI
+        self.sigBoundarySourceChanged.emit(self._use_wavelength_bounds)
+        self.sigWavelengthBoundsChanged.emit(self._wavelength_scan_span)
+
     def on_deactivate(self):
         self._stop_scan()
         self._sigNextDataFrame.disconnect()
@@ -373,7 +396,6 @@ class LaserScanningLogic(LogicBase):
     @property
     def streamer_constraints(self) -> DataInStreamConstraints:
         """ Retrieve the hardware constrains from the counter device """
-        # netobtain is required if streamer is a remote module
         return netobtain(self._streamer().constraints)
 
     @property
@@ -435,71 +457,153 @@ class LaserScanningLogic(LogicBase):
 
     @property
     def scan_state(self) -> Tuple[bool, bool, bool]:
-        """ Returns the current scan state flags (is_running, laser_only, data_only) """
-        return self.module_state() == 'locked', self.__laser_only_mode, self.__data_only_mode
+        """Returns the current scan state flags (laser_scanning, data_acquiring, laser_only_mode)."""
+        return self.__laser_scanning, self.__data_acquiring, self.__laser_only_mode
 
-    def start_scan(self,
-                   laser_only: Optional[bool] = False,
-                   data_only: Optional[bool] = False) -> None:
-        """ Start data acquisition loop """
+    def start_scan(self, laser_only: Optional[bool] = False, data_only: Optional[bool] = False) -> None:
+        """Backward-compatible combined start (old GUI signal signature)."""
+        # Old semantics:
+        # - data_only=True: record only
+        # - otherwise: record + laser scan
+        if data_only:
+            self.start_data_acquisition(laser_only=laser_only)
+            return
+
+        # record first, then scan
+        self.start_data_acquisition(laser_only=laser_only)
+        # do not start laser if no hardware
+        if self._laser() is not None:
+            self.start_laser_scan()
+
+    def stop_scan(self) -> None:
+        """Backward-compatible combined stop."""
+        # stop laser first (fast), then stop recording
+        try:
+            if self.__laser_scanning:
+                self.stop_laser_scan()
+        finally:
+            if self.__data_acquiring:
+                self.stop_data_acquisition()
+
+    def start_data_acquisition(self, laser_only: Optional[bool] = False) -> None:
+        """Start streamer + measurement loop without starting laser scan."""
         with self._threadlock:
             with threaded_exception_watchdog(self.log):
-                streamer: DataInStreamInterface = self._streamer()
-                laser: Union[None, ScannableLaserInterface] = self._laser()
-                try:
-                    if self.module_state() == 'locked':
-                        self.log.warning('Measurement already running. "start_scan" call ignored.')
-                    else:
-                        self.module_state.lock()
-                        try:
-                            self.__data_only_mode = data_only or (laser is None) or (laser.module_state() == 'locked')
-                            self.__laser_only_mode = laser_only
-                            # Start laser scan and stream acquisition
-                            if streamer.module_state() == 'idle':
-                                if self.__laser_only_mode:
-                                    channels = [self._laser_channel]
-                                else:
-                                    channels = list(streamer.constraints.channel_units)
-                                streamer.configure(active_channels=channels,
-                                                   streaming_mode=streamer.streaming_mode,
-                                                   channel_buffer_size=streamer.channel_buffer_size,
-                                                   sample_rate=streamer.sample_rate)
-                                streamer.start_stream()
-                            else:
-                                active = streamer.active_channels
-                                if self._laser_channel not in active:
-                                    raise RuntimeError(
-                                        f'Streamer is already running and laser channel '
-                                        f'"{self._laser_channel}" is not active'
-                                    )
-                                self.__laser_only_mode = len(active) == 1
-                            if not self.__data_only_mode:
-                                laser.start_scan()
-                            # Reset data buffers
-                            self.__init_data_channels()
-                            self.__init_data_buffers()
-                            self.__init_histograms()
-                            # Reset fit
-                            self._do_fit('No Fit', False)
-                            # Determine laser channel index
-                            self.__laser_ch_index = streamer.active_channels.index(
-                                self._laser_channel
-                            )
-                            # Kick-off measurement loop
-                            self._sigNextDataFrame.emit()
-                        except Exception:
-                            self._stop_scan()
-                            raise
-                finally:
-                    self.sigStatusChanged.emit(*self.scan_state)
+                if self.__data_acquiring:
+                    self.log.warning('Data acquisition already running.')
+                    return
 
-    def stop_scan(self):
-        """ Send a request to stop counting. """
+                streamer: DataInStreamInterface = self._streamer()
+
+                # Configure + start streamer if needed
+                if streamer.module_state() == 'idle':
+                    channels = [self._laser_channel] if laser_only else list(streamer.constraints.channel_units)
+                    streamer.configure(active_channels=channels,
+                                       streaming_mode=streamer.streaming_mode,
+                                       channel_buffer_size=streamer.channel_buffer_size,
+                                       sample_rate=streamer.sample_rate)
+                    streamer.start_stream()
+                    self.__laser_only_mode = bool(laser_only)
+                else:
+                    # Already running: verify we have laser channel at least
+                    active = streamer.active_channels
+                    if self._laser_channel not in active:
+                        raise RuntimeError(
+                            f'Streamer is already running but laser channel "{self._laser_channel}" is not active.'
+                        )
+                    self.__laser_only_mode = (len(active) == 1)
+
+                # If we get here, recording is running
+                self.__data_acquiring = True
+
+                # (Re-)initialize buffers/histograms for a clean run
+                self.__init_data_channels()
+                self.__init_data_buffers()
+                self.__init_histograms()
+                self._do_fit('No Fit', False)
+
+                # Determine laser channel index
+                self.__laser_ch_index = streamer.active_channels.index(self._laser_channel)
+
+                # Kick off loop
+                self._sigNextDataFrame.emit()
+
+            self.sigStatusChanged.emit(*self.scan_state)
+
+    def stop_data_acquisition(self) -> None:
+        """Stop streamer + measurement loop without stopping laser scan."""
         with self._threadlock:
-            try:
-                self._stop_scan()
-            finally:
-                self.sigStatusChanged.emit(*self.scan_state)
+            with threaded_exception_watchdog(self.log):
+                if not self.__data_acquiring:
+                    self.log.warning('Data acquisition is not running.')
+                    return
+
+                streamer: DataInStreamInterface = self._streamer()
+                try:
+                    streamer.stop_stream()
+                finally:
+                    self.__data_acquiring = False
+            self.sigStatusChanged.emit(*self.scan_state)
+
+    def start_laser_scan(self) -> None:
+        """Start the laser scan and logic-side supervision.
+        If wavelength bounds supervision is selected, recording must already be running.
+        """
+        with self._threadlock:
+            with threaded_exception_watchdog(self.log):
+                laser: Union[None, ScannableLaserInterface] = self._laser()
+                if laser is None:
+                    raise RuntimeError('No scannable laser connected.')
+
+                if self.__laser_scanning:
+                    self.log.warning('Laser scan already running.')
+                    return
+
+                # Enforce your rule: wavelength-bounds scan requires recording
+                if self._use_wavelength_bounds and (not self.__data_acquiring):
+                    raise RuntimeError(
+                        'Cannot start laser scan with wavelength bounds while recording is stopped. '
+                        'Start recording (data acquisition) first.'
+                    )
+
+                # Apply initial direction from current laser settings
+                settings = netobtain(laser.scan_settings)
+                self._current_direction = settings.initial_direction
+                laser.set_scan_direction(self._current_direction)
+
+                # Start device scan
+                laser.start_scan()
+                self.__laser_scanning = True
+
+                # Start supervisor timer
+                try:
+                    self._laser_supervisor_timer.start()
+                except Exception:
+                    pass
+
+            self.sigStatusChanged.emit(*self.scan_state)
+
+    def stop_laser_scan(self) -> None:
+        """Stop the laser scan but keep data acquisition running (if active)."""
+        with self._threadlock:
+            with threaded_exception_watchdog(self.log):
+                if not self.__laser_scanning:
+                    self.log.warning('Laser scan is not running.')
+                    return
+
+                try:
+                    try:
+                        self._laser_supervisor_timer.stop()
+                    except Exception:
+                        pass
+
+                    laser: Union[None, ScannableLaserInterface] = self._laser()
+                    if laser is not None:
+                        laser.stop_scan()
+                finally:
+                    self.__laser_scanning = False
+
+            self.sigStatusChanged.emit(*self.scan_state)
 
     def stabilize_laser(self, target: float) -> None:
         """ Move laser to target value and stabilize until further instructions """
@@ -562,6 +666,23 @@ class LaserScanningLogic(LogicBase):
                 finally:
                     self.sigLaserScanSettingsChanged.emit(self.laser_scan_settings)
 
+    def set_boundary_source(self, use_wavelength_bounds: bool) -> None:
+        """Select boundary source for supervision (True: wavelength via wavemeter, False: device/actuator)."""
+        with self._threadlock:
+            self._use_wavelength_bounds = bool(use_wavelength_bounds)
+            self.sigBoundarySourceChanged.emit(self._use_wavelength_bounds)
+
+    def configure_wavelength_scan_bounds(self, span: Tuple[float, float]) -> None:
+        """Configure wavelength bounds used for supervision when boundary source is wavelength."""
+        with self._threadlock:
+            try:
+                lo, hi = self.__construct_histogram_span(span)  # reuse validation
+            except ValueError:
+                pass
+            else:
+                self._wavelength_scan_span = (lo, hi)
+            finally:
+                self.sigWavelengthBoundsChanged.emit(self._wavelength_scan_span)
 
     def toggle_laser_type(self, is_frequency: bool) -> None:
         with self._threadlock:
@@ -613,6 +734,10 @@ class LaserScanningLogic(LogicBase):
 
     def _stop_scan(self):
         with threaded_exception_watchdog(self.log):
+            try:
+                self._laser_supervisor_timer.stop()
+            except Exception:
+                pass
             if self.module_state() == 'locked':
                 streamer: DataInStreamInterface = self._streamer()
                 laser: Union[None, ScannableLaserInterface] = self._laser()
@@ -620,7 +745,7 @@ class LaserScanningLogic(LogicBase):
                     streamer.stop_stream()
                 finally:
                     try:
-                        if not self.__data_only_mode:
+                        if (laser is not None) and (not self.__data_only_mode):
                             laser.stop_scan()
                     finally:
                         self.module_state.unlock()
@@ -774,8 +899,8 @@ class LaserScanningLogic(LogicBase):
         """
         with self._threadlock:
             with threaded_exception_watchdog(self.log):
-                # Abort condition
-                if self.module_state() != 'locked':
+                # Abort condition: only run loop while data acquisition is active
+                if not self.__data_acquiring:
                     return
 
                 laser_data, scan_data, timestamps = self.__pull_new_data()
@@ -804,6 +929,86 @@ class LaserScanningLogic(LogicBase):
                 self.sigDataChanged.emit(*self.scan_data, *self.histogram_data)
                 # Call this method again via event queue
                 self._sigNextDataFrame.emit()
+
+    # -------------------- supervision helpers --------------------
+
+    @QtCore.Slot()
+    def _supervise_laser(self) -> None:
+        """Logic-side supervision of the laser scan.
+
+        Behavior of the supervision:
+        - Read current actuator position.
+        - Determine boundary source (device bounds vs wavelength bounds).
+        - Flip scan direction when crossing selected bounds.
+        - Always enforce device total bounds from hardware constraints.
+        """
+        laser: Union[None, ScannableLaserInterface] = self._laser()
+        if (laser is None) or self.__data_only_mode:
+            return
+
+        with self._threadlock:
+
+            try:
+                if not laser.is_running():
+                    return
+                # ----- 1) Hard limits: device TOTAL bounds (always enforced) -----
+                pos = float(laser.get_scan_position())
+                dev_lo, dev_hi = laser.constraints.value.bounds
+
+                if self._current_direction == LaserScanDirection.UP and pos >= dev_hi:
+                    self._set_direction(LaserScanDirection.DOWN)
+                    return
+                if self._current_direction == LaserScanDirection.DOWN and pos <= dev_lo:
+                    self._set_direction(LaserScanDirection.UP)
+                    return
+                # ----- 2) Selected supervision mode -----
+                if self._use_wavelength_bounds:
+                    if self._data_buffer.sample_count == 0:
+                        return
+                        # Access ringbuffer directly for last element without unwrapping all
+                    cur_wl = float(self._data_buffer._wavelength_data[self._data_buffer.sample_count - 1])
+                    wl_lo, wl_hi = self._wavelength_scan_span
+                    if self._current_direction == LaserScanDirection.UP:
+                        if cur_wl >= wl_hi:
+                            self._set_direction(LaserScanDirection.DOWN)
+                    else:
+                        if cur_wl <= wl_lo:
+                            self._set_direction(LaserScanDirection.UP)
+                else:
+                    # Use configured device scan bounds (soft bounds inside total bounds)
+                    settings = netobtain(laser.scan_settings)
+                    b_lo, b_hi = settings.bounds
+                    pos = float(laser.get_scan_position())
+
+                    if self._current_direction == LaserScanDirection.UP:
+                        if pos >= b_hi:
+                            self._set_direction(LaserScanDirection.DOWN)
+                    else:
+                        if pos <= b_lo:
+                            self._set_direction(LaserScanDirection.UP)
+
+            except Exception:
+                # Any failure: stop supervision
+                try:
+                    self._laser_supervisor_timer.stop()
+                except Exception:
+                    pass
+                self.log.exception('Laser scan supervision failed.')
+
+    def _set_direction(self, direction: LaserScanDirection) -> None:
+        """Set scan direction on hardware and update local state."""
+        if direction == self._current_direction:
+            return
+        try:
+            laser: Union[None, ScannableLaserInterface] = self._laser()
+            if laser is None:
+                return
+            laser.set_scan_direction(direction)
+            self._current_direction = direction
+        except Exception:
+            self.log.exception('Failed to set laser scan direction.')
+
+    # -------------------- init helpers & internals --------------------
 
     def __init_laser_data_type(self) -> None:
         laser_unit = self.streamer_constraints.channel_units[self._laser_channel].lower()

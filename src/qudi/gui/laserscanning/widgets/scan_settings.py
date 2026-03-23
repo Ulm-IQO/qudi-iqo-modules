@@ -21,7 +21,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ['LaserScanSettingsWidget', 'LaserScanSettingsDialog', 'LaserScanSettingsDockWidget']
 
-from typing import Optional
+from typing import Optional, Tuple
 from PySide2 import QtCore, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
@@ -33,6 +33,8 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
     """ """
 
     sigSettingsChanged = QtCore.Signal(object)
+    sigBoundarySourceChanged = QtCore.Signal(bool)  # True: wavelength bounds, False: device bounds
+    sigWavelengthBoundsChanged = QtCore.Signal(tuple)  # (min_wavelength, max_wavelength)
 
     min_spinbox: ScienDSpinBox
     max_spinbox: ScienDSpinBox
@@ -40,6 +42,12 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
     repetitions_spinbox: QtWidgets.QSpinBox
     mode_combobox: QtWidgets.QComboBox
     direction_combobox: QtWidgets.QComboBox
+
+    wl_min_spinbox: ScienDSpinBox
+    wl_max_spinbox: ScienDSpinBox
+    device_bounds_radio: QtWidgets.QRadioButton
+    wavelength_bounds_radio: QtWidgets.QRadioButton
+    _boundary_button_group: QtWidgets.QButtonGroup
 
     def __init__(self,
                  constraints: ScannableLaserConstraints,
@@ -94,6 +102,28 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         self.direction_combobox.addItems([mode.name for mode in constraints.initial_directions])
         self.direction_combobox.setCurrentIndex(0)
 
+        self.wl_min_spinbox = ScienDSpinBox()
+        self.wl_min_spinbox.setMinimumWidth(100)
+        self.wl_min_spinbox.setRange(1e-12, 1.0)  # generic wavelength range in meters
+        self.wl_min_spinbox.setSuffix('m')
+        self.wl_min_spinbox.setDecimals(9)
+        self.wl_min_spinbox.setValue(500.0e-9)
+
+        self.wl_max_spinbox = ScienDSpinBox()
+        self.wl_max_spinbox.setMinimumWidth(100)
+        self.wl_max_spinbox.setRange(1e-12, 1.0)
+        self.wl_max_spinbox.setSuffix('m')
+        self.wl_max_spinbox.setDecimals(9)
+        self.wl_max_spinbox.setValue(750.0e-9)
+
+        self.device_bounds_radio = QtWidgets.QRadioButton()
+        self.wavelength_bounds_radio = QtWidgets.QRadioButton()
+        self._boundary_button_group = QtWidgets.QButtonGroup(self)
+        self._boundary_button_group.setExclusive(True)
+        self._boundary_button_group.addButton(self.device_bounds_radio)
+        self._boundary_button_group.addButton(self.wavelength_bounds_radio)
+        self.device_bounds_radio.setChecked(True)
+
         # layout widgets
         layout = QtWidgets.QGridLayout()
         label = QtWidgets.QLabel('Scan bounds:')
@@ -101,30 +131,49 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         layout.addWidget(label, 0, 0)
         layout.addWidget(self.min_spinbox, 0, 1)
         layout.addWidget(self.max_spinbox, 0, 2)
-        label = QtWidgets.QLabel('Scan speed:')
+        layout.addWidget(self.device_bounds_radio, 0, 3)
+
+        # Wavelength bounds row with radio
+        label = QtWidgets.QLabel('Wavelength bounds:')
         label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         layout.addWidget(label, 1, 0)
-        layout.addWidget(self.speed_spinbox, 1, 1, 1, 2)
-        label = QtWidgets.QLabel('Scan repetitions:')
+        layout.addWidget(self.wl_min_spinbox, 1, 1)
+        layout.addWidget(self.wl_max_spinbox, 1, 2)
+        layout.addWidget(self.wavelength_bounds_radio, 1, 3)
+
+        # Speed row
+        label = QtWidgets.QLabel('Scan speed:')
         label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         layout.addWidget(label, 2, 0)
-        layout.addWidget(self.repetitions_spinbox, 2, 1, 1, 2)
-        label = QtWidgets.QLabel('Scan mode:')
+        layout.addWidget(self.speed_spinbox, 2, 1, 1, 3)
+
+        # Repetitions row
+        label = QtWidgets.QLabel('Scan repetitions:')
         label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         layout.addWidget(label, 3, 0)
-        layout.addWidget(self.mode_combobox, 3, 1, 1, 2)
-        label = QtWidgets.QLabel('Initial direction:')
+        layout.addWidget(self.repetitions_spinbox, 3, 1, 1, 3)
+
+        # Mode row
+        label = QtWidgets.QLabel('Scan mode:')
         label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
         layout.addWidget(label, 4, 0)
-        layout.addWidget(self.direction_combobox, 4, 1, 1, 2)
+        layout.addWidget(self.mode_combobox, 4, 1, 1, 3)
+
+        # Initial direction row
+        label = QtWidgets.QLabel('Initial direction:')
+        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        layout.addWidget(label, 5, 0)
+        layout.addWidget(self.direction_combobox, 5, 1, 1, 3)
+
         layout.setColumnStretch(1, 1)
         layout.setColumnStretch(2, 1)
-        layout.setRowStretch(5, 1)
+        layout.setRowStretch(6, 1)
         self.setLayout(layout)
 
         # disable/enable repetitions according to scan mode
         self.mode_combobox.currentIndexChanged.connect(self._mode_changed)
         self._mode_changed()
+
         # Connect editing finished signals
         self.min_spinbox.editingFinished.connect(self.__emit_changes)
         self.max_spinbox.editingFinished.connect(self.__emit_changes)
@@ -132,6 +181,12 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         self.repetitions_spinbox.editingFinished.connect(self.__emit_changes)
         self.direction_combobox.currentIndexChanged.connect(self.__emit_changes)
         self.mode_combobox.currentIndexChanged.connect(self.__emit_changes)
+
+        # Boundary source and wavelength bounds signals
+        self.device_bounds_radio.toggled.connect(self.__emit_boundary_source)
+        self.wavelength_bounds_radio.toggled.connect(self.__emit_boundary_source)
+        self.wl_min_spinbox.editingFinished.connect(self.__emit_wavelength_bounds)
+        self.wl_max_spinbox.editingFinished.connect(self.__emit_wavelength_bounds)
 
     def get_settings(self) -> ScannableLaserSettings:
         return ScannableLaserSettings(
@@ -164,6 +219,24 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         self._mode_changed()
         self.__emit_changes()
 
+    def set_boundary_source(self, use_wavelength_bounds: bool) -> None:
+        self.device_bounds_radio.blockSignals(True)
+        self.wavelength_bounds_radio.blockSignals(True)
+        self.device_bounds_radio.setChecked(not use_wavelength_bounds)
+        self.wavelength_bounds_radio.setChecked(use_wavelength_bounds)
+        self.device_bounds_radio.blockSignals(False)
+        self.wavelength_bounds_radio.blockSignals(False)
+
+    def update_wavelength_bounds(self, span: Tuple[float, float]) -> None:
+        lo, hi = min(span), max(span)
+        self.wl_min_spinbox.blockSignals(True)
+        self.wl_max_spinbox.blockSignals(True)
+        self.wl_min_spinbox.setValue(lo)
+        self.wl_max_spinbox.setValue(hi)
+        self.wl_min_spinbox.blockSignals(False)
+        self.wl_max_spinbox.blockSignals(False)
+        self.__emit_wavelength_bounds()
+
     def _mode_changed(self) -> None:
         self.repetitions_spinbox.setEnabled(
             self.mode_combobox.currentText() == LaserScanMode.REPETITIONS.name
@@ -171,6 +244,13 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
 
     def __emit_changes(self) -> None:
         self.sigSettingsChanged.emit(self.get_settings())
+
+    def __emit_boundary_source(self) -> None:
+        # Radio buttons are exclusive; wavelength radio checked -> True
+        self.sigBoundarySourceChanged.emit(self.wavelength_bounds_radio.isChecked())
+
+    def __emit_wavelength_bounds(self) -> None:
+        self.sigWavelengthBoundsChanged.emit((self.wl_min_spinbox.value(), self.wl_max_spinbox.value()))
 
 
 class LaserScanSettingsDialog(QtWidgets.QDialog):
@@ -198,6 +278,10 @@ class LaserScanSettingsDialog(QtWidgets.QDialog):
         self.get_settings = self.settings_widget.get_settings
         self.update_settings = self.settings_widget.update_settings
         self.sigSettingsChanged = self.settings_widget.sigSettingsChanged
+        self.sigBoundarySourceChanged = self.settings_widget.sigBoundarySourceChanged
+        self.sigWavelengthBoundsChanged = self.settings_widget.sigWavelengthBoundsChanged
+        self.set_boundary_source = self.settings_widget.set_boundary_source
+        self.update_wavelength_bounds = self.settings_widget.update_wavelength_bounds
 
 
 class LaserScanSettingsDockWidget(QtWidgets.QDockWidget):
@@ -214,3 +298,7 @@ class LaserScanSettingsDockWidget(QtWidgets.QDockWidget):
         self.get_settings = self.settings_widget.get_settings
         self.update_settings = self.settings_widget.update_settings
         self.sigSettingsChanged = self.settings_widget.sigSettingsChanged
+        self.sigBoundarySourceChanged = self.settings_widget.sigBoundarySourceChanged
+        self.sigWavelengthBoundsChanged = self.settings_widget.sigWavelengthBoundsChanged
+        self.set_boundary_source = self.settings_widget.set_boundary_source
+        self.update_wavelength_bounds = self.settings_widget.update_wavelength_bounds
