@@ -88,7 +88,7 @@ class DataInStreamConstraints:
         return self._streaming_modes.copy()
 
     @property
-    def data_type(self) -> np.dtype:
+    def data_type(self) -> type:
         return self._data_type
 
     @property
