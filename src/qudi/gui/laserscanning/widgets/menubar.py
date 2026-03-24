@@ -34,7 +34,7 @@ class LaserScanningMenuBar(QtWidgets.QMenuBar):
 
         menu = self.addMenu('File')
         menu.addAction(actions.action_start_stop_record)
-        menu.addAction(actions.action_start_stop_scan)
+        # menu.addAction(actions.action_start_stop_scan)
         menu.addSeparator()
         menu.addAction(actions.action_clear_data)
         menu.addAction(actions.action_autoscale_histogram)

@@ -40,7 +40,7 @@ class LaserScanningToolBar(QtWidgets.QToolBar):
         self.save_tag_line_edit.setToolTip('Enter a nametag which will be added to the filename.')
 
         self.addAction(actions.action_start_stop_record)
-        self.addAction(actions.action_start_stop_scan)
+        # self.addAction(actions.action_start_stop_scan)
         self.addAction(actions.action_clear_data)
         self.addAction(actions.action_autoscale_histogram)
         self.addAction(actions.action_show_all_data)

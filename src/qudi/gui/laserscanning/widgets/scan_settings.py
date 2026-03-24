@@ -41,7 +41,6 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
     speed_spinbox: ScienDSpinBox
     repetitions_spinbox: QtWidgets.QSpinBox
     mode_combobox: QtWidgets.QComboBox
-    direction_combobox: QtWidgets.QComboBox
 
     wl_min_spinbox: ScienDSpinBox
     wl_max_spinbox: ScienDSpinBox
@@ -94,13 +93,6 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         )
         self.mode_combobox.addItems([mode.name for mode in constraints.modes])
         self.mode_combobox.setCurrentIndex(0)
-
-        self.direction_combobox = QtWidgets.QComboBox()
-        self.direction_combobox.setSizeAdjustPolicy(
-            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow
-        )
-        self.direction_combobox.addItems([mode.name for mode in constraints.initial_directions])
-        self.direction_combobox.setCurrentIndex(0)
 
         self.wl_min_spinbox = ScienDSpinBox()
         self.wl_min_spinbox.setMinimumWidth(100)
@@ -159,15 +151,9 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         layout.addWidget(label, 4, 0)
         layout.addWidget(self.mode_combobox, 4, 1, 1, 3)
 
-        # Initial direction row
-        label = QtWidgets.QLabel('Initial direction:')
-        label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
-        layout.addWidget(label, 5, 0)
-        layout.addWidget(self.direction_combobox, 5, 1, 1, 3)
-
         layout.setColumnStretch(1, 1)
         layout.setColumnStretch(2, 1)
-        layout.setRowStretch(6, 1)
+        layout.setRowStretch(5, 1)
         self.setLayout(layout)
 
         # disable/enable repetitions according to scan mode
@@ -179,7 +165,6 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         self.max_spinbox.editingFinished.connect(self.__emit_changes)
         self.speed_spinbox.editingFinished.connect(self.__emit_changes)
         self.repetitions_spinbox.editingFinished.connect(self.__emit_changes)
-        self.direction_combobox.currentIndexChanged.connect(self.__emit_changes)
         self.mode_combobox.currentIndexChanged.connect(self.__emit_changes)
 
         # Boundary source and wavelength bounds signals
@@ -193,7 +178,7 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
             bounds=(self.min_spinbox.value(), self.max_spinbox.value()),
             speed=self.speed_spinbox.value(),
             mode=LaserScanMode[self.mode_combobox.currentText()],
-            initial_direction=LaserScanDirection[self.direction_combobox.currentText()],
+            initial_direction=LaserScanDirection.UNDEFINED,
             repetitions=self.repetitions_spinbox.value()
         )
 
@@ -202,19 +187,16 @@ class LaserScanSettingsWidget(QtWidgets.QWidget):
         self.max_spinbox.blockSignals(True)
         self.speed_spinbox.blockSignals(True)
         self.repetitions_spinbox.blockSignals(True)
-        self.direction_combobox.blockSignals(True)
         self.mode_combobox.blockSignals(True)
         self.min_spinbox.setValue(min(settings.bounds))
         self.max_spinbox.setValue(max(settings.bounds))
         self.speed_spinbox.setValue(settings.speed)
         self.repetitions_spinbox.setValue(settings.repetitions)
-        self.direction_combobox.setCurrentText(settings.initial_direction.name)
         self.mode_combobox.setCurrentText(settings.mode.name)
         self.min_spinbox.blockSignals(False)
         self.max_spinbox.blockSignals(False)
         self.speed_spinbox.blockSignals(False)
         self.repetitions_spinbox.blockSignals(False)
-        self.direction_combobox.blockSignals(False)
         self.mode_combobox.blockSignals(False)
         self._mode_changed()
         self.__emit_changes()

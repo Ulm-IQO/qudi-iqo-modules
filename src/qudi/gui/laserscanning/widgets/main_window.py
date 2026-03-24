@@ -28,6 +28,7 @@ from qudi.util.datafitting import FitConfigurationsModel, FitContainer
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.interface.scannable_laser_interface import ScannableLaserConstraints
 from qudi.gui.laserscanning.widgets.histogram_settings import HistogramSettingsDockWidget
+from qudi.gui.laserscanning.widgets.scan_control import LaserScanControlDockWidget
 from qudi.gui.laserscanning.widgets.scan_settings import LaserScanSettingsDockWidget
 from qudi.gui.laserscanning.widgets.actions import LaserScanningActions
 from qudi.gui.laserscanning.widgets.menubar import LaserScanningMenuBar
@@ -103,6 +104,11 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
             self.laser_stabilization_dock = None
             self.laser_stabilization = None
         else:
+            self.laser_scan_control_dock = LaserScanControlDockWidget(
+                f'{self.windowTitle()} - Scan Control',
+                actions=self.gui_actions
+            )
+            self.laser_scan_control = self.laser_scan_control_dock.control_widget
             self.laser_scan_settings_dock = LaserScanSettingsDockWidget(
                 f'{self.windowTitle()} - Scan Settings',
                 constraints=laser_constraints
@@ -133,12 +139,14 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
         self.fit_dock.show()
         self.histogram_settings_dock.show()
         if self.laser_scan_settings_dock is not None:
+            self.laser_scan_control_dock.show()
             self.laser_scan_settings_dock.show()
         # re-dock floating dock widgets
         self.scatter_dock.setFloating(False)
         self.fit_dock.setFloating(False)
         self.histogram_settings_dock.setFloating(False)
         if self.laser_scan_settings_dock is not None:
+            self.laser_scan_control_dock.setFloating(False)
             self.laser_scan_settings_dock.setFloating(False)
         # Arrange dock widgets
         self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.fit_dock)
@@ -149,8 +157,10 @@ class LaserScanningMainWindow(QtWidgets.QMainWindow):
             self.splitDockWidget(self.histogram_settings_dock,
                                  self.laser_stabilization_dock,
                                  QtCore.Qt.Horizontal)
+            self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.laser_scan_control_dock)
             self.addDockWidget(QtCore.Qt.RightDockWidgetArea, self.laser_scan_settings_dock)
-            self.splitDockWidget(self.fit_dock, self.laser_scan_settings_dock, QtCore.Qt.Vertical)
+            self.splitDockWidget(self.fit_dock, self.laser_scan_control_dock, QtCore.Qt.Vertical)
+            self.splitDockWidget(self.laser_scan_control_dock, self.laser_scan_settings_dock, QtCore.Qt.Vertical)
             height = self.height() - (2 * self.histogram_settings_dock.height())
             self.resizeDocks([self.fit_dock, self.laser_scan_settings_dock, self.scatter_dock],
                              [height // 2, 1, height//2],

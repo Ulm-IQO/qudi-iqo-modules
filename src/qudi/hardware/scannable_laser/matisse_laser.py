@@ -124,6 +124,7 @@ class SirahMatisseCommanderLaser(ScannableLaserInterface):
                                                 mode=mode,
                                                 repetitions=0,
                                                 initial_direction=LaserScanDirection.UP)
+        self.set_scan_bounds(lo, hi)
 
     def on_deactivate(self):
         try:
@@ -179,7 +180,7 @@ class SirahMatisseCommanderLaser(ScannableLaserInterface):
                   else LaserScanDirection(int(initial_direction)))
 
         # Program device
-        self.set_scan_bounds(lo, hi)
+        # self.set_scan_bounds(lo, hi) # For the laser_scanning_toolchain, the scan bounds are handled by the logic
         self.set_scan_speeds(float(speed))
 
         # Store settings

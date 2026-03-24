@@ -46,6 +46,7 @@ class LaserScanningGui(GuiBase):
 
     sigStartLaserScan = QtCore.Signal()
     sigStopLaserScan = QtCore.Signal()
+    sigScanDirectionChanged = QtCore.Signal(object)
     sigStartDataAcquisition = QtCore.Signal(bool)  # laser_only
     sigStopDataAcquisition = QtCore.Signal()
     sigDoFit = QtCore.Signal(str, bool)  # fit_config_name, fit_envelope
@@ -122,6 +123,7 @@ class LaserScanningGui(GuiBase):
         # To logic
         self.sigStartLaserScan.connect(logic.start_laser_scan, QtCore.Qt.QueuedConnection)
         self.sigStopLaserScan.connect(logic.stop_laser_scan, QtCore.Qt.QueuedConnection)
+        self.sigScanDirectionChanged.connect(logic.set_scan_direction, QtCore.Qt.QueuedConnection)
         self.sigStartDataAcquisition.connect(logic.start_data_acquisition, QtCore.Qt.QueuedConnection)
         self.sigStopDataAcquisition.connect(logic.stop_data_acquisition, QtCore.Qt.QueuedConnection)
         self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
@@ -150,6 +152,7 @@ class LaserScanningGui(GuiBase):
                                                     QtCore.Qt.QueuedConnection)
         logic.sigBoundarySourceChanged.connect(self._update_boundary_source, QtCore.Qt.QueuedConnection)
         logic.sigWavelengthBoundsChanged.connect(self._update_wavelength_bounds, QtCore.Qt.QueuedConnection)
+        logic.sigScanDirectionChanged.connect(self._update_scan_direction, QtCore.Qt.QueuedConnection)
 
     def __disconnect_logic(self) -> None:
         logic = self._laser_scanning_logic()
@@ -218,6 +221,10 @@ class LaserScanningGui(GuiBase):
             self._histogram_settings_edited
         )
         self._mw.fit_control.sigDoFit.connect(self._fit_clicked)
+
+        if self._mw.laser_scan_control is not None:
+            self._mw.laser_scan_control.sigToggleDirection.connect(self._scan_direction_toggled)
+
         if self._mw.laser_scan_settings is not None:
             self._mw.laser_scan_settings.sigSettingsChanged.connect(
                 self._laser_scan_settings_edited
@@ -408,6 +415,8 @@ class LaserScanningGui(GuiBase):
         self._mw.gui_actions.action_laser_only.setEnabled(not running)
 
         # Laser scan settings disabled while laser is scanning
+        if self._mw.laser_scan_control is not None:
+            self._mw.laser_scan_control.direction_button.setEnabled(True)
         if self._mw.laser_scan_settings is not None:
             self._mw.laser_scan_settings.setEnabled(not laser_scanning)
             self._mw.laser_stabilization.setEnabled(not laser_scanning)
@@ -494,6 +503,16 @@ class LaserScanningGui(GuiBase):
             self.sigStartLaserScan.emit()
         else:
             self.sigStopLaserScan.emit()
+
+    @QtCore.Slot(object)
+    def _update_scan_direction(self, direction) -> None:
+        # direction is LaserScanDirection
+        if self._mw.laser_scan_control is not None:
+            self._mw.laser_scan_control.set_direction(direction)
+
+    def _scan_direction_toggled(self, direction) -> None:
+        # Allow changing direction even during scan
+        self.sigScanDirectionChanged.emit(direction)
 
     def _start_stop_record_clicked(self):
         start = self._mw.gui_actions.action_start_stop_record.isChecked()

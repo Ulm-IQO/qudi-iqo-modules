@@ -269,6 +269,7 @@ class LaserScanningLogic(LogicBase):
     sigStabilizationTargetChanged = QtCore.Signal(object)  # laser target value
     sigBoundarySourceChanged = QtCore.Signal(bool)  # True: wavelength bounds, False: device bounds
     sigWavelengthBoundsChanged = QtCore.Signal(tuple)  # (min_wavelength, max_wavelength)
+    sigScanDirectionChanged = QtCore.Signal(object)  # LaserScanDirection
 
     _sigNextDataFrame = QtCore.Signal()  # internal signal
 
@@ -380,6 +381,14 @@ class LaserScanningLogic(LogicBase):
         # Emit boundary settings to GUI
         self.sigBoundarySourceChanged.emit(self._use_wavelength_bounds)
         self.sigWavelengthBoundsChanged.emit(self._wavelength_scan_span)
+
+        laser = self._laser()
+        if laser is not None:
+            try:
+                self._current_direction = netobtain(laser.scan_settings).initial_direction
+            except Exception:
+                self._current_direction = LaserScanDirection.UP
+            self.sigScanDirectionChanged.emit(self._current_direction)
 
     def on_deactivate(self):
         self._stop_scan()
@@ -570,6 +579,7 @@ class LaserScanningLogic(LogicBase):
                 settings = netobtain(laser.scan_settings)
                 self._current_direction = settings.initial_direction
                 laser.set_scan_direction(self._current_direction)
+                self.sigScanDirectionChanged.emit(self._current_direction)
 
                 # Start device scan
                 laser.start_scan()
@@ -658,11 +668,15 @@ class LaserScanningLogic(LogicBase):
                         raise RuntimeError(
                             'Unable to configure laser scan. No scannable laser connected.'
                         )
+                    initial_direction = settings.initial_direction
+                    if initial_direction == LaserScanDirection.UNDEFINED:
+                        initial_direction = self._current_direction
+
                     laser.configure_scan(bounds=settings.bounds,
                                          speed=settings.speed,
                                          mode=settings.mode,
                                          repetitions=settings.repetitions,
-                                         initial_direction=settings.initial_direction)
+                                         initial_direction=initial_direction)
                 finally:
                     self.sigLaserScanSettingsChanged.emit(self.laser_scan_settings)
 
@@ -1005,8 +1019,44 @@ class LaserScanningLogic(LogicBase):
                 return
             laser.set_scan_direction(direction)
             self._current_direction = direction
+            self.sigScanDirectionChanged.emit(direction)
         except Exception:
             self.log.exception('Failed to set laser scan direction.')
+
+    def set_scan_direction(self, direction) -> None:
+        """Requested direction change from GUI."""
+        with self._threadlock:
+            try:
+                direction = LaserScanDirection(direction) if not isinstance(direction,
+                                                                            LaserScanDirection) else direction
+            except Exception:
+                return
+
+            # If no laser connected -> ignore
+            laser = self._laser()
+            if laser is None:
+                return
+
+            # If scan is running: change immediately
+            # If scan is not running: store as "current_direction" and also update the
+            # laser scan settings' initial_direction so next start uses it.
+            try:
+                if self.__laser_scanning and laser.is_running():
+                    self._set_direction(direction)  # will emit signal (see below)
+                else:
+                    # store local preference
+                    self._current_direction = direction
+                    # also update device scan settings so hardware starts in that direction
+                    settings = netobtain(laser.scan_settings)
+                    laser.configure_scan(bounds=settings.bounds,
+                                         speed=settings.speed,
+                                         mode=settings.mode,
+                                         repetitions=settings.repetitions,
+                                         initial_direction=direction)
+                    self.sigLaserScanSettingsChanged.emit(self.laser_scan_settings)
+                    self.sigScanDirectionChanged.emit(direction)
+            except Exception:
+                self.log.exception('Failed to set scan direction.')
 
     # -------------------- init helpers & internals --------------------
 
