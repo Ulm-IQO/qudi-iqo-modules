@@ -462,20 +462,17 @@ class LaserScanningGui(GuiBase):
         start = self._mw.gui_actions.action_start_stop_scan.isChecked()
         if start:
             # If wavelength bounds are selected, recording must already run
-            # We can infer boundary mode from the widget state
             if (
                     self._mw.laser_scan_settings is not None) and self._mw.laser_scan_settings.wavelength_bounds_radio.isChecked():
-                # ask logic state (authoritative)
+
                 laser_scanning, data_acquiring, _ = self._laser_scanning_logic().scan_state
                 if not data_acquiring:
-                    # revert the toggle and do nothing
                     self._mw.gui_actions.action_start_stop_scan.blockSignals(True)
                     self._mw.gui_actions.action_start_stop_scan.setChecked(False)
                     self._mw.gui_actions.action_start_stop_scan.blockSignals(False)
                     self.log.warning('Start recording before scanning with wavelength bounds.')
                     return
 
-        # Disable UI during transition (keep your existing disabling code)
         self._mw.fit_control.setEnabled(False)
         self._mw.histogram_settings.setEnabled(False)
         self._mw.gui_actions.action_start_stop_scan.setEnabled(False)
@@ -492,13 +489,11 @@ class LaserScanningGui(GuiBase):
             self._mw.laser_stabilization.setEnabled(False)
 
         if start:
-            # Keep logic boundary-source in sync with GUI selection
             if self._mw.laser_scan_settings is not None:
                 self.sigBoundarySourceChanged.emit(
                     self._mw.laser_scan_settings.wavelength_bounds_radio.isChecked()
                 )
 
-            # Emit scan settings before starting laser scan
             self._laser_scan_settings_edited()
             self.sigStartLaserScan.emit()
         else:
@@ -511,7 +506,6 @@ class LaserScanningGui(GuiBase):
             self._mw.laser_scan_control.set_direction(direction)
 
     def _scan_direction_toggled(self, direction) -> None:
-        # Allow changing direction even during scan
         self.sigScanDirectionChanged.emit(direction)
 
     def _start_stop_record_clicked(self):

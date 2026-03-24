@@ -133,7 +133,6 @@ class SirahMatisseCommanderLaser(ScannableLaserInterface):
         finally:
             if self._sock is not None:
                 try:
-                    # Politely request remote to close (optional; ignore errors)
                     self._send('Close_Network_Connection')
                     time.sleep(0.1)
                 except Exception:
@@ -180,7 +179,8 @@ class SirahMatisseCommanderLaser(ScannableLaserInterface):
                   else LaserScanDirection(int(initial_direction)))
 
         # Program device
-        # self.set_scan_bounds(lo, hi) # For the laser_scanning_toolchain, the scan bounds are handled by the logic
+        # Scan bounds are controlled by the laser scanning logic (supervision), not programmed here.
+        # self.set_scan_bounds(lo, hi)
         self.set_scan_speeds(float(speed))
 
         # Store settings

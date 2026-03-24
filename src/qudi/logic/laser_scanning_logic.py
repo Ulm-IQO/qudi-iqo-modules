@@ -555,9 +555,7 @@ class LaserScanningLogic(LogicBase):
             self.sigStatusChanged.emit(*self.scan_state)
 
     def start_laser_scan(self) -> None:
-        """Start the laser scan and logic-side supervision.
-        If wavelength bounds supervision is selected, recording must already be running.
-        """
+        """Start the laser scan and logic-side supervision."""
         with self._threadlock:
             with threaded_exception_watchdog(self.log):
                 laser: Union[None, ScannableLaserInterface] = self._laser()
@@ -568,7 +566,7 @@ class LaserScanningLogic(LogicBase):
                     self.log.warning('Laser scan already running.')
                     return
 
-                # Enforce your rule: wavelength-bounds scan requires recording
+                # Wavelength-bounds scan requires recording
                 if self._use_wavelength_bounds and (not self.__data_acquiring):
                     raise RuntimeError(
                         'Cannot start laser scan with wavelength bounds while recording is stopped. '
@@ -1002,7 +1000,6 @@ class LaserScanningLogic(LogicBase):
                             self._set_direction(LaserScanDirection.UP)
 
             except Exception:
-                # Any failure: stop supervision
                 try:
                     self._laser_supervisor_timer.stop()
                 except Exception:
