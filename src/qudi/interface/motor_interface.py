@@ -20,21 +20,23 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from __future__ import annotations
+
 from abc import abstractmethod
 
 from qudi.core.module import Base
 
 
 class MotorInterface(Base):
-    """ This is the Interface class to define the controls for the simple
-        step motor device. The actual hardware implementation might have a
-        different amount of axis. Implement each single axis as 'private'
-        methods for the hardware class, which get called by the general method.
+    """This is the Interface class to define the controls for the simple
+    step motor device. The actual hardware implementation might have a
+    different amount of axis. Implement each single axis as 'private'
+    methods for the hardware class, which get called by the general method.
     """
 
     @abstractmethod
-    def get_constraints(self):
-        """ Retrieve the hardware constrains from the motor device.
+    def get_constraints(self) -> dict[str, dict[str, float | str | list[str] | None]]:
+        """Retrieve the hardware constraints from the motor device.
 
         @return dict: dict with constraints for the magnet hardware. These
                       constraints will be passed via the logic to the GUI so
@@ -96,8 +98,8 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def move_rel(self,  param_dict):
-        """ Moves stage in given direction (relative movement)
+    def move_rel(self, param_dict: dict[str, float]) -> None:
+        """Moves stage in given direction (relative movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
                                 parameters, which should be changed. Usage:
@@ -106,36 +108,29 @@ class MotorInterface(Base):
                                  to one of the axis.
 
         A smart idea would be to ask the position after the movement.
-
-        @return int: error code (0:OK, -1:error)
         """
         pass
 
     @abstractmethod
-    def move_abs(self, param_dict):
-        """ Moves stage to absolute position (absolute movement)
+    def move_abs(self, param_dict: dict[str, float]) -> None:
+        """Moves stage to absolute position (absolute movement)
 
         @param dict param_dict: dictionary, which passes all the relevant
                                 parameters, which should be changed. Usage:
                                  {'axis_label': <the-abs-pos-value>}.
                                  'axis_label' must correspond to a label given
                                  to one of the axis.
-
-        @return int: error code (0:OK, -1:error)
         """
         pass
 
     @abstractmethod
-    def abort(self):
-        """ Stops movement of the stage
-
-        @return int: error code (0:OK, -1:error)
-        """
+    def abort(self) -> None:
+        """Stops movement of the stage"""
         pass
 
     @abstractmethod
-    def get_pos(self, param_list=None):
-        """ Gets current position of the stage arms
+    def get_pos(self, param_list: list[str] | None = None) -> dict[str, float]:
+        """Gets current position of the stage arms
 
         @param list param_list: optional, if a specific position of an axis
                                 is desired, then the labels of the needed
@@ -149,8 +144,8 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def get_status(self, param_list=None):
-        """ Get the status of the position
+    def get_status(self, param_list: list[str] | None = None) -> dict[str, int]:
+        """Get the status of the position
 
         @param list param_list: optional, if a specific status of an axis
                                 is desired, then the labels of the needed
@@ -163,16 +158,14 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def calibrate(self, param_list=None):
-        """ Calibrates the stage.
+    def calibrate(self, param_list: list[str] | None = None) -> None:
+        """Calibrates the stage.
 
-        @param dict param_list: param_list: optional, if a specific calibration
+        @param list param_list: optional, if a specific calibration
                                 of an axis is desired, then the labels of the
                                 needed axis should be passed in the param_list.
                                 If nothing is passed, then all connected axis
                                 will be calibrated.
-
-        @return int: error code (0:OK, -1:error)
 
         After calibration the stage moves to home position which will be the
         zero point for the passed axis. The calibration procedure will be
@@ -181,10 +174,10 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def get_velocity(self, param_list=None):
-        """ Gets the current velocity for all connected axes.
+    def get_velocity(self, param_list: list[str] | None = None) -> dict[str, float]:
+        """Gets the current velocity for all connected axes.
 
-        @param dict param_list: optional, if a specific velocity of an axis
+        @param list param_list: optional, if a specific velocity of an axis
                                 is desired, then the labels of the needed
                                 axis should be passed as the param_list.
                                 If nothing is passed, then from each axis the
@@ -195,15 +188,13 @@ class MotorInterface(Base):
         pass
 
     @abstractmethod
-    def set_velocity(self, param_dict):
-        """ Write new value for velocity.
+    def set_velocity(self, param_dict: dict[str, float]) -> None:
+        """Write new value for velocity.
 
         @param dict param_dict: dictionary, which passes all the relevant
                                 parameters, which should be changed. Usage:
                                  {'axis_label': <the-velocity-value>}.
                                  'axis_label' must correspond to a label given
                                  to one of the axis.
-
-        @return int: error code (0:OK, -1:error)
         """
         pass
