@@ -639,19 +639,39 @@ class SPC3_Qudi(CameraInterface):
         @param str filename: path stem (SDK appends .spc3)
         @return bool: Success
         """
+        if self._continuous:
+            self.log.error("Continuous acquisition already active")
+            return False
         if self._live or self._acquiring:
             self.log.error("Cannot start continuous: another acquisition is active")
             return False
-        self._continuous = True
-        self._cont_filename = filename
-        self._spc.ContAcqToFileStart(filename)
-        self.log.info(f"ContAcqToFileStart -> {filename}")
-        return True
+
+        try:
+            filename = os.path.normpath(str(filename))
+            if filename.lower().endswith(".spc3"):
+                filename = filename[:-5]
+
+            directory = os.path.dirname(filename)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+
+            self._spc.ContAcqToFileStart(filename)
+            self._continuous = True
+            self._cont_filename = filename
+            self.log.info(f"ContAcqToFileStart -> {filename}")
+            return True
+        except Exception as e:
+            self._continuous = False
+            self.log.error(f"Failed to start continuous acquisition: {e}")
+            return False
 
     def stop_continuous_acquisition(self):
         """Stop streaming and close the output file."""
         if self._continuous:
-            self._spc.ContAcqToFileStop()
+            try:
+                self._spc.ContAcqToFileStop()
+            except Exception as e:
+                self.log.error(f"Failed to stop continuous acquisition: {e}")
             self._continuous = False
         return True
 

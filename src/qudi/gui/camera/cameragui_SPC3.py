@@ -71,6 +71,10 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         self.action_capture_frame.setCheckable(True)
         toolbar.addAction(self.action_capture_frame)
 
+        self.action_continuous = QtWidgets.QAction("Continuous")
+        self.action_continuous.setCheckable(True)
+        toolbar.addAction(self.action_continuous)
+
         # Snap frame browsing controls (enabled only for multi-frame snaps)
         self.snap_frame_label = QtWidgets.QLabel("Frame")
         self.snap_frame_spinbox = QtWidgets.QSpinBox()
@@ -96,6 +100,7 @@ class CameraGui(GuiBase):
 
     sigStartStopVideoToggled = QtCore.Signal(bool)
     sigCaptureFrameTriggered = QtCore.Signal()
+    sigContinuousToggled = QtCore.Signal(bool)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -103,6 +108,7 @@ class CameraGui(GuiBase):
         self._settings_dialog = None
         self._pending_snap_save_prompt = False
         self._snap_sequence = None
+        self._continuous_active = False
 
     def on_activate(self):
         """Initializes all needed UI files and establishes the connectors."""
@@ -134,6 +140,7 @@ class CameraGui(GuiBase):
         )
         self._mw.action_save_frame.triggered.connect(self._save_frame)
         self._mw.snap_frame_spinbox.valueChanged.connect(self._snap_frame_index_changed)
+        self._mw.action_continuous.triggered[bool].connect(self._continuous_clicked)
 
         # connect update signals from logic
         logic.sigFrameChanged.connect(self._update_frame)
@@ -142,6 +149,17 @@ class CameraGui(GuiBase):
         # connect GUI signals to logic slots
         self.sigStartStopVideoToggled.connect(logic.toggle_video)
         self.sigCaptureFrameTriggered.connect(logic.capture_frame)
+        self.sigContinuousToggled.connect(logic.toggle_continuous)
+
+        cont_sig = getattr(logic, "sigContinuousStateChanged", None)
+        if cont_sig is not None:
+            try:
+                cont_sig.connect(self._continuous_state_changed)
+            except Exception:
+                pass
+
+        # Initial state
+        self._continuous_state_changed(bool(getattr(logic, "continuous_active", False)))
         self.show()
 
     def on_deactivate(self):
@@ -150,12 +168,22 @@ class CameraGui(GuiBase):
         # disconnect all signals
         self.sigCaptureFrameTriggered.disconnect()
         self.sigStartStopVideoToggled.disconnect()
+        self.sigContinuousToggled.disconnect()
         logic.sigAcquisitionFinished.disconnect(self._acquisition_finished)
         logic.sigFrameChanged.disconnect(self._update_frame)
+
+        cont_sig = getattr(logic, "sigContinuousStateChanged", None)
+        if cont_sig is not None:
+            try:
+                cont_sig.disconnect(self._continuous_state_changed)
+            except Exception:
+                pass
+
         self._mw.action_save_frame.triggered.disconnect()
         self._mw.action_show_settings.triggered.disconnect()
         self._mw.action_capture_frame.triggered.disconnect()
         self._mw.action_start_video.triggered.disconnect()
+        self._mw.action_continuous.triggered.disconnect()
         self._mw.snap_frame_spinbox.valueChanged.disconnect()
         self._mw.close()
 
@@ -178,8 +206,11 @@ class CameraGui(GuiBase):
         self._settings_dialog.gain_spinbox.setValue(logic.get_gain())
 
     def _capture_frame_clicked(self):
+        if self._continuous_active:
+            return
         self._mw.action_start_video.setDisabled(True)
         self._mw.action_capture_frame.setDisabled(True)
+        self._mw.action_continuous.setDisabled(True)
         self._mw.action_show_settings.setDisabled(True)
         self._pending_snap_save_prompt = True
         self.sigCaptureFrameTriggered.emit()
@@ -190,6 +221,8 @@ class CameraGui(GuiBase):
         self._mw.action_capture_frame.setChecked(False)
         self._mw.action_capture_frame.setEnabled(True)
         self._mw.action_show_settings.setEnabled(True)
+        if not self._continuous_active:
+            self._mw.action_continuous.setEnabled(True)
 
         # If this snap produced a multi-frame sequence, enable browsing.
         self._refresh_snap_sequence()
@@ -199,16 +232,52 @@ class CameraGui(GuiBase):
             self._prompt_save_spc3_after_snap()
 
     def _start_video_clicked(self, checked):
+        if checked and self._continuous_active:
+            # Don't allow live mode while continuous is running
+            self._mw.action_start_video.blockSignals(True)
+            try:
+                self._mw.action_start_video.setChecked(False)
+            finally:
+                self._mw.action_start_video.blockSignals(False)
+            return
+
         if checked:
             self._mw.action_show_settings.setDisabled(True)
             self._mw.action_capture_frame.setDisabled(True)
+            self._mw.action_continuous.setDisabled(True)
             self._mw.action_start_video.setText("Stop Video")
 
             # Video/live mode overrides snap browsing.
             self._set_snap_browsing_enabled(False)
         else:
             self._mw.action_start_video.setText("Start Video")
+            self._mw.action_continuous.setEnabled(True)
         self.sigStartStopVideoToggled.emit(checked)
+
+    def _continuous_clicked(self, checked):
+        self.sigContinuousToggled.emit(bool(checked))
+
+    def _continuous_state_changed(self, active):
+        self._continuous_active = bool(active)
+
+        self._mw.action_continuous.blockSignals(True)
+        try:
+            self._mw.action_continuous.setChecked(self._continuous_active)
+        finally:
+            self._mw.action_continuous.blockSignals(False)
+
+        if self._continuous_active:
+            self._mw.action_continuous.setText("Stop Continuous")
+            self._mw.action_start_video.setDisabled(True)
+            self._mw.action_capture_frame.setDisabled(True)
+            self._mw.action_show_settings.setDisabled(True)
+            self._set_snap_browsing_enabled(False)
+        else:
+            self._mw.action_continuous.setText("Continuous")
+            self._mw.action_start_video.setEnabled(True)
+            self._mw.action_capture_frame.setEnabled(True)
+            self._mw.action_show_settings.setEnabled(True)
+            self._mw.action_continuous.setEnabled(True)
 
     def _update_frame(self, frame_data):
         self._mw.image_widget.set_image(frame_data)
