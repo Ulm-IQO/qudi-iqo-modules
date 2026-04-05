@@ -1,23 +1,10 @@
 # -*- coding: utf-8 -*-
 
-"""
-A module for controlling a camera.
+"""Windows-safe variant of the generic CameraLogic module.
 
-Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
-distribution and on <https://github.com/Ulm-IQO/qudi-iqo-modules/>
-
-This file is part of qudi.
-
-Qudi is free software: you can redistribute it and/or modify it under the terms of
-the GNU Lesser General Public License as published by the Free Software Foundation,
-either version 3 of the License, or (at your option) any later version.
-
-Qudi is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
-without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
-See the GNU Lesser General Public License for more details.
-
-You should have received a copy of the GNU Lesser General Public License along with qudi.
-If not, see <https://www.gnu.org/licenses/>.
+This module is identical to ``camera_logic.py`` except for the generated
+filename tag: it formats timestamps without characters that are invalid on
+Windows (e.g. ':').
 """
 
 import datetime
@@ -39,7 +26,7 @@ class CameraLogic(LogicBase):
     Example config for copy-paste:
 
     camera_logic:
-        module.Class: 'camera_logic.CameraLogic'
+        module.Class: 'camera_logic_custom.CameraLogic'
         connect:
             camera: camera_dummy
         options:
@@ -118,7 +105,7 @@ class CameraLogic(LogicBase):
             return self._gain
 
     def capture_frame(self):
-        """ """
+        """"""
         with self._thread_lock:
             if self.module_state() == "idle":
                 self.module_state.lock()
@@ -178,7 +165,8 @@ class CameraLogic(LogicBase):
                     camera.start_single_acquisition()  # the hardware has to check it's not busy
 
     def create_tag(self, time_stamp):
-        return f"{time_stamp}_captured_frame"
+        safe_ts = time_stamp.strftime("%Y%m%d-%H%M%S-%f")
+        return f"{safe_ts}_captured_frame"
 
     def draw_2d_image(self, data, cbar_range=None):
         # Create image plot

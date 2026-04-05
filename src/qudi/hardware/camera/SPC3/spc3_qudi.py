@@ -30,6 +30,16 @@ import os
 import time
 import struct
 import numpy as np
+from ctypes import (
+    c_int,
+    c_short,
+    c_void_p,
+    c_uint8,
+    c_uint16,
+    POINTER,
+    byref,
+    cast,
+)
 
 from qudi.core.configoption import ConfigOption
 from qudi.interface.camera_interface import CameraInterface
@@ -91,6 +101,8 @@ class SPC3_Qudi(CameraInterface):
     _HIT_NORMAL = 1040  # Fixed HIT for Normal mode (clock cycles)
     _CLOCK_PERIOD = 10e-9  # 10 ns per clock cycle
     _NROWS = 32  # Pixel array is always 32 rows
+    _TRIGGER_WAIT_TIMEOUT_S = 60.0
+    _LIVE_THROTTLE_S = 0.01
 
     # ══════════════════════════════════════════════════════════════════
     #  Module lifecycle
@@ -131,19 +143,19 @@ class SPC3_Qudi(CameraInterface):
         self._live = False
         self._acquiring = False
         self._continuous = False
-        self._cont_filename = None
 
-        # ── Background subtraction ─────────────────────────────────────
-        self._background_image = None
-        self._background_subtraction_enabled = False
-        self._last_live_frame = None  # cached for continuous-acq preview
+        # ── Cached frames for GUI ─────────────────────────────────────
+        self._last_live_frame = None
+        self._last_frame = None
+        self._last_live_ts = 0.0
+
+        # ── Cached snap stack for browsing (counter, frame, row, col) ─
+        self._last_snap_frames = None
 
         # ── Loaded-file viewer state ───────────────────────────────────
         self._loaded_frames = None
         self._loaded_header = None
         self._loaded_filepath = None
-        self._loaded_background = None
-        self._current_frame_index = 0
 
         # ── Construct SPC3 SDK object ──────────────────────────────────
         mode = (
@@ -202,7 +214,6 @@ class SPC3_Qudi(CameraInterface):
         if self._continuous:
             try:
                 self._spc.ContAcqToFileStop()
-                self._patch_and_save_sidecars()
             except Exception:
                 pass
             self._continuous = False
@@ -252,15 +263,14 @@ class SPC3_Qudi(CameraInterface):
 
         Executes: SnapPrepare → (wait for trigger) → SnapAcquire → extract buffer.
 
-        @return numpy.ndarray: Frames with shape (counters, frames, rows, cols),
-                               or None on failure.
+        @return bool: True on success, False otherwise.
         """
         if self._live:
             self.log.error("Cannot snap: live mode is active")
-            return None
+            return False
         if self._acquiring:
             self.log.error("Cannot snap: acquisition already in progress")
-            return None
+            return False
 
         try:
             self._acquiring = True
@@ -271,39 +281,125 @@ class SPC3_Qudi(CameraInterface):
             # Prepare camera for snap
             self._spc.SnapPrepare()
 
-            # Wait for external trigger if configured
+            # Wait for external trigger if configured (with timeout).
             if self._trigger_mode in ("single_trigger", "multiple_trigger"):
-                self.log.info(f"Waiting for external trigger ({self._trigger_mode})...")
-                while not self._spc.IsTriggered():
-                    time.sleep(0.01)
+                self.log.info(
+                    f"Waiting for external trigger ({self._trigger_mode}, "
+                    f"timeout={self._TRIGGER_WAIT_TIMEOUT_S:.1f}s)..."
+                )
+                if not self._wait_for_trigger(self._TRIGGER_WAIT_TIMEOUT_S):
+                    raise TimeoutError("No external trigger received")
                 self.log.info("Trigger received")
 
             # Acquire (blocks until all frames are downloaded)
             self._spc.SnapAcquire()
 
             # Extract frames from SDK internal buffer
-            frames = self._spc.SnapGetImageBuffer()
-            frames = frames.copy()  # detach from SDK-owned buffer
+            try:
+                frames = (
+                    self._spc.SnapGetImageBuffer().copy()
+                )  # detach from SDK-owned buffer
+            except AssertionError:
+                # Vendor wrapper asserts on cached _data_bits mismatch.
+                # Read the buffer using the SDK-reported DataDepth instead.
+                frames = self._snap_get_image_buffer_safe()
 
-            # Apply background subtraction to every frame if enabled
-            if (
-                self._background_subtraction_enabled
-                and self._background_image is not None
-            ):
-                for ci in range(frames.shape[0]):
-                    for fi in range(frames.shape[1]):
-                        frames[ci, fi] = self.apply_background_subtraction(
-                            frames[ci, fi]
-                        )
+            # Cache a representative 2-D image for the generic camera GUI.
+            # BufferToFrames returns (counters, frames, rows, cols).
+            self._last_frame = self._select_display_frame(frames)
+
+            # Cache the full stack so the GUI can browse multi-frame snaps.
+            # Keep the same shape as returned by the SDK wrapper:
+            # (counters, frames, rows, cols)
+            self._last_snap_frames = np.asarray(frames).copy()
 
             self._acquiring = False
             self.log.info(f"Snap complete: shape={frames.shape}, dtype={frames.dtype}")
-            return frames
+            return True
 
         except Exception as e:
             self._acquiring = False
-            self.log.error(f"Snap acquisition failed: {e}")
+            self.log.error(f"Snap acquisition failed: {type(e).__name__}: {e}")
+            return False
+
+    def get_last_snap_sequence(self, counter_index=0):
+        """Return last snap as a 3-D stack for browsing.
+
+        @param int counter_index: which counter to view (default 0)
+        @return numpy.ndarray|None: shape (frames, rows, cols) or None if unavailable
+        """
+        if self._last_snap_frames is None:
             return None
+
+        arr = np.asarray(self._last_snap_frames)
+        if arr.ndim == 4:
+            c = int(counter_index)
+            c = max(0, min(c, arr.shape[0] - 1))
+            return arr[c]
+        if arr.ndim == 3:
+            return arr
+        return None
+
+    def _snap_get_image_buffer_safe(self):
+        """Read snap buffer without relying on spc.py's cached _data_bits.
+
+        The SDK returns a pointer to its internal image buffer plus an integer
+        DataDepth (8 or 16). We size and cast the buffer accordingly, then use
+        SPC3.BufferToFrames to get (counters, frames, rows, cols).
+        """
+        buf = POINTER(c_uint8)()
+        data_depth = c_int(0)
+
+        f = self._spc.dll.SPC3_Get_Image_Buffer
+        f.argtypes = [c_void_p, POINTER(POINTER(c_uint8)), POINTER(c_int)]
+        f.restype = c_int
+
+        ec = f(self._spc.c_handle, byref(buf), byref(data_depth))
+        self._spc._checkError(ec)
+
+        # Some SDK builds appear to return DataDepth=0 even on success.
+        # Treat that as "unknown" and fall back to the already-committed
+        # setting computed by ApplySettings()/Is16Bit().
+        depth = int(data_depth.value)
+        if depth not in (8, 16):
+            depth = int(getattr(self._spc, "_data_bits", 0) or 0)
+        if depth not in (8, 16):
+            try:
+                depth = 16 if self._spc.Is16Bit() else 8
+            except Exception:
+                depth = 16
+
+        if not bool(buf):
+            raise RuntimeError("SDK returned null image buffer pointer")
+
+        # Prefer SDK-maintained values, fall back to our config.
+        num_frames = int(
+            getattr(self._spc, "_snap_num_frames", self._NFrames) or self._NFrames
+        )
+        num_counters = int(
+            getattr(self._spc, "_num_counters", self._NCounters) or self._NCounters
+        )
+        num_pixels = int(
+            getattr(self._spc, "_num_pixels", 0) or (1024 if self._half_array else 2048)
+        )
+
+        size_bytes = num_frames * (depth // 8) * num_pixels * num_counters
+        if depth == 16:
+            buf16 = cast(buf, POINTER(c_uint16))
+            count = size_bytes // 2
+            data = np.ctypeslib.as_array(buf16, shape=(count,))
+        else:
+            count = size_bytes
+            data = np.ctypeslib.as_array(buf, shape=(count,))
+
+        # Keep vendor object internally consistent for any later calls.
+        try:
+            self._spc._data_bits = depth
+        except Exception:
+            pass
+
+        frames = SPC3.BufferToFrames(data, num_pixels, num_counters)
+        return np.array(frames, copy=True)
 
     def stop_acquisition(self):
         """Stop live or single acquisition."""
@@ -322,33 +418,88 @@ class SPC3_Qudi(CameraInterface):
         During continuous acquisition the last cached live frame is returned as
         a static preview.
         """
-        if self._live:
-            try:
-                all_counters = self._spc.LiveGetImg()  # (counters, rows, cols)
-                raw = all_counters[0]
-                self._last_live_frame = raw.copy()
-            except Exception as e:
-                self.log.error(f"LiveGetImg failed: {e}")
-                raw = np.zeros((self._NROWS, self._ncols), dtype=np.uint16)
-        elif self._continuous and self._last_live_frame is not None:
-            raw = self._last_live_frame.copy()
-        else:
-            raw = np.zeros((self._NROWS, self._ncols), dtype=np.uint16)
+        frame = None
 
-        # Apply background subtraction
-        frame = self.apply_background_subtraction(raw)
+        if self._live:
+            # Guard against extremely fast polling intervals (CameraLogic uses a QTimer in ms).
+            # If called too frequently, return the cached frame instead of hammering the SDK.
+            now = time.monotonic()
+            if (
+                self._last_live_frame is None
+                or (now - self._last_live_ts) >= self._LIVE_THROTTLE_S
+            ):
+                try:
+                    # Vendor SDK LiveGetImg returns a single-counter stack with shape
+                    # (frames, rows, cols). With default live acquisition it's 1 frame.
+                    live_stack = self._spc.LiveGetImg()
+                    if live_stack.ndim == 3:
+                        frame = live_stack[0]
+                    else:
+                        frame = live_stack
+                    self._last_live_frame = np.array(frame, copy=True)
+                    self._last_live_ts = now
+                except Exception as e:
+                    self.log.error(f"LiveGetImg failed: {e}")
+            if frame is None and self._last_live_frame is not None:
+                frame = self._last_live_frame.copy()
+
+        if frame is None:
+            # When not live, show last snap frame if available.
+            if self._last_frame is not None:
+                frame = self._last_frame.copy()
+            else:
+                frame = np.zeros((self._NROWS, self._ncols), dtype=np.uint16)
 
         # Scale to counts per second if requested
         if self._display_units == "cps":
             exp_s = self._get_exposure_seconds()
             if exp_s > 0:
-                frame = (frame.astype(np.float64) / exp_s).astype(frame.dtype)
+                frame = frame.astype(np.float64) / exp_s
 
         # Ensure 2-D for GUI display
         if frame.ndim == 1:
             frame = frame.reshape(self._NROWS, self._ncols)
 
         return frame
+
+    @staticmethod
+    def _select_display_frame(frames):
+        """Pick a single 2-D frame from an SPC3 snap buffer.
+
+        Expected input shape is (counters, frames, rows, cols).
+        """
+        arr = np.asarray(frames)
+        if arr.ndim == 4:
+            return arr[0, -1]
+        if arr.ndim == 3:
+            return arr[-1]
+        if arr.ndim == 2:
+            return arr
+        raise ValueError(f"Unexpected frame array ndim={arr.ndim}")
+
+    def _is_triggered(self):
+        """Correct trigger polling (work around SDK wrapper bug in spc.py)."""
+        try:
+            f = self._spc.dll.SPC3_IsTriggered
+            f.argtypes = [c_void_p, POINTER(c_short)]
+            f.restype = c_int
+            is_triggered = c_short(0)
+            ec = f(self._spc.c_handle, byref(is_triggered))
+            self._spc._checkError(ec)
+            return bool(is_triggered.value)
+        except Exception as e:
+            self.log.error(f"Trigger poll failed: {e}")
+            return False
+
+    def _wait_for_trigger(self, timeout_s=None):
+        if timeout_s is None:
+            timeout_s = self._TRIGGER_WAIT_TIMEOUT_S
+        start = time.monotonic()
+        while not self._is_triggered():
+            if (time.monotonic() - start) > timeout_s:
+                return False
+            time.sleep(0.01)
+        return True
 
     def set_exposure(self, exposure):
         """Set exposure time in seconds.
@@ -501,7 +652,6 @@ class SPC3_Qudi(CameraInterface):
         """Stop streaming and close the output file."""
         if self._continuous:
             self._spc.ContAcqToFileStop()
-            self._patch_and_save_sidecars()
             self._continuous = False
         return True
 
@@ -513,87 +663,6 @@ class SPC3_Qudi(CameraInterface):
         if self._continuous:
             return self._spc.ContAcqToFileGetMemory()
         return 0
-
-    # ── Background subtraction ─────────────────────────────────────────
-
-    def capture_background_image(self):
-        """Capture a background image by averaging live frames.
-
-        Uses NFrames from config to determine how many frames to average.
-
-        @return bool: Success
-        """
-        try:
-            was_live = self._live
-            if not was_live:
-                self.start_live_acquisition()
-                time.sleep(0.5)  # let hardware stabilise
-
-            n_avg = max(1, self._NFrames)
-            frames = []
-            for _ in range(n_avg):
-                img = self._spc.LiveGetImg()
-                frames.append(img[0])  # counter 1
-
-            if not was_live:
-                self.stop_acquisition()
-
-            stacked = np.stack(frames, axis=0)
-            self._background_image = (
-                np.mean(stacked, axis=0).astype(np.uint16).flatten()
-            )
-            self.log.info(f"Background captured: averaged {n_avg} frames")
-            return True
-
-        except Exception as e:
-            self.log.error(f"Failed to capture background: {e}")
-            return False
-
-    def enable_background_subtraction(self):
-        """Enable software background subtraction.
-
-        A background image must be captured first via capture_background_image().
-
-        @return bool: Success
-        """
-        if self._background_image is None:
-            self.log.warning("No background image captured")
-            return False
-        self._background_subtraction_enabled = True
-        self.log.info("Background subtraction enabled")
-        return True
-
-    def disable_background_subtraction(self):
-        """Disable software background subtraction.
-
-        @return bool: Success
-        """
-        self._background_subtraction_enabled = False
-        self.log.info("Background subtraction disabled")
-        return True
-
-    def apply_background_subtraction(self, frame):
-        """Subtract stored background from *frame* if subtraction is enabled.
-
-        Mode-independent helper — works on any frame (live, snap, loaded).
-
-        @param numpy.ndarray frame: raw pixel data (any shape)
-        @return numpy.ndarray: corrected frame (same shape and dtype)
-        """
-        if not self._background_subtraction_enabled or self._background_image is None:
-            return frame
-
-        shape = frame.shape
-        flat = frame.flatten().astype(np.float32)
-        if flat.size != self._background_image.size:
-            self.log.warning(
-                f"Background size mismatch: frame={flat.size}, "
-                f"background={self._background_image.size} — skipping"
-            )
-            return frame
-
-        result = np.maximum(flat - self._background_image.astype(np.float32), 0)
-        return result.astype(frame.dtype).reshape(shape)
 
     # ── File I/O ───────────────────────────────────────────────────────
 
@@ -619,8 +688,6 @@ class SPC3_Qudi(CameraInterface):
 
             expected = filepath + ".spc3"
             if os.path.exists(expected):
-                self._patch_gate_header(expected)
-                self._save_background_sidecar(expected)
                 return True
 
             self.log.error(f"SaveImgDisk completed but file not found: {expected}")
@@ -630,31 +697,60 @@ class SPC3_Qudi(CameraInterface):
             self.log.error(f"Failed to save frames: {e}")
             return False
 
+    def save_last_snap_to_file(self, filepath, n_frames=None):
+        """Save the most recent snap acquisition buffer to a .spc3 file.
+
+        This is intended for *manual* saving right after a snap has completed.
+        The SPC3 SDK save routine operates on the device/SDK internal snap buffer
+        populated by the last SnapAcquire().
+
+        @param str filepath: output path (.spc3 extension optional)
+        @param int|None n_frames: number of frames to write (defaults to configured NFrames)
+        @return bool: Success
+        """
+        try:
+            filepath = os.path.normpath(str(filepath))
+            if filepath.lower().endswith(".spc3"):
+                filepath = filepath[:-5]
+
+            directory = os.path.dirname(filepath)
+            if directory:
+                os.makedirs(directory, exist_ok=True)
+
+            if n_frames is None:
+                n_frames = int(
+                    getattr(self._spc, "_snap_num_frames", self._NFrames)
+                    or self._NFrames
+                )
+            n_frames = max(1, min(int(n_frames), 65534))
+
+            self._spc.SaveImgDisk(
+                1, n_frames, filepath, SPC3.OutFileFormat.SPC3_FILEFORMAT
+            )
+
+            expected = filepath + ".spc3"
+            if os.path.exists(expected):
+                return True
+
+            self.log.error(f"SaveImgDisk completed but file not found: {expected}")
+            return False
+
+        except Exception as e:
+            self.log.error(f"Failed to save last snap: {e}")
+            return False
+
     def load_acquisition_file(self, filepath):
-        """Load a .spc3 or .npy file for frame-by-frame viewing.
+        """Load a .spc3 file for frame-by-frame viewing.
 
         @param str filepath: path to file
         @return bool: Success
         """
         try:
             filepath = os.path.normpath(filepath)
-            if filepath.endswith(".npy"):
-                self._loaded_frames = np.load(filepath)
-                self._loaded_header = {}
-            else:
-                self._loaded_frames, self._loaded_header = SPC3.ReadSPC3DataFile(
-                    filepath
-                )
 
-            self._current_frame_index = 0
+            self._loaded_frames, self._loaded_header = SPC3.ReadSPC3DataFile(filepath)
+
             self._loaded_filepath = filepath
-
-            # Auto-load background sidecar if present
-            stem = os.path.splitext(filepath)[0]
-            sidecar = stem + ".bg.npy"
-            self._loaded_background = (
-                np.load(sidecar) if os.path.exists(sidecar) else None
-            )
 
             n_c, n_f, n_r, n_col = self._loaded_frames.shape
             self.log.info(f"Loaded {n_f} frames ({n_r}×{n_col}) from {filepath}")
@@ -662,52 +758,6 @@ class SPC3_Qudi(CameraInterface):
 
         except Exception as e:
             self.log.error(f"Failed to load {filepath}: {e}")
-            return False
-
-    def get_loaded_frame_count(self):
-        """Return number of frames in loaded file, or 0."""
-        if self._loaded_frames is not None:
-            return self._loaded_frames.shape[1]
-        return 0
-
-    def get_loaded_frame(self, frame_index):
-        """Return counter-0 frame at *frame_index* (0-based), or None."""
-        if self._loaded_frames is None:
-            return None
-        n = self._loaded_frames.shape[1]
-        if not 0 <= frame_index < n:
-            return None
-        self._current_frame_index = frame_index
-        return self._loaded_frames[0, frame_index]
-
-    def get_current_frame_index(self):
-        """Return current frame index in loaded file."""
-        return self._current_frame_index
-
-    def get_loaded_filepath(self):
-        """Return path of loaded file, or None."""
-        return self._loaded_filepath
-
-    def get_loaded_background(self):
-        """Return loaded background sidecar array, or None."""
-        return self._loaded_background
-
-    def load_frames_from_memory(self, frames):
-        """Load frames directly from memory for viewing.
-
-        @param numpy.ndarray frames: shape (counters, frames, rows, cols)
-        @return bool: Success
-        """
-        try:
-            self._loaded_frames = frames
-            self._loaded_header = {}
-            self._current_frame_index = 0
-            self._loaded_filepath = "(unsaved snap acquisition)"
-            n_c, n_f, n_r, n_col = frames.shape
-            self.log.info(f"Loaded {n_f} frames ({n_r}×{n_col}) from memory")
-            return True
-        except Exception as e:
-            self.log.error(f"Failed to load frames from memory: {e}")
             return False
 
     # ── Gate control ───────────────────────────────────────────────────
@@ -823,64 +873,3 @@ class SPC3_Qudi(CameraInterface):
         """
         self._apply_gate_settings()
         self._spc.ApplySettings()
-
-    # ── File header patching ───────────────────────────────────────────
-
-    def _patch_gate_header(self, filepath):
-        """Write coarse gate settings into the .spc3 file header.
-
-        The SDK does not persist coarse gate values when saving files.
-        Offsets within the file (metadata section starts at byte 8):
-
-            byte 240  (meta+232)  CoarseGate_C1_ON   uint8
-            byte 241  (meta+233)  CoarseGate_C1_Start uint16 LE
-            byte 243  (meta+235)  CoarseGate_C1_Stop  uint16 LE
-        """
-        if self._gate_mode != "coarse":
-            return
-        try:
-            with open(filepath, "r+b") as fh:
-                fh.seek(8 + 232)
-                fh.write(struct.pack("<B", 1))
-                fh.write(struct.pack("<H", self._coarse_gate_start))
-                fh.write(struct.pack("<H", self._coarse_gate_stop))
-            self.log.debug(
-                f"Gate header patched: {filepath} "
-                f"start={self._coarse_gate_start} stop={self._coarse_gate_stop}"
-            )
-        except Exception as e:
-            self.log.warning(f"Gate header patch failed for {filepath}: {e}")
-
-    def _save_background_sidecar(self, spc3_filepath):
-        """Save background as .bg.npy sidecar alongside the .spc3 file.
-
-        Also patches the background-subtraction flag in the file header
-        (metadata offset +112 → file byte 120).
-        """
-        if self._background_image is None:
-            return
-        stem = spc3_filepath
-        if stem.lower().endswith(".spc3"):
-            stem = stem[:-5]
-        sidecar = stem + ".bg.npy"
-
-        bg_2d = self._background_image.reshape(self._NROWS, self._ncols).astype(
-            np.float32
-        )
-        np.save(sidecar, bg_2d)
-        self.log.info(f"Background sidecar saved: {sidecar}")
-
-        try:
-            with open(spc3_filepath, "r+b") as fh:
-                fh.seek(8 + 112)
-                fh.write(struct.pack("<B", 1))
-        except Exception:
-            pass
-
-    def _patch_and_save_sidecars(self):
-        """Patch gate header and save background for the current continuous file."""
-        if self._cont_filename is not None:
-            path = self._cont_filename + ".spc3"
-            self._patch_gate_header(path)
-            self._save_background_sidecar(path)
-            self._cont_filename = None

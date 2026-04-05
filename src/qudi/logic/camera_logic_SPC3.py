@@ -25,6 +25,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import time as _time
 import threading
+import os
 import numpy as np
 import matplotlib.pyplot as plt
 from PySide2 import QtCore
@@ -80,6 +81,83 @@ class CameraLogic(LogicBase):
         self._cont_filename = None
         self._cont_polling_active = False
         self._cont_poll_thread = None
+        self._cont_stop_phase = "idle"
+        self._cont_last_sdk_total = 0
+        self._cont_error_streak = 0
+        self._cont_last_error = None
+        self._cont_last_success_ts = None
+        self._cont_preview_interval_s = 0.1
+        self._cont_next_preview_ts = 0.0
+        self._cont_last_error_log_ts = 0.0
+
+    def _normalize_continuous_filepath(self, filepath):
+        """Normalise and preflight an output filepath stem for SPC3 streaming."""
+        if filepath is None:
+            raise ValueError("Output filepath must not be None")
+
+        stem = os.path.abspath(os.path.normpath(str(filepath).strip()))
+        if not stem:
+            raise ValueError("Output filepath must not be empty")
+        if stem.lower().endswith(".spc3"):
+            stem = stem[:-5]
+
+        out_file = stem + ".spc3"
+        if len(out_file) > 1024:
+            raise ValueError(
+                "Output filepath is too long for SPC3 SDK (max 1024 chars)"
+            )
+
+        directory = os.path.dirname(stem)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+
+            probe = os.path.join(directory, ".spc3_write_test.tmp")
+            with open(probe, "wb") as fh:
+                fh.write(b"")
+            os.remove(probe)
+
+        return stem
+
+    def _update_continuous_bytes_from_sdk_total(self, sdk_total):
+        """Update monotonic byte accounting from SDK total-bytes counter."""
+        total = int(sdk_total)
+        if total < self._cont_last_sdk_total:
+            delta = total
+        else:
+            delta = total - self._cont_last_sdk_total
+        self._cont_last_sdk_total = total
+        self._cont_total_bytes += max(0, delta)
+        return max(0, delta)
+
+    def _drain_before_stop(
+        self, camera, max_cycles=100, stable_cycles=3, sleep_s=0.002
+    ):
+        """Drain remaining camera memory before stop to minimise data loss."""
+        drained = 0
+        stable = 0
+        errors = 0
+
+        for _ in range(max_cycles):
+            try:
+                sdk_total = camera.get_continuous_memory()
+                delta = self._update_continuous_bytes_from_sdk_total(sdk_total)
+                drained += delta
+                self._cont_last_success_ts = _time.time()
+                if delta == 0:
+                    stable += 1
+                    if stable >= stable_cycles:
+                        break
+                else:
+                    stable = 0
+            except Exception as e:
+                errors += 1
+                self._cont_errors += 1
+                self._cont_last_error = str(e)
+                if errors >= 3:
+                    break
+            _time.sleep(sleep_s)
+
+        return {"drained_bytes": drained, "drain_errors": errors}
 
     def on_activate(self):
         """Initialisation performed during activation of the module."""
@@ -219,8 +297,18 @@ class CameraLogic(LogicBase):
                 self.log.error("Camera does not support continuous acquisition.")
                 return False
 
+            try:
+                filepath = self._normalize_continuous_filepath(filepath)
+            except Exception as e:
+                self.log.error(f"Invalid continuous-acquisition path: {e}")
+                return False
+
             # Start the hardware continuous acquisition
-            ok = camera.continuous_acquisition(filepath)
+            try:
+                ok = camera.continuous_acquisition(filepath)
+            except Exception as e:
+                self.log.error(f"Hardware start failed: {e}")
+                return False
             if not ok:
                 self.log.error("Hardware refused continuous acquisition start.")
                 return False
@@ -231,6 +319,13 @@ class CameraLogic(LogicBase):
             self._cont_errors = 0
             self._cont_start_time = _time.time()
             self._cont_filename = filepath
+            self._cont_stop_phase = "running"
+            self._cont_last_sdk_total = 0
+            self._cont_error_streak = 0
+            self._cont_last_error = None
+            self._cont_last_success_ts = self._cont_start_time
+            self._cont_next_preview_ts = self._cont_start_time
+            self._cont_last_error_log_ts = 0.0
 
             # Start background polling thread to drain camera memory
             self._cont_polling_active = True
@@ -255,12 +350,16 @@ class CameraLogic(LogicBase):
                     "elapsed_s": _time.time() - self._cont_start_time,
                     "bytes": self._cont_total_bytes,
                     "errors": self._cont_errors,
+                    "phase": self._cont_stop_phase,
+                    "last_error": self._cont_last_error,
                 }
             return {
                 "active": False,
                 "elapsed_s": 0,
                 "bytes": 0,
                 "errors": 0,
+                "phase": self._cont_stop_phase,
+                "last_error": self._cont_last_error,
             }
 
     def stop_continuous_acquisition(self):
@@ -274,6 +373,7 @@ class CameraLogic(LogicBase):
                 return None
 
             # Stop the polling thread
+            self._cont_stop_phase = "stopping"
             self._cont_polling_active = False
             # Release lock briefly so the poll thread can finish its cycle
         if self._cont_poll_thread is not None and self._cont_poll_thread.is_alive():
@@ -281,8 +381,34 @@ class CameraLogic(LogicBase):
             self._cont_poll_thread = None
 
         with self._thread_lock:
+            camera = self._camera()
+
+            self._cont_stop_phase = "draining"
+            drain = self._drain_before_stop(camera)
+
             # Stop hardware
-            self._camera().stop_continuous_acquisition()
+            self._cont_stop_phase = "hardware_stop"
+            stop_ok = False
+            stop_error = None
+            for attempt in range(2):
+                try:
+                    stop_ok = bool(camera.stop_continuous_acquisition())
+                    if stop_ok:
+                        break
+                except Exception as e:
+                    stop_error = str(e)
+                    self._cont_errors += 1
+                    self._cont_last_error = stop_error
+                    self.log.warning(
+                        f"Continuous stop attempt {attempt + 1} failed: {stop_error}"
+                    )
+                    if attempt == 0:
+                        retry_drain = self._drain_before_stop(
+                            camera, max_cycles=20, stable_cycles=2, sleep_s=0.005
+                        )
+                        drain["drained_bytes"] += retry_drain["drained_bytes"]
+                        drain["drain_errors"] += retry_drain["drain_errors"]
+                        _time.sleep(0.05)
 
             elapsed = _time.time() - self._cont_start_time
 
@@ -291,19 +417,32 @@ class CameraLogic(LogicBase):
                 "bytes": self._cont_total_bytes,
                 "errors": self._cont_errors,
                 "filename": self._cont_filename,
+                "phase": "stopped" if stop_ok else "stop_failed",
+                "stop_ok": stop_ok,
+                "stop_error": stop_error,
+                "drained_bytes": drain["drained_bytes"],
             }
 
             # Reset tracking state
             self._cont_start_time = None
+            self._cont_last_sdk_total = 0
+            self._cont_error_streak = 0
+            self._cont_stop_phase = result["phase"]
 
             self.module_state.unlock()
             self.sigAcquisitionFinished.emit()
 
-            self.log.info(
-                f"Continuous acquisition stopped: "
-                f'{elapsed:.2f} s, {result["bytes"] / 1e6:.2f} MB, '
-                f'{result["errors"]} errors'
-            )
+            if stop_ok:
+                self.log.info(
+                    f"Continuous acquisition stopped: "
+                    f'{elapsed:.2f} s, {result["bytes"] / 1e6:.2f} MB, '
+                    f'{result["errors"]} errors, '
+                    f'{result["drained_bytes"] / 1e6:.2f} MB drained on stop'
+                )
+            else:
+                self.log.error(
+                    f"Continuous acquisition stop failed after retries: {stop_error}"
+                )
             return result
 
     def _continuous_poll_loop(self):
@@ -314,20 +453,44 @@ class CameraLogic(LogicBase):
                     break
                 camera = self._camera()
                 try:
-                    nbytes = camera.get_continuous_memory()
-                    self._cont_total_bytes += nbytes
+                    sdk_total = camera.get_continuous_memory()
+                    self._update_continuous_bytes_from_sdk_total(sdk_total)
+                    self._cont_last_success_ts = _time.time()
+                    self._cont_stop_phase = "running"
+                    self._cont_error_streak = 0
                 except Exception as e:
                     self._cont_errors += 1
-                    self.log.warning(f"ContAcq memory read error: {e}")
+                    self._cont_error_streak += 1
+                    self._cont_last_error = str(e)
+                    self._cont_stop_phase = "degraded"
+                    now = _time.time()
+                    if now - self._cont_last_error_log_ts >= 1.0:
+                        self.log.warning(
+                            f"ContAcq memory read error (streak={self._cont_error_streak}): {e}"
+                        )
+                        self._cont_last_error_log_ts = now
+
+                    if self._cont_error_streak in (10, 25, 50, 100):
+                        self.log.error(
+                            "ContAcq persistent communication errors; "
+                            "keeping poll loop alive and retrying"
+                        )
 
                 # Update cached frame for preview / status
-                try:
-                    frame = camera.get_acquired_data()
-                    self._last_frame = frame
-                    self.sigFrameChanged.emit(frame)
-                except Exception:
-                    pass
-            _time.sleep(0.001)  # 1 ms polling interval
+                now = _time.time()
+                if now >= self._cont_next_preview_ts:
+                    self._cont_next_preview_ts = now + self._cont_preview_interval_s
+                    try:
+                        frame = camera.get_acquired_data()
+                        self._last_frame = frame
+                        self.sigFrameChanged.emit(frame)
+                    except Exception:
+                        pass
+            if self._cont_error_streak > 0:
+                sleep_s = min(0.01, 0.001 * (2 ** min(self._cont_error_streak, 5)))
+            else:
+                sleep_s = 0.001
+            _time.sleep(sleep_s)
 
     # ══════════════════════════════════════════════════════════════════
     #  Utilities
