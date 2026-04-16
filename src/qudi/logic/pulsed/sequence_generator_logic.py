@@ -20,6 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from enum import Enum
 from typing import Optional, Union
 import numpy as np
 import os
@@ -40,10 +41,14 @@ from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
 from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.pulse_objects import PulseObjectGenerator, PulseBlockElement
-from qudi.logic.pulsed.sampling_functions import SamplingFunctions
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, SamplingFunctions
 from qudi.interface.pulser_interface import PulserInterface, SequenceOption
 from qudi.util.benchmark import BenchmarkTool
 
+from qudi.util.yaml import SafeRepresenter, SafeConstructor
+from qudi.util.yaml_helpers import dataclass_representer, pulse_envelope_constructor
+SafeRepresenter.add_multi_representer(PulseEnvelope, dataclass_representer)
+SafeConstructor.add_constructor("!PulseEnvelope", pulse_envelope_constructor)
 
 class SequenceGeneratorLogic(LogicBase):
     """

@@ -6,6 +6,9 @@
 
 - Dropped `Python 3.8` support
 - Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
+- Improved pulse envelope handling by introducing the `PulseEnvelope` `dataclass`
+- Improved representation of `DDMethods` to properly store it in measurement data
+- Improved representation of `PulseEnvelopeType` to properly store it in measurement data
 
 ### Bugfixes
 - Fixed scanning_probe_logic with netobtain so that the mdoule works with a remote server connection
@@ -16,6 +19,7 @@
 - Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
 - Fixed counting length for the `t1_sequencing` predefined generate method for a gated counter
 - Fixed sampling functions inheritance of parameters
+- Fixed `sequence_generator_logic` configuration in `default.cfg`
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
