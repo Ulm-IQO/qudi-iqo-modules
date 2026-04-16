@@ -29,6 +29,7 @@ from qudi.util.widgets.plotting.image_widget import ImageWidget
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.paths import get_artwork_dir
 from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
+from qudi.logic.camera_logic import CameraLogic
 
 
 class CameraMainWindow(QtWidgets.QMainWindow):
@@ -87,7 +88,7 @@ class CameraGui(GuiBase):
 
     """
 
-    _camera_logic = Connector(name='camera_logic', interface='CameraLogic')
+    _camera_logic = Connector(name='camera_logic', interface=CameraLogic)
 
     sigStartStopVideoToggled = QtCore.Signal(bool)
     sigCaptureFrameTriggered = QtCore.Signal()

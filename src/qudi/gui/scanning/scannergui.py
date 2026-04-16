@@ -117,9 +117,9 @@ class ScannerGui(GuiBase):
     """
 
     # declare connectors
-    _scanning_logic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
-    _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
-    _optimize_logic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
+    _scanning_logic = Connector(name='scanning_logic', interface=ScanningProbeLogic)
+    _data_logic = Connector(name='data_logic', interface=ScanningDataLogic)
+    _optimize_logic = Connector(name='optimize_logic', interface=ScanningOptimizeLogic)
 
     # config options for gui
     _default_position_unit_prefix = ConfigOption(name='default_position_unit_prefix', default=None)

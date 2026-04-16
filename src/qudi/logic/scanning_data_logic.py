@@ -61,7 +61,7 @@ class ScanningDataLogic(LogicBase):
     """
 
     # declare connectors
-    _scan_logic = Connector(name='scan_logic', interface='ScanningProbeLogic')
+    _scan_logic = Connector(name='scan_logic', interface=ScanningProbeLogic)
 
     # config options
     _max_history_length: int = ConfigOption(name='max_history_length', default=10)
@@ -134,7 +134,7 @@ class ScanningDataLogic(LogicBase):
 
         if data_dropped:
             self.log.warning("Deleted scan history entries containing an incompatible scan axes configuration.")
-            
+
         return history
 
     def get_last_history_entry(self, scan_axes: Optional[Tuple[str, ...]] = None)\

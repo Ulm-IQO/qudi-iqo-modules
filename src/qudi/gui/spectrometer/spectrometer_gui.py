@@ -30,6 +30,8 @@ from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.widgets.fitting import FitConfigurationDialog, FitWidget
+
+from qudi.logic.spectrometer_logic import SpectrometerLogic
 # Ensure specialized QMainWindow widget is reloaded as well when reloading this module
 try:
     importlib.reload(spectrometer_window)
@@ -52,7 +54,7 @@ class SpectrometerGui(GuiBase):
     """
 
     # declare connectors
-    _spectrometer_logic = Connector(name='spectrometer_logic', interface='SpectrometerLogic')
+    _spectrometer_logic = Connector(name='spectrometer_logic', interface=SpectrometerLogic)
 
     # StatusVars
     _delete_fit = StatusVar(name='delete_fit', default=True)

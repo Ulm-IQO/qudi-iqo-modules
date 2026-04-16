@@ -26,6 +26,8 @@ from qudi.core.module import GuiBase
 from PySide2 import QtCore, QtWidgets
 from qudi.util import uic
 
+from qudi.logic.nv_calculator_logic import NVCalculatorLogic
+
 
 class NVCalculatorGui(GuiBase):
     """
@@ -41,7 +43,7 @@ class NVCalculatorGui(GuiBase):
     _modclass = 'NVCalculatorGui'
     _modtype = 'gui'
     ## declare connectors
-    nv_calculatorlogic = Connector(interface='NVCalculatorLogic')
+    nv_calculatorlogic = Connector(interface=NVCalculatorLogic)
 
     sigCalParamsChanged = QtCore.Signal(float, float, bool)
     sigManualDipsChanged = QtCore.Signal(float, float)

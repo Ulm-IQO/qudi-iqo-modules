@@ -28,6 +28,8 @@ from qudi.util.mutex import Mutex
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from scipy.constants import physical_constants
+from qudi.logic.odmr_logic import OdmrLogic
+from qudi.logic.pulsed.pulsed_measurement_logic import PulsedMeasurementLogic
 
 
 class NVCalculatorLogic(LogicBase):
@@ -48,8 +50,8 @@ class NVCalculatorLogic(LogicBase):
     _modtype = 'logic'
 
     # declare connectors
-    odmr = Connector(interface='OdmrLogic', optional=True)
-    pulsed = Connector(interface='PulsedMeasurementLogic', optional=True)
+    odmr = Connector(interface=OdmrLogic, optional=True)
+    pulsed = Connector(interface=PulsedMeasurementLogic, optional=True)
 
     data_source = 0  # choose the data and fitting source, either from cw-odmr, or pulsedmeasurement 0: "no data_source", 1: "CW_ODMR", 2: "pulsed"
     zero_field_D = StatusVar('ZFS', 2870e6)
