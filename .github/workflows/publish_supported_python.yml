@@ -1,0 +1,52 @@
+name: Publish Supported Python Versions
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  make-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.build.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Python matrix from pyproject.toml
+        id: build
+        run: |
+          python .github/workflow_utils/fetch_python_versions.py | jq .
+        shell: bash
+
+  update-python-version-badge:
+    runs-on: ubuntu-latest
+    outputs:
+      version-badge: ${{ steps.badge.outputs.matrix }}
+    needs: make-matrix
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+
+      - name: Write Python Version badge
+        id: badge
+        env:
+          MATRIX: ${{ needs.make-matrix.outputs.matrix }}
+        run: |
+          python .github/workflow_utils/write_python_version_badge.py | jq .
+
+      - name: Upload artifact to Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: pages
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
+

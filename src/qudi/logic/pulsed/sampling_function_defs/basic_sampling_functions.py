@@ -28,8 +28,8 @@ class Idle(SamplingBase):
     """
     Object representing an idle element (zero voltage)
     """
-    def __init__(self):
-        pass
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
     @staticmethod
     def get_samples(time_array):
@@ -44,7 +44,9 @@ class DC(SamplingBase):
     params = dict()
     params['voltage'] = {'unit': 'V', 'init': 0.0, 'min': -np.inf, 'max': +np.inf, 'type': float}
 
-    def __init__(self, voltage=None):
+    def __init__(self, voltage=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(DC.params)
         if voltage is None:
             self.voltage = self.params['voltage']['init']
         else:
@@ -61,7 +63,25 @@ class DC(SamplingBase):
         return samples_arr
 
 
-class Sin(SamplingBase):
+class SinBase(SamplingBase):
+    """
+    Class defining some base sine sampling functions
+    """
+    @staticmethod
+    def _get_sine(time_array, amplitude, frequency, phase):
+        samples_arr = amplitude * np.sin(2 * np.pi * frequency * time_array + phase)
+        return samples_arr
+
+    def _init_parameter(self, name: str, value: float):
+        return value if value is not None else self.params[name]["init"]
+
+    def _init_parameters(self, number_of_sines: int, variables_to_set: dict):
+        for i in range(1, number_of_sines + 1):
+            for name in ("amplitude", "frequency", "phase"):
+                key = f"{name}_{i}" if number_of_sines > 1 else name
+                setattr(self, key, self._init_parameter(key, variables_to_set[key]))
+
+class Sin(SinBase):
     """
     Object representing a sine wave element
     """
@@ -70,25 +90,10 @@ class Sin(SamplingBase):
     params['frequency'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
     params['phase'] = {'unit': '°', 'init': 0.0, 'min': -np.inf, 'max': np.inf, 'type': float}
 
-    def __init__(self, amplitude=None, frequency=None, phase=None):
-        if amplitude is None:
-            self.amplitude = self.params['amplitude']['init']
-        else:
-            self.amplitude = amplitude
-        if frequency is None:
-            self.frequency = self.params['frequency']['init']
-        else:
-            self.frequency = frequency
-        if phase is None:
-            self.phase = self.params['phase']['init']
-        else:
-            self.phase = phase
-        return
-
-    @staticmethod
-    def _get_sine(time_array, amplitude, frequency, phase):
-        samples_arr = amplitude * np.sin(2 * np.pi * frequency * time_array + phase)
-        return samples_arr
+    def __init__(self, amplitude=None, frequency=None, phase=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(Sin.params)
+        self._init_parameters(1, locals())
 
     def get_samples(self, time_array):
         phase_rad = np.pi * self.phase / 180
@@ -96,7 +101,7 @@ class Sin(SamplingBase):
         return samples_arr
 
 
-class DoubleSinSum(SamplingBase):
+class DoubleSinSum(SinBase):
     """
     Object representing a double sine wave element (Superposition of two sine waves; NOT normalized)
     """
@@ -110,38 +115,10 @@ class DoubleSinSum(SamplingBase):
 
     def __init__(self,
                  amplitude_1=None, frequency_1=None, phase_1=None,
-                 amplitude_2=None, frequency_2=None, phase_2=None):
-        if amplitude_1 is None:
-            self.amplitude_1 = self.params['amplitude_1']['init']
-        else:
-            self.amplitude_1 = amplitude_1
-        if frequency_1 is None:
-            self.frequency_1 = self.params['frequency_1']['init']
-        else:
-            self.frequency_1 = frequency_1
-        if phase_1 is None:
-            self.phase_1 = self.params['phase_1']['init']
-        else:
-            self.phase_1 = phase_1
-
-        if amplitude_2 is None:
-            self.amplitude_2 = self.params['amplitude_2']['init']
-        else:
-            self.amplitude_2 = amplitude_2
-        if frequency_2 is None:
-            self.frequency_2 = self.params['frequency_2']['init']
-        else:
-            self.frequency_2 = frequency_2
-        if phase_2 is None:
-            self.phase_2 = self.params['phase_2']['init']
-        else:
-            self.phase_2 = phase_2
-        return
-
-    @staticmethod
-    def _get_sine(time_array, amplitude, frequency, phase):
-        samples_arr = amplitude * np.sin(2 * np.pi * frequency * time_array + phase)
-        return samples_arr
+                 amplitude_2=None, frequency_2=None, phase_2=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(DoubleSinSum.params)
+        self._init_parameters(2, locals())
 
     def get_samples(self, time_array):
         # First sine wave
@@ -154,7 +131,7 @@ class DoubleSinSum(SamplingBase):
         return samples_arr
 
 
-class DoubleSinProduct(SamplingBase):
+class DoubleSinProduct(SinBase):
     """
     Object representing a double sine wave element (Product of two sine waves; NOT normalized)
     """
@@ -168,38 +145,10 @@ class DoubleSinProduct(SamplingBase):
 
     def __init__(self,
                  amplitude_1=None, frequency_1=None, phase_1=None,
-                 amplitude_2=None, frequency_2=None, phase_2=None):
-        if amplitude_1 is None:
-            self.amplitude_1 = self.params['amplitude_1']['init']
-        else:
-            self.amplitude_1 = amplitude_1
-        if frequency_1 is None:
-            self.frequency_1 = self.params['frequency_1']['init']
-        else:
-            self.frequency_1 = frequency_1
-        if phase_1 is None:
-            self.phase_1 = self.params['phase_1']['init']
-        else:
-            self.phase_1 = phase_1
-
-        if amplitude_2 is None:
-            self.amplitude_2 = self.params['amplitude_2']['init']
-        else:
-            self.amplitude_2 = amplitude_2
-        if frequency_2 is None:
-            self.frequency_2 = self.params['frequency_2']['init']
-        else:
-            self.frequency_2 = frequency_2
-        if phase_2 is None:
-            self.phase_2 = self.params['phase_2']['init']
-        else:
-            self.phase_2 = phase_2
-        return
-
-    @staticmethod
-    def _get_sine(time_array, amplitude, frequency, phase):
-        samples_arr = amplitude * np.sin(2 * np.pi * frequency * time_array + phase)
-        return samples_arr
+                 amplitude_2=None, frequency_2=None, phase_2=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(DoubleSinProduct.params)
+        self._init_parameters(2, locals())
 
     def get_samples(self, time_array):
         # First sine wave
@@ -212,7 +161,7 @@ class DoubleSinProduct(SamplingBase):
         return samples_arr
 
 
-class TripleSinSum(SamplingBase):
+class TripleSinSum(SinBase):
     """
     Object representing a linear combination of three sines
     (Superposition of three sine waves; NOT normalized)
@@ -231,51 +180,10 @@ class TripleSinSum(SamplingBase):
     def __init__(self,
                  amplitude_1=None, frequency_1=None, phase_1=None,
                  amplitude_2=None, frequency_2=None, phase_2=None,
-                 amplitude_3=None, frequency_3=None, phase_3=None):
-        if amplitude_1 is None:
-            self.amplitude_1 = self.params['amplitude_1']['init']
-        else:
-            self.amplitude_1 = amplitude_1
-        if frequency_1 is None:
-            self.frequency_1 = self.params['frequency_1']['init']
-        else:
-            self.frequency_1 = frequency_1
-        if phase_1 is None:
-            self.phase_1 = self.params['phase_1']['init']
-        else:
-            self.phase_1 = phase_1
-
-        if amplitude_2 is None:
-            self.amplitude_2 = self.params['amplitude_2']['init']
-        else:
-            self.amplitude_2 = amplitude_2
-        if frequency_2 is None:
-            self.frequency_2 = self.params['frequency_2']['init']
-        else:
-            self.frequency_2 = frequency_2
-        if phase_2 is None:
-            self.phase_2 = self.params['phase_2']['init']
-        else:
-            self.phase_2 = phase_2
-
-        if amplitude_3 is None:
-            self.amplitude_3 = self.params['amplitude_3']['init']
-        else:
-            self.amplitude_3 = amplitude_3
-        if frequency_3 is None:
-            self.frequency_3 = self.params['frequency_3']['init']
-        else:
-            self.frequency_3 = frequency_3
-        if phase_3 is None:
-            self.phase_3 = self.params['phase_3']['init']
-        else:
-            self.phase_3 = phase_3
-        return
-
-    @staticmethod
-    def _get_sine(time_array, amplitude, frequency, phase):
-        samples_arr = amplitude * np.sin(2 * np.pi * frequency * time_array + phase)
-        return samples_arr
+                 amplitude_3=None, frequency_3=None, phase_3=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(TripleSinSum.params)
+        self._init_parameters(3, locals())
 
     def get_samples(self, time_array):
         # First sine wave
@@ -292,7 +200,7 @@ class TripleSinSum(SamplingBase):
         return samples_arr
 
 
-class TripleSinProduct(SamplingBase):
+class TripleSinProduct(SinBase):
     """
     Object representing a wave element composed of the product of three sines
     (Product of three sine waves; NOT normalized)
@@ -311,51 +219,10 @@ class TripleSinProduct(SamplingBase):
     def __init__(self,
                  amplitude_1=None, frequency_1=None, phase_1=None,
                  amplitude_2=None, frequency_2=None, phase_2=None,
-                 amplitude_3=None, frequency_3=None, phase_3=None):
-        if amplitude_1 is None:
-            self.amplitude_1 = self.params['amplitude_1']['init']
-        else:
-            self.amplitude_1 = amplitude_1
-        if frequency_1 is None:
-            self.frequency_1 = self.params['frequency_1']['init']
-        else:
-            self.frequency_1 = frequency_1
-        if phase_1 is None:
-            self.phase_1 = self.params['phase_1']['init']
-        else:
-            self.phase_1 = phase_1
-
-        if amplitude_2 is None:
-            self.amplitude_2 = self.params['amplitude_2']['init']
-        else:
-            self.amplitude_2 = amplitude_2
-        if frequency_2 is None:
-            self.frequency_2 = self.params['frequency_2']['init']
-        else:
-            self.frequency_2 = frequency_2
-        if phase_2 is None:
-            self.phase_2 = self.params['phase_2']['init']
-        else:
-            self.phase_2 = phase_2
-
-        if amplitude_3 is None:
-            self.amplitude_3 = self.params['amplitude_3']['init']
-        else:
-            self.amplitude_3 = amplitude_3
-        if frequency_3 is None:
-            self.frequency_3 = self.params['frequency_3']['init']
-        else:
-            self.frequency_3 = frequency_3
-        if phase_3 is None:
-            self.phase_3 = self.params['phase_3']['init']
-        else:
-            self.phase_3 = phase_3
-        return
-
-    @staticmethod
-    def _get_sine(time_array, amplitude, frequency, phase):
-        samples_arr = amplitude * np.sin(2 * np.pi * frequency * time_array + phase)
-        return samples_arr
+                 amplitude_3=None, frequency_3=None, phase_3=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(TripleSinProduct.params)
+        self._init_parameters(3, locals())
 
     def get_samples(self, time_array):
         # First sine wave
@@ -371,6 +238,121 @@ class TripleSinProduct(SamplingBase):
         samples_arr *= self._get_sine(time_array, self.amplitude_3, self.frequency_3, phase_rad)
         return samples_arr
 
+class QuintupleSinSum(SinBase):
+    """
+    Object representing a linear combination of five sines
+    (Superposition of five sine waves; NOT normalized)
+    """
+    params = dict()
+    params['amplitude_1'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_1'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_1'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_2'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_2'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_2'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_3'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_3'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_3'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_4'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_4'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_4'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_5'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_5'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_5'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+
+    def __init__(self,
+                 amplitude_1=None, frequency_1=None, phase_1=None,
+                 amplitude_2=None, frequency_2=None, phase_2=None,
+                 amplitude_3=None, frequency_3=None, phase_3=None,
+                 amplitude_4=None, frequency_4=None, phase_4=None,
+                 amplitude_5=None, frequency_5=None, phase_5=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(QuintupleSinSum.params)
+        self._init_parameters(5, locals())
+
+    def get_samples(self, time_array):
+        # First sine wave
+        phase_rad = np.pi * self.phase_1 / 180
+        samples_arr = self._get_sine(time_array, self.amplitude_1, self.frequency_1, phase_rad)
+
+        # Second sine wave (add on first sine)
+        phase_rad = np.pi * self.phase_2 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_2, self.frequency_2, phase_rad)
+
+        # Third sine wave (add on sum of first and second)
+        phase_rad = np.pi * self.phase_3 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_3, self.frequency_3, phase_rad)
+
+        # Fourth sine wave (add on sum of first three)
+        phase_rad = np.pi * self.phase_4 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_4, self.frequency_4, phase_rad)
+
+        # Fifth sine wave (add on sum of first four)
+        phase_rad = np.pi * self.phase_5 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_5, self.frequency_5, phase_rad)
+        return samples_arr
+
+class SextupleSinSum(SinBase):
+    """
+    Object representing a linear combination of six sines
+    (Superposition of six sine waves; NOT normalized)
+    """
+    params = dict()
+    params['amplitude_1'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_1'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_1'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_2'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_2'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_2'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_3'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_3'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_3'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_4'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_4'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_4'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_5'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_5'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_5'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+    params['amplitude_6'] = {'unit': 'V', 'init': 0.0, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['frequency_6'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf, 'type': float}
+    params['phase_6'] = {'unit': '°', 'init': 0.0, 'min': -360, 'max': 360, 'type': float}
+
+    def __init__(self,
+                 amplitude_1=None, frequency_1=None, phase_1=None,
+                 amplitude_2=None, frequency_2=None, phase_2=None,
+                 amplitude_3=None, frequency_3=None, phase_3=None,
+                 amplitude_4=None, frequency_4=None, phase_4=None,
+                 amplitude_5=None, frequency_5=None, phase_5=None,
+                 amplitude_6=None, frequency_6=None, phase_6=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(SextupleSinSum.params)
+        self._init_parameters(6, locals())
+
+    def get_samples(self, time_array):
+        # First sine wave
+        phase_rad = np.pi * self.phase_1 / 180
+        samples_arr = self._get_sine(time_array, self.amplitude_1, self.frequency_1, phase_rad)
+
+        # Second sine wave (add on first sine)
+        phase_rad = np.pi * self.phase_2 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_2, self.frequency_2, phase_rad)
+
+        # Third sine wave (add on sum of first and second)
+        phase_rad = np.pi * self.phase_3 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_3, self.frequency_3, phase_rad)
+
+        # Fourth sine wave (add on sum of first three)
+        phase_rad = np.pi * self.phase_4 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_4, self.frequency_4, phase_rad)
+
+        # Fifth sine wave (add on sum of first four)
+        phase_rad = np.pi * self.phase_5 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_5, self.frequency_5, phase_rad)
+
+        # Sixth sine wave (add on sum of first five)
+        phase_rad = np.pi * self.phase_6 / 180
+        samples_arr += self._get_sine(time_array, self.amplitude_6, self.frequency_6, phase_rad)
+        return samples_arr
 
 class Chirp(SamplingBase):
     """
@@ -385,7 +367,9 @@ class Chirp(SamplingBase):
     params['stop_freq'] = {'unit': 'Hz', 'init': 2.87e9, 'min': 0.0, 'max': np.inf,
                                 'type': float}
 
-    def __init__(self, amplitude=None, phase=None, start_freq=None, stop_freq=None):
+    def __init__(self, amplitude=None, phase=None, start_freq=None, stop_freq=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(Chirp.params)
         if amplitude is None:
             self.amplitude = self.params['amplitude']['init']
         else:
@@ -433,7 +417,9 @@ class AllenEberlyChirp(SamplingBase):
     params['tau_pulse'] = {'unit': '', 'init': 0.1e-6, 'min': 0.0, 'max': np.inf,
                            'type': float}
 
-    def __init__(self, amplitude=None, phase=None, start_freq=None, stop_freq=None, tau_pulse=None):
+    def __init__(self, amplitude=None, phase=None, start_freq=None, stop_freq=None, tau_pulse=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.params.update(AllenEberlyChirp.params)
         if amplitude is None:
             self.amplitude = self.params['amplitude']['init']
         else:
