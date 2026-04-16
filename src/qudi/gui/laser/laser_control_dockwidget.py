@@ -22,7 +22,9 @@ If not, see <https://www.gnu.org/licenses/>.
 
 __all__ = ('LaserControlDockWidget',)
 
-from PySide2 import QtCore, QtWidgets
+from PySide2 import QtCore, QtWidgets, QtGui
+from importlib import resources
+import qudi.artwork.icons
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.widgets.slider import DoubleSlider
@@ -46,12 +48,15 @@ class LaserControlDockWidget(AdvancedDockWidget):
 
         # generate child widgets
         # ToDo: Use toggle switches
+        self.polling_button = QtWidgets.QPushButton(QtGui.QIcon(str(resources.files(qudi.artwork.icons) / "start-counter.svg")), "Start Laser Polling")
+        self.polling_button.setCheckable(True)
+        main_layout.addWidget(self.polling_button, 0, 0, 1, 2)
         self.laser_button = QtWidgets.QPushButton('Laser')
         self.laser_button.setCheckable(True)
-        main_layout.addWidget(self.laser_button, 0, 0)
+        main_layout.addWidget(self.laser_button, 1, 0)
         self.shutter_button = QtWidgets.QPushButton('Shutter')
         self.shutter_button.setCheckable(True)
-        main_layout.addWidget(self.shutter_button, 0, 1)
+        main_layout.addWidget(self.shutter_button, 1, 1)
 
         group_box = QtWidgets.QGroupBox('Control Mode')
         layout = QtWidgets.QHBoxLayout()
@@ -69,7 +74,7 @@ class LaserControlDockWidget(AdvancedDockWidget):
         self.control_current_radio_button.clicked.connect(
             lambda: self.sigControlModeChanged.emit(ControlMode.CURRENT)
         )
-        main_layout.addWidget(group_box, 1, 0, 1, 2)
+        main_layout.addWidget(group_box, 2, 0, 1, 2)
 
         group_box = QtWidgets.QGroupBox('Power')
         layout = QtWidgets.QVBoxLayout()
@@ -98,7 +103,7 @@ class LaserControlDockWidget(AdvancedDockWidget):
         self.power_slider.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                         QtWidgets.QSizePolicy.Expanding)
         layout.addWidget(self.power_slider)
-        main_layout.addWidget(group_box, 2, 0)
+        main_layout.addWidget(group_box, 3, 0)
 
         group_box = QtWidgets.QGroupBox('Current')
         layout = QtWidgets.QVBoxLayout()
@@ -126,5 +131,5 @@ class LaserControlDockWidget(AdvancedDockWidget):
         self.current_slider.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
                                           QtWidgets.QSizePolicy.Expanding)
         layout.addWidget(self.current_slider)
-        main_layout.addWidget(group_box, 2, 1)
+        main_layout.addWidget(group_box, 3, 1)
         main_widget.setSizePolicy(QtWidgets.QSizePolicy.Fixed, QtWidgets.QSizePolicy.Expanding)
