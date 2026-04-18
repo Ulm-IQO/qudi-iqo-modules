@@ -24,7 +24,7 @@ __all__ = ['TraceSettingsDockWidget', 'TimeSeriesGuiMainWindow']
 
 import os
 from pyqtgraph import PlotWidget
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.paths import get_artwork_dir
@@ -76,19 +76,19 @@ class TraceSettingsDockWidget(QtWidgets.QDockWidget):
         widget.setLayout(layout)
         self.setWidget(widget)
         label = QtWidgets.QLabel('Trace length:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         layout.addWidget(label)
         layout.addWidget(self.trace_length_spinbox)
         label = QtWidgets.QLabel('Data rate:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         layout.addWidget(label)
         layout.addWidget(self.data_rate_spinbox)
         label = QtWidgets.QLabel('Oversampling factor:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         layout.addWidget(label)
         layout.addWidget(self.oversampling_spinbox)
         label = QtWidgets.QLabel('Moving average width:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         layout.addWidget(label)
         layout.addWidget(self.moving_average_spinbox)
 
@@ -102,55 +102,55 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
         # Create QActions
         icons_dir = os.path.join(get_artwork_dir(), 'icons')
         icon = QtGui.QIcon(os.path.join(icons_dir, 'start-counter'))
-        icon.addFile(os.path.join(icons_dir, 'stop-counter'), state=QtGui.QIcon.On)
-        self.toggle_trace_action = QtWidgets.QAction(icon, 'Start trace', self)
+        icon.addFile(os.path.join(icons_dir, 'stop-counter'), state=QtGui.QIcon.State.On)
+        self.toggle_trace_action = QtGui.QAction(icon, 'Start trace', self)
         self.toggle_trace_action.setCheckable(True)
         self.toggle_trace_action.setToolTip('Start/Stop continuous reading of the data trace.')
         icon = QtGui.QIcon(os.path.join(icons_dir, 'record-counter'))
-        icon.addFile(os.path.join(icons_dir, 'stop-record-counter'), state=QtGui.QIcon.On)
-        self.record_trace_action = QtWidgets.QAction(icon, 'Start recording', self)
+        icon.addFile(os.path.join(icons_dir, 'stop-record-counter'), state=QtGui.QIcon.State.On)
+        self.record_trace_action = QtGui.QAction(icon, 'Start recording', self)
         self.record_trace_action.setCheckable(True)
         self.record_trace_action.setToolTip(
             'Start/Stop trace recorder. This will continuously accumulate trace data and save it '
             'to file once it is stopped.'
         )
         icon = QtGui.QIcon(os.path.join(icons_dir, 'camera-photo'))
-        self.snapshot_trace_action = QtWidgets.QAction(icon, 'Take snapshot', self)
+        self.snapshot_trace_action = QtGui.QAction(icon, 'Take snapshot', self)
         self.snapshot_trace_action.setCheckable(False)
         self.snapshot_trace_action.setToolTip(
             'Take a snapshot of only the currently shown data trace and save it to file.'
         )
         icon = QtGui.QIcon(os.path.join(icons_dir, 'configure'))
-        self.trace_view_selection_action = QtWidgets.QAction(icon, 'Trace view selection', self)
+        self.trace_view_selection_action = QtGui.QAction(icon, 'Trace view selection', self)
         self.trace_view_selection_action.setCheckable(False)
         self.trace_view_selection_action.setToolTip(
             'Opens the trace view selection dialog to configure the data traces to show.'
         )
         icon = QtGui.QIcon(os.path.join(icons_dir, 'configure'))
-        self.channel_settings_action = QtWidgets.QAction(icon, 'Channel settings', self)
+        self.channel_settings_action = QtGui.QAction(icon, 'Channel settings', self)
         self.channel_settings_action.setCheckable(False)
         self.channel_settings_action.setToolTip(
             'Opens the channel settings dialog to configure the active data channels.'
         )
-        self.show_trace_settings_action = QtWidgets.QAction('Trace settings', self)
+        self.show_trace_settings_action = QtGui.QAction('Trace settings', self)
         self.show_trace_settings_action.setCheckable(True)
         self.show_trace_settings_action.setToolTip('Show data trace settings.')
-        self.show_toolbar_action = QtWidgets.QAction('Toolbar', self)
+        self.show_toolbar_action = QtGui.QAction('Toolbar', self)
         self.show_toolbar_action.setCheckable(True)
         self.show_toolbar_action.setToolTip('Show the trace control toolbar.')
-        self.restore_default_view_action = QtWidgets.QAction('Restore default', self)
+        self.restore_default_view_action = QtGui.QAction('Restore default', self)
         self.restore_default_view_action.setCheckable(False)
         self.restore_default_view_action.setToolTip('Restore the default view.')
         icon = QtGui.QIcon(os.path.join(icons_dir, 'application-exit'))
-        self.close_action = QtWidgets.QAction(icon, 'Close', self)
+        self.close_action = QtGui.QAction(icon, 'Close', self)
         self.close_action.setCheckable(False)
         self.close_action.setToolTip('Close')
-        self.close_action.setShortcut(QtGui.QKeySequence(QtGui.Qt.CTRL + QtGui.Qt.Key_Q))
+        self.close_action.setShortcut(QtGui.QKeySequence(QtGui.Qt.Key.Key_Control | QtGui.Qt.Key.Key_Q))
 
         # Create toolbar
         self.toolbar = QtWidgets.QToolBar('Trace controls')
-        self.addToolBar(QtCore.Qt.TopToolBarArea, self.toolbar)
-        self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonTextUnderIcon)
+        self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, self.toolbar)
+        self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         self.toolbar.addAction(self.toggle_trace_action)
         self.toolbar.addAction(self.record_trace_action)
         self.toolbar.addAction(self.snapshot_trace_action)
@@ -183,9 +183,9 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
         font.setBold(True)
         font.setPointSize(60)
         self.current_value_label.setFont(font)
-        self.current_value_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        self.current_value_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         self.current_value_combobox = QtWidgets.QComboBox()
-        self.current_value_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.AdjustToContents)
+        self.current_value_combobox.setSizeAdjustPolicy(QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContents)
         self.current_value_combobox.setMinimumContentsLength(20)
         self.current_value_combobox.setMaxVisibleItems(10)
 
@@ -196,8 +196,8 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
         widget.setLayout(layout)
         self.setCentralWidget(widget)
         label = QtWidgets.QLabel('Current value channel:')
-        label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
-        label.setSizePolicy(QtWidgets.QSizePolicy.MinimumExpanding, QtWidgets.QSizePolicy.Preferred)
+        label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
+        label.setSizePolicy(QtWidgets.QSizePolicy.Policy.MinimumExpanding, QtWidgets.QSizePolicy.Policy.Preferred)
         layout.addWidget(label, 0, 0)
         layout.addWidget(self.current_value_combobox, 0, 1)
         layout.addWidget(self.current_value_label, 1, 0, 1, 2)
@@ -205,7 +205,7 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
 
         # Create and add trace settings QDockWidget
         self.settings_dockwidget = TraceSettingsDockWidget()
-        self.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self.settings_dockwidget)
+        self.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self.settings_dockwidget)
 
         # Connect some show/hide signals/actions
         self.show_toolbar_action.triggered[bool].connect(self.toolbar.setVisible)

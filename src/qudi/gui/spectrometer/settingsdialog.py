@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.toggle_switch import ToggleSwitch
 
@@ -44,7 +44,7 @@ class SettingsDialog(QtWidgets.QDialog):
         self.delete_fit = ToggleSwitch(state_names=('False', 'True'))
         self.delete_fit.setMinimumWidth(150)
         delete_fit_label = QtWidgets.QLabel('Delete Fit:')
-        delete_fit_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        delete_fit_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(delete_fit_label, 0, 0)
         layout.addWidget(self.delete_fit, 0, 1)
 
@@ -52,24 +52,24 @@ class SettingsDialog(QtWidgets.QDialog):
         self.max_repetitions_spinbox.setMinimumWidth(150)
         self.max_repetitions_spinbox.setMinimum(0)
         max_repetitions_label = QtWidgets.QLabel('Maximum Repetitions:')
-        max_repetitions_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        max_repetitions_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(max_repetitions_label, 1, 0)
         layout.addWidget(self.max_repetitions_spinbox, 1, 1)
 
         self.exposure_time_spinbox = ScienDSpinBox()
         self.exposure_time_spinbox.setMinimumWidth(150)
         exposure_time_label = QtWidgets.QLabel('Exposure Time:')
-        exposure_time_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        exposure_time_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         layout.addWidget(exposure_time_label, 2, 0)
         layout.addWidget(self.exposure_time_spinbox, 2, 1)
 
-        buttonbox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.Ok
-                                               | QtWidgets.QDialogButtonBox.Cancel
-                                               | QtWidgets.QDialogButtonBox.Apply)
-        buttonbox.setOrientation(QtCore.Qt.Horizontal)
+        buttonbox = QtWidgets.QDialogButtonBox(QtWidgets.QDialogButtonBox.StandardButton.Ok
+                                               | QtWidgets.QDialogButtonBox.StandardButton.Cancel
+                                               | QtWidgets.QDialogButtonBox.StandardButton.Apply)
+        buttonbox.setOrientation(QtCore.Qt.Orientation.Horizontal)
         layout.addWidget(buttonbox, 3, 0, 1, 2)
 
         # Add internal signals
         buttonbox.accepted.connect(self.accept)
         buttonbox.rejected.connect(self.reject)
-        buttonbox.button(buttonbox.Apply).clicked.connect(self.accepted)
+        buttonbox.button(buttonbox.StandardButton.Apply).clicked.connect(self.accepted)

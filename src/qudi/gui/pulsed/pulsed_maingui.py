@@ -35,7 +35,7 @@ from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.core.module import GuiBase
 from qudi.util import uic
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
@@ -223,15 +223,15 @@ class PulsedMeasurementGui(GuiBase):
 
         self.sigPulseGeneratorSettingsUpdated.connect(
             self.pulsedmasterlogic().refresh_pulse_generator_settings,
-            QtCore.Qt.QueuedConnection)
+            QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigPulseGeneratorRunBenchmark.connect(
             self.pulsedmasterlogic().sequencegeneratorlogic().run_pg_benchmark,
-            QtCore.Qt.QueuedConnection)
+            QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigPulseGeneratorRunBenchmark.connect(
             self.benchmark_busy,
-            QtCore.Qt.QueuedConnection)
+            QtCore.Qt.ConnectionType.QueuedConnection)
         self.pulsedmasterlogic().sequencegeneratorlogic().sigBenchmarkComplete.connect(
-            self.sampling_or_loading_finished, QtCore.Qt.QueuedConnection)
+            self.sampling_or_loading_finished, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self.show()
 
@@ -244,11 +244,11 @@ class PulsedMeasurementGui(GuiBase):
                                       "Otherwise, upload time estimation might be unavailable. "
                                       "Make sure to close the pulsed gui gracefully to save "
                                       "pulse generator information for future use.")
-            dialog.setStandardButtons(QtWidgets.QMessageBox.Yes | QtWidgets.QMessageBox.No)
-            dialog.setDefaultButton(QtWidgets.QMessageBox.Yes)
+            dialog.setStandardButtons(QtWidgets.QMessageBox.StandardButton.Yes | QtWidgets.QMessageBox.StandardButton.No)
+            dialog.setDefaultButton(QtWidgets.QMessageBox.StandardButton.Yes)
 
             ret = dialog.exec()
-            if ret == QtWidgets.QMessageBox.Yes:
+            if ret == QtWidgets.QMessageBox.StandardButton.Yes:
                 self.run_pg_benchmark()
 
         return
@@ -314,17 +314,17 @@ class PulsedMeasurementGui(GuiBase):
         # Connect signals used in predefined methods config dialog
         self._pm_cfg.accepted.connect(self.apply_predefined_methods_config)
         self._pm_cfg.rejected.connect(self.keep_former_predefined_methods_config)
-        self._pm_cfg.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.apply_predefined_methods_config)
+        self._pm_cfg.buttonBox.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply_predefined_methods_config)
 
         # Connect signals used in analysis settings dialog
         self._as.accepted.connect(self.update_analysis_settings)
         self._as.rejected.connect(self.keep_former_analysis_settings)
-        self._as.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.update_analysis_settings)
+        self._as.buttonBox.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.connect(self.update_analysis_settings)
 
         # Connect signals used in pulse generator settings dialog
         self._pgs.accepted.connect(self.apply_generator_settings)
         self._pgs.rejected.connect(self.keep_former_generator_settings)
-        self._pgs.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(self.apply_generator_settings)
+        self._pgs.buttonBox.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.connect(self.apply_generator_settings)
         self._pgs.pg_benchmark.clicked.connect(self.run_pg_benchmark)
         return
 
@@ -394,7 +394,7 @@ class PulsedMeasurementGui(GuiBase):
 
         self._pa.time_param_ana_periode_DoubleSpinBox.editingFinished.connect(self.measurement_timer_changed)
         self._pa.ana_param_errorbars_CheckBox.toggled.connect(self.toggle_error_bars)
-        self._pa.second_plot_ComboBox.currentIndexChanged[str].connect(self.second_plot_changed)
+        self._pa.second_plot_ComboBox.currentTextChanged.connect(self.second_plot_changed)
         return
 
     def _connect_extraction_tab_signals(self):
@@ -479,17 +479,17 @@ class PulsedMeasurementGui(GuiBase):
         # Connect signals used in predefined methods config dialog
         self._pm_cfg.accepted.disconnect()
         self._pm_cfg.rejected.disconnect()
-        self._pm_cfg.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
+        self._pm_cfg.buttonBox.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.disconnect()
 
         # Connect signals used in analysis settings dialog
         self._as.accepted.disconnect()
         self._as.rejected.disconnect()
-        self._as.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
+        self._as.buttonBox.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.disconnect()
 
         # Connect signals used in pulse generator settings dialog
         self._pgs.accepted.disconnect()
         self._pgs.rejected.disconnect()
-        self._pgs.buttonBox.button(QtWidgets.QDialogButtonBox.Apply).clicked.disconnect()
+        self._pgs.buttonBox.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.disconnect()
         return
 
     def _disconnect_pulse_generator_tab_signals(self):
@@ -558,7 +558,7 @@ class PulsedMeasurementGui(GuiBase):
 
         self._pa.time_param_ana_periode_DoubleSpinBox.editingFinished.disconnect()
         self._pa.ana_param_errorbars_CheckBox.toggled.disconnect()
-        self._pa.second_plot_ComboBox.currentIndexChanged[str].disconnect()
+        self._pa.second_plot_ComboBox.currentIndexChanged[int].disconnect()
         return
 
     def _disconnect_extraction_tab_signals(self):
@@ -644,8 +644,8 @@ class PulsedMeasurementGui(GuiBase):
         self._mw.control_ToolBar.addWidget(self._mw.clear_device_PushButton)
 
         self._mw.current_loaded_asset_Label = QtWidgets.QLabel(self._mw)
-        sizepolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                           QtWidgets.QSizePolicy.Fixed)
+        sizepolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                           QtWidgets.QSizePolicy.Policy.Fixed)
         sizepolicy.setHorizontalStretch(0)
         sizepolicy.setVerticalStretch(0)
         sizepolicy.setHeightForWidth(
@@ -1049,17 +1049,17 @@ class PulsedMeasurementGui(GuiBase):
             self._analog_chnl_setting_widgets[chnl] = (
                 QtWidgets.QLabel(text=chnl + ':'), ScienDSpinBox(), ScienDSpinBox())
             self._analog_chnl_setting_widgets[chnl][0].setAlignment(
-                QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+                QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self._analog_chnl_setting_widgets[chnl][1].setAlignment(
-                QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self._analog_chnl_setting_widgets[chnl][1].setSizePolicy(
-                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+                QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
             self._analog_chnl_setting_widgets[chnl][1].setDecimals(6)
             self._analog_chnl_setting_widgets[chnl][1].setSuffix('V')
             self._analog_chnl_setting_widgets[chnl][2].setAlignment(
-                QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self._analog_chnl_setting_widgets[chnl][2].setSizePolicy(
-                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+                QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
             self._analog_chnl_setting_widgets[chnl][2].setDecimals(6)
             self._analog_chnl_setting_widgets[chnl][2].setSuffix('V')
             self._pgs.ach_groupBox.layout().addWidget(
@@ -1089,17 +1089,17 @@ class PulsedMeasurementGui(GuiBase):
             self._digital_chnl_setting_widgets[chnl] = (
                 QtWidgets.QLabel(text=chnl + ':'), ScienDSpinBox(), ScienDSpinBox())
             self._digital_chnl_setting_widgets[chnl][0].setAlignment(
-                QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+                QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self._digital_chnl_setting_widgets[chnl][1].setAlignment(
-                QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self._digital_chnl_setting_widgets[chnl][1].setSizePolicy(
-                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+                QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
             self._digital_chnl_setting_widgets[chnl][1].setDecimals(6)
             self._digital_chnl_setting_widgets[chnl][1].setSuffix('V')
             self._digital_chnl_setting_widgets[chnl][2].setAlignment(
-                QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter)
+                QtCore.Qt.AlignmentFlag.AlignLeft | QtCore.Qt.AlignmentFlag.AlignVCenter)
             self._digital_chnl_setting_widgets[chnl][2].setSizePolicy(
-                QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+                QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
             self._digital_chnl_setting_widgets[chnl][2].setDecimals(6)
             self._digital_chnl_setting_widgets[chnl][2].setSuffix('V')
             self._pgs.dch_groupBox.layout().addWidget(
@@ -1246,7 +1246,7 @@ class PulsedMeasurementGui(GuiBase):
             if param.endswith('_channel') and (value is None or type(value) is str):
                 widget = QtWidgets.QComboBox()
                 widget.setObjectName('global_param_' + param)
-                widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+                widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
                 widget.addItem('')
                 widget.addItems(natural_sort(self.pulsedmasterlogic().digital_channels))
                 widget.addItems(natural_sort(self.pulsedmasterlogic().analog_channels))
@@ -1254,8 +1254,8 @@ class PulsedMeasurementGui(GuiBase):
                 if index >= 0:
                     widget.setCurrentIndex(index)
                 label = QtWidgets.QLabel(param + ':')
-                label.setAlignment(QtCore.Qt.AlignRight)
-                self._pm.global_param_gridLayout.addWidget(label, 0, combo_count, QtCore.Qt.AlignVCenter)
+                label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
+                self._pm.global_param_gridLayout.addWidget(label, 0, combo_count, QtCore.Qt.AlignmentFlag.AlignVCenter)
                 self._pm.global_param_gridLayout.addWidget(widget, 0, combo_count + 1)
                 combo_count += 2
                 self._channel_selection_comboboxes.append(widget)
@@ -1295,11 +1295,11 @@ class PulsedMeasurementGui(GuiBase):
                 widget.setCurrentText(value.name)
                 widget.currentTextChanged.connect(self.generation_parameters_changed)
 
-            widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
+            widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
 
             # Create label
             label = QtWidgets.QLabel(param + ':')
-            label.setAlignment(QtCore.Qt.AlignRight)
+            label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight)
 
             # Rename widget to a naming convention
             widget.setObjectName('global_param_' + param)
@@ -1311,12 +1311,12 @@ class PulsedMeasurementGui(GuiBase):
             if col_count > 4:
                 col_count = 0
                 row_count += 1
-            self._pm.global_param_gridLayout.addWidget(label, row_count, col_count, QtCore.Qt.AlignVCenter)
+            self._pm.global_param_gridLayout.addWidget(label, row_count, col_count, QtCore.Qt.AlignmentFlag.AlignVCenter)
             self._pm.global_param_gridLayout.addWidget(widget, row_count, col_count + 1)
             col_count += 2
         spacer = QtWidgets.QSpacerItem(20, 0,
-                                       QtWidgets.QSizePolicy.Expanding,
-                                       QtWidgets.QSizePolicy.Minimum)
+                                       QtWidgets.QSizePolicy.Policy.Expanding,
+                                       QtWidgets.QSizePolicy.Policy.Minimum)
         if row_count > 1:
             self._pm.global_param_gridLayout.addItem(spacer, 1, 6)
         else:
@@ -1337,7 +1337,7 @@ class PulsedMeasurementGui(GuiBase):
             # Create the widgets for the predefined methods dialogue
             # Create GroupBox for the method to reside in
             groupBox = QtWidgets.QGroupBox(self._pm)
-            groupBox.setAlignment(QtCore.Qt.AlignLeft)
+            groupBox.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeft)
             groupBox.setTitle(method_name)
             # Create layout within the GroupBox
             gridLayout = QtWidgets.QGridLayout(groupBox)
@@ -1401,8 +1401,8 @@ class PulsedMeasurementGui(GuiBase):
                     gridLayout.addWidget(param_label, 0, param_index + 1, 1, 1)
                     gridLayout.addWidget(input_obj, 1, param_index + 1, 1, 1)
                     self._pm.method_param_widgets[method_name][param_name] = input_obj
-            h_spacer = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Expanding,
-                                             QtWidgets.QSizePolicy.Minimum)
+            h_spacer = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Policy.Expanding,
+                                             QtWidgets.QSizePolicy.Policy.Minimum)
             gridLayout.addItem(h_spacer, 1, param_index + 2, 1, 1)
 
             # attach the GroupBox widget to the predefined methods widget.
@@ -1798,9 +1798,9 @@ class PulsedMeasurementGui(GuiBase):
             self._mw,
             'Qudi: Delete all PulseBlocks?',
             'Do you really want to delete all saved PulseBlocks?',
-            QtWidgets.QMessageBox.Yes,
-            QtWidgets.QMessageBox.No)
-        if result == QtWidgets.QMessageBox.Yes:
+            QtWidgets.QMessageBox.StandardButton.Yes,
+            QtWidgets.QMessageBox.StandardButton.No)
+        if result == QtWidgets.QMessageBox.StandardButton.Yes:
             self.pulsedmasterlogic().delete_all_pulse_blocks()
         return
 
@@ -1853,9 +1853,9 @@ class PulsedMeasurementGui(GuiBase):
             'Qudi: Delete all PulseBlockEnsembles?',
             'Do you really want to delete all saved PulseBlockEnsembles?\n'
             'This will also delete all waveforms within the pulse generator memory.',
-            QtWidgets.QMessageBox.Yes,
-            QtWidgets.QMessageBox.No)
-        if result == QtWidgets.QMessageBox.Yes:
+            QtWidgets.QMessageBox.StandardButton.Yes,
+            QtWidgets.QMessageBox.StandardButton.No)
+        if result == QtWidgets.QMessageBox.StandardButton.Yes:
             self.pulsedmasterlogic().delete_all_block_ensembles()
         return
 
@@ -2177,9 +2177,9 @@ class PulsedMeasurementGui(GuiBase):
             'Qudi: Delete all PulseSequences?',
             'Do you really want to delete all saved PulseSequences?\n'
             'This will also delete all sequences within the pulse generator memory.',
-            QtWidgets.QMessageBox.Yes,
-            QtWidgets.QMessageBox.No)
-        if result == QtWidgets.QMessageBox.Yes:
+            QtWidgets.QMessageBox.StandardButton.Yes,
+            QtWidgets.QMessageBox.StandardButton.No)
+        if result == QtWidgets.QMessageBox.StandardButton.Yes:
             self.pulsedmasterlogic().delete_all_pulse_sequences()
         return
 
@@ -2304,14 +2304,14 @@ class PulsedMeasurementGui(GuiBase):
         """ Initialize, connect and configure the 'Analysis' Tab.
         """
         # Configure the main pulse analysis display:
-        self.signal_image = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
-                                            style=QtCore.Qt.DotLine,
+        self.signal_image = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.PenStyle.DotLine),
+                                            style=QtCore.Qt.PenStyle.DotLine,
                                             symbol='o',
                                             symbolPen=palette.c1,
                                             symbolBrush=palette.c1,
                                             symbolSize=7)
-        self.signal_image2 = pg.PlotDataItem(pen=pg.mkPen(palette.c4, style=QtCore.Qt.DotLine),
-                                             style=QtCore.Qt.DotLine,
+        self.signal_image2 = pg.PlotDataItem(pen=pg.mkPen(palette.c4, style=QtCore.Qt.PenStyle.DotLine),
+                                             style=QtCore.Qt.PenStyle.DotLine,
                                              symbol='o',
                                              symbolPen=palette.c4,
                                              symbolBrush=palette.c4,
@@ -2337,14 +2337,14 @@ class PulsedMeasurementGui(GuiBase):
                                                         pen=palette.c5)
 
         # Configure the second pulse analysis plot display:
-        self.second_plot_image = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
-                                            style=QtCore.Qt.DotLine,
+        self.second_plot_image = pg.PlotDataItem(pen=pg.mkPen(palette.c1, style=QtCore.Qt.PenStyle.DotLine),
+                                            style=QtCore.Qt.PenStyle.DotLine,
                                             symbol='o',
                                             symbolPen=palette.c1,
                                             symbolBrush=palette.c1,
                                             symbolSize=7)
-        self.second_plot_image2 = pg.PlotDataItem(pen=pg.mkPen(palette.c4, style=QtCore.Qt.DotLine),
-                                             style=QtCore.Qt.DotLine,
+        self.second_plot_image2 = pg.PlotDataItem(pen=pg.mkPen(palette.c4, style=QtCore.Qt.PenStyle.DotLine),
+                                             style=QtCore.Qt.PenStyle.DotLine,
                                              symbol='o',
                                              symbolPen=palette.c4,
                                              symbolBrush=palette.c4,
@@ -3082,7 +3082,7 @@ class PulsedMeasurementGui(GuiBase):
                                'Default parameter value is of invalid type.'.format(param_name))
                 continue
             widget.setObjectName('extract_param_' + param_name)
-            widget.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Fixed)
+            widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Fixed)
 
             # Add label and widget to the main grid layout
             self._pe.extraction_param_gridLayout.addWidget(label, layout_row, 0)
