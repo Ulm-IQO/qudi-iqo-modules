@@ -31,6 +31,7 @@
 - Tests now use `QudiKernel` instead of a custom remote server
 - Added install script
 - Updated install documentation
+- Improved Github Actions dependency testing
 
 ## Version 0.6.0
 
