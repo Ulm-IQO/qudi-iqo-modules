@@ -25,6 +25,7 @@
 - Added the `PredefinedGeneratorBase._get_sequence_count_length` method to easily and correctly determine the count length of `PulseSequence` objects similar to `PredefinedGeneratorBase._get_ensemble_count_length`
 
 ### Other
+- Updated versions for Github actions to fix Node.js 20 deprecation warnings
 - Fixed testing workflow by removing deprecated `python 3.8`
 - Configured Github Action bot as author for the testing branch commits
 - Workflows automatically fetch all possible python versions from the `pyproject.toml` for testing, tests that only use a singular Python version now use the latest possible Python version
