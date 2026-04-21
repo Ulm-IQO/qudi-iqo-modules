@@ -27,6 +27,8 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.module import GuiBase
 from qudi.core.configoption import ConfigOption
 
+from qudi.logic.switch_logic import SwitchLogic
+
 from .switch_state_widgets import SwitchRadioButtonWidget, ToggleSwitchWidget
 
 
@@ -102,7 +104,7 @@ class SwitchGui(GuiBase):
     """
 
     # declare connectors
-    switchlogic = Connector(interface='SwitchLogic')
+    switchlogic = Connector(interface=SwitchLogic)
 
     # declare config options
     _switch_row_num_max = ConfigOption(name='switch_row_num_max', default=None)

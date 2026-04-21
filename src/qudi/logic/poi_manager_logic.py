@@ -45,6 +45,9 @@ from qudi.logic.scanning_data_logic import ScanningDataLogic
 from qudi.util.mutex import RecursiveMutex
 from qudi.util.datastorage import TextDataStorage
 
+from qudi.logic.scanning_optimize_logic import ScanningOptimizeLogic
+from qudi.logic.scanning_probe_logic import ScanningProbeLogic
+
 
 class RegionOfInterest:
     """
@@ -420,9 +423,9 @@ class PoiManagerLogic(LogicBase):
     """
 
     # declare connectors
-    _optimizelogic = Connector(name='optimize_logic', interface='ScanningOptimizeLogic')
-    _scanninglogic = Connector(name='scanning_logic', interface='ScanningProbeLogic')
-    _data_logic = Connector(name='data_logic', interface='ScanningDataLogic')
+    _optimizelogic = Connector(name='optimize_logic', interface=ScanningOptimizeLogic)
+    _scanninglogic = Connector(name='scanning_logic', interface=ScanningProbeLogic)
+    _data_logic = Connector(name='data_logic', interface=ScanningDataLogic)
 
     # config options
     _scan_axes = tuple(str(ConfigOption('data_scan_axes', default='xy', missing='info')))

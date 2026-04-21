@@ -24,12 +24,15 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import time
 import pytest
-import multiprocessing
-import rpyc
+import sys
+import time
+import subprocess
 from PySide2 import QtWidgets
-from PySide2.QtCore import QTimer
+from contextlib import contextmanager
 from qudi.core import application
 from qudi.util.yaml import yaml_load
+from qudi.core.qudikernel import QudiKernelClient
+
 
 
 
@@ -99,89 +102,111 @@ def hardware_modules(config):
     modules = list(config[base].keys())
     return modules
 
-CONFIG = os.path.join(os.getcwd(),'tests/test.cfg')
 
-
-def run_qudi(timeout=150000):
+@pytest.fixture(scope="module")
+def qudi_gui():
+    """Start the Qudi GUI in a child process with the given config.
     """
-    Runs a Qudi instance with a timer.
-
-    Parameters
-    ----------
-    timeout : int, optional
-        timeout for the Qudi session in milliseconds, by default 150000.
-    """
-    app_cls = QtWidgets.QApplication
-    app = app_cls.instance()
-    if app is None:
-        app = app_cls()
-    qudi_instance = application.Qudi.instance()
-    if qudi_instance is None:
-        qudi_instance = application.Qudi(config_file=CONFIG)
-    QTimer.singleShot(timeout, qudi_instance.quit)
-    qudi_instance.run()
-
-
-@pytest.fixture(scope='module')
-def start_qudi_process():
-    """
-    Fixture that starts the Qudi process and ensures it's running before returning.
-    """
-    qudi_process = multiprocessing.Process(target=run_qudi)
-    qudi_process.start()
-    time.sleep(10)
-    yield
-    qudi_process.join(timeout=10)
-    if qudi_process.is_alive():
-        qudi_process.terminate()
-
-def connect_with_retries(host, port, config, retries=5, delay=2):
-    """
-    Attempt to connect multiple times to the RPyC server.
-
-    Parameters
-    ----------
-    host    : str 
-        The server's hostname or IP address.
-    port    : int 
-        The port number to connect to.
-    retries : int 
-        Number of retries before giving up.
-    delay   : int or float
-        Delay in seconds between attempts.
-
-    Returns
-    -------
-    conn (rpyc.Connection)
-        The RPyC connection if successful.
-
-    Raises:
-        Exception: If all attempts fail.
-    """
-    attempt = 0
-    while attempt < retries:
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "qudi.core", "--config", str(CONFIG)],
+        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1
+    )
+    time.sleep(3)
+    try:
+        yield proc
+    finally:
         try:
-            print(f"Attempt {attempt + 1} of {retries}...")
-            conn = rpyc.connect(host, port, config=config)
-            print("Connection successful!")
-            return conn  # Return the connection object if successful
-        except Exception as e:
-            print(f"Connection attempt {attempt + 1} failed: {e}")
-            attempt += 1
-            if attempt < retries:
-                print(f"Retrying in {delay} seconds...")
-                time.sleep(delay)
-            else:
-                print("All connection attempts failed.")
-                raise  # Re-raise the last exception after final attempt
+            proc.terminate()
+            proc.wait(timeout=8)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
-@pytest.fixture(scope='module')
-def remote_instance(start_qudi_process):
+@pytest.fixture(scope="module")
+def qudi_client(qudi_gui):
+    """Attach to the running GUI using qudikernel.QudiKernelClient."""
+    client = QudiKernelClient()
+    timeout = time.time() + 60
+    last_err = None
+    while time.time() < timeout:
+        try:
+            client.connect()   
+            ns = client.get_active_modules()
+            qudi = ns.get('qudi')
+            return qudi
+        except Exception as e:
+            last_err = e
+            time.sleep(0.5)
+    raise RuntimeError(f"Could not connect to Qudi namespace server: {last_err}")
+
+@contextmanager
+def _qudi_session_cm():
     """
-    Fixture that connects to the running Qudi ipython kernel through rpyc client and returns the client instance.
+    Start a fresh Qudi GUI process + QudiKernelClient, yield the 'qudi' namespace,
+    then clean everything up when leaving the with-block.
     """
-    time.sleep(5)
-    conn = connect_with_retries(host="localhost", port=18861, config={'sync_request_timeout': 20})
-    root = conn.root
-    qudi_instance = root._qudi
-    return qudi_instance
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "qudi.core", "--config", str(CONFIG)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+    time.sleep(3)
+
+    client = QudiKernelClient()
+    timeout = time.time() + 60
+    last_err = None
+    qudi = None
+
+    while time.time() < timeout:
+        try:
+            client.connect()
+            ns = client.get_active_modules()
+            qudi = ns.get("qudi")
+            break
+        except Exception as e:
+            last_err = e
+            time.sleep(0.5)
+
+    if qudi is None:
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+        try:
+            proc.terminate()
+            proc.wait(timeout=8)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+        raise RuntimeError(f"Could not connect to Qudi namespace server: {last_err}")
+
+    try:
+        yield qudi
+    finally:
+        try:
+            client.disconnect()
+        except Exception:
+            pass
+        try:
+            proc.terminate()
+            proc.wait(timeout=8)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+
+
+@pytest.fixture
+def qudi_session_factory():
+    """
+    Factory fixture: each call to qudi_session_factory() gives you a context
+    manager that starts a fresh Qudi GUI + client.
+    """
+    return _qudi_session_cm

@@ -40,6 +40,10 @@ from qudi.util.colordefs import QudiMatplotlibStyle
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
 
+from qudi.interface.pulser_interface import PulserInterface
+from qudi.interface.fast_counter_interface import FastCounterInterface
+from qudi.interface.microwave_interface import MicrowaveInterface
+
 
 def _data_storage_from_cfg_option(cfg_str):
     cfg_str = cfg_str.lower()
@@ -70,9 +74,9 @@ class PulsedMeasurementLogic(LogicBase):
     """
 
     # declare connectors
-    _fastcounter = Connector(name='fastcounter', interface='FastCounterInterface')
-    _pulsegenerator = Connector(name='pulsegenerator', interface='PulserInterface')
-    _microwave = Connector(name='microwave', interface='MicrowaveInterface', optional=True)
+    _fastcounter = Connector(name='fastcounter', interface=FastCounterInterface)
+    _pulsegenerator = Connector(name='pulsegenerator', interface=PulserInterface)
+    _microwave = Connector(name='microwave', interface=MicrowaveInterface, optional=True)
 
     # Config options
     # Optional additional paths to import from

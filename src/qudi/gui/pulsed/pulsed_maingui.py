@@ -39,6 +39,8 @@ from PySide2 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
+from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
+
 
 class PulsedMeasurementMainWindow(QtWidgets.QMainWindow):
     def __init__(self):
@@ -153,7 +155,7 @@ class PulsedMeasurementGui(GuiBase):
 
     """
     ## declare connectors
-    pulsedmasterlogic = Connector(interface='PulsedMasterLogic')
+    pulsedmasterlogic = Connector(interface=PulsedMasterLogic)
 
     # status var
     _ana_param_x_axis_name_text = StatusVar('ana_param_x_axis_name_LineEdit', 'Tau')

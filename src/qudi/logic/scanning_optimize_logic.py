@@ -53,7 +53,7 @@ class ScanningOptimizeLogic(LogicBase):
     """
 
     # declare connectors
-    _scan_logic = Connector(name='scan_logic', interface='ScanningProbeLogic')
+    _scan_logic = Connector(name='scan_logic', interface=ScanningProbeLogic)
 
     # status variables
     # not configuring the back scan parameters is represented by empty dictionaries

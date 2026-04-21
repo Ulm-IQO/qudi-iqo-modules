@@ -25,6 +25,8 @@ from PySide2 import QtCore
 
 from qudi.core.connector import Connector
 from qudi.core.module import LogicBase
+from qudi.logic.pulsed.pulsed_measurement_logic import PulsedMeasurementLogic
+from qudi.logic.pulsed.sequence_generator_logic import SequenceGeneratorLogic
 
 
 class PulsedMasterLogic(LogicBase):
@@ -57,8 +59,8 @@ class PulsedMasterLogic(LogicBase):
     """
 
     # declare connectors
-    pulsedmeasurementlogic = Connector(interface='PulsedMeasurementLogic')
-    sequencegeneratorlogic = Connector(interface='SequenceGeneratorLogic')
+    pulsedmeasurementlogic = Connector(interface=PulsedMeasurementLogic)
+    sequencegeneratorlogic = Connector(interface=SequenceGeneratorLogic)
 
     # PulsedMeasurementLogic control signals
     sigDoFit = QtCore.Signal(str, bool)
