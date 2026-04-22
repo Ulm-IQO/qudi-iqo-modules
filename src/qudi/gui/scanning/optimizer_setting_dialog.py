@@ -334,15 +334,11 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
 
     @optimization_methods.setter
     def optimization_methods(self, method: Dict[str, str]) -> None:
-        print(self.optimization_methods, method)
         self.optimization_methods_1d_combobox.blockSignals(True)
         self.optimization_methods_2d_combobox.blockSignals(True)
         try:
-            print("here")
             idx_1d_combo = self._available_optimization_methods["1d"].index(method["1d"])
-            print("here2", method["2d"])
             idx_2d_combo = self._available_optimization_methods["2d"].index(method["2d"])
-            print("here3")
         except ValueError:
             idx_1d_combo = 0
             idx_2d_combo = 0
@@ -350,7 +346,6 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         self.optimization_methods_2d_combobox.setCurrentIndex(idx_2d_combo)
         self.optimization_methods_1d_combobox.blockSignals(False)
         self.optimization_methods_2d_combobox.blockSignals(False)
-        print(self.optimization_methods)
 
     @property
     def available_optimization_methods(self) -> Dict[str, List[str]]:
