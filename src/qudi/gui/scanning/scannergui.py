@@ -136,7 +136,7 @@ class ScannerGui(GuiBase):
     sigBackFrequencyChanged = QtCore.Signal(str, float)
     sigUseBackScanSettings = QtCore.Signal(bool)
     sigToggleScan = QtCore.Signal(bool, tuple, object)
-    sigOptimizerSettingsChanged = QtCore.Signal(str, tuple, tuple, dict, dict, dict, dict, dict)
+    sigOptimizerSettingsChanged = QtCore.Signal(str, tuple, tuple, dict, dict, dict, dict, dict, dict)
     sigToggleOptimize = QtCore.Signal(bool)
     sigSaveScan = QtCore.Signal(object, object, str)
     sigSaveFinished = QtCore.Signal()
@@ -353,6 +353,7 @@ class ScannerGui(GuiBase):
             optimize_logic.allowed_scan_sequences,
             optimize_logic.allowed_optimizer_sequence_dimensions,
             scan_logic.scanner_constraints.back_scan_capability,
+            optimize_logic.optimization_methods,
         )
 
         # Connect MainWindow actions
@@ -1021,6 +1022,7 @@ class ScannerGui(GuiBase):
             self._osd.frequency,
             self._osd.back_resolution,
             self._osd.back_frequency,
+            self._osd.optimization_methods
         )
         self.optimizer_dockwidget.scan_sequence = self._osd.sequence
         self.update_crosshair_sizes()
@@ -1052,6 +1054,8 @@ class ScannerGui(GuiBase):
         self._osd.allowed_sequences = optimize_logic.allowed_scan_sequences
         self._osd.sequence_dimension = optimize_logic.optimizer_sequence_dimensions
         self._osd.sequence = optimize_logic.scan_sequence
+        self._osd.available_optimization_methods = optimize_logic.optimization_methods
+        self._osd.optimization_methods = {"1d": optimize_logic.optimization_method_1d, "2d": "None"}
         self._osd.set_range(optimize_logic.scan_range)
         self._osd.set_resolution(optimize_logic.scan_resolution)
         self._osd.set_back_resolution(optimize_logic.back_scan_resolution)

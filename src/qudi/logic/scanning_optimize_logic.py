@@ -241,6 +241,7 @@ class ScanningOptimizeLogic(LogicBase):
         frequency: Dict[str, float],
         back_resolution: Dict[str, int] = None,
         back_frequency: Dict[str, float] = None,
+        optimization_methods: Dict[str, str] = {"1d": "", "2d": ""},
     ):
         """Set all optimizer settings."""
         if back_resolution is None:
@@ -259,6 +260,7 @@ class ScanningOptimizeLogic(LogicBase):
                 self._scan_frequency.update(frequency)
                 self._back_scan_resolution.update(back_resolution)
                 self._back_scan_frequency.update(back_frequency)
+                self.optimization_method_1d = optimization_methods["1d"]
 
     @property
     def last_scans(self):
@@ -457,8 +459,8 @@ class ScanningOptimizeLogic(LogicBase):
         return (x[max_index],), fit_result.best_fit, fit_result
 
     @property
-    def optimizer_methods(self) -> dict[str, list]:
-        return {"1d": list(self._optimizer_methods_mapper_1d.keys()), "2d": []}
+    def optimization_methods(self) -> dict[str, list]:
+        return {"1d": list(self._optimizer_methods_mapper_1d.keys()), "2d": ["None"]}
 
     @property
     def optimization_method_1d(self) -> str:
@@ -466,7 +468,11 @@ class ScanningOptimizeLogic(LogicBase):
 
     @optimization_method_1d.setter
     def optimization_method_1d(self, method: str) -> None:
-        self._optimization_method_1d = method
+        if method in self._optimizer_methods_mapper_1d.keys():
+            print(method)
+            self._optimization_method_1d = method
+        else:
+            raise ValueError(f"Selected method {method} not found in available methods {[self._optimizer_methods_mapper_1d.keys()]}")
 
     def _check_scan_settings(self):
         """Basic check of scan settings for all axes."""
