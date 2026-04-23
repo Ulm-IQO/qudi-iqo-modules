@@ -27,6 +27,7 @@ from PySide2 import QtCore, QtGui, QtWidgets
 
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.interface.scanning_probe_interface import ScannerAxis, ScannerChannel, BackScanCapability
+from qudi.logic.scanning_optimize_logic import OptimizationMethod, OptimizationType
 
 
 class OptimizerSettingsDialog(QtWidgets.QDialog):
@@ -39,7 +40,7 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
         sequences: Dict[list, List[Tuple[Tuple[str, ...]]]],
         sequence_dimensions: List[list],
         back_scan_capability: BackScanCapability,
-        optimization_methods: Dict[str, List[str]],
+        available_optimization_methods: List[Tuple[OptimizationType, OptimizationMethod]],
     ):
         super().__init__()
         self.setObjectName('optimizer_settings_dialog')
@@ -51,7 +52,7 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
             sequences=sequences,
             sequence_dimensions=sequence_dimensions,
             back_scan_capability=back_scan_capability,
-            optimization_methods=optimization_methods,
+            available_optimization_methods=available_optimization_methods,
         )
 
         self.button_box = QtWidgets.QDialogButtonBox(
@@ -85,19 +86,19 @@ class OptimizerSettingsDialog(QtWidgets.QDialog):
         self.settings_widget.sequence = seq
 
     @property
-    def available_optimization_methods(self) -> Dict[str, str]:
+    def available_optimization_methods(self) -> List[Tuple[OptimizationType, OptimizationMethod]]:
         return self.settings_widget.available_optimization_methods
 
     @available_optimization_methods.setter
-    def available_optimization_methods(self, methods: Dict[str, List[str]]):
+    def available_optimization_methods(self, methods: List[Tuple[OptimizationType, OptimizationMethod]]):
         self.settings_widget.optimization_methods = methods
 
     @property
-    def optimization_methods(self) -> Dict[str, str]:
+    def optimization_methods(self) -> Dict[OptimizationType, OptimizationMethod]:
         return self.settings_widget.optimization_methods
 
     @optimization_methods.setter
-    def optimization_methods(self, method: Dict[str, str]):
+    def optimization_methods(self, method: Dict[OptimizationType, OptimizationMethod]):
         self.settings_widget.optimization_methods = method
 
     @property
@@ -170,7 +171,7 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         sequences: Dict[list, Tuple[Tuple[str, ...]]],
         sequence_dimensions: List[list],
         back_scan_capability: BackScanCapability,
-        optimization_methods: Dict[str, List[str]],
+        available_optimization_methods: Dict[OptimizationType, List[OptimizationMethod]],
     ):
         super().__init__()
         self.setObjectName('optimizer_settings_widget')
@@ -178,7 +179,7 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         self._avail_axes = sorted([ax.name for ax in scanner_axes])
         self._allowed_sequences = sequences
         self._allowed_sequence_dimensions = sequence_dimensions
-        self._available_optimization_methods = optimization_methods
+        self._available_optimization_methods = available_optimization_methods
 
         font = QtGui.QFont()
         font.setBold(True)
@@ -195,9 +196,9 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
         )
 
         self.optimization_methods_1d_combobox = QtWidgets.QComboBox()
-        self.optimization_methods_1d_combobox.addItems(self._available_optimization_methods["1d"])
+        self.optimization_methods_1d_combobox.addItems([key.value for key in self._available_optimization_methods[OptimizationType.ONE_D]])
         self.optimization_methods_2d_combobox = QtWidgets.QComboBox()
-        self.optimization_methods_2d_combobox.addItems(self._available_optimization_methods["2d"])
+        self.optimization_methods_2d_combobox.addItems([key.value for key in self._available_optimization_methods[OptimizationType.TWO_D]])
 
         # general settings
         label = QtWidgets.QLabel('Data channel:')
@@ -330,15 +331,15 @@ class OptimizerSettingsWidget(QtWidgets.QWidget):
 
     @property
     def optimization_methods(self) -> Dict[str, str]:
-        return {"1d": self._available_optimization_methods["1d"][self.optimization_methods_1d_combobox.currentIndex()], "2d": self._available_optimization_methods["2d"][self.optimization_methods_2d_combobox.currentIndex()]}
+        return {OptimizationType.ONE_D: self._available_optimization_methods[OptimizationType.ONE_D][self.optimization_methods_1d_combobox.currentIndex()], OptimizationType.TWO_D: self._available_optimization_methods[OptimizationType.TWO_D][self.optimization_methods_2d_combobox.currentIndex()]}
 
     @optimization_methods.setter
     def optimization_methods(self, method: Dict[str, str]) -> None:
         self.optimization_methods_1d_combobox.blockSignals(True)
         self.optimization_methods_2d_combobox.blockSignals(True)
         try:
-            idx_1d_combo = self._available_optimization_methods["1d"].index(method["1d"])
-            idx_2d_combo = self._available_optimization_methods["2d"].index(method["2d"])
+            idx_1d_combo = self._available_optimization_methods[OptimizationType.ONE_D].index(method[OptimizationType.ONE_D])
+            idx_2d_combo = self._available_optimization_methods[OptimizationType.TWO_D].index(method[OptimizationType.TWO_D])
         except ValueError:
             idx_1d_combo = 0
             idx_2d_combo = 0
