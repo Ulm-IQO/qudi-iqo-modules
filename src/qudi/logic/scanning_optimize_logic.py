@@ -304,7 +304,7 @@ class ScanningOptimizeLogic(LogicBase):
                 self._scan_frequency.update(frequency)
                 self._back_scan_resolution.update(back_resolution)
                 self._back_scan_frequency.update(back_frequency)
-                self.optimization_methods.update(optimization_methods)
+                self.optimization_methods = optimization_methods
 
     @property
     def last_scans(self):
@@ -530,8 +530,8 @@ class ScanningOptimizeLogic(LogicBase):
         return self._optimization_methods
 
     @optimization_methods.setter
-    def optimization_methods(self, optimization_type: OptimizationType, method: OptimizationMethod) -> None:
-        self._optimization_methods[optimization_type] = method
+    def optimization_methods(self, optimization_dict: Dict[OptimizationType, OptimizationMethod]) -> None:
+        self._optimization_methods.update(optimization_dict)
 
     def _check_scan_settings(self):
         """Basic check of scan settings for all axes."""
