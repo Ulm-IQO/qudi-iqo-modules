@@ -31,7 +31,7 @@ from typing import Dict, Iterable, Tuple, List, Optional, Union
 import itertools
 
 from qudi.core.module import LogicBase
-from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability, ScannerAxis, ScannerChannel
+from qudi.interface.scanning_probe_interface import ScanData, BackScanCapability, ScanSettings, ScannerAxis, ScannerChannel
 from qudi.logic.scanning_probe_logic import ScanningProbeLogic
 from qudi.util.mutex import RecursiveMutex, Mutex
 from qudi.core.connector import Connector
@@ -46,7 +46,7 @@ class OptimizationType(Enum):
 
 class OptimizationMethod(Enum):
     GAUSSIAN = "gaussian"
-    GAUSSIAN_CONSTRAINED = "gaussian_constrained"
+    GAUSSIAN_UNCONSTRAINED = "gaussian unconstrained"
     MAXIMUM = "maximum"
 
 
@@ -120,9 +120,13 @@ class ScanningOptimizeLogic(LogicBase):
         self._optimization_methods_mapper = {
             OptimizationType.ONE_D: {
                 OptimizationMethod.GAUSSIAN: self._get_pos_from_1d_gauss_fit,
+                OptimizationMethod.GAUSSIAN_UNCONSTRAINED: self._get_pos_from_1d_gauss_unconstrained_fit,
                 OptimizationMethod.MAXIMUM: self._get_pos_from_max,
             },
-            OptimizationType.TWO_D: {OptimizationMethod.GAUSSIAN: self._get_pos_from_2d_gauss_fit},
+            OptimizationType.TWO_D: {
+                OptimizationMethod.GAUSSIAN: self._get_pos_from_2d_gauss_fit,
+                OptimizationMethod.GAUSSIAN_UNCONSTRAINED: self._get_pos_from_2d_gauss_unconstrained_fit,
+            },
         }
 
     def on_activate(self):
@@ -388,14 +392,14 @@ class ScanningOptimizeLogic(LogicBase):
                         x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
                         opt_pos, fit_data, fit_res = self._optimization_methods_mapper[OptimizationType.ONE_D][
                             self.optimization_methods[OptimizationType.ONE_D]
-                        ](x, data.data[self._data_channel])
+                        ](x, data)
                     else:
                         x = np.linspace(*data.settings.range[0], data.settings.resolution[0])
                         y = np.linspace(*data.settings.range[1], data.settings.resolution[1])
                         xy = np.meshgrid(x, y, indexing='ij')
                         opt_pos, fit_data, fit_res = self._optimization_methods_mapper[OptimizationType.TWO_D][
                             self.optimization_methods[OptimizationType.TWO_D]
-                        ](xy, data.data[self._data_channel].ravel())
+                        ](xy, data)
 
                     position_update = {ax: opt_pos[ii] for ii, ax in enumerate(data.settings.axes)}
                     # self.log.debug(f"Optimizer issuing position update: {position_update}")
@@ -452,11 +456,16 @@ class ScanningOptimizeLogic(LogicBase):
                 self.module_state.unlock()
                 self.sigOptimizeStateChanged.emit(False, dict(), None)
 
-    def _get_pos_from_2d_gauss_fit(self, xy, data):
+    def _get_pos_from_2d_gauss_fit(self, xy, data: ScanData, unconstrained: bool = False):
+        self.log.debug("2D Gaussian Fit")
         model = Gaussian2D()
 
         try:
-            fit_result = model.fit(data, x=xy, **model.estimate_peak(data, xy))
+            params = model.estimate_peak(data.data[self._data_channel].ravel(), xy)
+            if not unconstrained:
+                params['center_x'].set(min=data.settings.range[0][0], max=data.settings.range[0][1])
+                params['center_y'].set(min=data.settings.range[1][0], max=data.settings.range[1][1])
+            fit_result = model.fit(data.data[self._data_channel].ravel(), params, x=xy)
         except:
             x_min, x_max = xy[0].min(), xy[0].max()
             y_min, y_max = xy[1].min(), xy[1].max()
@@ -471,11 +480,19 @@ class ScanningOptimizeLogic(LogicBase):
             fit_result,
         )
 
-    def _get_pos_from_1d_gauss_fit(self, x, data):
+    def _get_pos_from_2d_gauss_unconstrained_fit(self, xy, data: ScanData):
+        self.log.debug("2D Gaussian Fit Unconstrained")
+        return self._get_pos_from_2d_gauss_fit(xy, data, True)
+
+    def _get_pos_from_1d_gauss_fit(self, x, data: ScanData, unconstrained: bool = False):
+        self.log.debug("1D Gaussian Fit")
         model = Gaussian()
 
         try:
-            fit_result = model.fit(data, x=x, **model.estimate_peak(data, x))
+            params = model.estimate_peak(data.data[self._data_channel], x)
+            if not unconstrained:
+                params['center'].set(min=data.settings.range[0][0], max=data.settings.range[0][1])
+            fit_result = model.fit(data.data[self._data_channel], params, x=x, )
         except:
             x_min, x_max = x.min(), x.max()
             middle = (x_max - x_min) / 2 + x_min
@@ -484,11 +501,16 @@ class ScanningOptimizeLogic(LogicBase):
 
         return (fit_result.best_values['center'],), fit_result.best_fit, fit_result
 
-    def _get_pos_from_max(self, x, data):
+    def _get_pos_from_1d_gauss_unconstrained_fit(self, x, data: ScanData):
+        self.log.debug("1D Gaussian Fit Unconstrained")
+        return self._get_pos_from_1d_gauss_fit(x, data, True)
+
+    def _get_pos_from_max(self, x, data: ScanData):
         """
         Method to get the optimal position from the maximum of the data set.
         """
-        max_index = np.argmax(data)
+        self.log.debug("1D Maximum Determination")
+        max_index = np.argmax(data.data[self._data_channel])
         _, _, fit_result = self._get_pos_from_1d_gauss_fit(x, data)
         fit_result.message = "No fit performed - maximum search only"
         fit_result.success = False
@@ -497,7 +519,7 @@ class ScanningOptimizeLogic(LogicBase):
         fit_result.params["sigma"].stderr = np.inf
         fit_result.params["center"].value = x[max_index]
         fit_result.params["center"].stderr = np.inf
-        return (x[max_index],), None, None
+        return (x[max_index],), fit_result.best_fit, fit_result
 
     @property
     def available_optimization_methods(self) -> dict[OptimizationType, List[OptimizationMethod]]:
