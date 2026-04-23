@@ -497,7 +497,7 @@ class ScanningOptimizeLogic(LogicBase):
         fit_result.params["sigma"].stderr = np.inf
         fit_result.params["center"].value = x[max_index]
         fit_result.params["center"].stderr = np.inf
-        return (x[max_index],), fit_result.best_fit, fit_result
+        return (x[max_index],), None, None
 
     @property
     def available_optimization_methods(self) -> dict[OptimizationType, List[OptimizationMethod]]:
