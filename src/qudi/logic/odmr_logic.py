@@ -38,34 +38,6 @@ from qudi.interface.finite_sampling_input_interface import FiniteSamplingInputIn
 from qudi.interface.microwave_interface import MicrowaveInterface
 from qudi.util.enums import SamplingOutputMode
 
-def _write_fit_debug(self, stage, **payload):
-    import os
-    import json
-    import datetime
-    import traceback
-    import numpy as np
-
-    path = os.environ.get("QUDI_FIT_DEBUG_LOG", "qudi_fit_debug.log")
-
-    def safe(value):
-        try:
-            if isinstance(value, np.ndarray):
-                return value.tolist()
-            if isinstance(value, (np.integer, np.floating)):
-                return value.item()
-            return value
-        except Exception:
-            return repr(value)
-
-    record = {
-        "time": datetime.datetime.now().isoformat(),
-        "stage": stage,
-        **{key: safe(value) for key, value in payload.items()},
-    }
-
-    with open(path, "a", encoding="utf-8") as handle:
-        handle.write(json.dumps(record, indent=2, default=str))
-        handle.write("\n\n")
 
 class OdmrLogic(LogicBase):
     """
@@ -700,6 +672,36 @@ class OdmrLogic(LogicBase):
             else:
                 self._sigNextLine.emit()
             return
+
+    def _write_fit_debug(self, stage, **payload):
+        import os
+        import json
+        import datetime
+        import traceback
+        import numpy as np
+
+        path = os.environ.get("QUDI_FIT_DEBUG_LOG", "qudi_fit_debug.log")
+
+        def safe(value):
+            try:
+                if isinstance(value, np.ndarray):
+                    return value.tolist()
+                if isinstance(value, (np.integer, np.floating)):
+                    return value.item()
+                return value
+            except Exception:
+                return repr(value)
+
+        record = {
+            "time": datetime.datetime.now().isoformat(),
+            "stage": stage,
+            **{key: safe(value) for key, value in payload.items()},
+        }
+
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, indent=2, default=str))
+            handle.write("\n\n")
+
 
     @QtCore.Slot(str, str, int)
     def do_fit(self, fit_config, channel, range_index):
