@@ -32,7 +32,6 @@ jobs:
     runs-on: windows-latest
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
 
@@ -48,7 +47,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone -b pyside6-dev --single-branch https://github.com/astropiu/qudi-core.git
+        git clone -b pyside6-dev --single-branch https://github.com/Ulm-IQO/qudi-core.git
         cd qudi-core
         python -m pip install --upgrade pip
         pip install -e ".[dev-test]"
@@ -57,38 +56,7 @@ jobs:
     - name: Install dependencies iqo modules
       run: |
         pip install -e ".[dev-test]"
-
-    - name: Force PySide6 (remove PySide2 if present)
+    - name: Test with pytest
       run: |
-        python -m pip uninstall -y PySide2 shiboken2 || exit 0
-        python -m pip install --upgrade pip
-      shell: bash
-
-    - name: Run ODMR tests
-      shell: pwsh
-      env:
-        QUDI_FIT_DEBUG_LOG: ${{ github.workspace }}\qudi_fit_debug.log
-        QUDI_RAISE_FIT_ERRORS: "1"
-        QT_API: pyside6
-      run: |
-        pytest -vv -s --tb=long -o log_cli=true --log-cli-level=DEBUG tests/test_OdmrLogic.py::test_do_fit
-
-    - name: Print Qudi debug logs
-      if: always()
-      shell: pwsh
-      run: |
-        if (Test-Path "$env:GITHUB_WORKSPACE\qudi_fit_debug.log") {
-          Write-Host "===== qudi_fit_debug.log ====="
-          Get-Content "$env:GITHUB_WORKSPACE\qudi_fit_debug.log"
-        }
-
-        Write-Host "===== Other recent .log files ====="
-        Get-ChildItem -Path "$env:GITHUB_WORKSPACE" -Recurse -Filter "*.log" |
-          Sort-Object LastWriteTime -Descending |
-          Select-Object -First 20 |
-          ForEach-Object {
-            Write-Host "===== $($_.FullName) ====="
-            Get-Content $_.FullName -Tail 200
-          }
-  
+        pytest -s
 

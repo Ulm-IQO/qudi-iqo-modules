@@ -187,55 +187,19 @@ def test_start_odmr_scan(module):
                 assert int(value) in range(*odmr_range[channel])
     #print(f'elspased sweeps {module._elapsed_sweeps}') 
 
-def wait_until(predicate, timeout=30.0, interval=0.1):
-    start = time.time()
-    while time.time() - start < timeout:
-        if predicate():
-            return True
-        time.sleep(interval)
-    return False
-
-
 def test_do_fit(module):
-    scanner = get_scanner(module)
+    """
+    Tests if the fitting of the generated signal data works by checking the values of the fit parameters are not nan.
 
-    # Make this test independent from test_start_odmr_scan.
-    if module.module_state() == 'locked':
-        module.stop_odmr_scan()
-
-    module.runtime = 5
-    module.start_odmr_scan()
-
-    assert wait_until(
-        lambda: module.module_state() == 'idle',
-        timeout=30.0,
-    ), "ODMR scan did not finish before timeout"
-
-    signal_data = netobtain(module.signal_data)
-    y_data = np.asarray(signal_data[CHANNELS[0]][0], dtype=float)
-
-    assert y_data.size > 0
-    assert np.all(np.isfinite(y_data))
-    assert np.nanstd(y_data) > 0, (
-        f"Signal data is constant; cannot fit reliably. "
-        f"min={np.nanmin(y_data)}, max={np.nanmax(y_data)}, std={np.nanstd(y_data)}"
-    )
-
-    configs = list(module.fit_config_model.configuration_names)
-    assert FIT_MODEL in configs, f"{FIT_MODEL} not available. Available configs: {configs}"
-
+    Parameters
+    ----------
+    module : fixture
+        Fixture for instance of ODMR logic module
+    """
     module.do_fit(FIT_MODEL, CHANNELS[0], 0)
-
-    fit_entry = module.fit_results[CHANNELS[0]][0]
-    assert fit_entry is not None, (
-        "do_fit did not produce a fit result. "
-        "Check qudi_fit_debug.log / Qudi log for the real fitting error."
-    )
-
-    fit_results = fit_entry[1]
+    fit_results  = module.fit_results[CHANNELS[0]][0][1]
     dict_fit_result = module.fit_container.dict_result(fit_results)
-
-    for key, values in dict_fit_result.items():
+    for key,values in dict_fit_result.items():
         if 'value' in values:
             assert not math.isnan(values['value'])
 

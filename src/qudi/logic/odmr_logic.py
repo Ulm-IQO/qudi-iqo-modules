@@ -673,82 +673,13 @@ class OdmrLogic(LogicBase):
                 self._sigNextLine.emit()
             return
 
-    def _write_fit_debug(self, stage, **payload):
-        import os
-        import json
-        import datetime
-        import traceback
-        import numpy as np
-
-        path = os.environ.get("QUDI_FIT_DEBUG_LOG", "qudi_fit_debug.log")
-
-        def safe(value):
-            try:
-                if isinstance(value, np.ndarray):
-                    return value.tolist()
-                if isinstance(value, (np.integer, np.floating)):
-                    return value.item()
-                return value
-            except Exception:
-                return repr(value)
-
-        record = {
-            "time": datetime.datetime.now().isoformat(),
-            "stage": stage,
-            **{key: safe(value) for key, value in payload.items()},
-        }
-
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, indent=2, default=str))
-            handle.write("\n\n")
-
-
     @QtCore.Slot(str, str, int)
     def do_fit(self, fit_config, channel, range_index):
         """
-        Execute the currently configured fit on the measurement data.
+        Execute the currently configured fit on the measurement data. Optionally on passed data
         """
-        import os
-        import traceback
-        import numpy as np
-
-        try:
-            available_configs = list(self._fit_config_model.configuration_names)
-        except Exception:
-            available_configs = ["<could not read configuration_names>"]
-
-        try:
-            y_data_debug = np.asarray(self._signal_data[channel][range_index], dtype=float)
-            x_data_debug = np.asarray(self._frequency_data[range_index], dtype=float)
-
-            self._write_fit_debug(
-                "entered_do_fit",
-                fit_config=fit_config,
-                channel=channel,
-                range_index=range_index,
-                available_configs=available_configs,
-                x_size=x_data_debug.size,
-                y_size=y_data_debug.size,
-                y_nan_count=int(np.isnan(y_data_debug).sum()),
-                y_finite_count=int(np.isfinite(y_data_debug).sum()),
-                y_min=float(np.nanmin(y_data_debug)) if y_data_debug.size else None,
-                y_max=float(np.nanmax(y_data_debug)) if y_data_debug.size else None,
-                y_std=float(np.nanstd(y_data_debug)) if y_data_debug.size else None,
-                y_first_10=y_data_debug[:10],
-            )
-        except Exception:
-            self._write_fit_debug(
-                "failed_collecting_input_debug",
-                traceback=traceback.format_exc(),
-            )
-
         if fit_config != 'No Fit' and fit_config not in self._fit_config_model.configuration_names:
-            msg = f'Unknown fit configuration "{fit_config}". Available: {available_configs}'
-            self.log.error(msg)
-            self._write_fit_debug("invalid_fit_config", message=msg)
-
-            if os.environ.get("QUDI_RAISE_FIT_ERRORS") == "1":
-                raise RuntimeError(msg)
+            self.log.error(f'Unknown fit configuration "{fit_config}" encountered.')
             return
 
         x_data = self._frequency_data[range_index]
@@ -756,27 +687,14 @@ class OdmrLogic(LogicBase):
 
         try:
             fit_config, fit_result = self._fit_container.fit_data(fit_config, x_data, y_data)
-        except Exception:
-            tb = traceback.format_exc()
+        except:
             self.log.exception('Data fitting failed:')
-            self._write_fit_debug("fit_exception", traceback=tb)
-
-            if os.environ.get("QUDI_RAISE_FIT_ERRORS") == "1":
-                raise
             return
 
         if fit_result is not None:
             self._fit_results[channel][range_index] = (fit_config, fit_result)
-            self._write_fit_debug("fit_success", fit_config=fit_config)
         else:
             self._fit_results[channel][range_index] = None
-            msg = "FitContainer.fit_data returned fit_result=None"
-            self.log.warning(msg)
-            self._write_fit_debug("fit_result_none", message=msg, fit_config=fit_config)
-
-            if os.environ.get("QUDI_RAISE_FIT_ERRORS") == "1":
-                raise RuntimeError(msg)
-
         self.sigFitUpdated.emit(self._fit_results[channel][range_index], channel, range_index)
 
     def _get_metadata(self):
