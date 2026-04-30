@@ -16,7 +16,7 @@ jobs:
     outputs:
       matrix: ${{ steps.build.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build Python matrix from pyproject.toml
         id: build
         run: |
@@ -30,10 +30,10 @@ jobs:
     needs: make-matrix
     steps:
       - name: Checkout main
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
 
       - name: Write Python Version badge
         id: badge
