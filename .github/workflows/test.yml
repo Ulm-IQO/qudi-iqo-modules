@@ -32,6 +32,7 @@ jobs:
     runs-on: windows-latest
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
 
