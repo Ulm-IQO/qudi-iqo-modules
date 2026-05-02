@@ -56,7 +56,28 @@ jobs:
     - name: Install dependencies iqo modules
       run: |
         pip install -e ".[dev-test]"
+        
     - name: Test with pytest
+      shell: pwsh
       run: |
-        pytest -s
+        $qudiLogPath = python tests/get_log_file_path.py
+        Write-Host "Qudi log path: $qudiLogPath"
+
+        pytest -vv -s --tb=long --showlocals -ra
+        $pytestExitCode = $LASTEXITCODE
+
+        if ($pytestExitCode -ne 0) {
+          Write-Host ""
+          Write-Host "::group::Qudi log"
+
+          if (Test-Path $qudiLogPath) {
+            Get-Content $qudiLogPath -Tail 500
+          } else {
+            Write-Host "Qudi log file not found at: $qudiLogPath"
+          }
+
+          Write-Host "::endgroup::"
+        }
+
+        exit $pytestExitCode
 
