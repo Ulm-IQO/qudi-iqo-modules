@@ -558,7 +558,6 @@ class PulsedMeasurementGui(GuiBase):
 
         self._pa.time_param_ana_periode_DoubleSpinBox.editingFinished.disconnect()
         self._pa.ana_param_errorbars_CheckBox.toggled.disconnect()
-        self._pa.second_plot_ComboBox.currentIndexChanged[int].disconnect()
         return
 
     def _disconnect_extraction_tab_signals(self):
