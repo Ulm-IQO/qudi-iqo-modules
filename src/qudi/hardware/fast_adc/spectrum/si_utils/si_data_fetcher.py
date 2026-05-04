@@ -150,8 +150,8 @@ class DataTransfer:
         reps_tail = self.reps_per_buf - processed_rep
         reps_head = curr_avail_reps - reps_tail
 
-        np_data_tail = self._fetch_data(user_pos_B, reps_tail)
-        np_data_head = self._fetch_data(0, reps_head)
+        np_data_tail = self._fetch_data(reps_tail, user_pos_B)
+        np_data_head = self._fetch_data(reps_head,0)
         np_data = np.append(np_data_tail, np_data_head)
 
         return np_data
