@@ -31,7 +31,7 @@ class OdmrFitDockWidget(AdvancedDockWidget):
     """
 
     def __init__(self, *args, fit_container=None, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, objectName="ODMR Fit", **kwargs)
         self.setWindowTitle('ODMR Fit')
         self.setFeatures(self.DockWidgetFeature.DockWidgetFloatable | self.DockWidgetFeature.DockWidgetMovable)
 

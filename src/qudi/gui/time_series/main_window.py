@@ -32,7 +32,7 @@ from qudi.util.paths import get_artwork_dir
 
 class TraceSettingsDockWidget(QtWidgets.QDockWidget):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, objectName="Trace settings", **kwargs)
         self.setWindowTitle('Trace settings')
 
         # Create content widgets
@@ -149,6 +149,7 @@ class TimeSeriesGuiMainWindow(QtWidgets.QMainWindow):
 
         # Create toolbar
         self.toolbar = QtWidgets.QToolBar('Trace controls')
+        self.toolbar.setObjectName("Trace controls")
         self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, self.toolbar)
         self.toolbar.setToolButtonStyle(QtCore.Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         self.toolbar.addAction(self.toggle_trace_action)

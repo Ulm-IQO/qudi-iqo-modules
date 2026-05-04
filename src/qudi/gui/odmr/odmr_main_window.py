@@ -110,6 +110,7 @@ class OdmrMainWindow(QtWidgets.QMainWindow):
 
         # Create toolbar and add actions and QLineEdit
         toolbar = QtWidgets.QToolBar()
+        toolbar.setObjectName("ODMR Toolbar")
         toolbar.addAction(self.action_toggle_measurement)
         toolbar.addAction(self.action_resume_measurement)
         toolbar.addSeparator()

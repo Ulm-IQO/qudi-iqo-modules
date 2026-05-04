@@ -36,7 +36,7 @@ class OdmrCwControlDockWidget(AdvancedDockWidget):
     sigCwParametersChanged = QtCore.Signal(float, float)
 
     def __init__(self, *args, power_range=None, frequency_range=None, **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, objectName="ODMR CW Control", **kwargs)
         self.setWindowTitle('ODMR CW Control')
 
         # Determine minimal spinbox width from current default metrics
@@ -114,7 +114,7 @@ class OdmrScanControlDockWidget(AdvancedDockWidget):
     sigDataSelectionChanged = QtCore.Signal(str, int)
 
     def __init__(self, *args, power_range=None, frequency_range=None, data_channels=None, points_range=None,  **kwargs):
-        super().__init__(*args, **kwargs)
+        super().__init__(*args, objectName="ODMR Scan Control", **kwargs)
         self.setWindowTitle('ODMR Scan Control')
         self.setFeatures(self.DockWidgetFeature.DockWidgetFloatable | self.DockWidgetFeature.DockWidgetMovable)
 
