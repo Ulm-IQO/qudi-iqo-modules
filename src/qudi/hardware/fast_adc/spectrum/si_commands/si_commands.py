@@ -107,7 +107,7 @@ class ProcessAction:
         return int(self.cmd.data_buf.get_trig_counter() / self._total_gate)
 
     def _get_curr_avail_reps_ungated(self):
-        return self.cmd.data_buf.get_avail_user_reps()
+        return self.cmd.process.get_avail_user_reps()
 
     def _get_curr_avail_reps_gated(self):
         curr_data_avail_reps = self.cmd.process.get_avail_user_reps()
