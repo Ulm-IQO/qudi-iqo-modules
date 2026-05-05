@@ -8,6 +8,8 @@
 - Fix `installtion.py` for arbitrary Python versions
 
 ### New Features
+- Added the ability to save a full `PulseSequence` and `PulseBlockEnsemble` to a file to be able to reconstruct what `PulseBlockElement`'s have been uploaded in exactly what order
+- Added the ability to load an view a full `PulseSequence` and `PulseBlockEnsemble` with all its `PulseBlockElement`'s in one place
 
 ### Other
 
