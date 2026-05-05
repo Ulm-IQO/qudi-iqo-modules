@@ -22,8 +22,8 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ['SpectrometerDataWidget']
 
 import pyqtgraph as pg
-from PySide2 import QtCore
-from PySide2 import QtWidgets
+from PySide6 import QtCore
+from PySide6 import QtWidgets
 
 from qudi.util.colordefs import QudiPalettePale as palette
 from qudi.util.widgets.toggle_switch import ToggleSwitch
@@ -45,10 +45,10 @@ class SpectrometerDataWidget(QtWidgets.QWidget):
         fit_region_layout = QtWidgets.QGridLayout()
         fit_region_group_box.setLayout(fit_region_layout)
         from_label = QtWidgets.QLabel('From:')
-        from_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        from_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         fit_region_layout.addWidget(from_label, 0, 0)
         to_label = QtWidgets.QLabel('To:')
-        to_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        to_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         fit_region_layout.addWidget(to_label, 1, 0)
         self.fit_region_from = ScienDSpinBox()
         self.fit_region_from.setMinimumWidth(100)
@@ -62,10 +62,10 @@ class SpectrometerDataWidget(QtWidgets.QWidget):
         target_layout = QtWidgets.QGridLayout()
         target_group_box.setLayout(target_layout)
         x_label = QtWidgets.QLabel('X:')
-        x_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        x_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         target_layout.addWidget(x_label, 0, 0)
         y_label = QtWidgets.QLabel('Y:')
-        y_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        y_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         target_layout.addWidget(y_label, 1, 0)
         self.target_x = ScienDSpinBox()
         self.target_x.setDecimals(6, dynamic_precision=False)
@@ -73,13 +73,13 @@ class SpectrometerDataWidget(QtWidgets.QWidget):
         target_layout.addWidget(self.target_x, 0, 1)
         self.target_y = ScienDSpinBox()
         self.target_y.setReadOnly(True)
-        self.target_y.setButtonSymbols(QtWidgets.QAbstractSpinBox.NoButtons)
+        self.target_y.setButtonSymbols(QtWidgets.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.target_y.setDecimals(6, dynamic_precision=False)
         self.target_y.setMinimumWidth(100)
         target_layout.addWidget(self.target_y, 1, 1)
 
         axis_type_label = QtWidgets.QLabel('Axis Type:')
-        axis_type_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        axis_type_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.axis_type = ToggleSwitch(state_names=('Wavelength', 'Frequency'))
         # main_layout.addWidget(axis_type_label, 1, 0)
         # main_layout.addWidget(self.axis_type, 1, 1)

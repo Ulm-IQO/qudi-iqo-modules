@@ -32,7 +32,7 @@ from qudi.util.helpers import natural_sort
 from qudi.core.module import GuiBase
 
 from qudi.util.colordefs import QudiPalettePale as palette
-from PySide2 import QtCore, QtGui, QtWidgets
+from PySide6 import QtCore, QtGui, QtWidgets
 from qudi.util import uic
 from qudi.util.widgets.plotting.image_widget import MouseTrackingImageWidget
 
@@ -74,7 +74,7 @@ class PoiMarker(pg.EllipseROI):
         self.label = pg.TextItem(text=self._poi_name,
                                  anchor=(0, 1),
                                  color=self.default_pen['color'])
-        self.setAcceptedMouseButtons(QtCore.Qt.LeftButton)
+        self.setAcceptedMouseButtons(QtCore.Qt.MouseButton.LeftButton)
         self.sigClicked.connect(self._notify_clicked_poi_name)
         self.set_position(self._position)
         return
@@ -203,19 +203,19 @@ class NameValidator(QtGui.QValidator):
         # Return intermediate status when empty string is passed
         if not string:
             if self._empty_allowed:
-                return self.Acceptable, '', position
+                return self.State.Acceptable, '', position
             else:
-                return self.Intermediate, string, position
+                return self.State.Intermediate, string, position
 
         match = self.name_re.match(string)
         if not match:
-            return self.Invalid, '', position
+            return self.State.Invalid, '', position
 
         matched = match.group()
         if matched == string:
-            return self.Acceptable, string, position
+            return self.State.Acceptable, string, position
 
-        return self.Invalid, matched, position
+        return self.State.Invalid, matched, position
 
     def fixup(self, text):
         match = self.name_re.search(text)
@@ -358,13 +358,13 @@ class PoiManagerGui(GuiBase):
         self._mw.poi_tracker_dockWidget.show()
         self._mw.sample_shift_dockWidget.show()
 
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._mw.roi_map_dockWidget)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.poi_editor_dockWidget)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.poi_tracker_dockWidget)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.auto_pois_dockWidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, self._mw.roi_map_dockWidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.poi_editor_dockWidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.poi_tracker_dockWidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.auto_pois_dockWidget)
         self._mw.splitDockWidget(
-            self._mw.poi_tracker_dockWidget, self._mw.auto_pois_dockWidget, QtCore.Qt.Vertical)
-        self._mw.addDockWidget(QtCore.Qt.BottomDockWidgetArea, self._mw.sample_shift_dockWidget)
+            self._mw.poi_tracker_dockWidget, self._mw.auto_pois_dockWidget, QtCore.Qt.Orientation.Vertical)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, self._mw.sample_shift_dockWidget)
 
         if not self._mw.roi_map_view_Action.isChecked():
             self._mw.roi_map_view_Action.trigger()
@@ -388,7 +388,7 @@ class PoiManagerGui(GuiBase):
         # Setting up display of sample shift plot
         self.x_shift_plot = pg.PlotDataItem(x=[0],
                                             y=[0],
-                                            pen=pg.mkPen(palette.c1, style=QtCore.Qt.DotLine),
+                                            pen=pg.mkPen(palette.c1, style=QtCore.Qt.PenStyle.DotLine),
                                             symbol='o',
                                             symbolPen=palette.c1,
                                             symbolBrush=palette.c1,
@@ -396,7 +396,7 @@ class PoiManagerGui(GuiBase):
                                             name='x')
         self.y_shift_plot = pg.PlotDataItem(x=[0],
                                             y=[0],
-                                            pen=pg.mkPen(palette.c2, style=QtCore.Qt.DotLine),
+                                            pen=pg.mkPen(palette.c2, style=QtCore.Qt.PenStyle.DotLine),
                                             symbol='s',
                                             symbolPen=palette.c2,
                                             symbolBrush=palette.c2,
@@ -404,7 +404,7 @@ class PoiManagerGui(GuiBase):
                                             name='y')
         self.z_shift_plot = pg.PlotDataItem(x=[0],
                                             y=[0],
-                                            pen=pg.mkPen(palette.c3, style=QtCore.Qt.DotLine),
+                                            pen=pg.mkPen(palette.c3, style=QtCore.Qt.PenStyle.DotLine),
                                             symbol='t',
                                             symbolPen=palette.c3,
                                             symbolBrush=palette.c3,
@@ -427,18 +427,18 @@ class PoiManagerGui(GuiBase):
 
     def __connect_update_signals_from_logic(self):
         self._poi_manager_logic().sigOptimizeTimerUpdated.connect(
-            self.update_refocus_timer, QtCore.Qt.QueuedConnection)
+            self.update_refocus_timer, QtCore.Qt.ConnectionType.QueuedConnection)
         self._poi_manager_logic().sigPoiUpdated.connect(
-            self.update_poi, QtCore.Qt.QueuedConnection)
+            self.update_poi, QtCore.Qt.ConnectionType.QueuedConnection)
         self._poi_manager_logic().sigActivePoiUpdated.connect(
-            self.update_active_poi, QtCore.Qt.QueuedConnection)
-        self._poi_manager_logic().sigRoiUpdated.connect(self.update_roi, QtCore.Qt.QueuedConnection)
+            self.update_active_poi, QtCore.Qt.ConnectionType.QueuedConnection)
+        self._poi_manager_logic().sigRoiUpdated.connect(self.update_roi, QtCore.Qt.ConnectionType.QueuedConnection)
         self._poi_manager_logic().sigOptimizeStateUpdated.connect(
-            self.update_refocus_state, QtCore.Qt.QueuedConnection)
+            self.update_refocus_state, QtCore.Qt.ConnectionType.QueuedConnection)
         self._poi_manager_logic().sigThresholdUpdated.connect(
-            self._update_poi_threshold, QtCore.Qt.QueuedConnection)
+            self._update_poi_threshold, QtCore.Qt.ConnectionType.QueuedConnection)
         self._poi_manager_logic().sigDiameterUpdated.connect(
-            self._update_poi_diameter, QtCore.Qt.QueuedConnection)
+            self._update_poi_diameter, QtCore.Qt.ConnectionType.QueuedConnection)
         return
 
     def __disconnect_update_signals_from_logic(self):
@@ -451,48 +451,48 @@ class PoiManagerGui(GuiBase):
 
     def __connect_control_signals_to_logic(self):
         self._mw.new_poi_Action.triggered.connect(
-            self._poi_manager_logic().add_poi, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().add_poi, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.auto_pois_PushButton.clicked.connect(
-            self._poi_manager_logic().auto_catch_poi, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().auto_catch_poi, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.del_all_pois_PushButton.clicked.connect(
-            self.delete_all_pois_clicked, QtCore.Qt.QueuedConnection)
+            self.delete_all_pois_clicked, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.goto_poi_Action.triggered.connect(
-            lambda: self._poi_manager_logic().go_to_poi(), QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().go_to_poi(), QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.new_roi_Action.triggered.connect(
-            self._poi_manager_logic().reset_roi, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().reset_roi, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.refind_poi_Action.triggered.connect(
-            self._poi_manager_logic().optimise_poi_position, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().optimise_poi_position, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.get_confocal_image_PushButton.clicked.connect(
-            lambda: self._poi_manager_logic().set_scan_image(True, self._data_scan_axes), QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().set_scan_image(True, self._data_scan_axes), QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.set_poi_PushButton.clicked.connect(
-            self._poi_manager_logic().add_poi, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().add_poi, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.delete_last_pos_Button.clicked.connect(
-            lambda: self._poi_manager_logic().delete_history_entry(-1), QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().delete_history_entry(-1), QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.manual_update_poi_PushButton.clicked.connect(
-            self._poi_manager_logic().move_roi_from_poi_position, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().move_roi_from_poi_position, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.move_poi_PushButton.clicked.connect(
-            self._poi_manager_logic().set_poi_anchor_from_position, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().set_poi_anchor_from_position, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.delete_poi_PushButton.clicked.connect(
-            lambda: self._poi_manager_logic().delete_poi(None), QtCore.Qt.QueuedConnection)
-        self._mw.active_poi_ComboBox.activated[str].connect(
-            self._poi_manager_logic().set_active_poi, QtCore.Qt.QueuedConnection)
+            lambda: self._poi_manager_logic().delete_poi(None), QtCore.Qt.ConnectionType.QueuedConnection)
+        self._mw.active_poi_ComboBox.activated[int].connect(
+            self._poi_manager_logic().set_active_poi, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.goto_poi_after_update_checkBox.stateChanged.connect(
-            self._poi_manager_logic().set_move_scanner_after_optimise, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().set_move_scanner_after_optimise, QtCore.Qt.ConnectionType.QueuedConnection)
         self._mw.track_poi_Action.triggered.connect(
-            self._poi_manager_logic().toggle_periodic_refocus, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().toggle_periodic_refocus, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigTrackPeriodChanged.connect(
-            self._poi_manager_logic().set_refocus_period, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().set_refocus_period, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigPoiThresholdChanged.connect(
             self._poi_manager_logic().set_poi_threshold)
         self.sigPoiDiameterChanged.connect(
             self._poi_manager_logic().set_poi_diameter)
         self.sigRoiNameChanged.connect(
-            self._poi_manager_logic().rename_roi, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().rename_roi, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigPoiNameChanged.connect(
-            self._poi_manager_logic().rename_poi, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().rename_poi, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigPoiNameTagChanged.connect(
-            self._poi_manager_logic().set_poi_nametag, QtCore.Qt.QueuedConnection)
-        self.sigAddPoiByClick.connect(self._poi_manager_logic().add_poi, QtCore.Qt.QueuedConnection)
+            self._poi_manager_logic().set_poi_nametag, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigAddPoiByClick.connect(self._poi_manager_logic().add_poi, QtCore.Qt.ConnectionType.QueuedConnection)
         return
 
     def __disconnect_control_signals_to_logic(self):
@@ -506,7 +506,7 @@ class PoiManagerGui(GuiBase):
         self._mw.manual_update_poi_PushButton.clicked.disconnect()
         self._mw.move_poi_PushButton.clicked.disconnect()
         self._mw.delete_poi_PushButton.clicked.disconnect()
-        self._mw.active_poi_ComboBox.activated[str].disconnect()
+        self._mw.active_poi_ComboBox.activated[int].disconnect()
         self._mw.goto_poi_after_update_checkBox.stateChanged.disconnect()
         self._mw.track_poi_Action.triggered.disconnect()
         self.sigTrackPeriodChanged.disconnect()
@@ -591,10 +591,10 @@ class PoiManagerGui(GuiBase):
         if is_active != self.__poi_selector_active:
             if is_active:
                 self._mw.roi_image.sigMouseClicked.connect(self.create_poi_from_click)
-                self._mw.roi_image.setCursor(QtCore.Qt.CrossCursor)
+                self._mw.roi_image.setCursor(QtCore.Qt.CursorShape.CrossCursor)
             else:
                 self._mw.roi_image.sigMouseClicked.disconnect()
-                self._mw.roi_image.setCursor(QtCore.Qt.ArrowCursor)
+                self._mw.roi_image.setCursor(QtCore.Qt.CursorShape.ArrowCursor)
         self.__poi_selector_active = is_active
         return
 
@@ -795,9 +795,9 @@ class PoiManagerGui(GuiBase):
     def delete_all_pois_clicked(self):
         result = QtWidgets.QMessageBox.question(self._mw, 'Qudi: Delete all POIs?',
                                                 'Are you sure to delete all POIs?',
-                                                QtWidgets.QMessageBox.Yes,
-                                                QtWidgets.QMessageBox.No)
-        if result == QtWidgets.QMessageBox.Yes:
+                                                QtWidgets.QMessageBox.StandardButton.Yes,
+                                                QtWidgets.QMessageBox.StandardButton.No)
+        if result == QtWidgets.QMessageBox.StandardButton.Yes:
             self._poi_manager_logic().delete_all_pois()
         return
 
@@ -917,7 +917,7 @@ class PoiManagerGui(GuiBase):
             # Add to the scan image widget
             marker.add_to_view_widget()
             marker.sigPoiSelected.connect(
-                self._poi_manager_logic().set_active_poi, QtCore.Qt.QueuedConnection)
+                self._poi_manager_logic().set_active_poi, QtCore.Qt.ConnectionType.QueuedConnection)
             self._markers[name] = marker
         return
 

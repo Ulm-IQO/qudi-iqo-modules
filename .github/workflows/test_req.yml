@@ -24,7 +24,7 @@ jobs:
     outputs:
       matrix: ${{ steps.build.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build Python matrix from pyproject.toml
         id: build
         run: |
@@ -41,13 +41,13 @@ jobs:
       matrix:
         python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
           fetch-depth: 0
           ref: ${{github.event.pull_request.head.ref}}
           repository: ${{github.event.pull_request.head.repo.full_name}}
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
           python-version: ${{ matrix.python-version }}
 
@@ -58,7 +58,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone https://github.com/Ulm-IQO/qudi-core.git
+        git clone --single-branch https://github.com/Ulm-IQO/qudi-core.git
 
     - name: Get latest artifact run id
       id: find-id
@@ -75,7 +75,7 @@ jobs:
 
     - name: Download reqs artifact
       if: env.artifact_run_id != ''
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: reqs_${{ matrix.python-version }}
         path: .github/workflow_utils
@@ -101,13 +101,13 @@ jobs:
 
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
       with:
           fetch-depth: 0
           ref: ${{github.event.pull_request.head.ref}}
           repository: ${{github.event.pull_request.head.repo.full_name}}
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version:  ${{ matrix.python-version }}
         cache: "pip"
@@ -116,7 +116,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone https://github.com/Ulm-IQO/qudi-core.git
+        git clone --single-branch https://github.com/Ulm-IQO/qudi-core.git
         cd qudi-core
         python -m pip install --upgrade pip
         pip install -e .
@@ -171,7 +171,7 @@ jobs:
 
     - name: Download reqs artifact
       if: env.artifact_run_id != ''
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: reqs_${{ matrix.python-version }}
         path: .github/workflow_utils/prev
@@ -187,7 +187,7 @@ jobs:
 
     - name: Upload pip freeze diff
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: pip-freeze-diff-${{ matrix.python-version }}
         path: .github/workflow_utils/pip_freeze_diff_${{ matrix.python-version }}.txt
@@ -196,7 +196,7 @@ jobs:
     - name: Upload reqs artifact
       if: success()
 
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v6
       with:
         name: reqs_${{ matrix.python-version }}
         path: .github/workflow_utils/reqs_${{ matrix.python-version }}.txt

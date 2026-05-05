@@ -26,7 +26,7 @@ from uuid import UUID
 import copy as cp
 from collections import OrderedDict
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 import numpy as np
 
 from qudi.util.network import netobtain
@@ -122,7 +122,7 @@ class ScanningProbeLogic(LogicBase):
 
         self.__scan_poll_timer = QtCore.QTimer()
         self.__scan_poll_timer.setSingleShot(True)
-        self.__scan_poll_timer.timeout.connect(self.__scan_poll_loop, QtCore.Qt.QueuedConnection)
+        self.__scan_poll_timer.timeout.connect(self.__scan_poll_loop, QtCore.Qt.ConnectionType.QueuedConnection)
 
         self._scan_axes = OrderedDict(sorted(self._scanner().constraints.axes.items()))
 
@@ -671,7 +671,7 @@ class ScanningProbeLogic(LogicBase):
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'start', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.start()
 
@@ -682,7 +682,7 @@ class ScanningProbeLogic(LogicBase):
         :return:
         """
         if self.thread() is not QtCore.QThread.currentThread():
-            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.BlockingQueuedConnection)
+            QtCore.QMetaObject.invokeMethod(self.__scan_poll_timer, 'stop', QtCore.Qt.ConnectionType.BlockingQueuedConnection)
         else:
             self.__scan_poll_timer.stop()
 
