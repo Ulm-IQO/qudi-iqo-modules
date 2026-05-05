@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 """
-This test modifies all status variables as instance variables and then runs all the modules through a remote connection
+This test modifies all status variables as instance variables and then runs all the modules
 
 Copyright (c) 2021, the qudi developers. See the AUTHORS.md file at the top-level directory of this
 distribution and on <https://github.com/Ulm-IQO/qudi-core/>
@@ -72,14 +72,14 @@ def generate_random_value(var):
     
 '''
 #This test also fails for some modules 
-def test_status_vars(remote_instance, logic_modules, gui_modules, hardware_modules):
+def test_status_vars(qudi_client, logic_modules, gui_modules, hardware_modules):
     """
     Test to check if qudi modules launch correctly after modifying status variable as instance variables
 
     Parameters
     ----------
-    remote_instance : fixture
-        Running remote qudi instance
+    qudi_client : fixture
+        Running  qudi instance
     logic_modules : fixture
         List of loaded logic modules
     gui_modules : fixture
@@ -87,7 +87,7 @@ def test_status_vars(remote_instance, logic_modules, gui_modules, hardware_modul
     hardware_modules : fixture
         List of loaded hardware modules
     """    
-    module_manager = remote_instance.module_manager
+    module_manager = qudi_client.module_manager
     for gui_module in gui_modules:
         module_manager.activate_module(gui_module)
         gui_managed_module = module_manager.modules[gui_module]

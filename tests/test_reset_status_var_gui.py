@@ -23,7 +23,7 @@ import time
 
 '''
 #This test fails for some modules such as ODMR  PulsedGUI
-def test_reset_module(gui_modules, hardware_modules, remote_instance):
+def test_reset_module(gui_modules, hardware_modules, qudi_client):
     """
     This tests clearing all the logic module status variables and reloads the GUI modules
 
@@ -33,10 +33,10 @@ def test_reset_module(gui_modules, hardware_modules, remote_instance):
         List of gui module names
     hardware_modules : Fixture
         List of hardware module names
-    remote_instance : Fixture
-        Remote qudi rpyc instance
+    qudi_client : Fixture
+        qudi instance
     """    
-    module_manager = remote_instance.module_manager
+    module_manager = qudi_client.module_manager
     modules = module_manager.modules
     for module in modules:
         module_manager.deactivate_module(module)

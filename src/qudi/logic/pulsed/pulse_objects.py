@@ -1529,6 +1529,15 @@ class PredefinedGeneratorBase:
                 length += blocks[block_name].increment_s * ((reps ** 2 + reps) / 2)
         return length
 
+    def _get_sequence_count_length(self, sequence: PulseSequence, created_ensembles: list[PulseBlockEnsemble], created_blocks: list[PulseBlock]) -> float:
+        if self.gate_channel:
+            length = self.laser_length + self.laser_delay
+        else:
+            ensembles = {ensemble.name: ensemble for ensemble in created_ensembles}
+            length = 0.0
+            for seq_param in sequence.ensemble_list:
+                length += self._get_ensemble_count_length(ensembles[seq_param['ensemble']], created_blocks) * (seq_param['repetitions'] + 1)
+        return length
 
 class PulseObjectGenerator(PredefinedGeneratorBase):
     """

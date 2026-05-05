@@ -108,16 +108,16 @@ def get_tolerance(value, bound):
 
 
 @pytest.fixture(scope='module')
-def module(remote_instance):
+def module(qudi_client):
     """
     Fixture that returns ODMR logic instance.
 
     Parameters
     ----------
-    remote_instance : fixture
-        Remote qudi instance
+    qudi_client : fixture
+        qudi instance
     """
-    module_manager = remote_instance.module_manager
+    module_manager = qudi_client.module_manager
     odmr_gui = 'odmr_gui'
     odmr_logic = 'odmr_logic'
     module_manager.activate_module(odmr_gui)
