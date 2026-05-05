@@ -4,6 +4,16 @@
 
 ### Breaking Changes
 
+### Bugfixes
+
+### New Features
+
+### Other
+
+## Version 1.0.0
+
+### Breaking Changes
+
 - Dropped `Python 3.8` support
 - Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
 - Dropped `Python 3.9` support
