@@ -3,9 +3,13 @@
 ## Pre-Release
 
 ### Breaking Changes
+- Improved pulse envelope handling by introducing the `PulseEnvelope` `dataclass`
+- Improved representation of `DDMethods` to properly store it in measurement data
+- Improved representation of `PulseEnvelopeType` to properly store it in measurement data
 
 ### Bugfixes
 - Fix `installtion.py` for arbitrary Python versions
+- Fixed `sequence_generator_logic` configuration in `default.cfg`
 
 ### New Features
 

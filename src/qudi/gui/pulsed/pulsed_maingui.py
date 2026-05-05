@@ -40,6 +40,7 @@ from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
 
 from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
+from qudi.logic.pulsed.sampling_functions import PulseEnvelope, PulseEnvelopeType
 
 
 class PulsedMeasurementMainWindow(QtWidgets.QMainWindow):
@@ -1293,6 +1294,12 @@ class PulsedMeasurementGui(GuiBase):
                     widget.addItem(option.name, option)
                 widget.setCurrentText(value.name)
                 widget.currentTextChanged.connect(self.generation_parameters_changed)
+            elif issubclass(type(value), PulseEnvelope):
+                widget = QtWidgets.QComboBox()
+                for option in PulseEnvelopeType:
+                    widget.addItem(option.name, PulseEnvelope(option))
+                widget.setCurrentText(value.type.name)
+                widget.currentTextChanged.connect(self.generation_parameters_changed)
 
             widget.setSizePolicy(QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
 
@@ -1669,7 +1676,12 @@ class PulsedMeasurementGui(GuiBase):
                     elif hasattr(widget, 'setText'):
                         widget.setText(settings_dict[param_name])
                     elif hasattr(widget, 'currentText'):
-                        index = widget.findText(str(settings_dict[param_name].name))
+                        text = ""
+                        if issubclass(type(settings_dict[param_name]), Enum):
+                            text = settings_dict[param_name].name
+                        elif isinstance(settings_dict[param_name], PulseEnvelope):
+                            text = settings_dict[param_name].type.name
+                        index = widget.findText(str(text))
                         widget.setCurrentIndex(index)
                     widget.blockSignals(False)
 
