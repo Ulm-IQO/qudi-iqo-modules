@@ -8,6 +8,8 @@
 - Fix `installtion.py` for arbitrary Python versions
 
 ### New Features
+- Added selectable `ScanningOptimizeLogic` optimization methods
+- Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 
 ### Other
 
@@ -36,8 +38,6 @@
 - Added workflows for verifying that new versions of dependencies do not break qudi
 - Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
 - Added the `PredefinedGeneratorBase._get_sequence_count_length` method to easily and correctly determine the count length of `PulseSequence` objects similar to `PredefinedGeneratorBase._get_ensemble_count_length`
-- Added selectable `ScanningOptimizeLogic` optimization methods
-- Added `gaussian unrestricted` and `maximum` optimization methods to `ScanningOptimizeLogic`
 - Restricted `gaussian` optimization logic to optimization range
 
 ### Other
