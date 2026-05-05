@@ -5,6 +5,7 @@
 ### Breaking Changes
 
 ### Bugfixes
+- Fix `installtion.py` for arbitrary Python versions
 
 ### New Features
 
