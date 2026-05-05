@@ -6,6 +6,7 @@
 
 ### Bugfixes
 - Fix `installtion.py` for arbitrary Python versions
+- Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
 
 ### New Features
 
@@ -36,6 +37,7 @@
 - Added workflows for verifying that new versions of dependencies do not break qudi
 - Added improved Gaussian fit methods to the Repo, replacing `qudi-core`'s Gaussian fit methods
 - Added the `PredefinedGeneratorBase._get_sequence_count_length` method to easily and correctly determine the count length of `PulseSequence` objects similar to `PredefinedGeneratorBase._get_ensemble_count_length`
+- Added ability to toggle laser polling in the laser GUI
 
 ### Other
 - Updated versions for Github actions to fix Node.js 20 deprecation warnings
