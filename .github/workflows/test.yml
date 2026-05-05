@@ -8,6 +8,7 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -19,11 +20,11 @@ jobs:
     outputs:
       matrix: ${{ steps.build.outputs.matrix }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build Python matrix from pyproject.toml
         id: build
         run: |
-          python .github/scripts/fetch_python_versions.py | jq .
+          python .github/workflow_utils/fetch_python_versions.py | jq .
         shell: bash
 
   test:
@@ -31,13 +32,14 @@ jobs:
     runs-on: windows-latest
     strategy:
       fail-fast: false
+      max-parallel: 1
       matrix:
         python-version: ${{ fromJson(needs.make-matrix.outputs.matrix) }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v5
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
         cache: "pip"
@@ -46,7 +48,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone https://github.com/Ulm-IQO/qudi-core.git
+        git clone --single-branch https://github.com/Ulm-IQO/qudi-core.git
         cd qudi-core
         python -m pip install --upgrade pip
         pip install -e ".[dev-test]"
