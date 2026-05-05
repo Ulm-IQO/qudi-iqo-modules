@@ -23,7 +23,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ['QDPlotDockWidget', 'QDPlotWidget', 'QDPlotControlWidget']
 
 import os
-from PySide2 import QtWidgets, QtCore, QtGui
+from PySide6 import QtWidgets, QtCore, QtGui
 from typing import Tuple, Dict, Union, List
 
 from qudi.util.paths import get_artwork_dir
@@ -288,7 +288,7 @@ class QDPlotDockWidget(AdvancedDockWidget):
     def __init__(self, *args, plot_number=0, fit_container=None, show_fit: bool = True, **kwargs):
         super().__init__(*args, **kwargs)
         self.setWindowTitle(f'Plot {plot_number:d}')
-        self.setFeatures(self.DockWidgetFloatable | self.DockWidgetMovable)
+        self.setFeatures(self.DockWidgetFeature.DockWidgetFloatable | self.DockWidgetFeature.DockWidgetMovable)
         widget = QDPlotWidget(fit_container=fit_container, show_fit=show_fit)
         self.setWidget(widget)
 
