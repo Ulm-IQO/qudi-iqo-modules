@@ -25,7 +25,7 @@ Only changes of the VERSION file pushed to main will trigger deployment to test.
    fixed `==` in the release `setup.py`.
 
 2. Make sure that packages that are fixed (`==`) in the latest qudi-core release, are left mentioned, but
-unspecified in qudi-iqo-modules `setup.py`. This is most likely the case for the `PySide2` requirement.
+unspecified in qudi-iqo-modules `setup.py`. This is most likely the case for the `PySide6` requirement.
 
 3. Go through the list of merged PRs since the last release. Check that the changes have been documented in
    `qudi-iqo-modules/docs/changelog.md`. From experience, not all PRs edit the changelog as required.

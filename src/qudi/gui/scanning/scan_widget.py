@@ -25,7 +25,7 @@ __all__ = ['Scan1DWidget', 'Scan2DWidget']
 import os
 import numpy as np
 from typing import Tuple, Union, Sequence
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 from typing import Optional, List
 from qudi.util.widgets.plotting.plot_widget import RubberbandZoomSelectionPlotWidget
 from qudi.util.widgets.plotting.image_widget import RubberbandZoomSelectionImageWidget
@@ -56,12 +56,12 @@ class _BaseScanWidget(QtWidgets.QWidget):
         scan_icon = QtGui.QIcon()
         scan_icon.addFile(os.path.join(get_artwork_dir(), 'icons', 'start-counter.svg'),
                           QtCore.QSize(),
-                          QtGui.QIcon.Normal,
-                          QtGui.QIcon.Off)
+                          QtGui.QIcon.Mode.Normal,
+                          QtGui.QIcon.State.Off)
         scan_icon.addFile(os.path.join(get_artwork_dir(), 'icons', 'stop-counter.svg'),
                           QtCore.QSize(),
-                          QtGui.QIcon.Normal,
-                          QtGui.QIcon.On)
+                          QtGui.QIcon.Mode.Normal,
+                          QtGui.QIcon.State.On)
         self.toggle_scan_button = QtWidgets.QPushButton(scan_icon, 'Toggle Scan')
         self.toggle_scan_button.setCheckable(True)
 
@@ -70,18 +70,18 @@ class _BaseScanWidget(QtWidgets.QWidget):
         self.save_scan_button.setCheckable(False)
 
         self.channel_selection_label = QtWidgets.QLabel('Channel:')
-        self.channel_selection_label.setAlignment(QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter)
+        self.channel_selection_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignRight | QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.channel_selection_combobox = QtWidgets.QComboBox()
         self.channel_selection_combobox.addItems([ch.name for ch in channels])
         self.channel_selection_combobox.setMinimumContentsLength(15)
         self.channel_selection_combobox.setSizeAdjustPolicy(
-            QtWidgets.QComboBox.AdjustToContentsOnFirstShow
+            QtWidgets.QComboBox.SizeAdjustPolicy.AdjustToContentsOnFirstShow
         )
 
         # Create QLineEdit for save tag
         self.save_nametag_lineedit = QtWidgets.QLineEdit()
-        self.save_nametag_lineedit.setSizePolicy(QtWidgets.QSizePolicy.Preferred,
-                                                 QtWidgets.QSizePolicy.Fixed)
+        self.save_nametag_lineedit.setSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred,
+                                                 QtWidgets.QSizePolicy.Policy.Fixed)
         self.save_nametag_lineedit.setMinimumWidth(
             QtGui.QFontMetrics(ScienDSpinBox().font()).width(75 * ' ')  # roughly 75 chars shown
         )
@@ -223,9 +223,9 @@ class Scan2DWidget(_BaseScanWidget):
                  max_mouse_pos_update_rate: Optional[float] = 20.
                  ) -> None:
         super().__init__(channels, parent=parent)
-         
+
         self.position_label = CursorPositionLabel()
-        self.position_label.setAlignment(QtCore.Qt.AlignVCenter | QtCore.Qt.AlignRight)
+        self.position_label.setAlignment(QtCore.Qt.AlignmentFlag.AlignVCenter | QtCore.Qt.AlignmentFlag.AlignRight)
         self.position_label.set_units(axes[0].unit, axes[1].unit)
         self.image_widget = RubberbandZoomSelectionImageWidget(
             allow_tracking_outside_data=True,

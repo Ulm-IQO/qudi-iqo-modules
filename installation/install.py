@@ -230,7 +230,8 @@ def create_config_dir():
     if IQO_MODULES_DIR:
         shutil.copy2(INSTALL_DIR / "qudi-iqo-modules/src/qudi/default.cfg", config_dir / "default.cfg")
     else:
-        shutil.copy2(VENV_DIR / "lib/python3.10/site-packages/qudi/default.cfg", config_dir / "default.cfg")
+        site_packages = site_packages = next((VENV_DIR / "lib").glob("python*/site-packages"))
+        shutil.copy2(site_packages / "qudi/default.cfg", config_dir / "default.cfg")
     print(f"Created config directory in {config_dir} and copied default config into it")
 
 

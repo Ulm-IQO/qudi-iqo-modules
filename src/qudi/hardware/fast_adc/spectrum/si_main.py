@@ -23,7 +23,7 @@ import numpy as np
 from enum import IntEnum
 import pyspcm as spcm
 import spcm_tools
-from PySide2.QtCore import Signal
+from PySide6.QtCore import Signal
 
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
