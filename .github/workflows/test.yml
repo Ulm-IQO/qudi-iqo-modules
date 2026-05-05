@@ -48,7 +48,7 @@ jobs:
     - name: Checkout qudi core
       run: |
         cd ..
-        git clone -b pyside6-dev --single-branch https://github.com/Ulm-IQO/qudi-core.git
+        git clone --single-branch https://github.com/Ulm-IQO/qudi-core.git
         cd qudi-core
         python -m pip install --upgrade pip
         pip install -e ".[dev-test]"
