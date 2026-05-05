@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 __all__ = ('QDPlotMainWindow',)
 
 import os
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 
 from qudi.util.paths import get_artwork_dir
 
@@ -36,43 +36,43 @@ class QDPlotMainWindow(QtWidgets.QMainWindow):
 
         self.setWindowTitle('qudi: QD Plotter')
 
-        self.setTabPosition(QtCore.Qt.TopDockWidgetArea, QtWidgets.QTabWidget.North)
-        self.setTabPosition(QtCore.Qt.BottomDockWidgetArea, QtWidgets.QTabWidget.North)
-        self.setTabPosition(QtCore.Qt.LeftDockWidgetArea, QtWidgets.QTabWidget.North)
-        self.setTabPosition(QtCore.Qt.RightDockWidgetArea, QtWidgets.QTabWidget.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, QtWidgets.QTabWidget.TabPosition.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.BottomDockWidgetArea, QtWidgets.QTabWidget.TabPosition.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.LeftDockWidgetArea, QtWidgets.QTabWidget.TabPosition.North)
+        self.setTabPosition(QtCore.Qt.DockWidgetArea.RightDockWidgetArea, QtWidgets.QTabWidget.TabPosition.North)
 
         # Create QActions
         icon_path = os.path.join(get_artwork_dir(), 'icons')
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'application-exit'))
-        self.action_close = QtWidgets.QAction('Close')
+        self.action_close = QtGui.QAction('Close')
         self.action_close.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'document-save'))
-        self.action_save_all = QtWidgets.QAction('Save All')
+        self.action_save_all = QtGui.QAction('Save All')
         self.action_save_all.setToolTip('Save all available plots, each in their own file.')
         self.action_save_all.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'configure'))
-        self.action_show_fit_configuration = QtWidgets.QAction('Fit Configuration')
+        self.action_show_fit_configuration = QtGui.QAction('Fit Configuration')
         self.action_show_fit_configuration.setToolTip('Open a dialog to edit data fitting configurations.')
         self.action_show_fit_configuration.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'document-new'))
-        self.action_new_plot = QtWidgets.QAction('New Plot')
+        self.action_new_plot = QtGui.QAction('New Plot')
         self.action_new_plot.setToolTip('Adds another DockWidget for a new Plot.')
         self.action_new_plot.setIcon(icon)
 
         icon = QtGui.QIcon(os.path.join(icon_path, 'zoom-fit-best'))
-        self.action_restore_tabbed_view = QtWidgets.QAction('Restore tabbed view')
+        self.action_restore_tabbed_view = QtGui.QAction('Restore tabbed view')
         self.action_restore_tabbed_view.setToolTip('Restore the tabbed view of the DockWidgets for the plots.')
         self.action_restore_tabbed_view.setIcon(icon)
 
-        self.action_restore_side_by_side_view = QtWidgets.QAction('Restore side by side view')
+        self.action_restore_side_by_side_view = QtGui.QAction('Restore side by side view')
         self.action_restore_side_by_side_view.setToolTip('Restore the side by side of the DockWidgets for the plots.')
         self.action_restore_side_by_side_view.setIcon(icon)
 
-        self.action_restore_arced_view = QtWidgets.QAction('Restore arced view')
+        self.action_restore_arced_view = QtGui.QAction('Restore arced view')
         self.action_restore_arced_view.setToolTip('Restore the arced view of the DockWidgets for the plots.')
         self.action_restore_arced_view.setIcon(icon)
 

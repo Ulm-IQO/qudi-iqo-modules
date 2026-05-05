@@ -105,8 +105,8 @@ class LaserScannerLogic(LogicBase):
         self.goto_voltage(self._static_v)
 
         # Sets connections between signals and functions
-        self.sigChangeVoltage.connect(self._change_voltage, QtCore.Qt.QueuedConnection)
-        self.sigScanNextLine.connect(self._do_next_line, QtCore.Qt.QueuedConnection)
+        self.sigChangeVoltage.connect(self._change_voltage, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigScanNextLine.connect(self._do_next_line, QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Initialization of internal counter for scanning
         self._scan_counter_up = 0

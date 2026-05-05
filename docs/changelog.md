@@ -4,11 +4,24 @@
 
 ### Breaking Changes
 
+### Bugfixes
+- Fix `installtion.py` for arbitrary Python versions
+- Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
+
+### New Features
+
+### Other
+
+## Version 1.0.0
+
+### Breaking Changes
+
 - Dropped `Python 3.8` support
 - Changed path order so `qudi-iqo-modules` always is first in resolution order and thus overwrites e.g. `qudi-core` definitions
+- Dropped `Python 3.9` support
 
 ### Bugfixes
-- Fixed scanning_probe_logic with netobtain so that the mdoule works with a remote server connection
+- Fixed scanning_probe_logic with netobtain so that the module works with a remote server connection
 - Fixed code suggestions for `Connector` objects
 - Fixed Keysight AWG's from breaking when setting the external reference clock through the configuration file
 - Fixed ``laser_logic`` to work with remote laser hardware
@@ -16,7 +29,7 @@
 - Fixed `KeysightM8195A` not loading `PulseBlock`s in the pulsed main GUI
 - Fixed counting length for the `t1_sequencing` predefined generate method for a gated counter
 - Fixed sampling functions inheritance of parameters
-- Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
+- Improved error handling of `sample_pulse_block_sequence`, `sample_pulse_sequence`
 
 ### New Features
 - changed to a better valid `PredefinedGenerator` class discovery method for the pulsed tool chain
@@ -27,6 +40,7 @@
 - Added ability to toggle laser polling in the laser GUI
 
 ### Other
+- Updated versions for Github actions to fix Node.js 20 deprecation warnings
 - Fixed testing workflow by removing deprecated `python 3.8`
 - Configured Github Action bot as author for the testing branch commits
 - Workflows automatically fetch all possible python versions from the `pyproject.toml` for testing, tests that only use a singular Python version now use the latest possible Python version
@@ -34,6 +48,7 @@
 - Added install script
 - Updated install documentation
 - Improved Github Actions dependency testing
+- Added tests for scanning tool chain
 
 ## Version 0.6.0
 
