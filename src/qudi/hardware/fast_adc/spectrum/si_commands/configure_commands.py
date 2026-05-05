@@ -424,6 +424,7 @@ class DataTransferConfigureCommands:
         else:
             dwOffset = 0
         buffer = (ctypes.c_char * qwBytes).from_buffer(pvNonAlignedBuf, dwOffset)
+        self._raw_buffer = pvNonAlignedBuf
         return buffer
 
     def _set_data_transfer(self, buf_type, c_buf_ptr, buf_size_B, buf_notify_size_B):
