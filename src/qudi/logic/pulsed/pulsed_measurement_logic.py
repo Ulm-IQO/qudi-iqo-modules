@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 import os.path
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 import numpy as np
 import time
 import datetime
@@ -39,6 +39,10 @@ from qudi.util.units import ScaledFloat
 from qudi.util.colordefs import QudiMatplotlibStyle
 from qudi.logic.pulsed.pulse_extractor import PulseExtractor
 from qudi.logic.pulsed.pulse_analyzer import PulseAnalyzer
+
+from qudi.interface.pulser_interface import PulserInterface
+from qudi.interface.fast_counter_interface import FastCounterInterface
+from qudi.interface.microwave_interface import MicrowaveInterface
 
 
 def _data_storage_from_cfg_option(cfg_str):
@@ -70,9 +74,9 @@ class PulsedMeasurementLogic(LogicBase):
     """
 
     # declare connectors
-    _fastcounter = Connector(name='fastcounter', interface='FastCounterInterface')
-    _pulsegenerator = Connector(name='pulsegenerator', interface='PulserInterface')
-    _microwave = Connector(name='microwave', interface='MicrowaveInterface', optional=True)
+    _fastcounter = Connector(name='fastcounter', interface=FastCounterInterface)
+    _pulsegenerator = Connector(name='pulsegenerator', interface=PulserInterface)
+    _microwave = Connector(name='microwave', interface=MicrowaveInterface, optional=True)
 
     # Config options
     # Optional additional paths to import from
@@ -260,7 +264,7 @@ class PulsedMeasurementLogic(LogicBase):
         self.__analysis_timer.setSingleShot(False)
         self.__analysis_timer.setInterval(round(1000. * self.__timer_interval))
         self.__analysis_timer.timeout.connect(self._pulsed_analysis_loop,
-                                              QtCore.Qt.QueuedConnection)
+                                              QtCore.Qt.ConnectionType.QueuedConnection)
 
         # Fitting
         self.fit_config_model = FitConfigurationsModel(parent=self)
@@ -297,8 +301,8 @@ class PulsedMeasurementLogic(LogicBase):
         self._recalled_raw_data_tag = None
 
         # Connect internal signals
-        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.QueuedConnection)
-        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.QueuedConnection)
+        self.sigStartTimer.connect(self.__analysis_timer.start, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigStopTimer.connect(self.__analysis_timer.stop, QtCore.Qt.ConnectionType.QueuedConnection)
         return
 
     def on_deactivate(self):

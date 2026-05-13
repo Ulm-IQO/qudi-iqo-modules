@@ -20,7 +20,7 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 import datetime
 
 from qudi.core.module import GuiBase
@@ -29,6 +29,7 @@ from qudi.util.widgets.plotting.image_widget import ImageWidget
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.paths import get_artwork_dir
 from qudi.gui.camera.camera_settings_dialog import CameraSettingsDialog
+from qudi.logic.camera_logic import CameraLogic
 
 
 class CameraMainWindow(QtWidgets.QMainWindow):
@@ -40,17 +41,17 @@ class CameraMainWindow(QtWidgets.QMainWindow):
         # Create menu bar
         menu_bar = QtWidgets.QMenuBar()
         menu = menu_bar.addMenu('File')
-        self.action_save_frame = QtWidgets.QAction('Save Frame')
+        self.action_save_frame = QtGui.QAction('Save Frame')
         path = os.path.join(get_artwork_dir(), 'icons', 'document-save')
         self.action_save_frame.setIcon(QtGui.QIcon(path))
         menu.addAction(self.action_save_frame)
         menu.addSeparator()
-        self.action_show_settings = QtWidgets.QAction('Settings')
+        self.action_show_settings = QtGui.QAction('Settings')
         path = os.path.join(get_artwork_dir(), 'icons', 'configure')
         self.action_show_settings.setIcon(QtGui.QIcon(path))
         menu.addAction(self.action_show_settings)
         menu.addSeparator()
-        self.action_close = QtWidgets.QAction('Close')
+        self.action_close = QtGui.QAction('Close')
         path = os.path.join(get_artwork_dir(), 'icons', 'application-exit')
         self.action_close.setIcon(QtGui.QIcon(path))
         self.action_close.triggered.connect(self.close)
@@ -59,14 +60,14 @@ class CameraMainWindow(QtWidgets.QMainWindow):
 
         # Create toolbar
         toolbar = QtWidgets.QToolBar()
-        toolbar.setAllowedAreas(QtCore.Qt.AllToolBarAreas)
-        self.action_start_video = QtWidgets.QAction('Start Video')
+        toolbar.setAllowedAreas(QtCore.Qt.ToolBarArea.AllToolBarAreas)
+        self.action_start_video = QtGui.QAction('Start Video')
         self.action_start_video.setCheckable(True)
         toolbar.addAction(self.action_start_video)
-        self.action_capture_frame = QtWidgets.QAction('Capture Frame')
+        self.action_capture_frame = QtGui.QAction('Capture Frame')
         self.action_capture_frame.setCheckable(True)
         toolbar.addAction(self.action_capture_frame)
-        self.addToolBar(QtCore.Qt.TopToolBarArea, toolbar)
+        self.addToolBar(QtCore.Qt.ToolBarArea.TopToolBarArea, toolbar)
 
         # Create central widget
         self.image_widget = ImageWidget()
@@ -87,7 +88,7 @@ class CameraGui(GuiBase):
 
     """
 
-    _camera_logic = Connector(name='camera_logic', interface='CameraLogic')
+    _camera_logic = Connector(name='camera_logic', interface=CameraLogic)
 
     sigStartStopVideoToggled = QtCore.Signal(bool)
     sigCaptureFrameTriggered = QtCore.Signal()
@@ -109,7 +110,7 @@ class CameraGui(GuiBase):
         # Connect the action of the settings dialog with this module
         self._settings_dialog.accepted.connect(self._update_settings)
         self._settings_dialog.rejected.connect(self._keep_former_settings)
-        self._settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
+        self._settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.connect(
             self._update_settings
         )
 

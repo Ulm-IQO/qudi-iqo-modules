@@ -1569,19 +1569,15 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         # Create the PulseSequence and append the PulseBlockEnsemble names as sequence steps
         # together with the necessary parameters.
         t1_sequence = PulseSequence(name=name, rotating_frame=False)
-        count_length = 0.0
         for k in k_array:
             t1_sequence.append(tau_ensemble.name)
             t1_sequence[-1].repetitions = int(k) - 1
-            count_length += k * self._get_ensemble_count_length(ensemble=tau_ensemble,
-                                                                created_blocks=created_blocks)
 
             if self.sync_channel and k == k_array[-1]:
                 t1_sequence.append(sync_readout_ensemble.name)
             else:
                 t1_sequence.append(readout_ensemble.name)
-            count_length += self._get_ensemble_count_length(ensemble=readout_ensemble,
-                                                            created_blocks=created_blocks)
+
         # Make the sequence loop infinitely by setting the go_to parameter of the last sequence
         # step to the first step.
         t1_sequence[-1].go_to = 1
@@ -1596,7 +1592,7 @@ class BasicPredefinedGenerator(PredefinedGeneratorBase):
         t1_sequence.measurement_information['units'] = ('s', '')
         t1_sequence.measurement_information['labels'] = ('Tau<sub>pulse spacing</sub>', 'Signal')
         t1_sequence.measurement_information['number_of_lasers'] = len(tau_array)
-        t1_sequence.measurement_information['counting_length'] = count_length
+        t1_sequence.measurement_information['counting_length'] = self._get_sequence_count_length(t1_sequence, created_ensembles, created_blocks)
 
         # Append PulseSequence to created_sequences list
         created_sequences.append(t1_sequence)

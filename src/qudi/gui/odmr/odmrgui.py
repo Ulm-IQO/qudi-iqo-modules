@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import os
 import datetime
 import numpy as np
-from PySide2 import QtCore, QtWidgets, QtGui
+from PySide6 import QtCore, QtWidgets, QtGui
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -31,6 +31,8 @@ from qudi.core.module import GuiBase
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox
 from qudi.util.paths import get_artwork_dir
+
+from qudi.logic.odmr_logic import OdmrLogic
 
 from .odmr_control_dockwidget import OdmrScanControlDockWidget, OdmrCwControlDockWidget
 from .odmr_fit_dockwidget import OdmrFitDockWidget
@@ -51,7 +53,7 @@ class OdmrGui(GuiBase):
     """
 
     # declare connectors
-    _odmr_logic = Connector(name='odmr_logic', interface='OdmrLogic')
+    _odmr_logic = Connector(name='odmr_logic', interface=OdmrLogic)
 
     # declare status variables
     _max_shown_scans = StatusVar(name='max_shown_scans', default=50)
@@ -176,50 +178,50 @@ class OdmrGui(GuiBase):
     def __connect_scan_control_signals(self):
         logic = self._odmr_logic()
         self._scan_control_dockwidget.sigRangeCountChanged.connect(
-            logic.set_frequency_range_count, QtCore.Qt.QueuedConnection
+            logic.set_frequency_range_count, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self._scan_control_dockwidget.sigRangeChanged.connect(
-            logic.set_frequency_range, QtCore.Qt.QueuedConnection
+            logic.set_frequency_range, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self._scan_control_dockwidget.sigRuntimeChanged.connect(
-            logic.set_runtime, QtCore.Qt.QueuedConnection
+            logic.set_runtime, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self._scan_control_dockwidget.sigPowerChanged.connect(
-            logic.set_scan_power, QtCore.Qt.QueuedConnection
+            logic.set_scan_power, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self._scan_control_dockwidget.sigAveragedScansChanged.connect(
-            logic.set_scans_to_average, QtCore.Qt.QueuedConnection
+            logic.set_scans_to_average, QtCore.Qt.ConnectionType.QueuedConnection
         )
         self._scan_control_dockwidget.sigDataSelectionChanged.connect(self._data_selection_changed)
 
-        self._odmr_settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.Apply).clicked.connect(
+        self._odmr_settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Apply).clicked.connect(
             self._apply_odmr_settings
         )
-        self._odmr_settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.Ok).clicked.connect(
+        self._odmr_settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Ok).clicked.connect(
             self._apply_odmr_settings
         )
-        self._odmr_settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.Cancel).clicked.connect(
+        self._odmr_settings_dialog.button_box.button(QtWidgets.QDialogButtonBox.StandardButton.Cancel).clicked.connect(
             self._restore_odmr_settings
         )
 
     def __connect_gui_signals(self):
         logic = self._odmr_logic()
-        self.sigToggleScan.connect(logic.toggle_odmr_scan, QtCore.Qt.QueuedConnection)
-        self.sigToggleCw.connect(logic.toggle_cw_output, QtCore.Qt.QueuedConnection)
-        self.sigDoFit.connect(logic.do_fit, QtCore.Qt.QueuedConnection)
-        self.sigSaveData.connect(logic.save_odmr_data, QtCore.Qt.QueuedConnection)
+        self.sigToggleScan.connect(logic.toggle_odmr_scan, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigToggleCw.connect(logic.toggle_cw_output, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigDoFit.connect(logic.do_fit, QtCore.Qt.ConnectionType.QueuedConnection)
+        self.sigSaveData.connect(logic.save_odmr_data, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def __connect_logic_signals(self):
         logic = self._odmr_logic()
-        logic.sigScanStateUpdated.connect(self._update_scan_state, QtCore.Qt.QueuedConnection)
-        logic.sigCwStateUpdated.connect(self._update_cw_state, QtCore.Qt.QueuedConnection)
-        logic.sigElapsedUpdated.connect(self._mw.set_elapsed, QtCore.Qt.QueuedConnection)
+        logic.sigScanStateUpdated.connect(self._update_scan_state, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigCwStateUpdated.connect(self._update_cw_state, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigElapsedUpdated.connect(self._mw.set_elapsed, QtCore.Qt.ConnectionType.QueuedConnection)
         logic.sigScanParametersUpdated.connect(
-            self._update_scan_parameters, QtCore.Qt.QueuedConnection
+            self._update_scan_parameters, QtCore.Qt.ConnectionType.QueuedConnection
         )
-        logic.sigCwParametersUpdated.connect(self._update_cw_parameters, QtCore.Qt.QueuedConnection)
-        logic.sigScanDataUpdated.connect(self._update_scan_data, QtCore.Qt.QueuedConnection)
-        logic.sigFitUpdated.connect(self._update_fit_result, QtCore.Qt.QueuedConnection)
+        logic.sigCwParametersUpdated.connect(self._update_cw_parameters, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigScanDataUpdated.connect(self._update_scan_data, QtCore.Qt.ConnectionType.QueuedConnection)
+        logic.sigFitUpdated.connect(self._update_fit_result, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def __disconnect_main_window_actions(self):
         self._mw.action_toggle_measurement.triggered[bool].disconnect()
@@ -268,12 +270,12 @@ class OdmrGui(GuiBase):
         self._mw.action_show_cw_controls.setChecked(True)
         self._cw_control_dockwidget.setFloating(False)
         self._cw_control_dockwidget.setVisible(self.__cw_control_available)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._cw_control_dockwidget)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._scan_control_dockwidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, self._cw_control_dockwidget)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, self._scan_control_dockwidget)
         self._mw.splitDockWidget(self._cw_control_dockwidget,
                                  self._scan_control_dockwidget,
-                                 QtCore.Qt.Vertical)
-        self._mw.addDockWidget(QtCore.Qt.TopDockWidgetArea, self._fit_dockwidget)
+                                 QtCore.Qt.Orientation.Vertical)
+        self._mw.addDockWidget(QtCore.Qt.DockWidgetArea.TopDockWidgetArea, self._fit_dockwidget)
 
     @QtCore.Slot(bool)
     def run_stop_odmr(self, is_checked):
