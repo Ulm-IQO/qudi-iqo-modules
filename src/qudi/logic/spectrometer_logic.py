@@ -19,7 +19,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
@@ -32,6 +32,8 @@ from qudi.util.network import netobtain
 from qudi.core.module import LogicBase
 from qudi.util.datastorage import TextDataStorage
 from qudi.util.datafitting import FitContainer, FitConfigurationsModel
+from qudi.interface.spectrometer_interface import SpectrometerInterface
+from qudi.interface.modulation_interface import ModulationInterface
 
 
 class SpectrometerLogic(LogicBase):
@@ -47,21 +49,21 @@ class SpectrometerLogic(LogicBase):
     """
 
     # declare connectors
-    spectrometer = Connector(interface="SpectrometerInterface")
-    modulation_device = Connector(interface="ModulationInterface", optional=True)
+    spectrometer = Connector(interface=SpectrometerInterface)
+    modulation_device = Connector(interface=ModulationInterface, optional=True)
 
     # declare status variables
-    _spectrum = StatusVar(name="spectrum", default=[None, None])
-    _background = StatusVar(name="background", default=None)
-    _wavelength = StatusVar(name="wavelength", default=None)
-    _background_correction = StatusVar(name="background_correction", default=False)
-    _constant_acquisition = StatusVar(name="constant_acquisition", default=False)
-    _differential_spectrum = StatusVar(name="differential_spectrum", default=False)
-    _fit_region = StatusVar(name="fit_region", default=[0, 1])
-    _axis_type_frequency = StatusVar(name="axis_type_frequency", default=False)
-    max_repetitions = StatusVar(name="max_repetitions", default=0)
+    _spectrum = StatusVar(name='spectrum', default=[None, None])
+    _background = StatusVar(name='background', default=None)
+    _wavelength = StatusVar(name='wavelength', default=None)
+    _background_correction = StatusVar(name='background_correction', default=False)
+    _constant_acquisition = StatusVar(name='constant_acquisition', default=False)
+    _differential_spectrum = StatusVar(name='differential_spectrum', default=False)
+    _fit_region = StatusVar(name='fit_region', default=[0, 1])
+    _axis_type_frequency = StatusVar(name='axis_type_frequency', default=False)
+    max_repetitions = StatusVar(name='max_repetitions', default=0)
 
-    _fit_config = StatusVar(name="fit_config", default=dict())
+    _fit_config = StatusVar(name='fit_config', default=dict())
 
     # Internal signals
     _sig_get_spectrum = QtCore.Signal(bool, bool, bool)
@@ -73,9 +75,9 @@ class SpectrometerLogic(LogicBase):
     sig_fit_updated = QtCore.Signal(str, object)
 
     def __init__(self, **kwargs):
-        """Create SpectrometerLogic object with connectors.
+        """ Create SpectrometerLogic object with connectors.
 
-        @param dict kwargs: optional parameters
+          @param dict kwargs: optional parameters
         """
         super().__init__(**kwargs)
         self.refractive_index_air = 1.00028823
@@ -94,24 +96,22 @@ class SpectrometerLogic(LogicBase):
         self._stop_acquisition = False
         self._acquisition_running = False
         self._fit_results = None
-        self._fit_method = ""
+        self._fit_method = ''
 
     def on_activate(self):
-        """Initialisation performed during activation of the module."""
+        """ Initialisation performed during activation of the module.
+        """
         self._fit_config_model = FitConfigurationsModel(parent=self)
         self._fit_config_model.load_configs(self._fit_config)
-        self._fit_container = FitContainer(
-            parent=self, config_model=self._fit_config_model
-        )
+        self._fit_container = FitContainer(parent=self, config_model=self._fit_config_model)
         self.fit_region = self._fit_region
 
-        self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.QueuedConnection)
-        self._sig_get_background.connect(
-            self.get_background, QtCore.Qt.QueuedConnection
-        )
+        self._sig_get_spectrum.connect(self.get_spectrum, QtCore.Qt.ConnectionType.QueuedConnection)
+        self._sig_get_background.connect(self.get_background, QtCore.Qt.ConnectionType.QueuedConnection)
 
     def on_deactivate(self):
-        """Deinitialisation performed during deactivation of the module."""
+        """ Deinitialisation performed during deactivation of the module.
+        """
         self._sig_get_spectrum.disconnect()
         self._sig_get_background.disconnect()
         self._fit_config = self._fit_config_model.dump_configs()
@@ -119,20 +119,14 @@ class SpectrometerLogic(LogicBase):
     def stop(self):
         self._stop_acquisition = True
 
-    def run_get_spectrum(
-        self, constant_acquisition=None, differential_spectrum=None, reset=True
-    ):
+    def run_get_spectrum(self, constant_acquisition=None, differential_spectrum=None, reset=True):
         if constant_acquisition is not None:
             self.constant_acquisition = bool(constant_acquisition)
         if differential_spectrum is not None:
             self.differential_spectrum = bool(differential_spectrum)
-        self._sig_get_spectrum.emit(
-            self._constant_acquisition, self._differential_spectrum, reset
-        )
+        self._sig_get_spectrum.emit(self._constant_acquisition, self._differential_spectrum, reset)
 
-    def get_spectrum(
-        self, constant_acquisition=None, differential_spectrum=None, reset=True
-    ):
+    def get_spectrum(self, constant_acquisition=None, differential_spectrum=None, reset=True):
         if constant_acquisition is not None:
             self.constant_acquisition = bool(constant_acquisition)
         if differential_spectrum is not None:
@@ -174,14 +168,8 @@ class SpectrometerLogic(LogicBase):
                 self._spectrum[1] = None
         self.sig_data_updated.emit()
 
-        if (
-            self._constant_acquisition
-            and not self._stop_acquisition
-            and (
-                not self.max_repetitions
-                or self._repetitions_spectrum < self.max_repetitions
-            )
-        ):
+        if self._constant_acquisition and not self._stop_acquisition \
+                and (not self.max_repetitions or self._repetitions_spectrum < self.max_repetitions):
             return self.run_get_spectrum(reset=False)
         self._acquisition_running = False
         self.fit_region = self._fit_region
@@ -218,14 +206,8 @@ class SpectrometerLogic(LogicBase):
             self._repetitions_background += 1
         self.sig_data_updated.emit()
 
-        if (
-            self._constant_acquisition
-            and not self._stop_acquisition
-            and (
-                not self.max_repetitions
-                or self._repetitions_background < self.max_repetitions
-            )
-        ):
+        if self._constant_acquisition and not self._stop_acquisition\
+                and (not self.max_repetitions or self._repetitions_background < self.max_repetitions):
             return self.run_get_background(reset=False)
         self._acquisition_running = False
         self.sig_state_updated.emit()
@@ -248,11 +230,9 @@ class SpectrometerLogic(LogicBase):
             if self._background is not None and len(data) == len(self._background):
                 data = data - self.background
             else:
-                self.log.warning(
-                    f"Length of spectrum ({len(data)}) does not match "
-                    f"background ({len(self._background) if self._background is not None else 0}), "
-                    f"returning pure spectrum."
-                )
+                self.log.warning(f'Length of spectrum ({len(data)}) does not match '
+                                 f'background ({len(self._background) if self._background is not None else 0}), '
+                                 f'returning pure spectrum.')
         return data
 
     def get_spectrum_at_x(self, x):
@@ -313,16 +293,12 @@ class SpectrometerLogic(LogicBase):
     def differential_spectrum(self, value):
         self._differential_spectrum = bool(value)
         if self._differential_spectrum and not self.differential_spectrum_available:
-            self.log.warning(
-                f"differential_spectrum was requested, but no modulation device was connected."
-            )
+            self.log.warning(f'differential_spectrum was requested, but no modulation device was connected.')
             self._differential_spectrum = False
         self.sig_state_updated.emit()
 
-    def save_spectrum_data(
-        self, background=False, name_tag="", root_dir=None, parameter=None
-    ):
-        """Saves the current spectrum data to a file.
+    def save_spectrum_data(self, background=False, name_tag='', root_dir=None, parameter=None):
+        """ Saves the current spectrum data to a file.
 
         @param bool background: Whether this is a background spectrum (dark field) or not.
         @param string name_tag: postfix name tag for saved filename.
@@ -333,53 +309,43 @@ class SpectrometerLogic(LogicBase):
         timestamp = datetime.now()
 
         # write experimental parameters
-        parameters = {
-            "acquisition repetitions": self.repetitions,
-            "differential_spectrum": self.differential_spectrum,
-            "background_correction": self.background_correction,
-            "constant_acquisition": self.constant_acquisition,
-        }
-        if self.fit_method != "No Fit" and self.fit_results is not None:
-            parameters["fit_method"] = self.fit_method
-            parameters["fit_results"] = self.fit_results.params
-            parameters["fit_region"] = self.fit_region
+        parameters = {'acquisition repetitions': self.repetitions,
+                      'differential_spectrum'  : self.differential_spectrum,
+                      'background_correction'  : self.background_correction,
+                      'constant_acquisition'   : self.constant_acquisition}
+        if self.fit_method != 'No Fit' and self.fit_results is not None:
+            parameters['fit_method'] = self.fit_method
+            parameters['fit_results'] = self.fit_results.params
+            parameters['fit_region'] = self.fit_region
         if parameter:
             parameters.update(parameter)
 
         if self.x_data is None:
-            self.log.error("No data to save.")
+            self.log.error('No data to save.')
             return
 
         if self._axis_type_frequency:
-            data = [
-                self.x_data * 1e-12,
-            ]
-            header = [
-                "Frequency (THz)",
-            ]
+            data = [self.x_data * 1e-12, ]
+            header = ['Frequency (THz)', ]
         else:
-            data = [
-                self.x_data * 1e9,
-            ]
-            header = [
-                "Wavelength (nm)",
-            ]
+            data = [self.x_data * 1e9, ]
+            header = ['Wavelength (nm)', ]
 
         # prepare the data
         if not background:
             if self.spectrum is None:
-                self.log.error("No spectrum to save.")
+                self.log.error('No spectrum to save.')
                 return
             data.append(self.spectrum)
-            file_label = "spectrum" + name_tag
+            file_label = 'spectrum' + name_tag
         else:
             if self.background is None or self.spectrum is None:
-                self.log.error("No background to save.")
+                self.log.error('No background to save.')
                 return
             data.append(self.background)
-            file_label = "background" + name_tag
+            file_label = 'background' + name_tag
 
-        header.append("Signal")
+        header.append('Signal')
 
         if not background:
             # if background correction was on, also save the data without correction
@@ -387,59 +353,59 @@ class SpectrometerLogic(LogicBase):
                 self._background_correction = False
                 data.append(self.spectrum)
                 self._background_correction = True
-                header.append("Signal raw")
+                header.append('Signal raw')
 
             # If the differential spectra arrays are not empty, save them as raw data
             if self._differential_spectrum and self._spectrum[1] is not None:
                 data.append(self._spectrum[0])
-                header.append("Signal ON")
+                header.append('Signal ON')
                 data.append(self._spectrum[1])
-                header.append("Signal OFF")
+                header.append('Signal OFF')
 
         # save the date to file
-        ds = TextDataStorage(
-            root_dir=self.module_default_data_dir if root_dir is None else root_dir
-        )
+        ds = TextDataStorage(root_dir=self.module_default_data_dir if root_dir is None else root_dir)
 
-        file_path, _, _ = ds.save_data(
-            np.array(data).T,
-            column_headers=header,
-            metadata=parameters,
-            nametag=file_label,
-            timestamp=timestamp,
-            column_dtypes=[float] * len(header),
-        )
+        file_path, _, _ = ds.save_data(np.array(data).T,
+                                       column_headers=header,
+                                       metadata=parameters,
+                                       nametag=file_label,
+                                       timestamp=timestamp,
+                                       column_dtypes=[float] * len(header))
 
         # save the figure into a file
         figure, ax1 = plt.subplots()
         rescale_factor, prefix = self._get_si_scaling(np.max(data[1]))
 
-        ax1.plot(data[0], data[1] / rescale_factor, linestyle=":", linewidth=0.5)
+        ax1.plot(data[0],
+                 data[1] / rescale_factor,
+                 linestyle=':',
+                 linewidth=0.5
+                 )
 
-        if self.fit_method != "No Fit" and self.fit_results is not None:
+        if self.fit_method != 'No Fit' and self.fit_results is not None:
             if self._axis_type_frequency:
                 x_data = self.fit_results.high_res_best_fit[0] * 1e-12
             else:
                 x_data = self.fit_results.high_res_best_fit[0] * 1e9
 
-            ax1.plot(
-                x_data,
-                self.fit_results.high_res_best_fit[1] / rescale_factor,
-                linestyle=":",
-                linewidth=0.5,
-            )
+            ax1.plot(x_data,
+                     self.fit_results.high_res_best_fit[1] / rescale_factor,
+                     linestyle=':',
+                     linewidth=0.5
+                     )
 
         ax1.set_xlabel(header[0])
-        ax1.set_ylabel("Intensity ({} arb. u.)".format(prefix))
+        ax1.set_ylabel('Intensity ({} arb. u.)'.format(prefix))
         figure.tight_layout()
 
-        ds.save_thumbnail(figure, file_path=file_path.rsplit(".", 1)[0])
+        ds.save_thumbnail(figure, file_path=file_path.rsplit('.', 1)[0])
 
-        self.log.debug(f"Spectrum saved to:{file_path}")
+        self.log.debug(f'Spectrum saved to:{file_path}')
 
     @staticmethod
     def _get_si_scaling(number):
-        prefix = ["", "k", "M", "G", "T", "P"]
+
+        prefix = ['', 'k', 'M', 'G', 'T', 'P']
         prefix_index = 0
         rescale_factor = 1
 
@@ -458,7 +424,7 @@ class SpectrometerLogic(LogicBase):
     @axis_type_frequency.setter
     def axis_type_frequency(self, value):
         self._axis_type_frequency = bool(value)
-        self._fit_method = "No Fit"
+        self._fit_method = 'No Fit'
         self._fit_results = None
         self.fit_region = (0, 1e20)
         self.sig_data_updated.emit()
@@ -491,45 +457,37 @@ class SpectrometerLogic(LogicBase):
         return self._fit_container
 
     def do_fit(self, fit_method):
-        if fit_method == "No Fit":
-            self.sig_fit_updated.emit("No Fit", None)
-            return "No Fit", None
+        if fit_method == 'No Fit':
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
 
         self.fit_region = self._fit_region
         if self.x_data is None or self.spectrum is None:
-            self.log.error("No data to fit.")
-            self.sig_fit_updated.emit("No Fit", None)
-            return "No Fit", None
+            self.log.error('No data to fit.')
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
 
         if self._axis_type_frequency:
-            start = len(self.x_data) - np.searchsorted(
-                self.x_data[::-1], self._fit_region[1], "left"
-            )
-            end = len(self.x_data) - np.searchsorted(
-                self.x_data[::-1], self._fit_region[0], "right"
-            )
+            start = len(self.x_data) - np.searchsorted(self.x_data[::-1], self._fit_region[1], 'left')
+            end = len(self.x_data) - np.searchsorted(self.x_data[::-1], self._fit_region[0], 'right')
         else:
-            start = np.searchsorted(self.x_data, self._fit_region[0], "left")
-            end = np.searchsorted(self.x_data, self._fit_region[1], "right")
+            start = np.searchsorted(self.x_data, self._fit_region[0], 'left')
+            end = np.searchsorted(self.x_data, self._fit_region[1], 'right')
 
         if end - start < 2:
-            self.log.error(
-                "Fit region limited the data to less than two points. Fit not possible."
-            )
-            self.sig_fit_updated.emit("No Fit", None)
-            return "No Fit", None
+            self.log.error('Fit region limited the data to less than two points. Fit not possible.')
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
 
         x_data = self.x_data[start:end]
         y_data = self.spectrum[start:end]
 
         try:
-            self._fit_method, self._fit_results = self._fit_container.fit_data(
-                fit_method, x_data, y_data
-            )
+            self._fit_method, self._fit_results = self._fit_container.fit_data(fit_method, x_data, y_data)
         except:
-            self.log.exception(f"Data fitting failed:\n{traceback.format_exc()}")
-            self.sig_fit_updated.emit("No Fit", None)
-            return "No Fit", None
+            self.log.exception(f'Data fitting failed:\n{traceback.format_exc()}')
+            self.sig_fit_updated.emit('No Fit', None)
+            return 'No Fit', None
 
         self.sig_fit_updated.emit(self._fit_method, self._fit_results)
         return self._fit_method, self._fit_results
@@ -548,20 +506,11 @@ class SpectrometerLogic(LogicBase):
 
     @fit_region.setter
     def fit_region(self, fit_region):
-        assert (
-            len(fit_region) == 2
-        ), f"fit_region has to be of length 2 but was {type(fit_region)}"
+        assert len(fit_region) == 2, f'fit_region has to be of length 2 but was {type(fit_region)}'
 
         if self.x_data is None:
             return
-        fit_region = (
-            fit_region
-            if fit_region[0] <= fit_region[1]
-            else (fit_region[1], fit_region[0])
-        )
-        new_region = (
-            max(min(self.x_data), fit_region[0]),
-            min(max(self.x_data), fit_region[1]),
-        )
+        fit_region = fit_region if fit_region[0] <= fit_region[1] else (fit_region[1], fit_region[0])
+        new_region = (max(min(self.x_data), fit_region[0]), min(max(self.x_data), fit_region[1]))
         self._fit_region = new_region
         self.sig_state_updated.emit()

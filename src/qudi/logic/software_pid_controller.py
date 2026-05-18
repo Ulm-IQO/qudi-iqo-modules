@@ -24,6 +24,7 @@ from qtpy import QtCore
 import numpy as np
 
 from qudi.interface.pid_controller_interface import PIDControllerInterface
+from qudi.interface.process_control_interface import ProcessValueInterface, ProcessSetpointInterface
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
@@ -50,8 +51,8 @@ class SoftPIDController(PIDControllerInterface):
     """
 
     # declare connectors
-    process = Connector(name='process_value', interface='ProcessValueInterface')
-    control = Connector(name='setpoint', interface='ProcessSetpointInterface')
+    process = Connector(name='process_value', interface=ProcessValueInterface)
+    control = Connector(name='setpoint', interface=ProcessSetpointInterface)
 
     # config options
     # channels to use for process and setpoint devices
@@ -104,7 +105,7 @@ class SoftPIDController(PIDControllerInterface):
         self.timer.setSingleShot(True)
         self.timer.setInterval(self.timestep)
 
-        self.timer.timeout.connect(self._calc_next_step, QtCore.Qt.QueuedConnection)
+        self.timer.timeout.connect(self._calc_next_step, QtCore.Qt.ConnectionType.QueuedConnection)
         self.sigNewValue.connect(self._control.set_setpoint)
 
         self.history = np.zeros([3, 5])

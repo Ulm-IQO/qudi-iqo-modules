@@ -25,7 +25,7 @@ If not, see <https://www.gnu.org/licenses/>.
 import time
 from typing import Optional, List, Set, TYPE_CHECKING, Dict
 from ctypes import byref, cast, c_double, c_int, c_char_p, c_long, POINTER, WINFUNCTYPE, WinDLL
-from PySide2.QtCore import QObject
+from PySide6.QtCore import QObject
 from qudi.core.threadmanager import ThreadManager
 from qudi.core.logger import get_logger
 from qudi.core.module import Base
