@@ -45,6 +45,12 @@ from qudi.interface.fast_counter_interface import FastCounterInterface
 from qudi.interface.microwave_interface import MicrowaveInterface
 
 
+def _sampling_information_representer(sampling_information: dict) -> dict:
+    if "pulse_objects" in sampling_information.keys():
+        del sampling_information["pulse_objects"]
+    return sampling_information
+
+
 def _data_storage_from_cfg_option(cfg_str):
     cfg_str = cfg_str.lower()
     if cfg_str == 'text':
@@ -121,7 +127,7 @@ class PulsedMeasurementLogic(LogicBase):
     # Container to store measurement information about the currently loaded sequence
     _measurement_information = StatusVar(default=dict())
     # Container to store information about the sampled waveform/sequence currently loaded
-    _sampling_information = StatusVar(default=dict())
+    _sampling_information = StatusVar(default=dict(), representer=_sampling_information_representer)
     _generation_method_parameters = StatusVar(default=dict())
 
     # Data fitting
@@ -1433,6 +1439,7 @@ class PulsedMeasurementLogic(LogicBase):
 
     def save_measurement_data(self, tag=None, notes=None, file_path=None, storage_cls=None,
                               with_error=True, save_laser_pulses=True, save_pulsed_measurement=True,
+                              save_sampling_information: bool = True,
                               save_figure=None):
         """ Prepare data to be saved and create a proper plot of the data
 
@@ -1501,6 +1508,18 @@ class PulsedMeasurementLogic(LogicBase):
                                    timestamp=timestamp,
                                    notes=notes,
                                    column_headers='Signal (counts)')
+
+        if save_sampling_information:
+            save_filename, nametag = self._get_patched_filename_nametag(file_name, tag, '_sampling_information')
+            save_path, _, _ = data_storage.save_data(
+                data = [],
+                metadata=self.sampling_information,
+                nametag=nametag,
+                filename=save_filename,
+                timestamp=timestamp,
+                notes=notes,
+                column_headers=[],
+            )
 
         ############################
         # Save evaluated signal data

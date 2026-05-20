@@ -20,11 +20,13 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
+from typing import Optional
 import numpy as np
 from PySide6 import QtCore
 
 from qudi.core.connector import Connector
 from qudi.core.module import LogicBase
+from qudi.logic.pulsed.pulse_objects import PulseBlock, PulseBlockEnsemble, PulseSequence
 from qudi.logic.pulsed.pulsed_measurement_logic import PulsedMeasurementLogic
 from qudi.logic.pulsed.sequence_generator_logic import SequenceGeneratorLogic
 
@@ -1108,6 +1110,12 @@ class PulsedMasterLogic(LogicBase):
                                              channel.
         """
         return self.sequencegeneratorlogic().analyze_sequence(sequence=sequence)
+
+    def load_sampled_objects(self, location: Optional[str] = None) -> tuple[PulseSequence | None, dict[str, PulseBlockEnsemble], dict[str, PulseBlock]]:
+        message = f"Loading sampled elements from '{location}'" if location is not None else "Loading sampled elements from currently loaded asset"
+        self.log.debug(message)
+        sequence, ensembles, blocks = self.sequencegeneratorlogic().load_sampled_objects(location)
+        return sequence, ensembles, blocks
 
     #######################################################################
     ###             Helper  methods                                     ###

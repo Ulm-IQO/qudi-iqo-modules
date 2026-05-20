@@ -981,7 +981,7 @@ class PulseSequence(object):
         dict_repr = dict()
         dict_repr['name'] = self.name
         dict_repr['rotating_frame'] = self.rotating_frame
-        dict_repr['ensemble_list'] = self.ensemble_list
+        dict_repr['ensemble_list'] = [{key: value for key, value in step.items()} for step in self.ensemble_list]
         dict_repr['sampling_information'] = self.sampling_information
         dict_repr['measurement_information'] = self.measurement_information
         dict_repr['generation_method_parameters'] = self.generation_method_parameters
@@ -990,7 +990,7 @@ class PulseSequence(object):
     @staticmethod
     def sequence_from_dict(sequence_dict):
         new_seq = PulseSequence(name=sequence_dict['name'],
-                                ensemble_list=sequence_dict['ensemble_list'],
+                                ensemble_list=[SequenceStep(step) for step in sequence_dict['ensemble_list']],
                                 rotating_frame=sequence_dict['rotating_frame'])
         new_seq.sampling_information = sequence_dict['sampling_information']
         new_seq.measurement_information = sequence_dict['measurement_information']

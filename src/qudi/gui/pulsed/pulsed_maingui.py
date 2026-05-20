@@ -22,9 +22,12 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 import datetime
+from typing import Optional
+from PySide2.QtGui import QIcon
 import numpy as np
 import pyqtgraph as pg
 from enum import Enum
+from pathlib import Path
 
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
@@ -38,7 +41,11 @@ from qudi.util import uic
 from PySide6 import QtCore, QtWidgets
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 from qudi.util.widgets.loading_indicator import CircleLoadingIndicator
+from importlib import resources
+import qudi.artwork.icons
 
+from qudi.gui.pulsed.pulse_editors import BlockEditor, EnsembleEditor, SequenceEditor
+from qudi.logic.pulsed.pulse_objects import PulseSequence
 from qudi.logic.pulsed.pulsed_master_logic import PulsedMasterLogic
 
 
@@ -141,6 +148,105 @@ class PredefinedMethodsConfigDialog(QtWidgets.QDialog):
 
         uic.loadUi(ui_file, self)
 
+class SampledElementsViewer(QtWidgets.QMainWindow):
+    def __init__(self, pulsed_master_logic: PulsedMasterLogic):
+        super().__init__()
+
+        self._sequence = {}
+        self._ensembles = {}
+        self._blocks = {}
+
+        self._pulsed_master_logic = pulsed_master_logic
+
+        self.widget = QtWidgets.QWidget()
+        layout = QtWidgets.QGridLayout(self.widget)
+        self.block_editor = BlockEditor(self)
+        self.block_combobox = QtWidgets.QComboBox()
+        self.ensemble_editor = EnsembleEditor(self)
+        self.ensemble_combobox = QtWidgets.QComboBox()
+        self.sequence_editor = SequenceEditor(self)
+        layout.addWidget(self.block_editor, 0, 0)
+        layout.addWidget(self.block_combobox, 0, 1)
+        layout.addWidget(self.ensemble_editor, 1, 0)
+        layout.addWidget(self.ensemble_combobox, 1, 1)
+        layout.addWidget(self.sequence_editor, 2, 0)
+
+        self.block_editor.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.ensemble_editor.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.sequence_editor.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+
+        self.block_combobox.currentTextChanged.connect(self._block_combobox_text_changed)
+        self.ensemble_combobox.currentTextChanged.connect(self._ensemble_combobox_text_changed)
+
+        self.setWindowTitle("Sampled Pulse Element Viewer")
+        self.setCentralWidget(self.widget)
+
+        self.resize(600, 600)
+        self.load_action = QtWidgets.QAction(QIcon(str(resources.files(qudi.artwork.icons) / "document-open.svgz")), "Load")
+        self.load_action.setToolTip("Load sampling information from file")
+        toolbar = QtWidgets.QToolBar()
+        toolbar.addAction(self.load_action)
+        self.addToolBar(toolbar)
+        self.file_dialog = QtWidgets.QFileDialog()
+        self.file_dialog.setFileMode(QtWidgets.QFileDialog.ExistingFile)
+
+        path = Path(pulsed_master_logic.module_default_data_dir)
+        while not path.exists():
+            path = path.parent
+        self.file_dialog.setDirectory(str(path))
+
+        self.current_action = QtWidgets.QAction("Loaded Asset")
+        self.current_action.setToolTip("Load sampling information from currently loaded asset")
+        toolbar.addAction(self.current_action)
+
+        self.load_action.triggered[bool].connect(self.file_dialog.show)
+        self.current_action.triggered.connect(self.load_currently_sampled_objects)
+        self.file_dialog.fileSelected.connect(self.load_sampled_objects)
+
+    def load_currently_sampled_objects(self) -> None:
+        self.load_sampled_objects()
+
+    def load_sampled_objects(self, location: Optional[str] = None) -> None:
+        sequence, ensembles, blocks = self._pulsed_master_logic.load_sampled_objects(location)
+
+        self.block_editor.clear()
+        self.ensemble_editor.clear()
+        self.sequence_editor.clear()
+
+        self._blocks = blocks
+        self._ensembles = ensembles
+        self._sequence = sequence
+
+        block_names = list(blocks.keys())
+        ensemble_names = list(ensembles.keys())
+
+        self.block_editor.load_block(self._blocks[block_names[0]])
+
+        self.ensemble_editor.load_ensemble(self._ensembles[ensemble_names[0]])
+        self.ensemble_editor.set_available_pulse_blocks(block_names)
+
+        self.sequence_editor.load_sequence(sequence)
+        if isinstance(sequence, PulseSequence):
+            self.sequence_editor.set_available_block_ensembles(ensemble_names)
+        else:
+            self.sequence_editor.set_available_block_ensembles([])
+
+        self.block_combobox.blockSignals(True)
+        self.block_combobox.clear()
+        self.block_combobox.addItems(block_names)
+        self.block_combobox.blockSignals(False)
+
+        self.ensemble_combobox.blockSignals(True)
+        self.ensemble_combobox.clear()
+        self.ensemble_combobox.addItems(ensemble_names)
+        self.ensemble_combobox.blockSignals(False)
+
+    def _ensemble_combobox_text_changed(self, text: str):
+        self.ensemble_editor.load_ensemble(self._ensembles[text])
+
+    def _block_combobox_text_changed(self, text: str):
+        self.block_editor.load_block(self._blocks[text])
+
 
 class PulsedMeasurementGui(GuiBase):
     """
@@ -195,6 +301,7 @@ class PulsedMeasurementGui(GuiBase):
             parent=self._mw,
             fit_config_model=self.pulsedmasterlogic().fit_config_model
         )
+        self._activate_sampled_elements_viewer()
 
         self._mw.tabWidget.addTab(self._pa, 'Analysis')
         self._mw.tabWidget.addTab(self._pe, 'Pulse Extraction')
@@ -253,6 +360,10 @@ class PulsedMeasurementGui(GuiBase):
 
         return
 
+    def _activate_sampled_elements_viewer(self):
+        self._sampled_elements_viewer = SampledElementsViewer(self.pulsedmasterlogic())
+        self._sampled_elements_viewer.block_editor.set_activation_config(self.pulsedmasterlogic().pulse_generator_settings['activation_config'])
+
     def on_deactivate(self):
         """ Undo the Definition, configuration and initialisation of the pulsed
             measurement GUI.
@@ -303,6 +414,7 @@ class PulsedMeasurementGui(GuiBase):
         self._mw.action_run_stop.triggered.connect(self.measurement_run_stop_clicked)
         self._mw.action_continue_pause.triggered.connect(self.measurement_continue_pause_clicked)
         self._mw.action_pull_data.triggered.connect(self.pull_data_clicked)
+        self._mw.action_load_sample_parameters.triggered.connect(self._sampled_elements_viewer.show)
         self._mw.action_save.triggered.connect(self.save_clicked)
         self._mw.action_save_as.triggered.connect(self.save_as_clicked)
         self._mw.action_Settings_Analysis.triggered.connect(self.show_analysis_settings)
@@ -1551,6 +1663,7 @@ class PulsedMeasurementGui(GuiBase):
 
             # Set activation config in block editor
             self._pg.block_editor.set_activation_config(settings_dict['activation_config'][1])
+            self._sampled_elements_viewer.block_editor.set_activation_config(settings_dict["activation_config"][1])
         if 'analog_levels' in settings_dict:
             for chnl, pp_amp in settings_dict['analog_levels'][0].items():
                 self._analog_chnl_setting_widgets[chnl][1].setValue(pp_amp)
