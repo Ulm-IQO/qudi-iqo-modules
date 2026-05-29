@@ -448,4 +448,8 @@ class QL_MPC_command(QL_common_command):
     def get_firmware_version(self):
         return self.query('SOFTVER?')
 
+    def get_sys_info(self):
+        self.get_runtimes()
+        self.sys_info.firmware_ver = self.get_firmware_version()
+
 
