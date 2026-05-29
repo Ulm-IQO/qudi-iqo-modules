@@ -19,18 +19,14 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-
-from PySide2 import QtWidgets
-
 from qudi.core.connector import Connector
 from qudi.core.statusvariable import StatusVar
 from qudi.util.widgets.fitting import FitConfigurationDialog
 from qudi.core.module import GuiBase
 
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore
 
 from qudi.gui.qdyne.widgets.main_window import QdyneMainWindow
-from qudi.gui.qdyne.widgets.measurement_widget import MeasurementWidget
 from qudi.gui.qdyne.widgets.generation_widget import GenerationWidget
 from qudi.gui.qdyne.widgets.predefined_method_config_dialog_widget import PredefinedMethodsConfigDialogWidget
 from qudi.gui.qdyne.widgets.state_estimation_widget import StateEstimationTab

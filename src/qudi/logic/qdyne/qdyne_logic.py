@@ -14,23 +14,14 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-import os
-from os import stat
-from typing import Optional
-import numpy as np
-import time
-from collections import OrderedDict
-from PySide2 import QtCore
+from PySide6 import QtCore
 import datetime
 import logging
 
-from qudi.util.paths import get_userdata_dir
 from qudi.core.module import LogicBase
 from qudi.core.connector import Connector
 from qudi.core.configoption import ConfigOption
 from qudi.core.statusvariable import StatusVar
-from qudi.util.constraints import DiscreteScalarConstraint
-from qudi.util.mutex import RecursiveMutex
 
 import qudi.logic.qdyne.qdyne_measurement
 from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorMain
@@ -39,7 +30,7 @@ from qudi.logic.qdyne.qdyne_fit import QdyneFit
 from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_data_manager import QdyneDataManager
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
-from qudi.interface.qdyne_counter_interface import GateMode, QdyneCounterConstraints
+from qudi.interface.qdyne_counter_interface import GateMode
 from qudi.logic.qdyne.tools.state_enums import DataSource
 
 _logger = logging.getLogger(__name__)

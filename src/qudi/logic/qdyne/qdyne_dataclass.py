@@ -48,6 +48,7 @@ class FreqDomainData:
         """
         find the peaks of the non-negative frequency domain signal.
         """
+        print(self.y)
         height = self.peak_threshold * np.mean(self.y[1:])
         all_peaks = signal.find_peaks(self.y, height=height)[0]
         if len(all_peaks) > 0:
@@ -74,15 +75,15 @@ class FreqDomainData:
 
 @dataclass
 class MainDataClass:
-    raw_data: np.ndarray = np.array([])
-    extracted_data: np.ndarray = np.array([])
-    pulse_data: np.ndarray = np.array([])
-    time_trace: np.ndarray = np.array([])
-    signal: np.ndarray = np.array([])
-    freq_domain: np.ndarray = np.array([])
-    time_domain: np.ndarray = np.array([])
-    freq_data: FreqDomainData = FreqDomainData()
-    metadata: QDyneMetadata = QDyneMetadata()
+    raw_data: np.ndarray = field(default_factory=lambda: np.array([]))
+    extracted_data: np.ndarray = field(default_factory=lambda: np.array([]))
+    pulse_data: np.ndarray = field(default_factory=lambda: np.array([]))
+    time_trace: np.ndarray = field(default_factory=lambda: np.array([]))
+    signal: np.ndarray = field(default_factory=lambda: np.array([]))
+    freq_domain: np.ndarray = field(default_factory=lambda: np.array([]))
+    time_domain: np.ndarray = field(default_factory=lambda: np.array([]))
+    freq_data: FreqDomainData = field(default_factory=lambda: FreqDomainData())
+    metadata: QDyneMetadata = field(default_factory=lambda: QDyneMetadata())
 
     @property
     def data_list(self):

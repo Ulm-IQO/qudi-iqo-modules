@@ -22,7 +22,7 @@ If not, see <https://www.gnu.org/licenses/>.
 
 import os
 from enum import Enum
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtCore, QtWidgets
 
 from qudi.util import uic
 from qudi.util.helpers import natural_sort

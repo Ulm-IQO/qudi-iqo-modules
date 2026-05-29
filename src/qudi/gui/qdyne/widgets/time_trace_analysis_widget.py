@@ -21,17 +21,19 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 import os
-from PySide2.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
-from PySide2.QtCore import Slot, Qt
-from PySide2.QtGui import QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QSizePolicy
+from PySide6.QtCore import Slot, Qt
+from PySide6.QtGui import QStandardItem, QStandardItemModel
 import pyqtgraph as pg
 import numpy as np
 from logging import getLogger
 
 from qudi.util import uic
 from qudi.util.colordefs import QudiPalettePale as palette
+from qudi.core.connector import Connector
 
 from qudi.gui.qdyne.tools.multi_settings_widget import MultiSettingsWidget
+import qudi.logic.qdyne.qdyne_logic
 
 logger = getLogger(__name__)
 
@@ -43,21 +45,16 @@ class TimeTraceAnalysisTab(QWidget):
         self._instantiate_widgets(logic)
         self._form_layout()
 
-    def _instantiate_widgets(self, logic):
+    def _instantiate_widgets(self, logic: "qudi.logic.qdyne.qdyne_logic.QdyneLogic"):
         self._tta_layout = QVBoxLayout(self)
-        self._sw = MultiSettingsWidget(logic().settings.analyzer_stg,
-                                       logic().settings.analyzer_stg.current_data)
-        self._dw = TimeTraceAnalysisDataWidget(logic(), logic().fit, logic().data)
+        self._sw = MultiSettingsWidget(logic().settings.analyzer_stg, logic().settings.analyzer_stg.current_data)
+        self._dw = TimeTraceAnalysisDataWidget(logic(), logic().fit)
         self._tta_layout.addWidget(self._sw)
         self._tta_layout.addWidget(self._dw)
 
     def _form_layout(self):
-        self._sw.setSizePolicy(
-            QSizePolicy.Minimum, QSizePolicy.Minimum
-        )
-        self._dw.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self._sw.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
+        self._dw.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def connect_signals(self):
         self._sw.connect_signals()
@@ -100,10 +97,9 @@ class TimeTraceAnalysisTab(QWidget):
 
 
 class TimeTraceAnalysisDataWidget(QWidget):
-    def __init__(self, logic, fit_logic, data):
+    def __init__(self, logic: "qudi.logic.qdyne.qdyne_logic.QdyneLogic", fit_logic: ""):
         self._fit = fit_logic
         self._logic = logic
-        self.freq_data = data.freq_data
 
         # Get the path to the *.ui file
         qdyne_dir = os.path.dirname(os.path.dirname(__file__))
@@ -120,23 +116,17 @@ class TimeTraceAnalysisDataWidget(QWidget):
         # self._activate_plot2_widget()
 
     def _form_layout(self):
-        self.tta_gridGroupBox.setSizePolicy(
-            QSizePolicy.Minimum, QSizePolicy.Minimum
-        )
-        self.plot1_GroupBox.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
-        self.plot2_GroupBox.setSizePolicy(
-            QSizePolicy.Expanding, QSizePolicy.Expanding
-        )
+        self.tta_gridGroupBox.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
+        self.plot1_GroupBox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.plot2_GroupBox.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
     def _activate_plot1_widget(self):
-        self.peak_range_spinBox.setValue(self.freq_data.range_index)
-        self.peak_threshold_spinBox.setValue(self.freq_data.peak_threshold)
-        self.peak_separation_spinBox.setValue(self.freq_data.peak_separation)
+        self.peak_range_spinBox.setValue(self._logic.data.freq_data.range_index)
+        self.peak_threshold_spinBox.setValue(self._logic.data.freq_data.peak_threshold)
+        self.peak_separation_spinBox.setValue(self._logic.data.freq_data.peak_separation)
         self.signal_image = pg.PlotDataItem(
-            pen=pg.mkPen(palette.c1, style=Qt.DotLine),
-            style=Qt.DotLine,
+            pen=pg.mkPen(palette.c1, style=Qt.PenStyle.DotLine),
+            style=Qt.PenStyle.DotLine,
             symbol="o",
             symbolPen=palette.c1,
             symbolBrush=palette.c1,
@@ -162,8 +152,8 @@ class TimeTraceAnalysisDataWidget(QWidget):
     def _activate_plot2_widget(self):
         # Configure the second signal plot display:
         self.second_signal_image = pg.PlotDataItem(
-            pen=pg.mkPen(palette.c1, style=Qt.DotLine),
-            style=Qt.DotLine,
+            pen=pg.mkPen(palette.c1, style=Qt.PenStyle.DotLine),
+            style=Qt.PenStyle.DotLine,
             symbol="o",
             symbolPen=palette.c1,
             symbolBrush=palette.c1,
@@ -202,35 +192,43 @@ class TimeTraceAnalysisDataWidget(QWidget):
         # block signals to avoid emitting currentTextChanged() and redundant call of update_spectrum()
         self.current_peak_comboBox.blockSignals(True)
 
-        self.freq_data.get_peaks()
+        logger.warning(f"{self._logic.data.freq_data.y=}")
+        logger.warning(f"{self._logic.data.freq_data.y}")
+        self._logic.data.freq_data.get_peaks()
         self.model.clear()
-        for peak in self.freq_data.peaks:
-            item = QStandardItem(str(self.freq_data.x[peak]))
+        for peak in self._logic.data.freq_data.peaks:
+            item = QStandardItem(str(self._logic.data.freq_data.x[peak]))
             item.setData(peak)
             self.model.appendRow(item)
 
-        current_peak = float(self.current_peak_comboBox.currentText()) if \
-            self.current_peak_comboBox.currentText() else 0
-        model_float_list = [float(self.model.item(i, 0).text()) for i in
-                            range(self.model.rowCount()) if self.model.item(i, 0)]
+        current_peak = (
+            float(self.current_peak_comboBox.currentText()) if self.current_peak_comboBox.currentText() else 0
+        )
+        model_float_list = [
+            float(self.model.item(i, 0).text()) for i in range(self.model.rowCount()) if self.model.item(i, 0)
+        ]
         new_idx = (np.abs(np.array(model_float_list) - current_peak)).argmin()
         self.current_peak_comboBox.setModel(self.model)
         self.current_peak_comboBox.setCurrentIndex(new_idx)
         self.current_peak_comboBox.blockSignals(False)
 
     def update_spectrum(self):
-        current_index = self.current_peak_comboBox.currentIndex() if \
-            self.current_peak_comboBox.currentIndex() >= 0 else 0
+        current_index = (
+            self.current_peak_comboBox.currentIndex() if self.current_peak_comboBox.currentIndex() >= 0 else 0
+        )
         try:
-            self.freq_data.current_peak = self.model.item(current_index).data()
+            self._logic.data.freq_data.current_peak = self.model.item(current_index).data()
         except AttributeError:
             # return if there is no data yet
             return
-        self.freq_data.range_index = self.peak_range_spinBox.value() if \
-            self.peak_range_spinBox.value() < self.freq_data.x.size else self.freq_data.x.size
-        self.freq_data.peak_threshold = self.peak_threshold_spinBox.value()
-        self.freq_data.peak_separation = self.peak_separation_spinBox.value()
-        spectrum = self.freq_data.data_around_peak
+        self._logic.data.freq_data.range_index = (
+            self.peak_range_spinBox.value()
+            if self.peak_range_spinBox.value() < self._logic.data.freq_data.x.size
+            else self._logic.data.freq_data.x.size
+        )
+        self._logic.data.freq_data.peak_threshold = self.peak_threshold_spinBox.value()
+        self._logic.data.freq_data.peak_separation = self.peak_separation_spinBox.value()
+        spectrum = self._logic.data.freq_data.data_around_peak
         self.signal_image.setData(x=spectrum[0], y=spectrum[1])
         self.plot1_PlotWidget.clear()
         self.plot1_PlotWidget.addItem(self.signal_image)
@@ -265,8 +263,6 @@ class TimeTraceAnalysisDataWidget(QWidget):
             self.plot1_PlotWidget.removeItem(self.fit_image)
 
     def _set_fit(self, fit_result):
-        self.fit_image.setData(
-            x=fit_result.high_res_best_fit[0], y=fit_result.high_res_best_fit[1]
-        )
+        self.fit_image.setData(x=fit_result.high_res_best_fit[0], y=fit_result.high_res_best_fit[1])
         if self.fit_image not in self.plot1_PlotWidget.items():
             self.plot1_PlotWidget.addItem(self.fit_image)

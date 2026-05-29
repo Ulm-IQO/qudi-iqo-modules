@@ -18,7 +18,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from PySide2.QtCore import Signal, Slot
+from PySide6.QtCore import Signal, Slot
 
 from qudi.logic.qdyne.tools.settings_dataclass import SettingsMediator
 

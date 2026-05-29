@@ -20,7 +20,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 import os
-from PySide2 import QtCore, QtWidgets
+from PySide6 import QtWidgets
 
 from qudi.util import uic
 from qudi.util.helpers import natural_sort

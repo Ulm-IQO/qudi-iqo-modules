@@ -24,8 +24,8 @@ from logging import getLogger
 import os
 import numpy as np
 import pyqtgraph as pg
-from PySide2.QtCore import Signal, Slot
-from PySide2.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, \
+from PySide6.QtCore import Signal, Slot
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, \
     QPushButton, QCheckBox, QSpacerItem, QSizePolicy
 
 from qudi.core.logger import get_logger

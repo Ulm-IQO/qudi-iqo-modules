@@ -13,7 +13,7 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from PySide2 import QtCore
+from PySide6 import QtCore
 from qudi.util.datafitting import FitConfigurationsModel, FitContainer
 
 class QdyneFit(QtCore.QObject):

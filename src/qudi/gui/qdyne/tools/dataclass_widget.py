@@ -20,8 +20,8 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 from dataclasses import fields
-from PySide2 import QtWidgets
-from PySide2.QtCore import Signal, Slot, QSize
+from PySide6 import QtWidgets
+from PySide6.QtCore import Signal, Slot, QSize
 from qudi.core.logger import get_logger
 from qudi.util.widgets.scientific_spinbox import ScienDSpinBox, ScienSpinBox
 

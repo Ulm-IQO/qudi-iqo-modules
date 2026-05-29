@@ -17,8 +17,8 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from PySide2.QtCore import Signal, Slot
-from PySide2.QtWidgets import QLabel, QComboBox, QHBoxLayout, QVBoxLayout, QWidget
+from PySide6.QtCore import Slot
+from PySide6.QtWidgets import QLabel, QComboBox, QHBoxLayout, QVBoxLayout, QWidget
 
 from qudi.gui.qdyne.tools.settings_widget import SettingsWidget
 

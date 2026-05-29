@@ -14,7 +14,7 @@ You should have received a copy of the GNU Lesser General Public License along w
 If not, see <https://www.gnu.org/licenses/>.
 """
 
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.logic.qdyne.qdyne_state_estimator import StateEstimatorSettings
 from qudi.logic.qdyne.qdyne_time_trace_analyzer import AnalyzerSettings

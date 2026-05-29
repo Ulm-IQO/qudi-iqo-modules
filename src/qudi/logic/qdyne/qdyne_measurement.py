@@ -13,15 +13,11 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-import copy
 import logging
 import numpy as np
 from dataclasses import dataclass
-import datetime
-from PySide2 import QtCore
-import numpy as np
+from PySide6 import QtCore
 
-from qudi.core.statusvariable import StatusVar
 from qudi.util.mutex import RecursiveMutex
 from qudi.logic.qdyne.qdyne_dataclass import MainDataClass
 from qudi.logic.qdyne.qdyne_settings import QdyneSettings
@@ -264,6 +260,7 @@ class QdyneMeasurement(QtCore.QObject):
             )
             self.data.freq_data.x = self.data.freq_domain[0]
             self.data.freq_data.y = self.data.freq_domain[1]
+            logger.warning(f"{self.data.freq_data.y=}")
 
         except Exception as e:
             logger.exception(e)

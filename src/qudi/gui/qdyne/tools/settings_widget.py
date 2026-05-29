@@ -18,8 +18,8 @@ See the GNU Lesser General Public License for more details.
 You should have received a copy of the GNU Lesser General Public License along with qudi.
 If not, see <https://www.gnu.org/licenses/>.
 """
-from PySide2.QtCore import Signal, Slot
-from PySide2.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit, QSizePolicy, QSpacerItem
+from PySide6.QtCore import Signal, Slot
+from PySide6.QtWidgets import QLabel, QComboBox, QVBoxLayout, QHBoxLayout, QPushButton, QLineEdit
 
 from qudi.gui.qdyne.tools.dataclass_widget import DataclassWidget
 from qudi.logic.qdyne.tools.custom_dataclass import CustomDataclass
@@ -141,7 +141,7 @@ class SettingsWidget(DataclassWidget):
 
     def connect_signals_from_widgets(self):
         super().connect_signals_from_widgets()
-        self.widgets["mode"].activated[str].connect(lambda clicked : self.mediator.update_mode(self.current_mode))
+        self.widgets["mode"].currentTextChanged.connect(lambda clicked : self.mediator.update_mode(self.current_mode))
         self.widgets["add_mode"].clicked.connect(self._add_button_pushed)
         self.widgets["delete_mode"].clicked.connect(self._delete_button_pushed)
         self.add_mode_pushed_sig.connect(self.mediator.add_mode)
@@ -149,7 +149,7 @@ class SettingsWidget(DataclassWidget):
 
     def disconnect_signals_from_widgets(self):
         super().disconnect_signals_from_widgets()
-        self.widgets["mode"].activated[str].disconnect()
+        self.widgets["mode"].currentTextChanged.disconnect()
         self.widgets["add_mode"].clicked.disconnect()
         self.widgets["delete_mode"].clicked.disconnect()
         self.add_mode_pushed_sig.disconnect()
