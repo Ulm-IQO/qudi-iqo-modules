@@ -27,7 +27,7 @@ from qudi.core.statusvariable import StatusVar
 from qudi.core.configoption import ConfigOption
 from qudi.util.mutex import Mutex
 from qudi.core.module import LogicBase
-from PySide2 import QtCore
+from PySide6 import QtCore
 
 from qudi.interface.pid_controller_interface import PIDControllerInterface
 

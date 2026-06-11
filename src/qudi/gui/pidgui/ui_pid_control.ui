@@ -502,7 +502,7 @@ Timestamps in oversampling interval are all equal to the averaging time.</string
        </property>
       </widget>
      </item>
-     <item row="0" column="4">
+     <item row="0" column="5">
       <spacer name="horizontalSpacer_3">
        <property name="orientation">
         <enum>Qt::Horizontal</enum>
