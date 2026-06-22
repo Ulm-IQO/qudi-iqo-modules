@@ -376,8 +376,12 @@ class HighFinesseProxy(Base):
                                f'{high_finesse_constants.ResultError(err)}')
 
     def start_measurement(self) -> None:
+        # activate switch mode (only if not already active)
         if self._wm_has_switch:
-            self._wavemeter_dll.SetSwitcherMode(True)
+            i_val = c_long()
+            switcher_mode = self._wavemeter_dll.GetSwitcherMode(i_val)
+            if not switcher_mode:
+                self._wavemeter_dll.SetSwitcherMode(True)
         err = self._wavemeter_dll.Operation(high_finesse_constants.cCtrlStartMeasurement)
         if err:
             raise RuntimeError(f'Wavemeter error while starting measurement: {high_finesse_constants.ResultError(err)}')
