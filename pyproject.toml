@@ -103,7 +103,6 @@ ignore = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-py-modules = ["sitecustomize"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
