@@ -26,10 +26,13 @@ If not, see <https://www.gnu.org/licenses/>.
 """
 
 from ctypes import *
-import numpy as np
 
+import numpy as np
+from PySide6.QtCore import Signal
 from qudi.core.configoption import ConfigOption
+
 from qudi.interface.camera_interface import CameraInterface
+
 from .uc480_h import *
 
 
@@ -333,3 +336,6 @@ class CameraThorlabs(CameraInterface):
         """
         return self._gain
 
+    @property
+    def new_image_data_signal(self) -> Signal | None:
+        return None
