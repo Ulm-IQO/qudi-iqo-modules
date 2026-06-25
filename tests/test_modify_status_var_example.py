@@ -58,7 +58,7 @@ def get_status_var_file(instance):
         File path
     """    
     file_path = get_module_app_data_path(
-            instance.__class__.__name__, instance.module_base, instance.module_name
+            type(instance).__name__.rsplit('.', 1)[-1], instance.module_base, instance.module_name
         )
     return file_path
 
