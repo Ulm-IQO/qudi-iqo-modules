@@ -6,11 +6,13 @@
 
 ### Bugfixes
 - Fix `installtion.py` for arbitrary Python versions
+- Fixed tests for `rpyc>6`
 - Fixed laser polling in `laser_logic.LaserLogic._query_loop_body` to leave `laser_logic` stuck in locked module state
 
 ### New Features
 
 ### Other
+- Displaying Qudi logs in the test workflow upon test failure
 
 ## Version 1.0.0
 
