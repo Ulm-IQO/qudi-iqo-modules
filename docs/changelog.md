@@ -6,6 +6,7 @@
 
 ### Bugfixes
 - Fix `installtion.py` for arbitrary Python versions
+- Fixed tests for `rpyc>6`
 
 ### New Features
 
