@@ -9,11 +9,13 @@
 
 ### Bugfixes
 - Fix `installtion.py` for arbitrary Python versions
+- Fixed tests for `rpyc>6`
 - Fixed `sequence_generator_logic` configuration in `default.cfg`
 
 ### New Features
 
 ### Other
+- Displaying Qudi logs in the test workflow upon test failure
 
 ## Version 1.0.0
 
