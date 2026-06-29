@@ -667,7 +667,7 @@ class PoiManagerLogic(LogicBase):
         """
         with self._thread_lock:
             # Get current scanner position from  if no position is provided.
-            if position is None:
+            if position is None or position is False:
                 position = self.scanner_position
 
             current_poi_set = set(self.poi_names)
@@ -685,6 +685,11 @@ class PoiManagerLogic(LogicBase):
             # Set newly created POI as active poi
             self.set_active_poi(poi_name)
             return
+
+    @QtCore.Slot()
+    def new_poi(self):
+        """ GUI slot: add a POI at the current scanner position. """
+        self.add_poi()
 
     @QtCore.Slot()
     def delete_poi(self, name=None):
