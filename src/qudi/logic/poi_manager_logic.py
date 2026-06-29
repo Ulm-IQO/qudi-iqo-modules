@@ -687,11 +687,6 @@ class PoiManagerLogic(LogicBase):
             return
 
     @QtCore.Slot()
-    def new_poi(self):
-        """ GUI slot: add a POI at the current scanner position. """
-        self.add_poi()
-
-    @QtCore.Slot()
     def delete_poi(self, name=None):
         """
         Deletes the given poi from the ROI.
